@@ -51,8 +51,8 @@ pub use data_uri::{ALLOWED_IMAGE_MIME_TYPES, DataUriError, validate_image_data_u
 pub use dir_name::{DirNameError, MAX_DIR_NAME_LENGTH, validate_dir_name};
 pub use duration::{DurationError, MAX_DURATION_LENGTH, validate_duration};
 pub use error::{
-    MAX_COMMAND_LENGTH, MAX_ERROR_KIND_LENGTH, MAX_ERROR_LENGTH, MAX_NEWS_ACTION_LENGTH,
-    TRANSFER_ID_LENGTH,
+    MAX_COMMAND_LENGTH, MAX_ERROR_KIND_LENGTH, MAX_ERROR_LENGTH, MAX_LOG_LEVEL_LENGTH,
+    MAX_NEWS_ACTION_LENGTH, TRANSFER_ID_LENGTH,
 };
 pub use features::{FeaturesError, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, validate_features};
 pub use file_path::{FilePathError, MAX_FILE_PATH_LENGTH, validate_file_path};

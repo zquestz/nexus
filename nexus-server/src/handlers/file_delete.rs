@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, FilePathError};
@@ -10,6 +11,10 @@ use nexus_common::validators::{self, FilePathError};
 use super::{
     HandlerContext, err_delete_failed, err_dir_not_empty, err_file_not_found,
     err_file_path_invalid, err_file_path_too_long, err_not_logged_in, err_permission_denied,
+};
+use crate::constants::{
+    LOG_FILE_DELETE_FAILED, LOG_FILE_DELETE_NOT_LOGGED_IN, LOG_FILE_DELETE_PERMISSION_DENIED,
+    LOG_FILE_DELETE_ROOT_DENIED, LOG_FILE_DELETE_SUCCESS,
 };
 use crate::db::Permission;
 use crate::files::path::PathError;
@@ -27,7 +32,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("FileDelete request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_DELETE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileDelete"))
             .await;
@@ -62,10 +67,7 @@ where
 
     // Check FileDelete permission
     if !requesting_user.has_permission(Permission::FileDelete) {
-        eprintln!(
-            "FileDelete from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_DELETE_PERMISSION_DENIED);
         let response = ServerMessage::FileDeleteResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -75,10 +77,7 @@ where
 
     // Check FileRoot permission if root browsing requested
     if root && !requesting_user.has_permission(Permission::FileRoot) {
-        eprintln!(
-            "FileDelete (root) from {} (user: {}) without file_root permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_DELETE_ROOT_DENIED);
         let response = ServerMessage::FileDeleteResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -215,6 +214,7 @@ where
             // Mark file index as dirty so it gets rebuilt
             ctx.file_index.mark_dirty();
 
+            info!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %path, "{}", LOG_FILE_DELETE_SUCCESS);
             let response = ServerMessage::FileDeleteResponse {
                 success: true,
                 error: None,
@@ -226,10 +226,7 @@ where
             let error_msg = if is_dir && e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
                 err_dir_not_empty(ctx.locale)
             } else {
-                eprintln!(
-                    "FileDelete failed for {} (user: {}): {}",
-                    ctx.peer_addr, requesting_user.username, e
-                );
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_DELETE_FAILED);
                 err_delete_failed(ctx.locale)
             };
             let response = ServerMessage::FileDeleteResponse {

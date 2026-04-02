@@ -12,7 +12,7 @@
 | 6 | Trackers | Medium | Planned |
 | 7 | Speed limiting | Medium | Planned |
 | 8 | Flood protection | Medium | Planned |
-| 9 | Server logs | Medium | Planned |
+| 9 | Server logs | Medium | ✅ Done |
 | 10 | Auto-away | Low | ✅ Done |
 
 **Post-launch:** IRC gateway (if demand exists)
@@ -83,3 +83,58 @@ Preview files before downloading.
 **Future (v2):**
 - Syntax highlighting via `syntect` (light/dark themes)
 - Line numbers
+
+### Server Logs
+
+Structured logging for the server with file rotation and retention.
+
+**Dependencies (nexus-server):**
+- `tracing` — macros (`error!`, `warn!`, `info!`, `debug!`)
+- `tracing-subscriber` — layer composition, stderr (human-readable), JSON formatter (file layer), level filtering
+- `tracing-appender` — daily rolling file writer
+- `humantime` — parse duration strings for `--log-retention`
+
+**CLI Flags:**
+- `--log-level` — `None` / `Error` / `Warn` / `Info` / `Debug` (default: `Info`)
+- `--log-retention` — Human-readable duration (default: `30d`). `0` means stderr only (no file logging). Non-zero values must be at least `1d`.
+- `--no-log-timestamps` — Disable timestamps in stderr output. Useful for Docker/systemd environments that provide their own timestamps. Does not affect JSON file output (always includes timestamps).
+
+**Output:**
+- **All output through tracing**: No `println!` or `eprintln!` in the codebase. Startup info, operational events, and errors all go through the tracing subscriber.
+- **stderr**: Human-readable tracing layer (level, message, fields). Timestamps shown by default, disabled with `--no-log-timestamps`.
+- **File**: JSONL via `tracing-subscriber` built-in JSON formatter + `tracing-appender` daily rolling writer. Always includes timestamps. Only active when retention is non-zero and log level is not None.
+- **Log directory**: `~/.local/share/nexusd/logs/`
+
+**Retention:**
+Purge log files older than the retention period on startup and on a daily timer. Filename-based date check. When retention is `0`, no file layer is created, no log directory is used.
+
+**Refactoring:**
+- Replace all `println!()`, `eprintln!()` with `error!`/`warn!`/`info!`/`debug!`
+- Remove `debug: bool` from `ConnectionParams`, `TransferParams`, `VoiceUdpServer`, `HandlerContext`, and everywhere it's threaded
+- ~66 `if debug { eprintln!(...) }` blocks become plain `debug!()` calls
+
+**Log level categories:**
+- **Error**: Database failures, TLS errors, unexpected internal errors
+- **Warn**: Permission denied, privilege escalation attempts, login failures
+- **Info**: User connected/disconnected, login success, admin actions (ban/trust/kick/delete/create), transfer completed, file index rebuilt
+- **Debug**: Connection limit hits, banned IP rejections, transfer progress, channel pruning, cache stats
+
+**Not logged:**
+- Chat messages
+- Chat join/leave events
+
+**Protocol change:**
+Add `log_level` field to `ServerInfo` in `nexus-common`. Read-only, not settable via `ServerInfoUpdate`.
+
+**Client changes:**
+- Rename **Limits** tab to **General** in Server Info panel, move Version into tab
+- Display items in General tab alphabetically: Log Level, Max Connections, Max Transfers, Min Password Strength, Version
+- Reorder Channels tab alphabetically: Auto-Join, Persistent
+- Rename label `label-connections-short` from "Connections" to "Max Connections" across all 13 locales
+- Rename label `label-transfers-short` from "Transfers" to "Max Transfers" across all 13 locales
+- Add i18n keys for log level label and values across all 13 locales
+
+**Not in scope (v1):**
+- Client fetching/viewing log contents
+- Client-side log search/filter UI
+- Admin changing log level at runtime via client

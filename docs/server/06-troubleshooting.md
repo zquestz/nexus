@@ -66,7 +66,7 @@ This guide covers common issues when running the Nexus BBS server.
 
 **Solutions:**
 
-1. Run with `--debug` to see detailed errors
+1. Run with `--log-level debug` to see detailed errors
 2. Check client and server versions are compatible
 3. Increase `max_connections_per_ip` if legitimate
 
@@ -277,14 +277,17 @@ docker volume ls | grep nexus
 ### Enable debug logging
 
 ```bash
-nexusd --debug
+nexusd --log-level debug
 ```
 
-Shows:
+Shows all log messages including:
 
-- Connection events
-- Authentication attempts
-- Error details
+- Connection and disconnection events
+- Transfer progress and authentication
+- Channel initialization and cleanup
+- IP ban/trust cache operations
+
+Log files are also written to `~/.local/share/nexusd/logs/` (unless `--log-retention 0`).
 
 ### Check server status
 
@@ -321,7 +324,7 @@ rm -rf ~/.local/share/nexusd/
 
 If your issue isn't covered here:
 
-1. Run with `--debug` and check output
+1. Run with `--log-level debug` and check output
 2. Check [GitHub Issues](https://github.com/zquestz/nexus/issues)
 3. Open a new issue with:
    - Server version (`nexusd --version`)

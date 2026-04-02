@@ -435,5 +435,5 @@ Typical voice latency: 40-100ms depending on:
 
 ## Next Steps
 
-- [Settings](10-settings.md) — Configure audio and other preferences
+- [Settings](11-settings.md) — Configure audio and other preferences
 - [Chat](03-chat.md) — Text chat in channels and user messages

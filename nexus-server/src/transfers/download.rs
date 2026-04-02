@@ -14,6 +14,7 @@ use tokio::fs::File;
 use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt, BufReader, SeekFrom,
 };
+use tracing::{debug, error, info, warn};
 
 use nexus_common::ERROR_KIND_IO_ERROR;
 use nexus_common::framing::{FrameReader, FrameWriter};
@@ -21,7 +22,7 @@ use nexus_common::hash::StreamingHasher;
 use nexus_common::io::read_client_message_with_full_timeout;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
-use crate::constants::DEFAULT_FILENAME;
+use crate::constants::*;
 use crate::db::Permission;
 use crate::files::folder_type::{FolderType, parse_folder_type};
 use crate::files::path::resolve_path;
@@ -56,7 +57,6 @@ where
     let locale = transfer.locale().to_string();
     let username = transfer.user().username.clone();
     let is_admin = transfer.user().is_admin;
-    let debug = transfer.debug();
     let peer_addr = transfer.peer_addr();
     let file_root = transfer.file_root();
 
@@ -79,12 +79,10 @@ where
     }
 
     // Scan files to transfer
-    let files = match scan_files_for_transfer(&resolved_path, &username, is_admin, debug).await {
+    let files = match scan_files_for_transfer(&resolved_path, &username, is_admin).await {
         Ok(files) => files,
         Err(e) => {
-            if debug {
-                eprintln!("Failed to scan files from {}: {e}", peer_addr);
-            }
+            error!(user = %username, ip = %peer_addr, err = %e, "{}", LOG_DOWNLOAD_SCAN_FAILED);
             let err_msg = err_transfer_read_failed(&locale);
             return send_download_error_and_close(
                 transfer.writer(),
@@ -105,12 +103,13 @@ where
     // Generate transfer ID for logging
     let log_transfer_id = generate_transfer_id();
 
-    if debug {
-        eprintln!(
-            "Download {log_transfer_id}: {} files, {} bytes from {}",
-            file_count, total_size, peer_addr
-        );
-    }
+    debug!(
+        id = %log_transfer_id,
+        files = file_count,
+        bytes = total_size,
+        ip = %peer_addr,
+        "{}", LOG_DOWNLOAD_STARTING
+    );
 
     // Send FileDownloadResponse
     let response = ServerMessage::FileDownloadResponse {
@@ -122,9 +121,7 @@ where
         transfer_id: Some(log_transfer_id.clone()),
     };
     if let Err(e) = transfer.send(&response).await {
-        if debug {
-            eprintln!("Download {log_transfer_id}: Failed to send response: {e}");
-        }
+        error!(id = %log_transfer_id, err = %e, "{}", LOG_DOWNLOAD_SEND_FAILED);
         return Ok(());
     }
 
@@ -149,33 +146,22 @@ where
             }
         };
 
-        match stream_file_with_hash(
-            transfer,
-            file_info,
-            &canonical_path,
-            debug,
-            &log_transfer_id,
-        )
-        .await
-        {
+        match stream_file_with_hash(transfer, file_info, &canonical_path, &log_transfer_id).await {
             Ok(()) => {
                 // bytes_transferred is updated inside stream_file_with_hash
             }
             Err(StreamFileError::Banned) => {
                 // Just close the socket - client gets ban reason on BBS connection
-                if debug {
-                    eprintln!("Download {log_transfer_id}: Terminated by ban");
-                }
+                info!(id = %log_transfer_id, "{}", LOG_DOWNLOAD_BANNED);
                 let _ = transfer.writer().get_mut().shutdown().await;
                 return Ok(());
             }
             Err(StreamFileError::HashMismatch) => {
-                if debug {
-                    eprintln!(
-                        "Download {log_transfer_id}: Resume hash mismatch for {}",
-                        file_info.relative_path
-                    );
-                }
+                warn!(
+                    id = %log_transfer_id,
+                    path = %file_info.relative_path,
+                    "{}", LOG_DOWNLOAD_HASH_MISMATCH
+                );
                 success = false;
                 error = Some(err_transfer_file_failed(
                     &locale,
@@ -186,12 +172,12 @@ where
                 break;
             }
             Err(StreamFileError::Io(e)) => {
-                if debug {
-                    eprintln!(
-                        "Download {log_transfer_id}: Error streaming {}: {e}",
-                        file_info.relative_path
-                    );
-                }
+                warn!(
+                    id = %log_transfer_id,
+                    path = %file_info.relative_path,
+                    err = %e,
+                    "{}", LOG_DOWNLOAD_STREAM_ERROR
+                );
                 success = false;
                 error = Some(err_transfer_file_failed(
                     &locale,
@@ -212,12 +198,10 @@ where
     };
     let _ = transfer.send(&complete).await; // Best effort - connection may be closing
 
-    if debug {
-        if success {
-            eprintln!("Download {log_transfer_id}: Complete");
-        } else {
-            eprintln!("Download {log_transfer_id}: Failed");
-        }
+    if success {
+        info!(id = %log_transfer_id, path = %download_path, "{}", LOG_DOWNLOAD_COMPLETE);
+    } else {
+        warn!(id = %log_transfer_id, path = %download_path, "{}", LOG_DOWNLOAD_FAILED);
     }
 
     // Close connection
@@ -313,7 +297,6 @@ async fn scan_files_for_transfer(
     resolved_path: &Path,
     username: &str,
     is_admin: bool,
-    debug: bool,
 ) -> io::Result<Vec<FileInfo>> {
     let mut files = Vec::new();
 
@@ -337,7 +320,7 @@ async fn scan_files_for_transfer(
         // Use empty prefix because the client already includes the directory name in local_path.
         // Files will have paths relative to inside the directory (e.g., "song.mp3", "Jazz/tune.mp3")
         // rather than including the directory name (e.g., "Music/song.mp3", "Music/Jazz/tune.mp3").
-        scan_directory_recursive(resolved_path, "", &mut files, username, is_admin, debug).await?;
+        scan_directory_recursive(resolved_path, "", &mut files, username, is_admin).await?;
     }
 
     Ok(files)
@@ -354,36 +337,27 @@ fn scan_directory_recursive<'a>(
     files: &'a mut Vec<FileInfo>,
     username: &'a str,
     is_admin: bool,
-    debug: bool,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = io::Result<()>> + Send + 'a>> {
     Box::pin(async move {
-        if debug {
-            eprintln!("Scanning directory: {:?} (prefix: {:?})", dir, prefix);
-        }
+        debug!(path = ?dir, prefix = ?prefix, "{}", LOG_SCAN_DIRECTORY);
 
         let mut entries = tokio::fs::read_dir(dir).await?;
 
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
-            if debug {
-                eprintln!("  Processing entry: {:?}", path);
-            }
+            debug!(path = ?path, "{}", LOG_SCAN_ENTRY);
             // Use tokio::fs::metadata instead of entry.metadata() to follow symlinks.
             // entry.metadata() uses lstat which returns symlink metadata, not target metadata.
             let metadata = match tokio::fs::metadata(&path).await {
                 Ok(m) => m,
                 Err(e) => {
-                    if debug {
-                        eprintln!("  Skipping {:?} - metadata failed: {}", path, e);
-                    }
+                    debug!(path = ?path, err = %e, "{}", LOG_SCAN_METADATA_FAILED);
                     continue;
                 }
             };
             // Skip files with non-UTF-8 names
             let Some(file_name) = entry.file_name().to_str().map(|s| s.to_string()) else {
-                if debug {
-                    eprintln!("  Skipping non-UTF-8 filename: {:?}", entry.file_name());
-                }
+                debug!(name = ?entry.file_name(), "{}", LOG_SCAN_NON_UTF8);
                 continue;
             };
 
@@ -396,9 +370,7 @@ fn scan_directory_recursive<'a>(
             // folder pointing into a dropbox, that's intentional - they're choosing to expose
             // that content.
             if !can_access_for_download(&path, username, is_admin) {
-                if debug {
-                    eprintln!("  Skipping {} - dropbox access denied", file_name);
-                }
+                debug!(path = %file_name, "{}", LOG_SCAN_DROPBOX_DENIED);
                 continue;
             }
 
@@ -410,36 +382,22 @@ fn scan_directory_recursive<'a>(
             };
 
             if metadata.is_file() {
-                if debug {
-                    eprintln!("  Adding file: {} (size: {})", relative, metadata.len());
-                }
+                debug!(path = %relative, bytes = metadata.len(), "{}", LOG_SCAN_ADDING_FILE);
                 files.push(FileInfo {
                     relative_path: relative,
                     absolute_path: path,
                     size: metadata.len(),
                 });
             } else if metadata.is_dir() {
-                if debug {
-                    eprintln!("  Recursing into directory: {}", relative);
-                }
+                debug!(path = %relative, "{}", LOG_SCAN_RECURSING);
                 // For subdirectories, use the relative path as the new prefix
-                scan_directory_recursive(&path, &relative, files, username, is_admin, debug)
-                    .await?;
-            } else if debug {
-                eprintln!(
-                    "  Skipping {} - special file (not a regular file or directory)",
-                    file_name
-                );
+                scan_directory_recursive(&path, &relative, files, username, is_admin).await?;
+            } else {
+                debug!(path = %file_name, "{}", LOG_SCAN_SPECIAL_FILE);
             }
         }
 
-        if debug {
-            eprintln!(
-                "Done scanning directory: {:?} (found {} files so far)",
-                dir,
-                files.len()
-            );
-        }
+        debug!(path = ?dir, files = files.len(), "{}", LOG_SCAN_DONE);
 
         Ok(())
     })
@@ -459,7 +417,6 @@ async fn stream_file_with_hash<R, W>(
     transfer: &mut Transfer<'_, R, W>,
     file_info: &FileInfo,
     canonical_path: &Path,
-    debug: bool,
     transfer_id: &str,
 ) -> Result<(), StreamFileError>
 where
@@ -487,28 +444,30 @@ where
             Err(e) => return Err(StreamFileError::Io(e)),
         };
 
-    if debug {
-        if offset > 0 {
-            eprintln!(
-                "Transfer {transfer_id}: Resuming {} from offset {} ({}%)",
-                file_info.relative_path,
-                offset,
-                (offset * 100) / file_info.size.max(1)
-            );
-        } else if file_info.size > 0 {
-            eprintln!(
-                "Transfer {transfer_id}: Sending {} ({} bytes)",
-                file_info.relative_path, file_info.size
-            );
-        }
+    if offset > 0 {
+        debug!(
+            id = %transfer_id,
+            path = %file_info.relative_path,
+            offset = offset,
+            percent = (offset * 100) / file_info.size.max(1),
+            "{}", LOG_DOWNLOAD_RESUMING
+        );
+    } else if file_info.size > 0 {
+        debug!(
+            id = %transfer_id,
+            path = %file_info.relative_path,
+            bytes = file_info.size,
+            "{}", LOG_DOWNLOAD_SENDING
+        );
     }
 
     // If offset equals file size, file is already complete — send FileHash only
     if offset >= file_info.size {
-        if debug && file_info.size > 0 {
-            eprintln!(
-                "Transfer {transfer_id}: {} already complete",
-                file_info.relative_path
+        if file_info.size > 0 {
+            debug!(
+                id = %transfer_id,
+                path = %file_info.relative_path,
+                "{}", LOG_DOWNLOAD_ALREADY_COMPLETE
             );
         }
         let file_hash = ServerMessage::FileHash {

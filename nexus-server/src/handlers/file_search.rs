@@ -4,6 +4,12 @@ use std::io;
 use std::sync::Arc;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, warn};
+
+use crate::constants::{
+    LOG_FILE_SEARCH_ERROR, LOG_FILE_SEARCH_NOT_LOGGED_IN, LOG_FILE_SEARCH_PANIC,
+    LOG_FILE_SEARCH_PERMISSION_DENIED, LOG_FILE_SEARCH_ROOT_DENIED,
+};
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, SearchQueryError, validate_search_query};
@@ -28,7 +34,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("FileSearch request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_SEARCH_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileSearch"))
             .await;
@@ -46,10 +52,7 @@ where
 
     // Check file_search permission
     if !requesting_user.has_permission(Permission::FileSearch) {
-        eprintln!(
-            "FileSearch from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_SEARCH_PERMISSION_DENIED);
         let response = ServerMessage::FileSearchResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -60,10 +63,7 @@ where
 
     // Check file_root permission if root flag is set
     if root && !requesting_user.has_permission(Permission::FileRoot) {
-        eprintln!(
-            "FileSearch with root from {} (user: {}) without file_root permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_SEARCH_ROOT_DENIED);
         let response = ServerMessage::FileSearchResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -129,7 +129,7 @@ where
     let mut results = match search_result {
         Ok(Ok(results)) => results,
         Ok(Err(e)) => {
-            eprintln!("FileSearch error from {}: {}", ctx.peer_addr, e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_SEARCH_ERROR);
             let response = ServerMessage::FileSearchResponse {
                 success: false,
                 error: Some(err_search_failed(ctx.locale)),
@@ -138,7 +138,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("FileSearch task panicked from {}: {}", ctx.peer_addr, e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_SEARCH_PANIC);
             let response = ServerMessage::FileSearchResponse {
                 success: false,
                 error: Some(err_search_failed(ctx.locale)),

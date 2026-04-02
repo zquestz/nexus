@@ -58,7 +58,8 @@ services:
       # - NEXUS_WEBSOCKET=true
       # - NEXUS_WEBSOCKET_PORT=7502
       # - NEXUS_TRANSFER_WEBSOCKET_PORT=7503
-      - NEXUS_DEBUG=
+      - NEXUS_LOG_LEVEL=info
+      - NEXUS_NO_LOG_TIMESTAMPS=true
 
 volumes:
   nexus-data:
@@ -135,13 +136,15 @@ docker run -d \
 | `NEXUS_WEBSOCKET`               | (empty)   | Set to any value to enable WebSocket support         |
 | `NEXUS_WEBSOCKET_PORT`          | `7502`    | WebSocket BBS port (requires `NEXUS_WEBSOCKET`)      |
 | `NEXUS_TRANSFER_WEBSOCKET_PORT` | `7503`    | WebSocket transfer port (requires `NEXUS_WEBSOCKET`) |
-| `NEXUS_DEBUG`                   | (empty)   | Set to any value to enable debug logging             |
+| `NEXUS_LOG_LEVEL`               | `info`    | Log level (none, error, warn, info, debug)           |
+| `NEXUS_LOG_RETENTION`           | `30d`     | Log file retention (e.g. "30d", "7d", "0" for stderr only) |
+| `NEXUS_NO_LOG_TIMESTAMPS`       | (empty)   | Set to any value to disable stderr timestamps        |
 
-### Enable Debug Mode
+### Enable Debug Logging
 
 ```yaml
 environment:
-  - NEXUS_DEBUG=1
+  - NEXUS_LOG_LEVEL=debug
 ```
 
 ### Enable WebSocket Support

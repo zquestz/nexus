@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
 
 use nexus_common::protocol::{NewsAction, NewsItem, ServerMessage};
 use nexus_common::validators::{self, NewsBodyError, NewsImageError};
@@ -14,7 +15,10 @@ use super::{
     err_news_empty_content, err_news_image_invalid_format, err_news_image_too_large,
     err_news_image_unsupported_type, err_not_logged_in, err_permission_denied,
 };
-use crate::constants::FEATURE_NEWS;
+use crate::constants::{
+    FEATURE_NEWS, LOG_NEWS_CREATE_DB_ERROR, LOG_NEWS_CREATE_NOT_LOGGED_IN,
+    LOG_NEWS_CREATE_PERMISSION_DENIED, LOG_NEWS_CREATE_SUCCESS,
+};
 use crate::db::Permission;
 
 /// Handle a news create request
@@ -29,7 +33,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("NewsCreate request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_NEWS_CREATE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("NewsCreate"))
             .await;
@@ -55,10 +59,7 @@ where
 
     // Check NewsCreate permission
     if !requesting_user.has_permission(Permission::NewsCreate) {
-        eprintln!(
-            "NewsCreate from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_NEWS_CREATE_PERMISSION_DENIED);
         let response = ServerMessage::NewsCreateResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -125,7 +126,7 @@ where
     {
         Ok(record) => record,
         Err(e) => {
-            eprintln!("Database error creating news: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_NEWS_CREATE_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("NewsCreate"))
                 .await;
@@ -143,7 +144,8 @@ where
         updated_at: news_record.updated_at,
     };
 
-    // Send success response
+    // Log and send success response
+    info!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %news.id, "{}", LOG_NEWS_CREATE_SUCCESS);
     let response = ServerMessage::NewsCreateResponse {
         success: true,
         error: None,

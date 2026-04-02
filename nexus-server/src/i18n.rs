@@ -1,6 +1,7 @@
 //! Internationalization support using Fluent
 
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
+use tracing::warn;
 use unic_langid::LanguageIdentifier;
 
 use crate::constants::*;
@@ -21,17 +22,14 @@ pub fn t(locale: &str, key: &str) -> String {
         let value = bundle.format_pattern(msg, None, &mut errors);
 
         if !errors.is_empty() {
-            eprintln!("{} '{}': {:?}", ERR_I18N_TRANSLATION_ERRORS, key, errors);
+            warn!(key = %key, errors = ?errors, "{}", LOG_TRANSLATION_ERRORS);
         }
 
         return value.to_string();
     }
 
     // Fallback to English if key missing in requested locale
-    eprintln!(
-        "{} '{}' {} {}",
-        ERR_I18N_MISSING_KEY, key, MSG_I18N_FOR_LOCALE, locale
-    );
+    warn!(key = %key, locale = %locale, "{}", LOG_MISSING_TRANSLATION_KEY);
     if locale != DEFAULT_LOCALE {
         return t(DEFAULT_LOCALE, key);
     }
@@ -66,17 +64,14 @@ pub fn t_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String {
         let value = bundle.format_pattern(msg, Some(&fluent_args), &mut errors);
 
         if !errors.is_empty() {
-            eprintln!("{} '{}': {:?}", ERR_I18N_TRANSLATION_ERRORS, key, errors);
+            warn!(key = %key, errors = ?errors, "{}", LOG_TRANSLATION_ERRORS);
         }
 
         return value.to_string();
     }
 
     // Fallback to English if key missing in requested locale
-    eprintln!(
-        "{} '{}' {} {}",
-        ERR_I18N_MISSING_KEY, key, MSG_I18N_FOR_LOCALE, locale
-    );
+    warn!(key = %key, locale = %locale, "{}", LOG_MISSING_TRANSLATION_KEY);
     if locale != DEFAULT_LOCALE {
         return t_args(DEFAULT_LOCALE, key, args);
     }

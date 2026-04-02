@@ -144,18 +144,24 @@ label-nickname = Spitzname:
 label-network = Netzwerk
 label-none = Keine
 label-server-settings = Servereinstellungen
-tab-limits = Limits
 tab-files = Dateien
 tab-channels = Kanäle
-label-connections-short = Verbindungen:
-label-transfers-short = Übertragungen:
+label-connections-short = Max. Verbindungen:
+label-transfers-short = Max. Übertragungen:
+label-version-short = Version:
+label-log-level = Protokollstufe:
+label-log-level-none = Keine
+label-log-level-error = Fehler
+label-log-level-warn = Warnung
+label-log-level-info = Info
+label-log-level-debug = Debug
 label-reindex-short = Neuindiz.:
 label-persistent-short = Permanent:
 label-auto-join-short = Auto-Beitritt:
 label-minutes = Minuten
 label-name = Name:
 label-description = Beschreibung:
-label-version-value = Version { $version }
+
 label-use-socks5-proxy = SOCKS5-Proxy verwenden
 label-proxy-address = Adresse:
 label-proxy-port = Port:
@@ -401,7 +407,6 @@ console-tab = Konsole
 # =============================================================================
 # System Message Usernames
 # =============================================================================
-
 
 # =============================================================================
 # Chat Message Prefixes

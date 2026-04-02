@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{debug, error, warn};
 
 use nexus_common::ErrorKind;
 use nexus_common::protocol::ServerMessage;
@@ -12,6 +13,11 @@ use super::{
     HandlerContext, err_cannot_copy_into_itself, err_copy_failed, err_destination_exists,
     err_destination_not_directory, err_file_not_found, err_file_path_invalid,
     err_file_path_too_long, err_not_logged_in, err_permission_denied,
+};
+use crate::constants::{
+    LOG_FILE_COPY_DELETE_DENIED, LOG_FILE_COPY_FAILED, LOG_FILE_COPY_NOT_LOGGED_IN,
+    LOG_FILE_COPY_PERMISSION_DENIED, LOG_FILE_COPY_REMOVE_FAILED, LOG_FILE_COPY_ROOT_DENIED,
+    LOG_FILE_COPY_SUCCESS,
 };
 use crate::db::Permission;
 use crate::files::{
@@ -34,7 +40,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("FileCopy request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileCopy"))
             .await;
@@ -71,10 +77,7 @@ where
 
     // Check FileCopy permission
     if !requesting_user.has_permission(Permission::FileCopy) {
-        eprintln!(
-            "FileCopy from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_PERMISSION_DENIED);
         let response = ServerMessage::FileCopyResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -85,10 +88,7 @@ where
 
     // Check FileRoot permission if either root flag is set
     if (source_root || destination_root) && !requesting_user.has_permission(Permission::FileRoot) {
-        eprintln!(
-            "FileCopy (root) from {} (user: {}) without file_root permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_ROOT_DENIED);
         let response = ServerMessage::FileCopyResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -99,10 +99,7 @@ where
 
     // Check FileDelete permission if overwrite is requested
     if overwrite && !requesting_user.has_permission(Permission::FileDelete) {
-        eprintln!(
-            "FileCopy (overwrite) from {} (user: {}) without file_delete permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_DELETE_DENIED);
         let response = ServerMessage::FileCopyResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -336,10 +333,7 @@ where
 
         // Remove existing target for overwrite (async to avoid blocking runtime)
         if let Err(e) = remove_path_async(&target_path).await {
-            eprintln!(
-                "FileCopy failed to remove existing target for {} (user: {}): {}",
-                ctx.peer_addr, requesting_user.username, e
-            );
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_COPY_REMOVE_FAILED);
             let response = ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_copy_failed(ctx.locale)),
@@ -355,6 +349,8 @@ where
             // Mark file index as dirty so it gets rebuilt
             ctx.file_index.mark_dirty();
 
+            debug!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %source_path, "{}", LOG_FILE_COPY_SUCCESS);
+
             let response = ServerMessage::FileCopyResponse {
                 success: true,
                 error: None,
@@ -363,10 +359,7 @@ where
             ctx.send_message(&response).await
         }
         Err(e) => {
-            eprintln!(
-                "FileCopy failed for {} (user: {}): {}",
-                ctx.peer_addr, requesting_user.username, e
-            );
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_COPY_FAILED);
             let response = ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_copy_failed(ctx.locale)),

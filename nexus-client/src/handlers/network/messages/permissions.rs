@@ -88,6 +88,9 @@ impl NexusApp {
             if let Some(score) = info.min_password_strength {
                 conn.min_password_strength = PasswordStrength::from(score);
             }
+            if info.log_level.is_some() {
+                conn.log_level = info.log_level;
+            }
         }
 
         // If user just gained user_list permission, refresh the list

@@ -15,8 +15,9 @@ For users connecting to Nexus BBS servers.
 - [Voice Chat](client/07-voice-chat.md) — Push-to-talk voice for channels and user messages
 - [User Management](client/08-user-management.md) — Managing users, groups, and permissions (admin)
 - [Connection Monitor](client/09-connection-monitor.md) — View active connections and transfers (admin)
-- [Settings](client/10-settings.md) — Themes, sounds, notifications, and preferences
-- [Troubleshooting](client/11-troubleshooting.md) — Common issues and solutions
+- [Server Info](client/10-server-info.md) — Server configuration and details
+- [Settings](client/11-settings.md) — Themes, sounds, notifications, and preferences
+- [Troubleshooting](client/12-troubleshooting.md) — Common issues and solutions
 
 ## Server Admin Guide
 

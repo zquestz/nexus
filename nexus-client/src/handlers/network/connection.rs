@@ -449,6 +449,7 @@ impl NexusApp {
             persistent_channels: conn.persistent_channels,
             auto_join_channels: conn.auto_join_channels,
             min_password_strength: conn.min_password_strength,
+            log_level: conn.log_level,
             tx: conn.tx,
             shutdown_handle,
         });

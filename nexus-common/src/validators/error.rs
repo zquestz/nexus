@@ -32,3 +32,8 @@ pub const MAX_NEWS_ACTION_LENGTH: usize = 7;
 /// Transfer IDs are 8 hex characters used for log correlation between
 /// client and server during file transfers.
 pub const TRANSFER_ID_LENGTH: usize = 8;
+
+/// Maximum length for log level strings in ServerInfo (bytes)
+///
+/// Values: "none", "error", "warn", "info", "debug" - all 5 chars or less.
+pub const MAX_LOG_LEVEL_LENGTH: usize = 5;

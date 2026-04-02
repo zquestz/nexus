@@ -138,4 +138,5 @@ IPv4 addresses are displayed in IPv4-mapped IPv6 format (e.g., `::ffff:192.168.1
 ## Next Steps
 
 - [Commands](04-commands.md) — Use `/kick` and `/ban` commands
-- [Settings](10-settings.md) — Configure notifications
+- [Server Info](10-server-info.md) — View server configuration
+- [Settings](11-settings.md) — Configure notifications

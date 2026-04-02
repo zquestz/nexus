@@ -3,6 +3,9 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
+
+use crate::constants::*;
 
 use nexus_common::protocol::ServerMessage;
 
@@ -25,7 +28,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("GroupDelete request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_GROUP_DELETE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("GroupDelete"))
             .await;
@@ -47,10 +50,7 @@ where
 
     // Check permission
     if !requesting_user.has_permission(Permission::GroupDelete) {
-        eprintln!(
-            "GroupDelete from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_GROUP_DELETE_PERMISSION_DENIED);
         let response = ServerMessage::GroupDeleteResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -73,7 +73,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error getting group: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_DELETE_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupDelete"))
                 .await;
@@ -93,7 +93,7 @@ where
         }
         Ok(_) => {}
         Err(e) => {
-            eprintln!("Database error getting member count: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_DELETE_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupDelete"))
                 .await;
@@ -115,14 +115,15 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error deleting group: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_DELETE_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupDelete"))
                 .await;
         }
     };
 
-    // Send success response
+    // Log and send success response
+    info!(user = %requesting_user.username, ip = %ctx.peer_addr, group = %group.name, "{}", LOG_GROUP_DELETE_SUCCESS);
     let response = ServerMessage::GroupDeleteResponse {
         success: true,
         error: None,

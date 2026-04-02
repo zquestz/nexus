@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{debug, error, warn};
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, DirNameError, FilePathError};
@@ -11,6 +12,10 @@ use super::{
     HandlerContext, err_dir_name_empty, err_dir_name_invalid, err_dir_name_too_long,
     err_file_not_found, err_file_path_invalid, err_file_path_too_long, err_not_logged_in,
     err_permission_denied, err_rename_failed, err_rename_target_exists,
+};
+use crate::constants::{
+    LOG_FILE_RENAME_FAILED, LOG_FILE_RENAME_NOT_LOGGED_IN, LOG_FILE_RENAME_PERMISSION_DENIED,
+    LOG_FILE_RENAME_ROOT_DENIED, LOG_FILE_RENAME_SUCCESS,
 };
 use crate::db::Permission;
 use crate::files::{
@@ -30,7 +35,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("FileRename request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileRename"))
             .await;
@@ -65,10 +70,7 @@ where
 
     // Check FileRename permission
     if !requesting_user.has_permission(Permission::FileRename) {
-        eprintln!(
-            "FileRename from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_PERMISSION_DENIED);
         let response = ServerMessage::FileRenameResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -78,10 +80,7 @@ where
 
     // Check FileRoot permission if root browsing requested
     if root && !requesting_user.has_permission(Permission::FileRoot) {
-        eprintln!(
-            "FileRename (root) from {} (user: {}) without file_root permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_ROOT_DENIED);
         let response = ServerMessage::FileRenameResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -232,6 +231,8 @@ where
             // Mark file index as dirty so it gets rebuilt
             ctx.file_index.mark_dirty();
 
+            debug!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %path, "{}", LOG_FILE_RENAME_SUCCESS);
+
             let response = ServerMessage::FileRenameResponse {
                 success: true,
                 error: None,
@@ -239,10 +240,7 @@ where
             ctx.send_message(&response).await
         }
         Err(e) => {
-            eprintln!(
-                "FileRename failed for {} (user: {}): {}",
-                ctx.peer_addr, requesting_user.username, e
-            );
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_RENAME_FAILED);
             let response = ServerMessage::FileRenameResponse {
                 success: false,
                 error: Some(err_rename_failed(ctx.locale)),

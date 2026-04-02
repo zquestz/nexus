@@ -3,12 +3,21 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
 
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
 use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
 
-use crate::constants::DEFAULT_LOCALE;
+use crate::constants::{
+    DEFAULT_LOCALE, LOG_USER_UPDATE_ADMIN, LOG_USER_UPDATE_DB_ERROR,
+    LOG_USER_UPDATE_DB_ERROR_GROUP, LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS,
+    LOG_USER_UPDATE_DB_ERROR_LOOKUP, LOG_USER_UPDATE_DB_ERROR_PERMISSIONS,
+    LOG_USER_UPDATE_DB_ERROR_TARGET, LOG_USER_UPDATE_DB_ERROR_USER, LOG_USER_UPDATE_HASH_ERROR,
+    LOG_USER_UPDATE_NOT_LOGGED_IN, LOG_USER_UPDATE_PASSWORD_VERIFY,
+    LOG_USER_UPDATE_PERMISSION_DENIED, LOG_USER_UPDATE_SUCCESS, LOG_USER_UPDATE_UNOWNED_PERMISSION,
+    LOG_USER_UPDATE_UNOWNED_REVOKE,
+};
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
@@ -55,7 +64,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = request.session_id else {
-        eprintln!("UserUpdate request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserUpdate"))
             .await;
@@ -88,7 +97,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error looking up user {}: {}", request.id, e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %request.id, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_LOOKUP);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                 .await;
@@ -172,7 +181,7 @@ where
                 return ctx.send_message(&response).await;
             }
             Err(e) => {
-                eprintln!("Database error getting user: {}", e);
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_USER);
                 return ctx
                     .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                     .await;
@@ -192,7 +201,7 @@ where
                 return ctx.send_message(&response).await;
             }
             Err(e) => {
-                eprintln!("Error verifying password: {}", e);
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_PASSWORD_VERIFY);
                 return ctx
                     .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                     .await;
@@ -201,10 +210,7 @@ where
     } else {
         // Editing another user: check UserEdit permission
         if !requesting_user.has_permission(Permission::UserEdit) {
-            eprintln!(
-                "UserUpdate from {} (user: {}) without permission",
-                ctx.peer_addr, requesting_user.username
-            );
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(err_permission_denied(ctx.locale)),
@@ -219,10 +225,7 @@ where
         if !requesting_user.is_admin {
             match ctx.db.users.get_user_by_username(&target_username).await {
                 Ok(Some(target_user)) if target_user.is_admin => {
-                    eprintln!(
-                        "UserUpdate from {} (user: {}) trying to edit admin user",
-                        ctx.peer_addr, requesting_user.username
-                    );
+                    warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_ADMIN);
                     let response = ServerMessage::UserUpdateResponse {
                         success: false,
                         error: Some(err_cannot_edit_admin(ctx.locale)),
@@ -242,7 +245,7 @@ where
                     return ctx.send_message(&response).await;
                 }
                 Err(e) => {
-                    eprintln!("Database error getting target user: {}", e);
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
                     return ctx
                         .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                         .await;
@@ -327,7 +330,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error getting target user: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                 .await;
@@ -402,10 +405,7 @@ where
 
             // Check permission delegation authority (uses cached permissions, admin bypass built-in)
             if !requesting_user.has_permission(perm) {
-                eprintln!(
-                    "UserUpdate from {} (user: {}) trying to set permission they don't have: {}",
-                    ctx.peer_addr, requesting_user.username, perm_str
-                );
+                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_UPDATE_UNOWNED_PERMISSION);
                 let response = ServerMessage::UserUpdateResponse {
                     success: false,
                     error: Some(err_permission_denied(ctx.locale)),
@@ -426,7 +426,7 @@ where
             let target_perms = match ctx.db.users.get_user_permissions(account.id).await {
                 Ok(p) => p,
                 Err(e) => {
-                    eprintln!("Database error fetching permissions for merge: {}", e);
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_PERMISSIONS);
                     return ctx
                         .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                         .await;
@@ -465,20 +465,24 @@ where
                     // Non-admin delegation: requester must have all current group
                     // permissions (removal changes effective perms the editor can't grant back)
                     if !requesting_user.is_admin {
-                        let group_perms =
-                            match ctx.db.groups.get_group_permissions(current_group_id).await {
-                                Ok(p) => p,
-                                Err(e) => {
-                                    eprintln!("Database error fetching group permissions: {}", e);
-                                    let response = ServerMessage::UserUpdateResponse {
-                                        success: false,
-                                        error: Some(err_database(ctx.locale)),
-                                        id: None,
-                                        username: None,
-                                    };
-                                    return ctx.send_message(&response).await;
-                                }
-                            };
+                        let group_perms = match ctx
+                            .db
+                            .groups
+                            .get_group_permissions(current_group_id)
+                            .await
+                        {
+                            Ok(p) => p,
+                            Err(e) => {
+                                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS);
+                                let response = ServerMessage::UserUpdateResponse {
+                                    success: false,
+                                    error: Some(err_database(ctx.locale)),
+                                    id: None,
+                                    username: None,
+                                };
+                                return ctx.send_message(&response).await;
+                            }
+                        };
                         for perm in &group_perms {
                             if !requesting_user.has_permission(*perm) {
                                 let response = ServerMessage::UserUpdateResponse {
@@ -509,20 +513,24 @@ where
                     if !requesting_user.is_admin
                         && let Some(current_group_id) = account.group_id
                     {
-                        let old_group_perms =
-                            match ctx.db.groups.get_group_permissions(current_group_id).await {
-                                Ok(p) => p,
-                                Err(e) => {
-                                    eprintln!("Database error fetching group permissions: {}", e);
-                                    let response = ServerMessage::UserUpdateResponse {
-                                        success: false,
-                                        error: Some(err_database(ctx.locale)),
-                                        id: None,
-                                        username: None,
-                                    };
-                                    return ctx.send_message(&response).await;
-                                }
-                            };
+                        let old_group_perms = match ctx
+                            .db
+                            .groups
+                            .get_group_permissions(current_group_id)
+                            .await
+                        {
+                            Ok(p) => p,
+                            Err(e) => {
+                                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS);
+                                let response = ServerMessage::UserUpdateResponse {
+                                    success: false,
+                                    error: Some(err_database(ctx.locale)),
+                                    id: None,
+                                    username: None,
+                                };
+                                return ctx.send_message(&response).await;
+                            }
+                        };
                         for perm in &old_group_perms {
                             if !requesting_user.has_permission(*perm) {
                                 let response = ServerMessage::UserUpdateResponse {
@@ -549,7 +557,7 @@ where
                             return ctx.send_message(&response).await;
                         }
                         Err(e) => {
-                            eprintln!("Database error fetching group: {}", e);
+                            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP);
                             return ctx
                                 .send_error_and_disconnect(
                                     &err_database(ctx.locale),
@@ -581,20 +589,24 @@ where
 
                     // Non-admin delegation: requester must have all group permissions
                     if !requesting_user.is_admin {
-                        let group_perms =
-                            match ctx.db.groups.get_group_permissions(new_group_id).await {
-                                Ok(p) => p,
-                                Err(e) => {
-                                    eprintln!("Database error fetching group permissions: {}", e);
-                                    let response = ServerMessage::UserUpdateResponse {
-                                        success: false,
-                                        error: Some(err_database(ctx.locale)),
-                                        id: None,
-                                        username: None,
-                                    };
-                                    return ctx.send_message(&response).await;
-                                }
-                            };
+                        let group_perms = match ctx
+                            .db
+                            .groups
+                            .get_group_permissions(new_group_id)
+                            .await
+                        {
+                            Ok(p) => p,
+                            Err(e) => {
+                                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS);
+                                let response = ServerMessage::UserUpdateResponse {
+                                    success: false,
+                                    error: Some(err_database(ctx.locale)),
+                                    id: None,
+                                    username: None,
+                                };
+                                return ctx.send_message(&response).await;
+                            }
+                        };
                         for perm in &group_perms {
                             if !requesting_user.has_permission(*perm) {
                                 let response = ServerMessage::UserUpdateResponse {
@@ -644,10 +656,7 @@ where
                     Some(perm) => {
                         // Non-admins can only set revokes for permissions they have
                         if !requesting_user.is_admin && !requesting_user.has_permission(perm) {
-                            eprintln!(
-                                "UserUpdate from {} (user: {}) trying to revoke permission they don't have: {}",
-                                ctx.peer_addr, requesting_user.username, perm_str
-                            );
+                            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_UPDATE_UNOWNED_REVOKE);
                             let response = ServerMessage::UserUpdateResponse {
                                 success: false,
                                 error: Some(err_permission_denied(ctx.locale)),
@@ -723,7 +732,7 @@ where
             match hash_password(password, min_strength, false) {
                 Ok(hash) => Some(hash),
                 Err(e) => {
-                    eprintln!("Database error updating user {}: {}", target_username, e);
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_HASH_ERROR);
                     return ctx
                         .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                         .await;
@@ -786,6 +795,7 @@ where
                 .unwrap_or(&target_username)
                 .clone();
 
+            info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %final_username, "{}", LOG_USER_UPDATE_SUCCESS);
             let response = ServerMessage::UserUpdateResponse {
                 success: true,
                 error: None,
@@ -1128,7 +1138,7 @@ where
             ctx.send_message(&response).await
         }
         Err(e) => {
-            eprintln!("Database error updating user: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
                 .await;

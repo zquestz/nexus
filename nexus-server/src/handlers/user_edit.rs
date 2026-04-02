@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, warn};
 
 use nexus_common::protocol::ServerMessage;
 
@@ -11,6 +12,10 @@ use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_authentication, err_cannot_edit_admin, err_cannot_edit_self, err_database,
     err_not_logged_in, err_permission_denied, err_user_not_found,
+};
+use crate::constants::{
+    LOG_USER_EDIT_ADMIN, LOG_USER_EDIT_DB_ERROR, LOG_USER_EDIT_NOT_LOGGED_IN,
+    LOG_USER_EDIT_PERMISSION_DENIED,
 };
 use crate::db::Permission;
 
@@ -25,7 +30,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("UserEdit request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_USER_EDIT_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserEdit"))
             .await;
@@ -67,10 +72,7 @@ where
 
     // Check UserEdit permission (uses cached permissions, admin bypass built-in)
     if !requesting_user.has_permission(Permission::UserEdit) {
-        eprintln!(
-            "UserEdit from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_EDIT_PERMISSION_DENIED);
         let response = ServerMessage::UserEditResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -111,7 +113,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error getting user: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_EDIT_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("UserEdit"))
                 .await;
@@ -120,10 +122,7 @@ where
 
     // Prevent non-admins from viewing admin user details for editing
     if target_user.is_admin && !requesting_user.is_admin {
-        eprintln!(
-            "UserEdit from {} (user: {}) trying to edit admin user",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_EDIT_ADMIN);
         let response = ServerMessage::UserEditResponse {
             success: false,
             error: Some(err_cannot_edit_admin(ctx.locale)),
@@ -146,7 +145,7 @@ where
     let user_permissions = match ctx.db.users.get_user_permissions(target_user.id).await {
         Ok(perms) => perms,
         Err(e) => {
-            eprintln!("Database error getting permissions: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_EDIT_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("UserEdit"))
                 .await;
@@ -197,7 +196,7 @@ where
     let available_groups = match ctx.db.groups.get_all_groups_with_details().await {
         Ok(groups) => Some(groups),
         Err(e) => {
-            eprintln!("Error fetching groups: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_EDIT_DB_ERROR);
             None
         }
     };

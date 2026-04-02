@@ -4,8 +4,11 @@ use std::io;
 use std::net::IpAddr;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
 
 use nexus_common::protocol::ServerMessage;
+
+use crate::constants::*;
 use nexus_common::validators::{self, DurationError, TargetError, TrustReasonError};
 
 use super::duration::parse_duration;
@@ -36,7 +39,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("TrustCreate request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_TRUST_CREATE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("TrustCreate"))
             .await;
@@ -54,10 +57,7 @@ where
 
     // Check trust_create permission
     if !requesting_user.has_permission(Permission::TrustCreate) {
-        eprintln!(
-            "TrustCreate from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_TRUST_CREATE_PERMISSION_DENIED);
         let response = ServerMessage::TrustCreateResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -162,7 +162,7 @@ where
                 trusted_targets.push(target_str.clone());
             }
             Err(e) => {
-                eprintln!("TrustCreate database error for {}: {}", target_str, e);
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target_str, err = %e, "{}", LOG_TRUST_CREATE_DB_ERROR);
                 let response = ServerMessage::TrustCreateResponse {
                     success: false,
                     error: Some(super::err_database(ctx.locale)),
@@ -185,7 +185,8 @@ where
         }
     }
 
-    // Send success response
+    // Log and send success response
+    info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_TRUST_CREATE_SUCCESS);
     let response = ServerMessage::TrustCreateResponse {
         success: true,
         error: None,

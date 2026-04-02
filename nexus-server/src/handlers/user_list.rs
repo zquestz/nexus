@@ -3,6 +3,12 @@
 use std::collections::HashMap;
 use std::io;
 
+use tracing::{error, warn};
+
+use crate::constants::{
+    LOG_USER_LIST_DB_ERROR, LOG_USER_LIST_NOT_LOGGED_IN, LOG_USER_LIST_PERMISSION_DENIED,
+};
+
 /// Aggregated user data for deduplication of regular (non-shared) accounts.
 ///
 /// Avatar/locale/group use latest login (stable selection).
@@ -47,7 +53,7 @@ where
 {
     // Verify authentication
     let Some(id) = session_id else {
-        eprintln!("UserList request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_USER_LIST_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserList"))
             .await;
@@ -75,10 +81,7 @@ where
     };
 
     if !has_permission {
-        eprintln!(
-            "UserList (all={}) from {} (user: {}) without permission",
-            all, ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, all = all, "{}", LOG_USER_LIST_PERMISSION_DENIED);
         return ctx
             .send_error(&err_permission_denied(ctx.locale), Some("UserList"))
             .await;
@@ -91,7 +94,7 @@ where
         let db_users = match ctx.db.users.get_all_users().await {
             Ok(users) => users,
             Err(e) => {
-                eprintln!("Failed to fetch all users from database: {}", e);
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_LIST_DB_ERROR);
                 return ctx
                     .send_error(&err_database(ctx.locale), Some("UserList"))
                     .await;

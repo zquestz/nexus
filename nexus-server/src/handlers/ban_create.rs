@@ -5,6 +5,7 @@ use std::net::IpAddr;
 
 use ipnet::IpNet;
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, BanReasonError, DurationError, TargetError};
@@ -16,6 +17,7 @@ use super::{
     err_ban_invalid_target, err_ban_self, err_database, err_not_logged_in, err_permission_denied,
     err_reason_invalid, err_reason_too_long, err_target_too_long,
 };
+use crate::constants::*;
 use crate::db::Permission;
 use crate::ip_rule_cache::parse_ip_or_cidr;
 use crate::users::UserManager;
@@ -39,7 +41,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("BanCreate request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_BAN_CREATE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("BanCreate"))
             .await;
@@ -57,10 +59,7 @@ where
 
     // Check ban_create permission
     if !requesting_user.has_permission(Permission::BanCreate) {
-        eprintln!(
-            "BanCreate from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_BAN_CREATE_PERMISSION_DENIED);
         let response = ServerMessage::BanCreateResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -132,41 +131,43 @@ where
     };
 
     // Resolve target to IP address(es) or CIDR range
-    let (targets_to_ban, nickname_annotation, is_cidr) =
-        match resolve_target(&target, &requesting_user.username, ctx).await {
-            Ok(result) => result,
-            Err(TargetResolutionError::InvalidTarget) => {
-                let response = ServerMessage::BanCreateResponse {
-                    success: false,
-                    error: Some(err_ban_invalid_target(ctx.locale)),
-                    ips: None,
-                    nickname: None,
-                };
-                return ctx.send_message(&response).await;
-            }
-            Err(TargetResolutionError::IsAdmin) => {
-                eprintln!(
-                    "BanCreate from {} (user: {}) attempted to ban admin by nickname",
-                    ctx.peer_addr, requesting_user.username
-                );
-                let response = ServerMessage::BanCreateResponse {
-                    success: false,
-                    error: Some(err_ban_admin_by_nickname(ctx.locale)),
-                    ips: None,
-                    nickname: None,
-                };
-                return ctx.send_message(&response).await;
-            }
-            Err(TargetResolutionError::IsSelf) => {
-                let response = ServerMessage::BanCreateResponse {
-                    success: false,
-                    error: Some(err_ban_self(ctx.locale)),
-                    ips: None,
-                    nickname: None,
-                };
-                return ctx.send_message(&response).await;
-            }
-        };
+    let (targets_to_ban, nickname_annotation, is_cidr) = match resolve_target(
+        &target,
+        &requesting_user.username,
+        ctx,
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(TargetResolutionError::InvalidTarget) => {
+            let response = ServerMessage::BanCreateResponse {
+                success: false,
+                error: Some(err_ban_invalid_target(ctx.locale)),
+                ips: None,
+                nickname: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+        Err(TargetResolutionError::IsAdmin) => {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_BAN_CREATE_ADMIN_NICKNAME);
+            let response = ServerMessage::BanCreateResponse {
+                success: false,
+                error: Some(err_ban_admin_by_nickname(ctx.locale)),
+                ips: None,
+                nickname: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+        Err(TargetResolutionError::IsSelf) => {
+            let response = ServerMessage::BanCreateResponse {
+                success: false,
+                error: Some(err_ban_self(ctx.locale)),
+                ips: None,
+                nickname: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+    };
 
     // Check if any of the IPs/ranges have an admin connected
     // (this applies to all bans - by nickname, IP, or CIDR)
@@ -175,10 +176,7 @@ where
         if let Some(net) = parse_ip_or_cidr(&targets_to_ban[0])
             && ctx.user_manager.is_admin_connected_in_range(&net).await
         {
-            eprintln!(
-                "BanCreate from {} (user: {}) attempted to ban CIDR {} with admin connected",
-                ctx.peer_addr, requesting_user.username, targets_to_ban[0]
-            );
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %targets_to_ban[0], "{}", LOG_BAN_CREATE_ADMIN_CIDR);
             let response = ServerMessage::BanCreateResponse {
                 success: false,
                 error: Some(err_ban_admin_by_ip(ctx.locale)),
@@ -189,12 +187,9 @@ where
         }
     } else {
         // For single IPs, check each one
-        for ip in &targets_to_ban {
-            if ctx.user_manager.is_admin_connected_from_ip(ip).await {
-                eprintln!(
-                    "BanCreate from {} (user: {}) attempted to ban IP {} with admin connected",
-                    ctx.peer_addr, requesting_user.username, ip
-                );
+        for target_ip in &targets_to_ban {
+            if ctx.user_manager.is_admin_connected_from_ip(target_ip).await {
+                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target_ip, "{}", LOG_BAN_CREATE_ADMIN_IP);
                 let response = ServerMessage::BanCreateResponse {
                     success: false,
                     error: Some(err_ban_admin_by_ip(ctx.locale)),
@@ -248,7 +243,7 @@ where
                 banned_targets.push(target_str.clone());
             }
             Err(e) => {
-                eprintln!("BanCreate database error for {}: {}", target_str, e);
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target_str, err = %e, "{}", LOG_BAN_CREATE_DB_ERROR);
                 let response = ServerMessage::BanCreateResponse {
                     success: false,
                     error: Some(err_database(ctx.locale)),
@@ -376,7 +371,8 @@ where
         });
     }
 
-    // Send success response
+    // Log and send success response
+    info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_BAN_CREATE_SUCCESS);
     let response = ServerMessage::BanCreateResponse {
         success: true,
         error: None,

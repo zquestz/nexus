@@ -47,6 +47,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use igd_next::SearchOptions;
+use tracing::{info, warn};
 
 use crate::constants::*;
 
@@ -213,9 +214,12 @@ impl UpnpGateway {
             .map(|p| p.to_string())
             .collect::<Vec<_>>()
             .join(", ");
-        println!(
-            "{}{} → {} (TCP: {}, UDP: {})",
-            MSG_UPNP_CONFIGURED, external_ip, local_addr, tcp_port_list, main_port
+        info!(
+            external_ip = %external_ip,
+            local_ip = %local_addr,
+            tcp_ports = %tcp_port_list,
+            udp_port = main_port,
+            "{}", LOG_UPNP_CONFIGURED
         );
 
         Ok(Self {
@@ -443,17 +447,17 @@ pub fn spawn_lease_renewal_task(
             interval.tick().await;
 
             if let Err(e) = gateway.renew_lease().await {
-                eprintln!("{}{}", WARN_UPNP_RENEW_FAILED, e);
-                eprintln!("{}", MSG_UPNP_REDISCOVERING);
+                warn!(err = %e, "{}", LOG_UPNP_RENEWAL_FAILED);
+                info!("{}", LOG_UPNP_REDISCOVERING);
 
                 // Try to re-discover gateway and re-establish mappings
                 match gateway.rediscover_and_remap().await {
                     Ok(()) => {
-                        eprintln!("{}", MSG_UPNP_REDISCOVERED);
+                        info!("{}", LOG_UPNP_REDISCOVERED);
                     }
                     Err(e2) => {
-                        eprintln!("{}{}", WARN_UPNP_REDISCOVER_FAILED, e2);
-                        eprintln!("{}", WARN_UPNP_PORT_EXPIRE);
+                        warn!(err = %e2, "{}", LOG_UPNP_REDISCOVERY_FAILED);
+                        warn!("{}", LOG_UPNP_PORT_EXPIRE);
                     }
                 }
             }

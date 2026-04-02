@@ -3,6 +3,12 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, warn};
+
+use crate::constants::{
+    LOG_NEWS_EDIT_ADMIN, LOG_NEWS_EDIT_DB_ERROR, LOG_NEWS_EDIT_NOT_LOGGED_IN,
+    LOG_NEWS_EDIT_PERMISSION_DENIED,
+};
 
 use nexus_common::protocol::{NewsItem, ServerMessage};
 
@@ -25,7 +31,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("NewsEdit request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_NEWS_EDIT_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("NewsEdit"))
             .await;
@@ -61,7 +67,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error getting news: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_NEWS_EDIT_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("NewsEdit"))
                 .await;
@@ -73,10 +79,7 @@ where
     let has_edit_permission = requesting_user.has_permission(Permission::NewsEdit);
 
     if !is_author && !has_edit_permission {
-        eprintln!(
-            "NewsEdit from {} (user: {}) without permission for news #{}",
-            ctx.peer_addr, requesting_user.username, id
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_NEWS_EDIT_PERMISSION_DENIED);
         let response = ServerMessage::NewsEditResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -87,10 +90,7 @@ where
 
     // Check admin protection: non-admins cannot edit admin posts
     if news_record.author_is_admin && !requesting_user.is_admin {
-        eprintln!(
-            "NewsEdit from {} (user: {}) trying to edit admin news #{}",
-            ctx.peer_addr, requesting_user.username, id
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %id, "{}", LOG_NEWS_EDIT_ADMIN);
         let response = ServerMessage::NewsEditResponse {
             success: false,
             error: Some(err_cannot_edit_admin_news(ctx.locale)),

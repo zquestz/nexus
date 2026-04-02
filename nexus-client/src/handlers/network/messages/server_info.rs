@@ -35,29 +35,33 @@ impl NexusApp {
         if let Some(version) = server_info.version {
             conn.server_version = Some(version);
         }
-        // max_connections_per_ip is only sent to admins
+        // max_connections_per_ip is sent to all users
         if server_info.max_connections_per_ip.is_some() {
             conn.max_connections_per_ip = server_info.max_connections_per_ip;
         }
-        // max_transfers_per_ip is only sent to admins
+        // max_transfers_per_ip is sent to all users
         if server_info.max_transfers_per_ip.is_some() {
             conn.max_transfers_per_ip = server_info.max_transfers_per_ip;
         }
-        // file_reindex_interval is only sent to admins
+        // file_reindex_interval is sent to admins or users with file_reindex permission
         if server_info.file_reindex_interval.is_some() {
             conn.file_reindex_interval = server_info.file_reindex_interval;
         }
-        // persistent_channels is only sent to admins
+        // persistent_channels is sent to admins only
         if server_info.persistent_channels.is_some() {
             conn.persistent_channels = server_info.persistent_channels;
         }
-        // auto_join_channels is only sent to admins
+        // auto_join_channels is sent to users with chat join permission
         if server_info.auto_join_channels.is_some() {
             conn.auto_join_channels = server_info.auto_join_channels;
         }
         // min_password_strength is sent to all users
         if let Some(score) = server_info.min_password_strength {
             conn.min_password_strength = PasswordStrength::from(score);
+        }
+        // log_level is sent to all users (server transparency)
+        if server_info.log_level.is_some() {
+            conn.log_level = server_info.log_level;
         }
         // Update server image and cached version if provided
         if let Some(image) = server_info.image {

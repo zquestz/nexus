@@ -1,5 +1,7 @@
 //! Database module for persistent storage
 
+use tracing::error;
+
 pub mod bans;
 pub mod channels;
 pub mod config;
@@ -78,7 +80,7 @@ pub async fn init_db(database_path: &Path) -> Result<SqlitePool, sqlx::Error> {
     // Create parent directories if they don't exist
     if let Some(parent) = database_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| {
-            eprintln!("{}{}", ERR_CREATE_DB_DIR, e);
+            error!(err = %e, "{}", LOG_DB_DIR_CREATE_FAILED);
             sqlx::Error::Io(e)
         })?;
     }

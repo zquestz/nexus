@@ -29,7 +29,8 @@ services:
       - NEXUS_BIND=0.0.0.0 # Use :: for IPv6
       - NEXUS_PORT=7500
       - NEXUS_TRANSFER_PORT=7501
-      - NEXUS_DEBUG=
+      - NEXUS_LOG_LEVEL=info
+      - NEXUS_NO_LOG_TIMESTAMPS=true
 
 volumes:
   nexus-data:

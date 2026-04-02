@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, NicknameError};
@@ -12,6 +13,10 @@ use super::{
     err_kicked_by, err_kicked_by_with_reason, err_nickname_empty, err_nickname_invalid,
     err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
     remove_user_with_voice_cleanup,
+};
+use crate::constants::{
+    LOG_USER_KICK_DB_ERROR, LOG_USER_KICK_NOT_LOGGED_IN, LOG_USER_KICK_PERMISSION_DENIED,
+    LOG_USER_KICK_SUCCESS,
 };
 use crate::db::Permission;
 
@@ -27,7 +32,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("UserKick request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_USER_KICK_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserKick"))
             .await;
@@ -45,10 +50,7 @@ where
 
     // Check UserKick permission (uses cached permissions, admin bypass built-in)
     if !requesting_user_session.has_permission(Permission::UserKick) {
-        eprintln!(
-            "UserKick from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user_session.username
-        );
+        warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_KICK_PERMISSION_DENIED);
         let response = ServerMessage::UserKickResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -107,7 +109,7 @@ where
     let target_user_db = match ctx.db.users.get_user_by_username(&db_lookup_username).await {
         Ok(user) => user,
         Err(e) => {
-            eprintln!("Database error getting target user: {}", e);
+            error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_KICK_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("UserKick"))
                 .await;
@@ -163,7 +165,8 @@ where
         .await;
     }
 
-    // Send success response to requester
+    // Log and send success response to requester
+    info!(user = %requesting_user_session.username, ip = %ctx.peer_addr, target = %preserved_nickname, "{}", LOG_USER_KICK_SUCCESS);
     let response = ServerMessage::UserKickResponse {
         success: true,
         error: None,

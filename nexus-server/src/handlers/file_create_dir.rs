@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{debug, error, warn};
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, DirNameError, FilePathError};
@@ -11,6 +12,11 @@ use super::{
     HandlerContext, err_dir_already_exists, err_dir_create_failed, err_dir_name_empty,
     err_dir_name_invalid, err_dir_name_too_long, err_file_not_directory, err_file_not_found,
     err_file_path_invalid, err_file_path_too_long, err_not_logged_in, err_permission_denied,
+};
+use crate::constants::{
+    LOG_FILE_CREATE_DIR_FAILED, LOG_FILE_CREATE_DIR_NOT_LOGGED_IN,
+    LOG_FILE_CREATE_DIR_PERMISSION_DENIED, LOG_FILE_CREATE_DIR_ROOT_DENIED,
+    LOG_FILE_CREATE_DIR_SUCCESS,
 };
 use crate::db::Permission;
 use crate::files::path::PathError;
@@ -32,7 +38,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("FileCreateDir request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_CREATE_DIR_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileCreateDir"))
             .await;
@@ -69,10 +75,7 @@ where
 
     // Check FileRoot permission if root browsing requested
     if root && !requesting_user.has_permission(Permission::FileRoot) {
-        eprintln!(
-            "FileCreateDir (root) from {} (user: {}) without file_root permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_CREATE_DIR_ROOT_DENIED);
         let response = ServerMessage::FileCreateDirResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -202,10 +205,7 @@ where
     let parent_allows_upload = allows_upload(&area_root, &parent_resolved);
 
     if !has_create_permission && !parent_allows_upload {
-        eprintln!(
-            "FileCreateDir from {} (user: {}) without permission (path: {})",
-            ctx.peer_addr, requesting_user.username, path
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_CREATE_DIR_PERMISSION_DENIED);
         let response = ServerMessage::FileCreateDirResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -229,10 +229,7 @@ where
 
     // Create the directory
     if let Err(e) = std::fs::create_dir(&new_dir_path) {
-        eprintln!(
-            "FileCreateDir failed for {} (user: {}): {}",
-            ctx.peer_addr, requesting_user.username, e
-        );
+        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_CREATE_DIR_FAILED);
         let response = ServerMessage::FileCreateDirResponse {
             success: false,
             error: Some(err_dir_create_failed(ctx.locale)),
@@ -248,6 +245,8 @@ where
     } else {
         format!("{}/{}", normalized_path, name)
     };
+
+    debug!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %response_path, "{}", LOG_FILE_CREATE_DIR_SUCCESS);
 
     let response = ServerMessage::FileCreateDirResponse {
         success: true,

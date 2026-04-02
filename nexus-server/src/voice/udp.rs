@@ -25,6 +25,8 @@ use std::path::Path;
 use std::sync::{Arc, RwLock as StdRwLock};
 use std::time::{Duration, Instant};
 
+use tracing::{debug, error, warn};
+
 use dtls::config::Config as DtlsConfig;
 use dtls::crypto::Certificate;
 use dtls::listener::listen;
@@ -41,6 +43,7 @@ use nexus_common::voice::{
 const STALE_CLIENT_CHECK_INTERVAL_SECS: u64 = 30;
 
 use crate::channels::ChannelManager;
+use crate::constants::*;
 use crate::db::Permission;
 use crate::ip_rule_cache::IpRuleCache;
 use crate::users::UserManager;
@@ -71,8 +74,6 @@ pub struct VoiceUdpServer {
     user_manager: UserManager,
     /// Channel manager for voice leave broadcasts
     channel_manager: ChannelManager,
-    /// Debug mode flag
-    debug: bool,
 }
 
 impl VoiceUdpServer {
@@ -84,14 +85,12 @@ impl VoiceUdpServer {
     /// * `registry` - Voice registry for session lookups
     /// * `ip_rule_cache` - IP rule cache for ban checking
     /// * `user_manager` - User manager for permission checks
-    /// * `debug` - Enable debug logging
     pub fn new(
         listener: Arc<dyn Listener + Send + Sync>,
         registry: VoiceRegistry,
         ip_rule_cache: Arc<StdRwLock<IpRuleCache>>,
         user_manager: UserManager,
         channel_manager: ChannelManager,
-        debug: bool,
     ) -> Self {
         Self {
             listener,
@@ -100,7 +99,6 @@ impl VoiceUdpServer {
             ip_rule_cache,
             user_manager,
             channel_manager,
-            debug,
         }
     }
 
@@ -137,28 +135,19 @@ impl VoiceUdpServer {
                     };
 
                     if !should_allow {
-                        if self.debug {
-                            eprintln!("Voice DTLS: Rejected banned IP {}", remote_addr.ip());
-                        }
+                        debug!(ip = %remote_addr.ip(), "{}", LOG_VOICE_REJECTED_BANNED);
                         let _ = conn.close().await;
                         continue;
                     }
 
                     // Reject IPs that don't have an active voice session
                     if !self.registry.has_session_for_ip(remote_addr.ip()).await {
-                        if self.debug {
-                            eprintln!(
-                                "Voice DTLS: Rejected IP {} (no voice session)",
-                                remote_addr.ip()
-                            );
-                        }
+                        warn!(ip = %remote_addr.ip(), "{}", LOG_VOICE_REJECTED_NO_SESSION);
                         let _ = conn.close().await;
                         continue;
                     }
 
-                    if self.debug {
-                        eprintln!("Voice DTLS: New connection from {}", remote_addr);
-                    }
+                    debug!(ip = %remote_addr, "{}", LOG_VOICE_NEW_CONNECTION);
 
                     // Create client state
                     let client = Arc::new(RwLock::new(DtlsClient {
@@ -180,9 +169,7 @@ impl VoiceUdpServer {
                     });
                 }
                 Err(e) => {
-                    if self.debug {
-                        eprintln!("Voice DTLS accept error: {}", e);
-                    }
+                    warn!(err = %e, "{}", LOG_VOICE_ACCEPT_ERROR);
                 }
             }
         }
@@ -216,22 +203,16 @@ impl VoiceUdpServer {
                 }
                 Ok(Ok(_)) => {
                     // Zero-length read, connection closed
-                    if self.debug {
-                        eprintln!("Voice DTLS: Connection closed from {}", remote_addr);
-                    }
+                    debug!(ip = %remote_addr, "{}", LOG_VOICE_CONNECTION_CLOSED);
                     break;
                 }
                 Ok(Err(e)) => {
-                    if self.debug {
-                        eprintln!("Voice DTLS read error from {}: {}", remote_addr, e);
-                    }
+                    warn!(ip = %remote_addr, err = %e, "{}", LOG_VOICE_READ_ERROR);
                     break;
                 }
                 Err(_) => {
                     // Timeout
-                    if self.debug {
-                        eprintln!("Voice DTLS: Connection timeout from {}", remote_addr);
-                    }
+                    debug!(ip = %remote_addr, "{}", LOG_VOICE_CONNECTION_TIMEOUT);
                     break;
                 }
             }
@@ -258,10 +239,8 @@ impl VoiceUdpServer {
     async fn handle_packet(&self, client: &Arc<RwLock<DtlsClient>>, data: &[u8]) -> bool {
         // Parse the voice packet
         let Some(packet) = VoicePacket::from_bytes(data) else {
-            if self.debug {
-                let addr = client.read().await.addr;
-                eprintln!("Voice DTLS: Invalid packet from {}", addr);
-            }
+            let addr = client.read().await.addr;
+            warn!(ip = %addr, "{}", LOG_VOICE_INVALID_PACKET);
             return true; // Invalid packet, but keep connection
         };
 
@@ -273,13 +252,8 @@ impl VoiceUdpServer {
 
         // Always validate against registry - session may have been removed via VoiceLeave
         let Some(session) = self.registry.get_by_token(packet.token).await else {
-            if self.debug {
-                let addr = client.read().await.addr;
-                eprintln!(
-                    "Voice DTLS: Session not found for token from {} - closing connection",
-                    addr
-                );
-            }
+            let addr = client.read().await.addr;
+            debug!(ip = %addr, "{}", LOG_VOICE_SESSION_NOT_FOUND);
             return false; // Session gone, close connection
         };
 
@@ -307,10 +281,8 @@ impl VoiceUdpServer {
         match packet.msg_type {
             VoiceMessageType::Keepalive => {
                 // Keepalive just updates last_packet time, already done above
-                if self.debug {
-                    let addr = client.read().await.addr;
-                    eprintln!("Voice DTLS: Keepalive from {} ({})", sender_nickname, addr);
-                }
+                let addr = client.read().await.addr;
+                debug!(user = %sender_nickname, ip = %addr, "{}", LOG_VOICE_KEEPALIVE);
             }
             VoiceMessageType::VoiceData
             | VoiceMessageType::SpeakingStarted
@@ -328,12 +300,7 @@ impl VoiceUdpServer {
                     }
                     Some(false) => {
                         // User lacks permission, drop packet silently
-                        if self.debug {
-                            eprintln!(
-                                "Voice DTLS: {} lacks voice_talk permission, dropping packet",
-                                sender_nickname
-                            );
-                        }
+                        warn!(user = %sender_nickname, "{}", LOG_VOICE_NO_PERMISSION);
                     }
                     None => {
                         // User disconnected, drop packet
@@ -372,13 +339,8 @@ impl VoiceUdpServer {
                     client_guard.conn.clone()
                 };
 
-                if let Err(e) = conn.send(&relayed_bytes).await
-                    && self.debug
-                {
-                    eprintln!(
-                        "Voice DTLS: Failed to relay to {} ({}): {}",
-                        session.nickname, udp_addr, e
-                    );
+                if let Err(e) = conn.send(&relayed_bytes).await {
+                    error!(user = %session.nickname, ip = %udp_addr, err = %e, "{}", LOG_VOICE_RELAY_FAILED);
                 }
             }
         }
@@ -408,9 +370,7 @@ impl VoiceUdpServer {
             for addr in timed_out_addrs {
                 if let Some(client) = clients.remove(&addr) {
                     let client_guard = client.read().await;
-                    if self.debug {
-                        eprintln!("Voice DTLS: Cleanup timed out client: {}", addr);
-                    }
+                    debug!(ip = %addr, "{}", LOG_VOICE_CLEANUP_TIMEOUT);
                     // Close connection
                     let _ = client_guard.conn.close().await;
                 }
@@ -441,12 +401,7 @@ impl VoiceUdpServer {
                     )
                     .await;
 
-                    if self.debug {
-                        eprintln!(
-                            "Voice DTLS: Removed stale voice session for {} (no UDP connection)",
-                            info.session.nickname
-                        );
-                    }
+                    debug!(user = %info.session.nickname, "{}", LOG_VOICE_STALE_SESSION);
                 }
             }
         }

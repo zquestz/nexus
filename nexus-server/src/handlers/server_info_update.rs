@@ -3,6 +3,16 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
+
+use crate::constants::{
+    LOG_SERVER_INFO_ADMIN_REQUIRED, LOG_SERVER_INFO_CHANNEL_CREATE_FAILED,
+    LOG_SERVER_INFO_CHANNEL_DELETE_FAILED, LOG_SERVER_INFO_DB_AUTO_JOIN,
+    LOG_SERVER_INFO_DB_CONNECTIONS, LOG_SERVER_INFO_DB_DESC, LOG_SERVER_INFO_DB_IMAGE,
+    LOG_SERVER_INFO_DB_NAME, LOG_SERVER_INFO_DB_PASSWORD, LOG_SERVER_INFO_DB_PERSISTENT,
+    LOG_SERVER_INFO_DB_REINDEX, LOG_SERVER_INFO_DB_TRANSFERS, LOG_SERVER_INFO_NOT_LOGGED_IN,
+    LOG_SERVER_INFO_SUCCESS,
+};
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
@@ -59,7 +69,7 @@ where
 
     // Verify authentication
     let Some(id) = session_id else {
-        eprintln!("ServerInfoUpdate from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_NOT_LOGGED_IN);
         return ctx
             .send_error(&err_not_logged_in(ctx.locale), Some("ServerInfoUpdate"))
             .await;
@@ -77,10 +87,7 @@ where
 
     // Admin-only - check if user is admin (before validation to not reveal validation rules)
     if !user.is_admin {
-        eprintln!(
-            "ServerInfoUpdate from {} (user: {}) without admin",
-            ctx.peer_addr, user.username
-        );
+        warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_ADMIN_REQUIRED);
         return ctx
             .send_error(&err_admin_required(ctx.locale), Some("ServerInfoUpdate"))
             .await;
@@ -194,7 +201,7 @@ where
     if let Some(ref n) = name
         && let Err(e) = ctx.db.config.set_server_name(n).await
     {
-        eprintln!("Database error setting server name: {}", e);
+        error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_NAME);
         return ctx
             .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
             .await;
@@ -203,7 +210,7 @@ where
     if let Some(ref d) = description
         && let Err(e) = ctx.db.config.set_server_description(d).await
     {
-        eprintln!("Database error setting server description: {}", e);
+        error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_DESC);
         return ctx
             .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
             .await;
@@ -211,7 +218,7 @@ where
 
     if let Some(max_conn) = max_connections_per_ip {
         if let Err(e) = ctx.db.config.set_max_connections_per_ip(max_conn).await {
-            eprintln!("Database error setting max_connections_per_ip: {}", e);
+            error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_CONNECTIONS);
             return ctx
                 .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
                 .await;
@@ -223,7 +230,7 @@ where
 
     if let Some(max_xfer) = max_transfers_per_ip {
         if let Err(e) = ctx.db.config.set_max_transfers_per_ip(max_xfer).await {
-            eprintln!("Database error setting max_transfers_per_ip: {}", e);
+            error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_TRANSFERS);
             return ctx
                 .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
                 .await;
@@ -236,7 +243,7 @@ where
     if let Some(ref img) = image
         && let Err(e) = ctx.db.config.set_server_image(img).await
     {
-        eprintln!("Database error setting server image: {}", e);
+        error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_IMAGE);
         return ctx
             .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
             .await;
@@ -245,7 +252,7 @@ where
     if let Some(interval) = file_reindex_interval
         && let Err(e) = ctx.db.config.set_file_reindex_interval(interval).await
     {
-        eprintln!("Database error setting file_reindex_interval: {}", e);
+        error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_REINDEX);
         return ctx
             .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
             .await;
@@ -256,7 +263,7 @@ where
     if let Some(ref channels_str) = persistent_channels {
         // Save to config
         if let Err(e) = ctx.db.config.set_persistent_channels(channels_str).await {
-            eprintln!("Database error setting persistent_channels: {}", e);
+            error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_PERSISTENT);
             return ctx
                 .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
                 .await;
@@ -290,7 +297,7 @@ where
                     })
                     .await
             {
-                eprintln!("Failed to create channel settings for {}: {}", name, e);
+                error!(user = %user.username, ip = %ctx.peer_addr, target = %name, err = %e, "{}", LOG_SERVER_INFO_CHANNEL_CREATE_FAILED);
             }
         }
 
@@ -306,10 +313,7 @@ where
                     .delete_channel_settings(&settings.name)
                     .await
             {
-                eprintln!(
-                    "Failed to delete channel settings for {}: {}",
-                    settings.name, e
-                );
+                error!(user = %user.username, ip = %ctx.peer_addr, target = %settings.name, err = %e, "{}", LOG_SERVER_INFO_CHANNEL_DELETE_FAILED);
             }
         }
 
@@ -347,7 +351,7 @@ where
     if let Some(ref channels_str) = auto_join_channels
         && let Err(e) = ctx.db.config.set_auto_join_channels(channels_str).await
     {
-        eprintln!("Database error setting auto_join_channels: {}", e);
+        error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_AUTO_JOIN);
         return ctx
             .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
             .await;
@@ -357,7 +361,7 @@ where
     if let Some(score) = min_password_strength {
         let strength = validators::PasswordStrength::from(score);
         if let Err(e) = ctx.db.config.set_min_password_strength(strength).await {
-            eprintln!("Database error setting min_password_strength: {}", e);
+            error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_PASSWORD);
             return ctx
                 .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
                 .await;
@@ -394,7 +398,8 @@ where
         })
         .await;
 
-    // Send success response to requester
+    // Log and send success response to requester
+    info!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_SUCCESS);
     ctx.send_message(&ServerMessage::ServerInfoUpdateResponse {
         success: true,
         error: None,

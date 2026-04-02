@@ -120,7 +120,6 @@ impl TestContext {
             user_manager: &self.user_manager,
             db: &self.db,
             tx: &self.tx,
-            debug: false, // Tests don't need debug logging
             locale: DEFAULT_TEST_LOCALE,
             message_id: self.message_id,
             file_root: self.file_root,

@@ -3,6 +3,12 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{debug, warn};
+
+use crate::constants::{
+    LOG_FILE_REINDEX_IN_PROGRESS, LOG_FILE_REINDEX_NOT_LOGGED_IN,
+    LOG_FILE_REINDEX_PERMISSION_DENIED, LOG_FILE_REINDEX_TRIGGERED,
+};
 
 use nexus_common::protocol::ServerMessage;
 
@@ -19,7 +25,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("FileReindex request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_REINDEX_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileReindex"))
             .await;
@@ -37,10 +43,7 @@ where
 
     // Check file_reindex permission
     if !requesting_user.has_permission(Permission::FileReindex) {
-        eprintln!(
-            "FileReindex from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_REINDEX_PERMISSION_DENIED);
         let response = ServerMessage::FileReindexResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -51,18 +54,10 @@ where
     // Trigger reindex (returns false if already reindexing)
     let started = ctx.file_index.trigger_reindex();
 
-    if ctx.debug {
-        if started {
-            eprintln!(
-                "FileReindex triggered by {} (user: {})",
-                ctx.peer_addr, requesting_user.username
-            );
-        } else {
-            eprintln!(
-                "FileReindex already in progress, requested by {} (user: {})",
-                ctx.peer_addr, requesting_user.username
-            );
-        }
+    if started {
+        debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_REINDEX_TRIGGERED);
+    } else {
+        debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_REINDEX_IN_PROGRESS);
     }
 
     // Always return success - if already reindexing, that's fine

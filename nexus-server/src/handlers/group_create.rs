@@ -3,6 +3,9 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
+
+use crate::constants::*;
 
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ServerMessage;
@@ -33,7 +36,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("GroupCreate request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_GROUP_CREATE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("GroupCreate"))
             .await;
@@ -55,10 +58,7 @@ where
 
     // Check GroupCreate permission (uses cached permissions, admin bypass built-in)
     if !requesting_user.has_permission(Permission::GroupCreate) {
-        eprintln!(
-            "GroupCreate from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_GROUP_CREATE_PERMISSION_DENIED);
         let response = ServerMessage::GroupCreateResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -141,10 +141,7 @@ where
 
         // Non-admins can only grant permissions they have
         if !requesting_user.has_permission(perm) {
-            eprintln!(
-                "GroupCreate from {} (user: {}) trying to grant permission they don't have: {}",
-                ctx.peer_addr, requesting_user.username, perm_str
-            );
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_GROUP_CREATE_UNOWNED_PERMISSION);
             let response = ServerMessage::GroupCreateResponse {
                 success: false,
                 error: Some(err_permission_denied(ctx.locale)),
@@ -165,6 +162,7 @@ where
         .await
     {
         Ok(group) => {
+            info!(user = %requesting_user.username, ip = %ctx.peer_addr, group = %group.name, "{}", LOG_GROUP_CREATE_SUCCESS);
             let response = ServerMessage::GroupCreateResponse {
                 success: true,
                 error: None,
@@ -192,7 +190,7 @@ where
                 };
                 return ctx.send_message(&response).await;
             }
-            eprintln!("Database error creating group: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_CREATE_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupCreate"))
                 .await;

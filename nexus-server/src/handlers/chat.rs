@@ -5,6 +5,7 @@ use std::io;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
 
 use nexus_common::protocol::{ChatAction, ServerMessage};
 use nexus_common::validators::{self, MessageError};
@@ -14,7 +15,9 @@ use super::{
     err_chat_feature_not_enabled, err_chat_too_long, err_message_contains_newlines,
     err_message_empty, err_message_invalid_characters, err_not_logged_in, err_permission_denied,
 };
-use crate::constants::FEATURE_CHAT;
+use crate::constants::{
+    FEATURE_CHAT, LOG_CHAT_SEND_NOT_LOGGED_IN, LOG_CHAT_SEND_PERMISSION_DENIED,
+};
 use crate::db::Permission;
 
 /// Handle a chat send request from the client
@@ -30,7 +33,7 @@ where
 {
     // Verify authentication
     let Some(id) = session_id else {
-        eprintln!("ChatSend from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_SEND_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatSend"))
             .await;
@@ -55,10 +58,7 @@ where
 
     // Check permission (uses cached permissions, admin bypass built-in)
     if !user.has_permission(Permission::ChatSend) {
-        eprintln!(
-            "ChatSend from {} (user: {}) without permission",
-            ctx.peer_addr, user.username
-        );
+        warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_SEND_PERMISSION_DENIED);
         return ctx
             .send_error(&err_permission_denied(ctx.locale), Some("ChatSend"))
             .await;

@@ -9,8 +9,8 @@ use crate::validators::{
     MAX_CHANNEL_LENGTH, MAX_CHANNELS_PER_USER, MAX_CHAT_TOPIC_LENGTH, MAX_COMMAND_LENGTH,
     MAX_DIR_NAME_LENGTH, MAX_DURATION_LENGTH, MAX_ERROR_KIND_LENGTH, MAX_ERROR_LENGTH,
     MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_FILE_PATH_LENGTH, MAX_GROUP_NAME_LENGTH,
-    MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH, MAX_NEWS_ACTION_LENGTH, MAX_NEWS_BODY_LENGTH,
-    MAX_NEWS_IMAGE_DATA_URI_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH,
+    MAX_LOCALE_LENGTH, MAX_LOG_LEVEL_LENGTH, MAX_MESSAGE_LENGTH, MAX_NEWS_ACTION_LENGTH,
+    MAX_NEWS_BODY_LENGTH, MAX_NEWS_IMAGE_DATA_URI_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH,
     MAX_PERMISSION_LENGTH, MAX_PERSISTENT_CHANNELS_LENGTH, MAX_SEARCH_QUERY_LENGTH,
     MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH,
     MAX_STATUS_LENGTH, MAX_TARGET_LENGTH, MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH,
@@ -823,7 +823,7 @@ const GROUP_INFO_STRUCT_SIZE: usize = json_first_i64_field("id")
     + 2; // {} braces
 
 /// ServerInfo struct size (nested object in responses):
-/// {"name":"...64...","description":"...256...","version":"...32...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","transfer_port":u16,"transfer_websocket_port":u16,"file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512..."}
+/// {"name":"...64...","description":"...256...","version":"...32...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","transfer_port":u16,"transfer_websocket_port":u16,"file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","min_password_strength":u8,"log_level":"...5..."}
 const SERVER_INFO_STRUCT_SIZE: usize = json_first_string_field("name", MAX_SERVER_NAME_LENGTH)
     + json_string_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
     + json_string_field("version", MAX_VERSION_LENGTH)
@@ -836,6 +836,7 @@ const SERVER_INFO_STRUCT_SIZE: usize = json_first_string_field("name", MAX_SERVE
     + json_string_field("persistent_channels", MAX_PERSISTENT_CHANNELS_LENGTH)
     + json_string_field("auto_join_channels", MAX_AUTO_JOIN_CHANNELS_LENGTH)
     + json_u8_field("min_password_strength")
+    + json_string_field("log_level", MAX_LOG_LEVEL_LENGTH)
     + 2; // {} braces
 
 /// ServerInfoUpdate: {"type":"ServerInfoUpdate","name":"...64...","description":"...256...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","min_password_strength":u8}
@@ -1444,8 +1445,8 @@ mod tests {
     use crate::validators::{
         MAX_AVATAR_DATA_URI_LENGTH, MAX_BAN_REASON_LENGTH, MAX_CHANNEL_LENGTH,
         MAX_CHAT_TOPIC_LENGTH, MAX_ERROR_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT,
-        MAX_FILE_PATH_LENGTH, MAX_GROUP_NAME_LENGTH, MAX_LOCALE_LENGTH, MAX_MESSAGE_LENGTH,
-        MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
+        MAX_FILE_PATH_LENGTH, MAX_GROUP_NAME_LENGTH, MAX_LOCALE_LENGTH, MAX_LOG_LEVEL_LENGTH,
+        MAX_MESSAGE_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
         MAX_PERSISTENT_CHANNELS_LENGTH, MAX_SEARCH_QUERY_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH,
         MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH,
         MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
@@ -2621,6 +2622,7 @@ mod tests {
                 persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 min_password_strength: Some(u8::MAX),
+                log_level: Some(str_of_len(MAX_LOG_LEVEL_LENGTH)),
             }),
             locale: Some(str_of_len(MAX_LOCALE_LENGTH)),
             channels: Some(channels),
@@ -2658,6 +2660,7 @@ mod tests {
                 persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 min_password_strength: Some(u8::MAX),
+                log_level: Some(str_of_len(MAX_LOG_LEVEL_LENGTH)),
             }),
             group_id: Some(i64::MAX),
             group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
@@ -2688,6 +2691,7 @@ mod tests {
                 persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 min_password_strength: Some(u8::MAX),
+                log_level: Some(str_of_len(MAX_LOG_LEVEL_LENGTH)),
             },
         };
         assert!(

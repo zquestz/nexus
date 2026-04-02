@@ -16,7 +16,6 @@ use super::registry::TransferRegistry;
 pub struct TransferParams {
     pub peer_addr: SocketAddr,
     pub db: Database,
-    pub debug: bool,
     pub file_root: Option<&'static Path>,
     pub file_index: Arc<FileIndex>,
     /// Transfer registry for ban signal handling
@@ -67,7 +66,6 @@ pub(crate) struct ReceiveFileParams<'a> {
     pub area_root: &'a Path,
     pub destination: &'a Path,
     pub locale: &'a str,
-    pub debug: bool,
     pub transfer_id: &'a str,
     pub file_index: u64,
 }

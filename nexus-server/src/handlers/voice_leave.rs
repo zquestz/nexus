@@ -3,6 +3,9 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
+
+use crate::constants::LOG_VOICE_LEAVE_NOT_LOGGED_IN;
 
 use nexus_common::protocol::ServerMessage;
 
@@ -22,7 +25,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("VoiceLeave request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_VOICE_LEAVE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("VoiceLeave"))
             .await;

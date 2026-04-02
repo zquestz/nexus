@@ -12,7 +12,7 @@ use iced::widget::{Space, container, row};
 use iced::{Background, Color, Element, Length, Theme};
 use nexus_common::validators::{PasswordStrength, password_strength};
 
-use crate::i18n::t;
+use crate::i18n::{strength_translation_key, t};
 use crate::style::ui::{
     adjust_brightness, password_strength_excellent, password_strength_fair, password_strength_good,
     password_strength_strong, password_strength_weak,
@@ -160,17 +160,6 @@ pub fn password_strength_bar(
             .spacing(BAR_LABEL_SPACING)
             .into(),
     )
-}
-
-/// Get the i18n translation key for a password strength level.
-pub(crate) fn strength_translation_key(strength: PasswordStrength) -> &'static str {
-    match strength {
-        PasswordStrength::Weak => "password-strength-weak",
-        PasswordStrength::Fair => "password-strength-fair",
-        PasswordStrength::Good => "password-strength-good",
-        PasswordStrength::Strong => "password-strength-strong",
-        PasswordStrength::Excellent => "password-strength-excellent",
-    }
 }
 
 /// Get the color for a given strength level.

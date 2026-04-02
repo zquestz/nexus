@@ -122,7 +122,8 @@ The `group_id` and `group_name` fields identify the user's account group (if any
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 3,
     "image": null,
-    "min_password_strength": 2
+    "min_password_strength": 2,
+    "log_level": "info"
   },
   "locale": "en",
   "channels": [
@@ -167,6 +168,7 @@ Included in successful login responses.
 | `persistent_channels`      | string  | Space-separated persistent channels (admin only, null otherwise)  |
 | `auto_join_channels`       | string  | Space-separated auto-join channels (admin only, null otherwise)   |
 | `min_password_strength`    | integer | Minimum password strength level 0-4 (null if not set)        |
+| `log_level`                | string  | Server log level: "none", "error", "warn", "info", "debug"                   |
 
 ## Channel Join Info Object
 

@@ -3,10 +3,12 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
 
 use nexus_common::protocol::{ConnectionInfo, ServerMessage};
 
 use super::{HandlerContext, err_authentication, err_not_logged_in, err_permission_denied};
+use crate::constants::{LOG_CONN_MONITOR_NOT_LOGGED_IN, LOG_CONN_MONITOR_PERMISSION_DENIED};
 use crate::db::Permission;
 
 /// Handle ConnectionMonitor command
@@ -21,10 +23,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!(
-            "ConnectionMonitor request from {} without login",
-            ctx.peer_addr
-        );
+        warn!(ip = %ctx.peer_addr, "{}", LOG_CONN_MONITOR_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ConnectionMonitor"))
             .await;
@@ -45,10 +44,7 @@ where
 
     // Check connection_monitor permission
     if !requesting_user.has_permission(Permission::ConnectionMonitor) {
-        eprintln!(
-            "ConnectionMonitor from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_CONN_MONITOR_PERMISSION_DENIED);
         let response = ServerMessage::ConnectionMonitorResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),

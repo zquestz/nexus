@@ -2,6 +2,8 @@
 
 use nexus_common::protocol::{ServerInfo, ServerMessage};
 
+use crate::logging::server_log_level;
+
 use super::UserManager;
 use crate::db::Permission;
 
@@ -264,6 +266,7 @@ impl UserManager {
                     persistent_channels,
                     auto_join_channels,
                     min_password_strength,
+                    log_level: Some(server_log_level().to_string()),
                 };
 
                 let message = ServerMessage::ServerInfoUpdated { server_info };

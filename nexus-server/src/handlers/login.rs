@@ -2,7 +2,16 @@
 
 use std::io;
 
+use crate::constants::{
+    LOG_LOGIN_ACCOUNT_DISABLED, LOG_LOGIN_ALREADY_LOGGED_IN, LOG_LOGIN_CREATE_USER_ERROR,
+    LOG_LOGIN_DB_ERROR, LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN, LOG_LOGIN_GROUP_ERROR,
+    LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR, LOG_LOGIN_INVALID_CREDENTIALS,
+    LOG_LOGIN_PASSWORD_VERIFY_ERROR, LOG_LOGIN_PERMISSIONS_ERROR, LOG_LOGIN_SUCCESS,
+};
+use crate::logging::server_log_level;
+
 use tokio::io::AsyncWrite;
+use tracing::{debug, error, info, warn};
 
 use nexus_common::protocol::{ChannelJoinInfo, ServerInfo, ServerMessage, UserInfo};
 use nexus_common::validators::{
@@ -64,7 +73,7 @@ where
 
     // Verify handshake completed
     if !handshake_complete {
-        eprintln!("Login attempt from {} without handshake", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_LOGIN_HANDSHAKE_REQUIRED);
         return ctx
             .send_error_and_disconnect(&err_handshake_required(&locale), Some("Login"))
             .await;
@@ -72,7 +81,7 @@ where
 
     // Check for duplicate login on same connection
     if session_id.is_some() {
-        eprintln!("Duplicate login attempt from {}", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_LOGIN_ALREADY_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_already_logged_in(&locale), Some("Login"))
             .await;
@@ -150,7 +159,7 @@ where
     let account = match ctx.db.users.get_user_by_username(&username).await {
         Ok(acc) => acc,
         Err(e) => {
-            eprintln!("Database error looking up user {}: {}", username, e);
+            error!(target_user = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(&locale), Some("Login"))
                 .await;
@@ -169,7 +178,7 @@ where
             match db::verify_password(&password, &account.hashed_password) {
                 Ok(valid) => valid,
                 Err(e) => {
-                    eprintln!("Password verification error for {}: {}", username, e);
+                    error!(target_user = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_PASSWORD_VERIFY_ERROR);
                     return ctx
                         .send_error_and_disconnect(&err_authentication(&locale), Some("Login"))
                         .await;
@@ -180,10 +189,7 @@ where
         if password_valid {
             // Password is correct - check if account is enabled
             if !account.enabled {
-                eprintln!(
-                    "Login from {} for disabled account: {}",
-                    ctx.peer_addr, username
-                );
+                warn!(ip = %ctx.peer_addr, target_user = %username, "{}", LOG_LOGIN_ACCOUNT_DISABLED);
                 // Use user-friendly error for guest account
                 let error_msg = if username.to_lowercase() == GUEST_USERNAME {
                     err_guest_disabled(&locale)
@@ -196,10 +202,7 @@ where
             }
             account
         } else {
-            eprintln!(
-                "Login from {} failed: invalid credentials for {}",
-                ctx.peer_addr, username
-            );
+            warn!(ip = %ctx.peer_addr, target_user = %username, "{}", LOG_LOGIN_INVALID_CREDENTIALS);
             return ctx
                 .send_error_and_disconnect(&err_invalid_credentials(&locale), Some("Login"))
                 .await;
@@ -210,7 +213,7 @@ where
         let hashed_password = match db::hash_password(&password, min_strength, false) {
             Ok(hash) => hash,
             Err(e) => {
-                eprintln!("Failed to hash password for {}: {}", username, e);
+                error!(target_user = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_HASH_ERROR);
                 return ctx
                     .send_error_and_disconnect(
                         &err_failed_to_create_user(&locale, &username),
@@ -228,10 +231,7 @@ where
             .await
         {
             Ok(Some(account)) => {
-                println!(
-                    "Created first user (admin): '{}' from {}",
-                    username, ctx.peer_addr
-                );
+                info!(ip = %ctx.peer_addr, user = %username, "{}", LOG_LOGIN_FIRST_ADMIN);
                 account
             }
             Ok(None) => {
@@ -242,7 +242,7 @@ where
                     .await;
             }
             Err(e) => {
-                eprintln!("Failed to create first user {}: {}", username, e);
+                error!(target_user = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_CREATE_USER_ERROR);
                 return ctx
                     .send_error_and_disconnect(
                         &err_failed_to_create_user(&locale, &username),
@@ -287,7 +287,7 @@ where
             }
             Ok(false) => {}
             Err(e) => {
-                eprintln!("Database error checking nickname uniqueness: {}", e);
+                error!(target_user = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_DB_NICKNAME);
                 return ctx
                     .send_error_and_disconnect(&err_database(&locale), Some("Login"))
                     .await;
@@ -320,10 +320,7 @@ where
         {
             Ok(perms) => perms.permissions,
             Err(e) => {
-                eprintln!(
-                    "Error fetching permissions for {}: {}",
-                    authenticated_account.username, e
-                );
+                error!(user = %authenticated_account.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_PERMISSIONS_ERROR);
                 std::collections::HashSet::new()
             }
         }
@@ -335,10 +332,7 @@ where
             Ok(Some(group)) => (Some(gid), Some(group.name)),
             Ok(None) => (None, None), // Group was deleted (ON DELETE SET NULL)
             Err(e) => {
-                eprintln!(
-                    "Error fetching group for {}: {}",
-                    authenticated_account.username, e
-                );
+                error!(user = %authenticated_account.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_GROUP_ERROR);
                 (None, None)
             }
         }
@@ -571,6 +565,7 @@ where
         persistent_channels,
         auto_join_channels,
         min_password_strength,
+        log_level: Some(server_log_level().to_string()),
     });
 
     // Build channels field for LoginResponse (only if user joined any channels)
@@ -600,12 +595,7 @@ where
     };
     ctx.send_message(&response).await?;
 
-    if ctx.debug {
-        println!(
-            "User '{}' logged in from {}",
-            authenticated_account.username, ctx.peer_addr
-        );
-    }
+    debug!(user = %authenticated_account.username, ip = %ctx.peer_addr, "{}", LOG_LOGIN_SUCCESS);
 
     // Notify other users about new connection
     // Use DB-canonical username (not client-provided) to ensure consistent casing

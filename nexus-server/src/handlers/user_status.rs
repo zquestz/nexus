@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, StatusError};
@@ -11,6 +12,7 @@ use super::{
     HandlerContext, err_authentication, err_not_logged_in, err_status_contains_newlines,
     err_status_invalid_characters, err_status_too_long,
 };
+use crate::constants::LOG_USER_STATUS_NOT_LOGGED_IN;
 use crate::users::manager::UserManager;
 
 /// Handle UserStatus command - set status message and clear away status
@@ -28,7 +30,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("UserStatus request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_USER_STATUS_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserStatus"))
             .await;

@@ -341,4 +341,4 @@ If you're logged in from multiple devices:
 ## Next Steps
 
 - [Commands](04-commands.md) — Full list of slash commands
-- [Settings](10-settings.md) — Configure notifications and sounds
+- [Settings](11-settings.md) — Configure notifications and sounds

@@ -3,6 +3,13 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
+
+use crate::constants::{
+    LOG_USER_CREATE_DB_ERROR, LOG_USER_CREATE_HASH_ERROR, LOG_USER_CREATE_NOT_LOGGED_IN,
+    LOG_USER_CREATE_PERMISSION_DENIED, LOG_USER_CREATE_SUCCESS, LOG_USER_CREATE_UNOWNED_GROUP,
+    LOG_USER_CREATE_UNOWNED_PERMISSION, LOG_USER_CREATE_UNOWNED_REVOKE,
+};
 
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ServerMessage;
@@ -55,7 +62,7 @@ where
 
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("UserCreate request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_USER_CREATE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserCreate"))
             .await;
@@ -77,10 +84,7 @@ where
 
     // Check UserCreate permission (uses cached permissions, admin bypass built-in)
     if !requesting_user.has_permission(Permission::UserCreate) {
-        eprintln!(
-            "UserCreate from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_CREATE_PERMISSION_DENIED);
         let response = ServerMessage::UserCreateResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -206,7 +210,7 @@ where
                 return ctx.send_message(&response).await;
             }
             Err(e) => {
-                eprintln!("Database error fetching group: {}", e);
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
                 return ctx
                     .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
                     .await;
@@ -238,7 +242,7 @@ where
             let group_perms = match ctx.db.groups.get_group_permissions(gid).await {
                 Ok(p) => p,
                 Err(e) => {
-                    eprintln!("Database error fetching group permissions: {}", e);
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
                     let response = ServerMessage::UserCreateResponse {
                         success: false,
                         error: Some(err_database(ctx.locale)),
@@ -250,10 +254,7 @@ where
             };
             for perm in &group_perms {
                 if !requesting_user.has_permission(*perm) {
-                    eprintln!(
-                        "UserCreate from {} (user: {}) trying to assign group with permission they don't have: {:?}",
-                        ctx.peer_addr, requesting_user.username, perm
-                    );
+                    warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm.as_str(), "{}", LOG_USER_CREATE_UNOWNED_GROUP);
                     let response = ServerMessage::UserCreateResponse {
                         success: false,
                         error: Some(err_permission_denied(ctx.locale)),
@@ -282,10 +283,7 @@ where
                     Some(perm) => {
                         // Non-admins can only revoke permissions they themselves have
                         if !requesting_user.has_permission(perm) {
-                            eprintln!(
-                                "UserCreate from {} (user: {}) trying to revoke permission they don't have: {}",
-                                ctx.peer_addr, requesting_user.username, perm_str
-                            );
+                            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_CREATE_UNOWNED_REVOKE);
                             let response = ServerMessage::UserCreateResponse {
                                 success: false,
                                 error: Some(err_permission_denied(ctx.locale)),
@@ -333,10 +331,7 @@ where
         // Non-admins can only grant permissions they have
         // Check permission delegation authority (uses cached permissions, admin bypass built-in)
         if !requesting_user.has_permission(perm) {
-            eprintln!(
-                "UserCreate from {} (user: {}) trying to grant permission they don't have: {}",
-                ctx.peer_addr, requesting_user.username, perm_str
-            );
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_CREATE_UNOWNED_PERMISSION);
             let response = ServerMessage::UserCreateResponse {
                 success: false,
                 error: Some(err_permission_denied(ctx.locale)),
@@ -365,7 +360,7 @@ where
             // Username doesn't exist, proceed with creation
         }
         Err(e) => {
-            eprintln!("Database error checking username: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
                 .await;
@@ -376,7 +371,7 @@ where
     let password_hash = match hash_password(&password, min_strength, false) {
         Ok(hash) => hash,
         Err(e) => {
-            eprintln!("Password hashing error: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_HASH_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
                 .await;
@@ -401,6 +396,7 @@ where
     {
         Ok(user) => {
             // Success (group override cleanup is handled atomically inside create_user)
+            info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %username, "{}", LOG_USER_CREATE_SUCCESS);
             let response = ServerMessage::UserCreateResponse {
                 success: true,
                 error: None,
@@ -410,7 +406,7 @@ where
             ctx.send_message(&response).await
         }
         Err(e) => {
-            eprintln!("Database error creating user: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
                 .await;

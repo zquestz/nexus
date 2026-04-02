@@ -143,7 +143,6 @@ pub struct HandlerContext<'a, W> {
     pub user_manager: &'a UserManager,
     pub db: &'a Database,
     pub tx: &'a mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
-    pub debug: bool,
     pub locale: &'a str,
     /// Message ID from the incoming request (for response correlation)
     pub message_id: MessageId,

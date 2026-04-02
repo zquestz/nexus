@@ -3,6 +3,9 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, warn};
+
+use crate::constants::*;
 
 use nexus_common::protocol::{BanInfo, ServerMessage};
 
@@ -21,7 +24,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("BanList request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_BAN_LIST_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("BanList"))
             .await;
@@ -39,10 +42,7 @@ where
 
     // Check ban_list permission
     if !requesting_user.has_permission(Permission::BanList) {
-        eprintln!(
-            "BanList from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_BAN_LIST_PERMISSION_DENIED);
         let response = ServerMessage::BanListResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -74,7 +74,7 @@ where
             ctx.send_message(&response).await
         }
         Err(e) => {
-            eprintln!("BanList database error: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_BAN_LIST_DB_ERROR);
             let response = ServerMessage::BanListResponse {
                 success: false,
                 error: Some(super::err_database(ctx.locale)),

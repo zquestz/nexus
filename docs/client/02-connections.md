@@ -207,4 +207,4 @@ If Nexus is already running, the URI is sent to the existing instance.
 ## Next Steps
 
 - [Chat](03-chat.md) — Channels, user messages, and mentions
-- [Settings](10-settings.md) — More configuration options
+- [Settings](11-settings.md) — More configuration options

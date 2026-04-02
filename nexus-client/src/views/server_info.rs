@@ -1,14 +1,14 @@
 //! Server info panel view
 
 use iced::widget::button as btn;
-use iced::widget::{Id, Space, button, container, image, pick_list, row, svg, text_input};
+use iced::widget::{Id, Space, button, image, pick_list, row, svg, text_input};
 use iced::{Center, Element, Fill, Length};
 use iced_aw::{NumberInput, TabLabel, Tabs};
 use nexus_common::validators::PasswordStrength;
 
 use super::layout::scrollable_panel;
-use super::password_strength::{LocalizedPasswordStrength, strength_translation_key};
-use crate::i18n::{t, t_args};
+use super::password_strength::LocalizedPasswordStrength;
+use crate::i18n::{log_level_translation_key, strength_translation_key, t, t_args};
 use crate::image::CachedImage;
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, INPUT_PADDING,
@@ -40,6 +40,8 @@ pub struct ServerInfoData<'a> {
     pub cached_server_image: Option<&'a CachedImage>,
     /// Minimum password strength requirement (if provided by server)
     pub min_password_strength: Option<PasswordStrength>,
+    /// Server log level (read-only, from ServerInfo)
+    pub log_level: Option<String>,
     /// Whether the current user is an admin
     pub is_admin: bool,
     /// Active tab in display mode (shown based on available data)
@@ -95,34 +97,35 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
         );
     }
 
-    // Server version (centered like name and description)
-    if let Some(version) = &data.version {
-        items.push(
-            container(
-                shaped_text(t_args("label-version-value", &[("version", version)])).size(TEXT_SIZE),
-            )
-            .width(Fill)
-            .align_x(Center)
-            .into(),
-        );
-    }
-
     // Determine which tabs to show based on available data
-    let has_limits = data.max_connections_per_ip.is_some()
+    let has_general = data.log_level.is_some()
+        || data.max_connections_per_ip.is_some()
         || data.max_transfers_per_ip.is_some()
-        || data.min_password_strength.is_some();
+        || data.min_password_strength.is_some()
+        || data.version.is_some();
     let has_files = data.file_reindex_interval.is_some();
     let has_channels = data.persistent_channels.is_some() || data.auto_join_channels.is_some();
 
     // Show settings tabs if user has any settings data
-    if has_limits || has_files || has_channels {
+    if has_general || has_files || has_channels {
         items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
         // Build tab content for each available tab
-        let limits_content: Element<'static, Message> = {
+        let general_content: Element<'static, Message> = {
             let mut content_items: Vec<Element<'static, Message>> = Vec::new();
             // Space between tab bar and first content
             content_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+            if let Some(level) = &data.log_level {
+                content_items.push(
+                    row![
+                        shaped_text(t("label-log-level")).size(TEXT_SIZE),
+                        Space::new().width(ELEMENT_SPACING),
+                        shaped_text(t(log_level_translation_key(level))).size(TEXT_SIZE),
+                    ]
+                    .align_y(Center)
+                    .into(),
+                );
+            }
             if let Some(max_conn) = data.max_connections_per_ip {
                 content_items.push(
                     row![
@@ -151,6 +154,17 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                         shaped_text(t("label-min-password-strength")).size(TEXT_SIZE),
                         Space::new().width(ELEMENT_SPACING),
                         shaped_text(t(strength_translation_key(strength))).size(TEXT_SIZE),
+                    ]
+                    .align_y(Center)
+                    .into(),
+                );
+            }
+            if let Some(version) = &data.version {
+                content_items.push(
+                    row![
+                        shaped_text(t("label-version-short")).size(TEXT_SIZE),
+                        Space::new().width(ELEMENT_SPACING),
+                        shaped_text(version.clone()).size(TEXT_SIZE),
                     ]
                     .align_y(Center)
                     .into(),
@@ -193,22 +207,6 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
             let mut content_items: Vec<Element<'static, Message>> = Vec::new();
             // Space between tab bar and first content
             content_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
-            if let Some(channels) = &data.persistent_channels {
-                let value = if channels.is_empty() {
-                    t("label-none")
-                } else {
-                    channels.clone()
-                };
-                content_items.push(
-                    row![
-                        shaped_text(t("label-persistent-short")).size(TEXT_SIZE),
-                        Space::new().width(ELEMENT_SPACING),
-                        shaped_text(value).size(TEXT_SIZE),
-                    ]
-                    .align_y(Center)
-                    .into(),
-                );
-            }
             if let Some(channels) = &data.auto_join_channels {
                 let value = if channels.is_empty() {
                     t("label-none")
@@ -225,6 +223,22 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                     .into(),
                 );
             }
+            if let Some(channels) = &data.persistent_channels {
+                let value = if channels.is_empty() {
+                    t("label-none")
+                } else {
+                    channels.clone()
+                };
+                content_items.push(
+                    row![
+                        shaped_text(t("label-persistent-short")).size(TEXT_SIZE),
+                        Space::new().width(ELEMENT_SPACING),
+                        shaped_text(value).size(TEXT_SIZE),
+                    ]
+                    .align_y(Center)
+                    .into(),
+                );
+            }
             iced::widget::Column::with_children(content_items)
                 .spacing(ELEMENT_SPACING)
                 .into()
@@ -234,11 +248,11 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
         let mut tabs: Tabs<'static, Message, ServerInfoTab> =
             Tabs::new(Message::ServerInfoTabChanged);
 
-        if has_limits {
+        if has_general {
             tabs = tabs.push(
-                ServerInfoTab::Limits,
-                TabLabel::Text(t("tab-limits")),
-                limits_content,
+                ServerInfoTab::General,
+                TabLabel::Text(t("tab-general")),
+                general_content,
             );
         }
 
@@ -417,9 +431,9 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
 
     form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
-    // Limits subheading
+    // General subheading
     form_items.push(
-        shaped_text(t("tab-limits"))
+        shaped_text(t("tab-general"))
             .size(TEXT_SIZE)
             .style(muted_text_style)
             .into(),

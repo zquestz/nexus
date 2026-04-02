@@ -141,18 +141,24 @@ label-nickname = ニックネーム:
 label-network = ネットワーク
 label-none = なし
 label-server-settings = サーバー設定
-tab-limits = 制限
 tab-files = ファイル
 tab-channels = チャンネル
-label-connections-short = 接続:
-label-transfers-short = 転送:
+label-connections-short = 最大接続数:
+label-transfers-short = 最大転送数:
+label-version-short = バージョン:
+label-log-level = ログレベル:
+label-log-level-none = なし
+label-log-level-error = エラー
+label-log-level-warn = 警告
+label-log-level-info = 情報
+label-log-level-debug = デバッグ
 label-reindex-short = 再索引:
 label-persistent-short = 常設:
 label-auto-join-short = 自動参加:
 label-minutes = 分
 label-name = 名前:
 label-description = 説明:
-label-version-value = バージョン { $version }
+
 label-use-socks5-proxy = SOCKS5プロキシを使用
 label-proxy-address = アドレス:
 label-proxy-port = ポート:
@@ -399,7 +405,6 @@ console-tab = コンソール
 # =============================================================================
 # System Message Usernames
 # =============================================================================
-
 
 # =============================================================================
 # Chat Message Prefixes

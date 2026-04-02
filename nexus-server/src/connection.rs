@@ -9,6 +9,7 @@ use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio_rustls::TlsAcceptor;
+use tracing::{debug, error, warn};
 
 use nexus_common::framing::{FrameError, FrameReader, FrameWriter, MessageId};
 use nexus_common::io::{
@@ -35,7 +36,6 @@ pub struct ConnectionParams {
     pub peer_addr: SocketAddr,
     pub user_manager: UserManager,
     pub db: Database,
-    pub debug: bool,
     pub file_root: Option<&'static Path>,
     pub transfer_port: u16,
     pub transfer_websocket_port: Option<u16>,
@@ -88,7 +88,6 @@ where
         peer_addr,
         user_manager,
         db,
-        debug,
         file_root,
         transfer_port,
         transfer_websocket_port,
@@ -142,7 +141,6 @@ where
                             user_manager: &user_manager,
                             db: &db,
                             tx: &tx,
-                            debug,
                             locale: &locale,
                             message_id: received.message_id,
                             file_root,
@@ -161,7 +159,7 @@ where
                             &mut conn_state,
                             &mut ctx,
                         ).await {
-                            eprintln!("{}{}", ERR_HANDLING_MESSAGE, e);
+                            error!(ip = %peer_addr, err = %e, "{}", LOG_ERROR_HANDLING_MESSAGE);
                             break;
                         }
                     }
@@ -177,8 +175,10 @@ where
                             FrameError::InvalidMagic | FrameError::FrameTimeout | FrameError::IdleTimeout
                         );
 
-                        if !is_common_error || debug {
-                            eprintln!("{}{}: {}", ERR_PARSE_MESSAGE, peer_addr, e);
+                        if is_common_error {
+                            debug!(ip = %peer_addr, err = %e, "{}", LOG_PARSE_MESSAGE_ERROR);
+                        } else {
+                            warn!(ip = %peer_addr, err = %e, "{}", LOG_PARSE_MESSAGE_ERROR);
                         }
 
                         // Try to send error before disconnecting
@@ -254,10 +254,8 @@ where
         }
 
         // Now remove from UserManager and broadcast UserDisconnected
-        if let Some(user) = user_manager.remove_user_and_broadcast(id).await
-            && debug
-        {
-            println!("User '{}' disconnected", user.username);
+        if let Some(user) = user_manager.remove_user_and_broadcast(id).await {
+            debug!(user = %user.username, ip = %peer_addr, "{}", LOG_DISCONNECTED);
         }
     }
 
@@ -523,10 +521,7 @@ where
         | ClientMessage::FileHashing { .. }
         | ClientMessage::FileHash { .. } => {
             // These messages are only valid on the transfer port (7501), not the main BBS port
-            eprintln!(
-                "Transfer message received on main port from {}",
-                ctx.peer_addr
-            );
+            warn!(ip = %ctx.peer_addr, "{}", LOG_TRANSFER_ON_MAIN_PORT);
             return ctx
                 .send_error_and_disconnect(&err_message_not_supported(ctx.locale), None)
                 .await;

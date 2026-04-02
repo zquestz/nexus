@@ -4,6 +4,9 @@ use std::io;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
+
+use crate::constants::{LOG_USER_MESSAGE_NOT_LOGGED_IN, LOG_USER_MESSAGE_PERMISSION_DENIED};
 
 use nexus_common::protocol::{ChatAction, ServerMessage};
 use nexus_common::validators::{self, MessageError, NicknameError};
@@ -29,7 +32,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("UserMessage request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_USER_MESSAGE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserMessage"))
             .await;
@@ -47,10 +50,7 @@ where
 
     // Check UserMessage permission (uses cached permissions, admin bypass built-in)
     if !requesting_user_session.has_permission(Permission::UserMessage) {
-        eprintln!(
-            "UserMessage from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user_session.username
-        );
+        warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_MESSAGE_PERMISSION_DENIED);
         let response = ServerMessage::UserMessageResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),

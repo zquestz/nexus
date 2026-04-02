@@ -141,18 +141,24 @@ label-nickname = 별명:
 label-network = 네트워크
 label-none = 없음
 label-server-settings = 서버 설정
-tab-limits = 제한
 tab-files = 파일
 tab-channels = 채널
-label-connections-short = 연결:
-label-transfers-short = 전송:
+label-connections-short = 최대 연결:
+label-transfers-short = 최대 전송:
+label-version-short = 버전:
+label-log-level = 로그 수준:
+label-log-level-none = 없음
+label-log-level-error = 오류
+label-log-level-warn = 경고
+label-log-level-info = 정보
+label-log-level-debug = 디버그
 label-reindex-short = 재색인:
 label-persistent-short = 상시:
 label-auto-join-short = 자동 참가:
 label-minutes = 분
 label-name = 이름:
 label-description = 설명:
-label-version-value = 버전 { $version }
+
 label-use-socks5-proxy = SOCKS5 프록시 사용
 label-proxy-address = 주소:
 label-proxy-port = 포트:
@@ -399,7 +405,6 @@ console-tab = 콘솔
 # =============================================================================
 # System Message Usernames
 # =============================================================================
-
 
 # =============================================================================
 # Chat Message Prefixes

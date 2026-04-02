@@ -3,6 +3,12 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
+
+use crate::constants::{
+    LOG_NEWS_DELETE_ADMIN, LOG_NEWS_DELETE_DB_ERROR_DELETE, LOG_NEWS_DELETE_DB_ERROR_GET,
+    LOG_NEWS_DELETE_NOT_LOGGED_IN, LOG_NEWS_DELETE_PERMISSION_DENIED, LOG_NEWS_DELETE_SUCCESS,
+};
 
 use nexus_common::protocol::{NewsAction, ServerMessage};
 
@@ -26,7 +32,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("NewsDelete request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_NEWS_DELETE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("NewsDelete"))
             .await;
@@ -62,7 +68,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error getting news: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_NEWS_DELETE_DB_ERROR_GET);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("NewsDelete"))
                 .await;
@@ -74,10 +80,7 @@ where
     let has_delete_permission = requesting_user.has_permission(Permission::NewsDelete);
 
     if !is_author && !has_delete_permission {
-        eprintln!(
-            "NewsDelete from {} (user: {}) without permission for news #{}",
-            ctx.peer_addr, requesting_user.username, id
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_NEWS_DELETE_PERMISSION_DENIED);
         let response = ServerMessage::NewsDeleteResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -88,10 +91,7 @@ where
 
     // Check admin protection: non-admins cannot delete admin posts
     if existing_news.author_is_admin && !requesting_user.is_admin {
-        eprintln!(
-            "NewsDelete from {} (user: {}) trying to delete admin news #{}",
-            ctx.peer_addr, requesting_user.username, id
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %id, "{}", LOG_NEWS_DELETE_ADMIN);
         let response = ServerMessage::NewsDeleteResponse {
             success: false,
             error: Some(err_cannot_delete_admin_news(ctx.locale)),
@@ -113,14 +113,15 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error deleting news: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_NEWS_DELETE_DB_ERROR_DELETE);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("NewsDelete"))
                 .await;
         }
     };
 
-    // Send success response
+    // Log and send success response
+    info!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %id, "{}", LOG_NEWS_DELETE_SUCCESS);
     let response = ServerMessage::NewsDeleteResponse {
         success: true,
         error: None,

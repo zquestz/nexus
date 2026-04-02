@@ -3,8 +3,14 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
 
 use nexus_common::protocol::ServerMessage;
+
+use crate::constants::{
+    LOG_USER_DELETE_ADMIN, LOG_USER_DELETE_DB_ERROR, LOG_USER_DELETE_NOT_LOGGED_IN,
+    LOG_USER_DELETE_PERMISSION_DENIED, LOG_USER_DELETE_SUCCESS,
+};
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
@@ -27,7 +33,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("UserDelete request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserDelete"))
             .await;
@@ -45,10 +51,7 @@ where
 
     // Check UserDelete permission (uses cached permissions, admin bypass built-in)
     if !requesting_user_session.has_permission(Permission::UserDelete) {
-        eprintln!(
-            "UserDelete from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user_session.username
-        );
+        warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_PERMISSION_DENIED);
         let response = ServerMessage::UserDeleteResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -69,7 +72,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error getting target user: {}", e);
+            error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("UserDelete"))
                 .await;
@@ -98,10 +101,7 @@ where
 
     // Prevent non-admins from deleting admin users
     if target_user.is_admin && !requesting_user_session.is_admin {
-        eprintln!(
-            "UserDelete from {} (user: {}) trying to delete admin user",
-            ctx.peer_addr, requesting_user_session.username
-        );
+        warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_ADMIN);
         let response = ServerMessage::UserDeleteResponse {
             success: false,
             error: Some(err_cannot_delete_admin(ctx.locale)),
@@ -142,6 +142,7 @@ where
             if deleted {
                 // Send success response to the admin who deleted the user
                 // Use the database-preserved username casing, not the input
+                info!(user = %requesting_user_session.username, ip = %ctx.peer_addr, target = %target_user.username, "{}", LOG_USER_DELETE_SUCCESS);
                 let response = ServerMessage::UserDeleteResponse {
                     success: true,
                     error: None,
@@ -159,7 +160,7 @@ where
             }
         }
         Err(e) => {
-            eprintln!("Database error deleting user: {}", e);
+            error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
             ctx.send_error_and_disconnect(&err_database(ctx.locale), Some("UserDelete"))
                 .await
         }

@@ -4,6 +4,7 @@ use std::io;
 use std::path::Path;
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
 
 use nexus_common::protocol::{FileInfoDetails, ServerMessage};
 use nexus_common::validators::{self, FilePathError};
@@ -11,6 +12,9 @@ use nexus_common::validators::{self, FilePathError};
 use super::{
     HandlerContext, err_file_not_found, err_file_path_invalid, err_file_path_too_long,
     err_not_logged_in, err_permission_denied,
+};
+use crate::constants::{
+    LOG_FILE_INFO_NOT_LOGGED_IN, LOG_FILE_INFO_PERMISSION_DENIED, LOG_FILE_INFO_ROOT_DENIED,
 };
 use crate::db::Permission;
 use crate::files::{build_and_validate_candidate_path, resolve_path, resolve_user_area};
@@ -123,7 +127,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("FileInfo request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_INFO_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileInfo"))
             .await;
@@ -160,10 +164,7 @@ where
 
     // Check FileInfo permission
     if !requesting_user.has_permission(Permission::FileInfo) {
-        eprintln!(
-            "FileInfo from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_INFO_PERMISSION_DENIED);
         let response = ServerMessage::FileInfoResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -174,10 +175,7 @@ where
 
     // Check FileRoot permission if root browsing requested
     if root && !requesting_user.has_permission(Permission::FileRoot) {
-        eprintln!(
-            "FileInfo (root) from {} (user: {}) without file_root permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_INFO_ROOT_DENIED);
         let response = ServerMessage::FileInfoResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),

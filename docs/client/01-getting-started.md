@@ -171,4 +171,4 @@ sha256sum nexus-client-*-linux-x64.AppImage
 - [Chat](03-chat.md) — Learn about messaging and chat features
 - [Commands](04-commands.md) — Discover slash commands like `/msg` and `/help`
 - [Files](05-files.md) — Browse and transfer files
-- [Settings](10-settings.md) — Customize themes, sounds, and notifications
+- [Settings](11-settings.md) — Customize themes, sounds, and notifications

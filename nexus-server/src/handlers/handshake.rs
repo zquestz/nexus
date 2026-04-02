@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, VersionError};
@@ -12,6 +13,10 @@ use super::{
     HandlerContext, err_handshake_already_completed, err_version_client_too_new, err_version_empty,
     err_version_invalid_semver, err_version_major_mismatch, err_version_minor_mismatch,
     err_version_too_long,
+};
+use crate::constants::{
+    LOG_HANDSHAKE_CLIENT_TOO_NEW, LOG_HANDSHAKE_DUPLICATE, LOG_HANDSHAKE_MAJOR_MISMATCH,
+    LOG_HANDSHAKE_MINOR_MISMATCH,
 };
 
 /// Handle a handshake request from the client
@@ -27,7 +32,7 @@ where
 
     // Check for duplicate handshake
     if *handshake_complete {
-        eprintln!("Duplicate handshake attempt from {}", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_HANDSHAKE_DUPLICATE);
         let response = ServerMessage::HandshakeResponse {
             success: false,
             version: Some(server_version_str.to_string()),
@@ -74,10 +79,7 @@ where
             server_major,
             client_major,
         } => {
-            eprintln!(
-                "Handshake from {} failed: major version mismatch (client: {}, server: {})",
-                ctx.peer_addr, client_major, server_major
-            );
+            warn!(ip = %ctx.peer_addr, "{}", LOG_HANDSHAKE_MAJOR_MISMATCH);
             let response = ServerMessage::HandshakeResponse {
                 success: false,
                 version: Some(server_version_str.to_string()),
@@ -91,13 +93,10 @@ where
             Err(io::Error::other("Major version mismatch"))
         }
         CompatibilityResult::MinorMismatch {
-            server_minor,
-            client_minor,
+            server_minor: _,
+            client_minor: _,
         } => {
-            eprintln!(
-                "Handshake from {} failed: minor version mismatch (client: {}, server: {})",
-                ctx.peer_addr, client_minor, server_minor
-            );
+            warn!(ip = %ctx.peer_addr, "{}", LOG_HANDSHAKE_MINOR_MISMATCH);
             let response = ServerMessage::HandshakeResponse {
                 success: false,
                 version: Some(server_version_str.to_string()),
@@ -111,13 +110,10 @@ where
             Err(io::Error::other("Minor version mismatch (pre-1.0)"))
         }
         CompatibilityResult::ClientTooNew {
-            server_minor,
-            client_minor,
+            server_minor: _,
+            client_minor: _,
         } => {
-            eprintln!(
-                "Handshake from {} failed: client minor version {} is newer than server minor version {}",
-                ctx.peer_addr, client_minor, server_minor
-            );
+            warn!(ip = %ctx.peer_addr, "{}", LOG_HANDSHAKE_CLIENT_TOO_NEW);
             let response = ServerMessage::HandshakeResponse {
                 success: false,
                 version: Some(server_version_str.to_string()),

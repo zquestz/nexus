@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, warn};
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators;
@@ -11,7 +12,10 @@ use super::{
     HandlerContext, channel_error_to_message, err_authentication, err_channel_not_found,
     err_chat_feature_not_enabled, err_database, err_not_logged_in, err_permission_denied,
 };
-use crate::constants::FEATURE_CHAT;
+use crate::constants::{
+    FEATURE_CHAT, LOG_CHAT_SECRET_DB_ERROR, LOG_CHAT_SECRET_NOT_LOGGED_IN,
+    LOG_CHAT_SECRET_PERMISSION_DENIED,
+};
 use crate::db::Permission;
 
 /// Handle ChatSecret command - toggle secret mode on a channel
@@ -26,7 +30,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("ChatSecret request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_SECRET_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatSecret"))
             .await;
@@ -53,10 +57,7 @@ where
 
     // Check ChatSecret permission
     if !user.has_permission(Permission::ChatSecret) {
-        eprintln!(
-            "ChatSecret from {} (user: {}) without permission",
-            ctx.peer_addr, user.username
-        );
+        warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_SECRET_PERMISSION_DENIED);
         let response = ServerMessage::ChatSecretResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -96,7 +97,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error setting channel secret mode: {}", e);
+            error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_CHAT_SECRET_DB_ERROR);
             let response = ServerMessage::ChatSecretResponse {
                 success: false,
                 error: Some(err_database(ctx.locale)),

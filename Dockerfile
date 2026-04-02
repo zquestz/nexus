@@ -97,17 +97,21 @@ ENV NEXUS_BIND=0.0.0.0 \
   NEXUS_WEBSOCKET= \
   NEXUS_WEBSOCKET_PORT=7502 \
   NEXUS_TRANSFER_WEBSOCKET_PORT=7503 \
-  NEXUS_DEBUG=
+  NEXUS_LOG_LEVEL=info \
+  NEXUS_LOG_RETENTION=30d \
+  NEXUS_NO_LOG_TIMESTAMPS=
 
 # Use shell to expand environment variables
-# NEXUS_DEBUG: set to any non-empty value to enable debug logging
 # NEXUS_WEBSOCKET: set to any non-empty value to enable WebSocket support
+# NEXUS_NO_LOG_TIMESTAMPS: set to any non-empty value to disable stderr timestamps
 ENTRYPOINT ["/bin/sh", "-c", "exec nexusd \
   --bind \"$NEXUS_BIND\" \
   --port \"$NEXUS_PORT\" \
   --transfer-port \"$NEXUS_TRANSFER_PORT\" \
+  --log-level \"$NEXUS_LOG_LEVEL\" \
+  --log-retention \"$NEXUS_LOG_RETENTION\" \
   ${NEXUS_WEBSOCKET:+--websocket} \
   ${NEXUS_WEBSOCKET:+--websocket-port \"$NEXUS_WEBSOCKET_PORT\"} \
   ${NEXUS_WEBSOCKET:+--transfer-websocket-port \"$NEXUS_TRANSFER_WEBSOCKET_PORT\"} \
-  ${NEXUS_DEBUG:+--debug} \
+  ${NEXUS_NO_LOG_TIMESTAMPS:+--no-log-timestamps} \
   \"$@\"", "--"]

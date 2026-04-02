@@ -87,7 +87,6 @@ pub struct Transfer<'a, R, W> {
     // Context - public for handler access
     user: AuthenticatedUser,
     locale: String,
-    debug: bool,
     file_root: &'a Path,
     file_index: &'a Arc<FileIndex>,
 
@@ -113,7 +112,6 @@ where
         info: Arc<ActiveTransfer>,
         user: AuthenticatedUser,
         locale: String,
-        debug: bool,
         file_root: &'a Path,
         file_index: &'a Arc<FileIndex>,
         registry: &'a TransferRegistry,
@@ -127,7 +125,6 @@ where
             info,
             user,
             locale,
-            debug,
             file_root,
             file_index,
             _guard: TransferRegistryGuard::new(registry, transfer_id),
@@ -177,11 +174,6 @@ where
     /// Get the peer address
     pub fn peer_addr(&self) -> SocketAddr {
         self.info.peer_addr
-    }
-
-    /// Check if debug mode is enabled
-    pub fn debug(&self) -> bool {
-        self.debug
     }
 
     /// Get the file root path
@@ -547,7 +539,6 @@ mod tests {
             info.clone(),
             make_test_user(),
             "en".to_string(),
-            false,
             file_root,
             &file_index,
             &registry,
@@ -594,7 +585,6 @@ mod tests {
             info,
             make_test_user(),
             "en".to_string(),
-            false,
             file_root,
             &file_index,
             &registry,
@@ -646,7 +636,6 @@ mod tests {
             info,
             make_test_user(),
             "en".to_string(),
-            false,
             file_root,
             &file_index,
             &registry,
@@ -698,7 +687,6 @@ mod tests {
             info,
             make_test_user(),
             "en".to_string(),
-            false,
             file_root,
             &file_index,
             &registry,
@@ -748,7 +736,6 @@ mod tests {
             info,
             make_test_user(),
             "en".to_string(),
-            false,
             file_root,
             &file_index,
             &registry,
@@ -802,7 +789,6 @@ mod tests {
                 info,
                 make_test_user(),
                 "en".to_string(),
-                false,
                 file_root,
                 &file_index,
                 &registry,
@@ -845,7 +831,6 @@ mod tests {
             info.clone(),
             make_test_user(),
             "en".to_string(),
-            false,
             file_root,
             &file_index,
             &registry,

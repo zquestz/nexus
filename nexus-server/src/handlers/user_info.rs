@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
 
 use nexus_common::protocol::{ServerMessage, UserInfoDetailed};
 use nexus_common::validators::{self, NicknameError};
@@ -11,7 +12,9 @@ use super::{
     HandlerContext, err_authentication, err_database, err_nickname_empty, err_nickname_invalid,
     err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
-use crate::constants::DEFAULT_LOCALE;
+use crate::constants::{
+    DEFAULT_LOCALE, LOG_USER_INFO_NOT_LOGGED_IN, LOG_USER_INFO_PERMISSION_DENIED,
+};
 use crate::db::Permission;
 
 #[cfg(test)]
@@ -30,7 +33,7 @@ where
 {
     // Verify authentication
     let Some(id) = session_id else {
-        eprintln!("UserInfo request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_USER_INFO_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserInfo"))
             .await;
@@ -48,10 +51,7 @@ where
 
     // Check UserInfo permission (uses cached permissions, admin bypass built-in)
     if !requesting_user.has_permission(Permission::UserInfo) {
-        eprintln!(
-            "UserInfo from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_INFO_PERMISSION_DENIED);
         let response = ServerMessage::UserInfoResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),

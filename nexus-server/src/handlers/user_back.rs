@@ -3,10 +3,12 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
 
 use nexus_common::protocol::ServerMessage;
 
 use super::{HandlerContext, err_authentication, err_not_logged_in};
+use crate::constants::LOG_USER_BACK_NOT_LOGGED_IN;
 use crate::users::manager::UserManager;
 
 /// Handle UserBack command - clear away status for all sessions of this user
@@ -19,7 +21,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("UserBack request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_USER_BACK_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserBack"))
             .await;

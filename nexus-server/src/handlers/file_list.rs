@@ -4,15 +4,17 @@ use std::io;
 use std::path::Path;
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
 
 use nexus_common::protocol::{FileEntry, ServerMessage};
 use nexus_common::validators::{self, FilePathError};
 
-#[cfg(test)]
-use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, err_file_not_directory, err_file_not_found, err_file_path_invalid,
     err_file_path_too_long, err_not_logged_in, err_permission_denied,
+};
+use crate::constants::{
+    LOG_FILE_LIST_NOT_LOGGED_IN, LOG_FILE_LIST_PERMISSION_DENIED, LOG_FILE_LIST_ROOT_DENIED,
 };
 use crate::db::Permission;
 use crate::files::path::PathError;
@@ -127,7 +129,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("FileList request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_LIST_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileList"))
             .await;
@@ -168,10 +170,7 @@ where
 
     // Check FileList permission
     if !requesting_user.has_permission(Permission::FileList) {
-        eprintln!(
-            "FileList from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_LIST_PERMISSION_DENIED);
         let response = ServerMessage::FileListResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -184,10 +183,7 @@ where
 
     // Check FileRoot permission if root browsing requested
     if root && !requesting_user.has_permission(Permission::FileRoot) {
-        eprintln!(
-            "FileList (root) from {} (user: {}) without file_root permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_LIST_ROOT_DENIED);
         let response = ServerMessage::FileListResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -383,7 +379,8 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::handlers::testing::{
-        create_test_context, login_user, read_server_message, setup_file_area_full,
+        DEFAULT_TEST_LOCALE, create_test_context, login_user, read_server_message,
+        setup_file_area_full,
     };
     use std::fs;
 

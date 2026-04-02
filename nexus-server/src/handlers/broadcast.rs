@@ -1,9 +1,9 @@
 //! Broadcast message handler
-//! Handler for UserBroadcast command
 
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, MessageError};
@@ -12,6 +12,7 @@ use super::{
     HandlerContext, err_authentication, err_broadcast_too_long, err_message_contains_newlines,
     err_message_empty, err_message_invalid_characters, err_not_logged_in, err_permission_denied,
 };
+use crate::constants::{LOG_USER_BROADCAST_NOT_LOGGED_IN, LOG_USER_BROADCAST_PERMISSION_DENIED};
 use crate::db::Permission;
 
 /// Handle a broadcast request from the client
@@ -28,7 +29,7 @@ where
 {
     // Verify authentication
     let Some(id) = session_id else {
-        eprintln!("UserBroadcast from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_USER_BROADCAST_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserBroadcast"))
             .await;
@@ -46,10 +47,7 @@ where
 
     // Check permission (uses cached permissions, admin bypass built-in)
     if !user.has_permission(Permission::UserBroadcast) {
-        eprintln!(
-            "UserBroadcast from {} (user: {}) without permission",
-            ctx.peer_addr, user.username
-        );
+        warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_USER_BROADCAST_PERMISSION_DENIED);
         let response = ServerMessage::UserBroadcastResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),

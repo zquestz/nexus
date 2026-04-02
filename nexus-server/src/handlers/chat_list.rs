@@ -3,6 +3,9 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
+
+use crate::constants::{LOG_CHAT_LIST_NOT_LOGGED_IN, LOG_CHAT_LIST_PERMISSION_DENIED};
 
 use nexus_common::protocol::{ChannelInfo, ServerMessage};
 
@@ -23,7 +26,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("ChatList request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_LIST_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatList"))
             .await;
@@ -51,10 +54,7 @@ where
 
     // Check ChatList permission
     if !user.has_permission(Permission::ChatList) {
-        eprintln!(
-            "ChatList from {} (user: {}) without permission",
-            ctx.peer_addr, user.username
-        );
+        warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_LIST_PERMISSION_DENIED);
         let response = ServerMessage::ChatListResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),

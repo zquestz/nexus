@@ -95,6 +95,7 @@ pub(super) async fn setup_communication_channels(
         persistent_channels: login_info.persistent_channels,
         auto_join_channels: login_info.auto_join_channels,
         min_password_strength: login_info.min_password_strength,
+        log_level: login_info.log_level,
         locale: login_info.locale,
         connection_info,
     })

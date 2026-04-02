@@ -538,7 +538,8 @@ Broadcast to all users when server info changes.
     "file_reindex_interval": 60,
     "persistent_channels": "#general #support",
     "auto_join_channels": "#general",
-    "min_password_strength": 2
+    "min_password_strength": 2,
+    "log_level": "info"
   }
 }
 ```
@@ -584,7 +585,8 @@ Sent to a user when their permissions change.
     "file_reindex_interval": 60,
     "persistent_channels": "#general",
     "auto_join_channels": "#general",
-    "min_password_strength": 2
+    "min_password_strength": 2,
+    "log_level": "info"
   },
   "group_id": null,
   "group_name": null

@@ -19,6 +19,10 @@
 //! The index state (`dirty`, `reindexing`) uses `AtomicBool` for lock-free access.
 //! Only one reindex can run at a time - concurrent requests are ignored.
 
+use tracing::{error, info};
+
+use crate::constants::*;
+
 use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
@@ -118,10 +122,10 @@ impl FileIndex {
         tokio::task::spawn_blocking(move || {
             match index.build_index() {
                 Ok(count) => {
-                    eprintln!("File index rebuilt: {} entries", count);
+                    info!(entries = count, "{}", LOG_FILE_INDEX_REBUILT);
                 }
                 Err(e) => {
-                    eprintln!("Failed to build file index: {}", e);
+                    error!(err = %e, "{}", LOG_FILE_INDEX_BUILD_FAILED);
                     // Mark dirty again so we retry
                     index.mark_dirty();
                 }
@@ -307,12 +311,9 @@ impl FileIndex {
 
         if let Err(e) = search_result {
             // Index may be corrupted - delete it and mark dirty for rebuild
-            eprintln!(
-                "Search failed (index may be corrupted): {}. Deleting index for rebuild.",
-                e
-            );
+            error!(err = %e, "{}", LOG_FILE_INDEX_SEARCH_FAILED);
             if let Err(del_err) = fs::remove_file(&self.index_path) {
-                eprintln!("Failed to delete corrupted index: {}", del_err);
+                error!(err = %del_err, "{}", LOG_FILE_INDEX_DELETE_FAILED);
             }
             self.mark_dirty();
             return Ok(vec![]);

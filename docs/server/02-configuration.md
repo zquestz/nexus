@@ -15,7 +15,9 @@ nexusd [OPTIONS]
 | `--transfer-port <PORT>`           | `-t`  | `7501`             | File transfer port                               |
 | `--database <PATH>`                | `-d`  | (platform default) | Database file path                               |
 | `--file-root <PATH>`               | `-f`  | (platform default) | File area root directory                         |
-| `--debug`                          |       | `false`            | Enable debug logging                             |
+| `--log-level <LEVEL>`              |       | `info`             | Log level (none, error, warn, info, debug)       |
+| `--log-retention <DURATION>`       |       | `30d`              | Log file retention (e.g. "30d", "7d", "0" for stderr only) |
+| `--no-log-timestamps`              |       | `false`            | Disable timestamps in stderr output              |
 | `--upnp`                           |       | `false`            | Enable UPnP port forwarding                      |
 | `--websocket`                      |       | `false`            | Enable WebSocket support                         |
 | `--websocket-port <PORT>`          |       | `7502`             | WebSocket BBS port (requires `--websocket`)      |
@@ -119,18 +121,32 @@ files/
 
 See [File Areas](04-file-areas.md) for detailed configuration.
 
-## Debug Logging
+## Logging
 
-Enable verbose logging for troubleshooting:
+Configure server logging with three flags:
 
 ```bash
-nexusd --debug
+# Set log level (default: info)
+nexusd --log-level debug
+
+# Disable log file output (stderr only)
+nexusd --log-retention 0
+
+# Disable timestamps in stderr (for Docker/systemd)
+nexusd --no-log-timestamps
 ```
 
-Debug mode shows:
+Log levels (most to least verbose):
 
-- User connect/disconnect events
-- Connection errors
+| Level   | Description                                                    |
+| ------- | -------------------------------------------------------------- |
+| `debug` | All messages including connection events and transfer progress  |
+| `info`  | Admin actions, startup info, transfer completions (default)    |
+| `warn`  | Permission denied, protocol issues, failed operations          |
+| `error` | Database failures, filesystem errors, internal errors          |
+| `none`  | Logging disabled                                               |
+
+Log files are written as JSONL (one JSON object per line) to `~/.local/share/nexusd/logs/` with daily rotation. Old files are purged based on `--log-retention`.
 
 ## WebSocket Support
 
@@ -229,7 +245,7 @@ These settings are stored in the database and persist across restarts.
 ### Development
 
 ```bash
-nexusd --bind 127.0.0.1 --debug
+nexusd --bind 127.0.0.1 --log-level debug
 ```
 
 ### Home Server with UPnP

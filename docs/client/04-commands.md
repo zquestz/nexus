@@ -550,4 +550,4 @@ These shortcuts work without typing a command:
 ## Next Steps
 
 - [Chat](03-chat.md) — Chat features and user messaging
-- [Settings](10-settings.md) — Configure notifications and preferences
+- [Settings](11-settings.md) — Configure notifications and preferences

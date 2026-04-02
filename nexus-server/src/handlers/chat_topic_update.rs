@@ -3,6 +3,11 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, warn};
+
+use crate::constants::{
+    LOG_CHAT_TOPIC_DB_ERROR, LOG_CHAT_TOPIC_NOT_LOGGED_IN, LOG_CHAT_TOPIC_PERMISSION_DENIED,
+};
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, ChatTopicError};
@@ -27,7 +32,7 @@ where
 {
     // Verify authentication
     let Some(id) = session_id else {
-        eprintln!("ChatTopicUpdate from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_TOPIC_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatTopicUpdate"))
             .await;
@@ -54,10 +59,7 @@ where
 
     // Check ChatTopicEdit permission (uses cached permissions, admin bypass built-in)
     if !user.has_permission(Permission::ChatTopicEdit) {
-        eprintln!(
-            "ChatTopicUpdate from {} (user: {}) without permission",
-            ctx.peer_addr, user.username
-        );
+        warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_TOPIC_PERMISSION_DENIED);
         let response = ServerMessage::ChatTopicUpdateResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -123,7 +125,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error setting topic: {}", e);
+            error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_CHAT_TOPIC_DB_ERROR);
             let response = ServerMessage::ChatTopicUpdateResponse {
                 success: false,
                 error: Some(err_database(ctx.locale)),

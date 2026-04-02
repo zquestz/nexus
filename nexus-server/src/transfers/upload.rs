@@ -10,6 +10,10 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+use tracing::{debug, error, info, warn};
+
+use crate::constants::*;
+
 use nexus_common::framing::{
     DEFAULT_PROGRESS_TIMEOUT, FrameHeader, FrameReader, FrameWriter, MessageId,
 };
@@ -63,7 +67,6 @@ where
 
     // Extract values to avoid borrow checker issues
     let locale = transfer.locale().to_string();
-    let debug = transfer.debug();
     let peer_addr = transfer.peer_addr();
 
     // Reject empty uploads - must have at least one file
@@ -82,12 +85,14 @@ where
     // Generate transfer ID for logging
     let log_transfer_id = generate_transfer_id();
 
-    if debug {
-        eprintln!(
-            "Upload {log_transfer_id}: {} files, {} bytes to {} from {}",
-            file_count, total_size, destination, peer_addr
-        );
-    }
+    debug!(
+        id = %log_transfer_id,
+        files = file_count,
+        bytes = total_size,
+        path = %destination,
+        ip = %peer_addr,
+        "{}", LOG_UPLOAD_STARTING
+    );
 
     // Send FileUploadResponse
     let response = ServerMessage::FileUploadResponse {
@@ -97,9 +102,7 @@ where
         transfer_id: Some(log_transfer_id.clone()),
     };
     if let Err(e) = transfer.send(&response).await {
-        if debug {
-            eprintln!("Upload {log_transfer_id}: Failed to send response: {e}");
-        }
+        error!(id = %log_transfer_id, user = %transfer.user().username, ip = %peer_addr, err = %e, "{}", LOG_UPLOAD_SEND_FAILED);
         return Ok(());
     }
 
@@ -113,7 +116,6 @@ where
             area_root: &area_root,
             destination: &resolved_destination,
             locale: &locale,
-            debug,
             transfer_id: &log_transfer_id,
             file_index,
         };
@@ -123,19 +125,17 @@ where
             }
             Err(ReceiveFileError::Banned) => {
                 // Just close the socket - client gets ban reason on BBS connection
-                if debug {
-                    eprintln!("Upload {log_transfer_id}: Terminated by ban");
-                }
+                info!(id = %log_transfer_id, "{}", LOG_UPLOAD_BANNED);
                 let _ = transfer.writer().get_mut().shutdown().await;
                 return Ok(());
             }
             Err(ReceiveFileError::Transfer(e)) => {
-                if debug {
-                    eprintln!(
-                        "Upload {log_transfer_id}: Error receiving file {file_index}: {}",
-                        e.message
-                    );
-                }
+                warn!(
+                    id = %log_transfer_id,
+                    file_index = file_index,
+                    err = %e.message,
+                    "{}", LOG_UPLOAD_ERROR
+                );
                 transfer_success = false;
                 transfer_error = Some(e.message);
                 transfer_error_kind = Some(e.kind.to_string());
@@ -152,12 +152,10 @@ where
     };
     let _ = transfer.send(&complete).await; // Best effort - connection may be closing
 
-    if debug {
-        if transfer_success {
-            eprintln!("Upload {log_transfer_id}: Complete");
-        } else {
-            eprintln!("Upload {log_transfer_id}: Failed");
-        }
+    if transfer_success {
+        info!(id = %log_transfer_id, path = %destination, "{}", LOG_UPLOAD_COMPLETE);
+    } else {
+        warn!(id = %log_transfer_id, path = %destination, "{}", LOG_UPLOAD_FAILED);
     }
 
     // Mark file index as dirty on successful upload so it gets rebuilt
@@ -220,7 +218,6 @@ where
         area_root,
         destination,
         locale,
-        debug,
         transfer_id,
         file_index,
     } = params;
@@ -228,12 +225,13 @@ where
     // Read FileStart from client (no sha256 — hash arrives later in FileHash)
     let (relative_path, file_size) = read_client_file_start(transfer.reader(), locale).await?;
 
-    if debug {
-        eprintln!(
-            "Upload {transfer_id}: Receiving file {file_index}: {} ({} bytes)",
-            relative_path, file_size
-        );
-    }
+    debug!(
+        id = %transfer_id,
+        file_index = file_index,
+        path = %relative_path,
+        bytes = file_size,
+        "{}", LOG_UPLOAD_RECEIVING
+    );
 
     // Validate the relative path and build target paths
     let (target_path, part_path) =
@@ -267,9 +265,7 @@ where
             if file_size == 0 {
                 // Zero-byte file
                 create_empty_file(&target_path, locale).await?;
-                if debug {
-                    eprintln!("Upload {transfer_id}: Created empty file {}", relative_path);
-                }
+                debug!(id = %transfer_id, path = %relative_path, "{}", LOG_UPLOAD_EMPTY_FILE);
             } else {
                 // Already complete — verify hashes match
                 let server_hash = hasher.finalize();
@@ -281,9 +277,7 @@ where
                 // No-op when complete file already exists at target_path (no .part to rename).
                 // Handles the edge case where a .part file was left behind alongside the complete file.
                 finalize_part_file_if_exists(&part_path, &target_path, locale).await?;
-                if debug {
-                    eprintln!("Upload {transfer_id}: {} already complete", relative_path);
-                }
+                debug!(id = %transfer_id, path = %relative_path, "{}", LOG_UPLOAD_ALREADY_COMPLETE);
             }
         }
         ClientFileFrame::FileData(header) => {
@@ -308,12 +302,13 @@ where
             // Check for concurrent upload conflict
             check_resume_conflict(offset, existing_size, locale)?;
 
-            if debug && offset > 0 {
-                eprintln!(
-                    "Upload {transfer_id}: Resuming {} from offset {} ({}%)",
-                    relative_path,
-                    offset,
-                    (offset * 100) / file_size
+            if offset > 0 {
+                debug!(
+                    id = %transfer_id,
+                    path = %relative_path,
+                    offset = offset,
+                    percent = (offset * 100) / file_size,
+                    "{}", LOG_UPLOAD_RESUMING
                 );
             }
 
@@ -329,12 +324,12 @@ where
             )
             .await?;
 
-            if debug {
-                eprintln!(
-                    "Upload {transfer_id}: Received {} bytes for {}",
-                    bytes_written, relative_path
-                );
-            }
+            debug!(
+                id = %transfer_id,
+                bytes = bytes_written,
+                path = %relative_path,
+                "{}", LOG_UPLOAD_RECEIVED
+            );
 
             // Read FileHash from client (sent after FileData)
             let client_frame = read_file_data_or_file_hash(transfer.reader(), locale).await?;
@@ -365,12 +360,12 @@ where
                     )))
                 })?;
 
-            if debug {
-                eprintln!(
-                    "Upload {transfer_id}: Completed {} ({} bytes, hash verified)",
-                    relative_path, file_size
-                );
-            }
+            debug!(
+                id = %transfer_id,
+                path = %relative_path,
+                bytes = file_size,
+                "{}", LOG_UPLOAD_HASH_VERIFIED
+            );
         }
     }
 

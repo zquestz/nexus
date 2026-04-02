@@ -176,6 +176,8 @@ pub struct LoginInfo {
     pub auto_join_channels: Option<String>,
     /// Minimum password strength requirement from the server
     pub min_password_strength: PasswordStrength,
+    /// Server log level (read-only, from ServerInfo)
+    pub log_level: Option<String>,
     pub transfer_port: u16,
     pub locale: String,
 }

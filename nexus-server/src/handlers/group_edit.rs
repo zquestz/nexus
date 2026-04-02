@@ -3,6 +3,9 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, warn};
+
+use crate::constants::*;
 
 use nexus_common::protocol::ServerMessage;
 
@@ -25,7 +28,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("GroupEdit request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_GROUP_EDIT_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("GroupEdit"))
             .await;
@@ -47,10 +50,7 @@ where
 
     // Check GroupEdit permission (uses cached permissions, admin bypass built-in)
     if !requesting_user.has_permission(Permission::GroupEdit) {
-        eprintln!(
-            "GroupEdit from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_GROUP_EDIT_PERMISSION_DENIED);
         let response = ServerMessage::GroupEditResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -79,7 +79,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error getting group: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_EDIT_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupEdit"))
                 .await;
@@ -90,7 +90,7 @@ where
     let permissions: Vec<String> = match ctx.db.groups.get_group_permissions(id).await {
         Ok(perms) => perms.into_iter().map(|p| p.as_str().to_string()).collect(),
         Err(e) => {
-            eprintln!("Database error getting group permissions: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_EDIT_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupEdit"))
                 .await;
@@ -101,7 +101,7 @@ where
     let member_count = match ctx.db.groups.get_member_count(id).await {
         Ok(count) => count,
         Err(e) => {
-            eprintln!("Database error getting group member count: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_EDIT_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupEdit"))
                 .await;

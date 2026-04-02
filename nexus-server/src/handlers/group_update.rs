@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
 
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ServerMessage;
@@ -19,6 +20,7 @@ use super::{
     err_permissions_empty_permission, err_permissions_invalid_characters,
     err_permissions_permission_too_long, err_permissions_too_many, err_unknown_permission,
 };
+use crate::constants::*;
 use crate::db::{Permission, Permissions};
 use crate::users::manager::UserManager;
 use crate::voice::send_voice_leave_notifications;
@@ -37,7 +39,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("GroupUpdate request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_GROUP_UPDATE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("GroupUpdate"))
             .await;
@@ -55,10 +57,7 @@ where
 
     // Check GroupEdit permission
     if !requesting_user.has_permission(Permission::GroupEdit) {
-        eprintln!(
-            "GroupUpdate from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_GROUP_UPDATE_PERMISSION_DENIED);
         let response = ServerMessage::GroupUpdateResponse {
             success: false,
             id: None,
@@ -136,7 +135,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            eprintln!("Database error getting group: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_UPDATE_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupUpdate"))
                 .await;
@@ -147,7 +146,7 @@ where
     let current_permissions: Vec<Permission> = match ctx.db.groups.get_group_permissions(id).await {
         Ok(p) => p,
         Err(e) => {
-            eprintln!("Database error getting group permissions: {}", e);
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_UPDATE_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupUpdate"))
                 .await;
@@ -161,7 +160,7 @@ where
         let member_count = match ctx.db.groups.get_member_count(id).await {
             Ok(c) => c,
             Err(e) => {
-                eprintln!("Database error getting member count: {}", e);
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_UPDATE_DB_ERROR);
                 return ctx
                     .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupUpdate"))
                     .await;
@@ -208,10 +207,7 @@ where
             // Reject if requesting a permission the editor doesn't hold
             for perm in &parsed_requested {
                 if !requesting_user.has_permission(*perm) {
-                    eprintln!(
-                        "GroupUpdate from {} (user: {}) trying to grant permission they don't have: {:?}",
-                        ctx.peer_addr, requesting_user.username, perm
-                    );
+                    warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm.as_str(), "{}", LOG_GROUP_UPDATE_UNOWNED_PERMISSION);
                     let response = ServerMessage::GroupUpdateResponse {
                         success: false,
                         id: None,
@@ -273,6 +269,7 @@ where
         .await
     {
         Ok(Some(_)) => {
+            info!(user = %requesting_user.username, ip = %ctx.peer_addr, group = %final_name, "{}", LOG_GROUP_UPDATE_SUCCESS);
             let response = ServerMessage::GroupUpdateResponse {
                 success: true,
                 id: Some(id),
@@ -361,17 +358,18 @@ where
                     let old_session_perms = session.permissions.clone();
 
                     // Re-resolve effective permissions from DB
-                    let new_effective =
-                        match ctx.db.users.get_user_permissions(session.user_id).await {
-                            Ok(p) => p,
-                            Err(e) => {
-                                eprintln!(
-                                    "Database error resolving permissions for user {}: {}",
-                                    session.username, e
-                                );
-                                continue;
-                            }
-                        };
+                    let new_effective = match ctx
+                        .db
+                        .users
+                        .get_user_permissions(session.user_id)
+                        .await
+                    {
+                        Ok(p) => p,
+                        Err(e) => {
+                            error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %session.username, err = %e, "{}", LOG_GROUP_UPDATE_DB_ERROR_PERMISSIONS);
+                            continue;
+                        }
+                    };
 
                     // Update session cache
                     ctx.user_manager
@@ -473,7 +471,7 @@ where
                 };
                 ctx.send_message(&response).await
             } else {
-                eprintln!("Database error updating group: {}", e);
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_UPDATE_DB_ERROR);
                 ctx.send_error_and_disconnect(&err_database(ctx.locale), Some("GroupUpdate"))
                     .await
             }

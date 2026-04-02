@@ -5,6 +5,7 @@ use std::net::IpAddr;
 
 use ipnet::IpNet;
 use tokio::io::AsyncWrite;
+use tracing::{error, info, warn};
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, TargetError};
@@ -13,6 +14,7 @@ use super::{
     HandlerContext, err_authentication, err_not_logged_in, err_permission_denied,
     err_target_too_long, err_trust_not_found,
 };
+use crate::constants::*;
 use crate::db::Permission;
 
 /// Handle TrustDelete command
@@ -31,7 +33,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("TrustDelete request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_TRUST_DELETE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("TrustDelete"))
             .await;
@@ -49,10 +51,7 @@ where
 
     // Check trust_delete permission
     if !requesting_user.has_permission(Permission::TrustDelete) {
-        eprintln!(
-            "TrustDelete from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_TRUST_DELETE_PERMISSION_DENIED);
         let response = ServerMessage::TrustDeleteResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -98,6 +97,7 @@ where
                     }
                 }
 
+                info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_TRUST_DELETE_SUCCESS);
                 let response = ServerMessage::TrustDeleteResponse {
                     success: true,
                     error: None,
@@ -107,7 +107,7 @@ where
                 return ctx.send_message(&response).await;
             }
             Err(e) => {
-                eprintln!("TrustDelete database error for nickname {}: {}", target, e);
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, err = %e, "{}", LOG_TRUST_DELETE_DB_ERROR_NICKNAME);
                 let response = ServerMessage::TrustDeleteResponse {
                     success: false,
                     error: Some(super::err_database(ctx.locale)),
@@ -143,7 +143,7 @@ where
                     all_deleted.extend(deleted);
                 }
                 Err(e) => {
-                    eprintln!("TrustDelete database error for CIDR {}: {}", target, e);
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, err = %e, "{}", LOG_TRUST_DELETE_DB_ERROR_CIDR);
                     let response = ServerMessage::TrustDeleteResponse {
                         success: false,
                         error: Some(super::err_database(ctx.locale)),
@@ -175,6 +175,7 @@ where
                 cache.remove_trust(&net.to_string());
             }
 
+            info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_TRUST_DELETE_SUCCESS);
             let response = ServerMessage::TrustDeleteResponse {
                 success: true,
                 error: None,
@@ -198,6 +199,7 @@ where
                     cache.remove_trust(&target);
                 }
 
+                info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_TRUST_DELETE_SUCCESS);
                 let response = ServerMessage::TrustDeleteResponse {
                     success: true,
                     error: None,
@@ -217,7 +219,7 @@ where
                 return ctx.send_message(&response).await;
             }
             Err(e) => {
-                eprintln!("TrustDelete database error for IP {}: {}", target, e);
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, err = %e, "{}", LOG_TRUST_DELETE_DB_ERROR_IP);
                 let response = ServerMessage::TrustDeleteResponse {
                     success: false,
                     error: Some(super::err_database(ctx.locale)),

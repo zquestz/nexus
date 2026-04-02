@@ -107,6 +107,12 @@ pub const DEFAULT_SERVER_IMAGE: &str = "";
 /// Database directory name
 pub const DATA_DIR_NAME: &str = "nexusd";
 
+/// Logs directory name (inside data dir)
+pub const LOGS_DIR_NAME: &str = "logs";
+
+/// Log file prefix (tracing-appender appends date, e.g. nexusd.2025-07-11)
+pub const LOG_FILE_PREFIX: &str = "nexusd";
+
 /// Database file name
 pub const DATABASE_FILENAME: &str = "nexus.db";
 
@@ -226,6 +232,12 @@ pub const MSG_CERT_GENERATED: &str = "Certificate generated: ";
 /// Private key file generated message
 pub const MSG_KEY_GENERATED: &str = "Private key generated: ";
 
+/// Log level display
+pub const MSG_LOG_LEVEL: &str = "Log level: ";
+
+/// Log directory display
+pub const MSG_LOG_DIR: &str = "Log directory: ";
+
 /// Shutdown signal received message
 pub const MSG_SHUTDOWN_RECEIVED: &str = "\nShutdown signal received";
 
@@ -242,9 +254,6 @@ pub const ERR_DATABASE_INIT: &str = "Failed to initialize database: ";
 /// Database path error
 pub const ERR_DB_PATH_NO_PARENT: &str = "Database path should have a parent directory";
 
-/// Database directory creation error
-pub const ERR_CREATE_DB_DIR: &str = "Failed to create directory: ";
-
 /// Data directory error
 pub const ERR_NO_DATA_DIR: &str = "Unable to determine data directory for your platform";
 
@@ -253,21 +262,6 @@ pub const ERR_TLS_INIT: &str = "Failed to initialize TLS: ";
 
 /// Server bind error
 pub const ERR_BIND_FAILED: &str = "Failed to bind to ";
-
-/// Connection handling error
-pub const ERR_CONNECTION: &str = "Error handling connection from ";
-
-/// Connection accept error
-pub const ERR_ACCEPT: &str = "Failed to accept connection: ";
-
-/// Message handling error
-pub const ERR_HANDLING_MESSAGE: &str = "Error handling message: ";
-
-/// Message parsing error
-pub const ERR_PARSE_MESSAGE: &str = "Failed to parse message from ";
-
-/// Connection limit exceeded error (debug only)
-pub const ERR_CONNECTION_LIMIT: &str = "Connection limit exceeded for IP: ";
 
 /// File permissions error
 #[cfg(unix)]
@@ -353,9 +347,6 @@ pub const ERR_CREATE_TLS_CONFIG: &str = "Failed to create TLS configuration: ";
 // UPnP Messages (operator-facing)
 // =============================================================================
 
-/// UPnP configuration success message (single line summary)
-pub const MSG_UPNP_CONFIGURED: &str = "UPnP: ";
-
 /// UPnP setup failure warning
 pub const MSG_UPNP_WARNING: &str = "Warning: UPnP setup failed: ";
 
@@ -365,22 +356,6 @@ pub const MSG_UPNP_CONTINUE: &str = "Server will continue without UPnP port forw
 /// UPnP manual configuration suggestion
 pub const MSG_UPNP_MANUAL: &str =
     "You may need to manually configure port forwarding on your router.";
-
-/// UPnP lease renewal failure warning
-pub const WARN_UPNP_RENEW_FAILED: &str = "Warning: Failed to renew UPnP lease: ";
-
-/// UPnP port expiration warning
-pub const WARN_UPNP_PORT_EXPIRE: &str =
-    "Port forwarding may expire. You may need to restart the server.";
-
-/// UPnP rediscovery attempt message
-pub const MSG_UPNP_REDISCOVERING: &str = "Attempting to rediscover UPnP gateway...";
-
-/// UPnP rediscovery success message
-pub const MSG_UPNP_REDISCOVERED: &str = "UPnP gateway rediscovered, port mappings restored.";
-
-/// UPnP rediscovery failure warning
-pub const WARN_UPNP_REDISCOVER_FAILED: &str = "Warning: Failed to rediscover UPnP gateway: ";
 
 /// UPnP mapping removal failure warning
 pub const WARN_UPNP_REMOVE_MAPPING_FAILED: &str = "Warning: Failed to remove UPnP port mapping: ";
@@ -483,17 +458,8 @@ pub const LOCALE_ITALIAN: &str = "it";
 /// Supported locale: Dutch
 pub const LOCALE_DUTCH: &str = "nl";
 
-/// Error when translation key is missing (format: key, locale)
-pub const ERR_I18N_MISSING_KEY: &str = "Missing translation key";
-
 /// Error when translation key is missing in English (format: key)
 pub const ERR_I18N_MISSING_KEY_ENGLISH: &str = "Missing translation key in English";
-
-/// Error when translation has formatting errors (format: key, errors)
-pub const ERR_I18N_TRANSLATION_ERRORS: &str = "Translation errors for key";
-
-/// "for locale: " - used in i18n error messages
-pub const MSG_I18N_FOR_LOCALE: &str = "for locale";
 
 /// Error when FTL file parsing fails
 pub const ERR_I18N_PARSE_FTL: &str = "Failed to parse FTL file";
@@ -538,3 +504,381 @@ pub const ERR_FILE_INVALID_AREA_ROOT: &str = "Area root must be an absolute path
 
 /// Error when message channel is closed (connection dropped)
 pub const ERR_CHANNEL_CLOSED: &str = "channel closed";
+
+// =============================================================================
+// Log Messages
+// =============================================================================
+
+// --- Connection / Main ---
+pub const LOG_ACCEPT_ERROR: &str = "Accept error";
+pub const LOG_CONNECTION_ERROR: &str = "Connection error";
+pub const LOG_CONNECTION_ERROR_TLS: &str = "Connection error (TLS handshake)";
+pub const LOG_CONNECTION_LIMIT: &str = "Connection limit reached";
+pub const LOG_DISCONNECTED: &str = "Disconnected";
+pub const LOG_ERROR_HANDLING_MESSAGE: &str = "Error handling message";
+pub const LOG_LOGGING_INIT_FAILED: &str = "Logging init failed";
+pub const LOG_PARSE_MESSAGE_ERROR: &str = "Parse message error";
+pub const LOG_REJECTED_BANNED_IP: &str = "Rejected banned IP";
+pub const LOG_REJECTED_BANNED_IP_TRANSFER: &str = "Rejected banned IP on transfer port";
+pub const LOG_REJECTED_BANNED_IP_WS: &str = "Rejected banned IP on WebSocket port";
+pub const LOG_REJECTED_BANNED_IP_WS_TRANSFER: &str =
+    "Rejected banned IP on WebSocket transfer port";
+pub const LOG_TRANSFER_ON_MAIN_PORT: &str = "Transfer message received on main port";
+
+// --- Startup / Shutdown ---
+pub const LOG_CLEANUP_EXPIRED: &str = "Cleaned up expired entries";
+pub const LOG_CLEANUP_EXPIRED_BANS_FAILED: &str = "Failed to cleanup expired bans";
+pub const LOG_CLEANUP_EXPIRED_TRUSTS_FAILED: &str = "Failed to cleanup expired trusts";
+pub const LOG_LOADED_CACHE: &str = "Loaded entries into cache";
+pub const LOG_LOAD_BANS_FAILED: &str = "Failed to load bans";
+pub const LOG_LOAD_TRUSTS_FAILED: &str = "Failed to load trusts";
+pub const LOG_CHANNEL_SETTINGS_CREATE_FAILED: &str = "Failed to create channel settings";
+pub const LOG_CHANNEL_SETTINGS_LOAD_FAILED: &str = "Failed to load channel settings";
+pub const LOG_CHANNEL_SETTINGS_DELETE_FAILED: &str = "Failed to delete stale channel settings";
+pub const LOG_CHANNEL_SETTINGS_PRUNED: &str = "Pruned stale channel settings";
+pub const LOG_CHANNELS_INITIALIZED: &str = "Initialized persistent channels";
+pub const LOG_FILE_INDEX_DIRTY: &str = "File index is dirty, triggering reindex";
+pub const LOG_VOICE_DTLS_FAILED: &str = "Voice DTLS listener failed";
+pub const LOG_VOICE_UNAVAILABLE: &str = "Voice chat will be unavailable";
+
+// --- Database ---
+pub const LOG_DB_DIR_CREATE_FAILED: &str = "Failed to create database directory";
+
+// --- File Index ---
+pub const LOG_FILE_INDEX_REBUILT: &str = "File index rebuilt";
+pub const LOG_FILE_INDEX_BUILD_FAILED: &str = "Failed to build file index";
+pub const LOG_FILE_INDEX_SEARCH_FAILED: &str = "Search failed, index may be corrupted";
+pub const LOG_FILE_INDEX_DELETE_FAILED: &str = "Failed to delete corrupted index";
+
+// --- i18n ---
+pub const LOG_TRANSLATION_ERRORS: &str = "Translation errors";
+pub const LOG_MISSING_TRANSLATION_KEY: &str = "Missing translation key";
+
+// --- UPnP ---
+pub const LOG_UPNP_CONFIGURED: &str = "UPnP configured";
+pub const LOG_UPNP_RENEWAL_FAILED: &str = "UPnP lease renewal failed";
+pub const LOG_UPNP_REDISCOVERING: &str = "UPnP rediscovering gateway";
+pub const LOG_UPNP_REDISCOVERED: &str = "UPnP gateway rediscovered";
+pub const LOG_UPNP_REDISCOVERY_FAILED: &str = "UPnP rediscovery failed";
+pub const LOG_UPNP_PORT_EXPIRE: &str = "UPnP port mappings may expire";
+
+// --- Transfers ---
+pub const LOG_TRANSFER_CONNECTION: &str = "Transfer: connection";
+pub const LOG_TRANSFER_HANDSHAKE_FAILED: &str = "Transfer: handshake failed";
+pub const LOG_TRANSFER_LOGIN_FAILED: &str = "Transfer: login failed";
+pub const LOG_TRANSFER_AUTHENTICATED: &str = "Transfer: authenticated";
+pub const LOG_TRANSFER_REQUEST_FAILED: &str = "Transfer: request failed";
+pub const LOG_TRANSFER_COMPLETE: &str = "Transfer: complete";
+
+pub const LOG_DOWNLOAD_SCAN_FAILED: &str = "Download: failed to scan files";
+pub const LOG_DOWNLOAD_STARTING: &str = "Download: starting";
+pub const LOG_DOWNLOAD_SEND_FAILED: &str = "Download: failed to send response";
+pub const LOG_DOWNLOAD_BANNED: &str = "Download: terminated by ban";
+pub const LOG_DOWNLOAD_HASH_MISMATCH: &str = "Download: resume hash mismatch";
+pub const LOG_DOWNLOAD_STREAM_ERROR: &str = "Download: streaming error";
+pub const LOG_DOWNLOAD_COMPLETE: &str = "Download: complete";
+pub const LOG_DOWNLOAD_FAILED: &str = "Download: failed";
+pub const LOG_DOWNLOAD_RESUMING: &str = "Download: resuming";
+pub const LOG_DOWNLOAD_SENDING: &str = "Download: sending";
+pub const LOG_DOWNLOAD_ALREADY_COMPLETE: &str = "Download: already complete";
+
+pub const LOG_UPLOAD_STARTING: &str = "Upload: starting";
+pub const LOG_UPLOAD_SEND_FAILED: &str = "Upload: failed to send response";
+pub const LOG_UPLOAD_BANNED: &str = "Upload: terminated by ban";
+pub const LOG_UPLOAD_ERROR: &str = "Upload: error receiving file";
+pub const LOG_UPLOAD_COMPLETE: &str = "Upload: complete";
+pub const LOG_UPLOAD_FAILED: &str = "Upload: failed";
+pub const LOG_UPLOAD_RECEIVING: &str = "Upload: receiving file";
+pub const LOG_UPLOAD_EMPTY_FILE: &str = "Upload: created empty file";
+pub const LOG_UPLOAD_ALREADY_COMPLETE: &str = "Upload: file already complete";
+pub const LOG_UPLOAD_RESUMING: &str = "Upload: resuming";
+pub const LOG_UPLOAD_RECEIVED: &str = "Upload: received data";
+pub const LOG_UPLOAD_HASH_VERIFIED: &str = "Upload: hash verified";
+
+// --- File Scanning ---
+pub const LOG_SCAN_DIRECTORY: &str = "Scanning directory";
+pub const LOG_SCAN_ENTRY: &str = "Processing entry";
+pub const LOG_SCAN_METADATA_FAILED: &str = "Skipping entry, metadata failed";
+pub const LOG_SCAN_NON_UTF8: &str = "Skipping non-UTF-8 filename";
+pub const LOG_SCAN_DROPBOX_DENIED: &str = "Skipping, dropbox access denied";
+pub const LOG_SCAN_ADDING_FILE: &str = "Adding file";
+pub const LOG_SCAN_RECURSING: &str = "Recursing into directory";
+pub const LOG_SCAN_SPECIAL_FILE: &str = "Skipping special file";
+pub const LOG_SCAN_DONE: &str = "Done scanning directory";
+
+// --- Voice DTLS ---
+pub const LOG_VOICE_REJECTED_BANNED: &str = "Voice DTLS: rejected banned IP";
+pub const LOG_VOICE_REJECTED_NO_SESSION: &str = "Voice DTLS: rejected, no voice session";
+pub const LOG_VOICE_NEW_CONNECTION: &str = "Voice DTLS: new connection";
+pub const LOG_VOICE_ACCEPT_ERROR: &str = "Voice DTLS: accept error";
+pub const LOG_VOICE_CONNECTION_CLOSED: &str = "Voice DTLS: connection closed";
+pub const LOG_VOICE_READ_ERROR: &str = "Voice DTLS: read error";
+pub const LOG_VOICE_CONNECTION_TIMEOUT: &str = "Voice DTLS: connection timeout";
+pub const LOG_VOICE_INVALID_PACKET: &str = "Voice DTLS: invalid packet";
+pub const LOG_VOICE_SESSION_NOT_FOUND: &str = "Voice DTLS: session not found, closing connection";
+pub const LOG_VOICE_KEEPALIVE: &str = "Voice DTLS: keepalive";
+pub const LOG_VOICE_NO_PERMISSION: &str =
+    "Voice DTLS: lacks voice_talk permission, dropping packet";
+pub const LOG_VOICE_RELAY_FAILED: &str = "Voice DTLS: failed to relay";
+pub const LOG_VOICE_CLEANUP_TIMEOUT: &str = "Voice DTLS: cleanup timed out client";
+pub const LOG_VOICE_STALE_SESSION: &str =
+    "Voice DTLS: removed stale voice session, no UDP connection";
+
+// --- Handler: Ban ---
+pub const LOG_BAN_CREATE_NOT_LOGGED_IN: &str = "BanCreate: not logged in";
+pub const LOG_BAN_CREATE_PERMISSION_DENIED: &str = "BanCreate: permission denied";
+pub const LOG_BAN_CREATE_ADMIN_NICKNAME: &str = "BanCreate: attempted to ban admin by nickname";
+pub const LOG_BAN_CREATE_ADMIN_CIDR: &str = "BanCreate: attempted to ban CIDR with admin connected";
+pub const LOG_BAN_CREATE_ADMIN_IP: &str = "BanCreate: attempted to ban IP with admin connected";
+pub const LOG_BAN_CREATE_DB_ERROR: &str = "BanCreate: database error";
+pub const LOG_BAN_CREATE_SUCCESS: &str = "BanCreate: success";
+pub const LOG_BAN_DELETE_NOT_LOGGED_IN: &str = "BanDelete: not logged in";
+pub const LOG_BAN_DELETE_PERMISSION_DENIED: &str = "BanDelete: permission denied";
+pub const LOG_BAN_DELETE_DB_ERROR_NICKNAME: &str = "BanDelete: database error for nickname";
+pub const LOG_BAN_DELETE_DB_ERROR_CIDR: &str = "BanDelete: database error for CIDR";
+pub const LOG_BAN_DELETE_DB_ERROR_IP: &str = "BanDelete: database error for IP";
+pub const LOG_BAN_DELETE_SUCCESS: &str = "BanDelete: success";
+pub const LOG_BAN_LIST_NOT_LOGGED_IN: &str = "BanList: not logged in";
+pub const LOG_BAN_LIST_PERMISSION_DENIED: &str = "BanList: permission denied";
+pub const LOG_BAN_LIST_DB_ERROR: &str = "BanList: database error";
+
+// --- Handler: Trust ---
+pub const LOG_TRUST_CREATE_NOT_LOGGED_IN: &str = "TrustCreate: not logged in";
+pub const LOG_TRUST_CREATE_PERMISSION_DENIED: &str = "TrustCreate: permission denied";
+pub const LOG_TRUST_CREATE_DB_ERROR: &str = "TrustCreate: database error";
+pub const LOG_TRUST_CREATE_SUCCESS: &str = "TrustCreate: success";
+pub const LOG_TRUST_DELETE_NOT_LOGGED_IN: &str = "TrustDelete: not logged in";
+pub const LOG_TRUST_DELETE_PERMISSION_DENIED: &str = "TrustDelete: permission denied";
+pub const LOG_TRUST_DELETE_DB_ERROR_NICKNAME: &str = "TrustDelete: database error for nickname";
+pub const LOG_TRUST_DELETE_DB_ERROR_CIDR: &str = "TrustDelete: database error for CIDR";
+pub const LOG_TRUST_DELETE_DB_ERROR_IP: &str = "TrustDelete: database error for IP";
+pub const LOG_TRUST_DELETE_SUCCESS: &str = "TrustDelete: success";
+pub const LOG_TRUST_LIST_NOT_LOGGED_IN: &str = "TrustList: not logged in";
+pub const LOG_TRUST_LIST_PERMISSION_DENIED: &str = "TrustList: permission denied";
+pub const LOG_TRUST_LIST_DB_ERROR: &str = "TrustList: database error";
+
+// --- Handler: User ---
+pub const LOG_USER_CREATE_NOT_LOGGED_IN: &str = "UserCreate: not logged in";
+pub const LOG_USER_CREATE_PERMISSION_DENIED: &str = "UserCreate: permission denied";
+pub const LOG_USER_CREATE_UNOWNED_PERMISSION: &str =
+    "UserCreate: tried to grant unowned permission";
+pub const LOG_USER_CREATE_UNOWNED_REVOKE: &str = "UserCreate: tried to revoke unowned permission";
+pub const LOG_USER_CREATE_UNOWNED_GROUP: &str =
+    "UserCreate: tried to assign group with unowned permission";
+pub const LOG_USER_CREATE_DB_ERROR: &str = "UserCreate: database error";
+pub const LOG_USER_CREATE_HASH_ERROR: &str = "UserCreate: password hashing error";
+pub const LOG_USER_CREATE_SUCCESS: &str = "UserCreate: success";
+pub const LOG_USER_DELETE_NOT_LOGGED_IN: &str = "UserDelete: not logged in";
+pub const LOG_USER_DELETE_PERMISSION_DENIED: &str = "UserDelete: permission denied";
+pub const LOG_USER_DELETE_ADMIN: &str = "UserDelete: attempted to delete admin user";
+pub const LOG_USER_DELETE_DB_ERROR: &str = "UserDelete: database error";
+pub const LOG_USER_DELETE_SUCCESS: &str = "UserDelete: success";
+pub const LOG_USER_UPDATE_NOT_LOGGED_IN: &str = "UserUpdate: not logged in";
+pub const LOG_USER_UPDATE_PERMISSION_DENIED: &str = "UserUpdate: permission denied";
+pub const LOG_USER_UPDATE_ADMIN: &str = "UserUpdate: tried to edit admin user";
+pub const LOG_USER_UPDATE_UNOWNED_PERMISSION: &str =
+    "UserUpdate: tried to grant unowned permission";
+pub const LOG_USER_UPDATE_UNOWNED_REVOKE: &str = "UserUpdate: tried to revoke unowned permission";
+pub const LOG_USER_UPDATE_DB_ERROR: &str = "UserUpdate: database error";
+pub const LOG_USER_UPDATE_DB_ERROR_LOOKUP: &str = "UserUpdate: database error looking up user";
+pub const LOG_USER_UPDATE_DB_ERROR_TARGET: &str = "UserUpdate: database error getting target user";
+pub const LOG_USER_UPDATE_DB_ERROR_USER: &str = "UserUpdate: database error getting user";
+pub const LOG_USER_UPDATE_DB_ERROR_PERMISSIONS: &str =
+    "UserUpdate: database error fetching permissions for merge";
+pub const LOG_USER_UPDATE_DB_ERROR_GROUP: &str = "UserUpdate: database error fetching group";
+pub const LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS: &str =
+    "UserUpdate: database error fetching group permissions";
+pub const LOG_USER_UPDATE_PASSWORD_VERIFY: &str = "UserUpdate: password verification error";
+pub const LOG_USER_UPDATE_HASH_ERROR: &str = "UserUpdate: password hashing error";
+pub const LOG_USER_UPDATE_SUCCESS: &str = "UserUpdate: success";
+pub const LOG_USER_KICK_NOT_LOGGED_IN: &str = "UserKick: not logged in";
+pub const LOG_USER_KICK_PERMISSION_DENIED: &str = "UserKick: permission denied";
+pub const LOG_USER_KICK_DB_ERROR: &str = "UserKick: database error";
+pub const LOG_USER_KICK_SUCCESS: &str = "UserKick: success";
+pub const LOG_USER_EDIT_NOT_LOGGED_IN: &str = "UserEdit: not logged in";
+pub const LOG_USER_EDIT_PERMISSION_DENIED: &str = "UserEdit: permission denied";
+pub const LOG_USER_EDIT_ADMIN: &str = "UserEdit: attempted to edit admin user";
+pub const LOG_USER_EDIT_DB_ERROR: &str = "UserEdit: database error";
+pub const LOG_USER_INFO_NOT_LOGGED_IN: &str = "UserInfo: not logged in";
+pub const LOG_USER_INFO_PERMISSION_DENIED: &str = "UserInfo: permission denied";
+pub const LOG_USER_LIST_NOT_LOGGED_IN: &str = "UserList: not logged in";
+pub const LOG_USER_LIST_PERMISSION_DENIED: &str = "UserList: permission denied";
+pub const LOG_USER_LIST_DB_ERROR: &str = "UserList: database error";
+pub const LOG_USER_AWAY_NOT_LOGGED_IN: &str = "UserAway: not logged in";
+pub const LOG_USER_BACK_NOT_LOGGED_IN: &str = "UserBack: not logged in";
+pub const LOG_USER_STATUS_NOT_LOGGED_IN: &str = "UserStatus: not logged in";
+pub const LOG_USER_MESSAGE_NOT_LOGGED_IN: &str = "UserMessage: not logged in";
+pub const LOG_USER_MESSAGE_PERMISSION_DENIED: &str = "UserMessage: permission denied";
+pub const LOG_USER_BROADCAST_NOT_LOGGED_IN: &str = "UserBroadcast: not logged in";
+pub const LOG_USER_BROADCAST_PERMISSION_DENIED: &str = "UserBroadcast: permission denied";
+
+// --- Handler: Group ---
+pub const LOG_GROUP_CREATE_NOT_LOGGED_IN: &str = "GroupCreate: not logged in";
+pub const LOG_GROUP_CREATE_PERMISSION_DENIED: &str = "GroupCreate: permission denied";
+pub const LOG_GROUP_CREATE_UNOWNED_PERMISSION: &str =
+    "GroupCreate: tried to grant unowned permission";
+pub const LOG_GROUP_CREATE_DB_ERROR: &str = "GroupCreate: database error";
+pub const LOG_GROUP_CREATE_SUCCESS: &str = "GroupCreate: success";
+pub const LOG_GROUP_DELETE_NOT_LOGGED_IN: &str = "GroupDelete: not logged in";
+pub const LOG_GROUP_DELETE_PERMISSION_DENIED: &str = "GroupDelete: permission denied";
+pub const LOG_GROUP_DELETE_DB_ERROR: &str = "GroupDelete: database error";
+pub const LOG_GROUP_DELETE_SUCCESS: &str = "GroupDelete: success";
+pub const LOG_GROUP_UPDATE_NOT_LOGGED_IN: &str = "GroupUpdate: not logged in";
+pub const LOG_GROUP_UPDATE_PERMISSION_DENIED: &str = "GroupUpdate: permission denied";
+pub const LOG_GROUP_UPDATE_UNOWNED_PERMISSION: &str =
+    "GroupUpdate: tried to grant unowned permission";
+pub const LOG_GROUP_UPDATE_DB_ERROR: &str = "GroupUpdate: database error";
+pub const LOG_GROUP_UPDATE_DB_ERROR_PERMISSIONS: &str =
+    "GroupUpdate: database error resolving permissions";
+pub const LOG_GROUP_UPDATE_SUCCESS: &str = "GroupUpdate: success";
+pub const LOG_GROUP_EDIT_NOT_LOGGED_IN: &str = "GroupEdit: not logged in";
+pub const LOG_GROUP_EDIT_PERMISSION_DENIED: &str = "GroupEdit: permission denied";
+pub const LOG_GROUP_EDIT_DB_ERROR: &str = "GroupEdit: database error";
+pub const LOG_GROUP_LIST_NOT_LOGGED_IN: &str = "GroupList: not logged in";
+pub const LOG_GROUP_LIST_PERMISSION_DENIED: &str = "GroupList: permission denied";
+pub const LOG_GROUP_LIST_DB_ERROR: &str = "GroupList: database error";
+
+// --- Handler: Chat ---
+pub const LOG_CHAT_SEND_NOT_LOGGED_IN: &str = "ChatSend: not logged in";
+pub const LOG_CHAT_SEND_PERMISSION_DENIED: &str = "ChatSend: permission denied";
+pub const LOG_CHAT_JOIN_NOT_LOGGED_IN: &str = "ChatJoin: not logged in";
+pub const LOG_CHAT_JOIN_PERMISSION_DENIED: &str = "ChatJoin: permission denied";
+pub const LOG_CHAT_JOIN_CREATE_DENIED: &str = "ChatJoin: ChatCreate permission denied";
+pub const LOG_CHAT_LEAVE_NOT_LOGGED_IN: &str = "ChatLeave: not logged in";
+pub const LOG_CHAT_LIST_NOT_LOGGED_IN: &str = "ChatList: not logged in";
+pub const LOG_CHAT_LIST_PERMISSION_DENIED: &str = "ChatList: permission denied";
+pub const LOG_CHAT_SECRET_NOT_LOGGED_IN: &str = "ChatSecret: not logged in";
+pub const LOG_CHAT_SECRET_PERMISSION_DENIED: &str = "ChatSecret: permission denied";
+pub const LOG_CHAT_SECRET_DB_ERROR: &str = "ChatSecret: database error";
+pub const LOG_CHAT_TOPIC_NOT_LOGGED_IN: &str = "ChatTopicUpdate: not logged in";
+pub const LOG_CHAT_TOPIC_PERMISSION_DENIED: &str = "ChatTopicUpdate: permission denied";
+pub const LOG_CHAT_TOPIC_DB_ERROR: &str = "ChatTopicUpdate: database error";
+
+// --- Handler: News ---
+pub const LOG_NEWS_CREATE_NOT_LOGGED_IN: &str = "NewsCreate: not logged in";
+pub const LOG_NEWS_CREATE_PERMISSION_DENIED: &str = "NewsCreate: permission denied";
+pub const LOG_NEWS_CREATE_DB_ERROR: &str = "NewsCreate: database error";
+pub const LOG_NEWS_CREATE_SUCCESS: &str = "NewsCreate: success";
+pub const LOG_NEWS_DELETE_NOT_LOGGED_IN: &str = "NewsDelete: not logged in";
+pub const LOG_NEWS_DELETE_PERMISSION_DENIED: &str = "NewsDelete: permission denied";
+pub const LOG_NEWS_DELETE_ADMIN: &str = "NewsDelete: attempted to delete admin news";
+pub const LOG_NEWS_DELETE_DB_ERROR_GET: &str = "NewsDelete: database error getting news";
+pub const LOG_NEWS_DELETE_DB_ERROR_DELETE: &str = "NewsDelete: database error deleting news";
+pub const LOG_NEWS_DELETE_SUCCESS: &str = "NewsDelete: success";
+pub const LOG_NEWS_EDIT_NOT_LOGGED_IN: &str = "NewsEdit: not logged in";
+pub const LOG_NEWS_EDIT_PERMISSION_DENIED: &str = "NewsEdit: permission denied";
+pub const LOG_NEWS_EDIT_ADMIN: &str = "NewsEdit: attempted to edit admin news";
+pub const LOG_NEWS_EDIT_DB_ERROR: &str = "NewsEdit: database error";
+pub const LOG_NEWS_LIST_NOT_LOGGED_IN: &str = "NewsList: not logged in";
+pub const LOG_NEWS_LIST_PERMISSION_DENIED: &str = "NewsList: permission denied";
+pub const LOG_NEWS_LIST_DB_ERROR: &str = "NewsList: database error";
+pub const LOG_NEWS_SHOW_NOT_LOGGED_IN: &str = "NewsShow: not logged in";
+pub const LOG_NEWS_SHOW_PERMISSION_DENIED: &str = "NewsShow: permission denied";
+pub const LOG_NEWS_SHOW_DB_ERROR: &str = "NewsShow: database error";
+pub const LOG_NEWS_UPDATE_NOT_LOGGED_IN: &str = "NewsUpdate: not logged in";
+pub const LOG_NEWS_UPDATE_PERMISSION_DENIED: &str = "NewsUpdate: permission denied";
+pub const LOG_NEWS_UPDATE_ADMIN: &str = "NewsUpdate: attempted to edit admin news";
+pub const LOG_NEWS_UPDATE_DB_ERROR_GET: &str = "NewsUpdate: database error getting news";
+pub const LOG_NEWS_UPDATE_DB_ERROR: &str = "NewsUpdate: database error";
+pub const LOG_NEWS_UPDATE_SUCCESS: &str = "NewsUpdate: success";
+
+// --- Handler: File ---
+pub const LOG_FILE_COPY_NOT_LOGGED_IN: &str = "FileCopy: not logged in";
+pub const LOG_FILE_COPY_PERMISSION_DENIED: &str = "FileCopy: permission denied";
+pub const LOG_FILE_COPY_ROOT_DENIED: &str = "FileCopy: file_root permission denied";
+pub const LOG_FILE_COPY_DELETE_DENIED: &str = "FileCopy: file_delete permission denied";
+pub const LOG_FILE_COPY_REMOVE_FAILED: &str = "FileCopy: failed to remove existing target";
+pub const LOG_FILE_COPY_FAILED: &str = "FileCopy: failed";
+pub const LOG_FILE_COPY_SUCCESS: &str = "FileCopy: success";
+pub const LOG_FILE_CREATE_DIR_NOT_LOGGED_IN: &str = "FileCreateDir: not logged in";
+pub const LOG_FILE_CREATE_DIR_ROOT_DENIED: &str = "FileCreateDir: file_root permission denied";
+pub const LOG_FILE_CREATE_DIR_PERMISSION_DENIED: &str = "FileCreateDir: permission denied";
+pub const LOG_FILE_CREATE_DIR_FAILED: &str = "FileCreateDir: failed";
+pub const LOG_FILE_CREATE_DIR_SUCCESS: &str = "FileCreateDir: success";
+pub const LOG_FILE_DELETE_NOT_LOGGED_IN: &str = "FileDelete: not logged in";
+pub const LOG_FILE_DELETE_PERMISSION_DENIED: &str = "FileDelete: permission denied";
+pub const LOG_FILE_DELETE_ROOT_DENIED: &str = "FileDelete: file_root permission denied";
+pub const LOG_FILE_DELETE_SUCCESS: &str = "FileDelete: success";
+pub const LOG_FILE_DELETE_FAILED: &str = "FileDelete: failed";
+pub const LOG_FILE_INFO_NOT_LOGGED_IN: &str = "FileInfo: not logged in";
+pub const LOG_FILE_INFO_PERMISSION_DENIED: &str = "FileInfo: permission denied";
+pub const LOG_FILE_INFO_ROOT_DENIED: &str = "FileInfo: file_root permission denied";
+pub const LOG_FILE_LIST_NOT_LOGGED_IN: &str = "FileList: not logged in";
+pub const LOG_FILE_LIST_PERMISSION_DENIED: &str = "FileList: permission denied";
+pub const LOG_FILE_LIST_ROOT_DENIED: &str = "FileList: file_root permission denied";
+pub const LOG_FILE_MOVE_NOT_LOGGED_IN: &str = "FileMove: not logged in";
+pub const LOG_FILE_MOVE_PERMISSION_DENIED: &str = "FileMove: permission denied";
+pub const LOG_FILE_MOVE_ROOT_DENIED: &str = "FileMove: file_root permission denied";
+pub const LOG_FILE_MOVE_DELETE_DENIED: &str = "FileMove: file_delete permission denied";
+pub const LOG_FILE_MOVE_REMOVE_FAILED: &str = "FileMove: failed to remove existing target";
+pub const LOG_FILE_MOVE_FAILED: &str = "FileMove: failed";
+pub const LOG_FILE_MOVE_SUCCESS: &str = "FileMove: success";
+pub const LOG_FILE_RENAME_NOT_LOGGED_IN: &str = "FileRename: not logged in";
+pub const LOG_FILE_RENAME_PERMISSION_DENIED: &str = "FileRename: permission denied";
+pub const LOG_FILE_RENAME_ROOT_DENIED: &str = "FileRename: file_root permission denied";
+pub const LOG_FILE_RENAME_FAILED: &str = "FileRename: failed";
+pub const LOG_FILE_RENAME_SUCCESS: &str = "FileRename: success";
+pub const LOG_FILE_REINDEX_NOT_LOGGED_IN: &str = "FileReindex: not logged in";
+pub const LOG_FILE_REINDEX_PERMISSION_DENIED: &str = "FileReindex: permission denied";
+pub const LOG_FILE_REINDEX_TRIGGERED: &str = "FileReindex: triggered";
+pub const LOG_FILE_REINDEX_IN_PROGRESS: &str = "FileReindex: already in progress";
+pub const LOG_FILE_SEARCH_NOT_LOGGED_IN: &str = "FileSearch: not logged in";
+pub const LOG_FILE_SEARCH_PERMISSION_DENIED: &str = "FileSearch: permission denied";
+pub const LOG_FILE_SEARCH_ROOT_DENIED: &str = "FileSearch: file_root permission denied";
+pub const LOG_FILE_SEARCH_ERROR: &str = "FileSearch: search error";
+pub const LOG_FILE_SEARCH_PANIC: &str = "FileSearch: task panicked";
+
+// --- Handler: Server Info ---
+pub const LOG_SERVER_INFO_NOT_LOGGED_IN: &str = "ServerInfoUpdate: not logged in";
+pub const LOG_SERVER_INFO_ADMIN_REQUIRED: &str = "ServerInfoUpdate: admin required";
+pub const LOG_SERVER_INFO_DB_NAME: &str = "ServerInfoUpdate: database error setting server name";
+pub const LOG_SERVER_INFO_DB_DESC: &str =
+    "ServerInfoUpdate: database error setting server description";
+pub const LOG_SERVER_INFO_DB_CONNECTIONS: &str =
+    "ServerInfoUpdate: database error setting max_connections_per_ip";
+pub const LOG_SERVER_INFO_DB_TRANSFERS: &str =
+    "ServerInfoUpdate: database error setting max_transfers_per_ip";
+pub const LOG_SERVER_INFO_DB_IMAGE: &str = "ServerInfoUpdate: database error setting server image";
+pub const LOG_SERVER_INFO_DB_REINDEX: &str =
+    "ServerInfoUpdate: database error setting file_reindex_interval";
+pub const LOG_SERVER_INFO_DB_PERSISTENT: &str =
+    "ServerInfoUpdate: database error setting persistent_channels";
+pub const LOG_SERVER_INFO_DB_AUTO_JOIN: &str =
+    "ServerInfoUpdate: database error setting auto_join_channels";
+pub const LOG_SERVER_INFO_DB_PASSWORD: &str =
+    "ServerInfoUpdate: database error setting min_password_strength";
+pub const LOG_SERVER_INFO_CHANNEL_CREATE_FAILED: &str =
+    "ServerInfoUpdate: failed to create channel settings";
+pub const LOG_SERVER_INFO_CHANNEL_DELETE_FAILED: &str =
+    "ServerInfoUpdate: failed to delete channel settings";
+pub const LOG_SERVER_INFO_SUCCESS: &str = "ServerInfoUpdate: success";
+
+// --- Handler: Connection Monitor ---
+pub const LOG_CONN_MONITOR_NOT_LOGGED_IN: &str = "ConnectionMonitor: not logged in";
+pub const LOG_CONN_MONITOR_PERMISSION_DENIED: &str = "ConnectionMonitor: permission denied";
+
+// --- Handler: Handshake ---
+pub const LOG_HANDSHAKE_DUPLICATE: &str = "Handshake: duplicate attempt";
+pub const LOG_HANDSHAKE_MAJOR_MISMATCH: &str = "Handshake: major version mismatch";
+pub const LOG_HANDSHAKE_MINOR_MISMATCH: &str = "Handshake: minor version mismatch";
+pub const LOG_HANDSHAKE_CLIENT_TOO_NEW: &str = "Handshake: client too new";
+
+// --- Handler: Login ---
+pub const LOG_LOGIN_HANDSHAKE_REQUIRED: &str = "Login: handshake required";
+pub const LOG_LOGIN_ALREADY_LOGGED_IN: &str = "Login: already logged in";
+pub const LOG_LOGIN_INVALID_CREDENTIALS: &str = "Login: invalid credentials";
+pub const LOG_LOGIN_ACCOUNT_DISABLED: &str = "Login: account disabled";
+pub const LOG_LOGIN_SUCCESS: &str = "Login: success";
+pub const LOG_LOGIN_FIRST_ADMIN: &str = "Login: created first admin user";
+pub const LOG_LOGIN_DB_ERROR: &str = "Login: database error";
+pub const LOG_LOGIN_DB_NICKNAME: &str = "Login: database error checking nickname uniqueness";
+pub const LOG_LOGIN_PERMISSIONS_ERROR: &str = "Login: error fetching permissions";
+pub const LOG_LOGIN_GROUP_ERROR: &str = "Login: error fetching group";
+pub const LOG_LOGIN_HASH_ERROR: &str = "Login: failed to hash password";
+pub const LOG_LOGIN_CREATE_USER_ERROR: &str = "Login: failed to create first user";
+pub const LOG_LOGIN_PASSWORD_VERIFY_ERROR: &str = "Login: password verification error";
+
+// --- Handler: Voice ---
+pub const LOG_VOICE_JOIN_NOT_LOGGED_IN: &str = "VoiceJoin: not logged in";
+pub const LOG_VOICE_JOIN_PERMISSION_DENIED: &str = "VoiceJoin: permission denied";
+pub const LOG_VOICE_LEAVE_NOT_LOGGED_IN: &str = "VoiceLeave: not logged in";

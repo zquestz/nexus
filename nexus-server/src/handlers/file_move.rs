@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::{debug, error, warn};
 
 use nexus_common::ErrorKind;
 use nexus_common::protocol::ServerMessage;
@@ -12,6 +13,11 @@ use super::{
     HandlerContext, err_cannot_move_into_itself, err_destination_exists,
     err_destination_not_directory, err_file_not_found, err_file_path_invalid,
     err_file_path_too_long, err_move_failed, err_not_logged_in, err_permission_denied,
+};
+use crate::constants::{
+    LOG_FILE_MOVE_DELETE_DENIED, LOG_FILE_MOVE_FAILED, LOG_FILE_MOVE_NOT_LOGGED_IN,
+    LOG_FILE_MOVE_PERMISSION_DENIED, LOG_FILE_MOVE_REMOVE_FAILED, LOG_FILE_MOVE_ROOT_DENIED,
+    LOG_FILE_MOVE_SUCCESS,
 };
 use crate::db::Permission;
 use crate::files::{
@@ -34,7 +40,7 @@ where
 {
     // Verify authentication
     let Some(requesting_session_id) = session_id else {
-        eprintln!("FileMove request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_MOVE_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileMove"))
             .await;
@@ -71,10 +77,7 @@ where
 
     // Check FileMove permission
     if !requesting_user.has_permission(Permission::FileMove) {
-        eprintln!(
-            "FileMove from {} (user: {}) without permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_MOVE_PERMISSION_DENIED);
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -85,10 +88,7 @@ where
 
     // Check FileRoot permission if either root flag is set
     if (source_root || destination_root) && !requesting_user.has_permission(Permission::FileRoot) {
-        eprintln!(
-            "FileMove (root) from {} (user: {}) without file_root permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_MOVE_ROOT_DENIED);
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -99,10 +99,7 @@ where
 
     // Check FileDelete permission if overwrite is requested
     if overwrite && !requesting_user.has_permission(Permission::FileDelete) {
-        eprintln!(
-            "FileMove (overwrite) from {} (user: {}) without file_delete permission",
-            ctx.peer_addr, requesting_user.username
-        );
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_MOVE_DELETE_DENIED);
         let response = ServerMessage::FileMoveResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
@@ -336,10 +333,7 @@ where
 
         // Remove existing target for overwrite (async to avoid blocking runtime)
         if let Err(e) = remove_path_async(&target_path).await {
-            eprintln!(
-                "FileMove failed to remove existing target for {} (user: {}): {}",
-                ctx.peer_addr, requesting_user.username, e
-            );
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_MOVE_REMOVE_FAILED);
             let response = ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_move_failed(ctx.locale)),
@@ -356,6 +350,8 @@ where
             // Mark file index as dirty so it gets rebuilt
             ctx.file_index.mark_dirty();
 
+            debug!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %source_path, "{}", LOG_FILE_MOVE_SUCCESS);
+
             let response = ServerMessage::FileMoveResponse {
                 success: true,
                 error: None,
@@ -364,10 +360,7 @@ where
             ctx.send_message(&response).await
         }
         Err(e) => {
-            eprintln!(
-                "FileMove failed for {} (user: {}): {}",
-                ctx.peer_addr, requesting_user.username, e
-            );
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_MOVE_FAILED);
             let response = ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_move_failed(ctx.locale)),

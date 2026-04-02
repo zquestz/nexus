@@ -104,6 +104,8 @@ You'll see output like:
 
 ```
 Nexus BBS Server v0.7.3
+Log level: info
+Log directory: ~/.local/share/nexusd/logs
 Database: ~/.local/share/nexusd/nexus.db
 File area: ~/.local/share/nexusd/files
 Certificate fingerprint (SHA-256): AB:CD:12:34:...
@@ -171,7 +173,7 @@ nexusd --bind 0.0.0.0 --port 7500
 nexusd --bind :: --port 7500
 
 # Enable debug logging
-nexusd --debug
+nexusd --log-level debug
 
 # Enable UPnP port forwarding
 nexusd --upnp

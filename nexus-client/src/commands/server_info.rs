@@ -4,7 +4,7 @@ use chrono::Local;
 use iced::Task;
 
 use crate::NexusApp;
-use crate::i18n::{t, t_args};
+use crate::i18n::{log_level_translation_key, strength_translation_key, t, t_args};
 use crate::types::{ChatMessage, Message};
 
 /// Indentation for server info display lines (matching user info style)
@@ -35,6 +35,9 @@ pub fn execute(
     let server_description = conn.server_description.clone();
     let server_version = conn.server_version.clone();
     let max_connections_per_ip = conn.max_connections_per_ip;
+    let max_transfers_per_ip = conn.max_transfers_per_ip;
+    let min_password_strength = conn.min_password_strength;
+    let log_level = conn.log_level.clone();
 
     // Build multi-line output similar to user info
     let mut lines = Vec::new();
@@ -56,16 +59,38 @@ pub fn execute(
         lines.push(format!("{INFO_INDENT}{label} {description}"));
     }
 
-    // Server version
-    if let Some(version) = server_version {
-        let label = t("label-server-version").to_lowercase();
-        lines.push(format!("{INFO_INDENT}{label} {version}"));
+    // General fields in alphabetical order, gated by availability
+
+    // Log level
+    if let Some(level) = log_level {
+        let label = t("label-log-level").to_lowercase();
+        let value = t(log_level_translation_key(&level)).to_lowercase();
+        lines.push(format!("{INFO_INDENT}{label} {value}"));
     }
 
-    // Max connections per IP (admin only)
+    // Max connections per IP
     if let Some(max_conn) = max_connections_per_ip {
         let label = t("label-max-connections-per-ip").to_lowercase();
         lines.push(format!("{INFO_INDENT}{label} {max_conn}"));
+    }
+
+    // Max transfers per IP
+    if let Some(max_xfer) = max_transfers_per_ip {
+        let label = t("label-max-transfers-per-ip").to_lowercase();
+        lines.push(format!("{INFO_INDENT}{label} {max_xfer}"));
+    }
+
+    // Min password strength
+    {
+        let label = t("label-min-password-strength").to_lowercase();
+        let value = t(strength_translation_key(min_password_strength)).to_lowercase();
+        lines.push(format!("{INFO_INDENT}{label} {value}"));
+    }
+
+    // Version
+    if let Some(version) = server_version {
+        let label = t("label-server-version").to_lowercase();
+        lines.push(format!("{INFO_INDENT}{label} {version}"));
     }
 
     // End line

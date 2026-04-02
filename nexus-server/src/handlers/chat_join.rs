@@ -3,6 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
+use tracing::warn;
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, MAX_CHANNELS_PER_USER};
@@ -12,7 +13,10 @@ use super::{
     err_channel_limit_exceeded, err_not_logged_in, err_permission_denied,
 };
 use crate::channels::JoinError;
-use crate::constants::FEATURE_CHAT;
+use crate::constants::{
+    FEATURE_CHAT, LOG_CHAT_JOIN_CREATE_DENIED, LOG_CHAT_JOIN_NOT_LOGGED_IN,
+    LOG_CHAT_JOIN_PERMISSION_DENIED,
+};
 use crate::db::Permission;
 use crate::i18n::t;
 
@@ -46,7 +50,7 @@ where
 {
     // Verify authentication
     let Some(session_id) = session_id else {
-        eprintln!("ChatJoin request from {} without login", ctx.peer_addr);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_NOT_LOGGED_IN);
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatJoin"))
             .await;
@@ -71,10 +75,7 @@ where
 
     // Check ChatJoin permission (required for both joining and creating)
     if !user.has_permission(Permission::ChatJoin) {
-        eprintln!(
-            "ChatJoin from {} (user: {}) without permission",
-            ctx.peer_addr, user.username
-        );
+        warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_PERMISSION_DENIED);
         return ctx
             .send_message(&error_response(err_permission_denied(ctx.locale)))
             .await;
@@ -94,10 +95,7 @@ where
     // only ChatJoin, not ChatCreate). No privilege escalation is possible.
     let channel_exists = ctx.channel_manager.exists(&channel).await;
     if !channel_exists && !user.has_permission(Permission::ChatCreate) {
-        eprintln!(
-            "ChatJoin from {} (user: {}) trying to create channel without ChatCreate permission",
-            ctx.peer_addr, user.username
-        );
+        warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_CREATE_DENIED);
         return ctx
             .send_message(&error_response(err_permission_denied_chat_create(
                 ctx.locale,

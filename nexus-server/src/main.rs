@@ -10,6 +10,7 @@ mod files;
 mod handlers;
 mod i18n;
 mod ip_rule_cache;
+mod logging;
 mod transfers;
 mod upnp;
 mod users;
@@ -29,6 +30,7 @@ use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::CertificateDer;
+use tracing::{debug, error, info, warn};
 
 use args::Args;
 use channels::{Channel, ChannelManager};
@@ -37,6 +39,7 @@ use connection_tracker::ConnectionTracker;
 use constants::*;
 use files::FileIndex;
 use ip_rule_cache::IpRuleCache;
+use logging::LogLevel;
 use transfers::{TransferParams, TransferRegistry};
 use users::UserManager;
 use voice::{VoiceRegistry, VoiceUdpServer, create_voice_listener};
@@ -52,8 +55,22 @@ async fn main() {
 
     let args = Args::parse();
 
-    // Print banner first
-    println!("{}{}", MSG_BANNER, env!("CARGO_PKG_VERSION"));
+    // Initialize logging (global log level + tracing subscriber)
+    if let Err(e) = logging::init(&args.log_level, args.log_retention, args.no_log_timestamps) {
+        warn!(err = %e, "{}", LOG_LOGGING_INIT_FAILED);
+    }
+
+    // Purge old log files on startup
+    if args.log_retention > std::time::Duration::ZERO && args.log_level != LogLevel::None {
+        logging::purge_old_logs(args.log_retention);
+    }
+
+    // Startup info
+    info!("{}{}", MSG_BANNER, env!("CARGO_PKG_VERSION"));
+    info!("{}{}", MSG_LOG_LEVEL, args.log_level);
+    if args.log_level != LogLevel::None && args.log_retention > std::time::Duration::ZERO {
+        info!("{}{}", MSG_LOG_DIR, logging::log_dir().display());
+    }
 
     // Setup database
     let (database, user_manager, db_path) = setup_db(args.database).await;
@@ -64,7 +81,7 @@ async fn main() {
         .cleanup_expired_bans()
         .await
         .unwrap_or_else(|e| {
-            eprintln!("Failed to cleanup expired bans: {}", e);
+            error!(err = %e, "{}", LOG_CLEANUP_EXPIRED_BANS_FAILED);
             0
         });
     let expired_trusts = database
@@ -72,22 +89,22 @@ async fn main() {
         .cleanup_expired_trusts()
         .await
         .unwrap_or_else(|e| {
-            eprintln!("Failed to cleanup expired trusts: {}", e);
+            error!(err = %e, "{}", LOG_CLEANUP_EXPIRED_TRUSTS_FAILED);
             0
         });
-    if (expired_bans > 0 || expired_trusts > 0) && args.debug {
-        eprintln!(
-            "Cleaned up {} expired ban(s), {} expired trust(s)",
-            expired_bans, expired_trusts
-        );
-    }
+    debug!(
+        bans = expired_bans,
+        trusts = expired_trusts,
+        "{}",
+        LOG_CLEANUP_EXPIRED
+    );
 
     let ban_records = database
         .bans
         .load_all_active_bans()
         .await
         .unwrap_or_else(|e| {
-            eprintln!("Failed to load bans: {}", e);
+            error!(err = %e, "{}", LOG_LOAD_BANS_FAILED);
             Vec::new()
         });
     let trust_records = database
@@ -95,7 +112,7 @@ async fn main() {
         .load_all_active_trusts()
         .await
         .unwrap_or_else(|e| {
-            eprintln!("Failed to load trusts: {}", e);
+            error!(err = %e, "{}", LOG_LOAD_TRUSTS_FAILED);
             Vec::new()
         });
     let ban_count = ban_records.len();
@@ -104,12 +121,12 @@ async fn main() {
         ban_records,
         trust_records,
     )));
-    if (ban_count > 0 || trust_count > 0) && args.debug {
-        eprintln!(
-            "Loaded {} active ban(s), {} active trust(s) into cache",
-            ban_count, trust_count
-        );
-    }
+    debug!(
+        bans = ban_count,
+        trusts = trust_count,
+        "{}",
+        LOG_LOADED_CACHE
+    );
 
     // Setup file area
     let file_root = setup_file_area(args.file_root);
@@ -141,12 +158,12 @@ async fn main() {
     let key_path = cert_dir.join(KEY_FILENAME);
     let voice_listener = match create_voice_listener(voice_addr, &cert_path, &key_path).await {
         Ok(listener) => {
-            println!("{}{}", MSG_VOICE_LISTENING, voice_addr);
+            info!("{}{}", MSG_VOICE_LISTENING, voice_addr);
             Some(listener)
         }
         Err(e) => {
-            eprintln!("Warning: Voice DTLS listener failed: {}", e);
-            eprintln!("Voice chat will be unavailable");
+            warn!(err = %e, "{}", LOG_VOICE_DTLS_FAILED);
+            warn!("{}", LOG_VOICE_UNAVAILABLE);
             None
         }
     };
@@ -214,7 +231,6 @@ async fn main() {
             ip_rule_cache.clone(),
             user_manager.clone(),
             channel_manager.clone(),
-            args.debug,
         ))
     });
 
@@ -251,12 +267,12 @@ async fn main() {
                         })
                         .await
                     {
-                        eprintln!("Failed to create channel settings for {}: {}", name, e);
+                        error!(channel = %name, err = %e, "{}", LOG_CHANNEL_SETTINGS_CREATE_FAILED);
                     }
                     channels_to_init.push(Channel::new(name.to_string()));
                 }
                 Err(e) => {
-                    eprintln!("Failed to load channel settings for {}: {}", name, e);
+                    error!(channel = %name, err = %e, "{}", LOG_CHANNEL_SETTINGS_LOAD_FAILED);
                     channels_to_init.push(Channel::new(name.to_string()));
                 }
             }
@@ -272,12 +288,9 @@ async fn main() {
                         .delete_channel_settings(&settings.name)
                         .await
                     {
-                        eprintln!(
-                            "Failed to delete stale channel settings for {}: {}",
-                            settings.name, e
-                        );
-                    } else if args.debug {
-                        eprintln!("Pruned stale channel settings for {}", settings.name);
+                        error!(channel = %settings.name, err = %e, "{}", LOG_CHANNEL_SETTINGS_DELETE_FAILED);
+                    } else {
+                        debug!(channel = %settings.name, "{}", LOG_CHANNEL_SETTINGS_PRUNED);
                     }
                 }
             }
@@ -286,21 +299,21 @@ async fn main() {
         channel_manager
             .initialize_persistent_channels(channels_to_init)
             .await;
-        if args.debug {
-            eprintln!("Initialized {} persistent channel(s)", channel_names.len());
-        }
+        debug!(count = channel_names.len(), "{}", LOG_CHANNELS_INITIALIZED);
     }
 
     // Clone for the timer task
     let file_index_for_timer = file_index.clone();
     let database_for_timer = database.clone();
-    let debug_for_timer = args.debug;
+
+    // Capture values for the log purge timer
+    let log_level = args.log_level;
+    let log_retention = args.log_retention;
 
     // Main server loops - accept incoming connections on both ports
-    let debug = args.debug;
     tokio::select! {
         _ = shutdown_signal => {
-            println!("{}", MSG_SHUTDOWN_RECEIVED);
+            info!("{}", MSG_SHUTDOWN_RECEIVED);
 
             // Cleanup UPnP port forwarding if enabled
             if let Some((gateway, renewal_task)) = upnp_handle {
@@ -308,7 +321,7 @@ async fn main() {
 
                 // Remove port mapping
                 if let Err(e) = gateway.remove_port_mapping().await {
-                    eprintln!("{}{}", WARN_UPNP_REMOVE_MAPPING_FAILED, e);
+                    warn!("{}{}", WARN_UPNP_REMOVE_MAPPING_FAILED, e);
                 }
             }
         }
@@ -321,9 +334,7 @@ async fn main() {
                         let connection_guard = match connection_tracker.try_acquire(peer_addr.ip()) {
                             Some(guard) => guard,
                             None => {
-                                if debug {
-                                    eprintln!("{}{}", ERR_CONNECTION_LIMIT, peer_addr.ip());
-                                }
+                                debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_LIMIT);
                                 // Just drop the socket - client will see connection reset
                                 continue;
                             }
@@ -333,7 +344,6 @@ async fn main() {
                             peer_addr,
                             user_manager: user_manager.clone(),
                             db: database.clone(),
-                            debug,
                             file_root: Some(file_root),
                             transfer_port,
                             transfer_websocket_port,
@@ -378,21 +388,19 @@ async fn main() {
                             if !should_allow {
                                 // IP is banned (and not trusted) - silently close connection
                                 // No TLS, no error message, no resources wasted
-                                if debug {
-                                    eprintln!("Rejected banned IP: {}", peer_addr.ip());
-                                }
+                                debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP);
                                 return;
                             }
 
                             if let Err(e) =
                                 connection::handle_connection(socket, tls_acceptor, params).await
                             {
-                                log_connection_error(&e, peer_addr, debug);
+                                log_connection_error(&e, peer_addr);
                             }
                         });
                     }
                     Err(e) => {
-                        eprintln!("{}{}", ERR_ACCEPT, e);
+                        error!(err = %e, "{}", LOG_ACCEPT_ERROR);
                     }
                 }
             }
@@ -406,9 +414,7 @@ async fn main() {
                         let transfer_guard = match connection_tracker.try_acquire_transfer(peer_addr.ip()) {
                             Some(guard) => guard,
                             None => {
-                                if debug {
-                                    eprintln!("{}{}", ERR_CONNECTION_LIMIT, peer_addr.ip());
-                                }
+                                debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_LIMIT);
                                 // Just drop the socket - client will see connection reset
                                 continue;
                             }
@@ -417,7 +423,6 @@ async fn main() {
                         let params = TransferParams {
                             peer_addr,
                             db: database.clone(),
-                            debug,
                             file_root: Some(file_root),
                             file_index: file_index.clone(),
                             transfer_registry: transfer_registry.clone(),
@@ -453,9 +458,7 @@ async fn main() {
 
                             if !should_allow {
                                 // IP is banned (and not trusted) - silently close connection
-                                if debug {
-                                    eprintln!("Rejected banned IP on transfer port: {}", peer_addr.ip());
-                                }
+                                debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP_TRANSFER);
                                 return;
                             }
 
@@ -463,12 +466,12 @@ async fn main() {
                                 transfers::handle_transfer_connection(socket, tls_acceptor, params)
                                     .await
                             {
-                                log_connection_error(&e, peer_addr, debug);
+                                log_connection_error(&e, peer_addr);
                             }
                         });
                     }
                     Err(e) => {
-                        eprintln!("{}{}", ERR_ACCEPT, e);
+                        error!(err = %e, "{}", LOG_ACCEPT_ERROR);
                     }
                 }
             }
@@ -487,9 +490,7 @@ async fn main() {
                         let connection_guard = match connection_tracker.try_acquire(peer_addr.ip()) {
                             Some(guard) => guard,
                             None => {
-                                if debug {
-                                    eprintln!("{}{}", ERR_CONNECTION_LIMIT, peer_addr.ip());
-                                }
+                                debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_LIMIT);
                                 continue;
                             }
                         };
@@ -498,7 +499,6 @@ async fn main() {
                             peer_addr,
                             user_manager: user_manager.clone(),
                             db: database.clone(),
-                            debug,
                             file_root: Some(file_root),
                             transfer_port,
                             transfer_websocket_port,
@@ -532,9 +532,7 @@ async fn main() {
                             };
 
                             if !should_allow {
-                                if debug {
-                                    eprintln!("Rejected banned IP on WebSocket port: {}", peer_addr.ip());
-                                }
+                                debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP_WS);
                                 return;
                             }
 
@@ -542,12 +540,12 @@ async fn main() {
                                 websocket::handle_websocket_connection(socket, tls_acceptor, params)
                                     .await
                             {
-                                log_connection_error(&e, peer_addr, debug);
+                                log_connection_error(&e, peer_addr);
                             }
                         });
                     }
                     Err(e) => {
-                        eprintln!("{}{}", ERR_ACCEPT, e);
+                        error!(err = %e, "{}", LOG_ACCEPT_ERROR);
                     }
                 }
             }
@@ -566,9 +564,7 @@ async fn main() {
                         let transfer_guard = match connection_tracker.try_acquire_transfer(peer_addr.ip()) {
                             Some(guard) => guard,
                             None => {
-                                if debug {
-                                    eprintln!("{}{}", ERR_CONNECTION_LIMIT, peer_addr.ip());
-                                }
+                                debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_LIMIT);
                                 continue;
                             }
                         };
@@ -576,7 +572,6 @@ async fn main() {
                         let params = TransferParams {
                             peer_addr,
                             db: database.clone(),
-                            debug,
                             file_root: Some(file_root),
                             file_index: file_index.clone(),
                             transfer_registry: transfer_registry.clone(),
@@ -604,9 +599,7 @@ async fn main() {
                             };
 
                             if !should_allow {
-                                if debug {
-                                    eprintln!("Rejected banned IP on WebSocket transfer port: {}", peer_addr.ip());
-                                }
+                                debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP_WS_TRANSFER);
                                 return;
                             }
 
@@ -618,12 +611,12 @@ async fn main() {
                                 )
                                 .await
                             {
-                                log_connection_error(&e, peer_addr, debug);
+                                log_connection_error(&e, peer_addr);
                             }
                         });
                     }
                     Err(e) => {
-                        eprintln!("{}{}", ERR_ACCEPT, e);
+                        error!(err = %e, "{}", LOG_ACCEPT_ERROR);
                     }
                 }
             }
@@ -654,11 +647,20 @@ async fn main() {
 
                 // Check if dirty and not already reindexing
                 if file_index_for_timer.is_dirty() && !file_index_for_timer.is_reindexing() {
-                    if debug_for_timer {
-                        eprintln!("File index is dirty, triggering reindex");
-                    }
+                    debug!("{}", LOG_FILE_INDEX_DIRTY);
                     file_index_for_timer.trigger_reindex();
                 }
+            }
+        } => {}
+        // Log retention purge timer - runs daily
+        _ = async {
+            if log_retention == std::time::Duration::ZERO || log_level == LogLevel::None {
+                std::future::pending::<()>().await;
+                return;
+            }
+            loop {
+                tokio::time::sleep(Duration::from_secs(24 * 60 * 60)).await;
+                logging::purge_old_logs(log_retention);
             }
         } => {}
     }
@@ -677,7 +679,7 @@ fn load_or_generate_tls_config(cert_dir: &std::path::Path) -> Result<TlsAcceptor
         Ok(acceptor)
     } else {
         // Generate new self-signed certificate
-        println!("{}", MSG_GENERATING_CERT);
+        info!("{}", MSG_GENERATING_CERT);
         generate_self_signed_cert(&cert_path, &key_path)?;
         let acceptor = load_tls_config(&cert_path, &key_path)?;
         display_certificate_fingerprint(&cert_path)?;
@@ -719,8 +721,8 @@ fn generate_self_signed_cert(
     #[cfg(unix)]
     set_secure_permissions(key_path).map_err(|e| format!("{}{}", ERR_SET_KEY_PERMISSIONS, e))?;
 
-    println!("{}{}", MSG_CERT_GENERATED, cert_path.display());
-    println!("{}{}", MSG_KEY_GENERATED, key_path.display());
+    info!("{}{}", MSG_CERT_GENERATED, cert_path.display());
+    info!("{}{}", MSG_KEY_GENERATED, key_path.display());
 
     Ok(())
 }
@@ -779,7 +781,7 @@ async fn setup_db(
     let db_path = database_path.unwrap_or_else(|| match db::default_database_path() {
         Ok(path) => path,
         Err(e) => {
-            eprintln!("{}{}", ERR_GENERIC, e);
+            error!("{}{}", ERR_GENERIC, e);
             std::process::exit(1);
         }
     });
@@ -788,16 +790,16 @@ async fn setup_db(
     let pool = match db::init_db(&db_path).await {
         Ok(pool) => pool,
         Err(e) => {
-            eprintln!("{}{}", ERR_DATABASE_INIT, e);
+            error!("{}{}", ERR_DATABASE_INIT, e);
             std::process::exit(1);
         }
     };
-    println!("{}{}", MSG_DATABASE, db_path.display());
+    info!("{}{}", MSG_DATABASE, db_path.display());
 
     // Set secure permissions on database file (0o600) - Unix only
     #[cfg(unix)]
     if let Err(e) = set_secure_permissions(&db_path) {
-        eprintln!("{}{}", ERR_SET_PERMISSIONS, e);
+        error!("{}{}", ERR_SET_PERMISSIONS, e);
         std::process::exit(1);
     }
 
@@ -838,9 +840,9 @@ async fn setup_upnp(
             Some((gateway_arc, renewal_task))
         }
         Err(e) => {
-            eprintln!("{}{}", MSG_UPNP_WARNING, e);
-            eprintln!("{}", MSG_UPNP_CONTINUE);
-            eprintln!("{}", MSG_UPNP_MANUAL);
+            warn!("{}{}", MSG_UPNP_WARNING, e);
+            warn!("{}", MSG_UPNP_CONTINUE);
+            warn!("{}", MSG_UPNP_MANUAL);
             None
         }
     }
@@ -869,33 +871,33 @@ async fn setup_network(
     let tls_acceptor = match load_or_generate_tls_config(&cert_dir) {
         Ok(acceptor) => acceptor,
         Err(e) => {
-            eprintln!("{}{}", ERR_TLS_INIT, e);
+            error!("{}{}", ERR_TLS_INIT, e);
             std::process::exit(1);
         }
     };
-    println!("{}{}", MSG_CERTIFICATES, cert_dir.display());
+    info!("{}{}", MSG_CERTIFICATES, cert_dir.display());
 
     // Create main BBS listener
     let addr = SocketAddr::new(bind, port);
     let listener = match TcpListener::bind(addr).await {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("{}{}: {}", ERR_BIND_FAILED, addr, e);
+            error!("{}{}: {}", ERR_BIND_FAILED, addr, e);
             std::process::exit(1);
         }
     };
-    println!("{}{}", MSG_LISTENING, addr);
+    info!("{}{}", MSG_LISTENING, addr);
 
     // Create transfer port listener
     let transfer_addr = SocketAddr::new(bind, transfer_port);
     let transfer_listener = match TcpListener::bind(transfer_addr).await {
         Ok(listener) => listener,
         Err(e) => {
-            eprintln!("{}{}: {}", ERR_BIND_FAILED, transfer_addr, e);
+            error!("{}{}: {}", ERR_BIND_FAILED, transfer_addr, e);
             std::process::exit(1);
         }
     };
-    println!("{}{}", MSG_TRANSFER_LISTENING, transfer_addr);
+    info!("{}{}", MSG_TRANSFER_LISTENING, transfer_addr);
 
     // Create WebSocket listeners if enabled
     let (ws_listener, ws_transfer_listener) = if let (Some(ws_port), Some(ws_transfer_port)) =
@@ -906,22 +908,22 @@ async fn setup_network(
         let ws_listener = match TcpListener::bind(ws_addr).await {
             Ok(listener) => listener,
             Err(e) => {
-                eprintln!("{}{}: {}", ERR_BIND_FAILED, ws_addr, e);
+                error!("{}{}: {}", ERR_BIND_FAILED, ws_addr, e);
                 std::process::exit(1);
             }
         };
-        println!("{}{}", MSG_WS_LISTENING, ws_addr);
+        info!("{}{}", MSG_WS_LISTENING, ws_addr);
 
         // Create WebSocket transfer listener
         let ws_transfer_addr = SocketAddr::new(bind, ws_transfer_port);
         let ws_transfer_listener = match TcpListener::bind(ws_transfer_addr).await {
             Ok(listener) => listener,
             Err(e) => {
-                eprintln!("{}{}: {}", ERR_BIND_FAILED, ws_transfer_addr, e);
+                error!("{}{}: {}", ERR_BIND_FAILED, ws_transfer_addr, e);
                 std::process::exit(1);
             }
         };
-        println!("{}{}", MSG_WS_TRANSFER_LISTENING, ws_transfer_addr);
+        info!("{}{}", MSG_WS_TRANSFER_LISTENING, ws_transfer_addr);
 
         (Some(ws_listener), Some(ws_transfer_listener))
     } else {
@@ -961,7 +963,7 @@ fn display_certificate_fingerprint(cert_path: &std::path::Path) -> Result<(), St
         .collect::<Vec<_>>()
         .join(":");
 
-    println!("{}{}", MSG_CERT_FINGERPRINT, fingerprint_str);
+    info!("{}{}", MSG_CERT_FINGERPRINT, fingerprint_str);
     Ok(())
 }
 
@@ -974,14 +976,14 @@ fn setup_file_area(file_root: Option<std::path::PathBuf>) -> std::path::PathBuf 
     let root = file_root.unwrap_or_else(|| match files::default_file_root() {
         Ok(path) => path,
         Err(e) => {
-            eprintln!("{}{}", ERR_GENERIC, e);
+            error!("{}{}", ERR_GENERIC, e);
             std::process::exit(1);
         }
     });
 
     // Initialize file area directories (creates them if needed)
     if let Err(e) = files::init_file_area(&root) {
-        eprintln!("{}{}", ERR_GENERIC, e);
+        error!("{}{}", ERR_GENERIC, e);
         std::process::exit(1);
     }
 
@@ -990,12 +992,12 @@ fn setup_file_area(file_root: Option<std::path::PathBuf>) -> std::path::PathBuf 
     let canonical_root = match root.canonicalize() {
         Ok(path) => path,
         Err(e) => {
-            eprintln!("{}{}{}", ERR_GENERIC, ERR_FILE_ROOT_CANONICALIZE, e);
+            error!("{}{}{}", ERR_GENERIC, ERR_FILE_ROOT_CANONICALIZE, e);
             std::process::exit(1);
         }
     };
 
-    println!("{}{}", MSG_FILE_ROOT, canonical_root.display());
+    info!("{}{}", MSG_FILE_ROOT, canonical_root.display());
 
     canonical_root
 }
@@ -1004,8 +1006,8 @@ fn setup_file_area(file_root: Option<std::path::PathBuf>) -> std::path::PathBuf 
 ///
 /// Filters out:
 /// - TLS close_notify warnings (clients disconnecting abruptly)
-/// - TLS handshake failures (only logged in debug mode)
-fn log_connection_error(error: &io::Error, peer_addr: SocketAddr, debug: bool) {
+/// - TLS handshake failures (only logged at debug level)
+fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
     let error_msg = error.to_string();
 
     // Filter out benign TLS close_notify warnings (clients disconnecting abruptly)
@@ -1015,13 +1017,11 @@ fn log_connection_error(error: &io::Error, peer_addr: SocketAddr, debug: bool) {
 
     // TLS handshake failures are debug-only (scanners, incompatible clients)
     if error_msg.contains(TLS_HANDSHAKE_FAILED_PREFIX) {
-        if debug {
-            eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, error);
-        }
+        debug!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR_TLS);
         return;
     }
 
-    eprintln!("{}{}: {}", ERR_CONNECTION, peer_addr, error);
+    error!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR);
 }
 
 /// Setup graceful shutdown signal handling (Ctrl+C)

@@ -146,5 +146,5 @@ Posts must have either text content, an image, or both. You cannot create an emp
 
 ## Next Steps
 
-- [Settings](10-settings.md) — Configure notifications and preferences
-- [Troubleshooting](11-troubleshooting.md) — Common issues and solutions
+- [Settings](11-settings.md) — Configure notifications and preferences
+- [Troubleshooting](12-troubleshooting.md) — Common issues and solutions

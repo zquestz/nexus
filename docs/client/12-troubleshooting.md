@@ -444,6 +444,6 @@ If your issue isn't covered here:
 ## Next Steps
 
 - [Getting Started](01-getting-started.md) — Installation and first connection
-- [Settings](10-settings.md) — Configuration options
+- [Settings](11-settings.md) — Configuration options
 - [Commands](04-commands.md) — Chat commands reference
 - [Connection Monitor](09-connection-monitor.md) — Monitor active connections

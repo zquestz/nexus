@@ -34,10 +34,11 @@ use std::io;
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
+use tracing::debug;
 
 use nexus_common::framing::{FrameReader, FrameWriter};
 
-use crate::constants::DEFAULT_LOCALE;
+use crate::constants::*;
 use crate::handlers::err_file_area_not_configured;
 
 use auth::{handle_transfer_handshake, handle_transfer_login, handle_transfer_request};
@@ -80,15 +81,12 @@ where
     let TransferParams {
         peer_addr,
         db,
-        debug,
         file_root,
         file_index,
         transfer_registry,
     } = params;
 
-    if debug {
-        eprintln!("Transfer connection from {peer_addr}");
-    }
+    debug!(ip = %peer_addr, "{}", LOG_TRANSFER_CONNECTION);
 
     // Set up framed I/O
     let (reader, writer) = tokio::io::split(socket);
@@ -103,9 +101,7 @@ where
     let handshake_result =
         handle_transfer_handshake(&mut frame_reader, &mut frame_writer, &locale).await;
     if let Err(e) = handshake_result {
-        if debug {
-            eprintln!("Transfer handshake failed from {peer_addr}: {e}");
-        }
+        debug!(ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_HANDSHAKE_FAILED);
         let _ = frame_writer.get_mut().shutdown().await;
         return Ok(());
     }
@@ -115,17 +111,13 @@ where
         match handle_transfer_login(&mut frame_reader, &mut frame_writer, &db, &mut locale).await {
             Ok(user) => user,
             Err(e) => {
-                if debug {
-                    eprintln!("Transfer login failed from {peer_addr}: {e}");
-                }
+                debug!(ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_LOGIN_FAILED);
                 let _ = frame_writer.get_mut().shutdown().await;
                 return Ok(());
             }
         };
 
-    if debug {
-        eprintln!("Transfer authenticated: {} from {peer_addr}", user.username);
-    }
+    debug!(user = %user.username, ip = %peer_addr, "{}", LOG_TRANSFER_AUTHENTICATED);
 
     // Phase 3: Transfer request (FileDownload or FileUpload)
     let Some(file_root) = file_root else {
@@ -139,9 +131,7 @@ where
     {
         Ok(req) => req,
         Err(e) => {
-            if debug {
-                eprintln!("Transfer request failed from {peer_addr}: {e}");
-            }
+            debug!(ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_REQUEST_FAILED);
             let _ = frame_writer.get_mut().shutdown().await;
             return Ok(());
         }
@@ -182,7 +172,6 @@ where
         info,
         user,
         locale,
-        debug,
         file_root,
         &file_index,
         &transfer_registry,
@@ -195,17 +184,15 @@ where
         TransferRequest::Upload(params) => handle_upload(&mut transfer, params).await,
     };
 
-    if debug {
-        let elapsed = transfer.elapsed();
-        let bytes = transfer.bytes_transferred();
-        eprintln!(
-            "Transfer {} complete: {} bytes in {:.2}s from {}",
-            transfer.id(),
-            bytes,
-            elapsed.as_secs_f64(),
-            peer_addr
-        );
-    }
+    let elapsed = transfer.elapsed();
+    let bytes = transfer.bytes_transferred();
+    debug!(
+        id = %transfer.id(),
+        bytes = %bytes,
+        elapsed = %format!("{:.2}s", elapsed.as_secs_f64()),
+        ip = %peer_addr,
+        "{}", LOG_TRANSFER_COMPLETE
+    );
 
     result
 }

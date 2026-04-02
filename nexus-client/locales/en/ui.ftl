@@ -132,18 +132,24 @@ label-auto-join-channels = Auto-Join Channels:
 label-channels = Channels
 label-none = None
 label-server-settings = Server Settings
-tab-limits = Limits
 tab-files = Files
 tab-channels = Channels
-label-connections-short = Connections:
-label-transfers-short = Transfers:
+label-connections-short = Max Connections:
+label-transfers-short = Max Transfers:
+label-version-short = Version:
+label-log-level = Log Level:
+label-log-level-none = None
+label-log-level-error = Error
+label-log-level-warn = Warn
+label-log-level-info = Info
+label-log-level-debug = Debug
 label-reindex-short = Reindex:
 label-persistent-short = Persistent:
 label-auto-join-short = Auto-join:
 label-minutes = minutes
 label-name = Name:
 label-description = Description:
-label-version-value = Version { $version }
+
 placeholder-persistent-channels = #channel1 #channel2 (space-separated)
 placeholder-auto-join-channels = #channel1 #channel2 (space-separated)
 label-avatar = Avatar:
@@ -413,7 +419,6 @@ console-tab = Console
 # =============================================================================
 # System Message Usernames
 # =============================================================================
-
 
 # =============================================================================
 # Chat Message Prefixes

@@ -6,6 +6,9 @@ use nexus_common::{
 };
 use std::net::IpAddr;
 use std::path::PathBuf;
+use std::time::Duration;
+
+use crate::logging::{LogLevel, parse_log_retention};
 
 /// Get default database path help text for current platform
 fn default_database_help() -> String {
@@ -59,9 +62,17 @@ pub struct Args {
     #[arg(short = 'f', long = "file-root", help = default_file_root_help())]
     pub file_root: Option<PathBuf>,
 
-    /// Enable debug logging (shows user connect/disconnect messages)
-    #[arg(long, default_value = "false")]
-    pub debug: bool,
+    /// Log level (none, error, warn, info, debug)
+    #[arg(long, default_value = "info")]
+    pub log_level: LogLevel,
+
+    /// Log file retention duration (e.g. "30d", "7d", "0" for stderr only)
+    #[arg(long, default_value = "30d", value_parser = parse_log_retention)]
+    pub log_retention: Duration,
+
+    /// Disable timestamps in stderr log output (for Docker/systemd)
+    #[arg(long)]
+    pub no_log_timestamps: bool,
 
     /// Enable UPnP port forwarding (automatic NAT traversal)
     #[arg(long, default_value = "false")]

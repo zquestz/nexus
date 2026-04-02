@@ -138,6 +138,8 @@ pub struct ServerConnectionParams {
     pub auto_join_channels: Option<String>,
     /// Minimum password strength requirement from the server
     pub min_password_strength: PasswordStrength,
+    /// Server log level (read-only, from ServerInfo)
+    pub log_level: Option<String>,
     /// Command sender channel
     pub tx: CommandSender,
     /// Shutdown handle for graceful disconnect
@@ -203,6 +205,8 @@ pub struct ServerConnection {
     pub auto_join_channels: Option<String>,
     /// Minimum password strength requirement from the server
     pub min_password_strength: PasswordStrength,
+    /// Server log level (read-only, from ServerInfo)
+    pub log_level: Option<String>,
     /// Active chat tab (Console, Channel, or UserMessage)
     pub active_chat_tab: ChatTab,
     /// Console messages (system, error, info, broadcast messages)
@@ -368,6 +372,7 @@ impl ServerConnection {
             persistent_channels: params.persistent_channels,
             auto_join_channels: params.auto_join_channels,
             min_password_strength: params.min_password_strength,
+            log_level: params.log_level,
             active_chat_tab: ChatTab::Console,
             console_messages: Vec::new(),
             channel_tabs: Vec::new(),
@@ -458,6 +463,8 @@ pub struct NetworkConnection {
     pub auto_join_channels: Option<String>,
     /// Minimum password strength requirement from the server
     pub min_password_strength: PasswordStrength,
+    /// Server log level (read-only, from ServerInfo)
+    pub log_level: Option<String>,
     /// Locale accepted by the server
     pub locale: String,
     /// Connection info (address, port, auth info)

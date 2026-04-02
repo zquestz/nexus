@@ -195,5 +195,6 @@ The `LoginResponse` includes a `ServerInfo` object with server metadata and conn
 | `persistent_channels`      | `string?` | Space-separated persistent channels (admin only, null otherwise) |
 | `auto_join_channels`       | `string?` | Space-separated auto-join channels (admin only, null otherwise)  |
 | `min_password_strength`    | `u8?`    | Minimum password strength level 0-4 (null if not set)                |
+| `log_level`                | `string?` | Server log level: "none", "error", "warn", "info", "debug"              |
 
 Clients should use `transfer_websocket_port` for file transfers when connected via WebSocket, and `transfer_port` when connected via TCP. The `persistent_channels` and `auto_join_channels` fields are only visible to admin users.

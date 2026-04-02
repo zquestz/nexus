@@ -1146,6 +1146,9 @@ pub struct ServerInfo {
     /// Minimum password strength level (0-4, admin only)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_password_strength: Option<u8>,
+    /// Server log level (read-only, not settable via ServerInfoUpdate)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub log_level: Option<String>,
 }
 
 /// Channel info returned when joining a channel (in LoginResponse or ChatJoinResponse)
@@ -2714,6 +2717,7 @@ mod tests {
             persistent_channels: None,
             auto_join_channels: None,
             min_password_strength: None,
+            log_level: None,
         };
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"max_transfers_per_ip\":3"));
@@ -2737,6 +2741,20 @@ mod tests {
         assert_eq!(info.max_transfers_per_ip, None);
         assert_eq!(info.transfer_port, 7501);
         assert_eq!(info.transfer_websocket_port, None);
+    }
+
+    #[test]
+    fn test_server_info_log_level() {
+        let info = ServerInfo {
+            log_level: Some("info".to_string()),
+            transfer_port: 7501,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        assert!(json.contains("\"log_level\":\"info\""));
+
+        let parsed: ServerInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.log_level, Some("info".to_string()));
     }
 
     // =========================================================================

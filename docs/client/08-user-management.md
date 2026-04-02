@@ -229,5 +229,5 @@ Permission changes are applied immediately for online users. If a user is offlin
 
 ## Next Steps
 
-- [Settings](10-settings.md) — Configure client preferences
+- [Settings](11-settings.md) — Configure client preferences
 - [Connection Monitor](09-connection-monitor.md) — View active connections

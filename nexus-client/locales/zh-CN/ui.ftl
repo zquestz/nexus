@@ -141,18 +141,24 @@ label-nickname = 昵称：
 label-network = 网络
 label-none = 无
 label-server-settings = 服务器设置
-tab-limits = 限制
 tab-files = 文件
 tab-channels = 频道
-label-connections-short = 连接：
-label-transfers-short = 传输：
+label-connections-short = 最大连接：
+label-transfers-short = 最大传输：
+label-version-short = 版本：
+label-log-level = 日志级别：
+label-log-level-none = 无
+label-log-level-error = 错误
+label-log-level-warn = 警告
+label-log-level-info = 信息
+label-log-level-debug = 调试
 label-reindex-short = 重建索引：
 label-persistent-short = 常驻：
 label-auto-join-short = 自动加入：
 label-minutes = 分钟
 label-name = 名称：
 label-description = 描述：
-label-version-value = 版本 { $version }
+
 label-use-socks5-proxy = 使用 SOCKS5 代理
 label-proxy-address = 地址：
 label-proxy-port = 端口:
@@ -400,7 +406,6 @@ console-tab = 控制台
 # =============================================================================
 # System Message Usernames
 # =============================================================================
-
 
 # =============================================================================
 # Chat Message Prefixes

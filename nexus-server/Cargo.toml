@@ -10,6 +10,10 @@ description = "Cross-platform BBS server"
 nexus-common = { path = "../nexus-common" }
 clap = { version = "4.5", features = ["derive"] }
 tokio = { version = "1.49", features = ["net", "rt-multi-thread", "macros", "io-util", "sync", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json"] }
+tracing-appender = "0.2"
+humantime = "2.1"
 serde_json = "1.0"
 socket2 = "0.6"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
