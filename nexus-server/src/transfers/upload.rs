@@ -104,7 +104,7 @@ where
         transfer_id: Some(log_transfer_id.clone()),
     };
     if let Err(e) = transfer.send(&response).await {
-        error!(id = %log_transfer_id, user = %transfer.user().username, ip = %peer_addr, err = %e, "{}", LOG_UPLOAD_SEND_FAILED);
+        error!(id = %log_transfer_id, user = %username, ip = %peer_addr, err = %e, "{}", LOG_UPLOAD_SEND_FAILED);
         return Ok(());
     }
 

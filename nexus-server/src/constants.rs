@@ -675,7 +675,7 @@ pub const LOG_USER_DELETE_DB_ERROR: &str = "UserDelete: database error";
 pub const LOG_USER_DELETE_SUCCESS: &str = "UserDelete: success";
 pub const LOG_USER_UPDATE_NOT_LOGGED_IN: &str = "UserUpdate: not logged in";
 pub const LOG_USER_UPDATE_PERMISSION_DENIED: &str = "UserUpdate: permission denied";
-pub const LOG_USER_UPDATE_ADMIN: &str = "UserUpdate: tried to edit admin user";
+pub const LOG_USER_UPDATE_ADMIN: &str = "UserUpdate: attempted to edit admin user";
 pub const LOG_USER_UPDATE_UNOWNED_PERMISSION: &str =
     "UserUpdate: tried to grant unowned permission";
 pub const LOG_USER_UPDATE_UNOWNED_REVOKE: &str = "UserUpdate: tried to revoke unowned permission";

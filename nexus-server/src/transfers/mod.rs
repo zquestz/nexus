@@ -131,7 +131,7 @@ where
     {
         Ok(req) => req,
         Err(e) => {
-            debug!(ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_REQUEST_FAILED);
+            debug!(user = %user.username, ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_REQUEST_FAILED);
             let _ = frame_writer.get_mut().shutdown().await;
             return Ok(());
         }
@@ -191,7 +191,7 @@ where
         user = %transfer.user().username,
         ip = %peer_addr,
         bytes = %bytes,
-        elapsed = %format!("{:.2}s", elapsed.as_secs_f64()),
+        elapsed_secs = elapsed.as_secs_f64(),
         "{}", LOG_TRANSFER_COMPLETE
     );
 
