@@ -534,7 +534,7 @@ Broadcast to all users when server info changes.
   "server_info": {
     "name": "My Awesome BBS",
     "description": "Welcome to my server!",
-    "version": "0.7.3",
+    "version": "0.7.4",
     "transfer_port": 7501,
     "transfer_websocket_port": null,
     "max_connections_per_ip": 5,
@@ -581,7 +581,7 @@ Sent to a user when their permissions change.
   "server_info": {
     "name": "My BBS",
     "description": "...",
-    "version": "0.7.3",
+    "version": "0.7.4",
     "transfer_port": 7501,
     "transfer_websocket_port": null,
     "max_connections_per_ip": 5,

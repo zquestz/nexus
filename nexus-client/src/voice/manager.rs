@@ -282,36 +282,10 @@ async fn run_voice_session(
                     break;
                 }
 
-                // If transmitting, capture and send audio
-                if transmitting && capture.is_active()
-                    && let Some(mut samples) = capture.take_frame()
-                {
-                    // Apply audio processing (noise suppression, AGC) to capture
-                    if let Some(ref mut proc) = processor {
-                        let _ = proc.process_capture_frame(&mut samples);
-
-                        // In toggle mode, use VAD to gate transmission
-                        // This prevents sending silence/noise when mic is "open"
-                        if ptt_mode == PttMode::Toggle && !proc.has_voice(&samples) {
-                            continue;
-                        }
-                    }
-
-                    // Calculate mic level after processing so the VU meter
-                    // reflects what others actually hear (post-AGC/NS)
-                    let level = calculate_rms_level(&samples);
-                    config.mic_level.store(level.to_bits(), Ordering::Relaxed);
-                    if let Ok(encoded) = encoder.encode(&samples) {
-                        let _ = dtls_command_tx.send(VoiceDtlsCommand::SendVoice(encoded));
-                    }
-                } else if transmitting {
-                    // Still transmitting but no frame ready - clear level
-                    config.mic_level.store(0f32.to_bits(), Ordering::Relaxed);
-                }
-
-                // Process jitter buffers and play audio.
-                // Accumulate all users into render_mix so the AEC sees the
-                // combined signal that actually plays through the speakers.
+                // Process jitter buffers and play audio FIRST, so the AEC
+                // has an up-to-date render reference before we process the
+                // capture frame. The AEC needs to know what's playing
+                // through the speakers to subtract it from the mic signal.
                 let mut has_render_audio = false;
                 render_mix.fill(0.0);
 
@@ -343,11 +317,40 @@ async fn run_voice_session(
 
                 // Feed the mixed render output to the AEC so it can
                 // subtract speaker echo from the microphone signal.
+                // This MUST happen before process_capture_frame so the
+                // adaptive filter has the current speaker reference.
                 // Skip when deafened (no speaker output means no echo).
                 if has_render_audio && !deafened
                     && let Some(ref proc) = processor
                 {
                     let _ = proc.analyze_render_frame(&render_mix);
+                }
+
+                // Now capture and send audio with AEC properly primed
+                if transmitting && capture.is_active()
+                    && let Some(mut samples) = capture.take_frame()
+                {
+                    // Apply audio processing (noise suppression, AGC, AEC) to capture
+                    if let Some(ref mut proc) = processor {
+                        let _ = proc.process_capture_frame(&mut samples);
+
+                        // In toggle mode, use VAD to gate transmission
+                        // This prevents sending silence/noise when mic is "open"
+                        if ptt_mode == PttMode::Toggle && !proc.has_voice(&samples) {
+                            continue;
+                        }
+                    }
+
+                    // Calculate mic level after processing so the VU meter
+                    // reflects what others actually hear (post-AGC/NS)
+                    let level = calculate_rms_level(&samples);
+                    config.mic_level.store(level.to_bits(), Ordering::Relaxed);
+                    if let Ok(encoded) = encoder.encode(&samples) {
+                        let _ = dtls_command_tx.send(VoiceDtlsCommand::SendVoice(encoded));
+                    }
+                } else if transmitting {
+                    // Still transmitting but no frame ready - clear level
+                    config.mic_level.store(0f32.to_bits(), Ordering::Relaxed);
                 }
             }
 
