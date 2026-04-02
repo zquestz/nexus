@@ -138,7 +138,7 @@ docker run -d \
 | `NEXUS_TRANSFER_WEBSOCKET_PORT` | `7503`    | WebSocket transfer port (requires `NEXUS_WEBSOCKET`) |
 | `NEXUS_LOG_LEVEL`               | `info`    | Log level (none, error, warn, info, debug)           |
 | `NEXUS_LOG_RETENTION`           | `30d`     | Log file retention (e.g. "30d", "7d", "0" for stderr only) |
-| `NEXUS_NO_LOG_TIMESTAMPS`       | (empty)   | Set to any value to disable stderr timestamps        |
+| `NEXUS_NO_LOG_TIMESTAMPS`       | `true`    | Disable stderr timestamps (Docker provides its own); set to empty to re-enable |
 
 ### Enable Debug Logging
 
@@ -176,6 +176,7 @@ The named volume `nexus-data` stores:
 - Database (`nexus.db`)
 - TLS certificates (`cert.pem`, `key.pem`)
 - File area (`files/`)
+- Log files (`logs/`)
 
 Data persists across container restarts and rebuilds.
 

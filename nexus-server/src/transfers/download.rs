@@ -107,6 +107,7 @@ where
         id = %log_transfer_id,
         files = file_count,
         bytes = total_size,
+        user = %username,
         ip = %peer_addr,
         "{}", LOG_DOWNLOAD_STARTING
     );
@@ -121,7 +122,7 @@ where
         transfer_id: Some(log_transfer_id.clone()),
     };
     if let Err(e) = transfer.send(&response).await {
-        error!(id = %log_transfer_id, err = %e, "{}", LOG_DOWNLOAD_SEND_FAILED);
+        error!(id = %log_transfer_id, user = %username, ip = %peer_addr, err = %e, "{}", LOG_DOWNLOAD_SEND_FAILED);
         return Ok(());
     }
 
@@ -152,13 +153,15 @@ where
             }
             Err(StreamFileError::Banned) => {
                 // Just close the socket - client gets ban reason on BBS connection
-                info!(id = %log_transfer_id, "{}", LOG_DOWNLOAD_BANNED);
+                info!(id = %log_transfer_id, user = %username, ip = %peer_addr, "{}", LOG_DOWNLOAD_BANNED);
                 let _ = transfer.writer().get_mut().shutdown().await;
                 return Ok(());
             }
             Err(StreamFileError::HashMismatch) => {
                 warn!(
                     id = %log_transfer_id,
+                    user = %username,
+                    ip = %peer_addr,
                     path = %file_info.relative_path,
                     "{}", LOG_DOWNLOAD_HASH_MISMATCH
                 );
@@ -174,6 +177,8 @@ where
             Err(StreamFileError::Io(e)) => {
                 warn!(
                     id = %log_transfer_id,
+                    user = %username,
+                    ip = %peer_addr,
                     path = %file_info.relative_path,
                     err = %e,
                     "{}", LOG_DOWNLOAD_STREAM_ERROR
@@ -199,9 +204,9 @@ where
     let _ = transfer.send(&complete).await; // Best effort - connection may be closing
 
     if success {
-        info!(id = %log_transfer_id, path = %download_path, "{}", LOG_DOWNLOAD_COMPLETE);
+        info!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %download_path, "{}", LOG_DOWNLOAD_COMPLETE);
     } else {
-        warn!(id = %log_transfer_id, path = %download_path, "{}", LOG_DOWNLOAD_FAILED);
+        warn!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %download_path, "{}", LOG_DOWNLOAD_FAILED);
     }
 
     // Close connection

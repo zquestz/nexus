@@ -701,6 +701,7 @@ pub const LOG_USER_EDIT_ADMIN: &str = "UserEdit: attempted to edit admin user";
 pub const LOG_USER_EDIT_DB_ERROR: &str = "UserEdit: database error";
 pub const LOG_USER_INFO_NOT_LOGGED_IN: &str = "UserInfo: not logged in";
 pub const LOG_USER_INFO_PERMISSION_DENIED: &str = "UserInfo: permission denied";
+pub const LOG_USER_INFO_DB_ERROR: &str = "UserInfo: database error";
 pub const LOG_USER_LIST_NOT_LOGGED_IN: &str = "UserList: not logged in";
 pub const LOG_USER_LIST_PERMISSION_DENIED: &str = "UserList: permission denied";
 pub const LOG_USER_LIST_DB_ERROR: &str = "UserList: database error";

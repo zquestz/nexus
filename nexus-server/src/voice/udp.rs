@@ -233,7 +233,6 @@ impl VoiceUdpServer {
     }
 
     /// Handle an incoming voice packet
-    /// Handle a received voice packet
     ///
     /// Returns `false` if the connection should be closed (session no longer exists).
     async fn handle_packet(&self, client: &Arc<RwLock<DtlsClient>>, data: &[u8]) -> bool {

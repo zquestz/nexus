@@ -68,6 +68,7 @@ where
     // Extract values to avoid borrow checker issues
     let locale = transfer.locale().to_string();
     let peer_addr = transfer.peer_addr();
+    let username = transfer.user().username.clone();
 
     // Reject empty uploads - must have at least one file
     if file_count == 0 {
@@ -90,6 +91,7 @@ where
         files = file_count,
         bytes = total_size,
         path = %destination,
+        user = %username,
         ip = %peer_addr,
         "{}", LOG_UPLOAD_STARTING
     );
@@ -125,13 +127,15 @@ where
             }
             Err(ReceiveFileError::Banned) => {
                 // Just close the socket - client gets ban reason on BBS connection
-                info!(id = %log_transfer_id, "{}", LOG_UPLOAD_BANNED);
+                info!(id = %log_transfer_id, user = %username, ip = %peer_addr, "{}", LOG_UPLOAD_BANNED);
                 let _ = transfer.writer().get_mut().shutdown().await;
                 return Ok(());
             }
             Err(ReceiveFileError::Transfer(e)) => {
                 warn!(
                     id = %log_transfer_id,
+                    user = %username,
+                    ip = %peer_addr,
                     file_index = file_index,
                     err = %e.message,
                     "{}", LOG_UPLOAD_ERROR
@@ -153,9 +157,9 @@ where
     let _ = transfer.send(&complete).await; // Best effort - connection may be closing
 
     if transfer_success {
-        info!(id = %log_transfer_id, path = %destination, "{}", LOG_UPLOAD_COMPLETE);
+        info!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %destination, "{}", LOG_UPLOAD_COMPLETE);
     } else {
-        warn!(id = %log_transfer_id, path = %destination, "{}", LOG_UPLOAD_FAILED);
+        warn!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %destination, "{}", LOG_UPLOAD_FAILED);
     }
 
     // Mark file index as dirty on successful upload so it gets rebuilt

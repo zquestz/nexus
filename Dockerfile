@@ -99,11 +99,11 @@ ENV NEXUS_BIND=0.0.0.0 \
   NEXUS_TRANSFER_WEBSOCKET_PORT=7503 \
   NEXUS_LOG_LEVEL=info \
   NEXUS_LOG_RETENTION=30d \
-  NEXUS_NO_LOG_TIMESTAMPS=
+  NEXUS_NO_LOG_TIMESTAMPS=true
 
 # Use shell to expand environment variables
 # NEXUS_WEBSOCKET: set to any non-empty value to enable WebSocket support
-# NEXUS_NO_LOG_TIMESTAMPS: set to any non-empty value to disable stderr timestamps
+# NEXUS_NO_LOG_TIMESTAMPS: enabled by default (Docker provides timestamps); set to empty to re-enable
 ENTRYPOINT ["/bin/sh", "-c", "exec nexusd \
   --bind \"$NEXUS_BIND\" \
   --port \"$NEXUS_PORT\" \

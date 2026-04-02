@@ -159,7 +159,7 @@ where
     let account = match ctx.db.users.get_user_by_username(&username).await {
         Ok(acc) => acc,
         Err(e) => {
-            error!(target_user = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_DB_ERROR);
+            error!(target = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(&locale), Some("Login"))
                 .await;
@@ -178,7 +178,7 @@ where
             match db::verify_password(&password, &account.hashed_password) {
                 Ok(valid) => valid,
                 Err(e) => {
-                    error!(target_user = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_PASSWORD_VERIFY_ERROR);
+                    error!(target = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_PASSWORD_VERIFY_ERROR);
                     return ctx
                         .send_error_and_disconnect(&err_authentication(&locale), Some("Login"))
                         .await;
@@ -189,7 +189,7 @@ where
         if password_valid {
             // Password is correct - check if account is enabled
             if !account.enabled {
-                warn!(ip = %ctx.peer_addr, target_user = %username, "{}", LOG_LOGIN_ACCOUNT_DISABLED);
+                warn!(ip = %ctx.peer_addr, target = %username, "{}", LOG_LOGIN_ACCOUNT_DISABLED);
                 // Use user-friendly error for guest account
                 let error_msg = if username.to_lowercase() == GUEST_USERNAME {
                     err_guest_disabled(&locale)
@@ -202,7 +202,7 @@ where
             }
             account
         } else {
-            warn!(ip = %ctx.peer_addr, target_user = %username, "{}", LOG_LOGIN_INVALID_CREDENTIALS);
+            warn!(ip = %ctx.peer_addr, target = %username, "{}", LOG_LOGIN_INVALID_CREDENTIALS);
             return ctx
                 .send_error_and_disconnect(&err_invalid_credentials(&locale), Some("Login"))
                 .await;
@@ -213,7 +213,7 @@ where
         let hashed_password = match db::hash_password(&password, min_strength, false) {
             Ok(hash) => hash,
             Err(e) => {
-                error!(target_user = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_HASH_ERROR);
+                error!(target = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_HASH_ERROR);
                 return ctx
                     .send_error_and_disconnect(
                         &err_failed_to_create_user(&locale, &username),
@@ -242,7 +242,7 @@ where
                     .await;
             }
             Err(e) => {
-                error!(target_user = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_CREATE_USER_ERROR);
+                error!(target = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_CREATE_USER_ERROR);
                 return ctx
                     .send_error_and_disconnect(
                         &err_failed_to_create_user(&locale, &username),
@@ -287,7 +287,7 @@ where
             }
             Ok(false) => {}
             Err(e) => {
-                error!(target_user = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_DB_NICKNAME);
+                error!(target = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_DB_NICKNAME);
                 return ctx
                     .send_error_and_disconnect(&err_database(&locale), Some("Login"))
                     .await;

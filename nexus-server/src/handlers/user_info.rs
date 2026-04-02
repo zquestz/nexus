@@ -3,7 +3,7 @@
 use std::io;
 
 use tokio::io::AsyncWrite;
-use tracing::warn;
+use tracing::{error, warn};
 
 use nexus_common::protocol::{ServerMessage, UserInfoDetailed};
 use nexus_common::validators::{self, NicknameError};
@@ -13,7 +13,8 @@ use super::{
     err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
-    DEFAULT_LOCALE, LOG_USER_INFO_NOT_LOGGED_IN, LOG_USER_INFO_PERMISSION_DENIED,
+    DEFAULT_LOCALE, LOG_USER_INFO_DB_ERROR, LOG_USER_INFO_NOT_LOGGED_IN,
+    LOG_USER_INFO_PERMISSION_DENIED,
 };
 use crate::db::Permission;
 
@@ -101,7 +102,13 @@ where
     // Fetch target user account for admin status and created_at
     let target_account = match ctx.db.users.get_user_by_username(&db_lookup_username).await {
         Ok(Some(acc)) => acc,
-        _ => {
+        Ok(None) => {
+            return ctx
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserInfo"))
+                .await;
+        }
+        Err(e) => {
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_INFO_DB_ERROR);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some("UserInfo"))
                 .await;
