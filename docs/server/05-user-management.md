@@ -10,12 +10,12 @@ The **first user to connect** to a new server automatically becomes an administr
 
 ## User Types
 
-| Type        | Description                                      |
-| ----------- | ------------------------------------------------ |
-| **Admin**   | Full access to all features and settings         |
-| **Regular** | Access controlled by assigned permissions        |
+| Type               | Description                                      |
+| ------------------ | ------------------------------------------------ |
+| **Admin**          | Full access to all features and settings         |
+| **Regular**        | Access controlled by assigned permissions        |
 | **Shared Account** | Multiple people share one account with nicknames |
-| **Guest**   | Built-in shared account with no password         |
+| **Guest**          | Built-in shared account with no password         |
 
 ## Managing Users
 
@@ -48,7 +48,7 @@ When editing a user who belongs to a group, permissions shown in **bold** indica
 
 1. Open User Management panel
 2. Right-click a username → **Delete**
-4. Confirm the deletion
+3. Confirm the deletion
 
 **Note:** Deleting a user does not delete their personal file folder. Clean up manually if needed.
 
@@ -68,16 +68,16 @@ Permissions control what actions users can perform. Admins have all permissions 
 
 ### Chat Permissions
 
-| Permission        | Allows                          |
-| ----------------- | ------------------------------- |
-| `chat_receive`    | Receive chat messages           |
-| `chat_send`       | Send chat messages              |
-| `chat_join`       | Join existing channels          |
-| `chat_create`     | Create new channels             |
-| `chat_list`       | List available channels         |
-| `chat_secret`     | Toggle secret mode on channels  |
-| `chat_topic`      | View the chat topic             |
-| `chat_topic_edit` | Change the chat topic           |
+| Permission        | Allows                         |
+| ----------------- | ------------------------------ |
+| `chat_receive`    | Receive chat messages          |
+| `chat_send`       | Send chat messages             |
+| `chat_join`       | Join existing channels         |
+| `chat_create`     | Create new channels            |
+| `chat_list`       | List available channels        |
+| `chat_secret`     | Toggle secret mode on channels |
+| `chat_topic`      | View the chat topic            |
+| `chat_topic_edit` | Change the chat topic          |
 
 ### User Permissions
 
@@ -141,20 +141,20 @@ Permissions control what actions users can perform. Admins have all permissions 
 
 ### Voice Permissions
 
-| Permission     | Allows                                    |
-| -------------- | ----------------------------------------- |
-| `voice_listen` | Join voice chat and receive audio         |
-| `voice_talk`   | Transmit audio in voice chat              |
+| Permission     | Allows                            |
+| -------------- | --------------------------------- |
+| `voice_listen` | Join voice chat and receive audio |
+| `voice_talk`   | Transmit audio in voice chat      |
 
 **Note:** `voice_listen` is required to join a voice session. Without `voice_talk`, users can listen but not speak.
 
 ### Group Permissions
 
-| Permission     | Allows                        |
-| -------------- | ----------------------------- |
-| `group_create` | Create account groups         |
-| `group_edit`   | Edit account groups           |
-| `group_delete` | Delete account groups         |
+| Permission     | Allows                |
+| -------------- | --------------------- |
+| `group_create` | Create account groups |
+| `group_edit`   | Edit account groups   |
+| `group_delete` | Delete account groups |
 
 ## Permission Presets
 
@@ -271,12 +271,12 @@ When creating or editing a user, select a group from the **Group** dropdown. The
 
 When a user belongs to a group, the permission checkboxes show overrides:
 
-| State | Visual | Meaning |
-| ----- | ------ | ------- |
-| ☑ Normal | Checked, normal text | Permission inherited from group |
-| ☑ Override | Checked, **bold text** | Individual grant (not in group) |
+| State      | Visual                   | Meaning                                 |
+| ---------- | ------------------------ | --------------------------------------- |
+| ☑ Normal   | Checked, normal text     | Permission inherited from group         |
+| ☑ Override | Checked, **bold text**   | Individual grant (not in group)         |
 | ☐ Override | Unchecked, **bold text** | Individual revoke (in group but denied) |
-| ☐ Normal | Unchecked, normal text | Not in group, no override |
+| ☐ Normal   | Unchecked, normal text   | Not in group, no override               |
 
 ### Shared Groups
 
@@ -373,16 +373,16 @@ You cannot delete the guest account, only disable it.
 
 Admins can configure server-wide settings through the **Server Info** panel:
 
-| Setting                | Description                                                            |
-| ---------------------- | ---------------------------------------------------------------------- |
-| Server name            | Display name shown to users                                            |
-| Description            | Server description                                                     |
-| Server image           | Logo/icon (max 700KB)                                                  |
-| Max connections per IP | Limit concurrent connections (default: 5)                              |
-| Max transfers per IP   | Limit concurrent file transfers (default: 3)                           |
-| File reindex interval  | Minutes between search index rebuilds (default: 5, 0 to disable)      |
-| Persistent channels    | Space-separated channel names that survive restart (default: `#nexus`) |
-| Auto-join channels     | Space-separated channels users join on login (default: `#nexus`)       |
+| Setting                | Description                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| Server name            | Display name shown to users                                                      |
+| Description            | Server description                                                               |
+| Server image           | Logo/icon (max 700KB)                                                            |
+| Max connections per IP | Limit concurrent connections (default: 5)                                        |
+| Max transfers per IP   | Limit concurrent file transfers (default: 3)                                     |
+| File reindex interval  | Minutes between search index rebuilds (default: 5, 0 to disable)                 |
+| Persistent channels    | Space-separated channel names that survive restart (default: `#nexus`)           |
+| Auto-join channels     | Space-separated channels users join on login (default: `#nexus`)                 |
 | Min password strength  | Minimum password strength level: Weak/Fair/Good/Strong/Excellent (default: Good) |
 
 ### Connection Limits

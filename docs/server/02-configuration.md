@@ -8,22 +8,22 @@ This guide covers all command-line options for the Nexus BBS server.
 nexusd [OPTIONS]
 ```
 
-| Option                             | Short | Default            | Description                                      |
-| ---------------------------------- | ----- | ------------------ | ------------------------------------------------ |
-| `--bind <IP>`                      | `-b`  | `0.0.0.0`          | IP address to bind to                            |
-| `--port <PORT>`                    | `-p`  | `7500`             | Main BBS port                                    |
-| `--transfer-port <PORT>`           | `-t`  | `7501`             | File transfer port                               |
-| `--database <PATH>`                | `-d`  | (platform default) | Database file path                               |
-| `--file-root <PATH>`               | `-f`  | (platform default) | File area root directory                         |
-| `--log-level <LEVEL>`              |       | `info`             | Log level (none, error, warn, info, debug)       |
+| Option                             | Short | Default            | Description                                                |
+| ---------------------------------- | ----- | ------------------ | ---------------------------------------------------------- |
+| `--bind <IP>`                      | `-b`  | `0.0.0.0`          | IP address to bind to                                      |
+| `--port <PORT>`                    | `-p`  | `7500`             | Main BBS port                                              |
+| `--transfer-port <PORT>`           | `-t`  | `7501`             | File transfer port                                         |
+| `--database <PATH>`                | `-d`  | (platform default) | Database file path                                         |
+| `--file-root <PATH>`               | `-f`  | (platform default) | File area root directory                                   |
+| `--log-level <LEVEL>`              |       | `info`             | Log level (none, error, warn, info, debug)                 |
 | `--log-retention <DURATION>`       |       | `30d`              | Log file retention (e.g. "30d", "7d", "0" for stderr only) |
-| `--no-log-timestamps`              |       | `false`            | Disable timestamps in stderr output              |
-| `--upnp`                           |       | `false`            | Enable UPnP port forwarding                      |
-| `--websocket`                      |       | `false`            | Enable WebSocket support                         |
-| `--websocket-port <PORT>`          |       | `7502`             | WebSocket BBS port (requires `--websocket`)      |
-| `--transfer-websocket-port <PORT>` |       | `7503`             | WebSocket transfer port (requires `--websocket`) |
-| `--help`                           | `-h`  |                    | Show help message                                |
-| `--version`                        | `-V`  |                    | Show version                                     |
+| `--no-log-timestamps`              |       | `false`            | Disable timestamps in stderr output                        |
+| `--upnp`                           |       | `false`            | Enable UPnP port forwarding                                |
+| `--websocket`                      |       | `false`            | Enable WebSocket support                                   |
+| `--websocket-port <PORT>`          |       | `7502`             | WebSocket BBS port (requires `--websocket`)                |
+| `--transfer-websocket-port <PORT>` |       | `7503`             | WebSocket transfer port (requires `--websocket`)           |
+| `--help`                           | `-h`  |                    | Show help message                                          |
+| `--version`                        | `-V`  |                    | Show version                                               |
 
 ## Network Binding
 
@@ -140,7 +140,7 @@ Log levels (most to least verbose):
 
 | Level   | Description                                                    |
 | ------- | -------------------------------------------------------------- |
-| `debug` | All messages including connection events and transfer progress  |
+| `debug` | All messages including connection events and transfer progress |
 | `info`  | Admin actions, startup info, transfer completions (default)    |
 | `warn`  | Permission denied, protocol issues, failed operations          |
 | `error` | Database failures, filesystem errors, internal errors          |
@@ -226,16 +226,16 @@ Clients use this fingerprint for Trust On First Use (TOFU) verification.
 
 Some settings are configured at runtime by admins through the client:
 
-| Setting                | Description                                                            |
-| ---------------------- | ---------------------------------------------------------------------- |
-| Server name            | Display name shown to users                                            |
-| Server description     | Description shown to users                                             |
-| Server image           | Logo/icon (max 700KB)                                                  |
-| Max connections per IP | Limit concurrent connections (default: 5)                              |
-| Max transfers per IP   | Limit concurrent file transfers (default: 3)                           |
-| File reindex interval  | Minutes between search index rebuilds (default: 5, 0 to disable)       |
-| Persistent channels    | Space-separated channel names that survive restart (default: `#nexus`) |
-| Auto-join channels     | Space-separated channels users join on login (default: `#nexus`)       |
+| Setting                | Description                                                                      |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| Server name            | Display name shown to users                                                      |
+| Server description     | Description shown to users                                                       |
+| Server image           | Logo/icon (max 700KB)                                                            |
+| Max connections per IP | Limit concurrent connections (default: 5)                                        |
+| Max transfers per IP   | Limit concurrent file transfers (default: 3)                                     |
+| File reindex interval  | Minutes between search index rebuilds (default: 5, 0 to disable)                 |
+| Persistent channels    | Space-separated channel names that survive restart (default: `#nexus`)           |
+| Auto-join channels     | Space-separated channels users join on login (default: `#nexus`)                 |
 | Min password strength  | Minimum password strength level: Weak/Fair/Good/Strong/Excellent (default: Good) |
 
 These settings are stored in the database and persist across restarts.

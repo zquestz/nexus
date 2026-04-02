@@ -322,10 +322,10 @@ This allows updating the duration or reason of an existing ban.
 
 ### BanDelete Errors
 
-| Error                    | Cause                             |
-| ------------------------ | --------------------------------- |
-| `err-ban-not-found`      | No ban found for target           |
-| `err-target-too-long`    | Target string too long            |
+| Error                 | Cause                   |
+| --------------------- | ----------------------- |
+| `err-ban-not-found`   | No ban found for target |
+| `err-target-too-long` | Target string too long  |
 
 ## Notes
 

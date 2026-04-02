@@ -519,7 +519,11 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
     .id(Id::from(InputId::EditServerInfoFileReindexInterval))
     .padding(INPUT_PADDING)
     .into();
-    let minutes_suffix = shaped_text(t("label-minutes")).size(TEXT_SIZE);
+    let minutes_suffix = shaped_text(t_args(
+        "label-minutes",
+        &[("count", &reindex_value.to_string())],
+    ))
+    .size(TEXT_SIZE);
 
     form_items.push(
         row![

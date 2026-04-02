@@ -257,7 +257,7 @@ Nexus uses the same audio processing technology as Discord, Google Meet, and oth
 
 | Feature                      | Default  | Description                                                       |
 | ---------------------------- | -------- | ----------------------------------------------------------------- |
-| **Microphone Boost**         | Off      | Pre-gain for quiet mics: Off, +6 dB, +12 dB, or +18 dB          |
+| **Microphone Boost**         | Off      | Pre-gain for quiet mics: Off, +6 dB, +12 dB, or +18 dB            |
 | **Noise Suppression**        | Moderate | Off, Low, Moderate, High, or Very High background noise filtering |
 | **Echo Cancellation**        | Off      | Removes speaker audio picked up by your microphone                |
 | **Automatic Gain Control**   | On       | Normalizes your volume so you're not too quiet or too loud        |

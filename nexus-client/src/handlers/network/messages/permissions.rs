@@ -77,6 +77,14 @@ impl NexusApp {
             if info.file_reindex_interval.is_some() {
                 conn.file_reindex_interval = info.file_reindex_interval;
             }
+            // Only present if server included it (admin-only field)
+            if info.persistent_channels.is_some() {
+                conn.persistent_channels = info.persistent_channels;
+            }
+            // Only present if server included it (requires chat_join permission)
+            if info.auto_join_channels.is_some() {
+                conn.auto_join_channels = info.auto_join_channels;
+            }
             if let Some(image) = info.image {
                 conn.server_image = image.clone();
                 conn.cached_server_image = if image.is_empty() {

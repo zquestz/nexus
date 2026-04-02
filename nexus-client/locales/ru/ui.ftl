@@ -159,7 +159,11 @@ label-log-level-debug = Отладка
 label-reindex-short = Переиндекс.:
 label-persistent-short = Постоянные:
 label-auto-join-short = Авто-вход:
-label-minutes = минут
+label-minutes = { $count ->
+    [one] минута
+    [few] минуты
+   *[other] минут
+}
 label-name = Название:
 label-description = Описание:
 

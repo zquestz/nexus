@@ -87,11 +87,11 @@ Available backends vary by platform:
 
 | Backend    | Linux | Windows | macOS |
 | ---------- | ----- | ------- | ----- |
-| **Auto**   | ✅     | ✅       | ✅     |
-| **DX12**   | —     | ✅       | —     |
-| **Metal**  | —     | —       | ✅     |
-| **OpenGL** | ✅     | ✅       | ✅     |
-| **Vulkan** | ✅     | ✅       | ✅     |
+| **Auto**   | ✅    | ✅      | ✅    |
+| **DX12**   | —     | ✅      | —     |
+| **Metal**  | —     | —       | ✅    |
+| **OpenGL** | ✅    | ✅      | ✅    |
+| **Vulkan** | ✅    | ✅      | ✅    |
 
 When set to **Auto**, the system picks the preferred backend:
 
@@ -172,13 +172,13 @@ This affects all chat tabs: Console, channels, and user messages. Note that user
 
 Automatically sets you as away after a period of inactivity. When you interact with the client again (keyboard input), your away status is automatically cleared.
 
-| Setting              | Description                          |
-| -------------------- | ------------------------------------ |
-| **Off**              | Disabled (default)                   |
-| **5 Minutes**        | Set away after 5 minutes idle        |
-| **10 Minutes**       | Set away after 10 minutes idle       |
-| **15 Minutes**       | Set away after 15 minutes idle       |
-| **30 Minutes**       | Set away after 30 minutes idle       |
+| Setting        | Description                    |
+| -------------- | ------------------------------ |
+| **Off**        | Disabled (default)             |
+| **5 Minutes**  | Set away after 5 minutes idle  |
+| **10 Minutes** | Set away after 10 minutes idle |
+| **15 Minutes** | Set away after 15 minutes idle |
+| **30 Minutes** | Set away after 30 minutes idle |
 
 **Auto-Away Message** sets the status message sent when auto-away triggers. Default: "AFK". Leave empty for no message.
 
@@ -297,7 +297,7 @@ Nexus uses WebRTC AudioProcessing 2.0 (the same technology as Discord, Google Me
 
 | Setting                      | Default  | Description                                                       |
 | ---------------------------- | -------- | ----------------------------------------------------------------- |
-| **Microphone Boost**         | Off      | Pre-gain for quiet mics: Off, +6 dB, +12 dB, or +18 dB          |
+| **Microphone Boost**         | Off      | Pre-gain for quiet mics: Off, +6 dB, +12 dB, or +18 dB            |
 | **Noise Suppression**        | Moderate | Off, Low, Moderate, High, or Very High background noise filtering |
 | **Echo Cancellation**        | Off      | Removes speaker audio picked up by your microphone                |
 | **Automatic Gain Control**   | On       | Normalizes your volume automatically                              |

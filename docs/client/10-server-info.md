@@ -35,13 +35,13 @@ Below the header, information is organized into tabs. Tabs only appear when ther
 
 Visible to all users. Shows server configuration in alphabetical order:
 
-| Field                  | Description                                              |
-| ---------------------- | -------------------------------------------------------- |
-| **Log Level**          | Server logging level (None, Error, Warn, Info, Debug)    |
-| **Max Connections**    | Maximum concurrent connections per IP address            |
-| **Max Transfers**      | Maximum concurrent file transfers per IP address         |
-| **Min Password**       | Minimum password strength required for accounts          |
-| **Version**            | Server software version                                  |
+| Field               | Description                                           |
+| ------------------- | ----------------------------------------------------- |
+| **Log Level**       | Server logging level (None, Error, Warn, Info, Debug) |
+| **Max Connections** | Maximum concurrent connections per IP address         |
+| **Max Transfers**   | Maximum concurrent file transfers per IP address      |
+| **Min Password**    | Minimum password strength required for accounts       |
+| **Version**         | Server software version                               |
 
 #### Files Tab
 
@@ -55,10 +55,10 @@ Visible to admins and users with `file_reindex` permission.
 
 Visible based on permissions. Shows channel configuration in alphabetical order:
 
-| Field          | Visible To                             | Description                                    |
-| -------------- | -------------------------------------- | ---------------------------------------------- |
-| **Auto-Join**  | Users with `chat_join` permission      | Channels users automatically join on login     |
-| **Persistent** | Admins only                            | Channels that persist even when empty          |
+| Field          | Visible To                        | Description                                |
+| -------------- | --------------------------------- | ------------------------------------------ |
+| **Auto-Join**  | Users with `chat_join` permission | Channels users automatically join on login |
+| **Persistent** | Admins only                       | Channels that persist even when empty      |
 
 ## Edit Mode
 
@@ -66,17 +66,17 @@ Admins can edit server configuration by clicking the **Edit** button at the bott
 
 ### Editable Fields
 
-| Field                   | Description                                              |
-| ----------------------- | -------------------------------------------------------- |
-| **Name**                | Server display name (1–64 characters)                    |
-| **Description**         | Server description (0–512 characters)                    |
-| **Image**               | Server logo (PNG, JPEG, WebP, SVG; max 700KB)           |
-| **Max Connections**     | Maximum connections per IP address                       |
-| **Max Transfers**       | Maximum file transfers per IP address                    |
-| **Min Password**        | Minimum password strength for accounts                   |
-| **File Reindex**        | File index rebuild interval in minutes (0 to disable)    |
-| **Persistent Channels** | Space-separated channel names (e.g., `#general #support`)|
-| **Auto-Join Channels**  | Space-separated channel names users auto-join on login   |
+| Field                   | Description                                               |
+| ----------------------- | --------------------------------------------------------- |
+| **Name**                | Server display name (1–64 characters)                     |
+| **Description**         | Server description (0–512 characters)                     |
+| **Image**               | Server logo (PNG, JPEG, WebP, SVG; max 700KB)             |
+| **Max Connections**     | Maximum connections per IP address                        |
+| **Max Transfers**       | Maximum file transfers per IP address                     |
+| **Min Password**        | Minimum password strength for accounts                    |
+| **File Reindex**        | File index rebuild interval in minutes (0 to disable)     |
+| **Persistent Channels** | Space-separated channel names (e.g., `#general #support`) |
+| **Auto-Join Channels**  | Space-separated channel names users auto-join on login    |
 
 **Note:** Log Level is set by the server operator via command-line options. Version is determined by the server software. Neither field is editable from the client.
 
@@ -90,10 +90,10 @@ Changes are broadcast to all connected users immediately.
 
 ## Keyboard Shortcuts
 
-| Shortcut | Action                                       |
-| -------- | -------------------------------------------- |
-| `Escape` | Close the panel, or cancel editing           |
-| `Enter`  | Save changes (in edit mode)                  |
+| Shortcut | Action                             |
+| -------- | ---------------------------------- |
+| `Escape` | Close the panel, or cancel editing |
+| `Enter`  | Save changes (in edit mode)        |
 
 ## Troubleshooting
 

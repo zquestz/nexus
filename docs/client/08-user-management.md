@@ -32,24 +32,24 @@ Admin usernames are shown in red, shared account usernames in muted text, and re
 
 Right-click a username to access the context menu:
 
-| Action     | Description                | Permission Required |
-| ---------- | -------------------------- | ------------------- |
-| **Edit**   | Open the user edit form    | `user_edit`         |
-| **Delete** | Delete the account         | `user_delete`       |
+| Action     | Description             | Permission Required |
+| ---------- | ----------------------- | ------------------- |
+| **Edit**   | Open the user edit form | `user_edit`         |
+| **Delete** | Delete the account      | `user_delete`       |
 
 ### Creating Users
 
 Click **Create User** to open the creation form. Requires `user_create` permission.
 
-| Field           | Description                                      |
-| --------------- | ------------------------------------------------ |
-| Username        | Account identifier (1–32 characters)             |
-| Password        | Account password (must meet server's minimum strength)   |
-| Admin           | Toggle admin privileges                          |
-| Shared Account  | Toggle shared account mode                       |
-| Enabled         | Toggle account access                            |
-| Group           | Optional group assignment (inherits permissions) |
-| Permissions     | Select allowed actions                           |
+| Field          | Description                                            |
+| -------------- | ------------------------------------------------------ |
+| Username       | Account identifier (1–32 characters)                   |
+| Password       | Account password (must meet server's minimum strength) |
+| Admin          | Toggle admin privileges                                |
+| Shared Account | Toggle shared account mode                             |
+| Enabled        | Toggle account access                                  |
+| Group          | Optional group assignment (inherits permissions)       |
+| Permissions    | Select allowed actions                                 |
 
 When a group is selected, the user inherits the group's permissions. Individual permission overrides can be added on top.
 
@@ -57,15 +57,15 @@ When a group is selected, the user inherits the group's permissions. Individual 
 
 Right-click a username → Edit to modify their account. The edit form shows the original username as a subtitle, followed by:
 
-| Field           | Description                                                    |
-| --------------- | -------------------------------------------------------------- |
-| Username        | Editable (disabled for guest account)                          |
-| Password        | Leave blank to keep current, new password must meet minimum strength (disabled for guest) |
-| Admin           | Toggle admin privileges (disabled for shared accounts)         |
-| Shared Account  | Shows shared status (always disabled — cannot change in edit)  |
-| Enabled         | Toggle account access                                          |
-| Group           | Assign, change, or remove group                                |
-| Permissions     | Select allowed actions (with override indicators when grouped) |
+| Field          | Description                                                                               |
+| -------------- | ----------------------------------------------------------------------------------------- |
+| Username       | Editable (disabled for guest account)                                                     |
+| Password       | Leave blank to keep current, new password must meet minimum strength (disabled for guest) |
+| Admin          | Toggle admin privileges (disabled for shared accounts)                                    |
+| Shared Account | Shows shared status (always disabled — cannot change in edit)                             |
+| Enabled        | Toggle account access                                                                     |
+| Group          | Assign, change, or remove group                                                           |
+| Permissions    | Select allowed actions (with override indicators when grouped)                            |
 
 Click **Update** to save changes, or **Cancel** to discard.
 
@@ -73,12 +73,12 @@ Click **Update** to save changes, or **Cancel** to discard.
 
 When a user belongs to a group, the permission checkboxes show overrides with visual indicators:
 
-| Visual              | Meaning                                                     |
-| ------------------- | ----------------------------------------------------------- |
-| ☑ Normal text       | Permission inherited from group                             |
-| ☑ **Bold text**     | Individual grant override (permission not in group)         |
-| ☐ **Bold text**     | Individual revoke override (in group but denied for this user) |
-| ☐ Normal text       | Not in group and not individually granted                   |
+| Visual          | Meaning                                                        |
+| --------------- | -------------------------------------------------------------- |
+| ☑ Normal text   | Permission inherited from group                                |
+| ☑ **Bold text** | Individual grant override (permission not in group)            |
+| ☐ **Bold text** | Individual revoke override (in group but denied for this user) |
+| ☐ Normal text   | Not in group and not individually granted                      |
 
 All checkboxes remain toggleable regardless of group membership. Bold indicates this user differs from their group.
 
@@ -98,10 +98,10 @@ The Groups tab manages account groups — permission templates that simplify man
 
 The group list displays a sortable table with the following columns:
 
-| Column       | Description                            |
-| ------------ | -------------------------------------- |
-| **Name**     | Group name                             |
-| **Members**  | Number of users assigned to this group |
+| Column      | Description                            |
+| ----------- | -------------------------------------- |
+| **Name**    | Group name                             |
+| **Members** | Number of users assigned to this group |
 
 Click any column header to sort. Click again to reverse the sort order.
 
@@ -109,30 +109,30 @@ Click any column header to sort. Click again to reverse the sort order.
 
 Right-click a group name to access the context menu:
 
-| Action     | Description                 | Permission Required |
-| ---------- | --------------------------- | ------------------- |
-| **Edit**   | Open the group edit form    | `group_edit`        |
-| **Delete** | Delete the group            | `group_delete`      |
+| Action     | Description              | Permission Required |
+| ---------- | ------------------------ | ------------------- |
+| **Edit**   | Open the group edit form | `group_edit`        |
+| **Delete** | Delete the group         | `group_delete`      |
 
 ### Creating Groups
 
 Click **Create Group** to open the creation form. Requires `group_create` permission.
 
-| Field        | Description                                |
-| ------------ | ------------------------------------------ |
-| Name         | Group name (1–32 characters)               |
-| Shared Group | Toggle for shared account groups                   |
-| Permissions  | Select permissions for all group members   |
+| Field        | Description                              |
+| ------------ | ---------------------------------------- |
+| Name         | Group name (1–32 characters)             |
+| Shared Group | Toggle for shared account groups         |
+| Permissions  | Select permissions for all group members |
 
 ### Editing Groups
 
 Right-click a group name → Edit to modify the group. The edit form shows the original group name as a subtitle, followed by:
 
-| Field        | Description                                                        |
-| ------------ | ------------------------------------------------------------------ |
-| Name         | Group name (1–32 characters)                                       |
-| Shared Group | Toggle shared status (disabled when the group has members)         |
-| Permissions  | Select permissions for all group members                           |
+| Field        | Description                                                |
+| ------------ | ---------------------------------------------------------- |
+| Name         | Group name (1–32 characters)                               |
+| Shared Group | Toggle shared status (disabled when the group has members) |
+| Permissions  | Select permissions for all group members                   |
 
 Click **Update** to save changes, or **Cancel** to discard.
 
@@ -178,10 +178,10 @@ This prevents privilege escalation — a manager cannot give a user more access 
 
 ## Keyboard Shortcuts
 
-| Shortcut | Action                            |
-| -------- | --------------------------------- |
-| `Enter`  | Submit form (create/save)         |
-| `Escape` | Cancel form / close panel         |
+| Shortcut | Action                    |
+| -------- | ------------------------- |
+| `Enter`  | Submit form (create/save) |
+| `Escape` | Cancel form / close panel |
 
 ## Permissions
 

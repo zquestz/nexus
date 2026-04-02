@@ -128,16 +128,16 @@ docker run -d \
 
 ## Environment Variables
 
-| Variable                        | Default   | Description                                          |
-| ------------------------------- | --------- | ---------------------------------------------------- |
-| `NEXUS_BIND`                    | `0.0.0.0` | IP address to bind to                                |
-| `NEXUS_PORT`                    | `7500`    | Main BBS port                                        |
-| `NEXUS_TRANSFER_PORT`           | `7501`    | File transfer port                                   |
-| `NEXUS_WEBSOCKET`               | (empty)   | Set to any value to enable WebSocket support         |
-| `NEXUS_WEBSOCKET_PORT`          | `7502`    | WebSocket BBS port (requires `NEXUS_WEBSOCKET`)      |
-| `NEXUS_TRANSFER_WEBSOCKET_PORT` | `7503`    | WebSocket transfer port (requires `NEXUS_WEBSOCKET`) |
-| `NEXUS_LOG_LEVEL`               | `info`    | Log level (none, error, warn, info, debug)           |
-| `NEXUS_LOG_RETENTION`           | `30d`     | Log file retention (e.g. "30d", "7d", "0" for stderr only) |
+| Variable                        | Default   | Description                                                                    |
+| ------------------------------- | --------- | ------------------------------------------------------------------------------ |
+| `NEXUS_BIND`                    | `0.0.0.0` | IP address to bind to                                                          |
+| `NEXUS_PORT`                    | `7500`    | Main BBS port                                                                  |
+| `NEXUS_TRANSFER_PORT`           | `7501`    | File transfer port                                                             |
+| `NEXUS_WEBSOCKET`               | (empty)   | Set to any value to enable WebSocket support                                   |
+| `NEXUS_WEBSOCKET_PORT`          | `7502`    | WebSocket BBS port (requires `NEXUS_WEBSOCKET`)                                |
+| `NEXUS_TRANSFER_WEBSOCKET_PORT` | `7503`    | WebSocket transfer port (requires `NEXUS_WEBSOCKET`)                           |
+| `NEXUS_LOG_LEVEL`               | `info`    | Log level (none, error, warn, info, debug)                                     |
+| `NEXUS_LOG_RETENTION`           | `30d`     | Log file retention (e.g. "30d", "7d", "0" for stderr only)                     |
 | `NEXUS_NO_LOG_TIMESTAMPS`       | `true`    | Disable stderr timestamps (Docker provides its own); set to empty to re-enable |
 
 ### Enable Debug Logging

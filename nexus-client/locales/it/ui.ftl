@@ -158,7 +158,10 @@ label-log-level-debug = Debug
 label-reindex-short = Reindicizza:
 label-persistent-short = Persistenti:
 label-auto-join-short = Auto-unione:
-label-minutes = minuti
+label-minutes = { $count ->
+    [one] minuto
+   *[other] minuti
+}
 label-name = Nome:
 label-description = Descrizione:
 

@@ -395,10 +395,10 @@ Broadcast to remaining channel members when a user leaves.
 
 Update a channel's topic.
 
-| Field     | Type   | Required | Description                                  |
-| --------- | ------ | -------- | -------------------------------------------- |
-| `topic`   | string | Yes      | New topic (0-256 bytes, empty to clear)      |
-| `channel` | string | Yes      | Target channel                               |
+| Field     | Type   | Required | Description                             |
+| --------- | ------ | -------- | --------------------------------------- |
+| `topic`   | string | Yes      | New topic (0-256 bytes, empty to clear) |
+| `channel` | string | Yes      | Target channel                          |
 
 **Set topic example:**
 
@@ -439,13 +439,13 @@ Response to the topic update request.
 
 Broadcast to channel members when channel properties change (topic, secret mode). Only changed fields are included.
 
-| Field           | Type    | Required | Description                                        |
-| --------------- | ------- | -------- | -------------------------------------------------- |
-| `channel`       | string  | Yes      | Channel whose properties changed                   |
+| Field           | Type    | Required | Description                                            |
+| --------------- | ------- | -------- | ------------------------------------------------------ |
+| `channel`       | string  | Yes      | Channel whose properties changed                       |
 | `topic`         | string  | No       | New topic (empty string = cleared, absent = no change) |
-| `topic_set_by`  | string  | No       | Nickname of user who set the topic                 |
-| `secret`        | boolean | No       | New secret mode (absent = no change)               |
-| `secret_set_by` | string  | No       | Nickname of user who changed secret mode           |
+| `topic_set_by`  | string  | No       | Nickname of user who set the topic                     |
+| `secret`        | boolean | No       | New secret mode (absent = no change)                   |
+| `secret_set_by` | string  | No       | Nickname of user who changed secret mode               |
 
 **Topic change example:**
 
@@ -520,15 +520,15 @@ Users without the `chat` feature:
 
 ## Channel Validation
 
-| Rule       | Value                                          | Error                            |
-| ---------- | ---------------------------------------------- | -------------------------------- |
-| Prefix     | Must start with `#`                            | Channel name must start with '#' |
-| Min length | 2 characters (including `#`)                   | Channel name too short           |
-| Max length | 32 characters                                  | Channel name too long            |
-| Characters | Unicode letters and ASCII graphic characters   | Invalid characters               |
-| No spaces  | Spaces not allowed                             | Invalid characters               |
-| No `#`     | Additional `#` characters not allowed          | Invalid characters               |
-| Case       | Case-insensitive matching                      | —                                |
+| Rule       | Value                                        | Error                            |
+| ---------- | -------------------------------------------- | -------------------------------- |
+| Prefix     | Must start with `#`                          | Channel name must start with '#' |
+| Min length | 2 characters (including `#`)                 | Channel name too short           |
+| Max length | 32 characters                                | Channel name too long            |
+| Characters | Unicode letters and ASCII graphic characters | Invalid characters               |
+| No spaces  | Spaces not allowed                           | Invalid characters               |
+| No `#`     | Additional `#` characters not allowed        | Invalid characters               |
+| Case       | Case-insensitive matching                    | —                                |
 
 Channel names are more permissive than usernames. After the `#` prefix, most printable characters are allowed including `/`, `\`, `:`, `.`, `?`, `*`, etc. Only spaces and additional `#` characters are forbidden. Unicode letters are fully supported (e.g., `#日本語`, `#Россия`).
 

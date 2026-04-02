@@ -91,16 +91,16 @@ Client                                        Server
 
 Create a new user account.
 
-| Field         | Type    | Required | Description                                       |
-| ------------- | ------- | -------- | ------------------------------------------------- |
-| `username`    | string  | Yes      | Account username (1-32 characters)                |
+| Field         | Type    | Required | Description                                                                   |
+| ------------- | ------- | -------- | ----------------------------------------------------------------------------- |
+| `username`    | string  | Yes      | Account username (1-32 characters)                                            |
 | `password`    | string  | Yes      | Account password (1-256 characters, must meet server's min password strength) |
-| `is_admin`    | boolean | Yes      | Whether user has admin privileges                 |
-| `is_shared`   | boolean | No       | Whether this is a shared account (default: false) |
-| `enabled`     | boolean | Yes      | Whether account is enabled                        |
-| `permissions` | array   | Yes      | List of permission strings                        |
-| `group_id`    | integer | No       | Group to assign the user to (null for no group)   |
-| `revokes`     | array   | No       | Permissions to revoke from group (only with group) |
+| `is_admin`    | boolean | Yes      | Whether user has admin privileges                                             |
+| `is_shared`   | boolean | No       | Whether this is a shared account (default: false)                             |
+| `enabled`     | boolean | Yes      | Whether account is enabled                                                    |
+| `permissions` | array   | Yes      | List of permission strings                                                    |
+| `group_id`    | integer | No       | Group to assign the user to (null for no group)                               |
+| `revokes`     | array   | No       | Permissions to revoke from group (only with group)                            |
 
 **Regular user:**
 
@@ -160,12 +160,12 @@ NX|10|UserCreate|a1b2c3d4e5f6|150|{"username":"alice","password":"secret",...}
 
 Response after creating a user.
 
-| Field      | Type    | Required   | Description                  |
-| ---------- | ------- | ---------- | ---------------------------- |
-| `success`  | boolean | Yes        | Whether creation succeeded   |
-| `error`    | string  | If failure | Error message                |
-| `id`       | integer | If success | Created user's account ID    |
-| `username` | string  | If success | Created username             |
+| Field      | Type    | Required   | Description                |
+| ---------- | ------- | ---------- | -------------------------- |
+| `success`  | boolean | Yes        | Whether creation succeeded |
+| `error`    | string  | If failure | Error message              |
+| `id`       | integer | If success | Created user's account ID  |
+| `username` | string  | If success | Created username           |
 
 **Success example:**
 
@@ -206,21 +206,21 @@ Request user data for editing.
 
 Response containing user data for editing.
 
-| Field                  | Type    | Required   | Description                                    |
-| ---------------------- | ------- | ---------- | ---------------------------------------------- |
-| `success`              | boolean | Yes        | Whether request succeeded                      |
-| `error`                | string  | If failure | Error message                                  |
-| `id`                   | integer | If success | Account ID                                     |
-| `username`             | string  | If success | Account username                               |
-| `is_admin`             | boolean | If success | Admin status                                   |
-| `is_shared`            | boolean | If success | Shared account status                          |
-| `enabled`              | boolean | If success | Account enabled status                         |
-| `permissions`          | array   | If success | List of permissions                            |
-| `group_id`             | integer | If success | User's group ID (null if no group)             |
-| `group_name`           | string  | If success | User's group name (null if no group)           |
-| `group_permissions`    | array   | If success | Group's base permissions (null if no group)    |
-| `revoked_permissions`  | array   | If success | Permissions revoked from group for this user   |
-| `available_groups`     | array   | If success | Available groups for dropdown (GroupInfo list)  |
+| Field                 | Type    | Required   | Description                                    |
+| --------------------- | ------- | ---------- | ---------------------------------------------- |
+| `success`             | boolean | Yes        | Whether request succeeded                      |
+| `error`               | string  | If failure | Error message                                  |
+| `id`                  | integer | If success | Account ID                                     |
+| `username`            | string  | If success | Account username                               |
+| `is_admin`            | boolean | If success | Admin status                                   |
+| `is_shared`           | boolean | If success | Shared account status                          |
+| `enabled`             | boolean | If success | Account enabled status                         |
+| `permissions`         | array   | If success | List of permissions                            |
+| `group_id`            | integer | If success | User's group ID (null if no group)             |
+| `group_name`          | string  | If success | User's group name (null if no group)           |
+| `group_permissions`   | array   | If success | Group's base permissions (null if no group)    |
+| `revoked_permissions` | array   | If success | Permissions revoked from group for this user   |
+| `available_groups`    | array   | If success | Available groups for dropdown (GroupInfo list) |
 
 **Success example:**
 
@@ -235,7 +235,12 @@ Response containing user data for editing.
   "permissions": ["chat_send", "chat_receive", "user_list"],
   "group_id": 1,
   "group_name": "Basic Users",
-  "group_permissions": ["chat_send", "chat_receive", "user_list", "file_download"],
+  "group_permissions": [
+    "chat_send",
+    "chat_receive",
+    "user_list",
+    "file_download"
+  ],
   "revoked_permissions": ["file_download"],
   "available_groups": [
     {
@@ -262,18 +267,18 @@ Response containing user data for editing.
 
 Update an existing user account.
 
-| Field              | Type    | Required | Description                                |
-| ------------------ | ------- | -------- | ------------------------------------------ |
-| `id`               | integer | Yes      | Account ID to update                       |
-| `current_password` | string  | No       | Current password (required for self-update) |
-| `username`         | string  | No       | New username                               |
-| `password`         | string  | No       | New password (must meet server's min password strength)              |
-| `is_admin`         | boolean | No       | New admin status                           |
-| `enabled`          | boolean | No       | New enabled status                         |
-| `permissions`      | array   | No       | New permissions list                       |
-| `group_id`         | integer | No       | Group to assign (null to keep current)     |
-| `remove_group`     | boolean | No       | Remove user from current group             |
-| `revokes`          | array   | No       | Permissions to revoke from group           |
+| Field              | Type    | Required | Description                                             |
+| ------------------ | ------- | -------- | ------------------------------------------------------- |
+| `id`               | integer | Yes      | Account ID to update                                    |
+| `current_password` | string  | No       | Current password (required for self-update)             |
+| `username`         | string  | No       | New username                                            |
+| `password`         | string  | No       | New password (must meet server's min password strength) |
+| `is_admin`         | boolean | No       | New admin status                                        |
+| `enabled`          | boolean | No       | New enabled status                                      |
+| `permissions`      | array   | No       | New permissions list                                    |
+| `group_id`         | integer | No       | Group to assign (null to keep current)                  |
+| `remove_group`     | boolean | No       | Remove user from current group                          |
+| `revokes`          | array   | No       | Permissions to revoke from group                        |
 
 Only include fields you want to change.
 
@@ -440,16 +445,16 @@ Response after kicking a user.
 
 Update server configuration.
 
-| Field                    | Type    | Required | Description                                              |
-| ------------------------ | ------- | -------- | -------------------------------------------------------- |
-| `name`                   | string  | No       | Server display name (1-64 characters)                    |
-| `description`            | string  | No       | Server description (0-512 characters)                    |
-| `max_connections_per_ip` | integer | No       | Max connections per IP                                   |
-| `max_transfers_per_ip`   | integer | No       | Max transfers per IP                                     |
-| `image`                  | string  | No       | Server logo as data URI (max 700KB)                      |
-| `file_reindex_interval`  | integer | No       | File reindex interval in minutes (0 to disable)          |
-| `persistent_channels`    | string  | No       | Space-separated persistent channel names                 |
-| `auto_join_channels`     | string  | No       | Space-separated channels users auto-join on login        |
+| Field                    | Type    | Required | Description                                                                     |
+| ------------------------ | ------- | -------- | ------------------------------------------------------------------------------- |
+| `name`                   | string  | No       | Server display name (1-64 characters)                                           |
+| `description`            | string  | No       | Server description (0-512 characters)                                           |
+| `max_connections_per_ip` | integer | No       | Max connections per IP                                                          |
+| `max_transfers_per_ip`   | integer | No       | Max transfers per IP                                                            |
+| `image`                  | string  | No       | Server logo as data URI (max 700KB)                                             |
+| `file_reindex_interval`  | integer | No       | File reindex interval in minutes (0 to disable)                                 |
+| `persistent_channels`    | string  | No       | Space-separated persistent channel names                                        |
+| `auto_join_channels`     | string  | No       | Space-separated channels users auto-join on login                               |
 | `min_password_strength`  | integer | No       | Minimum password strength level (0=Weak, 1=Fair, 2=Good, 3=Strong, 4=Excellent) |
 
 Only include fields you want to change.
@@ -548,12 +553,12 @@ Broadcast to all users when server info changes.
 
 Sent to a user when their permissions change.
 
-| Field         | Type    | Required | Description                         |
-| ------------- | ------- | -------- | ----------------------------------- |
-| `is_admin`    | boolean | Yes      | New admin status                    |
-| `permissions` | array   | Yes      | New permissions list                |
-| `server_info` | object  | No       | Server info (if promoted to admin)  |
-| `group_id`    | integer | No       | User's group ID (null if no group)  |
+| Field         | Type    | Required | Description                          |
+| ------------- | ------- | -------- | ------------------------------------ |
+| `is_admin`    | boolean | Yes      | New admin status                     |
+| `permissions` | array   | Yes      | New permissions list                 |
+| `server_info` | object  | No       | Server info (if promoted to admin)   |
+| `group_id`    | integer | No       | User's group ID (null if no group)   |
 | `group_name`  | string  | No       | User's group name (null if no group) |
 
 **Permissions changed:**
@@ -762,51 +767,51 @@ Users cannot:
 
 ## Server Info Validation
 
-| Field                    | Rules                                                |
-| ------------------------ | ---------------------------------------------------- |
-| `name`                   | 1-64 characters, no newlines, no control characters  |
-| `description`            | 0-512 characters, no newlines, no control characters |
-| `image`                  | Max 700KB data URI, PNG/WebP/JPEG/SVG formats        |
-| `max_connections_per_ip` | Positive integer                                     |
-| `max_transfers_per_ip`   | Positive integer                                     |
-| `min_password_strength`  | Integer 0-4 (0=Weak, 1=Fair, 2=Good, 3=Strong, 4=Excellent)  |
+| Field                    | Rules                                                       |
+| ------------------------ | ----------------------------------------------------------- |
+| `name`                   | 1-64 characters, no newlines, no control characters         |
+| `description`            | 0-512 characters, no newlines, no control characters        |
+| `image`                  | Max 700KB data URI, PNG/WebP/JPEG/SVG formats               |
+| `max_connections_per_ip` | Positive integer                                            |
+| `max_transfers_per_ip`   | Positive integer                                            |
+| `min_password_strength`  | Integer 0-4 (0=Weak, 1=Fair, 2=Good, 3=Strong, 4=Excellent) |
 
 ## Username Validation
 
-| Rule             | Value                                                   |
-| ---------------- | ------------------------------------------------------- |
-| Min length       | 1 character                                             |
-| Max length       | 32 characters                                           |
-| Valid characters | Unicode letters and ASCII graphic (no spaces, no `/\:.<>"|?*#`) |
-| Case sensitivity | Case-insensitive (stored as entered, matched lowercase) |
-| Reserved         | `guest` cannot be renamed                               |
+| Rule             | Value                                                     |
+| ---------------- | --------------------------------------------------------- | ------ |
+| Min length       | 1 character                                               |
+| Max length       | 32 characters                                             |
+| Valid characters | Unicode letters and ASCII graphic (no spaces, no `/\:.<>" | ?\*#`) |
+| Case sensitivity | Case-insensitive (stored as entered, matched lowercase)   |
+| Reserved         | `guest` cannot be renamed                                 |
 
 ## Error Handling
 
 ### UserCreate Errors
 
-| Error                   | Cause                            |
-| ----------------------- | -------------------------------- |
-| Permission denied       | Missing `user_create` permission |
-| Username is empty       | Empty username provided          |
-| Username too long       | Exceeds 32 characters            |
-| Invalid username        | Contains invalid characters      |
-| Username already exists | Account with that name exists    |
-| Password is empty       | Empty password provided          |
-| Password too long       | Exceeds 256 characters           |
-| Password too weak         | Does not meet minimum strength requirement |
+| Error                   | Cause                                      |
+| ----------------------- | ------------------------------------------ |
+| Permission denied       | Missing `user_create` permission           |
+| Username is empty       | Empty username provided                    |
+| Username too long       | Exceeds 32 characters                      |
+| Invalid username        | Contains invalid characters                |
+| Username already exists | Account with that name exists              |
+| Password is empty       | Empty password provided                    |
+| Password too long       | Exceeds 256 characters                     |
+| Password too weak       | Does not meet minimum strength requirement |
 
 ### UserUpdate Errors
 
-| Error                                    | Cause                           |
-| ---------------------------------------- | ------------------------------- |
-| Permission denied                        | Missing `user_edit` permission  |
-| User not found                           | Account doesn't exist           |
-| Cannot edit admin users                  | Non-admin trying to edit admin  |
-| Incorrect current password               | Wrong password for self-update  |
-| Username already exists                  | New username conflicts          |
-| Cannot rename the guest account          | Attempted guest rename          |
-| Cannot change the guest account password | Attempted guest password change |
+| Error                                    | Cause                                      |
+| ---------------------------------------- | ------------------------------------------ |
+| Permission denied                        | Missing `user_edit` permission             |
+| User not found                           | Account doesn't exist                      |
+| Cannot edit admin users                  | Non-admin trying to edit admin             |
+| Incorrect current password               | Wrong password for self-update             |
+| Username already exists                  | New username conflicts                     |
+| Cannot rename the guest account          | Attempted guest rename                     |
+| Cannot change the guest account password | Attempted guest password change            |
 | Password too weak                        | Does not meet minimum strength requirement |
 
 ### UserDelete Errors
@@ -830,15 +835,15 @@ Users cannot:
 
 ### ServerInfoUpdate Errors
 
-| Error                       | Cause                      |
-| --------------------------- | -------------------------- |
-| Permission denied           | Non-admin attempted update |
-| Server name cannot be empty | Empty name provided        |
-| Server name too long        | Exceeds 64 characters      |
-| Description too long        | Exceeds 512 characters     |
-| Image too large             | Exceeds 700KB              |
-| Invalid image format        | Not PNG/WebP/JPEG/SVG      |
-| Invalid password strength value | Value not in range 0-4            |
+| Error                           | Cause                      |
+| ------------------------------- | -------------------------- |
+| Permission denied               | Non-admin attempted update |
+| Server name cannot be empty     | Empty name provided        |
+| Server name too long            | Exceeds 64 characters      |
+| Description too long            | Exceeds 512 characters     |
+| Image too large                 | Exceeds 700KB              |
+| Invalid image format            | Not PNG/WebP/JPEG/SVG      |
+| Invalid password strength value | Value not in range 0-4     |
 
 ## Kick Behavior
 

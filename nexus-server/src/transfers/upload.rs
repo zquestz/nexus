@@ -88,11 +88,11 @@ where
 
     debug!(
         id = %log_transfer_id,
+        user = %username,
+        ip = %peer_addr,
         files = file_count,
         bytes = total_size,
         path = %destination,
-        user = %username,
-        ip = %peer_addr,
         "{}", LOG_UPLOAD_STARTING
     );
 
@@ -174,7 +174,7 @@ where
 }
 
 // =============================================================================
-// File Reception
+// File Reception Errors
 // =============================================================================
 
 /// Error type for receive_file
@@ -521,7 +521,6 @@ fn validate_and_build_upload_paths(
 // Conflict Detection
 // =============================================================================
 
-/// Check for conflicts with existing files and get current state for resume
 /// Check for upload conflicts and get existing file state
 ///
 /// Sends FileHashing keepalive messages to the client while hashing large

@@ -88,10 +88,10 @@ Requires one of: `user_create`, `user_edit`, `group_create`, `group_edit`, or `g
 
 Response containing all groups with their details.
 
-| Field     | Type        | Required   | Description                  |
-| --------- | ----------- | ---------- | ---------------------------- |
+| Field     | Type        | Required   | Description                   |
+| --------- | ----------- | ---------- | ----------------------------- |
 | `success` | boolean     | Yes        | Whether the request succeeded |
-| `error`   | string      | If failure | Error message                |
+| `error`   | string      | If failure | Error message                 |
 | `groups`  | GroupInfo[] | If success | Array of group objects        |
 
 **Success example:**
@@ -132,11 +132,7 @@ Response containing all groups with their details.
       "name": "Shared Lounge",
       "is_shared": true,
       "member_count": 1,
-      "permissions": [
-        "chat_send",
-        "chat_receive",
-        "user_list"
-      ]
+      "permissions": ["chat_send", "chat_receive", "user_list"]
     }
   ]
 }
@@ -155,11 +151,11 @@ Response containing all groups with their details.
 
 Create a new group.
 
-| Field         | Type     | Required | Description                                |
-| ------------- | -------- | -------- | ------------------------------------------ |
-| `name`        | string   | Yes      | Group name (max 32 characters)             |
-| `is_shared`   | boolean  | Yes      | Whether group is for shared accounts only  |
-| `permissions` | string[] | Yes      | List of permission identifiers             |
+| Field         | Type     | Required | Description                               |
+| ------------- | -------- | -------- | ----------------------------------------- |
+| `name`        | string   | Yes      | Group name (max 32 characters)            |
+| `is_shared`   | boolean  | Yes      | Whether group is for shared accounts only |
+| `permissions` | string[] | Yes      | List of permission identifiers            |
 
 **Example:**
 
@@ -184,11 +180,7 @@ Create a new group.
 {
   "name": "Shared Lounge",
   "is_shared": true,
-  "permissions": [
-    "chat_send",
-    "chat_receive",
-    "user_list"
-  ]
+  "permissions": ["chat_send", "chat_receive", "user_list"]
 }
 ```
 
@@ -242,15 +234,15 @@ Request a group's data for editing.
 
 Response containing the group's current data for editing.
 
-| Field          | Type     | Required   | Description                      |
-| -------------- | -------- | ---------- | -------------------------------- |
-| `success`      | boolean  | Yes        | Whether the request succeeded    |
-| `error`        | string   | If failure | Error message                    |
-| `id`           | integer  | If success | Group ID                         |
-| `name`         | string   | If success | Group name                       |
-| `is_shared`    | boolean  | If success | Whether group is shared          |
-| `permissions`  | string[] | If success | Group's base permission set      |
-| `member_count` | integer  | If success | Number of users in this group    |
+| Field          | Type     | Required   | Description                   |
+| -------------- | -------- | ---------- | ----------------------------- |
+| `success`      | boolean  | Yes        | Whether the request succeeded |
+| `error`        | string   | If failure | Error message                 |
+| `id`           | integer  | If success | Group ID                      |
+| `name`         | string   | If success | Group name                    |
+| `is_shared`    | boolean  | If success | Whether group is shared       |
+| `permissions`  | string[] | If success | Group's base permission set   |
+| `member_count` | integer  | If success | Number of users in this group |
 
 **Success example:**
 
@@ -285,12 +277,12 @@ Response containing the group's current data for editing.
 
 Update an existing group. Only provided fields are changed.
 
-| Field         | Type     | Required | Description                               |
-| ------------- | -------- | -------- | ----------------------------------------- |
-| `id`          | integer  | Yes      | Group ID                                  |
-| `name`        | string   | No       | New group name                            |
-| `is_shared`   | boolean  | No       | New shared status                         |
-| `permissions` | string[] | No       | New permission set (replaces existing)    |
+| Field         | Type     | Required | Description                            |
+| ------------- | -------- | -------- | -------------------------------------- |
+| `id`          | integer  | Yes      | Group ID                               |
+| `name`        | string   | No       | New group name                         |
+| `is_shared`   | boolean  | No       | New shared status                      |
+| `permissions` | string[] | No       | New permission set (replaces existing) |
 
 **Rename example:**
 
@@ -340,12 +332,12 @@ Update an existing group. Only provided fields are changed.
 
 Response after updating a group.
 
-| Field     | Type    | Required   | Description               |
-| --------- | ------- | ---------- | ------------------------- |
-| `success` | boolean | Yes        | Whether update succeeded  |
-| `error`   | string  | If failure | Error message             |
-| `id`      | integer | If success | Updated group ID          |
-| `name`    | string  | If success | Updated group name        |
+| Field     | Type    | Required   | Description              |
+| --------- | ------- | ---------- | ------------------------ |
+| `success` | boolean | Yes        | Whether update succeeded |
+| `error`   | string  | If failure | Error message            |
+| `id`      | integer | If success | Updated group ID         |
+| `name`    | string  | If success | Updated group name       |
 
 **Success example:**
 
@@ -426,11 +418,11 @@ Response after deleting a group.
 
 ## Permissions
 
-| Permission     | Required For                                  |
-| -------------- | --------------------------------------------- |
-| `group_create` | Creating groups (`GroupCreate`)                |
-| `group_edit`   | Editing groups (`GroupEdit`, `GroupUpdate`)     |
-| `group_delete` | Deleting groups (`GroupDelete`)                |
+| Permission     | Required For                                |
+| -------------- | ------------------------------------------- |
+| `group_create` | Creating groups (`GroupCreate`)             |
+| `group_edit`   | Editing groups (`GroupEdit`, `GroupUpdate`) |
+| `group_delete` | Deleting groups (`GroupDelete`)             |
 
 `GroupList` does not have its own permission. Access is granted implicitly to users who hold any of: `user_create`, `user_edit`, `group_create`, `group_edit`, or `group_delete`. This allows the user management form to populate the group dropdown and the groups tab to display the list.
 
@@ -446,15 +438,15 @@ Similarly, non-admin users with `user_edit` can only assign a user to a group if
 
 Shared groups are restricted to shared accounts and can only contain shared account permissions.
 
-| Scenario                                      | Allowed | Notes                                                  |
-| --------------------------------------------- | ------- | ------------------------------------------------------ |
-| Create shared group                           | ✅       | `is_shared = true` at creation                         |
-| Assign shared account to shared group         | ✅       | Expected usage                                         |
-| Assign regular account to shared group        | ❌       | Error: shared mismatch                                 |
-| Assign shared account to non-shared group     | ❌       | Error: shared mismatch                                 |
-| Shared group with non-shared permissions      | ❌       | Validated: only shared account permissions allowed     |
-| Toggle `is_shared` with no members            | ✅       | Non-shared permissions stripped when toggling to shared |
-| Toggle `is_shared` with members               | ❌       | Error: must remove all users first                     |
+| Scenario                                  | Allowed | Notes                                                   |
+| ----------------------------------------- | ------- | ------------------------------------------------------- |
+| Create shared group                       | ✅      | `is_shared = true` at creation                          |
+| Assign shared account to shared group     | ✅      | Expected usage                                          |
+| Assign regular account to shared group    | ❌      | Error: shared mismatch                                  |
+| Assign shared account to non-shared group | ❌      | Error: shared mismatch                                  |
+| Shared group with non-shared permissions  | ❌      | Validated: only shared account permissions allowed      |
+| Toggle `is_shared` with no members        | ✅      | Non-shared permissions stripped when toggling to shared |
+| Toggle `is_shared` with members           | ❌      | Error: must remove all users first                      |
 
 ## Override System
 
@@ -502,11 +494,11 @@ If a permission change causes side effects (e.g., losing `voice_listen` while in
 
 When a user's group assignment changes, the server cleans up overrides:
 
-| Scenario                       | Behavior                                                                  |
-| ------------------------------ | ------------------------------------------------------------------------- |
-| Assigned to a group            | Duplicate grants removed (group already provides them). Revokes preserved |
-| Moved between groups           | Duplicate grants removed for new group. Non-overlapping grants and all revokes preserved |
-| Removed from group             | Grant overrides kept (become regular individual permissions). Revoke overrides cleared    |
+| Scenario             | Behavior                                                                                 |
+| -------------------- | ---------------------------------------------------------------------------------------- |
+| Assigned to a group  | Duplicate grants removed (group already provides them). Revokes preserved                |
+| Moved between groups | Duplicate grants removed for new group. Non-overlapping grants and all revokes preserved |
+| Removed from group   | Grant overrides kept (become regular individual permissions). Revoke overrides cleared   |
 
 ## Error Handling
 

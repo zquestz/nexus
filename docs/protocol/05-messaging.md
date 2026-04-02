@@ -175,9 +175,9 @@ Delivered to the recipient when a user message is sent.
 
 Send a broadcast message to all connected users.
 
-| Field     | Type   | Required | Description                           |
-| --------- | ------ | -------- | ------------------------------------- |
-| `message` | string | Yes      | Broadcast content (1-1024 bytes)      |
+| Field     | Type   | Required | Description                      |
+| --------- | ------ | -------- | -------------------------------- |
+| `message` | string | Yes      | Broadcast content (1-1024 bytes) |
 
 **Example:**
 
@@ -271,11 +271,11 @@ Unicode is fully supported, including:
 
 The `to_nickname` field uses the same validation as usernames:
 
-| Rule        | Value                          | Error             |
-| ----------- | ------------------------------ | ----------------- |
-| Not empty   | Required field                 | Nickname is empty |
-| Max length  | 32 characters                  | Nickname too long |
-| Valid chars | Unicode letters and ASCII graphic (no spaces, no `/\:.<>"|?*#`) | Invalid nickname  |
+| Rule        | Value                                                     | Error             |
+| ----------- | --------------------------------------------------------- | ----------------- | ---------------- |
+| Not empty   | Required field                                            | Nickname is empty |
+| Max length  | 32 characters                                             | Nickname too long |
+| Valid chars | Unicode letters and ASCII graphic (no spaces, no `/\:.<>" | ?\*#`)            | Invalid nickname |
 
 ## User Message Routing
 

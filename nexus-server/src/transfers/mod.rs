@@ -188,9 +188,10 @@ where
     let bytes = transfer.bytes_transferred();
     debug!(
         id = %transfer.id(),
+        user = %transfer.user().username,
+        ip = %peer_addr,
         bytes = %bytes,
         elapsed = %format!("{:.2}s", elapsed.as_secs_f64()),
-        ip = %peer_addr,
         "{}", LOG_TRANSFER_COMPLETE
     );
 

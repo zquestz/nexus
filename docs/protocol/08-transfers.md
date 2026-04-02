@@ -331,9 +331,9 @@ This message is sent every 10 seconds during hash computation to prevent idle ti
 
 Carries the sender's SHA-256 hash of the complete file. Sent after `FileData` (normal transfer) or alone without `FileData` (file already complete or zero-byte).
 
-| Field    | Type   | Required | Description                        |
-| -------- | ------ | -------- | ---------------------------------- |
-| `sha256` | string | Yes      | SHA-256 hash of the complete file  |
+| Field    | Type   | Required | Description                       |
+| -------- | ------ | -------- | --------------------------------- |
+| `sha256` | string | Yes      | SHA-256 hash of the complete file |
 
 **Example:**
 
@@ -354,12 +354,12 @@ Carries the sender's SHA-256 hash of the complete file. Sent after `FileData` (n
 
 The receiver reads the next frame and dispatches based on type:
 
-| Frame Type         | Meaning                                                    |
-| ------------------ | ---------------------------------------------------------- |
-| `FileHashing`      | Keepalive — consume payload, skip, continue reading        |
-| `FileData`         | Data transfer — stream to disk, then read `FileHash` next  |
-| `FileHash`         | File was skipped (already complete or zero-byte)           |
-| `TransferComplete` | Transfer terminated early (error during resume, etc.)      |
+| Frame Type         | Meaning                                                   |
+| ------------------ | --------------------------------------------------------- |
+| `FileHashing`      | Keepalive — consume payload, skip, continue reading       |
+| `FileData`         | Data transfer — stream to disk, then read `FileHash` next |
+| `FileHash`         | File was skipped (already complete or zero-byte)          |
+| `TransferComplete` | Transfer terminated early (error during resume, etc.)     |
 
 After `FileData` is received and streamed, the very next meaningful frame MUST be `FileHash`. Any other frame type is a protocol error.
 

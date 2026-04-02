@@ -112,6 +112,7 @@ Certificate fingerprint (SHA-256): AB:CD:12:34:...
 Certificates: ~/.local/share/nexusd
 BBS port: 0.0.0.0:7500
 Transfer port: 0.0.0.0:7501
+Voice UDP port: 0.0.0.0:7500
 ```
 
 The server automatically:
@@ -160,6 +161,7 @@ Contents:
 - `cert.pem` — TLS certificate
 - `key.pem` — TLS private key
 - `files/` — File area root
+- `logs/` — Server log files (JSONL, daily rotation)
 
 ## Quick Configuration
 

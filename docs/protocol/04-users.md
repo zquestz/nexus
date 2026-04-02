@@ -507,8 +507,8 @@ Users can set an away status and/or a status message to indicate their availabil
 
 Set the user as away, optionally with a status message.
 
-| Field     | Type   | Required | Description                                  |
-| --------- | ------ | -------- | -------------------------------------------- |
+| Field     | Type   | Required | Description                             |
+| --------- | ------ | -------- | --------------------------------------- |
 | `message` | string | No       | Optional status message (max 128 bytes) |
 
 **Example (away with message):**
@@ -559,8 +559,8 @@ Response to `UserBack` request.
 
 Set or clear a status message without changing away state.
 
-| Field    | Type   | Required | Description                                        |
-| -------- | ------ | -------- | -------------------------------------------------- |
+| Field    | Type   | Required | Description                                   |
+| -------- | ------ | -------- | --------------------------------------------- |
 | `status` | string | No       | Status message (null to clear, max 128 bytes) |
 
 **Example (set status):**

@@ -74,20 +74,20 @@ Sent after successful handshake to authenticate.
 
 Server's response to the login attempt.
 
-| Field         | Type    | Required   | Description                                  |
-| ------------- | ------- | ---------- | -------------------------------------------- |
-| `success`     | boolean | Yes        | Whether login succeeded                      |
-| `error`       | string  | If failure | Error message                                |
-| `session_id`  | integer | If success | Unique session identifier                    |
-| `user_id`     | integer | If success | Unique user account ID                       |
-| `group_id`    | integer | If success | User's group ID (null if no group)           |
-| `group_name`  | string  | If success | User's group name (null if no group)         |
-| `is_admin`    | boolean | If success | Whether user has admin privileges            |
-| `permissions` | array   | If success | List of permission strings                   |
-| `server_info` | object  | If success | Server information (see below)               |
-| `locale`      | string  | If success | Confirmed locale                             |
-| `channels`    | array   | If success | Channels auto-joined on login (see below)    |
-| `nickname`    | string  | If success | Server-confirmed display name                |
+| Field         | Type    | Required   | Description                               |
+| ------------- | ------- | ---------- | ----------------------------------------- |
+| `success`     | boolean | Yes        | Whether login succeeded                   |
+| `error`       | string  | If failure | Error message                             |
+| `session_id`  | integer | If success | Unique session identifier                 |
+| `user_id`     | integer | If success | Unique user account ID                    |
+| `group_id`    | integer | If success | User's group ID (null if no group)        |
+| `group_name`  | string  | If success | User's group name (null if no group)      |
+| `is_admin`    | boolean | If success | Whether user has admin privileges         |
+| `permissions` | array   | If success | List of permission strings                |
+| `server_info` | object  | If success | Server information (see below)            |
+| `locale`      | string  | If success | Confirmed locale                          |
+| `channels`    | array   | If success | Channels auto-joined on login (see below) |
+| `nickname`    | string  | If success | Server-confirmed display name             |
 
 The `nickname` field contains the user's actual display name as confirmed by the server:
 
@@ -154,33 +154,33 @@ The `group_id` and `group_name` fields identify the user's account group (if any
 
 Included in successful login responses.
 
-| Field                      | Type    | Description                                                |
-| -------------------------- | ------- | ---------------------------------------------------------- |
-| `name`                     | string  | Server display name (null if not set)                      |
-| `description`              | string  | Server description (null if not set)                       |
-| `version`                  | string  | Server software version (null if not set)                  |
-| `transfer_port`            | integer | Port for file transfers (required)                         |
-| `transfer_websocket_port`  | integer | Port for WebSocket file transfers (null if not enabled)    |
-| `max_connections_per_ip`   | integer | Connection limit per IP (null if not set)                  |
-| `max_transfers_per_ip`     | integer | Transfer connection limit per IP (null if not set)         |
-| `image`                    | string  | Server logo as data URI (null if none)                     |
-| `file_reindex_interval`    | integer | File reindex interval in minutes, 0 = disabled (null if not set) |
-| `persistent_channels`      | string  | Space-separated persistent channels (admin only, null otherwise)  |
-| `auto_join_channels`       | string  | Space-separated auto-join channels (admin only, null otherwise)   |
-| `min_password_strength`    | integer | Minimum password strength level 0-4 (null if not set)        |
-| `log_level`                | string  | Server log level: "none", "error", "warn", "info", "debug"                   |
+| Field                     | Type    | Description                                                      |
+| ------------------------- | ------- | ---------------------------------------------------------------- |
+| `name`                    | string  | Server display name (null if not set)                            |
+| `description`             | string  | Server description (null if not set)                             |
+| `version`                 | string  | Server software version (null if not set)                        |
+| `transfer_port`           | integer | Port for file transfers (required)                               |
+| `transfer_websocket_port` | integer | Port for WebSocket file transfers (null if not enabled)          |
+| `max_connections_per_ip`  | integer | Connection limit per IP (null if not set)                        |
+| `max_transfers_per_ip`    | integer | Transfer connection limit per IP (null if not set)               |
+| `image`                   | string  | Server logo as data URI (null if none)                           |
+| `file_reindex_interval`   | integer | File reindex interval in minutes, 0 = disabled (null if not set) |
+| `persistent_channels`     | string  | Space-separated persistent channels (admin only, null otherwise) |
+| `auto_join_channels`      | string  | Space-separated auto-join channels (admin only, null otherwise)  |
+| `min_password_strength`   | integer | Minimum password strength level 0-4 (null if not set)            |
+| `log_level`               | string  | Server log level: "none", "error", "warn", "info", "debug"       |
 
 ## Channel Join Info Object
 
 Describes a channel the user was auto-joined to on login.
 
-| Field          | Type    | Description                                                          |
-| -------------- | ------- | -------------------------------------------------------------------- |
-| `channel`      | string  | Channel name                                                         |
-| `topic`        | string  | Current channel topic (null if none)                                 |
-| `topic_set_by` | string  | Nickname who set the topic (null if none)                            |
-| `secret`       | boolean | Whether the channel is secret                                        |
-| `members`      | array   | List of nicknames currently in the channel                           |
+| Field          | Type    | Description                                                            |
+| -------------- | ------- | ---------------------------------------------------------------------- |
+| `channel`      | string  | Channel name                                                           |
+| `topic`        | string  | Current channel topic (null if none)                                   |
+| `topic_set_by` | string  | Nickname who set the topic (null if none)                              |
+| `secret`       | boolean | Whether the channel is secret                                          |
+| `members`      | array   | List of nicknames currently in the channel                             |
 | `voiced`       | array   | Nicknames in voice chat (null if user lacks `voice_listen` permission) |
 
 ## Account Types
@@ -222,7 +222,7 @@ For shared and guest accounts:
 | Required   | Cannot be empty                                |
 | Unique     | Must not match any username or active nickname |
 | Length     | 1-32 characters                                |
-| Characters | Unicode letters and ASCII graphic characters    |
+| Characters | Unicode letters and ASCII graphic characters   |
 | Case       | Case-insensitive uniqueness check              |
 
 ## Avatar Format

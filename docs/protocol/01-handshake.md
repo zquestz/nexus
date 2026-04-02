@@ -73,24 +73,24 @@ Server's response indicating whether the handshake succeeded.
 
 The protocol uses [Semantic Versioning](https://semver.org/) for compatibility checks:
 
-| Component | Rule                                                        |
-| --------- | ----------------------------------------------------------- |
-| Major     | Must match exactly                                          |
+| Component | Rule                                                                   |
+| --------- | ---------------------------------------------------------------------- |
+| Major     | Must match exactly                                                     |
 | Minor     | **Pre-1.0 (`0.x`):** Must match exactly. **Post-1.0:** Client ≤ Server |
-| Patch     | Ignored                                                     |
+| Patch     | Ignored                                                                |
 
 During pre-1.0 development, each minor version bump can introduce breaking protocol changes (per semver convention). After 1.0, minor bumps are backward-compatible and only major bumps break compatibility.
 
 **Examples (pre-1.0):**
 
-| Client | Server | Compatible | Reason                          |
-| ------ | ------ | ---------- | ------------------------------- |
-| 0.7.0  | 0.7.0  | ✅ Yes     | Exact match                     |
-| 0.7.0  | 0.7.3  | ✅ Yes     | Patch difference ignored        |
-| 0.5.0  | 0.7.0  | ❌ No      | Minor mismatch (pre-1.0)        |
-| 0.7.0  | 0.5.0  | ❌ No      | Minor mismatch (pre-1.0)        |
-| 1.0.0  | 0.7.0  | ❌ No      | Major version mismatch          |
-| 0.7.0  | 1.0.0  | ❌ No      | Major version mismatch          |
+| Client | Server | Compatible | Reason                   |
+| ------ | ------ | ---------- | ------------------------ |
+| 0.7.0  | 0.7.0  | ✅ Yes     | Exact match              |
+| 0.7.0  | 0.7.3  | ✅ Yes     | Patch difference ignored |
+| 0.5.0  | 0.7.0  | ❌ No      | Minor mismatch (pre-1.0) |
+| 0.7.0  | 0.5.0  | ❌ No      | Minor mismatch (pre-1.0) |
+| 1.0.0  | 0.7.0  | ❌ No      | Major version mismatch   |
+| 0.7.0  | 1.0.0  | ❌ No      | Major version mismatch   |
 
 ## Error Handling
 

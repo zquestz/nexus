@@ -152,6 +152,13 @@ pub fn init(level: &LogLevel, retention: Duration, no_timestamps: bool) -> Resul
             ));
         }
 
+        // Restrict log directory to owner only (0o700) — logs contain IPs and usernames
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&log_dir, std::fs::Permissions::from_mode(0o700));
+        }
+
         let file_appender = tracing_appender::rolling::daily(&log_dir, LOG_FILE_PREFIX);
         let json_layer = subscriber_fmt::layer()
             .json()
@@ -203,6 +210,12 @@ pub fn purge_old_logs(retention: Duration) {
     for entry in entries.flatten() {
         let path = entry.path();
         if !path.is_file() {
+            continue;
+        }
+
+        // Only purge files matching the log file prefix (e.g. "nexusd.2025-07-11")
+        let name = entry.file_name();
+        if !name.to_string_lossy().starts_with(LOG_FILE_PREFIX) {
             continue;
         }
 

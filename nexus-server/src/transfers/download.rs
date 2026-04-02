@@ -105,10 +105,10 @@ where
 
     debug!(
         id = %log_transfer_id,
-        files = file_count,
-        bytes = total_size,
         user = %username,
         ip = %peer_addr,
+        files = file_count,
+        bytes = total_size,
         "{}", LOG_DOWNLOAD_STARTING
     );
 
