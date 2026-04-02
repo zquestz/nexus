@@ -853,7 +853,6 @@ transfer-error-permission = Permiso denegado
 transfer-error-invalid = Ruta inválida
 transfer-error-unsupported-version = Versión de protocolo no compatible
 transfer-error-hash-mismatch = Verificación de archivo fallida
-transfer-error-hash-mismatch-file = Verificación de archivo fallida: { $file }
 transfer-error-io = Error de E/S de archivo
 transfer-error-protocol = Error de protocolo
 transfer-error-connection = Error de conexión

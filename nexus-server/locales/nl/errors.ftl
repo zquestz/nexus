@@ -158,6 +158,7 @@ err-server-description-contains-newlines = De serverbeschrijving mag geen regele
 err-server-description-invalid-characters = De serverbeschrijving bevat ongeldige tekens
 
 err-no-fields-to-update = Geen velden om bij te werken
+err-invalid-password-strength = Ongeldige wachtwoordsterkte-waarde
 
 err-server-image-too-large = De serverafbeelding is te groot (maximaal 512KB)
 err-server-image-invalid-format = Ongeldig serverafbeeldingsformaat (moet een data-URI met base64-codering zijn)

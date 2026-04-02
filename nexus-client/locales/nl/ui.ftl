@@ -852,7 +852,6 @@ transfer-error-permission = Toegang geweigerd
 transfer-error-invalid = Ongeldig pad
 transfer-error-unsupported-version = Protocolversie niet ondersteund
 transfer-error-hash-mismatch = Bestandsverificatie mislukt
-transfer-error-hash-mismatch-file = Bestandsverificatie mislukt: { $file }
 transfer-error-io = Bestand I/O-fout
 transfer-error-protocol = Protocolfout
 transfer-error-connection = Verbindingsfout

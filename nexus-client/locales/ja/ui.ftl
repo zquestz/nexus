@@ -815,7 +815,6 @@ transfer-error-permission = アクセスが拒否されました
 transfer-error-invalid = 無効なパス
 transfer-error-unsupported-version = プロトコルバージョンがサポートされていません
 transfer-error-hash-mismatch = ファイルの検証に失敗しました
-transfer-error-hash-mismatch-file = ファイルの検証に失敗しました: { $file }
 transfer-error-io = ファイルI/Oエラー
 transfer-error-protocol = プロトコルエラー
 transfer-error-connection = 接続エラー

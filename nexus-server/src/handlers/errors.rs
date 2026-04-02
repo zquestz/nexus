@@ -706,6 +706,11 @@ pub fn err_no_fields_to_update(locale: &str) -> String {
     t(locale, "err-no-fields-to-update")
 }
 
+/// Get translated "invalid password strength" error
+pub fn err_invalid_password_strength(locale: &str) -> String {
+    t(locale, "err-invalid-password-strength")
+}
+
 /// Get translated "news not found" error
 pub fn err_news_not_found(locale: &str, id: i64) -> String {
     t_args(locale, "err-news-not-found", &[("id", &id.to_string())])

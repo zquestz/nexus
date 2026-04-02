@@ -854,7 +854,6 @@ transfer-error-permission = Zugriff verweigert
 transfer-error-invalid = Ungültiger Pfad
 transfer-error-unsupported-version = Protokollversion nicht unterstützt
 transfer-error-hash-mismatch = Dateiüberprüfung fehlgeschlagen
-transfer-error-hash-mismatch-file = Dateiüberprüfung fehlgeschlagen: { $file }
 transfer-error-io = Datei-E/A-Fehler
 transfer-error-protocol = Protokollfehler
 transfer-error-connection = Verbindungsfehler

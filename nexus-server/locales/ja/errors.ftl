@@ -158,6 +158,7 @@ err-server-description-contains-newlines = サーバーの説明に改行を含�
 err-server-description-invalid-characters = サーバーの説明に無効な文字が含まれています
 
 err-no-fields-to-update = 更新するフィールドがありません
+err-invalid-password-strength = 無効なパスワード強度の値です
 
 err-server-image-too-large = サーバー画像が大きすぎます（最大512KB）
 err-server-image-invalid-format = サーバー画像の形式が無効です（base64エンコードのデータURIである必要があります）

@@ -158,6 +158,7 @@ err-server-description-contains-newlines = Описание сервера не 
 err-server-description-invalid-characters = Описание сервера содержит недопустимые символы
 
 err-no-fields-to-update = Нет полей для обновления
+err-invalid-password-strength = Недопустимое значение надёжности пароля
 
 err-server-image-too-large = Изображение сервера слишком большое (максимум 512КБ)
 err-server-image-invalid-format = Недопустимый формат изображения сервера (должен быть data URI с кодировкой base64)

@@ -863,7 +863,6 @@ transfer-error-permission = Доступ запрещён
 transfer-error-invalid = Недопустимый путь
 transfer-error-unsupported-version = Версия протокола не поддерживается
 transfer-error-hash-mismatch = Ошибка проверки файла
-transfer-error-hash-mismatch-file = Ошибка проверки файла: { $file }
 transfer-error-io = Ошибка ввода-вывода файла
 transfer-error-protocol = Ошибка протокола
 transfer-error-connection = Ошибка соединения

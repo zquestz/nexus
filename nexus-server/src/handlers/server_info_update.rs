@@ -14,11 +14,12 @@ use crate::users::manager::broadcasts::ServerInfoBroadcastParams;
 
 use super::{
     HandlerContext, channel_error_to_message, err_admin_required, err_authentication,
-    err_channel_list_invalid, err_database, err_no_fields_to_update, err_not_logged_in,
-    err_server_description_contains_newlines, err_server_description_invalid_characters,
-    err_server_description_too_long, err_server_image_invalid_format, err_server_image_too_large,
-    err_server_image_unsupported_type, err_server_name_contains_newlines, err_server_name_empty,
-    err_server_name_invalid_characters, err_server_name_too_long,
+    err_channel_list_invalid, err_database, err_invalid_password_strength, err_no_fields_to_update,
+    err_not_logged_in, err_server_description_contains_newlines,
+    err_server_description_invalid_characters, err_server_description_too_long,
+    err_server_image_invalid_format, err_server_image_too_large, err_server_image_unsupported_type,
+    err_server_name_contains_newlines, err_server_name_empty, err_server_name_invalid_characters,
+    err_server_name_too_long,
 };
 
 /// Request parameters for ServerInfoUpdate command
@@ -184,7 +185,7 @@ where
     {
         let response = ServerMessage::ServerInfoUpdateResponse {
             success: false,
-            error: Some("Invalid password strength value".to_string()),
+            error: Some(err_invalid_password_strength(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     }

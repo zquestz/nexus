@@ -815,7 +815,6 @@ transfer-error-permission = 權限被拒絕
 transfer-error-invalid = 無效路徑
 transfer-error-unsupported-version = 不支援的協議版本
 transfer-error-hash-mismatch = 檔案驗證失敗
-transfer-error-hash-mismatch-file = 檔案驗證失敗: { $file }
 transfer-error-io = 檔案I/O錯誤
 transfer-error-protocol = 協議錯誤
 transfer-error-connection = 連線錯誤

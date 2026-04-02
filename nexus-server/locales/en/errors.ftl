@@ -161,6 +161,7 @@ err-server-image-too-large = Server image is too large (max 512KB)
 err-server-image-invalid-format = Invalid server image format (must be a data URI with base64 encoding)
 err-server-image-unsupported-type = Unsupported server image type (PNG, WebP, JPEG, or SVG only)
 err-no-fields-to-update = No fields to update
+err-invalid-password-strength = Invalid password strength value
 
 # News Errors
 err-news-not-found = News item #{ $id } not found

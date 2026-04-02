@@ -158,6 +158,7 @@ err-server-description-contains-newlines = 伺服器描述不能包含換行符�
 err-server-description-invalid-characters = 伺服器描述包含無效字元
 
 err-no-fields-to-update = 沒有要更新的欄位
+err-invalid-password-strength = 無效的密碼強度值
 
 err-server-image-too-large = 伺服器圖片太大（最大512KB）
 err-server-image-invalid-format = 伺服器圖片格式無效（必須是base64編碼的資料URI）

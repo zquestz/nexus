@@ -158,6 +158,7 @@ err-server-description-contains-newlines = La descrizione del server non può co
 err-server-description-invalid-characters = La descrizione del server contiene caratteri non validi
 
 err-no-fields-to-update = Nessun campo da aggiornare
+err-invalid-password-strength = Valore di sicurezza della password non valido
 
 err-server-image-too-large = L'immagine del server è troppo grande (massimo 512KB)
 err-server-image-invalid-format = Formato immagine del server non valido (deve essere un URI di dati con codifica base64)

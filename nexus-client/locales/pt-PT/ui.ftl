@@ -851,7 +851,6 @@ transfer-error-permission = Permissão negada
 transfer-error-invalid = Caminho inválido
 transfer-error-unsupported-version = Versão do protocolo não suportada
 transfer-error-hash-mismatch = Falha na verificação do ficheiro
-transfer-error-hash-mismatch-file = Falha na verificação do ficheiro: { $file }
 transfer-error-io = Erro de E/S de ficheiro
 transfer-error-protocol = Erro de protocolo
 transfer-error-connection = Erro de ligação

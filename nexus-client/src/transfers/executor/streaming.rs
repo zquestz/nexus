@@ -72,7 +72,10 @@ pub enum ServerFileFrame {
     /// Server says file is already complete (or zero-byte) — no FileData
     FileHash { sha256: String },
     /// Server terminated the transfer early (error during resume verification, etc.)
-    TransferComplete { error_kind: Option<String> },
+    TransferComplete {
+        error: Option<String>,
+        error_kind: Option<String>,
+    },
 }
 
 /// Read the next server frame: FileData, FileHash, or TransferComplete
@@ -132,8 +135,10 @@ where
                 let msg: ServerMessage =
                     serde_json::from_slice(&payload).map_err(|_| TransferError::ProtocolError)?;
                 match msg {
-                    ServerMessage::TransferComplete { error_kind, .. } => {
-                        return Ok(ServerFileFrame::TransferComplete { error_kind });
+                    ServerMessage::TransferComplete {
+                        error, error_kind, ..
+                    } => {
+                        return Ok(ServerFileFrame::TransferComplete { error, error_kind });
                     }
                     _ => {
                         return Err(TransferError::ProtocolError);
@@ -457,7 +462,8 @@ mod tests {
         let result = read_file_data_or_file_hash(&mut reader).await;
         assert!(result.is_ok());
         match result.unwrap() {
-            ServerFileFrame::TransferComplete { error_kind } => {
+            ServerFileFrame::TransferComplete { error, error_kind } => {
+                assert_eq!(error.unwrap(), "resume hash mismatch");
                 assert_eq!(error_kind.unwrap(), "hash_mismatch");
             }
             _ => panic!("Expected TransferComplete"),

@@ -43,7 +43,7 @@ use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::{FALLBACK_FILE_NAME, PART_SUFFIX};
 
 use super::types::{Transfer, TransferDirection, TransferError};
-use crate::i18n::{t, t_args};
+use crate::i18n::t;
 use crate::network::ProxyConfig;
 
 use connection::connect_and_authenticate;
@@ -127,10 +127,12 @@ fn send_failed_event(
     event_tx: &mpsc::UnboundedSender<TransferEvent>,
     id: Uuid,
     error_kind: TransferError,
+    server_error: Option<String>,
 ) -> TransferError {
+    let error = server_error.unwrap_or_else(|| t(error_kind.to_i18n_key()));
     let _ = event_tx.send(TransferEvent::Failed {
         id,
-        error: t(error_kind.to_i18n_key()),
+        error,
         error_kind: Some(error_kind.clone()),
     });
     error_kind
@@ -149,7 +151,7 @@ fn handle_possible_cancellation(
         let _ = event_tx.send(TransferEvent::Paused { id });
         error_kind
     } else {
-        send_failed_event(event_tx, id, error_kind)
+        send_failed_event(event_tx, id, error_kind, None)
     }
 }
 
@@ -189,7 +191,7 @@ pub async fn execute_transfer(
         match connect_and_authenticate(&transfer.connection_info, proxy).await {
             Ok(result) => result,
             Err(e) => {
-                return Err(send_failed_event(&event_tx, id, e));
+                return Err(send_failed_event(&event_tx, id, e, None));
             }
         };
 
@@ -254,6 +256,7 @@ where
 
         ServerMessage::FileDownloadResponse {
             success: false,
+            error,
             error_kind,
             ..
         } => {
@@ -261,7 +264,7 @@ where
                 .as_deref()
                 .map(TransferError::from_server_error_kind)
                 .unwrap_or(TransferError::Unknown);
-            return Err(send_failed_event(event_tx, id, err_kind));
+            return Err(send_failed_event(event_tx, id, err_kind, error));
         }
 
         _other => {
@@ -269,6 +272,7 @@ where
                 event_tx,
                 id,
                 TransferError::ProtocolError,
+                None,
             ));
         }
     };
@@ -312,13 +316,19 @@ where
                     event_tx,
                     id,
                     TransferError::ProtocolError,
+                    None,
                 ));
             }
         };
 
         // Validate path (security check)
         if !is_safe_path(&file_path) {
-            return Err(send_failed_event(event_tx, id, TransferError::Invalid));
+            return Err(send_failed_event(
+                event_tx,
+                id,
+                TransferError::Invalid,
+                None,
+            ));
         }
 
         // Update current file in progress
@@ -352,7 +362,12 @@ where
                 match generate_unique_path(&local_file_path).await {
                     Ok(path) => path,
                     Err(_) => {
-                        return Err(send_failed_event(event_tx, id, TransferError::IoError));
+                        return Err(send_failed_event(
+                            event_tx,
+                            id,
+                            TransferError::IoError,
+                            None,
+                        ));
                     }
                 }
             } else {
@@ -438,22 +453,18 @@ where
         let server_frame = match read_file_data_or_file_hash(reader).await {
             Ok(f) => f,
             Err(e) => {
-                return Err(send_failed_event(event_tx, id, e));
+                return Err(send_failed_event(event_tx, id, e, None));
             }
         };
 
         match server_frame {
-            ServerFileFrame::TransferComplete { error_kind, .. } => {
+            ServerFileFrame::TransferComplete { error, error_kind } => {
                 // Server terminated the transfer early (e.g., resume hash mismatch)
                 let err_kind = error_kind
                     .as_deref()
                     .map(TransferError::from_server_error_kind)
                     .unwrap_or(TransferError::Unknown);
-                let error_msg = if err_kind == TransferError::HashMismatch {
-                    t_args("transfer-error-hash-mismatch-file", &[("file", &file_path)])
-                } else {
-                    t(err_kind.to_i18n_key())
-                };
+                let error_msg = error.unwrap_or_else(|| t(err_kind.to_i18n_key()));
                 let _ = event_tx.send(TransferEvent::Failed {
                     id,
                     error: error_msg,
@@ -482,7 +493,12 @@ where
                 // For already-complete: hasher consumed full file during resume verification
                 let computed_hash = hasher.finalize();
                 if computed_hash != server_hash {
-                    return Err(send_failed_event(event_tx, id, TransferError::HashMismatch));
+                    return Err(send_failed_event(
+                        event_tx,
+                        id,
+                        TransferError::HashMismatch,
+                        None,
+                    ));
                 }
 
                 // Account for the full file size in progress
@@ -525,6 +541,7 @@ where
                         event_tx,
                         id,
                         TransferError::ProtocolError,
+                        None,
                     ));
                 }
 
@@ -563,13 +580,24 @@ where
                             event_tx,
                             id,
                             TransferError::ConnectionError,
+                            None,
                         ));
                     }
                     Err(StreamError::Frame(_)) => {
-                        return Err(send_failed_event(event_tx, id, TransferError::IoError));
+                        return Err(send_failed_event(
+                            event_tx,
+                            id,
+                            TransferError::IoError,
+                            None,
+                        ));
                     }
                     Err(StreamError::Io) => {
-                        return Err(send_failed_event(event_tx, id, TransferError::IoError));
+                        return Err(send_failed_event(
+                            event_tx,
+                            id,
+                            TransferError::IoError,
+                            None,
+                        ));
                     }
                 }
 
@@ -581,7 +609,7 @@ where
                 let hash_frame = match read_file_data_or_file_hash(reader).await {
                     Ok(f) => f,
                     Err(e) => {
-                        return Err(send_failed_event(event_tx, id, e));
+                        return Err(send_failed_event(event_tx, id, e, None));
                     }
                 };
                 let server_hash = match hash_frame {
@@ -591,6 +619,7 @@ where
                             event_tx,
                             id,
                             TransferError::ProtocolError,
+                            None,
                         ));
                     }
                 };
@@ -601,7 +630,12 @@ where
                 if computed_hash != server_hash {
                     // Delete the corrupt .part file
                     let _ = tokio::fs::remove_file(&part_path).await;
-                    return Err(send_failed_event(event_tx, id, TransferError::HashMismatch));
+                    return Err(send_failed_event(
+                        event_tx,
+                        id,
+                        TransferError::HashMismatch,
+                        None,
+                    ));
                 }
 
                 // Rename .part to final filename
@@ -660,7 +694,12 @@ where
 
     if files.is_empty() {
         // Nothing to upload - this is an error (server rejects empty uploads)
-        return Err(send_failed_event(event_tx, id, TransferError::Invalid));
+        return Err(send_failed_event(
+            event_tx,
+            id,
+            TransferError::Invalid,
+            None,
+        ));
     }
 
     let file_count = files.len() as u64;
@@ -689,6 +728,7 @@ where
 
         ServerMessage::FileUploadResponse {
             success: false,
+            error,
             error_kind,
             ..
         } => {
@@ -696,7 +736,7 @@ where
                 .as_deref()
                 .map(TransferError::from_server_error_kind)
                 .unwrap_or(TransferError::Unknown);
-            return Err(send_failed_event(event_tx, id, err_kind));
+            return Err(send_failed_event(event_tx, id, err_kind, error));
         }
 
         _other => {
@@ -704,6 +744,7 @@ where
                 event_tx,
                 id,
                 TransferError::ProtocolError,
+                None,
             ));
         }
     };
@@ -764,6 +805,7 @@ where
                     event_tx,
                     id,
                     TransferError::ProtocolError,
+                    None,
                 ));
             }
         };
@@ -906,13 +948,24 @@ where
                         event_tx,
                         id,
                         TransferError::ConnectionError,
+                        None,
                     ));
                 }
                 Err(StreamError::Frame(_)) => {
-                    return Err(send_failed_event(event_tx, id, TransferError::IoError));
+                    return Err(send_failed_event(
+                        event_tx,
+                        id,
+                        TransferError::IoError,
+                        None,
+                    ));
                 }
                 Err(StreamError::Io) => {
-                    return Err(send_failed_event(event_tx, id, TransferError::IoError));
+                    return Err(send_failed_event(
+                        event_tx,
+                        id,
+                        TransferError::IoError,
+                        None,
+                    ));
                 }
             }
         }
@@ -960,6 +1013,7 @@ fn handle_transfer_complete(
         }
         ServerMessage::TransferComplete {
             success: false,
+            error,
             error_kind,
             ..
         } => {
@@ -967,12 +1021,13 @@ fn handle_transfer_complete(
                 .as_deref()
                 .map(TransferError::from_server_error_kind)
                 .unwrap_or(TransferError::Unknown);
-            Err(send_failed_event(event_tx, id, err_kind))
+            Err(send_failed_event(event_tx, id, err_kind, error))
         }
         _ => Err(send_failed_event(
             event_tx,
             id,
             TransferError::ProtocolError,
+            None,
         )),
     }
 }
