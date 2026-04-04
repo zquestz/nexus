@@ -11,7 +11,9 @@
 //! - Mute button: Client-side mute (stops hearing that user)
 
 use iced::widget::text::Wrapping;
-use iced::widget::{Column, Row, Space, button, column, container, rich_text, row, scrollable, span, tooltip};
+use iced::widget::{
+    Column, Row, Space, button, column, container, rich_text, row, scrollable, span, tooltip,
+};
 use iced::{Center, Color, Element, Fill, Font, Theme};
 
 use super::constants::{
