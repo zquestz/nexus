@@ -11,7 +11,7 @@
 | 5   | File previews            | Low    | Planned |
 | 6   | Trackers                 | Medium | Planned |
 | 7   | Speed limiting           | Medium | Planned |
-| 8   | Flood protection         | Low    | Planned |
+| 8   | Flood protection         | Low    | ✅ Done |
 | 9   | Server logs              | Medium | ✅ Done |
 | 10  | Auto-away                | Low    | ✅ Done |
 

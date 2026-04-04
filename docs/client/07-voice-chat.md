@@ -178,6 +178,13 @@ When someone else is speaking:
 - Their name appears in the speaking indicator
 - Audio plays through your speakers/headphones
 
+### User List Icons
+
+Voice participants show icons inline after their nickname in the user list (right panel):
+
+- **🎧** — In voice but not speaking
+- **🎤** — Currently speaking (highlighted in green)
+
 ## Mute All
 
 You can mute all incoming voice audio while staying in the voice session:

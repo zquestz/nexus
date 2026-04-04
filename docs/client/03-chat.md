@@ -262,6 +262,12 @@ The user list (right panel) shows contextual users:
 | Channel      | Channel members only   |
 | User Message | You and the other user |
 
+Each user shows their avatar and nickname. Status icons appear inline after the nickname:
+
+- **💤** — User is away
+- **🎧** — User is in voice (not speaking)
+- **🎤** — User is speaking in voice
+
 Click a user to see available actions (info, message, kick).
 
 ## Notifications

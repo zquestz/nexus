@@ -10,8 +10,9 @@
 //! - Speaker icon with highlight: User is currently speaking
 //! - Mute button: Client-side mute (stops hearing that user)
 
-use iced::widget::{Column, Row, Space, button, column, container, row, scrollable, tooltip};
-use iced::{Center, Color, Element, Fill, Theme};
+use iced::widget::text::Wrapping;
+use iced::widget::{Column, Row, Space, button, column, container, rich_text, row, scrollable, span, tooltip};
+use iced::{Center, Color, Element, Fill, Font, Theme};
 
 use super::constants::{
     PERMISSION_BAN_CREATE, PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_MESSAGE,
@@ -368,9 +369,7 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
                     generate_identicon(nickname).render(USER_LIST_AVATAR_SIZE)
                 };
 
-            // Row with avatar and nickname (always populated; equals username for regular accounts)
-            // Color is set via button style (not text) so hover effect works
-            let nickname_text = shaped_text(nickname).size(USER_LIST_TEXT_SIZE);
+            // Nickname color based on user type
             let nickname_color = if user_is_admin {
                 Some(chat::admin(theme))
             } else if user_is_shared {
@@ -417,28 +416,50 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
                     && s.is_speaking(nickname)
             });
 
-            // Build user row with avatar, nickname, and optional voice icon
+            // Build nickname as rich_text with inline away/voice icons
+            // First icon after nickname uses regular space (word break point).
+            // Subsequent icons use non-breaking space (glued to previous icon).
+            let mut spans: Vec<iced::widget::text::Span<'_, String, Font>> =
+                vec![span(nickname.to_string())];
+            let mut has_icon = false;
+
+            // Away icon first (right after nickname)
+            if user.is_away {
+                spans.push(span(" 💤"));
+                has_icon = true;
+            }
+
+            // Voice indicator after away
+            if is_in_voice {
+                let separator = if has_icon { "\u{00A0}" } else { " " };
+                if is_speaking {
+                    // Speaking - mic icon in green (success color)
+                    let speaking_color = theme.extended_palette().success.base.color;
+                    spans.push(
+                        span(format!("{separator}\u{F130}"))
+                            .font(Font::with_name("icons"))
+                            .color(speaking_color),
+                    );
+                } else {
+                    // In voice but not speaking - headphones in muted color
+                    let muted_color = crate::style::ui::muted_text_color(theme);
+                    spans.push(
+                        span(format!("{separator}\u{1F3A7}"))
+                            .font(Font::with_name("icons"))
+                            .color(muted_color),
+                    );
+                }
+            }
+
+            let nickname_widget = rich_text(spans)
+                .size(USER_LIST_TEXT_SIZE)
+                .wrapping(Wrapping::WordOrGlyph);
+
+            // Build user row: avatar <gap> nickname+icons
             let mut user_row = Row::new().spacing(USER_LIST_AVATAR_SPACING).align_y(Center);
 
             user_row = user_row.push(avatar_element);
-            user_row = user_row.push(nickname_text);
-
-            // Add voice indicator at end if in voice
-            if is_in_voice {
-                let voice_icon = if is_speaking {
-                    // Speaking - show mic icon with highlight (green)
-                    container(icon::mic().size(USER_LIST_SMALL_TEXT_SIZE))
-                        .style(crate::style::speaking_indicator_style)
-                } else {
-                    // In voice but not speaking - show headphones (muted color, same for all users)
-                    container(
-                        icon::headphones()
-                            .size(USER_LIST_SMALL_TEXT_SIZE)
-                            .style(muted_text_style),
-                    )
-                };
-                user_row = user_row.push(voice_icon);
-            }
+            user_row = user_row.push(nickname_widget);
 
             let user_button = button(container(user_row).width(Fill))
                 .on_press(Message::UserListItemClicked(nickname_clone))
