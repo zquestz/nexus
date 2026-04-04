@@ -302,6 +302,12 @@ pub enum ClientMessage {
         /// Auto-join channels (space-separated, joined on login)
         #[serde(default, skip_serializing_if = "Option::is_none")]
         auto_join_channels: Option<String>,
+        /// Chat burst limit (max messages in a burst, 0 = no burst allowance)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        chat_burst_limit: Option<u32>,
+        /// Chat rate limit (messages per minute, 0 = disabled)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        chat_rate_limit: Option<u32>,
         /// Minimum password strength level (0-4)
         #[serde(default, skip_serializing_if = "Option::is_none")]
         min_password_strength: Option<u8>,
@@ -1123,6 +1129,9 @@ pub struct ServerInfo {
     pub description: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    /// Server certificate fingerprint (SHA-256, for TLS interception detection)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_connections_per_ip: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1143,6 +1152,12 @@ pub struct ServerInfo {
     /// Auto-join channels (space-separated, admin only)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_join_channels: Option<String>,
+    /// Chat burst limit (max messages in a burst, 0 = no burst allowance)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_burst_limit: Option<u32>,
+    /// Chat rate limit (messages per minute, 0 = flood protection disabled)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chat_rate_limit: Option<u32>,
     /// Minimum password strength level (0-4, admin only)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_password_strength: Option<u8>,
@@ -1629,6 +1644,8 @@ impl std::fmt::Debug for ClientMessage {
                 image,
                 persistent_channels,
                 auto_join_channels,
+                chat_burst_limit,
+                chat_rate_limit,
                 min_password_strength,
             } => {
                 let mut s = f.debug_struct("ServerInfoUpdate");
@@ -1639,6 +1656,8 @@ impl std::fmt::Debug for ClientMessage {
                     .field("file_reindex_interval", file_reindex_interval)
                     .field("persistent_channels", persistent_channels)
                     .field("auto_join_channels", auto_join_channels)
+                    .field("chat_burst_limit", chat_burst_limit)
+                    .field("chat_rate_limit", chat_rate_limit)
                     .field("min_password_strength", min_password_strength);
                 if let Some(img) = image {
                     if img.len() > 100 {
@@ -2708,6 +2727,7 @@ mod tests {
             name: Some("Test Server".to_string()),
             description: None,
             version: Some("0.5.0".to_string()),
+            fingerprint: None,
             max_connections_per_ip: Some(5),
             max_transfers_per_ip: Some(3),
             image: None,
@@ -2716,6 +2736,8 @@ mod tests {
             file_reindex_interval: Some(5),
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             log_level: None,
         };

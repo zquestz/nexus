@@ -78,6 +78,7 @@ Permissions control what actions users can perform. Admins have all permissions 
 | `chat_secret`     | Toggle secret mode on channels |
 | `chat_topic`      | View the chat topic            |
 | `chat_topic_edit` | Change the chat topic          |
+| `chat_unlimited`  | Bypass chat flood protection   |
 
 ### User Permissions
 
@@ -311,9 +312,9 @@ Shared accounts allow multiple people to use one account with different nickname
 
 ### Shared Account Restrictions
 
-Shared accounts are limited to 20 allowed permissions:
+Shared accounts are limited to 21 allowed permissions:
 
-- **Chat:** `chat_create`, `chat_join`, `chat_list`, `chat_receive`, `chat_secret`, `chat_send`, `chat_topic`
+- **Chat:** `chat_create`, `chat_join`, `chat_list`, `chat_receive`, `chat_secret`, `chat_send`, `chat_topic`, `chat_unlimited`
 - **User:** `user_info`, `user_list`, `user_message`
 - **Files:** `file_download`, `file_info`, `file_list`, `file_search`, `file_upload`
 - **News:** `news_list`
@@ -383,6 +384,8 @@ Admins can configure server-wide settings through the **Server Info** panel:
 | File reindex interval  | Minutes between search index rebuilds (default: 5, 0 to disable)                 |
 | Persistent channels    | Space-separated channel names that survive restart (default: `#nexus`)           |
 | Auto-join channels     | Space-separated channels users join on login (default: `#nexus`)                 |
+| Chat burst limit       | Max messages in a burst before rate limiting (default: 5, 0 = capacity of 1)     |
+| Chat rate limit        | Messages per minute rate limit (default: 20, 0 = flood protection disabled)      |
 | Min password strength  | Minimum password strength level: Weak/Fair/Good/Strong/Excellent (default: Good) |
 
 ### Connection Limits

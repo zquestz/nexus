@@ -1,7 +1,7 @@
 # Nexus BBS
 
 [![CI](https://github.com/zquestz/nexus/workflows/CI/badge.svg)](https://github.com/zquestz/nexus/actions)
-[![Version](https://img.shields.io/badge/version-0.7.4-blue.svg)](https://github.com/zquestz/nexus)
+[![Version](https://img.shields.io/badge/version-0.7.5-blue.svg)](https://github.com/zquestz/nexus)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org/)
 
@@ -15,8 +15,8 @@ A modern BBS inspired by Hotline, KDX, Carracho, and Wired. Built for the [Yggdr
 - **Voice** — Push-to-talk voice chat with Opus codec, DTLS encryption, and WebRTC audio processing (noise suppression, echo cancellation, automatic gain control)
 - **Files** — Multi-tab browser with search, downloads, uploads, pause/resume, and queue management
 - **News** — Bulletin board with Markdown and image support
-- **Users** — 44 granular permissions, account groups, shared accounts, guest access, custom avatars
-- **Security** — Mandatory TLS, TOFU verification, Argon2id passwords, configurable password strength, proxy support
+- **Users** — 45 granular permissions, account groups, shared accounts, guest access, custom avatars
+- **Security** — Mandatory TLS, TOFU verification, TLS interception detection, Argon2id passwords, configurable password strength, chat flood protection, proxy support
 - **Notifications** — Desktop, toast, and sound alerts for 16 event types
 - **Customization** — 30 themes, 13 languages, configurable UI
 - **System Tray** — Status icons, minimize to tray, quick actions (Windows/Linux)

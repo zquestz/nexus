@@ -96,6 +96,7 @@ label-enabled = Ingeschakeld
 label-permissions = Machtigingen:
 label-expected-fingerprint = Verwachte vingerafdruk:
 label-received-fingerprint = Ontvangen vingerafdruk:
+label-fingerprint = Vingerafdruk:
 label-theme = Thema
 label-chat-history-retention = Chatgeschiedenis:
 chat-history-forever = Altijd
@@ -146,7 +147,6 @@ label-network = Netwerk
 label-none = Geen
 label-server-settings = Serverinstellingen
 tab-files = Bestanden
-tab-channels = Kanalen
 label-connections-short = Max Verbindingen:
 label-transfers-short = Max Overdrachten:
 label-version-short = Versie:
@@ -157,8 +157,8 @@ label-log-level-warn = Waarschuwing
 label-log-level-info = Info
 label-log-level-debug = Debug
 label-reindex-short = Herindexeren:
-label-persistent-short = Permanent:
-label-auto-join-short = Auto-join:
+label-chat-burst-limit = Chat-burstlimiet:
+label-chat-rate-limit = Chatsnelheidslimiet:
 label-minutes = { $count ->
     [one] minuut
    *[other] minuten
@@ -193,6 +193,7 @@ permission-chat_list = Chat Lijst
 permission-chat_secret = Chat Geheim
 permission-chat_topic = Chat Onderwerp
 permission-chat_topic_edit = Chat Onderwerp Bewerken
+permission-chat_unlimited = Chat Onbeperkt
 permission-user_broadcast = Gebruiker Broadcast
 permission-user_create = Gebruiker Aanmaken
 permission-user_delete = Gebruiker Verwijderen
@@ -616,6 +617,9 @@ err-failed-set-config-permissions = Kan machtigingen van configuratiebestand nie
 # =============================================================================
 
 fingerprint-warning = Dit kan wijzen op een beveiligingsprobleem (MITM-aanval) of het servercertificaat is opnieuw gegenereerd. Accepteer alleen als je de serverbeheerder vertrouwt.
+fingerprint-interception-warning = De door de server gerapporteerde certificaatvingerafdruk komt niet overeen met de vingerafdruk die tijdens de verbinding is waargenomen. Uw verbinding wordt onderschept door een TLS-proxy.
+label-tls-fingerprint = Door TLS waargenomen vingerafdruk:
+label-server-fingerprint = Door server gerapporteerde vingerafdruk:
 
 # =============================================================================
 # User Info Display

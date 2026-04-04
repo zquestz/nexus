@@ -95,6 +95,7 @@ label-enabled = 有効
 label-permissions = 権限:
 label-expected-fingerprint = 期待されるフィンガープリント:
 label-received-fingerprint = 受信したフィンガープリント:
+label-fingerprint = フィンガープリント:
 label-theme = テーマ
 label-chat-history-retention = チャット履歴:
 chat-history-forever = 永久
@@ -142,7 +143,6 @@ label-network = ネットワーク
 label-none = なし
 label-server-settings = サーバー設定
 tab-files = ファイル
-tab-channels = チャンネル
 label-connections-short = 最大接続数:
 label-transfers-short = 最大転送数:
 label-version-short = バージョン:
@@ -153,8 +153,8 @@ label-log-level-warn = 警告
 label-log-level-info = 情報
 label-log-level-debug = デバッグ
 label-reindex-short = 再索引:
-label-persistent-short = 常設:
-label-auto-join-short = 自動参加:
+label-chat-burst-limit = チャットバースト制限:
+label-chat-rate-limit = チャット速度制限:
 label-minutes = 分
 label-name = 名前:
 label-description = 説明:
@@ -186,6 +186,7 @@ permission-chat_list = チャンネル一覧
 permission-chat_secret = チャンネル秘密設定
 permission-chat_topic = チャットトピック
 permission-chat_topic_edit = チャットトピック編集
+permission-chat_unlimited = チャット無制限
 permission-user_broadcast = ユーザーブロードキャスト
 permission-user_create = ユーザー作成
 permission-user_delete = ユーザー削除
@@ -603,6 +604,9 @@ err-failed-set-config-permissions = 設定ファイルの権限の設定に失�
 # =============================================================================
 
 fingerprint-warning = これはセキュリティ上の問題（MITM攻撃）またはサーバーの証明書が再生成されたことを示している可能性があります。サーバー管理者を信頼している場合のみ受け入れてください。
+fingerprint-interception-warning = サーバーが報告した証明書のフィンガープリントが、接続時に観測されたフィンガープリントと一致しません。接続がTLSプロキシによって傍受されています。
+label-tls-fingerprint = TLSで観測されたフィンガープリント:
+label-server-fingerprint = サーバーが報告したフィンガープリント:
 
 # =============================================================================
 # User Info Display

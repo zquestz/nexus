@@ -7,6 +7,7 @@ pub mod connection_tracker;
 pub mod constants;
 pub mod db;
 pub mod files;
+pub mod flood;
 pub mod handlers;
 pub mod i18n;
 pub mod ip_rule_cache;

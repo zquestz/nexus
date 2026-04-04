@@ -35,6 +35,7 @@ mod news_edit;
 mod news_list;
 mod news_show;
 mod news_update;
+mod server_info;
 mod server_info_update;
 mod trust_create;
 mod trust_delete;
@@ -90,6 +91,7 @@ pub use news_edit::handle_news_edit;
 pub use news_list::handle_news_list;
 pub use news_show::handle_news_show;
 pub use news_update::handle_news_update;
+pub use server_info::{ServerInfoOptions, ServerInfoValues, build_server_info};
 pub use server_info_update::{ServerInfoUpdateRequest, handle_server_info_update};
 pub use trust_create::handle_trust_create;
 pub use trust_delete::handle_trust_delete;
@@ -130,6 +132,7 @@ use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::Database;
 use crate::files::FileIndex;
+use crate::flood::FloodConfig;
 use crate::ip_rule_cache::IpRuleCache;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
@@ -164,6 +167,10 @@ pub struct HandlerContext<'a, W> {
     pub transfer_registry: Arc<TransferRegistry>,
     /// Voice registry for managing active voice sessions
     pub voice_registry: &'a VoiceRegistry,
+    /// Server certificate fingerprint (SHA-256, colon-separated)
+    pub fingerprint: &'static str,
+    /// Shared flood protection config (burst and rate limits)
+    pub flood_config: Arc<FloodConfig>,
 }
 
 impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {

@@ -150,11 +150,16 @@ async fn perform_login(
                 .as_ref()
                 .and_then(|info| info.description.clone()),
             server_version: server_info.as_ref().and_then(|info| info.version.clone()),
+            server_fingerprint: server_info
+                .as_ref()
+                .and_then(|info| info.fingerprint.clone()),
             server_image: server_info
                 .as_ref()
                 .and_then(|info| info.image.clone())
                 .unwrap_or_default(),
             channels: channels.unwrap_or_default(),
+            chat_burst_limit: server_info.as_ref().and_then(|info| info.chat_burst_limit),
+            chat_rate_limit: server_info.as_ref().and_then(|info| info.chat_rate_limit),
             max_connections_per_ip: server_info
                 .as_ref()
                 .and_then(|info| info.max_connections_per_ip),

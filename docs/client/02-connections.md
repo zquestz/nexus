@@ -89,6 +89,17 @@ If a server's certificate changes (e.g., after server reinstall):
 
 The new fingerprint replaces the old one in your bookmark.
 
+### TLS Interception Detection
+
+After login, Nexus compares the server's self-reported certificate fingerprint against the fingerprint observed during the TLS handshake. If they don't match, it indicates a TLS-terminating proxy is intercepting the connection.
+
+- A security warning dialog is displayed showing both fingerprints
+- The connection is automatically closed
+- There is no option to accept — the connection cannot continue
+- This check is skipped for older servers that don't report their fingerprint
+
+This is a defense-in-depth measure that detects man-in-the-middle proxies that present their own certificate while relaying traffic to the real server.
+
 ## Proxy Support
 
 Route connections through a SOCKS5 proxy (e.g., Tor, SSH tunnel).

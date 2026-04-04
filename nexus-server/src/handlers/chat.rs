@@ -12,13 +12,16 @@ use nexus_common::validators::{self, MessageError};
 
 use super::{
     HandlerContext, channel_error_to_message, err_authentication, err_channel_not_found,
-    err_chat_feature_not_enabled, err_chat_too_long, err_message_contains_newlines,
-    err_message_empty, err_message_invalid_characters, err_not_logged_in, err_permission_denied,
+    err_chat_feature_not_enabled, err_chat_too_long, err_flood_disconnect, err_flood_warning,
+    err_message_contains_newlines, err_message_empty, err_message_invalid_characters,
+    err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
     FEATURE_CHAT, LOG_CHAT_SEND_NOT_LOGGED_IN, LOG_CHAT_SEND_PERMISSION_DENIED,
+    LOG_FLOOD_DISCONNECT, LOG_FLOOD_LIMITED,
 };
 use crate::db::Permission;
+use crate::flood::{FloodCheck, FloodTracker};
 
 /// Handle a chat send request from the client
 pub async fn handle_chat_send<W>(
@@ -26,6 +29,7 @@ pub async fn handle_chat_send<W>(
     action: ChatAction,
     channel: String,
     session_id: Option<u32>,
+    flood_tracker: &mut FloodTracker,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
 where
@@ -62,6 +66,38 @@ where
         return ctx
             .send_error(&err_permission_denied(ctx.locale), Some("ChatSend"))
             .await;
+    }
+
+    // Check flood protection (skip if disabled or user has chat_unlimited)
+    let rate = ctx.flood_config.rate();
+    if rate == 0 || user.has_permission(Permission::ChatUnlimited) {
+        if flood_tracker.has_violations() {
+            flood_tracker.reset_violations();
+        }
+    } else {
+        let burst = ctx.flood_config.burst();
+        match flood_tracker.check(burst, rate) {
+            FloodCheck::Allowed => {}
+            FloodCheck::Limited {
+                wait_seconds,
+                violation,
+                max_violations,
+            } => {
+                warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_FLOOD_LIMITED);
+                return ctx
+                    .send_error(
+                        &err_flood_warning(ctx.locale, wait_seconds, violation, max_violations),
+                        Some("ChatSend"),
+                    )
+                    .await;
+            }
+            FloodCheck::Disconnect => {
+                warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_FLOOD_DISCONNECT);
+                return ctx
+                    .send_error_and_disconnect(&err_flood_disconnect(ctx.locale), Some("ChatSend"))
+                    .await;
+            }
+        }
     }
 
     // Validate message content
@@ -142,6 +178,7 @@ where
 mod tests {
     use super::*;
     use crate::db;
+    use crate::flood::{FloodConfig, FloodTracker};
     use crate::handlers::testing::{
         create_test_context, login_user_with_features, read_server_message,
     };
@@ -157,6 +194,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             session_id,
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -179,6 +217,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             session_id,
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -221,6 +260,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -251,6 +291,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -264,6 +305,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -296,6 +338,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -309,6 +352,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -325,6 +369,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -361,6 +406,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -393,6 +439,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -429,6 +476,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -450,6 +498,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             invalid_session_id,
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -490,6 +539,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -529,6 +579,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -558,6 +609,7 @@ mod tests {
             ChatAction::Normal,
             "#nonexistent".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -594,6 +646,7 @@ mod tests {
             ChatAction::Normal,
             "#general".to_string(),
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -623,6 +676,7 @@ mod tests {
             ChatAction::Normal,
             "".to_string(), // Empty channel name
             Some(session_id),
+            &mut FloodTracker::new(),
             &mut test_ctx.handler_context(),
         )
         .await;
@@ -637,6 +691,221 @@ mod tests {
                 assert_eq!(command, Some("ChatSend".to_string()));
             }
             _ => panic!("Expected Error message, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chat_flood_limited_after_burst() {
+        let mut test_ctx = create_test_context().await;
+
+        // Set tight flood config: burst=2, rate=20
+        test_ctx.flood_config = std::sync::Arc::new(FloodConfig::new(2, 20));
+
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
+
+        let mut tracker = FloodTracker::new();
+
+        // First 2 messages should succeed (burst=2)
+        for _ in 0..2 {
+            let result = handle_chat_send(
+                "Hello".to_string(),
+                ChatAction::Normal,
+                "#general".to_string(),
+                Some(session_id),
+                &mut tracker,
+                &mut test_ctx.handler_context(),
+            )
+            .await;
+            assert!(result.is_ok());
+        }
+
+        // 3rd message should be rate limited
+        let result = handle_chat_send(
+            "Spam".to_string(),
+            ChatAction::Normal,
+            "#general".to_string(),
+            Some(session_id),
+            &mut tracker,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(
+            result.is_ok(),
+            "Rate limit sends error but doesn't disconnect"
+        );
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::Error { command, .. } => {
+                assert_eq!(command, Some("ChatSend".to_string()));
+            }
+            _ => panic!("Expected flood warning Error, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chat_flood_disconnect_after_repeated_violations() {
+        let mut test_ctx = create_test_context().await;
+
+        // Set tight flood config: burst=1, rate=20
+        test_ctx.flood_config = std::sync::Arc::new(FloodConfig::new(1, 20));
+
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
+
+        let mut tracker = FloodTracker::new();
+
+        // Exhaust the single burst token
+        let result = handle_chat_send(
+            "First".to_string(),
+            ChatAction::Normal,
+            "#general".to_string(),
+            Some(session_id),
+            &mut tracker,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        // Violations 1 and 2 — Limited
+        for _ in 0..2 {
+            let result = handle_chat_send(
+                "Spam".to_string(),
+                ChatAction::Normal,
+                "#general".to_string(),
+                Some(session_id),
+                &mut tracker,
+                &mut test_ctx.handler_context(),
+            )
+            .await;
+            assert!(result.is_ok(), "Limited should not disconnect");
+            // Drain the error message from the channel
+            let _ = read_server_message(&mut test_ctx).await;
+        }
+
+        // Violation 3 — Disconnect
+        let result = handle_chat_send(
+            "Spam".to_string(),
+            ChatAction::Normal,
+            "#general".to_string(),
+            Some(session_id),
+            &mut tracker,
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(
+            result.is_err(),
+            "3rd consecutive violation should disconnect"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_chat_flood_unlimited_permission_bypasses() {
+        let mut test_ctx = create_test_context().await;
+
+        // Set very tight flood config: burst=1, rate=1
+        test_ctx.flood_config = std::sync::Arc::new(FloodConfig::new(1, 1));
+
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend, db::Permission::ChatUnlimited],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
+
+        let mut tracker = FloodTracker::new();
+
+        // Should be able to send many messages without being rate limited
+        for i in 0..10 {
+            let result = handle_chat_send(
+                format!("Message {}", i),
+                ChatAction::Normal,
+                "#general".to_string(),
+                Some(session_id),
+                &mut tracker,
+                &mut test_ctx.handler_context(),
+            )
+            .await;
+            assert!(
+                result.is_ok(),
+                "chat_unlimited user should never be rate limited"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chat_flood_disabled_when_rate_zero() {
+        let mut test_ctx = create_test_context().await;
+
+        // Disable flood protection: rate=0
+        test_ctx.flood_config = std::sync::Arc::new(FloodConfig::new(5, 0));
+
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatSend],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        test_ctx
+            .channel_manager
+            .join("#general", session_id)
+            .await
+            .unwrap();
+
+        let mut tracker = FloodTracker::new();
+
+        // Should be able to send many messages without being rate limited
+        for i in 0..10 {
+            let result = handle_chat_send(
+                format!("Message {}", i),
+                ChatAction::Normal,
+                "#general".to_string(),
+                Some(session_id),
+                &mut tracker,
+                &mut test_ctx.handler_context(),
+            )
+            .await;
+            assert!(result.is_ok(), "rate=0 should disable flood protection");
         }
     }
 }

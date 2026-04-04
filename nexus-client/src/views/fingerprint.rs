@@ -20,7 +20,7 @@ use crate::types::{FingerprintMismatch, Message};
 // ============================================================================
 
 /// Format a colon-separated fingerprint into two lines for readability
-fn format_fingerprint_multiline(fingerprint: &str) -> String {
+pub fn format_fingerprint_multiline(fingerprint: &str) -> String {
     let parts: Vec<&str> = fingerprint.split(':').collect();
     let mid = parts.len() / 2;
     format!("{}\n{}", parts[..mid].join(":"), parts[mid..].join(":"))

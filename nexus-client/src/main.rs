@@ -51,8 +51,8 @@ use config::events::EventType;
 
 use style::{WINDOW_HEIGHT_MIN, WINDOW_TITLE, WINDOW_WIDTH_MIN};
 use types::{
-    BookmarkEditState, ConnectionFormState, FingerprintMismatch, InputId, Message,
-    ServerConnection, SettingsFormState, SettingsTab, UiState, ViewConfig,
+    BookmarkEditState, ConnectionFormState, FingerprintInterception, FingerprintMismatch, InputId,
+    Message, ServerConnection, SettingsFormState, SettingsTab, UiState, ViewConfig,
 };
 
 /// Startup URI passed via command line (consumed by NexusApp::new)
@@ -308,6 +308,8 @@ struct NexusApp {
     // -------------------------------------------------------------------------
     /// Certificate fingerprint mismatch queue (for handling multiple mismatches)
     fingerprint_mismatch_queue: VecDeque<FingerprintMismatch>,
+    /// Fingerprint interception queue (TLS proxy detection)
+    fingerprint_interception_queue: VecDeque<FingerprintInterception>,
     /// Transient per-bookmark connection errors (not persisted to disk)
     bookmark_errors: HashMap<Uuid, String>,
 
@@ -415,6 +417,7 @@ impl Default for NexusApp {
             selected_event_type,
             // Async / Transient
             fingerprint_mismatch_queue: VecDeque::new(),
+            fingerprint_interception_queue: VecDeque::new(),
             bookmark_errors: HashMap::new(),
             // Text Editor State
             news_body_content: HashMap::new(),
@@ -629,6 +632,10 @@ impl NexusApp {
             // Certificate fingerprint
             Message::AcceptNewFingerprint => self.handle_accept_new_fingerprint(),
             Message::CancelFingerprintMismatch => self.handle_cancel_fingerprint_mismatch(),
+            Message::DismissFingerprintInterception => {
+                self.fingerprint_interception_queue.pop_front();
+                Task::none()
+            }
 
             // Chat
             Message::ChatInputChanged(input) => self.handle_message_input_changed(input),
@@ -905,6 +912,12 @@ impl NexusApp {
             Message::CancelEditServerInfo => self.handle_cancel_edit_server_info(),
             Message::ClearServerImagePressed => self.handle_clear_server_image_pressed(),
             Message::CloseServerInfo => self.handle_close_server_info(),
+            Message::EditServerInfoChatBurstLimitChanged(limit) => {
+                self.handle_edit_server_info_chat_burst_limit_changed(limit)
+            }
+            Message::EditServerInfoChatRateLimitChanged(limit) => {
+                self.handle_edit_server_info_chat_rate_limit_changed(limit)
+            }
             Message::EditServerInfoDescriptionChanged(description) => {
                 self.handle_edit_server_info_description_changed(description)
             }
@@ -1522,6 +1535,11 @@ impl NexusApp {
         // Overlay fingerprint mismatch dialog if present (show first in queue)
         if let Some(mismatch) = self.fingerprint_mismatch_queue.front() {
             return views::fingerprint_mismatch_dialog(mismatch);
+        }
+
+        // Overlay fingerprint interception dialog if present (TLS proxy detection)
+        if let Some(interception) = self.fingerprint_interception_queue.front() {
+            return views::fingerprint_interception_dialog(interception);
         }
 
         // Wrap with toast container for transient notifications

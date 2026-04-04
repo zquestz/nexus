@@ -167,6 +167,10 @@ pub struct LoginInfo {
     pub server_image: String,
     /// Channels the user was auto-joined to on login
     pub channels: Vec<ChannelJoinInfo>,
+    /// Chat burst limit (max messages in a burst, from ServerInfo)
+    pub chat_burst_limit: Option<u32>,
+    /// Chat rate limit (messages per minute, from ServerInfo)
+    pub chat_rate_limit: Option<u32>,
     pub max_connections_per_ip: Option<u32>,
     pub max_transfers_per_ip: Option<u32>,
     pub file_reindex_interval: Option<u32>,
@@ -178,6 +182,8 @@ pub struct LoginInfo {
     pub min_password_strength: PasswordStrength,
     /// Server log level (read-only, from ServerInfo)
     pub log_level: Option<String>,
+    /// Server-reported certificate fingerprint (for TLS interception detection)
+    pub server_fingerprint: Option<String>,
     pub transfer_port: u16,
     pub locale: String,
 }

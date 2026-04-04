@@ -6,7 +6,7 @@ use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use nexus_common::is_shared_account_permission;
-use nexus_common::protocol::{ServerInfo, ServerMessage, UserInfo};
+use nexus_common::protocol::{ServerMessage, UserInfo};
 use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
 
 use crate::constants::{
@@ -35,6 +35,7 @@ use super::{
     err_username_exists, err_username_invalid, err_username_too_long,
     remove_user_with_voice_cleanup,
 };
+use super::{ServerInfoOptions, ServerInfoValues, build_server_info};
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{Permission, Permissions, UpdateUserParams, hash_password, verify_password};
 use crate::voice::send_voice_leave_notifications;
@@ -842,19 +843,45 @@ where
                             .map(|p| p.as_str().to_string())
                             .collect();
 
-                        // Only send fields that change with permissions (max_connections_per_ip for admins)
-                        // Other fields (name, description, image, transfer_port) are unchanged and
-                        // the client already knows them from login
-                        let server_info = if updated_account.is_admin {
-                            Some(ServerInfo {
-                                max_connections_per_ip: Some(
-                                    ctx.db.config.get_max_connections_per_ip().await as u32,
-                                ),
-                                ..Default::default()
-                            })
-                        } else {
-                            None
+                        // Build ServerInfo for the updated user (always include, not just for admins)
+                        // Use updated permissions for field visibility
+                        let has_file_reindex = updated_account.is_admin
+                            || final_permissions
+                                .permissions
+                                .contains(&Permission::FileReindex);
+                        let has_chat_join = updated_account.is_admin
+                            || final_permissions
+                                .permissions
+                                .contains(&Permission::ChatJoin);
+
+                        let config = ctx.db.config.get_all().await;
+
+                        let info_values = ServerInfoValues {
+                            name: config.server_name,
+                            description: config.server_description,
+                            version: env!("CARGO_PKG_VERSION").to_string(),
+                            image: config.server_image,
+                            max_connections_per_ip: config.max_connections_per_ip,
+                            max_transfers_per_ip: config.max_transfers_per_ip,
+                            transfer_port: ctx.transfer_port,
+                            transfer_websocket_port: ctx.transfer_websocket_port,
+                            file_reindex_interval: config.file_reindex_interval,
+                            persistent_channels: config.persistent_channels,
+                            auto_join_channels: config.auto_join_channels,
+                            min_password_strength: config.min_password_strength.score(),
+                            chat_burst_limit: config.chat_burst_limit,
+                            chat_rate_limit: config.chat_rate_limit,
+                            fingerprint: ctx.fingerprint.to_string(),
                         };
+
+                        let info_options = ServerInfoOptions {
+                            is_admin: updated_account.is_admin,
+                            has_file_reindex,
+                            has_chat_join,
+                            include_image: false,
+                        };
+
+                        let server_info = Some(build_server_info(&info_values, &info_options));
 
                         // Fetch group info for the updated user
                         let (perm_group_id, perm_group_name) =

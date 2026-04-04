@@ -69,6 +69,8 @@ pub enum Message {
 
     /// Fingerprint mismatch: Cancel button pressed (reject new certificate)
     CancelFingerprintMismatch,
+    /// Fingerprint interception: OK button pressed (dismiss dialog)
+    DismissFingerprintInterception,
     /// Password change: Cancel button pressed (return to user info view)
     ChangePasswordCancelPressed,
     /// Password change: Confirm password field changed
@@ -118,6 +120,10 @@ pub enum Message {
     /// Disconnect from server by connection_id
     DisconnectFromServer(usize),
 
+    /// Server info edit: Chat burst limit changed
+    EditServerInfoChatBurstLimitChanged(u32),
+    /// Server info edit: Chat rate limit changed
+    EditServerInfoChatRateLimitChanged(u32),
     /// Server info edit: Description field changed
     EditServerInfoDescriptionChanged(String),
     /// Server info edit: Image loaded from file picker (data URI or error)

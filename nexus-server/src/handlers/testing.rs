@@ -106,6 +106,7 @@ pub struct TestContext {
     pub channel_manager: ChannelManager,
     pub transfer_registry: Arc<TransferRegistry>,
     pub voice_registry: VoiceRegistry,
+    pub flood_config: Arc<crate::flood::FloodConfig>,
     /// Keep temp dir alive for tests that use file areas
     #[allow(dead_code)]
     temp_dir: TempDir,
@@ -131,6 +132,8 @@ impl TestContext {
             channel_manager: &self.channel_manager,
             transfer_registry: self.transfer_registry.clone(),
             voice_registry: &self.voice_registry,
+            fingerprint: "AA:BB:CC:DD",
+            flood_config: self.flood_config.clone(),
         }
     }
 }
@@ -204,6 +207,7 @@ pub async fn create_test_context() -> TestContext {
 
     // Create voice registry for tests
     let voice_registry = VoiceRegistry::new();
+    let flood_config = Arc::new(crate::flood::FloodConfig::new(5, 20));
 
     TestContext {
         frame_reader,
@@ -221,6 +225,7 @@ pub async fn create_test_context() -> TestContext {
         channel_manager,
         transfer_registry,
         voice_registry,
+        flood_config,
         temp_dir,
     }
 }

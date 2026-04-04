@@ -126,6 +126,10 @@ pub struct ServerConnectionParams {
     /// Cached server image for display
     pub cached_server_image: Option<CachedImage>,
 
+    /// Chat burst limit (from ServerInfo, visible to all users)
+    pub chat_burst_limit: Option<u32>,
+    /// Chat rate limit in messages per minute (from ServerInfo, visible to all users)
+    pub chat_rate_limit: Option<u32>,
     /// Max connections per IP (admin only)
     pub max_connections_per_ip: Option<u32>,
     /// Max transfers per IP (admin only)
@@ -193,6 +197,10 @@ pub struct ServerConnection {
     pub server_image: String,
     /// Cached server image for rendering (decoded from server_image)
     pub cached_server_image: Option<CachedImage>,
+    /// Chat burst limit (from ServerInfo, visible to all users)
+    pub chat_burst_limit: Option<u32>,
+    /// Chat rate limit in messages per minute (from ServerInfo, visible to all users)
+    pub chat_rate_limit: Option<u32>,
     /// Max connections per IP (admin only, from ServerInfo)
     pub max_connections_per_ip: Option<u32>,
     /// Max transfers per IP (admin only, from ServerInfo)
@@ -366,6 +374,8 @@ impl ServerConnection {
             server_version: params.server_version,
             server_image: params.server_image,
             cached_server_image: params.cached_server_image,
+            chat_burst_limit: params.chat_burst_limit,
+            chat_rate_limit: params.chat_rate_limit,
             max_connections_per_ip: params.max_connections_per_ip,
             max_transfers_per_ip: params.max_transfers_per_ip,
             file_reindex_interval: params.file_reindex_interval,
@@ -451,6 +461,12 @@ pub struct NetworkConnection {
     pub server_image: String,
     /// Channels the user was auto-joined to on login
     pub channels: Vec<ChannelJoinInfo>,
+    /// Server-reported certificate fingerprint (for TLS interception detection)
+    pub server_fingerprint: Option<String>,
+    /// Chat burst limit (from ServerInfo, visible to all users)
+    pub chat_burst_limit: Option<u32>,
+    /// Chat rate limit in messages per minute (from ServerInfo, visible to all users)
+    pub chat_rate_limit: Option<u32>,
     /// Max connections per IP (admin only)
     pub max_connections_per_ip: Option<u32>,
     /// Max transfers per IP (admin only)

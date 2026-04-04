@@ -261,3 +261,10 @@ err-group-not-empty-delete = Gruppe kann nicht gelöscht werden, solange Benutze
 err-group-not-empty-modify = Der gemeinsame Status kann nicht geändert werden, solange Benutzer zugewiesen sind
 err-group-no-fields = Keine Felder zum Aktualisieren
 err-group-shared-mismatch = Kontotyp stimmt nicht mit dem Gruppentyp überein (gemeinsame Konten erfordern gemeinsame Gruppen)
+
+# Flood Protection Errors
+err-flood-warning = Nachricht ratenbegrenzt (Warnung { $violation } von { $max_violations }). Du kannst in { $seconds } { $seconds ->
+    [one] Sekunde
+   *[other] Sekunden
+} eine weitere Nachricht senden. Weiteres Flooding führt zur Trennung.
+err-flood-disconnect = Getrennt: Chat-Ratenlimit überschritten.

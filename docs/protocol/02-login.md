@@ -105,6 +105,7 @@ The `group_id` and `group_name` fields identify the user's account group (if any
   "user_id": 7,
   "is_admin": false,
   "permissions": [
+    "chat_join",
     "chat_receive",
     "chat_send",
     "chat_topic",
@@ -117,18 +118,22 @@ The `group_id` and `group_name` fields identify the user's account group (if any
   "server_info": {
     "name": "My BBS",
     "description": "Welcome to my server!",
-    "version": "0.7.4",
+    "version": "0.7.5",
+    "fingerprint": "AA:BB:CC:...",
     "transfer_port": 7501,
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 3,
-    "image": null,
+    "image": "",
+    "auto_join_channels": "#general",
+    "chat_burst_limit": 5,
+    "chat_rate_limit": 20,
     "min_password_strength": 2,
     "log_level": "info"
   },
   "locale": "en",
   "channels": [
     {
-      "channel": "general",
+      "channel": "#general",
       "topic": "Welcome!",
       "topic_set_by": "admin",
       "secret": false,
@@ -154,21 +159,24 @@ The `group_id` and `group_name` fields identify the user's account group (if any
 
 Included in successful login responses.
 
-| Field                     | Type    | Description                                                      |
-| ------------------------- | ------- | ---------------------------------------------------------------- |
-| `name`                    | string  | Server display name (null if not set)                            |
-| `description`             | string  | Server description (null if not set)                             |
-| `version`                 | string  | Server software version (null if not set)                        |
-| `transfer_port`           | integer | Port for file transfers (required)                               |
-| `transfer_websocket_port` | integer | Port for WebSocket file transfers (null if not enabled)          |
-| `max_connections_per_ip`  | integer | Connection limit per IP (null if not set)                        |
-| `max_transfers_per_ip`    | integer | Transfer connection limit per IP (null if not set)               |
-| `image`                   | string  | Server logo as data URI (null if none)                           |
-| `file_reindex_interval`   | integer | File reindex interval in minutes, 0 = disabled (null if not set) |
-| `persistent_channels`     | string  | Space-separated persistent channels (admin only, null otherwise) |
-| `auto_join_channels`      | string  | Space-separated auto-join channels (admin only, null otherwise)  |
-| `min_password_strength`   | integer | Minimum password strength level 0-4 (null if not set)            |
-| `log_level`               | string  | Server log level: "none", "error", "warn", "info", "debug"       |
+| Field                     | Type    | Description                                                                        |
+| ------------------------- | ------- | ---------------------------------------------------------------------------------- |
+| `name`                    | string  | Server display name (null if not set)                                              |
+| `description`             | string  | Server description (null if not set)                                               |
+| `version`                 | string  | Server software version (null if not set)                                          |
+| `fingerprint`             | string  | Server certificate fingerprint, SHA-256 colon-separated (null if not set)          |
+| `transfer_port`           | integer | Port for file transfers (required)                                                 |
+| `transfer_websocket_port` | integer | Port for WebSocket file transfers (null if not enabled)                            |
+| `max_connections_per_ip`  | integer | Connection limit per IP (null if not set)                                          |
+| `max_transfers_per_ip`    | integer | Transfer connection limit per IP (null if not set)                                 |
+| `image`                   | string  | Server logo as data URI (null if none)                                             |
+| `file_reindex_interval`   | integer | File reindex interval in minutes, 0 = disabled (null if not set)                   |
+| `persistent_channels`     | string  | Space-separated persistent channels (admin only, null otherwise)                   |
+| `auto_join_channels`      | string  | Space-separated auto-join channels (admin or chat_join permission, null otherwise) |
+| `chat_burst_limit`        | integer | Max messages in a burst before rate limiting (null if not set)                     |
+| `chat_rate_limit`         | integer | Messages per minute rate limit, 0 = disabled (null if not set)                     |
+| `min_password_strength`   | integer | Minimum password strength level 0-4 (null if not set)                              |
+| `log_level`               | string  | Server log level: "none", "error", "warn", "info", "debug"                         |
 
 ## Channel Join Info Object
 

@@ -96,6 +96,7 @@ label-enabled = Activé
 label-permissions = Permissions :
 label-expected-fingerprint = Empreinte attendue :
 label-received-fingerprint = Empreinte reçue :
+label-fingerprint = Empreinte :
 label-theme = Thème
 label-chat-history-retention = Historique de chat :
 chat-history-forever = Toujours
@@ -146,7 +147,6 @@ label-network = Réseau
 label-none = Aucun
 label-server-settings = Paramètres du serveur
 tab-files = Fichiers
-tab-channels = Canaux
 label-connections-short = Max Connexions:
 label-transfers-short = Max Transferts:
 label-version-short = Version:
@@ -157,8 +157,8 @@ label-log-level-warn = Avertissement
 label-log-level-info = Info
 label-log-level-debug = Debug
 label-reindex-short = Réindexer:
-label-persistent-short = Persistants:
-label-auto-join-short = Auto-rejoindre:
+label-chat-burst-limit = Limite de rafale du chat :
+label-chat-rate-limit = Limite de débit du chat :
 label-minutes = { $count ->
     [one] minute
    *[other] minutes
@@ -193,6 +193,7 @@ permission-chat_list = Liste des Canaux
 permission-chat_secret = Canal Secret
 permission-chat_topic = Sujet du Chat
 permission-chat_topic_edit = Modifier Sujet du Chat
+permission-chat_unlimited = Chat Illimité
 permission-user_broadcast = Diffusion Utilisateur
 permission-user_create = Créer Utilisateur
 permission-user_delete = Supprimer Utilisateur
@@ -399,7 +400,7 @@ err-dir-name-invalid = Le nom du dossier contient des caractères invalides
 # =============================================================================
 
 tab-general = Général
-tab-chat = Discussion
+tab-chat = Chat
 tab-network = Réseau
 tab-audio = Audio
 
@@ -615,6 +616,9 @@ err-failed-set-config-permissions = Échec de la définition des permissions du 
 # =============================================================================
 
 fingerprint-warning = Cela pourrait indiquer un problème de sécurité (attaque MITM) ou que le certificat du serveur a été régénéré. N'acceptez que si vous faites confiance à l'administrateur du serveur.
+fingerprint-interception-warning = L'empreinte du certificat rapportée par le serveur ne correspond pas à l'empreinte observée lors de la connexion. Votre connexion est interceptée par un proxy TLS.
+label-tls-fingerprint = Empreinte observée par TLS :
+label-server-fingerprint = Empreinte rapportée par le serveur :
 
 # =============================================================================
 # User Info Display

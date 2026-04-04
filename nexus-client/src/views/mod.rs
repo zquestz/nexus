@@ -10,6 +10,7 @@ pub(crate) mod constants;
 mod disconnect_dialog;
 pub(crate) mod files;
 mod fingerprint;
+mod fingerprint_interception;
 pub(crate) mod groups;
 pub(crate) mod helpers;
 mod layout;
@@ -24,6 +25,7 @@ mod user_list;
 mod users;
 pub(crate) mod voice;
 
-// Re-export the main layout function and fingerprint dialog (public API)
+// Re-export the main layout function and fingerprint dialogs (public API)
 pub use fingerprint::fingerprint_mismatch_dialog;
+pub use fingerprint_interception::fingerprint_interception_dialog;
 pub use layout::main_layout;

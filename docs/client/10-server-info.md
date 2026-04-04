@@ -9,7 +9,7 @@ The Server Info panel displays information about the server you're connected to.
 - Server identity (name, description, image)
 - Server configuration (version, log level, connection limits, password requirements)
 - File settings (reindex interval)
-- Channel configuration (persistent and auto-join channels)
+- Chat configuration (rate limits, persistent and auto-join channels)
 
 ## Accessing Server Info
 
@@ -37,6 +37,7 @@ Visible to all users. Shows server configuration in alphabetical order:
 
 | Field               | Description                                           |
 | ------------------- | ----------------------------------------------------- |
+| **Fingerprint**     | Server certificate fingerprint (SHA-256)              |
 | **Log Level**       | Server logging level (None, Error, Warn, Info, Debug) |
 | **Max Connections** | Maximum concurrent connections per IP address         |
 | **Max Transfers**   | Maximum concurrent file transfers per IP address      |
@@ -51,14 +52,16 @@ Visible to admins and users with `file_reindex` permission.
 | ----------- | ---------------------------------------------------- |
 | **Reindex** | File index rebuild interval in minutes (or Disabled) |
 
-#### Channels Tab
+#### Chat Tab
 
-Visible based on permissions. Shows channel configuration in alphabetical order:
+Visible to users with relevant permissions. Shows chat configuration in alphabetical order:
 
-| Field          | Visible To                        | Description                                |
-| -------------- | --------------------------------- | ------------------------------------------ |
-| **Auto-Join**  | Users with `chat_join` permission | Channels users automatically join on login |
-| **Persistent** | Admins only                       | Channels that persist even when empty      |
+| Field                | Visible To                        | Description                                      |
+| -------------------- | --------------------------------- | ------------------------------------------------ |
+| **Auto-Join**        | Users with `chat_join` permission | Channels users automatically join on login       |
+| **Chat Burst Limit** | All users                         | Maximum messages in a burst before rate limiting |
+| **Chat Rate Limit**  | All users                         | Messages per minute rate limit (0 = disabled)    |
+| **Persistent**       | Admins only                       | Channels that persist even when empty            |
 
 ## Edit Mode
 
@@ -66,17 +69,19 @@ Admins can edit server configuration by clicking the **Edit** button at the bott
 
 ### Editable Fields
 
-| Field                   | Description                                               |
-| ----------------------- | --------------------------------------------------------- |
-| **Name**                | Server display name (1–64 characters)                     |
-| **Description**         | Server description (0–512 characters)                     |
-| **Image**               | Server logo (PNG, JPEG, WebP, SVG; max 700KB)             |
-| **Max Connections**     | Maximum connections per IP address                        |
-| **Max Transfers**       | Maximum file transfers per IP address                     |
-| **Min Password**        | Minimum password strength for accounts                    |
-| **File Reindex**        | File index rebuild interval in minutes (0 to disable)     |
-| **Persistent Channels** | Space-separated channel names (e.g., `#general #support`) |
-| **Auto-Join Channels**  | Space-separated channel names users auto-join on login    |
+| Field                   | Description                                                          |
+| ----------------------- | -------------------------------------------------------------------- |
+| **Auto-Join Channels**  | Space-separated channel names users auto-join on login               |
+| **Chat Burst Limit**    | Maximum messages in a burst before rate limiting (0 = capacity of 1) |
+| **Chat Rate Limit**     | Messages per minute rate limit (0 = flood protection disabled)       |
+| **Description**         | Server description (0–512 characters)                                |
+| **File Reindex**        | File index rebuild interval in minutes (0 to disable)                |
+| **Image**               | Server logo (PNG, JPEG, WebP, SVG; max 700KB)                        |
+| **Max Connections**     | Maximum connections per IP address                                   |
+| **Max Transfers**       | Maximum file transfers per IP address                                |
+| **Min Password**        | Minimum password strength for accounts                               |
+| **Name**                | Server display name (1–64 characters)                                |
+| **Persistent Channels** | Space-separated channel names (e.g., `#general #support`)            |
 
 **Note:** Log Level is set by the server operator via command-line options. Version is determined by the server software. Neither field is editable from the client.
 
@@ -99,7 +104,7 @@ Changes are broadcast to all connected users immediately.
 
 ### Some tabs are missing
 
-Tabs only appear when you have permission to see the data. For example, the Files tab requires `file_reindex` permission or admin status.
+Tabs only appear when you have permission to see the data. For example, the Files tab requires `file_reindex` permission or admin status. The Chat tab appears when there is rate limit or channel configuration data available.
 
 ### Can't edit server info
 

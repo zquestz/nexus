@@ -56,35 +56,20 @@ impl NexusApp {
         conn.is_admin = is_admin;
         conn.permissions = permissions;
 
-        // Update only the server info fields that were provided
-        // (PermissionsUpdated only sends fields that change with permissions, like max_connections_per_ip)
+        // Update server info fields unconditionally (None means "cleared/not set").
+        // Exception: image uses a guard because it's not sent in PermissionsUpdated,
+        // so None means "not included" rather than "cleared".
         if let Some(info) = server_info {
-            if let Some(name) = info.name {
-                conn.server_name = Some(name);
-            }
-            if let Some(description) = info.description {
-                conn.server_description = Some(description);
-            }
-            if let Some(version) = info.version {
-                conn.server_version = Some(version);
-            }
-            if info.max_connections_per_ip.is_some() {
-                conn.max_connections_per_ip = info.max_connections_per_ip;
-            }
-            if info.max_transfers_per_ip.is_some() {
-                conn.max_transfers_per_ip = info.max_transfers_per_ip;
-            }
-            if info.file_reindex_interval.is_some() {
-                conn.file_reindex_interval = info.file_reindex_interval;
-            }
-            // Only present if server included it (admin-only field)
-            if info.persistent_channels.is_some() {
-                conn.persistent_channels = info.persistent_channels;
-            }
-            // Only present if server included it (requires chat_join permission)
-            if info.auto_join_channels.is_some() {
-                conn.auto_join_channels = info.auto_join_channels;
-            }
+            conn.server_name = info.name;
+            conn.server_description = info.description;
+            conn.server_version = info.version;
+            conn.max_connections_per_ip = info.max_connections_per_ip;
+            conn.max_transfers_per_ip = info.max_transfers_per_ip;
+            conn.file_reindex_interval = info.file_reindex_interval;
+            conn.persistent_channels = info.persistent_channels;
+            conn.auto_join_channels = info.auto_join_channels;
+            conn.chat_burst_limit = info.chat_burst_limit;
+            conn.chat_rate_limit = info.chat_rate_limit;
             if let Some(image) = info.image {
                 // Decode first using reference, then move (avoids clone)
                 conn.cached_server_image = if image.is_empty() {
@@ -97,9 +82,7 @@ impl NexusApp {
             if let Some(score) = info.min_password_strength {
                 conn.min_password_strength = PasswordStrength::from(score);
             }
-            if info.log_level.is_some() {
-                conn.log_level = info.log_level;
-            }
+            conn.log_level = info.log_level;
         }
 
         // If user just gained user_list permission, refresh the list

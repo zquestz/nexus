@@ -161,6 +161,18 @@ pub const CONFIG_KEY_MIN_PASSWORD_STRENGTH: &str = "min_password_strength";
 /// Default minimum password strength
 pub const DEFAULT_MIN_PASSWORD_STRENGTH: PasswordStrength = PasswordStrength::Good;
 
+/// Config key for chat burst limit (max messages in a burst)
+pub const CONFIG_KEY_CHAT_BURST_LIMIT: &str = "chat_burst_limit";
+
+/// Default chat burst limit (0 = no burst, capacity is 1)
+pub const DEFAULT_CHAT_BURST_LIMIT: u32 = 5;
+
+/// Config key for chat rate limit (messages per minute)
+pub const CONFIG_KEY_CHAT_RATE_LIMIT: &str = "chat_rate_limit";
+
+/// Default chat rate limit (messages per minute, 0 = disabled)
+pub const DEFAULT_CHAT_RATE_LIMIT: u32 = 20;
+
 /// Maximum number of concurrent database connections in the pool
 ///
 /// This value (5) is chosen to balance:
@@ -624,6 +636,12 @@ pub const LOG_VOICE_CLEANUP_TIMEOUT: &str = "Voice DTLS: cleanup timed out clien
 pub const LOG_VOICE_STALE_SESSION: &str =
     "Voice DTLS: removed stale voice session, no UDP connection";
 
+// --- Flood Protection ---
+/// Log: flood violation
+pub const LOG_FLOOD_LIMITED: &str = "Chat rate limited";
+/// Log: flood disconnect
+pub const LOG_FLOOD_DISCONNECT: &str = "Disconnected for repeated flood violations";
+
 // --- Handler: Ban ---
 pub const LOG_BAN_CREATE_NOT_LOGGED_IN: &str = "BanCreate: not logged in";
 pub const LOG_BAN_CREATE_PERMISSION_DENIED: &str = "BanCreate: permission denied";
@@ -846,6 +864,10 @@ pub const LOG_SERVER_INFO_DB_PERSISTENT: &str =
     "ServerInfoUpdate: database error setting persistent_channels";
 pub const LOG_SERVER_INFO_DB_AUTO_JOIN: &str =
     "ServerInfoUpdate: database error setting auto_join_channels";
+pub const LOG_SERVER_INFO_DB_CHAT_BURST: &str =
+    "ServerInfoUpdate: database error setting chat_burst_limit";
+pub const LOG_SERVER_INFO_DB_CHAT_RATE: &str =
+    "ServerInfoUpdate: database error setting chat_rate_limit";
 pub const LOG_SERVER_INFO_DB_PASSWORD: &str =
     "ServerInfoUpdate: database error setting min_password_strength";
 pub const LOG_SERVER_INFO_CHANNEL_CREATE_FAILED: &str =

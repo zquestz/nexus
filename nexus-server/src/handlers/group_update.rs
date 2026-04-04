@@ -13,12 +13,13 @@ use nexus_common::validators::{self, GroupNameError, PermissionsError};
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_authentication, err_database, err_group_already_exists,
-    err_group_name_empty, err_group_name_invalid, err_group_name_too_long, err_group_no_fields,
-    err_group_not_empty_modify, err_group_not_found, err_group_shared_permission,
-    err_not_logged_in, err_permission_denied, err_permissions_contains_newlines,
-    err_permissions_empty_permission, err_permissions_invalid_characters,
-    err_permissions_permission_too_long, err_permissions_too_many, err_unknown_permission,
+    HandlerContext, ServerInfoOptions, ServerInfoValues, build_server_info, err_authentication,
+    err_database, err_group_already_exists, err_group_name_empty, err_group_name_invalid,
+    err_group_name_too_long, err_group_no_fields, err_group_not_empty_modify, err_group_not_found,
+    err_group_shared_permission, err_not_logged_in, err_permission_denied,
+    err_permissions_contains_newlines, err_permissions_empty_permission,
+    err_permissions_invalid_characters, err_permissions_permission_too_long,
+    err_permissions_too_many, err_unknown_permission,
 };
 use crate::constants::*;
 use crate::db::{Permission, Permissions};
@@ -342,6 +343,26 @@ where
             if permissions_changed {
                 let member_sessions = ctx.user_manager.get_sessions_by_group_id(id).await;
 
+                // Fetch config once for ServerInfo construction (shared across all members)
+                let config = ctx.db.config.get_all().await;
+                let info_values = ServerInfoValues {
+                    name: config.server_name,
+                    description: config.server_description,
+                    version: env!("CARGO_PKG_VERSION").to_string(),
+                    image: config.server_image,
+                    max_connections_per_ip: config.max_connections_per_ip,
+                    max_transfers_per_ip: config.max_transfers_per_ip,
+                    transfer_port: ctx.transfer_port,
+                    transfer_websocket_port: ctx.transfer_websocket_port,
+                    file_reindex_interval: config.file_reindex_interval,
+                    persistent_channels: config.persistent_channels,
+                    auto_join_channels: config.auto_join_channels,
+                    min_password_strength: config.min_password_strength.score(),
+                    chat_burst_limit: config.chat_burst_limit,
+                    chat_rate_limit: config.chat_rate_limit,
+                    fingerprint: ctx.fingerprint.to_string(),
+                };
+
                 // Deduplicate by user_id (regular accounts may have multiple sessions)
                 let mut seen_user_ids: HashSet<i64> = HashSet::new();
                 for session in &member_sessions {
@@ -388,11 +409,22 @@ where
                         .map(|p| p.as_str().to_string())
                         .collect();
 
-                    // Non-admin members don't need server_info
+                    // Build per-user ServerInfo with permission-based field visibility
+                    let has_file_reindex =
+                        new_effective.permissions.contains(&Permission::FileReindex);
+                    let has_chat_join = new_effective.permissions.contains(&Permission::ChatJoin);
+                    let info_options = ServerInfoOptions {
+                        is_admin: false,
+                        has_file_reindex,
+                        has_chat_join,
+                        include_image: false,
+                    };
+                    let server_info = Some(build_server_info(&info_values, &info_options));
+
                     let permissions_update = ServerMessage::PermissionsUpdated {
                         is_admin: false,
                         permissions: permission_strings,
-                        server_info: None,
+                        server_info,
                         group_id: Some(id),
                         group_name: Some(final_name.clone()),
                     };
@@ -1332,15 +1364,30 @@ mod tests {
             ServerMessage::PermissionsUpdated {
                 is_admin,
                 permissions,
+                server_info,
                 group_id,
                 group_name,
-                ..
             } => {
                 assert!(!is_admin);
                 assert!(permissions.contains(&"chat_send".to_string()));
                 assert!(permissions.contains(&"user_kick".to_string()));
                 assert_eq!(group_id, Some(group.id));
                 assert_eq!(group_name, Some("Staff".to_string()));
+
+                // Verify server_info is included in group cascade
+                let info = server_info.expect("server_info should be included");
+                // All-user fields should be populated
+                assert!(info.name.is_some());
+                assert!(info.version.is_some());
+                assert!(info.fingerprint.is_some());
+                assert!(info.chat_burst_limit.is_some());
+                assert!(info.chat_rate_limit.is_some());
+                assert!(info.min_password_strength.is_some());
+                assert!(info.log_level.is_some());
+                // Admin-only fields should be None for non-admin bob
+                assert!(info.persistent_channels.is_none());
+                // Image not included in PermissionsUpdated
+                assert!(info.image.is_none());
             }
             _ => panic!("Expected PermissionsUpdated, got {:?}", msg),
         }

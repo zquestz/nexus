@@ -261,3 +261,10 @@ err-group-not-empty-delete = Kan groep niet verwijderen zolang er gebruikers aan
 err-group-not-empty-modify = Kan gedeelde status niet wijzigen zolang er gebruikers aan zijn toegewezen
 err-group-no-fields = Geen velden om bij te werken
 err-group-shared-mismatch = Accounttype komt niet overeen met groepstype (gedeelde accounts vereisen gedeelde groepen)
+
+# Flood Protection Errors
+err-flood-warning = Bericht beperkt (waarschuwing { $violation } van { $max_violations }). Je kunt over { $seconds } { $seconds ->
+    [one] seconde
+   *[other] seconden
+} weer een bericht sturen. Doorgaan met flooding resulteert in een verbroken verbinding.
+err-flood-disconnect = Verbinding verbroken: chatlimiet overschreden.

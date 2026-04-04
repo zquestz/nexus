@@ -261,3 +261,7 @@ err-group-not-empty-delete = 사용자가 할당되어 있는 동안에는 그�
 err-group-not-empty-modify = 사용자가 할당되어 있는 동안에는 공유 상태를 변경할 수 없습니다
 err-group-no-fields = 업데이트할 필드가 없습니다
 err-group-shared-mismatch = 계정 유형이 그룹 유형과 일치하지 않습니다 (공유 계정은 공유 그룹이 필요합니다)
+
+# Flood Protection Errors
+err-flood-warning = 메시지가 제한되었습니다 (경고 { $violation }/{ $max_violations }). { $seconds }초 후에 다시 보낼 수 있습니다. 계속하면 연결이 끊어집니다.
+err-flood-disconnect = 연결 끊김: 채팅 속도 제한 초과.

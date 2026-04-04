@@ -31,7 +31,8 @@ pub use panel::{
 };
 pub use pending::{PendingRequests, ResponseRouting};
 pub use ui::{
-    ActivePanel, FingerprintMismatch, FingerprintMismatchDetails, InputId, ScrollableId, UiState,
+    ActivePanel, FingerprintInterception, FingerprintMismatch, FingerprintMismatchDetails, InputId,
+    ScrollableId, UiState,
 };
 pub use view_config::{ToolbarState, ViewConfig};
 pub use voice::VoiceState;

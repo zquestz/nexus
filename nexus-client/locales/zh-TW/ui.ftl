@@ -95,6 +95,7 @@ label-enabled = 啟用
 label-permissions = 權限：
 label-expected-fingerprint = 預期的指紋：
 label-received-fingerprint = 收到的指紋：
+label-fingerprint = 指紋：
 label-theme = 主題
 label-chat-history-retention = 聊天記錄：
 chat-history-forever = 永久
@@ -142,7 +143,6 @@ label-network = 網路
 label-none = 無
 label-server-settings = 伺服器設定
 tab-files = 檔案
-tab-channels = 頻道
 label-connections-short = 最大連線：
 label-transfers-short = 最大傳輸：
 label-version-short = 版本：
@@ -153,8 +153,8 @@ label-log-level-warn = 警告
 label-log-level-info = 資訊
 label-log-level-debug = 除錯
 label-reindex-short = 重建索引：
-label-persistent-short = 常駐：
-label-auto-join-short = 自動加入：
+label-chat-burst-limit = 聊天突發限制：
+label-chat-rate-limit = 聊天速率限制：
 label-minutes = 分鐘
 label-name = 名稱：
 label-description = 描述：
@@ -186,6 +186,7 @@ permission-chat_list = 頻道列表
 permission-chat_secret = 頻道私密設定
 permission-chat_topic = 聊天主題
 permission-chat_topic_edit = 編輯聊天主題
+permission-chat_unlimited = 聊天無限制
 permission-user_broadcast = 使用者廣播
 permission-user_create = 建立使用者
 permission-user_delete = 刪除使用者
@@ -603,6 +604,9 @@ err-failed-set-config-permissions = 設定設定檔權限失敗：{ $error }
 # =============================================================================
 
 fingerprint-warning = 這可能表示存在安全問題（中間人攻擊）或伺服器憑證已重新產生。僅在信任伺服器管理員時才接受。
+fingerprint-interception-warning = 伺服器報告的憑證指紋與連線期間觀察到的指紋不匹配。您的連線正在被TLS代理攔截。
+label-tls-fingerprint = TLS觀察到的指紋：
+label-server-fingerprint = 伺服器報告的指紋：
 
 # =============================================================================
 # User Info Display

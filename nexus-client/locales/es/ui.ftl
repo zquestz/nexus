@@ -96,6 +96,7 @@ label-enabled = Habilitado
 label-permissions = Permisos:
 label-expected-fingerprint = Huella esperada:
 label-received-fingerprint = Huella recibida:
+label-fingerprint = Huella digital:
 label-theme = Tema
 label-chat-history-retention = Historial de chat:
 chat-history-forever = Para siempre
@@ -146,7 +147,6 @@ label-network = Red
 label-none = Ninguno
 label-server-settings = Configuración del servidor
 tab-files = Archivos
-tab-channels = Canales
 label-connections-short = Máx. Conexiones:
 label-transfers-short = Máx. Transferencias:
 label-version-short = Versión:
@@ -157,8 +157,8 @@ label-log-level-warn = Advertencia
 label-log-level-info = Info
 label-log-level-debug = Debug
 label-reindex-short = Reindexar:
-label-persistent-short = Persistentes:
-label-auto-join-short = Auto-unión:
+label-chat-burst-limit = Límite de ráfaga del chat:
+label-chat-rate-limit = Límite de velocidad del chat:
 label-minutes = { $count ->
     [one] minuto
    *[other] minutos
@@ -193,6 +193,7 @@ permission-chat_list = Lista de Chats
 permission-chat_secret = Canal Secreto
 permission-chat_topic = Tema del Chat
 permission-chat_topic_edit = Editar Tema del Chat
+permission-chat_unlimited = Chat Ilimitado
 permission-user_broadcast = Difusión de Usuario
 permission-user_create = Crear Usuario
 permission-user_delete = Eliminar Usuario
@@ -617,6 +618,9 @@ err-failed-set-config-permissions = Error al establecer permisos del archivo de 
 # =============================================================================
 
 fingerprint-warning = Esto podría indicar un problema de seguridad (ataque MITM) o que el certificado del servidor fue regenerado. Solo acepta si confías en el administrador del servidor.
+fingerprint-interception-warning = La huella digital del certificado reportada por el servidor no coincide con la huella digital observada durante la conexión. Tu conexión está siendo interceptada por un proxy TLS.
+label-tls-fingerprint = Huella digital observada por TLS:
+label-server-fingerprint = Huella digital reportada por el servidor:
 
 # =============================================================================
 # User Info Display

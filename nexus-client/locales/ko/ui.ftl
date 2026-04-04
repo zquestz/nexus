@@ -95,6 +95,7 @@ label-enabled = 활성화
 label-permissions = 권한:
 label-expected-fingerprint = 예상 지문:
 label-received-fingerprint = 수신된 지문:
+label-fingerprint = 지문:
 label-theme = 테마
 label-chat-history-retention = 채팅 기록:
 chat-history-forever = 영구
@@ -142,7 +143,6 @@ label-network = 네트워크
 label-none = 없음
 label-server-settings = 서버 설정
 tab-files = 파일
-tab-channels = 채널
 label-connections-short = 최대 연결:
 label-transfers-short = 최대 전송:
 label-version-short = 버전:
@@ -153,8 +153,8 @@ label-log-level-warn = 경고
 label-log-level-info = 정보
 label-log-level-debug = 디버그
 label-reindex-short = 재색인:
-label-persistent-short = 상시:
-label-auto-join-short = 자동 참가:
+label-chat-burst-limit = 채팅 버스트 제한:
+label-chat-rate-limit = 채팅 속도 제한:
 label-minutes = 분
 label-name = 이름:
 label-description = 설명:
@@ -186,6 +186,7 @@ permission-chat_list = 채널 목록
 permission-chat_secret = 채널 비공개
 permission-chat_topic = 채팅 주제
 permission-chat_topic_edit = 채팅 주제 편집
+permission-chat_unlimited = 채팅 무제한
 permission-user_broadcast = 사용자 브로드캐스트
 permission-user_create = 사용자 생성
 permission-user_delete = 사용자 삭제
@@ -603,6 +604,9 @@ err-failed-set-config-permissions = 설정 파일 권한 설정 실패: { $error
 # =============================================================================
 
 fingerprint-warning = 이는 보안 문제(MITM 공격)를 나타내거나 서버 인증서가 재생성되었을 수 있습니다. 서버 관리자를 신뢰하는 경우에만 수락하세요.
+fingerprint-interception-warning = 서버가 보고한 인증서 지문이 연결 중에 관찰된 지문과 일치하지 않습니다. 연결이 TLS 프록시에 의해 가로채지고 있습니다.
+label-tls-fingerprint = TLS에서 관찰된 지문:
+label-server-fingerprint = 서버가 보고한 지문:
 
 # =============================================================================
 # User Info Display

@@ -961,6 +961,33 @@ pub fn err_upload_connection_lost(locale: &str) -> String {
 }
 
 // =============================================================================
+// Flood Protection Errors
+// =============================================================================
+
+/// Get translated "flood warning" error (rate limited with wait time and violation count)
+pub fn err_flood_warning(
+    locale: &str,
+    wait_seconds: u32,
+    violation: u32,
+    max_violations: u32,
+) -> String {
+    t_args(
+        locale,
+        "err-flood-warning",
+        &[
+            ("seconds", &wait_seconds.to_string()),
+            ("violation", &violation.to_string()),
+            ("max_violations", &max_violations.to_string()),
+        ],
+    )
+}
+
+/// Get translated "flood disconnect" error
+pub fn err_flood_disconnect(locale: &str) -> String {
+    t(locale, "err-flood-disconnect")
+}
+
+// =============================================================================
 // Ban System Errors
 // =============================================================================
 

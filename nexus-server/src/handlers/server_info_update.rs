@@ -5,31 +5,28 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
-use crate::constants::{
-    LOG_SERVER_INFO_ADMIN_REQUIRED, LOG_SERVER_INFO_CHANNEL_CREATE_FAILED,
-    LOG_SERVER_INFO_CHANNEL_DELETE_FAILED, LOG_SERVER_INFO_DB_AUTO_JOIN,
-    LOG_SERVER_INFO_DB_CONNECTIONS, LOG_SERVER_INFO_DB_DESC, LOG_SERVER_INFO_DB_IMAGE,
-    LOG_SERVER_INFO_DB_NAME, LOG_SERVER_INFO_DB_PASSWORD, LOG_SERVER_INFO_DB_PERSISTENT,
-    LOG_SERVER_INFO_DB_REINDEX, LOG_SERVER_INFO_DB_TRANSFERS, LOG_SERVER_INFO_NOT_LOGGED_IN,
-    LOG_SERVER_INFO_SUCCESS,
-};
-
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
     self, ServerDescriptionError, ServerImageError, ServerNameError, validate_channel,
     validate_server_description, validate_server_image, validate_server_name,
 };
 
-use crate::users::manager::broadcasts::ServerInfoBroadcastParams;
-
 use super::{
-    HandlerContext, channel_error_to_message, err_admin_required, err_authentication,
-    err_channel_list_invalid, err_database, err_invalid_password_strength, err_no_fields_to_update,
-    err_not_logged_in, err_server_description_contains_newlines,
+    HandlerContext, ServerInfoValues, channel_error_to_message, err_admin_required,
+    err_authentication, err_channel_list_invalid, err_database, err_invalid_password_strength,
+    err_no_fields_to_update, err_not_logged_in, err_server_description_contains_newlines,
     err_server_description_invalid_characters, err_server_description_too_long,
     err_server_image_invalid_format, err_server_image_too_large, err_server_image_unsupported_type,
     err_server_name_contains_newlines, err_server_name_empty, err_server_name_invalid_characters,
     err_server_name_too_long,
+};
+use crate::constants::{
+    LOG_SERVER_INFO_ADMIN_REQUIRED, LOG_SERVER_INFO_CHANNEL_CREATE_FAILED,
+    LOG_SERVER_INFO_CHANNEL_DELETE_FAILED, LOG_SERVER_INFO_DB_AUTO_JOIN,
+    LOG_SERVER_INFO_DB_CHAT_BURST, LOG_SERVER_INFO_DB_CHAT_RATE, LOG_SERVER_INFO_DB_CONNECTIONS,
+    LOG_SERVER_INFO_DB_DESC, LOG_SERVER_INFO_DB_IMAGE, LOG_SERVER_INFO_DB_NAME,
+    LOG_SERVER_INFO_DB_PASSWORD, LOG_SERVER_INFO_DB_PERSISTENT, LOG_SERVER_INFO_DB_REINDEX,
+    LOG_SERVER_INFO_DB_TRANSFERS, LOG_SERVER_INFO_NOT_LOGGED_IN, LOG_SERVER_INFO_SUCCESS,
 };
 
 /// Request parameters for ServerInfoUpdate command
@@ -42,6 +39,8 @@ pub struct ServerInfoUpdateRequest {
     pub file_reindex_interval: Option<u32>,
     pub persistent_channels: Option<String>,
     pub auto_join_channels: Option<String>,
+    pub chat_burst_limit: Option<u32>,
+    pub chat_rate_limit: Option<u32>,
     pub min_password_strength: Option<u8>,
     pub session_id: Option<u32>,
 }
@@ -63,6 +62,8 @@ where
         file_reindex_interval,
         persistent_channels,
         auto_join_channels,
+        chat_burst_limit,
+        chat_rate_limit,
         min_password_strength,
         session_id,
     } = request;
@@ -102,6 +103,8 @@ where
         && file_reindex_interval.is_none()
         && persistent_channels.is_none()
         && auto_join_channels.is_none()
+        && chat_burst_limit.is_none()
+        && chat_rate_limit.is_none()
         && min_password_strength.is_none()
     {
         return ctx
@@ -357,6 +360,30 @@ where
             .await;
     }
 
+    // Handle chat_burst_limit update
+    if let Some(burst) = chat_burst_limit {
+        if let Err(e) = ctx.db.config.set_chat_burst_limit(burst).await {
+            error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_CHAT_BURST);
+            return ctx
+                .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+                .await;
+        }
+        // Update the shared flood config dynamically
+        ctx.flood_config.set_burst(burst);
+    }
+
+    // Handle chat_rate_limit update
+    if let Some(rate) = chat_rate_limit {
+        if let Err(e) = ctx.db.config.set_chat_rate_limit(rate).await {
+            error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_CHAT_RATE);
+            return ctx
+                .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+                .await;
+        }
+        // Update the shared flood config dynamically
+        ctx.flood_config.set_rate(rate);
+    }
+
     // Handle min_password_strength update
     if let Some(score) = min_password_strength {
         let strength = validators::PasswordStrength::from(score);
@@ -368,33 +395,27 @@ where
         }
     }
 
-    // Fetch current server info for broadcast
-    let current_name = ctx.db.config.get_server_name().await;
-    let current_description = ctx.db.config.get_server_description().await;
-    let current_max_connections = ctx.db.config.get_max_connections_per_ip().await as u32;
-    let current_max_transfers = ctx.db.config.get_max_transfers_per_ip().await as u32;
-    let current_image = ctx.db.config.get_server_image().await;
-    let current_file_reindex_interval = ctx.db.config.get_file_reindex_interval().await;
-    let current_persistent_channels = ctx.db.config.get_persistent_channels().await;
-    let current_auto_join_channels = ctx.db.config.get_auto_join_channels().await;
-    let current_min_password_strength = ctx.db.config.get_min_password_strength().await;
-    let server_version = env!("CARGO_PKG_VERSION").to_string();
+    // Fetch current server info for broadcast (single query)
+    let config = ctx.db.config.get_all().await;
 
     // Broadcast ServerInfoUpdated to all connected users
     ctx.user_manager
-        .broadcast_server_info_updated(ServerInfoBroadcastParams {
-            name: current_name,
-            description: current_description,
-            version: server_version,
-            max_connections_per_ip: current_max_connections,
-            max_transfers_per_ip: current_max_transfers,
-            image: current_image,
+        .broadcast_server_info_updated(ServerInfoValues {
+            name: config.server_name,
+            description: config.server_description,
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            max_connections_per_ip: config.max_connections_per_ip,
+            max_transfers_per_ip: config.max_transfers_per_ip,
+            image: config.server_image,
             transfer_port: ctx.transfer_port,
             transfer_websocket_port: ctx.transfer_websocket_port,
-            file_reindex_interval: current_file_reindex_interval,
-            persistent_channels: current_persistent_channels,
-            auto_join_channels: current_auto_join_channels,
-            min_password_strength: current_min_password_strength.score(),
+            file_reindex_interval: config.file_reindex_interval,
+            persistent_channels: config.persistent_channels,
+            auto_join_channels: config.auto_join_channels,
+            min_password_strength: config.min_password_strength.score(),
+            chat_burst_limit: config.chat_burst_limit,
+            chat_rate_limit: config.chat_rate_limit,
+            fingerprint: ctx.fingerprint.to_string(),
         })
         .await;
 
@@ -427,6 +448,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: None,
         };
@@ -460,6 +483,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -493,6 +518,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -526,6 +553,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -560,6 +589,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -594,6 +625,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -628,6 +661,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -665,6 +700,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -702,6 +739,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -739,6 +778,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -776,6 +817,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -828,6 +871,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -872,6 +917,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -918,6 +965,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -960,6 +1009,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -996,6 +1047,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -1035,6 +1088,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -1075,6 +1130,8 @@ mod tests {
             file_reindex_interval: Some(10),
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -1113,6 +1170,8 @@ mod tests {
             file_reindex_interval: Some(0),
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -1150,6 +1209,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: Some("#general #support".to_string()),
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -1188,6 +1249,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: Some("#valid general".to_string()),
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -1224,6 +1287,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: Some("#nexus #welcome".to_string()),
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -1262,6 +1327,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: Some("#nexus #".to_string()),
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -1300,6 +1367,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: Some("#my channel".to_string()),
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -1338,6 +1407,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: Some("".to_string()),
             auto_join_channels: Some("".to_string()),
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: None,
             session_id: Some(session_id),
         };
@@ -1376,6 +1447,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: Some(3),
             session_id: Some(session_id),
         };
@@ -1412,6 +1485,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: Some(5),
             session_id: Some(session_id),
         };
@@ -1444,6 +1519,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: Some(0),
             session_id: Some(session_id),
         };
@@ -1479,6 +1556,8 @@ mod tests {
             file_reindex_interval: None,
             persistent_channels: None,
             auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
             min_password_strength: Some(4),
             session_id: Some(session_id),
         };
@@ -1497,5 +1576,128 @@ mod tests {
 
         let saved = test_ctx.db.config.get_min_password_strength().await;
         assert_eq!(saved, validators::PasswordStrength::Excellent);
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_chat_burst_limit_success() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: Some(10),
+            chat_rate_limit: None,
+            min_password_strength: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        // Verify DB persistence
+        let saved = test_ctx.db.config.get_chat_burst_limit().await;
+        assert_eq!(saved, 10);
+
+        // Verify FloodConfig atomic was updated
+        assert_eq!(test_ctx.flood_config.burst(), 10);
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_chat_rate_limit_success() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: Some(60),
+            min_password_strength: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        // Verify DB persistence
+        let saved = test_ctx.db.config.get_chat_rate_limit().await;
+        assert_eq!(saved, 60);
+
+        // Verify FloodConfig atomic was updated
+        assert_eq!(test_ctx.flood_config.rate(), 60);
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_chat_rate_limit_zero_disables() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: Some(0),
+            min_password_strength: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        // Verify 0 was saved (means disabled)
+        let saved = test_ctx.db.config.get_chat_rate_limit().await;
+        assert_eq!(saved, 0);
+
+        // Verify FloodConfig atomic was updated
+        assert_eq!(test_ctx.flood_config.rate(), 0);
     }
 }

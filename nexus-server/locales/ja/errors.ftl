@@ -261,3 +261,7 @@ err-group-not-empty-delete = ユーザーが割り当てられている間はグ
 err-group-not-empty-modify = ユーザーが割り当てられている間は共有ステータスを変更できません
 err-group-no-fields = 更新するフィールドがありません
 err-group-shared-mismatch = アカウントタイプがグループタイプと一致しません（共有アカウントには共有グループが必要です）
+
+# Flood Protection Errors
+err-flood-warning = メッセージが制限されました（警告 { $violation }/{ $max_violations }）。{ $seconds }秒後に再度送信できます。続けると切断されます。
+err-flood-disconnect = 切断されました：チャットの速度制限を超えました。

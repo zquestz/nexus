@@ -152,6 +152,15 @@ To send a message starting with `/`:
 - Type `//` — sends a message starting with `/`
 - Start with a space — ` /not a command`
 
+## Flood Protection
+
+Chat messages are rate-limited to prevent flooding. This applies to both channel messages and user messages.
+
+- If you send messages too quickly, the server will reject messages with a warning showing how long to wait
+- After 3 consecutive rate-limited messages, you are disconnected
+- The rate limit is configured by the server admin (visible in the Server Info panel under the Chat tab)
+- Admins and users with the `chat_unlimited` permission are exempt
+
 ## Tab Navigation
 
 ### Keyboard Shortcuts

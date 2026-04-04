@@ -95,6 +95,7 @@ label-enabled = Abilitato
 label-permissions = Permessi:
 label-expected-fingerprint = Impronta prevista:
 label-received-fingerprint = Impronta ricevuta:
+label-fingerprint = Impronta:
 label-theme = Tema
 label-chat-history-retention = Cronologia chat:
 chat-history-forever = Per sempre
@@ -145,7 +146,6 @@ label-network = Rete
 label-none = Nessuno
 label-server-settings = Impostazioni server
 tab-files = File
-tab-channels = Canali
 label-connections-short = Max Connessioni:
 label-transfers-short = Max Trasferimenti:
 label-version-short = Versione:
@@ -156,8 +156,8 @@ label-log-level-warn = Avviso
 label-log-level-info = Info
 label-log-level-debug = Debug
 label-reindex-short = Reindicizza:
-label-persistent-short = Persistenti:
-label-auto-join-short = Auto-unione:
+label-chat-burst-limit = Limite di raffica della chat:
+label-chat-rate-limit = Limite di velocità della chat:
 label-minutes = { $count ->
     [one] minuto
    *[other] minuti
@@ -192,6 +192,7 @@ permission-chat_list = Elenco Chat
 permission-chat_secret = Chat Segreto
 permission-chat_topic = Argomento Chat
 permission-chat_topic_edit = Modifica Argomento Chat
+permission-chat_unlimited = Chat Illimitato
 permission-user_broadcast = Broadcast Utente
 permission-user_create = Crea Utente
 permission-user_delete = Elimina Utente
@@ -618,6 +619,9 @@ err-failed-set-config-permissions = Impossibile impostare i permessi del file di
 # =============================================================================
 
 fingerprint-warning = Questo potrebbe indicare un problema di sicurezza (attacco MITM) o che il certificato del server è stato rigenerato. Accetta solo se ti fidi dell'amministratore del server.
+fingerprint-interception-warning = L'impronta del certificato segnalata dal server non corrisponde all'impronta osservata durante la connessione. La connessione è intercettata da un proxy TLS.
+label-tls-fingerprint = Impronta osservata da TLS:
+label-server-fingerprint = Impronta segnalata dal server:
 
 # =============================================================================
 # User Info Display

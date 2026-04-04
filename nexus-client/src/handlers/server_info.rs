@@ -51,15 +51,17 @@ impl NexusApp {
 
         // Create edit state with current values
         conn.server_info_edit = Some(ServerInfoEditState::new(ServerInfoParams {
-            name: conn.server_name.as_deref(),
+            auto_join_channels: conn.auto_join_channels.as_deref(),
+            chat_burst_limit: conn.chat_burst_limit,
+            chat_rate_limit: conn.chat_rate_limit,
             description: conn.server_description.as_deref(),
+            file_reindex_interval: conn.file_reindex_interval,
+            image: &conn.server_image,
             max_connections_per_ip: conn.max_connections_per_ip,
             max_transfers_per_ip: conn.max_transfers_per_ip,
-            image: &conn.server_image,
-            file_reindex_interval: conn.file_reindex_interval,
-            persistent_channels: conn.persistent_channels.as_deref(),
-            auto_join_channels: conn.auto_join_channels.as_deref(),
             min_password_strength: conn.min_password_strength,
+            name: conn.server_name.as_deref(),
+            persistent_channels: conn.persistent_channels.as_deref(),
         }));
 
         // Focus the name input
@@ -156,15 +158,17 @@ impl NexusApp {
 
         // Check if there are any changes
         if !edit_state.has_changes(&ServerInfoParams {
-            name: conn.server_name.as_deref(),
+            auto_join_channels: conn.auto_join_channels.as_deref(),
+            chat_burst_limit: conn.chat_burst_limit,
+            chat_rate_limit: conn.chat_rate_limit,
             description: conn.server_description.as_deref(),
+            file_reindex_interval: conn.file_reindex_interval,
+            image: &conn.server_image,
             max_connections_per_ip: conn.max_connections_per_ip,
             max_transfers_per_ip: conn.max_transfers_per_ip,
-            image: &conn.server_image,
-            file_reindex_interval: conn.file_reindex_interval,
-            persistent_channels: conn.persistent_channels.as_deref(),
-            auto_join_channels: conn.auto_join_channels.as_deref(),
             min_password_strength: conn.min_password_strength,
+            name: conn.server_name.as_deref(),
+            persistent_channels: conn.persistent_channels.as_deref(),
         }) {
             // No changes, just close the edit view
             conn.server_info_edit = None;
@@ -226,6 +230,19 @@ impl NexusApp {
                 None
             };
 
+        let chat_burst_limit = if edit_state.chat_burst_limit != conn.chat_burst_limit.unwrap_or(0)
+        {
+            Some(edit_state.chat_burst_limit)
+        } else {
+            None
+        };
+
+        let chat_rate_limit = if edit_state.chat_rate_limit != conn.chat_rate_limit.unwrap_or(0) {
+            Some(edit_state.chat_rate_limit)
+        } else {
+            None
+        };
+
         let min_password_strength =
             if edit_state.min_password_strength != conn.min_password_strength {
                 Some(edit_state.min_password_strength.score())
@@ -242,6 +259,8 @@ impl NexusApp {
             file_reindex_interval,
             persistent_channels,
             auto_join_channels,
+            chat_burst_limit,
+            chat_rate_limit,
             min_password_strength,
         };
 
@@ -292,6 +311,31 @@ impl NexusApp {
             edit_state.description = description;
         }
         self.focused_field = InputId::EditServerInfoDescription;
+        Task::none()
+    }
+
+    /// Handle server info chat burst limit field change
+    pub fn handle_edit_server_info_chat_burst_limit_changed(
+        &mut self,
+        limit: u32,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(edit_state) = &mut conn.server_info_edit
+        {
+            edit_state.chat_burst_limit = limit;
+        }
+        Task::none()
+    }
+
+    /// Handle server info chat rate limit field change
+    pub fn handle_edit_server_info_chat_rate_limit_changed(&mut self, limit: u32) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(edit_state) = &mut conn.server_info_edit
+        {
+            edit_state.chat_rate_limit = limit;
+        }
         Task::none()
     }
 
@@ -348,6 +392,7 @@ impl NexusApp {
         {
             edit_state.persistent_channels = persistent_channels;
         }
+        self.focused_field = InputId::EditServerInfoPersistentChannels;
         Task::none()
     }
 
@@ -362,6 +407,7 @@ impl NexusApp {
         {
             edit_state.auto_join_channels = auto_join_channels;
         }
+        self.focused_field = InputId::EditServerInfoAutoJoinChannels;
         Task::none()
     }
 
@@ -513,9 +559,14 @@ impl NexusApp {
     /// native Tab handling.
     pub fn handle_server_info_edit_tab_pressed(&mut self) -> Task<Message> {
         // Determine next field based on tracked focused field
+        // Tab cycle: Name → Description → Auto-join → Persistent → Name
+        // NumberInput fields (connections, transfers, burst, rate, reindex) are
+        // skipped because they consume Tab internally.
         let next_field = match self.focused_field {
             InputId::EditServerInfoName => InputId::EditServerInfoDescription,
-            InputId::EditServerInfoDescription => InputId::EditServerInfoName,
+            InputId::EditServerInfoDescription => InputId::EditServerInfoAutoJoinChannels,
+            InputId::EditServerInfoAutoJoinChannels => InputId::EditServerInfoPersistentChannels,
+            InputId::EditServerInfoPersistentChannels => InputId::EditServerInfoName,
             _ => InputId::EditServerInfoName,
         };
 

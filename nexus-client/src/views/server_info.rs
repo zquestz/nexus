@@ -12,9 +12,9 @@ use crate::i18n::{log_level_translation_key, strength_translation_key, t, t_args
 use crate::image::CachedImage;
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, INPUT_PADDING,
-    SERVER_IMAGE_PREVIEW_SIZE, SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
-    TAB_LABEL_PADDING, TEXT_SIZE, error_text_style, muted_text_style, panel_title, shaped_text,
-    shaped_text_wrapped,
+    MONOSPACE_FONT, SERVER_IMAGE_PREVIEW_SIZE, SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM,
+    SPACER_SIZE_SMALL, TAB_LABEL_PADDING, TEXT_SIZE, error_text_style, muted_text_style,
+    panel_title, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{InputId, Message, ServerInfoEditState, ServerInfoTab};
 
@@ -48,6 +48,12 @@ pub struct ServerInfoData<'a> {
     pub active_tab: ServerInfoTab,
     /// Edit state (Some when in edit mode)
     pub edit_state: Option<&'a ServerInfoEditState>,
+    /// Chat burst limit (flood protection)
+    pub chat_burst_limit: Option<u32>,
+    /// Chat rate limit (messages per minute, flood protection)
+    pub chat_rate_limit: Option<u32>,
+    /// Server certificate fingerprint (SHA-256)
+    pub fingerprint: Option<String>,
 }
 
 /// Render the server info panel
@@ -102,12 +108,16 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
         || data.max_connections_per_ip.is_some()
         || data.max_transfers_per_ip.is_some()
         || data.min_password_strength.is_some()
-        || data.version.is_some();
+        || data.version.is_some()
+        || data.fingerprint.is_some();
     let has_files = data.file_reindex_interval.is_some();
-    let has_channels = data.persistent_channels.is_some() || data.auto_join_channels.is_some();
+    let has_chat = data.persistent_channels.is_some()
+        || data.auto_join_channels.is_some()
+        || data.chat_burst_limit.is_some()
+        || data.chat_rate_limit.is_some();
 
     // Show settings tabs if user has any settings data
-    if has_general || has_files || has_channels {
+    if has_general || has_files || has_chat {
         items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
         // Build tab content for each available tab
@@ -115,14 +125,26 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
             let mut content_items: Vec<Element<'static, Message>> = Vec::new();
             // Space between tab bar and first content
             content_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+            if let Some(fingerprint) = &data.fingerprint {
+                content_items.push(
+                    row![
+                        shaped_text(t("label-fingerprint")).size(TEXT_SIZE),
+                        Space::new().width(ELEMENT_SPACING),
+                        shaped_text(fingerprint.clone())
+                            .size(TEXT_SIZE)
+                            .font(MONOSPACE_FONT)
+                            .wrapping(iced::widget::text::Wrapping::WordOrGlyph),
+                    ]
+                    .into(),
+                );
+            }
             if let Some(level) = &data.log_level {
                 content_items.push(
                     row![
                         shaped_text(t("label-log-level")).size(TEXT_SIZE),
                         Space::new().width(ELEMENT_SPACING),
-                        shaped_text(t(log_level_translation_key(level))).size(TEXT_SIZE),
+                        shaped_text_wrapped(t(log_level_translation_key(level))).size(TEXT_SIZE),
                     ]
-                    .align_y(Center)
                     .into(),
                 );
             }
@@ -131,9 +153,8 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                     row![
                         shaped_text(t("label-connections-short")).size(TEXT_SIZE),
                         Space::new().width(ELEMENT_SPACING),
-                        shaped_text(max_conn.to_string()).size(TEXT_SIZE),
+                        shaped_text_wrapped(max_conn.to_string()).size(TEXT_SIZE),
                     ]
-                    .align_y(Center)
                     .into(),
                 );
             }
@@ -142,9 +163,8 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                     row![
                         shaped_text(t("label-transfers-short")).size(TEXT_SIZE),
                         Space::new().width(ELEMENT_SPACING),
-                        shaped_text(max_xfer.to_string()).size(TEXT_SIZE),
+                        shaped_text_wrapped(max_xfer.to_string()).size(TEXT_SIZE),
                     ]
-                    .align_y(Center)
                     .into(),
                 );
             }
@@ -153,9 +173,8 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                     row![
                         shaped_text(t("label-min-password-strength")).size(TEXT_SIZE),
                         Space::new().width(ELEMENT_SPACING),
-                        shaped_text(t(strength_translation_key(strength))).size(TEXT_SIZE),
+                        shaped_text_wrapped(t(strength_translation_key(strength))).size(TEXT_SIZE),
                     ]
-                    .align_y(Center)
                     .into(),
                 );
             }
@@ -164,12 +183,12 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                     row![
                         shaped_text(t("label-version-short")).size(TEXT_SIZE),
                         Space::new().width(ELEMENT_SPACING),
-                        shaped_text(version.clone()).size(TEXT_SIZE),
+                        shaped_text_wrapped(version.clone()).size(TEXT_SIZE),
                     ]
-                    .align_y(Center)
                     .into(),
                 );
             }
+
             iced::widget::Column::with_children(content_items)
                 .spacing(ELEMENT_SPACING)
                 .into()
@@ -192,9 +211,8 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                     row![
                         shaped_text(t("label-reindex-short")).size(TEXT_SIZE),
                         Space::new().width(ELEMENT_SPACING),
-                        shaped_text(value).size(TEXT_SIZE),
+                        shaped_text_wrapped(value).size(TEXT_SIZE),
                     ]
-                    .align_y(Center)
                     .into(),
                 );
             }
@@ -203,10 +221,11 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                 .into()
         };
 
-        let channels_content: Element<'static, Message> = {
+        let chat_content: Element<'static, Message> = {
             let mut content_items: Vec<Element<'static, Message>> = Vec::new();
             // Space between tab bar and first content
             content_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+            // Alphabetical: Auto-join, Chat Burst Limit, Chat Rate Limit, Persistent
             if let Some(channels) = &data.auto_join_channels {
                 let value = if channels.is_empty() {
                     t("label-none")
@@ -215,11 +234,30 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                 };
                 content_items.push(
                     row![
-                        shaped_text(t("label-auto-join-short")).size(TEXT_SIZE),
+                        shaped_text(t("label-auto-join-channels")).size(TEXT_SIZE),
                         Space::new().width(ELEMENT_SPACING),
-                        shaped_text(value).size(TEXT_SIZE),
+                        shaped_text_wrapped(value).size(TEXT_SIZE),
                     ]
-                    .align_y(Center)
+                    .into(),
+                );
+            }
+            if let Some(burst) = data.chat_burst_limit {
+                content_items.push(
+                    row![
+                        shaped_text(t("label-chat-burst-limit")).size(TEXT_SIZE),
+                        Space::new().width(ELEMENT_SPACING),
+                        shaped_text_wrapped(burst.to_string()).size(TEXT_SIZE),
+                    ]
+                    .into(),
+                );
+            }
+            if let Some(rate) = data.chat_rate_limit {
+                content_items.push(
+                    row![
+                        shaped_text(t("label-chat-rate-limit")).size(TEXT_SIZE),
+                        Space::new().width(ELEMENT_SPACING),
+                        shaped_text_wrapped(rate.to_string()).size(TEXT_SIZE),
+                    ]
                     .into(),
                 );
             }
@@ -231,11 +269,10 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                 };
                 content_items.push(
                     row![
-                        shaped_text(t("label-persistent-short")).size(TEXT_SIZE),
+                        shaped_text(t("label-persistent-channels")).size(TEXT_SIZE),
                         Space::new().width(ELEMENT_SPACING),
-                        shaped_text(value).size(TEXT_SIZE),
+                        shaped_text_wrapped(value).size(TEXT_SIZE),
                     ]
-                    .align_y(Center)
                     .into(),
                 );
             }
@@ -245,6 +282,7 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
         };
 
         // Build tabs widget (only including tabs for available data)
+        // Tab order: General, Chat, Files
         let mut tabs: Tabs<'static, Message, ServerInfoTab> =
             Tabs::new(Message::ServerInfoTabChanged);
 
@@ -256,19 +294,19 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
             );
         }
 
+        if has_chat {
+            tabs = tabs.push(
+                ServerInfoTab::Chat,
+                TabLabel::Text(t("tab-chat")),
+                chat_content,
+            );
+        }
+
         if has_files {
             tabs = tabs.push(
                 ServerInfoTab::Files,
                 TabLabel::Text(t("tab-files")),
                 files_content,
-            );
-        }
-
-        if has_channels {
-            tabs = tabs.push(
-                ServerInfoTab::Channels,
-                TabLabel::Text(t("tab-channels")),
-                channels_content,
             );
         }
 
@@ -500,6 +538,96 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
 
     form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
+    // Chat subheading
+    form_items.push(
+        shaped_text(t("tab-chat"))
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into(),
+    );
+
+    // Alphabetical: Auto-join Channels, Chat Burst Limit, Chat Rate Limit, Persistent Channels
+
+    // Auto-join channels input with inline label
+    let auto_join_label = shaped_text(t("label-auto-join-channels")).size(TEXT_SIZE);
+    let auto_join_input = text_input(
+        &t("placeholder-auto-join-channels"),
+        &edit_state.auto_join_channels,
+    )
+    .on_input(Message::EditServerInfoAutoJoinChannelsChanged)
+    .on_submit(Message::UpdateServerInfoPressed)
+    .id(Id::from(InputId::EditServerInfoAutoJoinChannels))
+    .padding(INPUT_PADDING)
+    .size(TEXT_SIZE)
+    .width(Fill);
+    form_items.push(
+        row![
+            auto_join_label,
+            Space::new().width(ELEMENT_SPACING),
+            auto_join_input
+        ]
+        .align_y(Center)
+        .into(),
+    );
+
+    // Chat burst limit
+    let burst_label = shaped_text(t("label-chat-burst-limit")).size(TEXT_SIZE);
+    let burst_input: Element<'static, Message> = NumberInput::new(
+        &edit_state.chat_burst_limit,
+        0..=u32::MAX,
+        Message::EditServerInfoChatBurstLimitChanged,
+    )
+    .padding(INPUT_PADDING)
+    .into();
+    form_items.push(
+        row![
+            burst_label,
+            Space::new().width(ELEMENT_SPACING),
+            burst_input
+        ]
+        .align_y(Center)
+        .into(),
+    );
+
+    // Chat rate limit
+    let rate_label = shaped_text(t("label-chat-rate-limit")).size(TEXT_SIZE);
+    let rate_input: Element<'static, Message> = NumberInput::new(
+        &edit_state.chat_rate_limit,
+        0..=u32::MAX,
+        Message::EditServerInfoChatRateLimitChanged,
+    )
+    .padding(INPUT_PADDING)
+    .into();
+    form_items.push(
+        row![rate_label, Space::new().width(ELEMENT_SPACING), rate_input]
+            .align_y(Center)
+            .into(),
+    );
+
+    // Persistent channels input with inline label
+    let persistent_label = shaped_text(t("label-persistent-channels")).size(TEXT_SIZE);
+    let persistent_input = text_input(
+        &t("placeholder-persistent-channels"),
+        &edit_state.persistent_channels,
+    )
+    .on_input(Message::EditServerInfoPersistentChannelsChanged)
+    .on_submit(Message::UpdateServerInfoPressed)
+    .id(Id::from(InputId::EditServerInfoPersistentChannels))
+    .padding(INPUT_PADDING)
+    .size(TEXT_SIZE)
+    .width(Fill);
+    form_items.push(
+        row![
+            persistent_label,
+            Space::new().width(ELEMENT_SPACING),
+            persistent_input
+        ]
+        .align_y(Center)
+        .into(),
+    );
+
+    form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+
     // Files subheading
     form_items.push(
         shaped_text(t("tab-files"))
@@ -532,58 +660,6 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
             reindex_input,
             Space::new().width(ELEMENT_SPACING),
             minutes_suffix,
-        ]
-        .align_y(Center)
-        .into(),
-    );
-
-    form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
-
-    // Channels subheading
-    form_items.push(
-        shaped_text(t("tab-channels"))
-            .size(TEXT_SIZE)
-            .style(muted_text_style)
-            .into(),
-    );
-
-    // Auto-join channels input with inline label
-    let auto_join_label = shaped_text(t("label-auto-join-short")).size(TEXT_SIZE);
-    let auto_join_input = text_input(
-        &t("placeholder-auto-join-channels"),
-        &edit_state.auto_join_channels,
-    )
-    .on_input(Message::EditServerInfoAutoJoinChannelsChanged)
-    .on_submit(Message::UpdateServerInfoPressed)
-    .padding(INPUT_PADDING)
-    .size(TEXT_SIZE)
-    .width(Fill);
-    form_items.push(
-        row![
-            auto_join_label,
-            Space::new().width(ELEMENT_SPACING),
-            auto_join_input
-        ]
-        .align_y(Center)
-        .into(),
-    );
-
-    // Persistent channels input with inline label
-    let persistent_label = shaped_text(t("label-persistent-short")).size(TEXT_SIZE);
-    let persistent_input = text_input(
-        &t("placeholder-persistent-channels"),
-        &edit_state.persistent_channels,
-    )
-    .on_input(Message::EditServerInfoPersistentChannelsChanged)
-    .on_submit(Message::UpdateServerInfoPressed)
-    .padding(INPUT_PADDING)
-    .size(TEXT_SIZE)
-    .width(Fill);
-    form_items.push(
-        row![
-            persistent_label,
-            Space::new().width(ELEMENT_SPACING),
-            persistent_input
         ]
         .align_y(Center)
         .into(),

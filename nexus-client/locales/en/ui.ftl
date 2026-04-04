@@ -93,6 +93,7 @@ label-enabled = Enabled
 label-permissions = Permissions:
 label-expected-fingerprint = Expected fingerprint:
 label-received-fingerprint = Received fingerprint:
+label-fingerprint = Fingerprint:
 label-theme = Theme:
 label-chat-history-retention = Chat History:
 chat-history-forever = Forever
@@ -133,7 +134,6 @@ label-channels = Channels
 label-none = None
 label-server-settings = Server Settings
 tab-files = Files
-tab-channels = Channels
 label-connections-short = Max Connections:
 label-transfers-short = Max Transfers:
 label-version-short = Version:
@@ -144,8 +144,8 @@ label-log-level-warn = Warn
 label-log-level-info = Info
 label-log-level-debug = Debug
 label-reindex-short = Reindex:
-label-persistent-short = Persistent:
-label-auto-join-short = Auto-join:
+label-chat-burst-limit = Chat Burst Limit:
+label-chat-rate-limit = Chat Rate Limit:
 label-minutes = { $count ->
     [one] minute
    *[other] minutes
@@ -192,6 +192,7 @@ permission-chat_list = Chat List
 permission-chat_secret = Chat Secret
 permission-chat_topic = Chat Topic
 permission-chat_topic_edit = Chat Topic Edit
+permission-chat_unlimited = Chat Unlimited
 permission-user_broadcast = User Broadcast
 permission-user_create = User Create
 permission-user_delete = User Delete
@@ -649,6 +650,9 @@ err-failed-set-config-permissions = Failed to set config file permissions: { $er
 # =============================================================================
 
 fingerprint-warning = This could indicate a security issue (MITM attack) or the server's certificate was regenerated. Only accept if you trust the server administrator.
+fingerprint-interception-warning = The server's reported certificate fingerprint does not match the fingerprint observed during connection. Your connection is being intercepted by a TLS proxy.
+label-tls-fingerprint = TLS-observed fingerprint:
+label-server-fingerprint = Server-reported fingerprint:
 
 # =============================================================================
 # User Info Display

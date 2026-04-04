@@ -262,3 +262,10 @@ err-group-not-empty-delete = No se puede eliminar el grupo mientras haya usuario
 err-group-not-empty-modify = No se puede modificar el estado compartido mientras haya usuarios asignados
 err-group-no-fields = No hay campos para actualizar
 err-group-shared-mismatch = El tipo de cuenta no coincide con el tipo de grupo (las cuentas compartidas requieren grupos compartidos)
+
+# Flood Protection Errors
+err-flood-warning = Mensaje limitado por velocidad (advertencia { $violation } de { $max_violations }). Puedes enviar otro mensaje en { $seconds } { $seconds ->
+    [one] segundo
+   *[other] segundos
+}. Continuar enviando mensajes resultará en desconexión.
+err-flood-disconnect = Desconectado: límite de velocidad de chat excedido.

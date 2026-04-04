@@ -1,27 +1,11 @@
 //! Broadcast methods for UserManager
 
-use nexus_common::protocol::{ServerInfo, ServerMessage};
+use nexus_common::protocol::ServerMessage;
 
-use crate::logging::server_log_level;
+use crate::handlers::{ServerInfoOptions, ServerInfoValues, build_server_info};
 
 use super::UserManager;
 use crate::db::Permission;
-
-/// Parameters for broadcasting server info updates
-pub struct ServerInfoBroadcastParams {
-    pub name: String,
-    pub description: String,
-    pub version: String,
-    pub max_connections_per_ip: u32,
-    pub max_transfers_per_ip: u32,
-    pub image: String,
-    pub transfer_port: u16,
-    pub transfer_websocket_port: Option<u16>,
-    pub file_reindex_interval: u32,
-    pub persistent_channels: String,
-    pub auto_join_channels: String,
-    pub min_password_strength: u8,
-}
 
 impl UserManager {
     /// Send a message to a specific session by session ID
@@ -222,53 +206,20 @@ impl UserManager {
     /// This is called when server configuration is updated via ServerUpdate.
     ///
     /// Automatically removes users whose channels have closed (disconnected connections).
-    pub async fn broadcast_server_info_updated(&self, params: ServerInfoBroadcastParams) {
+    pub async fn broadcast_server_info_updated(&self, values: ServerInfoValues) {
         let mut disconnected = Vec::new();
 
         {
             let users = self.users.read().await;
             for user in users.values() {
-                // Only send file_reindex_interval to admins or users with file_reindex permission
-                let file_reindex_interval =
-                    if user.is_admin || user.has_permission(Permission::FileReindex) {
-                        Some(params.file_reindex_interval)
-                    } else {
-                        None
-                    };
-
-                // Only send persistent_channels to admins
-                let persistent_channels = if user.is_admin {
-                    Some(params.persistent_channels.clone())
-                } else {
-                    None
+                let options = ServerInfoOptions {
+                    is_admin: user.is_admin,
+                    has_file_reindex: user.has_permission(Permission::FileReindex),
+                    has_chat_join: user.has_permission(Permission::ChatJoin),
+                    include_image: true,
                 };
 
-                // Only send auto_join_channels to admins
-                let auto_join_channels = if user.is_admin {
-                    Some(params.auto_join_channels.clone())
-                } else {
-                    None
-                };
-
-                // Min password strength sent to all users (needed for client strength bar)
-                let min_password_strength = Some(params.min_password_strength);
-
-                let server_info = ServerInfo {
-                    name: Some(params.name.clone()),
-                    description: Some(params.description.clone()),
-                    version: Some(params.version.clone()),
-                    max_connections_per_ip: Some(params.max_connections_per_ip),
-                    max_transfers_per_ip: Some(params.max_transfers_per_ip),
-                    image: Some(params.image.clone()),
-                    transfer_port: params.transfer_port,
-                    transfer_websocket_port: params.transfer_websocket_port,
-                    file_reindex_interval,
-                    persistent_channels,
-                    auto_join_channels,
-                    min_password_strength,
-                    log_level: Some(server_log_level().to_string()),
-                };
-
+                let server_info = build_server_info(&values, &options);
                 let message = ServerMessage::ServerInfoUpdated { server_info };
 
                 if user.tx.send((message, None)).is_err() {

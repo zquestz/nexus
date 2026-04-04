@@ -494,14 +494,15 @@ When `action` is omitted, it defaults to `Normal`.
 
 | Permission        | Required For                                                  |
 | ----------------- | ------------------------------------------------------------- |
-| `chat_join`       | Joining existing channels (`ChatJoin`)                        |
 | `chat_create`     | Creating new channels (`ChatJoin` when channel doesn't exist) |
+| `chat_join`       | Joining existing channels (`ChatJoin`)                        |
 | `chat_list`       | Listing available channels (`ChatList`)                       |
-| `chat_send`       | Sending chat messages (`ChatSend`)                            |
 | `chat_receive`    | Receiving chat messages (`ChatMessage` broadcasts)            |
+| `chat_secret`     | Toggling secret mode (`ChatSecret`)                           |
+| `chat_send`       | Sending chat messages (`ChatSend`)                            |
 | `chat_topic`      | Viewing topic updates (`ChatUpdated` broadcasts)              |
 | `chat_topic_edit` | Changing channel topics (`ChatTopicUpdate`)                   |
-| `chat_secret`     | Toggling secret mode (`ChatSecret`)                           |
+| `chat_unlimited`  | Bypass chat flood protection rate limits                      |
 
 **Note:** Creating a channel requires both `chat_join` and `chat_create` permissions.
 
@@ -587,9 +588,39 @@ Secret channels are hidden from `ChatList` for non-members. Only members and adm
 
 ## Resource Limits
 
-| Limit                 | Value | Purpose                     |
-| --------------------- | ----- | --------------------------- |
-| Max channels per user | 100   | Prevent resource exhaustion |
+| Limit                 | Value            | Purpose                                    |
+| --------------------- | ---------------- | ------------------------------------------ |
+| Max channels per user | 100              | Prevent resource exhaustion                |
+| Chat burst limit      | 5 (default)      | Max messages before rate limiting kicks in |
+| Chat rate limit       | 20/min (default) | Sustained message rate (0 = disabled)      |
+
+## Flood Protection
+
+Chat messages are rate-limited using a token bucket algorithm to prevent flooding. This applies to both channel messages (`ChatSend`) and user messages (`UserMessage`).
+
+### Configuration
+
+| Setting            | Default | Description                                                        |
+| ------------------ | ------- | ------------------------------------------------------------------ |
+| `chat_burst_limit` | 5       | Maximum messages in a burst (0 = capacity of 1)                    |
+| `chat_rate_limit`  | 20      | Messages per minute sustained rate (0 = flood protection disabled) |
+
+Both settings are configurable by admins via `ServerInfoUpdate` and visible to all users in `ServerInfo`.
+
+### Behavior
+
+1. Each connection has a token bucket with capacity equal to the burst limit
+2. Tokens refill at a rate of `chat_rate_limit / 60` tokens per second
+3. Each message consumes one token
+4. When tokens are exhausted, the message is rejected with a rate-limited error
+5. The error includes the wait time before the user can send again
+6. After 3 consecutive rate-limited messages, the connection is disconnected
+
+### Bypass
+
+- Admins are always exempt from flood protection
+- Users with the `chat_unlimited` permission bypass rate limiting
+- Setting `chat_rate_limit` to 0 disables flood protection for all users
 
 ## Error Handling
 
@@ -625,6 +656,8 @@ Secret channels are hidden from `ChatList` for non-members. Only members and adm
 | Invalid characters              | Contains control characters           | Disconnected    |
 | Chat feature not enabled        | Missing `chat` feature                | Disconnected    |
 | Permission denied               | Missing `chat_send` permission        | Stays connected |
+| Rate limited                    | Exceeds chat rate limit               | Stays connected |
+| Rate limit exceeded             | 3 consecutive rate limit violations   | Disconnected    |
 | Channel not found               | Channel doesn't exist or not a member | Stays connected |
 
 ### ChatTopicUpdate Errors
@@ -658,15 +691,18 @@ Secret channels are hidden from `ChatList` for non-members. Only members and adm
 - Ephemeral channel topics are stored in-memory and lost on restart
 - Empty topic (`""`) is valid and clears the topic display
 - Channel names are case-insensitive but preserve the case of the first creator
+- Flood protection is shared across channel messages and user messages per connection
 
 ## Server Configuration
 
 Admins can configure channels via `ServerInfoUpdate`:
 
-| Setting               | Description                                               |
-| --------------------- | --------------------------------------------------------- |
-| `persistent_channels` | Space-separated list of persistent channel names          |
-| `auto_join_channels`  | Space-separated list of channels users auto-join on login |
+| Setting               | Description                                                                  |
+| --------------------- | ---------------------------------------------------------------------------- |
+| `persistent_channels` | Space-separated list of persistent channel names                             |
+| `auto_join_channels`  | Space-separated list of channels users auto-join on login                    |
+| `chat_burst_limit`    | Max messages in a burst before rate limiting (default: 5, 0 = capacity of 1) |
+| `chat_rate_limit`     | Messages per minute rate limit (default: 20, 0 = disabled)                   |
 
 Both settings are independent—persistent channels don't have to be auto-joined, and auto-join channels don't have to be persistent.
 

@@ -95,6 +95,7 @@ label-enabled = Aktiviert
 label-permissions = Berechtigungen:
 label-expected-fingerprint = Erwarteter Fingerabdruck:
 label-received-fingerprint = Empfangener Fingerabdruck:
+label-fingerprint = Fingerabdruck:
 label-theme = Design
 label-chat-history-retention = Chatverlauf:
 chat-history-forever = Für immer
@@ -145,7 +146,6 @@ label-network = Netzwerk
 label-none = Keine
 label-server-settings = Servereinstellungen
 tab-files = Dateien
-tab-channels = Kanäle
 label-connections-short = Max. Verbindungen:
 label-transfers-short = Max. Übertragungen:
 label-version-short = Version:
@@ -156,8 +156,8 @@ label-log-level-warn = Warnung
 label-log-level-info = Info
 label-log-level-debug = Debug
 label-reindex-short = Neuindiz.:
-label-persistent-short = Permanent:
-label-auto-join-short = Auto-Beitritt:
+label-chat-burst-limit = Chat-Burst-Limit:
+label-chat-rate-limit = Chat-Ratenlimit:
 label-minutes = { $count ->
     [one] Minute
    *[other] Minuten
@@ -192,6 +192,7 @@ permission-chat_list = Chat Liste
 permission-chat_secret = Chat Geheim
 permission-chat_topic = Chat-Thema
 permission-chat_topic_edit = Chat-Thema Bearbeiten
+permission-chat_unlimited = Chat Unbegrenzt
 permission-user_broadcast = Benutzer-Rundnachricht
 permission-user_create = Benutzer Erstellen
 permission-user_delete = Benutzer Löschen
@@ -614,6 +615,9 @@ err-failed-set-config-permissions = Berechtigungen der Konfigurationsdatei konnt
 # =============================================================================
 
 fingerprint-warning = Dies könnte auf ein Sicherheitsproblem (MITM-Angriff) hinweisen oder das Serverzertifikat wurde neu generiert. Akzeptieren Sie nur, wenn Sie dem Serveradministrator vertrauen.
+fingerprint-interception-warning = Der vom Server gemeldete Zertifikats-Fingerabdruck stimmt nicht mit dem bei der Verbindung beobachteten Fingerabdruck überein. Ihre Verbindung wird von einem TLS-Proxy abgefangen.
+label-tls-fingerprint = TLS-beobachteter Fingerabdruck:
+label-server-fingerprint = Vom Server gemeldeter Fingerabdruck:
 
 # =============================================================================
 # User Info Display

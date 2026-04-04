@@ -2,33 +2,31 @@
 
 use std::io;
 
-use crate::constants::{
-    LOG_LOGIN_ACCOUNT_DISABLED, LOG_LOGIN_ALREADY_LOGGED_IN, LOG_LOGIN_CREATE_USER_ERROR,
-    LOG_LOGIN_DB_ERROR, LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN, LOG_LOGIN_GROUP_ERROR,
-    LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR, LOG_LOGIN_INVALID_CREDENTIALS,
-    LOG_LOGIN_PASSWORD_VERIFY_ERROR, LOG_LOGIN_PERMISSIONS_ERROR, LOG_LOGIN_SUCCESS,
-};
-use crate::logging::server_log_level;
-
 use tokio::io::AsyncWrite;
 use tracing::{debug, error, info, warn};
 
-use nexus_common::protocol::{ChannelJoinInfo, ServerInfo, ServerMessage, UserInfo};
+use nexus_common::protocol::{ChannelJoinInfo, ServerMessage, UserInfo};
 use nexus_common::validators::{
     self, AvatarError, FeaturesError, LocaleError, NicknameError, PasswordError, UsernameError,
 };
 
 use super::{
-    HandlerContext, current_timestamp, err_account_disabled, err_already_logged_in,
-    err_authentication, err_avatar_invalid_format, err_avatar_too_large,
-    err_avatar_unsupported_type, err_database, err_failed_to_create_user,
+    HandlerContext, ServerInfoOptions, ServerInfoValues, build_server_info, current_timestamp,
+    err_account_disabled, err_already_logged_in, err_authentication, err_avatar_invalid_format,
+    err_avatar_too_large, err_avatar_unsupported_type, err_database, err_failed_to_create_user,
     err_features_empty_feature, err_features_feature_too_long, err_features_invalid_characters,
     err_features_too_many, err_guest_disabled, err_handshake_required, err_invalid_credentials,
     err_locale_invalid_characters, err_locale_too_long, err_nickname_empty, err_nickname_in_use,
     err_nickname_invalid, err_nickname_is_username, err_nickname_required, err_nickname_too_long,
     err_password_too_long, err_username_empty, err_username_invalid, err_username_too_long,
 };
-use crate::constants::FEATURE_CHAT;
+use crate::constants::{
+    FEATURE_CHAT, LOG_LOGIN_ACCOUNT_DISABLED, LOG_LOGIN_ALREADY_LOGGED_IN,
+    LOG_LOGIN_CREATE_USER_ERROR, LOG_LOGIN_DB_ERROR, LOG_LOGIN_DB_NICKNAME,
+    LOG_LOGIN_FIRST_ADMIN, LOG_LOGIN_GROUP_ERROR, LOG_LOGIN_HANDSHAKE_REQUIRED,
+    LOG_LOGIN_HASH_ERROR, LOG_LOGIN_INVALID_CREDENTIALS, LOG_LOGIN_PASSWORD_VERIFY_ERROR,
+    LOG_LOGIN_PERMISSIONS_ERROR, LOG_LOGIN_SUCCESS,
+};
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, Permission};
 use crate::users::manager::AddUserError;
@@ -413,6 +411,9 @@ where
     };
     *session_id = Some(id);
 
+    // Fetch all server config values in a single query
+    let config = ctx.db.config.get_all().await;
+
     // Auto-join channels configured by admin
     // We join the user and collect channel info to include in LoginResponse.
     // We also broadcast ChatUserJoined to existing channel members so they see the new user.
@@ -420,9 +421,8 @@ where
     // - persistent_channels: survive restart, can't be deleted when empty
     // - auto_join_channels: users automatically join these on login
     // Note: can_auto_join was computed before add_user() to check before features was moved
-    let auto_join_config = ctx.db.config.get_auto_join_channels().await;
     let auto_join_channel_names = if can_auto_join {
-        crate::db::ConfigDb::parse_channel_list(&auto_join_config)
+        crate::db::ConfigDb::parse_channel_list(&config.auto_join_channels)
     } else {
         Vec::new()
     };
@@ -517,56 +517,32 @@ where
             .collect()
     };
 
-    // Fetch server info (name/description/image always, topic requires permission)
-    let name = ctx.db.config.get_server_name().await;
-    let description = ctx.db.config.get_server_description().await;
-    let image = ctx.db.config.get_server_image().await;
-
-    // Fetch max connections and transfers per IP (visible to all users)
-    let max_connections_per_ip = Some(ctx.db.config.get_max_connections_per_ip().await as u32);
-    let max_transfers_per_ip = Some(ctx.db.config.get_max_transfers_per_ip().await as u32);
-
-    // File reindex interval only visible to admins or users with file_reindex permission
-    let file_reindex_interval = if authenticated_account.is_admin
-        || cached_permissions.contains(&Permission::FileReindex)
-    {
-        Some(ctx.db.config.get_file_reindex_interval().await)
-    } else {
-        None
-    };
-
-    // Persistent channels only visible to admins
-    let persistent_channels = if authenticated_account.is_admin {
-        Some(ctx.db.config.get_persistent_channels().await)
-    } else {
-        None
-    };
-
-    // Auto-join channels only visible to users who can use chat
-    let auto_join_channels = if can_auto_join {
-        Some(auto_join_config)
-    } else {
-        None
-    };
-
-    // Min password strength sent to all users (needed for client strength bar)
-    let min_password_strength = Some(ctx.db.config.get_min_password_strength().await.score());
-
-    let server_info = Some(ServerInfo {
-        name: Some(name),
-        description: Some(description),
-        version: Some(env!("CARGO_PKG_VERSION").to_string()),
-        max_connections_per_ip,
-        max_transfers_per_ip,
-        image: Some(image),
+    let server_info_values = ServerInfoValues {
+        name: config.server_name,
+        description: config.server_description,
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        image: config.server_image,
+        max_connections_per_ip: config.max_connections_per_ip,
+        max_transfers_per_ip: config.max_transfers_per_ip,
         transfer_port: ctx.transfer_port,
         transfer_websocket_port: ctx.transfer_websocket_port,
-        file_reindex_interval,
-        persistent_channels,
-        auto_join_channels,
-        min_password_strength,
-        log_level: Some(server_log_level().to_string()),
-    });
+        file_reindex_interval: config.file_reindex_interval,
+        persistent_channels: config.persistent_channels,
+        auto_join_channels: config.auto_join_channels,
+        min_password_strength: config.min_password_strength.score(),
+        chat_burst_limit: config.chat_burst_limit,
+        chat_rate_limit: config.chat_rate_limit,
+        fingerprint: ctx.fingerprint.to_string(),
+    };
+
+    let server_info_options = ServerInfoOptions {
+        is_admin: authenticated_account.is_admin,
+        has_file_reindex: cached_permissions.contains(&Permission::FileReindex),
+        has_chat_join: can_auto_join,
+        include_image: true,
+    };
+
+    let server_info = Some(build_server_info(&server_info_values, &server_info_options));
 
     // Build channels field for LoginResponse (only if user joined any channels)
     let channels = if joined_channels.is_empty() {

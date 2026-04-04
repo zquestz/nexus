@@ -25,47 +25,26 @@ impl NexusApp {
         // Build system message
         let system_message = t("msg-server-info-updated");
 
-        // Update only the server info fields that were provided
-        if let Some(name) = server_info.name {
-            conn.server_name = Some(name);
-        }
-        if let Some(description) = server_info.description {
-            conn.server_description = Some(description);
-        }
-        if let Some(version) = server_info.version {
-            conn.server_version = Some(version);
-        }
-        // Only present if server included it (sent to all users)
-        if server_info.max_connections_per_ip.is_some() {
-            conn.max_connections_per_ip = server_info.max_connections_per_ip;
-        }
-        // Only present if server included it (sent to all users)
-        if server_info.max_transfers_per_ip.is_some() {
-            conn.max_transfers_per_ip = server_info.max_transfers_per_ip;
-        }
-        // Only present if server included it (requires admin or file_reindex permission)
-        if server_info.file_reindex_interval.is_some() {
-            conn.file_reindex_interval = server_info.file_reindex_interval;
-        }
-        // Only present if server included it (admin-only field)
-        if server_info.persistent_channels.is_some() {
-            conn.persistent_channels = server_info.persistent_channels;
-        }
-        // Only present if server included it (requires chat_join permission)
-        if server_info.auto_join_channels.is_some() {
-            conn.auto_join_channels = server_info.auto_join_channels;
-        }
-        // Only present if server included it (sent to all users)
+        // Update server info fields unconditionally (None means "cleared/not visible").
+        // The server already does per-user permission filtering, so we trust the values.
+        // Exception: image keeps a guard because the broadcast always includes it,
+        // and we need to decode it before storing.
+        conn.server_name = server_info.name;
+        conn.server_description = server_info.description;
+        conn.server_version = server_info.version;
+        conn.max_connections_per_ip = server_info.max_connections_per_ip;
+        conn.max_transfers_per_ip = server_info.max_transfers_per_ip;
+        conn.file_reindex_interval = server_info.file_reindex_interval;
+        conn.persistent_channels = server_info.persistent_channels;
+        conn.auto_join_channels = server_info.auto_join_channels;
+        conn.chat_burst_limit = server_info.chat_burst_limit;
+        conn.chat_rate_limit = server_info.chat_rate_limit;
         if let Some(score) = server_info.min_password_strength {
             conn.min_password_strength = PasswordStrength::from(score);
         }
-        // Only present if server included it (sent to all users)
-        if server_info.log_level.is_some() {
-            conn.log_level = server_info.log_level;
-        }
-        // Update server image and cached version if provided
+        conn.log_level = server_info.log_level;
+        // Image needs special handling for decoding
         if let Some(image) = server_info.image {
-            // Decode first using reference, then move (avoids clone)
             conn.cached_server_image = if image.is_empty() {
                 None
             } else {

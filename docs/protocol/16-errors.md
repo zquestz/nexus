@@ -163,18 +163,20 @@ These errors terminate the connection after sending:
 | Protocol            | Invalid frame, unknown message type         |
 | Critical validation | Invalid handshake, malformed login          |
 | Some validation     | Chat message too long, broadcast validation |
+| Flood protection    | 3 consecutive rate limit violations         |
 
 ### Non-Disconnect Errors
 
 These errors allow the connection to continue:
 
-| Category       | Examples                         |
-| -------------- | -------------------------------- |
-| Permission     | Permission denied                |
-| Not found      | User not online, file not found  |
-| Validation     | Topic too long, nickname invalid |
-| Conflict       | Username exists, file exists     |
-| Self-operation | Cannot kick yourself             |
+| Category       | Examples                           |
+| -------------- | ---------------------------------- |
+| Permission     | Permission denied                  |
+| Not found      | User not online, file not found    |
+| Validation     | Topic too long, nickname invalid   |
+| Conflict       | Username exists, file exists       |
+| Rate limiting  | Chat rate limit exceeded (warning) |
+| Self-operation | Cannot kick yourself               |
 
 ## Error Translation
 
@@ -348,6 +350,7 @@ Servers log security-relevant errors:
 - Connection behavior depends on error severity and type
 - Protocol errors (invalid frames) may not result in any error message before disconnect
 - Some validation errors in broadcast/chat disconnect to prevent spam
+- Flood protection sends a warning with the wait time before disconnecting; the 3rd consecutive violation disconnects
 
 ## See Also
 

@@ -236,6 +236,8 @@ Some settings are configured at runtime by admins through the client:
 | File reindex interval  | Minutes between search index rebuilds (default: 5, 0 to disable)                 |
 | Persistent channels    | Space-separated channel names that survive restart (default: `#nexus`)           |
 | Auto-join channels     | Space-separated channels users join on login (default: `#nexus`)                 |
+| Chat burst limit       | Max messages in a burst before rate limiting (default: 5, 0 = capacity of 1)     |
+| Chat rate limit        | Messages per minute rate limit (default: 20, 0 = flood protection disabled)      |
 | Min password strength  | Minimum password strength level: Weak/Fair/Good/Strong/Excellent (default: Good) |
 
 These settings are stored in the database and persist across restarts.

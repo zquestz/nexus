@@ -21,7 +21,7 @@ pub use error_kind::{
 };
 
 /// Version information for the Nexus protocol
-pub const PROTOCOL_VERSION: &str = "0.7.4";
+pub const PROTOCOL_VERSION: &str = "0.7.5";
 
 /// Default port for Nexus BBS connections
 pub const DEFAULT_PORT: u16 = 7500;
@@ -78,6 +78,7 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `chat_send`: Send chat messages to chat channels
 /// - `chat_topic`: View the server topic
 /// - `chat_topic_edit`: Edit the server topic
+/// - `chat_unlimited`: Bypass chat rate limiting (flood protection)
 /// - `file_copy`: Copy files and directories
 /// - `file_create_dir`: Create directories anywhere in file area
 /// - `file_delete`: Delete files and empty directories
@@ -120,6 +121,7 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "chat_send",
     "chat_topic",
     "chat_topic_edit",
+    "chat_unlimited",
     "connection_monitor",
     "file_copy",
     "file_create_dir",
@@ -176,6 +178,7 @@ pub const PERMISSIONS_COUNT: usize = ALL_PERMISSIONS.len();
 /// - `chat_secret`: Toggle secret mode on channels
 /// - `chat_send`: Send chat messages to chat channels
 /// - `chat_topic`: View the server topic (but not edit)
+/// - `chat_unlimited`: Bypass chat rate limiting (flood protection)
 /// - `file_download`: Download files from file area
 /// - `file_info`: View detailed file/directory information
 /// - `file_list`: Browse files and directories (read-only)
@@ -197,6 +200,7 @@ pub const SHARED_ACCOUNT_PERMISSIONS: &[&str] = &[
     "chat_secret",
     "chat_send",
     "chat_topic",
+    "chat_unlimited",
     "file_download",
     "file_info",
     "file_list",
@@ -280,14 +284,14 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (44)
-        assert_eq!(ALL_PERMISSIONS.len(), 44);
+        // Verify we have the expected number of permissions (45)
+        assert_eq!(ALL_PERMISSIONS.len(), 45);
     }
 
     #[test]
     fn test_shared_account_permissions_count() {
-        // Verify we have the expected number of shared account permissions (20)
-        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 20);
+        // Verify we have the expected number of shared account permissions (21)
+        assert_eq!(SHARED_ACCOUNT_PERMISSIONS.len(), 21);
     }
 
     #[test]
@@ -301,6 +305,7 @@ mod tests {
         assert!(is_shared_account_permission("chat_secret"));
         assert!(is_shared_account_permission("chat_send"));
         assert!(is_shared_account_permission("chat_topic"));
+        assert!(is_shared_account_permission("chat_unlimited"));
         assert!(is_shared_account_permission("file_download"));
         assert!(is_shared_account_permission("file_info"));
         assert!(is_shared_account_permission("file_list"));
@@ -311,6 +316,8 @@ mod tests {
         assert!(is_shared_account_permission("user_info"));
         assert!(is_shared_account_permission("user_list"));
         assert!(is_shared_account_permission("user_message"));
+        assert!(is_shared_account_permission("voice_listen"));
+        assert!(is_shared_account_permission("voice_talk"));
 
         // Forbidden permissions
         assert!(!is_shared_account_permission("ban_create"));

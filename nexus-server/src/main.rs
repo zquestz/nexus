@@ -7,6 +7,7 @@ mod connection_tracker;
 mod constants;
 mod db;
 mod files;
+mod flood;
 mod handlers;
 mod i18n;
 mod ip_rule_cache;
@@ -38,6 +39,7 @@ use connection::ConnectionParams;
 use connection_tracker::ConnectionTracker;
 use constants::*;
 use files::FileIndex;
+use flood::FloodConfig;
 use ip_rule_cache::IpRuleCache;
 use logging::LogLevel;
 use transfers::{TransferParams, TransferRegistry};
@@ -133,24 +135,30 @@ async fn main() {
 
     // Setup network (TCP listeners + TLS, optionally WebSocket listeners)
     let websocket_enabled = args.websocket;
-    let (listener, transfer_listener, ws_listener, ws_transfer_listener, tls_acceptor, cert_dir) =
-        setup_network(
-            args.bind,
-            args.port,
-            args.transfer_port,
-            if websocket_enabled {
-                Some(args.websocket_port)
-            } else {
-                None
-            },
-            if websocket_enabled {
-                Some(args.transfer_websocket_port)
-            } else {
-                None
-            },
-            &db_path,
-        )
-        .await;
+    let (
+        listener,
+        transfer_listener,
+        ws_listener,
+        ws_transfer_listener,
+        (tls_acceptor, fingerprint),
+        cert_dir,
+    ) = setup_network(
+        args.bind,
+        args.port,
+        args.transfer_port,
+        if websocket_enabled {
+            Some(args.websocket_port)
+        } else {
+            None
+        },
+        if websocket_enabled {
+            Some(args.transfer_websocket_port)
+        } else {
+            None
+        },
+        &db_path,
+    )
+    .await;
 
     // Setup voice DTLS listener (same port as TCP, OS routes by protocol)
     let voice_addr = SocketAddr::new(args.bind, args.port);
@@ -190,6 +198,14 @@ async fn main() {
         transfer_websocket_port,
     )
     .await;
+
+    // Setup flood protection config (load limits from database)
+    let chat_burst_limit = database.config.get_chat_burst_limit().await;
+    let chat_rate_limit = database.config.get_chat_rate_limit().await;
+    let flood_config = Arc::new(FloodConfig::new(chat_burst_limit, chat_rate_limit));
+
+    // Leak fingerprint to get a 'static reference - it lives for the program lifetime anyway
+    let fingerprint: &'static str = Box::leak(fingerprint.into_boxed_str());
 
     // Setup connection tracking for DoS protection (load limits from database)
     let max_connections_per_ip = database.config.get_max_connections_per_ip().await;
@@ -353,6 +369,8 @@ async fn main() {
                             channel_manager: channel_manager.clone(),
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: voice_registry.clone(),
+                            fingerprint,
+                            flood_config: flood_config.clone(),
                         };
                         let tls_acceptor = tls_acceptor.clone();
 
@@ -508,6 +526,8 @@ async fn main() {
                             channel_manager: channel_manager.clone(),
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: voice_registry.clone(),
+                            fingerprint,
+                            flood_config: flood_config.clone(),
                         };
                         let tls_acceptor = tls_acceptor.clone();
                         let ip_rule_cache_for_check = ip_rule_cache.clone();
@@ -667,7 +687,9 @@ async fn main() {
 }
 
 /// Load existing TLS configuration or generate new self-signed certificate
-fn load_or_generate_tls_config(cert_dir: &std::path::Path) -> Result<TlsAcceptor, String> {
+fn load_or_generate_tls_config(
+    cert_dir: &std::path::Path,
+) -> Result<(TlsAcceptor, String), String> {
     let cert_path = cert_dir.join(CERT_FILENAME);
     let key_path = cert_dir.join(KEY_FILENAME);
 
@@ -675,15 +697,15 @@ fn load_or_generate_tls_config(cert_dir: &std::path::Path) -> Result<TlsAcceptor
     if cert_path.exists() && key_path.exists() {
         // Load existing certificate
         let acceptor = load_tls_config(&cert_path, &key_path)?;
-        display_certificate_fingerprint(&cert_path)?;
-        Ok(acceptor)
+        let fingerprint = display_certificate_fingerprint(&cert_path)?;
+        Ok((acceptor, fingerprint))
     } else {
         // Generate new self-signed certificate
         info!("{}", MSG_GENERATING_CERT);
         generate_self_signed_cert(&cert_path, &key_path)?;
         let acceptor = load_tls_config(&cert_path, &key_path)?;
-        display_certificate_fingerprint(&cert_path)?;
-        Ok(acceptor)
+        let fingerprint = display_certificate_fingerprint(&cert_path)?;
+        Ok((acceptor, fingerprint))
     }
 }
 
@@ -861,7 +883,7 @@ async fn setup_network(
     TcpListener,
     Option<TcpListener>,
     Option<TcpListener>,
-    TlsAcceptor,
+    (TlsAcceptor, String),
     std::path::PathBuf, // cert_dir for voice DTLS
 ) {
     // Get certificate directory (same parent as database)
@@ -941,7 +963,7 @@ async fn setup_network(
 }
 
 /// Calculate and display certificate fingerprint (SHA-256)
-fn display_certificate_fingerprint(cert_path: &std::path::Path) -> Result<(), String> {
+fn display_certificate_fingerprint(cert_path: &std::path::Path) -> Result<String, String> {
     // Read certificate file
     let cert_pem =
         fs::read_to_string(cert_path).map_err(|e| format!("{}{}", ERR_OPEN_CERT_FILE, e))?;
@@ -964,7 +986,7 @@ fn display_certificate_fingerprint(cert_path: &std::path::Path) -> Result<(), St
         .join(":");
 
     info!("{}{}", MSG_CERT_FINGERPRINT, fingerprint_str);
-    Ok(())
+    Ok(fingerprint_str)
 }
 
 /// Setup file area directories

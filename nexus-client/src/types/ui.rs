@@ -55,6 +55,21 @@ impl Default for UiState {
     }
 }
 
+/// Certificate fingerprint interception detected (TLS-observed vs server-reported mismatch)
+#[derive(Debug, Clone)]
+pub struct FingerprintInterception {
+    /// Server name for display
+    pub server_name: String,
+    /// Server address for display
+    pub server_address: String,
+    /// Server port for display
+    pub server_port: String,
+    /// Fingerprint observed during TLS handshake
+    pub tls_fingerprint: String,
+    /// Fingerprint reported by server in ServerInfo
+    pub server_fingerprint: String,
+}
+
 /// Certificate fingerprint mismatch details (without connection)
 ///
 /// Used as return type from fingerprint verification to avoid creating
@@ -133,6 +148,10 @@ pub enum InputId {
     EditServerInfoName,
     /// Server info edit: Description input
     EditServerInfoDescription,
+    /// Server info edit: Auto-join channels input
+    EditServerInfoAutoJoinChannels,
+    /// Server info edit: Persistent channels input
+    EditServerInfoPersistentChannels,
     /// Server info edit: Max connections per IP input
     EditServerInfoMaxConnections,
     /// Server info edit: Max transfers per IP input
@@ -192,6 +211,10 @@ impl From<InputId> for Id {
             InputId::EditNewPassword => "InputId::EditNewPassword",
             InputId::EditServerInfoName => "InputId::EditServerInfoName",
             InputId::EditServerInfoDescription => "InputId::EditServerInfoDescription",
+            InputId::EditServerInfoAutoJoinChannels => "InputId::EditServerInfoAutoJoinChannels",
+            InputId::EditServerInfoPersistentChannels => {
+                "InputId::EditServerInfoPersistentChannels"
+            }
             InputId::EditServerInfoMaxConnections => "InputId::EditServerInfoMaxConnections",
             InputId::EditServerInfoMaxTransfers => "InputId::EditServerInfoMaxTransfers",
             InputId::EditServerInfoFileReindexInterval => {

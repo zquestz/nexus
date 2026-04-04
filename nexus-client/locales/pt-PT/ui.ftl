@@ -95,6 +95,7 @@ label-enabled = Activo
 label-permissions = Permissões:
 label-expected-fingerprint = Impressão digital esperada:
 label-received-fingerprint = Impressão digital recebida:
+label-fingerprint = Impressão digital:
 label-theme = Tema
 label-chat-history-retention = Histórico de chat:
 chat-history-forever = Para sempre
@@ -145,7 +146,6 @@ label-network = Rede
 label-none = Nenhum
 label-server-settings = Definições do servidor
 tab-files = Ficheiros
-tab-channels = Canais
 label-connections-short = Máx. Conexões:
 label-transfers-short = Máx. Transferências:
 label-version-short = Versão:
@@ -156,8 +156,8 @@ label-log-level-warn = Aviso
 label-log-level-info = Info
 label-log-level-debug = Debug
 label-reindex-short = Reindexar:
-label-persistent-short = Persistentes:
-label-auto-join-short = Auto-entrada:
+label-chat-burst-limit = Limite de rajada do chat:
+label-chat-rate-limit = Limite de velocidade do chat:
 label-minutes = { $count ->
     [one] minuto
    *[other] minutos
@@ -192,6 +192,7 @@ permission-chat_list = Lista de Canais
 permission-chat_secret = Canal Secreto
 permission-chat_topic = Tópico do Chat
 permission-chat_topic_edit = Editar Tópico do Chat
+permission-chat_unlimited = Chat Ilimitado
 permission-user_broadcast = Difusão de Utilizador
 permission-user_create = Criar Utilizador
 permission-user_delete = Eliminar Utilizador
@@ -615,6 +616,9 @@ err-failed-set-config-permissions = Falha ao definir permissões do ficheiro de 
 # =============================================================================
 
 fingerprint-warning = Isto pode indicar um problema de segurança (ataque MITM) ou que o certificado do servidor foi regenerado. Aceite apenas se confiar no administrador do servidor.
+fingerprint-interception-warning = A impressão digital do certificado relatada pelo servidor não corresponde à impressão digital observada durante a ligação. A sua ligação está a ser intercetada por um proxy TLS.
+label-tls-fingerprint = Impressão digital observada por TLS:
+label-server-fingerprint = Impressão digital relatada pelo servidor:
 
 # =============================================================================
 # User Info Display

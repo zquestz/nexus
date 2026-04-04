@@ -23,6 +23,7 @@ use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
 use crate::files::FileIndex;
+use crate::flood::{FloodConfig, FloodTracker};
 use crate::handlers::{
     self, HandlerContext, err_invalid_message_format, err_message_not_supported,
 };
@@ -45,6 +46,8 @@ pub struct ConnectionParams {
     pub channel_manager: ChannelManager,
     pub transfer_registry: Arc<TransferRegistry>,
     pub voice_registry: VoiceRegistry,
+    pub fingerprint: &'static str,
+    pub flood_config: Arc<FloodConfig>,
 }
 
 /// Connection state for a single client
@@ -52,6 +55,7 @@ struct ConnectionState {
     session_id: Option<u32>,
     handshake_complete: bool,
     locale: String,
+    flood_tracker: FloodTracker,
 }
 
 impl ConnectionState {
@@ -60,6 +64,7 @@ impl ConnectionState {
             session_id: None,
             handshake_complete: false,
             locale: DEFAULT_LOCALE.to_string(),
+            flood_tracker: FloodTracker::new(),
         }
     }
 }
@@ -97,6 +102,8 @@ where
         channel_manager,
         transfer_registry,
         voice_registry,
+        fingerprint,
+        flood_config,
     } = params;
 
     let (reader, writer) = tokio::io::split(socket);
@@ -152,6 +159,8 @@ where
                             channel_manager: &channel_manager,
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: &voice_registry,
+                            fingerprint,
+                            flood_config: flood_config.clone(),
                         };
 
                         if let Err(e) = handle_client_message(
@@ -284,8 +293,15 @@ where
             action,
             channel,
         } => {
-            handlers::handle_chat_send(message, action, channel, conn_state.session_id, ctx)
-                .await?;
+            handlers::handle_chat_send(
+                message,
+                action,
+                channel,
+                conn_state.session_id,
+                &mut conn_state.flood_tracker,
+                ctx,
+            )
+            .await?;
         }
         ClientMessage::ChatTopicUpdate { topic, channel } => {
             handlers::handle_chat_topic_update(topic, channel, conn_state.session_id, ctx).await?;
@@ -372,8 +388,15 @@ where
             message,
             action,
         } => {
-            handlers::handle_user_message(to_nickname, message, action, conn_state.session_id, ctx)
-                .await?;
+            handlers::handle_user_message(
+                to_nickname,
+                message,
+                action,
+                conn_state.session_id,
+                &mut conn_state.flood_tracker,
+                ctx,
+            )
+            .await?;
         }
         ClientMessage::UserUpdate {
             id,
@@ -420,6 +443,8 @@ where
             file_reindex_interval,
             persistent_channels,
             auto_join_channels,
+            chat_burst_limit,
+            chat_rate_limit,
             min_password_strength,
         } => {
             let request = handlers::ServerInfoUpdateRequest {
@@ -431,6 +456,8 @@ where
                 file_reindex_interval,
                 persistent_channels,
                 auto_join_channels,
+                chat_burst_limit,
+                chat_rate_limit,
                 min_password_strength,
                 session_id: conn_state.session_id,
             };

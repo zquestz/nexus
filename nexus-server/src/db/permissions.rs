@@ -41,6 +41,8 @@ pub enum Permission {
     ChatTopic,
     /// Permission to edit chat topic
     ChatTopicEdit,
+    /// Permission to bypass chat rate limiting (flood protection)
+    ChatUnlimited,
     /// Permission to send broadcast messages
     UserBroadcast,
     /// Permission to create users
@@ -132,6 +134,7 @@ impl Permission {
             "chat_secret" => Some(Permission::ChatSecret),
             "chat_topic" => Some(Permission::ChatTopic),
             "chat_topic_edit" => Some(Permission::ChatTopicEdit),
+            "chat_unlimited" => Some(Permission::ChatUnlimited),
             "file_copy" => Some(Permission::FileCopy),
             "file_create_dir" => Some(Permission::FileCreateDir),
             "file_delete" => Some(Permission::FileDelete),
@@ -268,6 +271,7 @@ mod tests {
         assert_eq!(Permission::ChatReceive.as_str(), "chat_receive");
         assert_eq!(Permission::ChatTopic.as_str(), "chat_topic");
         assert_eq!(Permission::ChatTopicEdit.as_str(), "chat_topic_edit");
+        assert_eq!(Permission::ChatUnlimited.as_str(), "chat_unlimited");
         assert_eq!(Permission::UserBroadcast.as_str(), "user_broadcast");
         assert_eq!(Permission::UserCreate.as_str(), "user_create");
         assert_eq!(Permission::UserDelete.as_str(), "user_delete");
@@ -324,6 +328,10 @@ mod tests {
         assert_eq!(
             Permission::parse("chat_topic_edit"),
             Some(Permission::ChatTopicEdit)
+        );
+        assert_eq!(
+            Permission::parse("chat_unlimited"),
+            Some(Permission::ChatUnlimited)
         );
         assert_eq!(
             Permission::parse("user_broadcast"),
@@ -496,6 +504,7 @@ mod tests {
             Permission::ChatSend,
             Permission::ChatTopic,
             Permission::ChatTopicEdit,
+            Permission::ChatUnlimited,
             Permission::ConnectionMonitor,
             Permission::FileCopy,
             Permission::FileCreateDir,

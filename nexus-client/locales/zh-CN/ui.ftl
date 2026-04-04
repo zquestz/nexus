@@ -95,6 +95,7 @@ label-enabled = 已启用
 label-permissions = 权限：
 label-expected-fingerprint = 预期指纹：
 label-received-fingerprint = 收到的指纹：
+label-fingerprint = 指纹：
 label-theme = 主题
 label-chat-history-retention = 聊天记录：
 chat-history-forever = 永久
@@ -142,7 +143,6 @@ label-network = 网络
 label-none = 无
 label-server-settings = 服务器设置
 tab-files = 文件
-tab-channels = 频道
 label-connections-short = 最大连接：
 label-transfers-short = 最大传输：
 label-version-short = 版本：
@@ -153,8 +153,8 @@ label-log-level-warn = 警告
 label-log-level-info = 信息
 label-log-level-debug = 调试
 label-reindex-short = 重建索引：
-label-persistent-short = 常驻：
-label-auto-join-short = 自动加入：
+label-chat-burst-limit = 聊天突发限制：
+label-chat-rate-limit = 聊天速率限制：
 label-minutes = 分钟
 label-name = 名称：
 label-description = 描述：
@@ -186,6 +186,7 @@ permission-chat_list = 频道列表
 permission-chat_secret = 频道私密
 permission-chat_topic = 聊天主题
 permission-chat_topic_edit = 编辑聊天主题
+permission-chat_unlimited = 聊天无限制
 permission-user_broadcast = 用户广播
 permission-user_create = 创建用户
 permission-user_delete = 删除用户
@@ -604,6 +605,9 @@ err-failed-set-config-permissions = 设置配置文件权限失败：{ $error }
 # =============================================================================
 
 fingerprint-warning = 这可能表示存在安全问题（中间人攻击）或服务器证书已重新生成。仅在信任服务器管理员时才接受。
+fingerprint-interception-warning = 服务器报告的证书指纹与连接期间观察到的指纹不匹配。您的连接正在被TLS代理拦截。
+label-tls-fingerprint = TLS观察到的指纹：
+label-server-fingerprint = 服务器报告的指纹：
 
 # =============================================================================
 # User Info Display

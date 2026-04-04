@@ -937,6 +937,9 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 is_admin: ctx.conn.is_admin,
                 active_tab: ctx.conn.server_info_tab,
                 edit_state: ctx.conn.server_info_edit.as_ref(),
+                chat_burst_limit: ctx.conn.chat_burst_limit,
+                chat_rate_limit: ctx.conn.chat_rate_limit,
+                fingerprint: Some(ctx.conn.connection_info.certificate_fingerprint.clone()),
             };
             stack![chat, server_info_view(&data)]
                 .width(Fill)

@@ -261,3 +261,7 @@ err-group-not-empty-delete = 群组中仍有用户，无法删除
 err-group-not-empty-modify = 群组中仍有用户，无法修改共享状态
 err-group-no-fields = 没有要更新的字段
 err-group-shared-mismatch = 账户类型与群组类型不匹配（共享账户需要共享群组）
+
+# Flood Protection Errors
+err-flood-warning = 消息受到限制（警告 { $violation }/{ $max_violations }）。您可以在{ $seconds }秒后再次发送消息。继续发送将导致断开连接。
+err-flood-disconnect = 已断开连接：超出聊天速率限制。

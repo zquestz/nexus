@@ -455,6 +455,8 @@ Update server configuration.
 | `file_reindex_interval`  | integer | No       | File reindex interval in minutes (0 to disable)                                 |
 | `persistent_channels`    | string  | No       | Space-separated persistent channel names                                        |
 | `auto_join_channels`     | string  | No       | Space-separated channels users auto-join on login                               |
+| `chat_burst_limit`       | integer | No       | Max messages in a burst before rate limiting (0 = capacity of 1)                |
+| `chat_rate_limit`        | integer | No       | Messages per minute rate limit (0 = flood protection disabled)                  |
 | `min_password_strength`  | integer | No       | Minimum password strength level (0=Weak, 1=Fair, 2=Good, 3=Strong, 4=Excellent) |
 
 Only include fields you want to change.
@@ -534,15 +536,17 @@ Broadcast to all users when server info changes.
   "server_info": {
     "name": "My Awesome BBS",
     "description": "Welcome to my server!",
-    "version": "0.7.4",
+    "version": "0.7.5",
+    "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
     "transfer_port": 7501,
-    "transfer_websocket_port": null,
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 2,
-    "image": null,
+    "image": "",
     "file_reindex_interval": 60,
     "persistent_channels": "#general #support",
     "auto_join_channels": "#general",
+    "chat_burst_limit": 5,
+    "chat_rate_limit": 20,
     "min_password_strength": 2,
     "log_level": "info"
   }
@@ -553,13 +557,13 @@ Broadcast to all users when server info changes.
 
 Sent to a user when their permissions change.
 
-| Field         | Type    | Required | Description                          |
-| ------------- | ------- | -------- | ------------------------------------ |
-| `is_admin`    | boolean | Yes      | New admin status                     |
-| `permissions` | array   | Yes      | New permissions list                 |
-| `server_info` | object  | No       | Server info (if promoted to admin)   |
-| `group_id`    | integer | No       | User's group ID (null if no group)   |
-| `group_name`  | string  | No       | User's group name (null if no group) |
+| Field         | Type    | Required | Description                                     |
+| ------------- | ------- | -------- | ----------------------------------------------- |
+| `is_admin`    | boolean | Yes      | New admin status                                |
+| `permissions` | array   | Yes      | New permissions list                            |
+| `server_info` | object  | Yes      | Server info (included on any permission change) |
+| `group_id`    | integer | No       | User's group ID (null if no group)              |
+| `group_name`  | string  | No       | User's group name (null if no group)            |
 
 **Permissions changed:**
 
@@ -567,6 +571,19 @@ Sent to a user when their permissions change.
 {
   "is_admin": false,
   "permissions": ["chat_send", "chat_receive", "news_list", "news_create"],
+  "server_info": {
+    "name": "My BBS",
+    "description": "...",
+    "version": "0.7.5",
+    "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
+    "transfer_port": 7501,
+    "max_connections_per_ip": 5,
+    "max_transfers_per_ip": 2,
+    "chat_burst_limit": 5,
+    "chat_rate_limit": 20,
+    "min_password_strength": 2,
+    "log_level": "info"
+  },
   "group_id": 1,
   "group_name": "Basic Users"
 }
@@ -581,15 +598,16 @@ Sent to a user when their permissions change.
   "server_info": {
     "name": "My BBS",
     "description": "...",
-    "version": "0.7.4",
+    "version": "0.7.5",
+    "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
     "transfer_port": 7501,
-    "transfer_websocket_port": null,
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 2,
-    "image": "data:image/png;base64,...",
     "file_reindex_interval": 60,
     "persistent_channels": "#general",
     "auto_join_channels": "#general",
+    "chat_burst_limit": 5,
+    "chat_rate_limit": 20,
     "min_password_strength": 2,
     "log_level": "info"
   },
@@ -598,7 +616,7 @@ Sent to a user when their permissions change.
 }
 ```
 
-Note: Admins get full server info (including image and admin-only fields like `persistent_channels` and `auto_join_channels`) which non-admins may not have.
+Note: Server info is always included when permissions change. Admins see all fields including admin-only fields (`persistent_channels`). The `auto_join_channels` field is visible to users with `chat_join` permission. Non-admins without relevant permissions see fewer fields. The `image` field is not included in `PermissionsUpdated` (clients already have it from login or `ServerInfoUpdated`).
 
 ### UserUpdated (Server → Client)
 
@@ -709,6 +727,7 @@ Shared accounts can only have the following permissions (any others are automati
 - `chat_secret`
 - `chat_send`
 - `chat_topic`
+- `chat_unlimited`
 - `file_download`
 - `file_info`
 - `file_list`

@@ -14,8 +14,8 @@ use crate::image::decode_data_uri_max_width;
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::types::ChatMessage;
 use crate::types::{
-    ActivePanel, ChannelState, InputId, Message, NetworkConnection, ServerBookmark,
-    ServerConnection, ServerConnectionParams,
+    ActivePanel, ChannelState, FingerprintInterception, InputId, Message, NetworkConnection,
+    ServerBookmark, ServerConnection, ServerConnectionParams,
 };
 use crate::views::constants::PERMISSION_USER_LIST;
 
@@ -231,6 +231,35 @@ impl NexusApp {
             return self.handle_fingerprint_mismatch(*mismatch_details, conn, ctx.display_name);
         }
 
+        // Check for TLS interception (server-reported fingerprint vs TLS-observed)
+        if let Some(ref server_fingerprint) = conn.server_fingerprint {
+            let tls_fingerprint = &ctx.certificate_fingerprint;
+            if server_fingerprint.to_lowercase() != tls_fingerprint.to_lowercase() {
+                // Build display name for the server
+                let server_name = conn
+                    .server_name
+                    .clone()
+                    .unwrap_or_else(|| conn.connection_info.address.clone());
+
+                self.fingerprint_interception_queue
+                    .push_back(FingerprintInterception {
+                        server_name,
+                        server_address: conn.connection_info.address.clone(),
+                        server_port: conn.connection_info.port.to_string(),
+                        tls_fingerprint: tls_fingerprint.clone(),
+                        server_fingerprint: server_fingerprint.clone(),
+                    });
+
+                // Clear bookmark connecting lock
+                if let Some(id) = ctx.bookmark_id {
+                    self.connecting_bookmarks.remove(&id);
+                }
+
+                self.connection_form.is_connecting = false;
+                return Task::none();
+            }
+        }
+
         // Create and register connection
         let Some(reg) =
             self.create_and_register_connection(conn, ctx.bookmark_id, ctx.display_name)
@@ -442,7 +471,8 @@ impl NexusApp {
             server_version: conn.server_version,
             server_image,
             cached_server_image,
-
+            chat_burst_limit: conn.chat_burst_limit,
+            chat_rate_limit: conn.chat_rate_limit,
             max_connections_per_ip: conn.max_connections_per_ip,
             max_transfers_per_ip: conn.max_transfers_per_ip,
             file_reindex_interval: conn.file_reindex_interval,

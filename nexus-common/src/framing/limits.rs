@@ -209,6 +209,9 @@ const MAX_SESSION_IDS: usize = 10;
 /// Maximum number of addresses in UserInfoDetailed
 const MAX_ADDRESSES: usize = 10;
 
+/// Length of a colon-separated SHA-256 fingerprint: "AA:BB:CC:...:ZZ" (32×2 hex + 31 colons)
+const SHA256_FINGERPRINT_LENGTH: usize = 95;
+
 /// Maximum path length for FileCreateDirResponse
 /// Path = parent (4096) + separator (1) + name (255) = 4352
 /// JSON escaping could double quote chars in worst case, so ~9000 is safe
@@ -823,10 +826,11 @@ const GROUP_INFO_STRUCT_SIZE: usize = json_first_i64_field("id")
     + 2; // {} braces
 
 /// ServerInfo struct size (nested object in responses):
-/// {"name":"...64...","description":"...256...","version":"...32...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","transfer_port":u16,"transfer_websocket_port":u16,"file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","min_password_strength":u8,"log_level":"...5..."}
+/// {"name":"...64...","description":"...256...","version":"...32...","fingerprint":"...95...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","transfer_port":u16,"transfer_websocket_port":u16,"file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","chat_burst_limit":u32,"chat_rate_limit":u32,"min_password_strength":u8,"log_level":"...5..."}
 const SERVER_INFO_STRUCT_SIZE: usize = json_first_string_field("name", MAX_SERVER_NAME_LENGTH)
     + json_string_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
     + json_string_field("version", MAX_VERSION_LENGTH)
+    + json_string_field("fingerprint", SHA256_FINGERPRINT_LENGTH)
     + json_u32_field("max_connections_per_ip")
     + json_u32_field("max_transfers_per_ip")
     + json_string_field("image", MAX_SERVER_IMAGE_DATA_URI_LENGTH)
@@ -835,11 +839,13 @@ const SERVER_INFO_STRUCT_SIZE: usize = json_first_string_field("name", MAX_SERVE
     + json_u32_field("file_reindex_interval")
     + json_string_field("persistent_channels", MAX_PERSISTENT_CHANNELS_LENGTH)
     + json_string_field("auto_join_channels", MAX_AUTO_JOIN_CHANNELS_LENGTH)
+    + json_u32_field("chat_burst_limit")
+    + json_u32_field("chat_rate_limit")
     + json_u8_field("min_password_strength")
     + json_string_field("log_level", MAX_LOG_LEVEL_LENGTH)
     + 2; // {} braces
 
-/// ServerInfoUpdate: {"type":"ServerInfoUpdate","name":"...64...","description":"...256...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","min_password_strength":u8}
+/// ServerInfoUpdate: {"type":"ServerInfoUpdate","name":"...64...","description":"...256...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","chat_burst_limit":u32,"chat_rate_limit":u32,"min_password_strength":u8}
 const SERVER_INFO_UPDATE_SIZE: usize = json_type_base("ServerInfoUpdate")
     + json_string_field("name", MAX_SERVER_NAME_LENGTH)
     + json_string_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
@@ -849,6 +855,8 @@ const SERVER_INFO_UPDATE_SIZE: usize = json_type_base("ServerInfoUpdate")
     + json_u32_field("file_reindex_interval")
     + json_string_field("persistent_channels", MAX_PERSISTENT_CHANNELS_LENGTH)
     + json_string_field("auto_join_channels", MAX_AUTO_JOIN_CHANNELS_LENGTH)
+    + json_u32_field("chat_burst_limit")
+    + json_u32_field("chat_rate_limit")
     + json_u8_field("min_password_strength");
 
 /// ServerInfoUpdated: {"type":"ServerInfoUpdated","server_info":{...}}
@@ -2301,6 +2309,8 @@ mod tests {
             file_reindex_interval: Some(u32::MAX),
             persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
             auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
+            chat_burst_limit: Some(u32::MAX),
+            chat_rate_limit: Some(u32::MAX),
             min_password_strength: Some(u8::MAX),
         };
         assert!(
@@ -2613,6 +2623,7 @@ mod tests {
                 name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
+                fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
                 max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
@@ -2621,6 +2632,8 @@ mod tests {
                 file_reindex_interval: Some(u32::MAX),
                 persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
+                chat_burst_limit: Some(u32::MAX),
+                chat_rate_limit: Some(u32::MAX),
                 min_password_strength: Some(u8::MAX),
                 log_level: Some(str_of_len(MAX_LOG_LEVEL_LENGTH)),
             }),
@@ -2651,6 +2664,7 @@ mod tests {
                 name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
+                fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
                 max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
@@ -2659,6 +2673,8 @@ mod tests {
                 file_reindex_interval: Some(u32::MAX),
                 persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
+                chat_burst_limit: Some(u32::MAX),
+                chat_rate_limit: Some(u32::MAX),
                 min_password_strength: Some(u8::MAX),
                 log_level: Some(str_of_len(MAX_LOG_LEVEL_LENGTH)),
             }),
@@ -2682,6 +2698,7 @@ mod tests {
                 name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
+                fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
                 max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
@@ -2690,6 +2707,8 @@ mod tests {
                 file_reindex_interval: Some(u32::MAX),
                 persistent_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
                 auto_join_channels: Some(str_of_len(MAX_PERSISTENT_CHANNELS_LENGTH)),
+                chat_burst_limit: Some(u32::MAX),
+                chat_rate_limit: Some(u32::MAX),
                 min_password_strength: Some(u8::MAX),
                 log_level: Some(str_of_len(MAX_LOG_LEVEL_LENGTH)),
             },

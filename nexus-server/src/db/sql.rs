@@ -24,6 +24,11 @@ pub const SQL_GET_CONFIG: &str = "SELECT value FROM config WHERE key = ?";
 /// **Note:** Only updates existing keys; does not insert new ones.
 pub const SQL_SET_CONFIG: &str = "UPDATE config SET value = ? WHERE key = ?";
 
+/// Get all configuration key-value pairs
+///
+/// **Returns:** `(key: String, value: String)` for each row
+pub const SQL_GET_ALL_CONFIG: &str = "SELECT key, value FROM config";
+
 // ========================================================================
 // User Query Operations
 // ========================================================================

@@ -261,3 +261,11 @@ err-group-not-empty-delete = Невозможно удалить группу, �
 err-group-not-empty-modify = Невозможно изменить общий статус, пока к группе привязаны пользователи
 err-group-no-fields = Нет полей для обновления
 err-group-shared-mismatch = Тип учетной записи не соответствует типу группы (общие учетные записи требуют общих групп)
+
+# Flood Protection Errors
+err-flood-warning = Сообщение ограничено (предупреждение { $violation } из { $max_violations }). Вы сможете отправить следующее сообщение через { $seconds } { $seconds ->
+    [one] секунду
+    [few] секунды
+   *[other] секунд
+}. Продолжение приведёт к отключению.
+err-flood-disconnect = Отключено: превышен лимит скорости чата.
