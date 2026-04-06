@@ -14,6 +14,7 @@
 | 8   | Flood protection         | Low    | ✅ Done |
 | 9   | Server logs              | Medium | ✅ Done |
 | 10  | Auto-away                | Low    | ✅ Done |
+| 11  | Invite system            | Medium | Planned |
 
 **Post-launch:** IRC gateway (if demand exists)
 
