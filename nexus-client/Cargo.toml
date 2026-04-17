@@ -75,11 +75,11 @@ dtls = { version = "0.17", features = ["pem"] }
 webrtc-util = "0.17"
 async-trait = "0.1"
 crossbeam-channel = "0.5.15"
-rubato = "1.0"
-audioadapter-buffers = "2.0"
+rubato = "2.0"
+audioadapter-buffers = "3.0"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-tray-icon = "0.21"
+tray-icon = "0.22"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 ksni = { version = "0.3", default-features = true }
