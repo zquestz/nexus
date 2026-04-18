@@ -67,6 +67,8 @@ pub enum Permission {
     FileDownload,
     /// Permission to upload files to upload/dropbox folders
     FileUpload,
+    /// Permission to upload files to any directory, bypassing upload/dropbox folder restriction
+    FileUploadAnywhere,
     /// Permission to list files and directories
     FileList,
     /// Permission to search files
@@ -147,6 +149,7 @@ impl Permission {
             "file_root" => Some(Permission::FileRoot),
             "file_search" => Some(Permission::FileSearch),
             "file_upload" => Some(Permission::FileUpload),
+            "file_upload_anywhere" => Some(Permission::FileUploadAnywhere),
             "group_create" => Some(Permission::GroupCreate),
             "group_delete" => Some(Permission::GroupDelete),
             "group_edit" => Some(Permission::GroupEdit),
@@ -289,6 +292,10 @@ mod tests {
         assert_eq!(Permission::FileInfo.as_str(), "file_info");
         assert_eq!(Permission::FileList.as_str(), "file_list");
         assert_eq!(Permission::FileUpload.as_str(), "file_upload");
+        assert_eq!(
+            Permission::FileUploadAnywhere.as_str(),
+            "file_upload_anywhere"
+        );
         assert_eq!(Permission::FileSearch.as_str(), "file_search");
         assert_eq!(Permission::FileReindex.as_str(), "file_reindex");
         assert_eq!(Permission::FileMove.as_str(), "file_move");
@@ -379,6 +386,10 @@ mod tests {
         assert_eq!(
             Permission::parse("file_upload"),
             Some(Permission::FileUpload)
+        );
+        assert_eq!(
+            Permission::parse("file_upload_anywhere"),
+            Some(Permission::FileUploadAnywhere)
         );
         assert_eq!(
             Permission::parse("file_search"),
@@ -514,6 +525,7 @@ mod tests {
             Permission::FileList,
             Permission::FileMove,
             Permission::FileUpload,
+            Permission::FileUploadAnywhere,
             Permission::FileSearch,
             Permission::FileReindex,
             Permission::FileRename,

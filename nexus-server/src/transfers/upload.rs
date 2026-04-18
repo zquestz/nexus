@@ -43,7 +43,7 @@ use super::helpers::{
     send_upload_transfer_error, validate_transfer_path,
 };
 use super::transfer::{StreamError, Transfer};
-use super::types::{ReceiveFileParams, UploadParams};
+use super::types::{AuthenticatedUser, ReceiveFileParams, UploadParams};
 
 // =============================================================================
 // Main Handler
@@ -380,6 +380,32 @@ where
 // Validation Helpers
 // =============================================================================
 
+/// Result of an upload folder-access check.
+#[derive(Debug, PartialEq, Eq)]
+enum UploadAccess {
+    /// Path is inside an upload/dropbox folder — normal case, no bypass needed.
+    Allowed,
+    /// Path is outside upload folders but the user has FileUploadAnywhere (or is admin).
+    Bypassed,
+    /// Path is outside upload folders and the user has no bypass — reject.
+    Denied,
+}
+
+/// Check whether `user` may upload under `path`.
+///
+/// Normal case: `path` is under a folder typed as upload/dropbox → `Allowed`.
+/// Otherwise: admins and holders of `FileUploadAnywhere` get `Bypassed`;
+/// everyone else gets `Denied`. Callers log bypasses for audit.
+fn check_upload_access(user: &AuthenticatedUser, area_root: &Path, path: &Path) -> UploadAccess {
+    if allows_upload(area_root, path) {
+        return UploadAccess::Allowed;
+    }
+    if user.is_admin || user.permissions.contains(&Permission::FileUploadAnywhere) {
+        return UploadAccess::Bypassed;
+    }
+    UploadAccess::Denied
+}
+
 /// Validate and resolve upload destination path
 fn validate_and_resolve_upload_destination<R, W>(
     transfer: &Transfer<'_, R, W>,
@@ -420,10 +446,17 @@ where
             }
 
             // Check that existing destination allows uploads
-            if !allows_upload(&area_root, &path) {
-                return Err(TransferError::permission(
-                    err_upload_destination_not_allowed(locale),
-                ));
+            // (bypassed by FileUploadAnywhere permission)
+            match check_upload_access(user, &area_root, &path) {
+                UploadAccess::Allowed => {}
+                UploadAccess::Bypassed => {
+                    debug!(user = %user.username, destination = %path.display(), "{}", LOG_UPLOAD_BYPASS_FOLDER_RESTRICTION);
+                }
+                UploadAccess::Denied => {
+                    return Err(TransferError::permission(
+                        err_upload_destination_not_allowed(locale),
+                    ));
+                }
             }
 
             path
@@ -449,10 +482,17 @@ where
             }
 
             // Check that ancestor allows uploads (new directories inherit this)
-            if !allows_upload(&area_root, &resolved_ancestor) {
-                return Err(TransferError::permission(
-                    err_upload_destination_not_allowed(locale),
-                ));
+            // (bypassed by FileUploadAnywhere permission)
+            match check_upload_access(user, &area_root, &resolved_ancestor) {
+                UploadAccess::Allowed => {}
+                UploadAccess::Bypassed => {
+                    debug!(user = %user.username, destination = %candidate.display(), "{}", LOG_UPLOAD_BYPASS_FOLDER_RESTRICTION);
+                }
+                UploadAccess::Denied => {
+                    return Err(TransferError::permission(
+                        err_upload_destination_not_allowed(locale),
+                    ));
+                }
             }
 
             // Create the destination directory and any intermediate directories
@@ -871,6 +911,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
     use tempfile::TempDir;
     use tokio::fs;
 
@@ -1405,5 +1446,95 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(err.kind, nexus_common::ERROR_KIND_PROTOCOL_ERROR);
+    }
+
+    // =========================================================================
+    // check_upload_access tests
+    // =========================================================================
+
+    fn make_user(is_admin: bool, extra: &[Permission]) -> AuthenticatedUser {
+        let mut permissions = HashSet::new();
+        for p in extra {
+            permissions.insert(*p);
+        }
+        AuthenticatedUser {
+            nickname: "tester".to_string(),
+            username: "tester".to_string(),
+            is_admin,
+            is_shared: false,
+            permissions,
+        }
+    }
+
+    #[test]
+    fn test_upload_access_normal_upload_folder() {
+        let temp_dir = TempDir::new().unwrap();
+        let area_root = temp_dir.path().canonicalize().unwrap();
+        let upload_dir = area_root.join("uploads [NEXUS-UL]");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+
+        let user = make_user(false, &[]);
+        assert_eq!(
+            check_upload_access(&user, &area_root, &upload_dir),
+            UploadAccess::Allowed
+        );
+    }
+
+    #[test]
+    fn test_upload_access_regular_folder_no_permission() {
+        let temp_dir = TempDir::new().unwrap();
+        let area_root = temp_dir.path().canonicalize().unwrap();
+        let regular_dir = area_root.join("docs");
+        std::fs::create_dir_all(&regular_dir).unwrap();
+
+        let user = make_user(false, &[]);
+        assert_eq!(
+            check_upload_access(&user, &area_root, &regular_dir),
+            UploadAccess::Denied
+        );
+    }
+
+    #[test]
+    fn test_upload_access_regular_folder_with_bypass_permission() {
+        let temp_dir = TempDir::new().unwrap();
+        let area_root = temp_dir.path().canonicalize().unwrap();
+        let regular_dir = area_root.join("docs");
+        std::fs::create_dir_all(&regular_dir).unwrap();
+
+        let user = make_user(false, &[Permission::FileUploadAnywhere]);
+        assert_eq!(
+            check_upload_access(&user, &area_root, &regular_dir),
+            UploadAccess::Bypassed
+        );
+    }
+
+    #[test]
+    fn test_upload_access_regular_folder_admin() {
+        let temp_dir = TempDir::new().unwrap();
+        let area_root = temp_dir.path().canonicalize().unwrap();
+        let regular_dir = area_root.join("docs");
+        std::fs::create_dir_all(&regular_dir).unwrap();
+
+        let user = make_user(true, &[]);
+        assert_eq!(
+            check_upload_access(&user, &area_root, &regular_dir),
+            UploadAccess::Bypassed
+        );
+    }
+
+    #[test]
+    fn test_upload_access_upload_folder_with_bypass_permission_still_normal() {
+        // Having FileUploadAnywhere doesn't flip a normal upload folder into
+        // the Bypassed state — we only log audit events for genuine bypasses.
+        let temp_dir = TempDir::new().unwrap();
+        let area_root = temp_dir.path().canonicalize().unwrap();
+        let upload_dir = area_root.join("uploads [NEXUS-UL]");
+        std::fs::create_dir_all(&upload_dir).unwrap();
+
+        let user = make_user(false, &[Permission::FileUploadAnywhere]);
+        assert_eq!(
+            check_upload_access(&user, &area_root, &upload_dir),
+            UploadAccess::Allowed
+        );
     }
 }

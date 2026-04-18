@@ -555,6 +555,8 @@ pub const LOG_CHANNEL_SETTINGS_PRUNED: &str = "Pruned stale channel settings";
 pub const LOG_CHANNELS_INITIALIZED: &str = "Initialized persistent channels";
 pub const LOG_FILE_INDEX_DIRTY: &str = "File index is dirty, triggering reindex";
 pub const LOG_FILE_INDEX_STALE: &str = "File index exceeded max age, triggering reindex";
+pub const LOG_UPLOAD_BYPASS_FOLDER_RESTRICTION: &str =
+    "Upload bypassed folder restriction via file_upload_anywhere";
 pub const LOG_VOICE_DTLS_FAILED: &str = "Voice DTLS listener failed";
 pub const LOG_VOICE_UNAVAILABLE: &str = "Voice chat will be unavailable";
 
