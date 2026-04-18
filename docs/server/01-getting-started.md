@@ -78,7 +78,7 @@ Data is stored in `/var/lib/nexusd/` (created automatically by systemd).
 
 Requirements:
 
-- Rust 1.91+ (2024 edition)
+- Rust 1.95+ (2024 edition)
 - Linux, macOS, or Windows
 
 ```bash

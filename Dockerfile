@@ -25,7 +25,7 @@
 #     nexus-server
 
 # Build stage
-FROM rust:1.91-bookworm AS builder
+FROM rust:1.95-bookworm AS builder
 WORKDIR /build
 
 # Copy workspace manifests first for dependency caching

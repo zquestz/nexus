@@ -73,7 +73,7 @@ yay -S nexus-client-git
 
 Requirements:
 
-- Rust 1.91+ (2024 edition)
+- Rust 1.95+ (2024 edition)
 - Linux only: ALSA development library
 
 ```bash
