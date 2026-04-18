@@ -209,6 +209,7 @@ permission-file_reindex = 檔案重建索引
 permission-file_root = 檔案根目錄
 permission-file_search = 檔案搜尋
 permission-file_upload = 上傳檔案
+permission-file_upload_anywhere = 任意位置上傳
 permission-ban_create = 建立封鎖
 permission-ban_delete = 刪除封鎖
 permission-ban_list = 封鎖列表

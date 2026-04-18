@@ -215,6 +215,7 @@ permission-file_reindex = Reindicizza File
 permission-file_root = Root File
 permission-file_search = Cerca File
 permission-file_upload = Carica File
+permission-file_upload_anywhere = Carica Ovunque
 permission-ban_create = Crea Ban
 permission-ban_delete = Elimina Ban
 permission-ban_list = Lista Ban

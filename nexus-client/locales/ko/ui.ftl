@@ -209,6 +209,7 @@ permission-file_reindex = 파일 재인덱스
 permission-file_root = 파일 루트
 permission-file_search = 파일 검색
 permission-file_upload = 파일 업로드
+permission-file_upload_anywhere = 어디에나 업로드
 permission-ban_create = 차단 생성
 permission-ban_delete = 차단 삭제
 permission-ban_list = 차단 목록

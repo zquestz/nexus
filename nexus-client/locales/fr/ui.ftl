@@ -216,6 +216,7 @@ permission-file_reindex = Réindexation Fichiers
 permission-file_root = Racine Fichiers
 permission-file_search = Recherche Fichiers
 permission-file_upload = Téléverser Fichier
+permission-file_upload_anywhere = Téléverser N'importe Où
 permission-ban_create = Créer Bannissement
 permission-ban_delete = Supprimer Bannissement
 permission-ban_list = Liste des Bannissements

@@ -176,7 +176,7 @@ Downloads are saved to your system's Downloads folder by default. You can change
 
 Uploading requires:
 
-1. `file_upload` permission
+1. `file_upload` or `file_upload_anywhere` permission
 2. Being in an upload-enabled folder
 
 ### Upload Files
@@ -352,20 +352,21 @@ Set limits to 0 for unlimited concurrent transfers.
 
 Your available actions depend on server permissions:
 
-| Permission        | Allows                             |
-| ----------------- | ---------------------------------- |
-| `file_list`       | Browse files and directories       |
-| `file_download`   | Download files                     |
-| `file_upload`     | Upload files (to upload folders)   |
-| `file_info`       | View detailed file information     |
-| `file_create_dir` | Create directories                 |
-| `file_rename`     | Rename files and directories       |
-| `file_move`       | Move files and directories         |
-| `file_copy`       | Copy files and directories         |
-| `file_delete`     | Delete files and directories       |
-| `file_root`       | Access entire file root (admin)    |
-| `file_search`     | Search files across your area      |
-| `file_reindex`    | Trigger file index rebuild (admin) |
+| Permission             | Allows                                 |
+| ---------------------- | -------------------------------------- |
+| `file_list`            | Browse files and directories           |
+| `file_download`        | Download files                         |
+| `file_upload`          | Upload files to upload/dropbox folders |
+| `file_upload_anywhere` | Upload files to any directory          |
+| `file_info`            | View detailed file information         |
+| `file_create_dir`      | Create directories                     |
+| `file_rename`          | Rename files and directories           |
+| `file_move`            | Move files and directories             |
+| `file_copy`            | Copy files and directories             |
+| `file_delete`          | Delete files and directories           |
+| `file_root`            | Access entire file root (admin)        |
+| `file_search`          | Search files across your area          |
+| `file_reindex`         | Trigger file index rebuild (admin)     |
 
 Admins automatically have all permissions.
 

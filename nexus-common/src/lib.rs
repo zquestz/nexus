@@ -339,6 +339,8 @@ mod tests {
         assert!(!is_shared_account_permission("file_rename"));
         assert!(!is_shared_account_permission("file_delete"));
         assert!(!is_shared_account_permission("file_create_dir"));
+        assert!(!is_shared_account_permission("file_upload_anywhere"));
+        assert!(!is_shared_account_permission("file_reindex"));
         assert!(!is_shared_account_permission("group_create"));
         assert!(!is_shared_account_permission("group_delete"));
         assert!(!is_shared_account_permission("group_edit"));

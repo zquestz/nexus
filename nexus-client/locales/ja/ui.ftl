@@ -209,6 +209,7 @@ permission-file_reindex = ファイル再インデックス
 permission-file_root = ファイルルート
 permission-file_search = ファイル検索
 permission-file_upload = ファイルアップロード
+permission-file_upload_anywhere = 任意の場所へアップロード
 permission-ban_create = BAN作成
 permission-ban_delete = BAN削除
 permission-ban_list = BANリスト

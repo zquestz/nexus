@@ -25,6 +25,8 @@ mod download;
 mod hashing;
 mod helpers;
 pub mod registry;
+#[cfg(test)]
+mod test_helpers;
 mod transfer;
 mod types;
 mod upload;

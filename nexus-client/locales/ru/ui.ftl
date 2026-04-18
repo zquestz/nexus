@@ -217,6 +217,7 @@ permission-file_reindex = Переиндексация Файлов
 permission-file_root = Корень Файлов
 permission-file_search = Поиск Файлов
 permission-file_upload = Загрузить Файл
+permission-file_upload_anywhere = Загрузить в Любое Место
 permission-ban_create = Создать Бан
 permission-ban_delete = Удалить Бан
 permission-ban_list = Список Банов

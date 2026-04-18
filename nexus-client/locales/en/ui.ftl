@@ -223,6 +223,7 @@ permission-file_reindex = File Reindex
 permission-file_root = File Root
 permission-file_search = File Search
 permission-file_upload = File Upload
+permission-file_upload_anywhere = File Upload Anywhere
 permission-ban_create = Ban Create
 permission-ban_delete = Ban Delete
 permission-ban_list = Ban List

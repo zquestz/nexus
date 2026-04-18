@@ -216,6 +216,7 @@ permission-file_reindex = Reindexar Archivos
 permission-file_root = Raíz de Archivos
 permission-file_search = Buscar Archivos
 permission-file_upload = Subir Archivo
+permission-file_upload_anywhere = Subir en Cualquier Lugar
 permission-ban_create = Crear Baneo
 permission-ban_delete = Eliminar Baneo
 permission-ban_list = Lista de Baneos

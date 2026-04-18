@@ -107,20 +107,21 @@ Permissions control what actions users can perform. Admins have all permissions 
 
 ### File Permissions
 
-| Permission        | Allows                           |
-| ----------------- | -------------------------------- |
-| `file_list`       | Browse files and directories     |
-| `file_download`   | Download files                   |
-| `file_upload`     | Upload files (to upload folders) |
-| `file_info`       | View file details                |
-| `file_create_dir` | Create directories               |
-| `file_rename`     | Rename files/directories         |
-| `file_move`       | Move files/directories           |
-| `file_copy`       | Copy files/directories           |
-| `file_delete`     | Delete files/directories         |
-| `file_root`       | Access entire file root          |
-| `file_search`     | Search files by name             |
-| `file_reindex`    | Trigger search index rebuild     |
+| Permission             | Allows                                 |
+| ---------------------- | -------------------------------------- |
+| `file_list`            | Browse files and directories           |
+| `file_download`        | Download files                         |
+| `file_upload`          | Upload files to upload/dropbox folders |
+| `file_upload_anywhere` | Upload files to any directory          |
+| `file_info`            | View file details                      |
+| `file_create_dir`      | Create directories                     |
+| `file_rename`          | Rename files/directories               |
+| `file_move`            | Move files/directories                 |
+| `file_copy`            | Copy files/directories                 |
+| `file_delete`          | Delete files/directories               |
+| `file_root`            | Access entire file root                |
+| `file_search`          | Search files by name                   |
+| `file_reindex`         | Trigger search index rebuild           |
 
 ### Ban Permissions
 
@@ -321,7 +322,7 @@ Shared accounts are limited to 21 allowed permissions:
 - **Bans/Trusts:** `ban_list`, `trust_list`
 - **Voice:** `voice_listen`, `voice_talk`
 
-All other permissions (administrative, moderation, and write operations like `chat_topic_edit`, `news_create`, `file_create_dir`, `user_kick`, `group_create`, etc.) are automatically removed.
+All other permissions (administrative, moderation, and write operations like `chat_topic_edit`, `news_create`, `file_create_dir`, `file_upload_anywhere`, `user_kick`, `group_create`, etc.) are automatically removed.
 
 Shared accounts can never be administrators.
 

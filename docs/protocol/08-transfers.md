@@ -459,20 +459,22 @@ Both sides use a `StreamingHasher` that supports clone-and-finalize (`partial_ha
 
 ## Permissions
 
-| Permission      | Required For                            |
-| --------------- | --------------------------------------- |
-| `file_download` | Downloading files                       |
-| `file_upload`   | Uploading files                         |
-| `file_root`     | Using `root: true` for file root access |
+| Permission             | Required For                              |
+| ---------------------- | ----------------------------------------- |
+| `file_download`        | Downloading files                         |
+| `file_upload`          | Uploading files to upload/dropbox folders |
+| `file_upload_anywhere` | Uploading files to any directory          |
+| `file_root`            | Using `root: true` for file root access   |
 
 ### Upload Destination Requirements
 
-Uploads are only allowed to:
+Uploads are allowed to:
 
-- `[NEXUS-UL]` folders (upload folders)
-- `[NEXUS-DB]` folders (dropbox folders)
+- `[NEXUS-UL]` folders (upload folders) — requires `file_upload` or `file_upload_anywhere`
+- `[NEXUS-DB]` folders (dropbox folders) — requires `file_upload` or `file_upload_anywhere`
+- Any other directory — requires `file_upload_anywhere`
 
-The server creates parent directories automatically if they don't exist (within the upload folder).
+The server creates parent directories automatically if they don't exist.
 
 ## Port 7501 Authentication
 

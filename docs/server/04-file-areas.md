@@ -157,20 +157,21 @@ Symlinks can point outside the file root. Only admins can create symlinks (via f
 
 File operations require specific permissions:
 
-| Permission        | Allows                           |
-| ----------------- | -------------------------------- |
-| `file_list`       | Browse directories               |
-| `file_download`   | Download files                   |
-| `file_upload`     | Upload files (to upload folders) |
-| `file_info`       | View file details                |
-| `file_create_dir` | Create directories               |
-| `file_rename`     | Rename files/directories         |
-| `file_move`       | Move files/directories           |
-| `file_copy`       | Copy files/directories           |
-| `file_delete`     | Delete files/directories         |
-| `file_root`       | Access entire file root (admin)  |
-| `file_search`     | Search files by name             |
-| `file_reindex`    | Trigger index rebuild (admin)    |
+| Permission             | Allows                                 |
+| ---------------------- | -------------------------------------- |
+| `file_list`            | Browse directories                     |
+| `file_download`        | Download files                         |
+| `file_upload`          | Upload files to upload/dropbox folders |
+| `file_upload_anywhere` | Upload files to any directory          |
+| `file_info`            | View file details                      |
+| `file_create_dir`      | Create directories                     |
+| `file_rename`          | Rename files/directories               |
+| `file_move`            | Move files/directories                 |
+| `file_copy`            | Copy files/directories                 |
+| `file_delete`          | Delete files/directories               |
+| `file_root`            | Access entire file root (admin)        |
+| `file_search`          | Search files by name                   |
+| `file_reindex`         | Trigger index rebuild (admin)          |
 
 Admins have all permissions automatically.
 
@@ -272,8 +273,8 @@ ls -la ~/.local/share/nexusd/files/users/
 
 ### Uploads not working
 
-1. Verify the folder has the `[NEXUS-UL]` suffix
-2. Check the user has `file_upload` permission
+1. Verify the folder has the `[NEXUS-UL]` suffix, or the user has `file_upload_anywhere`
+2. Check the user has `file_upload` or `file_upload_anywhere` permission
 3. Verify disk space is available
 
 ### Drop box contents not visible

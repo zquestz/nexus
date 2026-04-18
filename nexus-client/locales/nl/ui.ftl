@@ -216,6 +216,7 @@ permission-file_reindex = Bestanden Herindexeren
 permission-file_root = Bestandsroot
 permission-file_search = Bestanden Zoeken
 permission-file_upload = Bestand Uploaden
+permission-file_upload_anywhere = Overal Uploaden
 permission-ban_create = Ban Aanmaken
 permission-ban_delete = Ban Verwijderen
 permission-ban_list = Banlijst

@@ -215,6 +215,7 @@ permission-file_reindex = Datei-Neuindizierung
 permission-file_root = Datei-Root
 permission-file_search = Dateisuche
 permission-file_upload = Datei hochladen
+permission-file_upload_anywhere = Überall hochladen
 permission-ban_create = Sperre erstellen
 permission-ban_delete = Sperre aufheben
 permission-ban_list = Sperrliste

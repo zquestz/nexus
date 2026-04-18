@@ -103,6 +103,10 @@ pub(crate) const PERMISSION_FILE_DOWNLOAD: &str = "file_download";
 /// Permission to upload files
 pub(crate) const PERMISSION_FILE_UPLOAD: &str = "file_upload";
 
+/// Permission to upload files to any directory, bypassing upload/dropbox folder restriction.
+/// Either this or `file_upload` is sufficient to initiate an upload.
+pub(crate) const PERMISSION_FILE_UPLOAD_ANYWHERE: &str = "file_upload_anywhere";
+
 /// Permission to search files
 pub(crate) const PERMISSION_FILE_SEARCH: &str = "file_search";
 

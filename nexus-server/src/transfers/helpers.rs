@@ -137,6 +137,22 @@ pub(crate) fn check_permission(
     Ok(())
 }
 
+/// Check if the user has ANY of the required permissions
+///
+/// Returns `Ok(())` if the user is admin or holds at least one of the listed
+/// permissions, otherwise returns a permission error. Mirrors the client's
+/// `has_any_permission` idiom.
+pub(crate) fn check_any_permission(
+    user: &AuthenticatedUser,
+    permissions: &[Permission],
+    locale: &str,
+) -> Result<(), TransferError> {
+    if user.is_admin || permissions.iter().any(|p| user.permissions.contains(p)) {
+        return Ok(());
+    }
+    Err(TransferError::permission(err_permission_denied(locale)))
+}
+
 /// Check file_root permission if root mode is requested
 ///
 /// Returns `Ok(())` if root mode is not requested, or if the user has file_root permission.
@@ -330,6 +346,7 @@ pub(crate) fn generate_transfer_id() -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_helpers::make_authenticated_user;
     use super::*;
 
     #[test]
@@ -370,5 +387,60 @@ mod tests {
         let unique: std::collections::HashSet<_> = ids.iter().collect();
         // With 32 bits of randomness, collisions in 100 samples are extremely unlikely
         assert!(unique.len() >= 99);
+    }
+
+    #[test]
+    fn test_check_any_permission_admin_always_ok() {
+        let user = make_authenticated_user(true, &[]);
+        assert!(check_any_permission(&user, &[Permission::FileUpload], "en").is_ok());
+    }
+
+    #[test]
+    fn test_check_any_permission_admin_with_empty_list_ok() {
+        // Admin should pass regardless of the permission list, even if empty.
+        let user = make_authenticated_user(true, &[]);
+        assert!(check_any_permission(&user, &[], "en").is_ok());
+    }
+
+    #[test]
+    fn test_check_any_permission_has_first() {
+        let user = make_authenticated_user(false, &[Permission::FileUpload]);
+        let result = check_any_permission(
+            &user,
+            &[Permission::FileUpload, Permission::FileUploadAnywhere],
+            "en",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_any_permission_has_second() {
+        // This is the scenario that motivated the helper: holding only
+        // FileUploadAnywhere (without the base FileUpload) still grants upload.
+        let user = make_authenticated_user(false, &[Permission::FileUploadAnywhere]);
+        let result = check_any_permission(
+            &user,
+            &[Permission::FileUpload, Permission::FileUploadAnywhere],
+            "en",
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_any_permission_has_neither() {
+        let user = make_authenticated_user(false, &[Permission::FileList]);
+        let result = check_any_permission(
+            &user,
+            &[Permission::FileUpload, Permission::FileUploadAnywhere],
+            "en",
+        );
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().kind, ERROR_KIND_PERMISSION);
+    }
+
+    #[test]
+    fn test_check_any_permission_empty_list_rejects_non_admin() {
+        let user = make_authenticated_user(false, &[Permission::FileUpload]);
+        assert!(check_any_permission(&user, &[], "en").is_err());
     }
 }

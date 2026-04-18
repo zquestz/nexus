@@ -38,7 +38,7 @@ use super::hashing::{
     FALLBACK_FILE_NAME, FALLBACK_PART_FILE_NAME, HashingWriter, hash_file_with_keepalives,
 };
 use super::helpers::{
-    TransferError, build_validated_path, check_permission, check_root_permission,
+    TransferError, build_validated_path, check_any_permission, check_root_permission,
     generate_transfer_id, path_error_to_transfer_error, resolve_area_root,
     send_upload_transfer_error, validate_transfer_path,
 };
@@ -112,6 +112,7 @@ where
     let mut transfer_success = true;
     let mut transfer_error: Option<String> = None;
     let mut transfer_error_kind: Option<String> = None;
+    let mut uploaded_files: Vec<String> = Vec::new();
 
     for file_index in 0..file_count {
         let params = ReceiveFileParams {
@@ -122,8 +123,8 @@ where
             file_index,
         };
         match receive_file(transfer, params).await {
-            Ok(()) => {
-                // bytes_transferred is updated inside receive_file
+            Ok(relative_path) => {
+                uploaded_files.push(relative_path);
             }
             Err(ReceiveFileError::Banned) => {
                 // Just close the socket - client gets ban reason on BBS connection
@@ -157,9 +158,9 @@ where
     let _ = transfer.send(&complete).await; // Best effort - connection may be closing
 
     if transfer_success {
-        info!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %destination, "{}", LOG_UPLOAD_COMPLETE);
+        info!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %destination, files = ?uploaded_files, "{}", LOG_UPLOAD_COMPLETE);
     } else {
-        warn!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %destination, "{}", LOG_UPLOAD_FAILED);
+        warn!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %destination, files = ?uploaded_files, "{}", LOG_UPLOAD_FAILED);
     }
 
     // Mark file index as dirty on successful upload so it gets rebuilt
@@ -209,11 +210,12 @@ impl From<StreamError> for ReceiveFileError {
 
 /// Receive a single file from the client
 ///
-/// Returns `Ok(())` on success, or `Err(ReceiveFileError)` on failure.
+/// Returns `Ok(relative_path)` of the successfully received file on success,
+/// or `Err(ReceiveFileError)` on failure.
 async fn receive_file<R, W>(
     transfer: &mut Transfer<'_, R, W>,
     params: ReceiveFileParams<'_>,
-) -> Result<(), ReceiveFileError>
+) -> Result<String, ReceiveFileError>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
@@ -373,7 +375,7 @@ where
         }
     }
 
-    Ok(())
+    Ok(relative_path)
 }
 
 // =============================================================================
@@ -381,7 +383,7 @@ where
 // =============================================================================
 
 /// Result of an upload folder-access check.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum UploadAccess {
     /// Path is inside an upload/dropbox folder — normal case, no bypass needed.
     Allowed,
@@ -425,8 +427,14 @@ where
     // Validate destination path
     validate_transfer_path(destination, locale)?;
 
-    // Check upload permission
-    check_permission(user, Permission::FileUpload, locale)?;
+    // Check upload permission — either FileUpload or FileUploadAnywhere suffices.
+    // FileUploadAnywhere implies upload capability plus folder-restriction bypass,
+    // so it stands alone as a complete grant.
+    check_any_permission(
+        user,
+        &[Permission::FileUpload, Permission::FileUploadAnywhere],
+        locale,
+    )?;
 
     // Check file_root permission if using root mode
     check_root_permission(user, use_root, locale)?;
@@ -450,7 +458,7 @@ where
             match check_upload_access(user, &area_root, &path) {
                 UploadAccess::Allowed => {}
                 UploadAccess::Bypassed => {
-                    debug!(user = %user.username, destination = %path.display(), "{}", LOG_UPLOAD_BYPASS_FOLDER_RESTRICTION);
+                    info!(user = %user.username, destination = %path.display(), "{}", LOG_UPLOAD_BYPASS_FOLDER_RESTRICTION);
                 }
                 UploadAccess::Denied => {
                     return Err(TransferError::permission(
@@ -486,7 +494,7 @@ where
             match check_upload_access(user, &area_root, &resolved_ancestor) {
                 UploadAccess::Allowed => {}
                 UploadAccess::Bypassed => {
-                    debug!(user = %user.username, destination = %candidate.display(), "{}", LOG_UPLOAD_BYPASS_FOLDER_RESTRICTION);
+                    info!(user = %user.username, destination = %candidate.display(), "{}", LOG_UPLOAD_BYPASS_FOLDER_RESTRICTION);
                 }
                 UploadAccess::Denied => {
                     return Err(TransferError::permission(
@@ -534,23 +542,21 @@ fn validate_and_build_upload_paths(
     let target_path = destination.join(relative_path);
     let part_path = PathBuf::from(format!("{}{}", target_path.display(), PART_SUFFIX));
 
-    // Compute the path relative to area_root for validation
-    // destination is already validated to be under area_root, so we can strip_prefix
-    let relative_to_root = match destination.strip_prefix(area_root) {
-        Ok(rel) => rel.join(relative_path),
-        Err(_) => {
-            // destination is not under area_root - this shouldn't happen
-            // if validate_and_resolve_upload_destination was called first
-            return Err(TransferError::invalid(err_upload_path_invalid(locale)));
-        }
-    };
-
-    // Validate the path doesn't contain traversal attempts
-    // Note: We don't call resolve_new_path here because parent directories may not exist yet
-    // when uploading a directory structure. The security validation in build_and_validate_candidate_path
-    // is sufficient (it rejects ".." traversal), and stream_to_part_file/create_empty_file
-    // will create parent directories as needed.
-    if validate_and_build_candidate_path(area_root, &relative_to_root.to_string_lossy()).is_err() {
+    // Validate `relative_path` for ".." traversal.
+    //
+    // We intentionally do NOT reconstruct "area_root-relative" by stripping
+    // area_root from destination: `destination` is the canonicalized path
+    // returned from `resolve_path`, and may point outside area_root when a
+    // path segment is an admin-created symlink to external storage (e.g.
+    // `shared/Music -> /home/user/Music`). Admin-created symlinks are
+    // trusted by design, so a canonical destination outside area_root is
+    // legitimate here. strip_prefix would spuriously reject those uploads.
+    //
+    // Security: `destination` contains no ".." (canonical paths can't);
+    // `relative_path` is explicitly validated for ".." below. The joined
+    // `target_path` therefore cannot introduce traversal. Parent directories
+    // for nested `relative_path` values are created on demand during stream.
+    if validate_and_build_candidate_path(area_root, relative_path).is_err() {
         return Err(TransferError::invalid(err_upload_path_invalid(locale)));
     }
 
@@ -910,8 +916,9 @@ where
 
 #[cfg(test)]
 mod tests {
+    use super::super::test_helpers::make_authenticated_user;
     use super::*;
-    use std::collections::HashSet;
+    use nexus_common::ERROR_KIND_INVALID;
     use tempfile::TempDir;
     use tokio::fs;
 
@@ -973,8 +980,6 @@ mod tests {
 
     #[test]
     fn test_validate_paths_empty_rejected() {
-        use nexus_common::ERROR_KIND_INVALID;
-
         let temp_dir = TempDir::new().unwrap();
         let area_root = temp_dir.path().canonicalize().unwrap();
         let result = validate_and_build_upload_paths("", &area_root, &area_root, TEST_LOCALE);
@@ -1038,8 +1043,6 @@ mod tests {
 
     #[test]
     fn test_validate_paths_traversal_rejected() {
-        use nexus_common::ERROR_KIND_INVALID;
-
         let temp_dir = TempDir::new().unwrap();
         let area_root = temp_dir.path().canonicalize().unwrap();
         let destination = area_root.join("uploads");
@@ -1070,6 +1073,49 @@ mod tests {
             TEST_LOCALE,
         );
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_paths_destination_outside_area_root() {
+        // Regression: admin-created symlinks may resolve destination outside
+        // area_root. Before the fix, this triggered a strip_prefix failure
+        // and rejected the upload with err_upload_path_invalid. Now the
+        // relative_path is validated independently of area_root, so uploads
+        // to symlinked destinations succeed.
+        let area_root_dir = TempDir::new().unwrap();
+        let external_dir = TempDir::new().unwrap();
+        let area_root = area_root_dir.path().canonicalize().unwrap();
+        let destination = external_dir.path().canonicalize().unwrap();
+
+        assert!(
+            destination.strip_prefix(&area_root).is_err(),
+            "test precondition: destination must be outside area_root"
+        );
+
+        let result =
+            validate_and_build_upload_paths("file.txt", &destination, &area_root, TEST_LOCALE);
+        assert!(
+            result.is_ok(),
+            "uploads to destinations outside area_root (via admin symlinks) should succeed"
+        );
+        let (target, _) = result.unwrap();
+        assert_eq!(target, destination.join("file.txt"));
+    }
+
+    #[test]
+    fn test_validate_paths_traversal_rejected_with_external_destination() {
+        // Even for external (symlinked) destinations, traversal in relative_path
+        // must still be rejected.
+        let area_root_dir = TempDir::new().unwrap();
+        let external_dir = TempDir::new().unwrap();
+        let area_root = area_root_dir.path().canonicalize().unwrap();
+        let destination = external_dir.path().canonicalize().unwrap();
+
+        let result =
+            validate_and_build_upload_paths("../escape.txt", &destination, &area_root, TEST_LOCALE);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert_eq!(err.kind, ERROR_KIND_INVALID);
     }
 
     #[test]
@@ -1452,20 +1498,6 @@ mod tests {
     // check_upload_access tests
     // =========================================================================
 
-    fn make_user(is_admin: bool, extra: &[Permission]) -> AuthenticatedUser {
-        let mut permissions = HashSet::new();
-        for p in extra {
-            permissions.insert(*p);
-        }
-        AuthenticatedUser {
-            nickname: "tester".to_string(),
-            username: "tester".to_string(),
-            is_admin,
-            is_shared: false,
-            permissions,
-        }
-    }
-
     #[test]
     fn test_upload_access_normal_upload_folder() {
         let temp_dir = TempDir::new().unwrap();
@@ -1473,7 +1505,7 @@ mod tests {
         let upload_dir = area_root.join("uploads [NEXUS-UL]");
         std::fs::create_dir_all(&upload_dir).unwrap();
 
-        let user = make_user(false, &[]);
+        let user = make_authenticated_user(false, &[]);
         assert_eq!(
             check_upload_access(&user, &area_root, &upload_dir),
             UploadAccess::Allowed
@@ -1487,7 +1519,7 @@ mod tests {
         let regular_dir = area_root.join("docs");
         std::fs::create_dir_all(&regular_dir).unwrap();
 
-        let user = make_user(false, &[]);
+        let user = make_authenticated_user(false, &[]);
         assert_eq!(
             check_upload_access(&user, &area_root, &regular_dir),
             UploadAccess::Denied
@@ -1501,7 +1533,7 @@ mod tests {
         let regular_dir = area_root.join("docs");
         std::fs::create_dir_all(&regular_dir).unwrap();
 
-        let user = make_user(false, &[Permission::FileUploadAnywhere]);
+        let user = make_authenticated_user(false, &[Permission::FileUploadAnywhere]);
         assert_eq!(
             check_upload_access(&user, &area_root, &regular_dir),
             UploadAccess::Bypassed
@@ -1515,7 +1547,7 @@ mod tests {
         let regular_dir = area_root.join("docs");
         std::fs::create_dir_all(&regular_dir).unwrap();
 
-        let user = make_user(true, &[]);
+        let user = make_authenticated_user(true, &[]);
         assert_eq!(
             check_upload_access(&user, &area_root, &regular_dir),
             UploadAccess::Bypassed
@@ -1531,7 +1563,7 @@ mod tests {
         let upload_dir = area_root.join("uploads [NEXUS-UL]");
         std::fs::create_dir_all(&upload_dir).unwrap();
 
-        let user = make_user(false, &[Permission::FileUploadAnywhere]);
+        let user = make_authenticated_user(false, &[Permission::FileUploadAnywhere]);
         assert_eq!(
             check_upload_access(&user, &area_root, &upload_dir),
             UploadAccess::Allowed

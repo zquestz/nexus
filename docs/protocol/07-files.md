@@ -715,20 +715,21 @@ When `root: true`, paths are relative to the file root instead of the user's are
 
 ## Permissions
 
-| Permission        | Required For                                      |
-| ----------------- | ------------------------------------------------- |
-| `file_list`       | Browse files and directories                      |
-| `file_info`       | View detailed file information                    |
-| `file_create_dir` | Create directories (in upload folders)            |
-| `file_copy`       | Copy files and directories                        |
-| `file_delete`     | Delete files and empty directories                |
-| `file_download`   | Download files (see [transfers](08-transfers.md)) |
-| `file_upload`     | Upload files (see [transfers](08-transfers.md))   |
-| `file_move`       | Move files and directories                        |
-| `file_rename`     | Rename files and directories                      |
-| `file_root`       | Access entire file root (admin)                   |
-| `file_search`     | Search files by name                              |
-| `file_reindex`    | Trigger file index rebuild                        |
+| Permission             | Required For                                      |
+| ---------------------- | ------------------------------------------------- |
+| `file_list`            | Browse files and directories                      |
+| `file_info`            | View detailed file information                    |
+| `file_create_dir`      | Create directories (in upload folders)            |
+| `file_copy`            | Copy files and directories                        |
+| `file_delete`          | Delete files and empty directories                |
+| `file_download`        | Download files (see [transfers](08-transfers.md)) |
+| `file_upload`          | Upload files to upload/dropbox folders            |
+| `file_upload_anywhere` | Upload files to any directory                     |
+| `file_move`            | Move files and directories                        |
+| `file_rename`          | Rename files and directories                      |
+| `file_root`            | Access entire file root (admin)                   |
+| `file_search`          | Search files by name                              |
+| `file_reindex`         | Trigger file index rebuild                        |
 
 Admins have all permissions automatically.
 

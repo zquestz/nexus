@@ -209,6 +209,7 @@ permission-file_reindex = 文件重建索引
 permission-file_root = 文件根目录
 permission-file_search = 文件搜索
 permission-file_upload = 上传文件
+permission-file_upload_anywhere = 任意位置上传
 permission-ban_create = 创建封禁
 permission-ban_delete = 删除封禁
 permission-ban_list = 封禁列表

@@ -9,11 +9,10 @@ use super::strip_leading_slash;
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, FileSortColumn, Message, PendingRequests, ResponseRouting};
+use crate::views::constants::{PERMISSION_FILE_UPLOAD, PERMISSION_FILE_UPLOAD_ANYWHERE};
 
 impl NexusApp {
     pub fn can_accept_file_drop(&self) -> bool {
-        use crate::views::constants::PERMISSION_FILE_UPLOAD;
-
         let Some(conn_id) = self.active_connection else {
             return false;
         };
@@ -26,8 +25,8 @@ impl NexusApp {
             return false;
         }
 
-        // Must have file_upload permission
-        if !conn.has_permission(PERMISSION_FILE_UPLOAD) {
+        // Must have upload capability — either permission works.
+        if !conn.has_any_permission(&[PERMISSION_FILE_UPLOAD, PERMISSION_FILE_UPLOAD_ANYWHERE]) {
             return false;
         }
 
