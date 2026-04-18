@@ -89,6 +89,7 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `file_rename`: Rename files and directories
 /// - `file_root`: Browse entire file area from root (for admins/file managers)
 /// - `file_upload`: Upload files to upload/dropbox folders
+/// - `file_upload_anywhere`: Upload files to any directory, bypassing upload/dropbox folder restriction
 /// - `group_create`: Create new account groups
 /// - `group_delete`: Delete account groups
 /// - `group_edit`: Edit account group name and permissions
@@ -135,6 +136,7 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "file_root",
     "file_search",
     "file_upload",
+    "file_upload_anywhere",
     "group_create",
     "group_delete",
     "group_edit",
@@ -284,8 +286,8 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (45)
-        assert_eq!(ALL_PERMISSIONS.len(), 45);
+        // Verify we have the expected number of permissions (46)
+        assert_eq!(ALL_PERMISSIONS.len(), 46);
     }
 
     #[test]
