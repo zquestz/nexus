@@ -2104,12 +2104,9 @@ mod tests {
                 ServerMessage::UserUpdated {
                     ref previous_username,
                     ref user,
-                } => {
-                    // We care about bob's UserUpdated (admin's would have same data)
-                    if previous_username == "bob" {
-                        assert_eq!(user.group_name, Some("Moderators".to_string()));
-                        got_user_updated = true;
-                    }
+                } if previous_username == "bob" => {
+                    assert_eq!(user.group_name, Some("Moderators".to_string()));
+                    got_user_updated = true;
                 }
                 ServerMessage::PermissionsUpdated {
                     ref permissions,
