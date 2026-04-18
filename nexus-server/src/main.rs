@@ -665,10 +665,15 @@ async fn main() {
                 // Sleep for the configured interval
                 tokio::time::sleep(Duration::from_secs(u64::from(interval_minutes) * 60)).await;
 
-                // Check if dirty and not already reindexing
-                if file_index_for_timer.is_dirty() && !file_index_for_timer.is_reindexing() {
-                    debug!("{}", LOG_FILE_INDEX_DIRTY);
-                    file_index_for_timer.trigger_reindex();
+                // Check if dirty (or stale from external changes) and not already reindexing
+                if !file_index_for_timer.is_reindexing() {
+                    if file_index_for_timer.is_dirty() {
+                        debug!("{}", LOG_FILE_INDEX_DIRTY);
+                        file_index_for_timer.trigger_reindex();
+                    } else if file_index_for_timer.is_stale(FILE_INDEX_MAX_AGE) {
+                        debug!("{}", LOG_FILE_INDEX_STALE);
+                        file_index_for_timer.trigger_reindex();
+                    }
                 }
             }
         } => {}

@@ -27,8 +27,8 @@ use std::fs::{self, File};
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::SystemTime;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::{Duration, SystemTime};
 
 use csv::{ReaderBuilder, WriterBuilder};
 use grep_regex::RegexMatcher;
@@ -62,6 +62,8 @@ pub struct FileIndex {
     dirty: AtomicBool,
     /// Whether a reindex is currently in progress
     reindexing: AtomicBool,
+    /// Unix timestamp (seconds) of the last successful rebuild; 0 means never.
+    last_rebuild_secs: AtomicU64,
 }
 
 impl FileIndex {
@@ -76,6 +78,7 @@ impl FileIndex {
             file_root: file_root.to_path_buf(),
             dirty: AtomicBool::new(false),
             reindexing: AtomicBool::new(false),
+            last_rebuild_secs: AtomicU64::new(0),
         }
     }
 
@@ -99,6 +102,17 @@ impl FileIndex {
     /// Check if the index file exists
     pub fn exists(&self) -> bool {
         self.index_path.exists()
+    }
+
+    /// Whether more than `max_age` has passed since the last successful rebuild.
+    /// Catches external filesystem changes that never went through a handler.
+    pub fn is_stale(&self, max_age: Duration) -> bool {
+        let last = self.last_rebuild_secs.load(Ordering::Relaxed);
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        now.saturating_sub(last) >= max_age.as_secs()
     }
 
     /// Trigger a reindex if not already running
@@ -234,6 +248,12 @@ impl FileIndex {
         // Atomic rename
         fs::rename(&self.temp_path, &self.index_path)
             .map_err(|e| format!("Failed to swap index file: {}", e))?;
+
+        let now_secs = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        self.last_rebuild_secs.store(now_secs, Ordering::Relaxed);
 
         Ok(count)
     }
@@ -419,6 +439,28 @@ mod tests {
         assert!(!index.is_dirty());
         index.mark_dirty();
         assert!(index.is_dirty());
+    }
+
+    #[test]
+    fn test_is_stale() {
+        let temp_dir = TempDir::new().unwrap();
+        let data_dir = temp_dir.path().join("data");
+        let file_root = temp_dir.path().join("files");
+        fs::create_dir_all(&data_dir).unwrap();
+        fs::create_dir_all(&file_root).unwrap();
+
+        let index = FileIndex::new(&data_dir, &file_root);
+
+        // Never rebuilt → stale under any max_age.
+        assert!(index.is_stale(Duration::from_secs(60)));
+        assert!(index.is_stale(Duration::from_secs(86400)));
+
+        // After a successful rebuild, not stale under a large max_age.
+        index.build_index().unwrap();
+        assert!(!index.is_stale(Duration::from_secs(3600)));
+
+        // Stale under a zero max_age (any elapsed time qualifies).
+        assert!(index.is_stale(Duration::from_secs(0)));
     }
 
     #[test]

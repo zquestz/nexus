@@ -57,6 +57,10 @@ pub const CONFIG_KEY_FILE_REINDEX_INTERVAL: &str = "file_reindex_interval";
 /// A value of 0 disables automatic reindexing.
 pub const DEFAULT_FILE_REINDEX_INTERVAL: u32 = 5;
 
+/// Max age before a forced reindex runs even if nothing was marked dirty,
+/// so external filesystem changes (e.g. admin adds files via SSH) are picked up.
+pub const FILE_INDEX_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+
 // =============================================================================
 // Database Validation Errors (defense-in-depth, operator-facing)
 // =============================================================================
@@ -550,6 +554,7 @@ pub const LOG_CHANNEL_SETTINGS_DELETE_FAILED: &str = "Failed to delete stale cha
 pub const LOG_CHANNEL_SETTINGS_PRUNED: &str = "Pruned stale channel settings";
 pub const LOG_CHANNELS_INITIALIZED: &str = "Initialized persistent channels";
 pub const LOG_FILE_INDEX_DIRTY: &str = "File index is dirty, triggering reindex";
+pub const LOG_FILE_INDEX_STALE: &str = "File index exceeded max age, triggering reindex";
 pub const LOG_VOICE_DTLS_FAILED: &str = "Voice DTLS listener failed";
 pub const LOG_VOICE_UNAVAILABLE: &str = "Voice chat will be unavailable";
 
