@@ -138,7 +138,7 @@ where
             .collect();
 
         // Sort by username case-insensitively
-        user_infos.sort_by(|a, b| a.username.to_lowercase().cmp(&b.username.to_lowercase()));
+        user_infos.sort_by_key(|u| u.username.to_lowercase());
 
         let response = ServerMessage::UserListResponse {
             success: true,
@@ -244,7 +244,7 @@ where
     user_infos.extend(shared_user_infos);
 
     // Sort by nickname (display name) case-insensitively
-    user_infos.sort_by(|a, b| a.nickname.to_lowercase().cmp(&b.nickname.to_lowercase()));
+    user_infos.sort_by_key(|u| u.nickname.to_lowercase());
 
     // Send user list response
     let response = ServerMessage::UserListResponse {

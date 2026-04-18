@@ -1,7 +1,7 @@
 //! Handler for UserMessage command
 
 use std::io;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use tokio::io::AsyncWrite;
 use tracing::warn;
@@ -72,7 +72,7 @@ where
         }
     } else {
         let burst = ctx.flood_config.burst();
-        match flood_tracker.check(burst, rate) {
+        match flood_tracker.check(burst, rate, Instant::now()) {
             FloodCheck::Allowed => {}
             FloodCheck::Limited {
                 wait_seconds,

@@ -7,7 +7,7 @@ use crate::types::UserInfo;
 /// The nickname is always the display name - for regular accounts it equals the username,
 /// for shared accounts it's the session-specific nickname.
 pub fn sort_user_list(users: &mut [UserInfo]) {
-    users.sort_by(|a, b| a.nickname.to_lowercase().cmp(&b.nickname.to_lowercase()));
+    users.sort_by_key(|u| u.nickname.to_lowercase());
 }
 
 /// Format session duration in human-readable form

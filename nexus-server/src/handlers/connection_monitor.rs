@@ -71,7 +71,7 @@ where
         .collect();
 
     // Sort alphabetically by nickname
-    connections.sort_by(|a, b| a.nickname.to_lowercase().cmp(&b.nickname.to_lowercase()));
+    connections.sort_by_key(|c| c.nickname.to_lowercase());
 
     // Get active transfers from registry
     let mut transfers: Vec<_> = ctx
@@ -82,7 +82,7 @@ where
         .collect();
 
     // Sort transfers by nickname
-    transfers.sort_by(|a, b| a.nickname.to_lowercase().cmp(&b.nickname.to_lowercase()));
+    transfers.sort_by_key(|t| t.nickname.to_lowercase());
 
     let response = ServerMessage::ConnectionMonitorResponse {
         success: true,
