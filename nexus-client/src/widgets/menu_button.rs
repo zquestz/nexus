@@ -222,19 +222,19 @@ where
 
         match event {
             Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Left))
-            | Event::Touch(iced::touch::Event::FingerPressed { .. }) => {
-                if is_over && self.on_press.is_some() {
-                    state.is_pressed = true;
-                    shell.capture_event();
-                }
+            | Event::Touch(iced::touch::Event::FingerPressed { .. })
+                if is_over && self.on_press.is_some() =>
+            {
+                state.is_pressed = true;
+                shell.capture_event();
             }
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left))
-            | Event::Touch(iced::touch::Event::FingerLifted { .. }) => {
-                if state.is_pressed {
-                    state.is_pressed = false;
-                    if is_over && let Some(on_press) = self.on_press.clone() {
-                        shell.publish(on_press);
-                    }
+            | Event::Touch(iced::touch::Event::FingerLifted { .. })
+                if state.is_pressed =>
+            {
+                state.is_pressed = false;
+                if is_over && let Some(on_press) = self.on_press.clone() {
+                    shell.publish(on_press);
                 }
             }
             Event::Touch(iced::touch::Event::FingerLost { .. }) => {
