@@ -276,8 +276,8 @@ fn build_lazy_context_menu(
         );
     }
 
-    // Upload
-    if perms.file_upload && is_dir && can_upload {
+    // Upload (compose folder flag with the file_upload_anywhere bypass)
+    if is_dir && perms.effective_can_upload(can_upload) {
         menu_items.push(
             MenuButton::new(shaped_text(t("context-menu-upload")).size(TEXT_SIZE))
                 .padding(CONTEXT_MENU_ITEM_PADDING)

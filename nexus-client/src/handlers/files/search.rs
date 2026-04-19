@@ -8,34 +8,9 @@ use super::sort_search_results;
 use super::strip_leading_slash;
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
-use crate::types::{ActivePanel, FileSortColumn, Message, PendingRequests, ResponseRouting};
-use crate::views::constants::{PERMISSION_FILE_UPLOAD, PERMISSION_FILE_UPLOAD_ANYWHERE};
+use crate::types::{FileSortColumn, Message, PendingRequests, ResponseRouting};
 
 impl NexusApp {
-    pub fn can_accept_file_drop(&self) -> bool {
-        let Some(conn_id) = self.active_connection else {
-            return false;
-        };
-        let Some(conn) = self.connections.get(&conn_id) else {
-            return false;
-        };
-
-        // Must be in Files panel
-        if conn.active_panel != ActivePanel::Files {
-            return false;
-        }
-
-        // Must have upload capability — either permission works.
-        if !conn.has_any_permission(&[PERMISSION_FILE_UPLOAD, PERMISSION_FILE_UPLOAD_ANYWHERE]) {
-            return false;
-        }
-
-        // Current directory must allow uploads
-        conn.files_management.active_tab().current_dir_can_upload
-    }
-
-    // ==================== File Search ====================
-
     /// Handle search input text change
     pub fn handle_file_search_input_changed(&mut self, value: String) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {

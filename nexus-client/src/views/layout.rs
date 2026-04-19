@@ -990,6 +990,9 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 file_upload: ctx
                     .conn
                     .has_any_permission(&[PERMISSION_FILE_UPLOAD, PERMISSION_FILE_UPLOAD_ANYWHERE]),
+                // The bypass bit lets the view compose with per-folder
+                // `can_upload` to decide where upload UI should be active.
+                file_upload_anywhere: ctx.conn.has_permission(PERMISSION_FILE_UPLOAD_ANYWHERE),
                 file_search: ctx.conn.has_permission(PERMISSION_FILE_SEARCH),
             };
             stack![

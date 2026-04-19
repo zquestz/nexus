@@ -6,8 +6,9 @@ use iced_toasts::{ToastLevel, toast};
 use super::sanitize_filename;
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
-use crate::types::{FilesManagementState, Message};
+use crate::types::{ActivePanel, FilesManagementState, Message};
 use crate::uri::url_encode_path;
+use crate::views::constants::{PERMISSION_FILE_UPLOAD, PERMISSION_FILE_UPLOAD_ANYWHERE};
 
 impl NexusApp {
     // ==================== Share ====================
@@ -303,6 +304,34 @@ impl NexusApp {
     }
 
     // ==================== Drag and Drop ====================
+
+    /// Whether a drag-and-drop file upload would be accepted right now.
+    ///
+    /// Requires: Files panel active, any upload permission, and either the
+    /// current folder is an upload/dropbox type OR the user has the
+    /// `file_upload_anywhere` bypass.
+    pub fn can_accept_file_drop(&self) -> bool {
+        let Some(conn_id) = self.active_connection else {
+            return false;
+        };
+        let Some(conn) = self.connections.get(&conn_id) else {
+            return false;
+        };
+
+        // Must be in Files panel
+        if conn.active_panel != ActivePanel::Files {
+            return false;
+        }
+
+        // Must have upload capability — either permission works.
+        if !conn.has_any_permission(&[PERMISSION_FILE_UPLOAD, PERMISSION_FILE_UPLOAD_ANYWHERE]) {
+            return false;
+        }
+
+        // Folder must allow uploads, OR the user's file_upload_anywhere bypass applies.
+        conn.files_management.active_tab().current_dir_can_upload
+            || conn.has_permission(PERMISSION_FILE_UPLOAD_ANYWHERE)
+    }
 
     /// Handle file being dragged over window
     ///

@@ -28,14 +28,14 @@ use crate::files::{
 /// Returns None if the directory cannot be read, Some(entries) otherwise.
 /// Entries are sorted with directories first, then by name.
 ///
-/// `user_bypasses_upload_folders` lets admins and `FileUploadAnywhere` holders
-/// see `can_upload: true` on every directory (not just `[NEXUS-UL]`/`[NEXUS-DB]`),
-/// matching the server's actual upload-path enforcement.
+/// `can_upload` on each entry is a pure folder-type flag (`allows_upload`). The
+/// client composes it with the user's upload permissions to decide whether to
+/// show upload UI; this lets `file_upload_anywhere` grants take effect
+/// immediately on permission change without requiring a file-list refresh.
 fn read_directory_entries(
     resolved: &Path,
     area_root: &Path,
     show_hidden: bool,
-    user_bypasses_upload_folders: bool,
 ) -> Option<Vec<FileEntry>> {
     let read_dir = std::fs::read_dir(resolved).ok()?;
 
@@ -71,11 +71,9 @@ fn read_directory_entries(
             None
         };
 
-        // Check if uploads are allowed at this path
-        // (bypassed by admin / FileUploadAnywhere)
+        // Check if uploads are allowed at this path (pure folder-type flag).
         let entry_path = resolved.join(&file_name);
-        let can_upload =
-            is_dir && (user_bypasses_upload_folders || allows_upload(area_root, &entry_path));
+        let can_upload = is_dir && allows_upload(area_root, &entry_path);
 
         // Get file size (0 for directories)
         let size = if is_dir { 0 } else { metadata.len() };
@@ -290,14 +288,10 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check if the current directory allows uploads (for the New Directory button).
-    // Admins and FileUploadAnywhere holders bypass the folder-type restriction, matching
-    // the actual upload handler's behavior so the UI isn't disabled on uploads the server
-    // would accept.
-    let user_bypasses_upload_folders =
-        requesting_user.is_admin || requesting_user.has_permission(Permission::FileUploadAnywhere);
-    let current_dir_can_upload =
-        user_bypasses_upload_folders || allows_upload(&area_root, &resolved);
+    // Check if the current directory allows uploads (pure folder-type flag).
+    // The client composes this with the user's upload permissions (including the
+    // `file_upload_anywhere` bypass) when deciding whether to show upload UI.
+    let current_dir_can_upload = allows_upload(&area_root, &resolved);
 
     // Check if we're inside a dropbox - if unauthorized, return empty listing
     // This check is done once before the loop for efficiency
@@ -320,12 +314,7 @@ where
     let resolved_clone = resolved.clone();
     let area_root_clone = area_root.clone();
     let entries = tokio::task::spawn_blocking(move || {
-        read_directory_entries(
-            &resolved_clone,
-            &area_root_clone,
-            show_hidden,
-            user_bypasses_upload_folders,
-        )
+        read_directory_entries(&resolved_clone, &area_root_clone, show_hidden)
     })
     .await;
 
@@ -899,15 +888,7 @@ mod tests {
         fs::create_dir(file_area.path().join("shared/Downloads [NEXUS-UL]"))
             .expect("Failed to create Downloads [NEXUS-UL]");
 
-        // Non-admin without FileUploadAnywhere — can_upload should depend on folder type.
-        let session_id = login_user(
-            &mut test_ctx,
-            "alice",
-            "password",
-            &[Permission::FileList],
-            false,
-        )
-        .await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_file_list(
             "/".to_string(),
@@ -1132,15 +1113,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let _file_area = setup_file_area_full(&mut test_ctx);
 
-        // Non-admin without FileUploadAnywhere — can_upload reflects folder type.
-        let session_id = login_user(
-            &mut test_ctx,
-            "alice",
-            "password",
-            &[Permission::FileList],
-            false,
-        )
-        .await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_file_list(
             "/".to_string(),
@@ -1506,129 +1479,6 @@ mod tests {
                     !entries.iter().any(|e| e.name == ".hidden_dir"),
                     "Should not see .hidden_dir"
                 );
-            }
-            _ => panic!("Expected FileListResponse"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_file_list_admin_can_upload_in_non_upload_folder() {
-        // Admins bypass the upload-folder restriction, so can_upload should be true
-        // on regular folders too (matches the upload handler's admin bypass).
-        let mut test_ctx = create_test_context().await;
-        let _file_area = setup_file_area_full(&mut test_ctx);
-
-        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
-
-        let result = handle_file_list(
-            "/Documents".to_string(),
-            false,
-            false,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
-
-        assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx).await;
-        match response {
-            ServerMessage::FileListResponse {
-                success,
-                can_upload,
-                ..
-            } => {
-                assert!(success);
-                assert!(
-                    can_upload,
-                    "Admin should see can_upload=true on a regular (non-upload) folder"
-                );
-            }
-            _ => panic!("Expected FileListResponse"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_file_list_file_upload_anywhere_permission_bypasses_folder_check() {
-        // Non-admin with FileUploadAnywhere should see can_upload=true on regular folders.
-        let mut test_ctx = create_test_context().await;
-        let _file_area = setup_file_area_full(&mut test_ctx);
-
-        let session_id = login_user(
-            &mut test_ctx,
-            "alice",
-            "password",
-            &[Permission::FileList, Permission::FileUploadAnywhere],
-            false,
-        )
-        .await;
-
-        let result = handle_file_list(
-            "/Documents".to_string(),
-            false,
-            false,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
-
-        assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx).await;
-        match response {
-            ServerMessage::FileListResponse {
-                success,
-                can_upload,
-                ..
-            } => {
-                assert!(success);
-                assert!(
-                    can_upload,
-                    "User with FileUploadAnywhere should see can_upload=true on a regular folder"
-                );
-            }
-            _ => panic!("Expected FileListResponse"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_file_list_file_upload_anywhere_subdirs_show_can_upload() {
-        // Per-subdirectory can_upload flags should also reflect the bypass.
-        let mut test_ctx = create_test_context().await;
-        let _file_area = setup_file_area_full(&mut test_ctx);
-
-        let session_id = login_user(
-            &mut test_ctx,
-            "alice",
-            "password",
-            &[Permission::FileList, Permission::FileUploadAnywhere],
-            false,
-        )
-        .await;
-
-        let result = handle_file_list(
-            "/".to_string(),
-            false,
-            false,
-            Some(session_id),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
-
-        assert!(result.is_ok());
-        let response = read_server_message(&mut test_ctx).await;
-        match response {
-            ServerMessage::FileListResponse {
-                success, entries, ..
-            } => {
-                assert!(success);
-                let entries = entries.expect("Expected entries");
-                // Every directory entry should report can_upload=true for this user.
-                for entry in entries.iter().filter(|e| e.dir_type.is_some()) {
-                    assert!(
-                        entry.can_upload,
-                        "Directory {} should allow uploads for FileUploadAnywhere user",
-                        entry.name
-                    );
-                }
             }
             _ => panic!("Expected FileListResponse"),
         }

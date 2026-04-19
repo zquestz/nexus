@@ -165,13 +165,13 @@ NX|8|FileList|a1b2c3d4e5f6|25|{"path":"/Documents"}
 
 Response containing directory entries.
 
-| Field        | Type    | Required   | Description                                   |
-| ------------ | ------- | ---------- | --------------------------------------------- |
-| `success`    | boolean | Yes        | Whether the request succeeded                 |
-| `error`      | string  | If failure | Error message                                 |
-| `path`       | string  | If success | Resolved directory path                       |
-| `entries`    | array   | If success | Array of `FileEntry` objects                  |
-| `can_upload` | boolean | If success | Whether uploads are allowed in this directory |
+| Field        | Type    | Required   | Description                                                  |
+| ------------ | ------- | ---------- | ------------------------------------------------------------ |
+| `success`    | boolean | Yes        | Whether the request succeeded                                |
+| `error`      | string  | If failure | Error message                                                |
+| `path`       | string  | If success | Resolved directory path                                      |
+| `entries`    | array   | If success | Array of `FileEntry` objects                                 |
+| `can_upload` | boolean | If success | True if the current directory is an upload or dropbox folder |
 
 **Success example:**
 
@@ -644,7 +644,12 @@ Trigger a file index rebuild. Requires `file_reindex` permission.
 | `size`       | integer        | File size in bytes (0 for directories)        |
 | `modified`   | integer        | Last modified time (Unix timestamp)           |
 | `dir_type`   | string or null | Directory type (null for files, see below)    |
-| `can_upload` | boolean        | Whether uploads are allowed here              |
+| `can_upload` | boolean        | True for upload or dropbox folders            |
+
+**Note:** `can_upload` reflects the folder type only; it doesn't check the
+user's permissions. Clients compose it with `file_upload` (and the
+`file_upload_anywhere` bypass, which permits uploading to any folder regardless
+of `can_upload`) to decide whether to show upload UI.
 
 ### FileSearchResult
 
@@ -715,21 +720,21 @@ When `root: true`, paths are relative to the file root instead of the user's are
 
 ## Permissions
 
-| Permission             | Required For                                      |
-| ---------------------- | ------------------------------------------------- |
-| `file_list`            | Browse files and directories                      |
-| `file_info`            | View detailed file information                    |
-| `file_create_dir`      | Create directories (in upload folders)            |
-| `file_copy`            | Copy files and directories                        |
-| `file_delete`          | Delete files and empty directories                |
-| `file_download`        | Download files (see [transfers](08-transfers.md)) |
-| `file_upload`          | Upload files to upload/dropbox folders            |
-| `file_upload_anywhere` | Upload files to any directory                     |
-| `file_move`            | Move files and directories                        |
-| `file_rename`          | Rename files and directories                      |
-| `file_root`            | Access entire file root (admin)                   |
-| `file_search`          | Search files by name                              |
-| `file_reindex`         | Trigger file index rebuild                        |
+| Permission             | Required For                           |
+| ---------------------- | -------------------------------------- |
+| `file_list`            | Browse files and directories           |
+| `file_info`            | View detailed file information         |
+| `file_create_dir`      | Create directories (in upload folders) |
+| `file_copy`            | Copy files and directories             |
+| `file_delete`          | Delete files and empty directories     |
+| `file_download`        | Download files                         |
+| `file_upload`          | Upload files to upload/dropbox folders |
+| `file_upload_anywhere` | Upload files to any directory          |
+| `file_move`            | Move files and directories             |
+| `file_rename`          | Rename files and directories           |
+| `file_root`            | Access entire file root (admin)        |
+| `file_search`          | Search files by name                   |
+| `file_reindex`         | Trigger file index rebuild             |
 
 Admins have all permissions automatically.
 
@@ -882,7 +887,7 @@ The reindex interval is configurable via `ServerInfoUpdate` (default: 5 minutes,
 ## Notes
 
 - File operations use the main BBS port (7500)
-- Actual file transfers use port 7501 (see [transfers](08-transfers.md))
+- Actual file transfers use port 7501
 - Hidden files (dotfiles) are excluded by default
 - Only empty directories can be deleted
 - Directories are copied recursively

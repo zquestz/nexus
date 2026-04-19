@@ -58,8 +58,25 @@ pub struct FilePermissions {
     pub file_move: bool,
     pub file_copy: bool,
     pub file_download: bool,
+    /// True if the user has either `file_upload` or `file_upload_anywhere`.
     pub file_upload: bool,
+    /// True if the user has `file_upload_anywhere` specifically (the bypass).
+    /// Compose with `can_upload` to decide whether upload UI should be shown
+    /// for a given folder: a folder that isn't upload-typed still accepts
+    /// uploads when this is true.
+    pub file_upload_anywhere: bool,
     pub file_search: bool,
+}
+
+impl FilePermissions {
+    /// Whether the user should see upload UI for a folder with the given
+    /// `can_upload` (folder-property) flag.
+    ///
+    /// `can_upload` means "folder is typed as upload/dropbox". The user's
+    /// `file_upload_anywhere` bypass makes any folder effectively uploadable.
+    pub fn effective_can_upload(&self, can_upload: bool) -> bool {
+        self.file_upload && (can_upload || self.file_upload_anywhere)
+    }
 }
 
 /// State needed to render the files toolbar
@@ -270,7 +287,9 @@ pub fn files_view<'a>(
         has_clipboard,
         has_file_download: perms.file_download,
         has_file_upload: perms.file_upload,
-        can_upload: tab.current_dir_can_upload,
+        // Compose the server's folder-type flag with the user's bypass bit
+        // so toolbar buttons reflect whether the user can actually upload here.
+        can_upload: perms.effective_can_upload(tab.current_dir_can_upload),
         current_path: &tab.current_path,
         is_loading,
         is_searching,
