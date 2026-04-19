@@ -118,7 +118,7 @@ The `group_id` and `group_name` fields identify the user's account group (if any
   "server_info": {
     "name": "My BBS",
     "description": "Welcome to my server!",
-    "version": "0.7.5",
+    "version": "0.7.6",
     "fingerprint": "AA:BB:CC:...",
     "transfer_port": 7501,
     "max_connections_per_ip": 5,

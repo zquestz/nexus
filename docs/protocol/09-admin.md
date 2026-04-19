@@ -536,7 +536,7 @@ Broadcast to all users when server info changes.
   "server_info": {
     "name": "My Awesome BBS",
     "description": "Welcome to my server!",
-    "version": "0.7.5",
+    "version": "0.7.6",
     "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
     "transfer_port": 7501,
     "max_connections_per_ip": 5,
@@ -574,7 +574,7 @@ Sent to a user when their permissions change.
   "server_info": {
     "name": "My BBS",
     "description": "...",
-    "version": "0.7.5",
+    "version": "0.7.6",
     "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
     "transfer_port": 7501,
     "max_connections_per_ip": 5,
@@ -598,7 +598,7 @@ Sent to a user when their permissions change.
   "server_info": {
     "name": "My BBS",
     "description": "...",
-    "version": "0.7.5",
+    "version": "0.7.6",
     "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
     "transfer_port": 7501,
     "max_connections_per_ip": 5,

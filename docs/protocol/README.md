@@ -93,7 +93,7 @@ NX|<type_length>|<message_type>|<message_id>|<payload_length>|<json_payload>\n
 A handshake message:
 
 ```
-NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.7.5"}\n
+NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.7.6"}\n
 ```
 
 Breaking it down:
@@ -103,7 +103,7 @@ Breaking it down:
 - `Handshake` - Message type
 - `a1b2c3d4e5f6` - Message ID (12 hex characters)
 - `20` - Payload length (20 bytes)
-- `{"version":"0.7.5"}` - JSON payload
+- `{"version":"0.7.6"}` - JSON payload
 - `\n` - Terminator
 
 ### Message ID
@@ -153,7 +153,7 @@ The protocol version follows [Semantic Versioning](https://semver.org/):
 - **Minor** - New features (client minor ≤ server minor)
 - **Patch** - Bug fixes (ignored for compatibility)
 
-Current version: `0.7.5`
+Current version: `0.7.6`
 
 ## Documents
 
@@ -181,23 +181,23 @@ Current version: `0.7.5`
 
 The `LoginResponse` includes a `ServerInfo` object with server metadata and connection details:
 
-| Field                     | Type      | Description                                                               |
-| ------------------------- | --------- | ------------------------------------------------------------------------- |
-| `name`                    | `string?` | Server display name (null if not set)                                     |
-| `description`             | `string?` | Server description (null if not set)                                      |
-| `version`                 | `string?` | Server software version (null if not set)                                 |
-| `fingerprint`             | `string?` | Server certificate fingerprint, SHA-256 colon-separated (null if not set) |
-| `transfer_port`           | `u16`     | TCP file transfer port (typically 7501)                                   |
-| `transfer_websocket_port` | `u16?`    | WebSocket file transfer port (7503 if enabled, absent otherwise)          |
-| `max_connections_per_ip`  | `u32?`    | Connection limit per IP (null if not set)                                 |
-| `max_transfers_per_ip`    | `u32?`    | Transfer connection limit per IP (null if not set)                        |
-| `image`                   | `string?` | Server logo as data URI (null if none)                                    |
-| `file_reindex_interval`   | `u32?`    | File reindex interval in minutes, 0 = disabled (null if not set)          |
-| `persistent_channels`     | `string?` | Space-separated persistent channels (admin only, null otherwise)          |
+| Field                     | Type      | Description                                                                        |
+| ------------------------- | --------- | ---------------------------------------------------------------------------------- |
+| `name`                    | `string?` | Server display name (null if not set)                                              |
+| `description`             | `string?` | Server description (null if not set)                                               |
+| `version`                 | `string?` | Server software version (null if not set)                                          |
+| `fingerprint`             | `string?` | Server certificate fingerprint, SHA-256 colon-separated (null if not set)          |
+| `transfer_port`           | `u16`     | TCP file transfer port (typically 7501)                                            |
+| `transfer_websocket_port` | `u16?`    | WebSocket file transfer port (7503 if enabled, absent otherwise)                   |
+| `max_connections_per_ip`  | `u32?`    | Connection limit per IP (null if not set)                                          |
+| `max_transfers_per_ip`    | `u32?`    | Transfer connection limit per IP (null if not set)                                 |
+| `image`                   | `string?` | Server logo as data URI (null if none)                                             |
+| `file_reindex_interval`   | `u32?`    | File reindex interval in minutes, 0 = disabled (null if not set)                   |
+| `persistent_channels`     | `string?` | Space-separated persistent channels (admin only, null otherwise)                   |
 | `auto_join_channels`      | `string?` | Space-separated auto-join channels (admin or chat_join permission, null otherwise) |
-| `chat_burst_limit`        | `u32?`    | Max messages in a burst before rate limiting (null if not set)            |
-| `chat_rate_limit`         | `u32?`    | Messages per minute rate limit, 0 = disabled (null if not set)            |
-| `min_password_strength`   | `u8?`     | Minimum password strength level 0-4 (null if not set)                     |
-| `log_level`               | `string?` | Server log level: "none", "error", "warn", "info", "debug"                |
+| `chat_burst_limit`        | `u32?`    | Max messages in a burst before rate limiting (null if not set)                     |
+| `chat_rate_limit`         | `u32?`    | Messages per minute rate limit, 0 = disabled (null if not set)                     |
+| `min_password_strength`   | `u8?`     | Minimum password strength level 0-4 (null if not set)                              |
+| `log_level`               | `string?` | Server log level: "none", "error", "warn", "info", "debug"                         |
 
 Clients should use `transfer_websocket_port` for file transfers when connected via WebSocket, and `transfer_port` when connected via TCP. The `persistent_channels` field is only visible to admins. The `auto_join_channels` field is visible to admins and users with `chat_join` permission. The `file_reindex_interval` field is visible to admins and users with `file_reindex` permission.
