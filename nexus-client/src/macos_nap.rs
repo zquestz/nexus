@@ -17,7 +17,7 @@
 //! module is macOS-only.
 
 use objc2::runtime::AnyObject;
-use objc2::{msg_send, msg_send_id};
+use objc2::msg_send;
 use objc2_foundation::NSString;
 
 /// `NSActivityUserInitiatedAllowingIdleSystemSleep`
@@ -57,7 +57,7 @@ pub fn disable_app_nap() {
     // [[NSProcessInfo processInfo] beginActivityWithOptions:reason:]
     // Returns an id<NSObject> activity token that must be retained.
     let activity: Option<objc2::rc::Retained<AnyObject>> = unsafe {
-        msg_send_id![
+        msg_send![
             &*process_info,
             beginActivityWithOptions: NS_ACTIVITY_USER_INITIATED_ALLOWING_IDLE_SYSTEM_SLEEP,
             reason: &*reason
