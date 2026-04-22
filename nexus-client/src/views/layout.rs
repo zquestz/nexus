@@ -941,8 +941,11 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                 chat_burst_limit: ctx.conn.chat_burst_limit,
                 chat_rate_limit: ctx.conn.chat_rate_limit,
                 fingerprint: Some(ctx.conn.connection_info.certificate_fingerprint.clone()),
+                connection_address: ctx.conn.connection_info.address.clone(),
+                connection_port: ctx.conn.connection_info.port,
+                public_address: ctx.conn.public_address.clone(),
             };
-            stack![chat, server_info_view(&data)]
+            stack![chat, server_info_view(&data, &ctx.theme)]
                 .width(Fill)
                 .height(Fill)
                 .into()

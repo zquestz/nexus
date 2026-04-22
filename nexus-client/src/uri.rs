@@ -65,8 +65,11 @@ impl fmt::Display for NexusUri {
             write!(f, "@")?;
         }
 
-        // IPv6 addresses need brackets
-        if self.host.contains(':') {
+        // IPv6 addresses need brackets; don't re-wrap a host that's already
+        // been bracketed by the caller (idempotent output).
+        if self.host.starts_with('[') && self.host.ends_with(']') {
+            write!(f, "{}", self.host)?;
+        } else if self.host.contains(':') {
             write!(f, "[{}]", self.host)?;
         } else {
             write!(f, "{}", self.host)?;
@@ -348,6 +351,27 @@ pub fn url_encode_path(s: &str) -> String {
 /// Check if a string looks like a nexus:// URI
 pub fn is_nexus_uri(s: &str) -> bool {
     s.starts_with("nexus://")
+}
+
+/// Build a shareable `nexus://` root URI for a connection.
+///
+/// Prefers `public_address` advertised by the server; falls back to the
+/// address the user actually connected to. Port is omitted when equal to
+/// the default BBS port. IPv6 hosts are bracketed. Credential-less —
+/// share URIs never carry userinfo.
+pub fn build_share_uri(public_address: Option<&str>, address: &str, port: u16) -> String {
+    let host = public_address
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(address);
+    NexusUri {
+        user: None,
+        password: None,
+        host: host.to_string(),
+        port,
+        path: None,
+    }
+    .to_string()
 }
 
 #[cfg(test)]
@@ -641,6 +665,53 @@ mod tests {
         let displayed = original.to_string();
         let reparsed = parse(&displayed).unwrap();
         assert_eq!(original, reparsed);
+    }
+
+    #[test]
+    fn test_build_share_uri_uses_public_address() {
+        let uri = build_share_uri(Some("bbs.example.com"), "10.0.0.5", DEFAULT_PORT);
+        assert_eq!(uri, "nexus://bbs.example.com");
+    }
+
+    #[test]
+    fn test_build_share_uri_falls_back_to_address() {
+        let uri = build_share_uri(None, "10.0.0.5", 8500);
+        assert_eq!(uri, "nexus://10.0.0.5:8500");
+    }
+
+    #[test]
+    fn test_build_share_uri_empty_public_address_falls_back() {
+        let uri = build_share_uri(Some(""), "10.0.0.5", DEFAULT_PORT);
+        assert_eq!(uri, "nexus://10.0.0.5");
+        let uri = build_share_uri(Some("   "), "10.0.0.5", DEFAULT_PORT);
+        assert_eq!(uri, "nexus://10.0.0.5");
+    }
+
+    #[test]
+    fn test_build_share_uri_ipv6_bracketed() {
+        let uri = build_share_uri(None, "::1", 8500);
+        assert_eq!(uri, "nexus://[::1]:8500");
+    }
+
+    #[test]
+    fn test_build_share_uri_ipv6_already_bracketed_passes_through() {
+        // Bookmarks may have stored `[::1]` (bracketed); don't double-wrap.
+        let uri = build_share_uri(None, "[::1]", 8500);
+        assert_eq!(uri, "nexus://[::1]:8500");
+        let uri = build_share_uri(None, "[2001:db8::1]", DEFAULT_PORT);
+        assert_eq!(uri, "nexus://[2001:db8::1]");
+    }
+
+    #[test]
+    fn test_build_share_uri_omits_default_port() {
+        let uri = build_share_uri(Some("bbs.example.com"), "ignored", DEFAULT_PORT);
+        assert_eq!(uri, "nexus://bbs.example.com");
+    }
+
+    #[test]
+    fn test_build_share_uri_unicode_host_preserved() {
+        let uri = build_share_uri(Some("münchen.de"), "ignored", DEFAULT_PORT);
+        assert_eq!(uri, "nexus://münchen.de");
     }
 
     #[test]

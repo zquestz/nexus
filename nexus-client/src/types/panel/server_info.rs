@@ -44,6 +44,7 @@ pub struct ServerInfoParams<'a> {
     pub min_password_strength: PasswordStrength,
     pub name: Option<&'a str>,
     pub persistent_channels: Option<&'a str>,
+    pub public_address: Option<&'a str>,
 }
 
 impl Default for ServerInfoParams<'_> {
@@ -60,6 +61,7 @@ impl Default for ServerInfoParams<'_> {
             min_password_strength: PasswordStrength::Good,
             name: None,
             persistent_channels: None,
+            public_address: None,
         }
     }
 }
@@ -98,6 +100,8 @@ pub struct ServerInfoEditState {
     pub name: String,
     /// Persistent channels (space-separated)
     pub persistent_channels: String,
+    /// Public address for `nexus://` URI sharing (editable; empty = unset)
+    pub public_address: String,
 }
 
 // Manual Debug implementation because CachedImage doesn't implement Debug
@@ -121,6 +125,7 @@ impl std::fmt::Debug for ServerInfoEditState {
             .field("min_password_strength", &self.min_password_strength)
             .field("name", &self.name)
             .field("persistent_channels", &self.persistent_channels)
+            .field("public_address", &self.public_address)
             .finish()
     }
 }
@@ -150,6 +155,7 @@ impl ServerInfoEditState {
             min_password_strength: params.min_password_strength,
             name: params.name.unwrap_or("").to_string(),
             persistent_channels: params.persistent_channels.unwrap_or("").to_string(),
+            public_address: params.public_address.unwrap_or("").to_string(),
         }
     }
 
@@ -170,6 +176,7 @@ impl ServerInfoEditState {
         let name_changed = self.name != original.name.unwrap_or("");
         let persistent_changed =
             self.persistent_channels != original.persistent_channels.unwrap_or("");
+        let public_address_changed = self.public_address != original.public_address.unwrap_or("");
         auto_join_changed
             || chat_burst_limit_changed
             || chat_rate_limit_changed
@@ -181,5 +188,6 @@ impl ServerInfoEditState {
             || min_password_strength_changed
             || name_changed
             || persistent_changed
+            || public_address_changed
     }
 }

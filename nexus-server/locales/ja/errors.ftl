@@ -163,6 +163,15 @@ err-invalid-password-strength = 無効なパスワード強度の値です
 err-server-image-too-large = サーバー画像が大きすぎます（最大512KB）
 err-server-image-invalid-format = サーバー画像の形式が無効です（base64エンコードのデータURIである必要があります）
 err-server-image-unsupported-type = サポートされていないサーバー画像タイプです（PNG、WebP、JPEG、SVGのみ）
+err-public-address-too-long = 公開アドレスが長すぎます（最大{ $max_length }バイト）
+err-public-address-contains-scheme = 公開アドレスにURLスキームを含めることはできません
+err-public-address-contains-brackets = 公開アドレスに角括弧を含めることはできません
+err-public-address-contains-path = 公開アドレスにパスを含めることはできません
+err-public-address-contains-userinfo = 公開アドレスにユーザー名を含めることはできません
+err-public-address-contains-whitespace = 公開アドレスに空白を含めることはできません
+err-public-address-contains-port = 公開アドレスにポートを含めることはできません
+err-public-address-contains-zone-id = 公開アドレスにIPv6ゾーン識別子を含めることはできません
+err-public-address-invalid-format = 公開アドレスは有効なホスト名またはIPアドレスではありません
 
 # ニュースエラー
 err-news-not-found = ニュース #{ $id } が見つかりません

@@ -468,6 +468,7 @@ impl NexusApp {
             locale: conn.locale,
             server_name: conn.server_name,
             server_description: conn.server_description,
+            public_address: conn.public_address,
             server_version: conn.server_version,
             server_image,
             cached_server_image,

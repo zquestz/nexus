@@ -24,7 +24,7 @@ err-shared-message-requires-nickname = Contas partilhadas só podem receber mens
 err-shared-kick-requires-nickname = Contas partilhadas só podem ser expulsas pela alcunha
 
 # Erros de conta de convidado
-err-guest-disabled = O acesso de convidado não está activado neste servidor
+err-guest-disabled = O acesso de convidado não está ativado neste servidor
 err-cannot-rename-guest = A conta de convidado não pode ser renomeada
 err-cannot-change-guest-password = A palavra-passe da conta de convidado não pode ser alterada
 err-cannot-delete-guest = A conta de convidado não pode ser eliminada
@@ -71,8 +71,8 @@ err-cannot-delete-last-admin = Não é possível eliminar o último administrado
 err-cannot-delete-self = Não pode eliminar-se a si próprio
 err-cannot-demote-last-admin = Não é possível despromover o último administrador
 err-cannot-edit-self = Não pode editar-se a si próprio
-err-current-password-required = A palavra-passe actual é necessária para alterar a sua palavra-passe
-err-current-password-incorrect = A palavra-passe actual está incorrecta
+err-current-password-required = A palavra-passe atual é necessária para alterar a sua palavra-passe
+err-current-password-incorrect = A palavra-passe atual está incorreta
 err-cannot-create-admin = Apenas administradores podem criar utilizadores administradores
 err-cannot-kick-self = Não pode expulsar-se a si mesmo
 err-cannot-kick-admin = Não é possível expulsar utilizadores administradores
@@ -163,6 +163,15 @@ err-invalid-password-strength = Valor de força da palavra-passe inválido
 err-server-image-too-large = A imagem do servidor é demasiado grande (máximo 512KB)
 err-server-image-invalid-format = Formato de imagem do servidor inválido (deve ser um URI de dados com codificação base64)
 err-server-image-unsupported-type = Tipo de imagem do servidor não suportado (apenas PNG, WebP, JPEG ou SVG)
+err-public-address-too-long = O endereço público é demasiado longo (máximo { $max_length } bytes)
+err-public-address-contains-scheme = O endereço público não pode incluir um esquema de URL
+err-public-address-contains-brackets = O endereço público não pode incluir parênteses retos
+err-public-address-contains-path = O endereço público não pode incluir um caminho
+err-public-address-contains-userinfo = O endereço público não pode incluir um nome de utilizador
+err-public-address-contains-whitespace = O endereço público não pode conter espaços em branco
+err-public-address-contains-port = O endereço público não pode incluir uma porta
+err-public-address-contains-zone-id = O endereço público não pode incluir um identificador de zona IPv6
+err-public-address-invalid-format = O endereço público não é um nome de anfitrião ou endereço IP válido
 
 # Erros de notícias
 err-news-not-found = Notícia #{ $id } não encontrada
@@ -178,24 +187,24 @@ err-cannot-delete-admin-news = Apenas administradores podem eliminar notícias p
 # File Area Errors
 err-file-path-too-long = Caminho do ficheiro é demasiado longo (máximo { $max_length } caracteres)
 err-file-path-invalid = Caminho do ficheiro contém caracteres inválidos
-err-file-not-found = Ficheiro ou directório não encontrado
-err-file-not-directory = Caminho não é um directório
-err-dir-name-empty = O nome do directório não pode estar vazio
-err-dir-name-too-long = O nome do directório é demasiado longo (máximo { $max_length } caracteres)
-err-dir-name-invalid = O nome do directório contém caracteres inválidos
-err-dir-already-exists = Já existe um ficheiro ou directório com esse nome
-err-dir-create-failed = Falha ao criar o directório
+err-file-not-found = Ficheiro ou diretório não encontrado
+err-file-not-directory = Caminho não é um diretório
+err-dir-name-empty = O nome do diretório não pode estar vazio
+err-dir-name-too-long = O nome do diretório é demasiado longo (máximo { $max_length } caracteres)
+err-dir-name-invalid = O nome do diretório contém caracteres inválidos
+err-dir-already-exists = Já existe um ficheiro ou diretório com esse nome
+err-dir-create-failed = Falha ao criar o diretório
 
 err-dir-not-empty = O diretório não está vazio
 err-delete-failed = Falha ao eliminar ficheiro ou diretório
-err-rename-failed = Falha ao renomear ficheiro ou directório
-err-rename-target-exists = Já existe um ficheiro ou directório com esse nome
-err-move-failed = Falha ao mover ficheiro ou directório
-err-copy-failed = Falha ao copiar ficheiro ou directório
-err-destination-exists = Já existe um ficheiro ou directório com esse nome no destino
-err-cannot-move-into-itself = Não é possível mover um directório para dentro de si próprio
-err-cannot-copy-into-itself = Não é possível copiar um directório para dentro de si próprio
-err-destination-not-directory = O caminho de destino não é um directório
+err-rename-failed = Falha ao renomear ficheiro ou diretório
+err-rename-target-exists = Já existe um ficheiro ou diretório com esse nome
+err-move-failed = Falha ao mover ficheiro ou diretório
+err-copy-failed = Falha ao copiar ficheiro ou diretório
+err-destination-exists = Já existe um ficheiro ou diretório com esse nome no destino
+err-cannot-move-into-itself = Não é possível mover um diretório para dentro de si próprio
+err-cannot-copy-into-itself = Não é possível copiar um diretório para dentro de si próprio
+err-destination-not-directory = O caminho de destino não é um diretório
 
 # Transfer Errors
 err-file-area-not-configured = Área de ficheiros não configurada

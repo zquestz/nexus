@@ -287,6 +287,9 @@ pub enum ClientMessage {
         name: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         description: Option<String>,
+        /// Public address for `nexus://` URI sharing (hostname/IP, no port)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        public_address: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         max_connections_per_ip: Option<u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1127,6 +1130,10 @@ pub struct ServerInfo {
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Public address advertised by the admin for sharing `nexus://` URIs.
+    /// Hostname or IP only; port is implied by the server's BBS port.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub public_address: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
     /// Server certificate fingerprint (SHA-256, for TLS interception detection)
@@ -1638,6 +1645,7 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::ServerInfoUpdate {
                 name,
                 description,
+                public_address,
                 file_reindex_interval,
                 max_connections_per_ip,
                 max_transfers_per_ip,
@@ -1651,6 +1659,7 @@ impl std::fmt::Debug for ClientMessage {
                 let mut s = f.debug_struct("ServerInfoUpdate");
                 s.field("name", name)
                     .field("description", description)
+                    .field("public_address", public_address)
                     .field("max_connections_per_ip", max_connections_per_ip)
                     .field("max_transfers_per_ip", max_transfers_per_ip)
                     .field("file_reindex_interval", file_reindex_interval)
@@ -2726,6 +2735,7 @@ mod tests {
         let info = ServerInfo {
             name: Some("Test Server".to_string()),
             description: None,
+            public_address: None,
             version: Some("0.5.0".to_string()),
             fingerprint: None,
             max_connections_per_ip: Some(5),

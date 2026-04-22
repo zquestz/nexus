@@ -163,6 +163,8 @@ pub struct LoginInfo {
     pub permissions: Vec<String>,
     pub server_name: Option<String>,
     pub server_description: Option<String>,
+    /// Public address advertised for `nexus://` URI sharing (from ServerInfo)
+    pub public_address: Option<String>,
     pub server_version: Option<String>,
     pub server_image: String,
     /// Channels the user was auto-joined to on login

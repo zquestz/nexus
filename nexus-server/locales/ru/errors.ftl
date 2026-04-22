@@ -163,6 +163,15 @@ err-invalid-password-strength = Недопустимое значение над
 err-server-image-too-large = Изображение сервера слишком большое (максимум 512КБ)
 err-server-image-invalid-format = Недопустимый формат изображения сервера (должен быть data URI с кодировкой base64)
 err-server-image-unsupported-type = Неподдерживаемый тип изображения сервера (только PNG, WebP, JPEG или SVG)
+err-public-address-too-long = Публичный адрес слишком длинный (максимум { $max_length } байт)
+err-public-address-contains-scheme = Публичный адрес не должен содержать URL-схему
+err-public-address-contains-brackets = Публичный адрес не должен содержать скобки
+err-public-address-contains-path = Публичный адрес не должен содержать путь
+err-public-address-contains-userinfo = Публичный адрес не должен содержать имя пользователя
+err-public-address-contains-whitespace = Публичный адрес не должен содержать пробелы
+err-public-address-contains-port = Публичный адрес не должен содержать порт
+err-public-address-contains-zone-id = Публичный адрес не должен содержать идентификатор зоны IPv6
+err-public-address-invalid-format = Публичный адрес не является допустимым именем хоста или IP-адресом
 
 # Ошибки новостей
 err-news-not-found = Новость #{ $id } не найдена

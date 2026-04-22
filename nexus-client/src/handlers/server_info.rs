@@ -4,8 +4,8 @@ use iced::Task;
 use iced::widget::{Id, operation};
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{
-    self, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH, ServerDescriptionError,
-    ServerImageError, ServerNameError,
+    self, MAX_PUBLIC_ADDRESS_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH,
+    PublicAddressError, ServerDescriptionError, ServerImageError, ServerNameError,
 };
 use rfd::AsyncFileDialog;
 
@@ -62,6 +62,7 @@ impl NexusApp {
             min_password_strength: conn.min_password_strength,
             name: conn.server_name.as_deref(),
             persistent_channels: conn.persistent_channels.as_deref(),
+            public_address: conn.public_address.as_deref(),
         }));
 
         // Focus the name input
@@ -141,6 +142,30 @@ impl NexusApp {
             return Task::none();
         }
 
+        // Validate public_address (empty string is allowed to clear)
+        if let Err(e) = validators::validate_public_address(&edit_state.public_address) {
+            let error_msg = match e {
+                PublicAddressError::TooLong => t_args(
+                    "err-public-address-too-long",
+                    &[("max", &MAX_PUBLIC_ADDRESS_LENGTH.to_string())],
+                ),
+                PublicAddressError::ContainsScheme => t("err-public-address-contains-scheme"),
+                PublicAddressError::ContainsBrackets => t("err-public-address-contains-brackets"),
+                PublicAddressError::ContainsPath => t("err-public-address-contains-path"),
+                PublicAddressError::ContainsUserinfo => t("err-public-address-contains-userinfo"),
+                PublicAddressError::ContainsWhitespace => {
+                    t("err-public-address-contains-whitespace")
+                }
+                PublicAddressError::ContainsPort => t("err-public-address-contains-port"),
+                PublicAddressError::ContainsZoneId => t("err-public-address-contains-zone-id"),
+                PublicAddressError::InvalidFormat => t("err-public-address-invalid-format"),
+            };
+            if let Some(edit) = &mut conn.server_info_edit {
+                edit.error = Some(error_msg);
+            }
+            return Task::none();
+        }
+
         // Validate server image if not empty
         if !edit_state.image.is_empty()
             && let Err(e) = validators::validate_server_image(&edit_state.image)
@@ -169,6 +194,7 @@ impl NexusApp {
             min_password_strength: conn.min_password_strength,
             name: conn.server_name.as_deref(),
             persistent_channels: conn.persistent_channels.as_deref(),
+            public_address: conn.public_address.as_deref(),
         }) {
             // No changes, just close the edit view
             conn.server_info_edit = None;
@@ -185,6 +211,13 @@ impl NexusApp {
         let description =
             if edit_state.description != conn.server_description.as_deref().unwrap_or("") {
                 Some(edit_state.description.clone())
+            } else {
+                None
+            };
+
+        let public_address =
+            if edit_state.public_address != conn.public_address.as_deref().unwrap_or("") {
+                Some(edit_state.public_address.clone())
             } else {
                 None
             };
@@ -253,6 +286,7 @@ impl NexusApp {
         let msg = ClientMessage::ServerInfoUpdate {
             name,
             description,
+            public_address,
             max_connections_per_ip,
             max_transfers_per_ip,
             image,
@@ -312,6 +346,27 @@ impl NexusApp {
         }
         self.focused_field = InputId::EditServerInfoDescription;
         Task::none()
+    }
+
+    /// Handle server info public_address field change
+    pub fn handle_edit_server_info_public_address_changed(
+        &mut self,
+        address: String,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(edit_state) = &mut conn.server_info_edit
+        {
+            edit_state.public_address = address;
+        }
+        self.focused_field = InputId::EditServerInfoPublicAddress;
+        Task::none()
+    }
+
+    /// Copy the server's public `nexus://` URI to the clipboard and show a toast
+    pub fn handle_copy_server_uri(&mut self, uri: String) -> Task<Message> {
+        let toast_text = t("toast-link-copied");
+        iced::clipboard::write(uri).chain(Task::done(Message::ShowToast(toast_text)))
     }
 
     /// Handle server info chat burst limit field change
@@ -559,12 +614,13 @@ impl NexusApp {
     /// native Tab handling.
     pub fn handle_server_info_edit_tab_pressed(&mut self) -> Task<Message> {
         // Determine next field based on tracked focused field
-        // Tab cycle: Name → Description → Auto-join → Persistent → Name
+        // Tab cycle: Name → Description → PublicAddress → Auto-join → Persistent → Name
         // NumberInput fields (connections, transfers, burst, rate, reindex) are
         // skipped because they consume Tab internally.
         let next_field = match self.focused_field {
             InputId::EditServerInfoName => InputId::EditServerInfoDescription,
-            InputId::EditServerInfoDescription => InputId::EditServerInfoAutoJoinChannels,
+            InputId::EditServerInfoDescription => InputId::EditServerInfoPublicAddress,
+            InputId::EditServerInfoPublicAddress => InputId::EditServerInfoAutoJoinChannels,
             InputId::EditServerInfoAutoJoinChannels => InputId::EditServerInfoPersistentChannels,
             InputId::EditServerInfoPersistentChannels => InputId::EditServerInfoName,
             _ => InputId::EditServerInfoName,

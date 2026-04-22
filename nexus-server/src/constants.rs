@@ -63,6 +63,12 @@ pub const FILE_INDEX_MAX_AGE: std::time::Duration = std::time::Duration::from_se
 
 // =============================================================================
 // Database Validation Errors (defense-in-depth, operator-facing)
+//
+// These strings are returned from DB-layer setters via `io::Error::other(...)`
+// and appear only in server logs. Handlers catch any DB error and send the
+// generic translated `err-database` message to the client — users never see
+// these strings. Do NOT add them to locale files; they are intentionally
+// English-only for operator log readability.
 // =============================================================================
 
 /// Error when server name is empty
@@ -95,6 +101,36 @@ pub const ERR_SERVER_IMAGE_INVALID_FORMAT: &str = "Server image has invalid form
 /// Error when server image has unsupported type
 pub const ERR_SERVER_IMAGE_UNSUPPORTED_TYPE: &str = "Server image has unsupported type";
 
+/// Error when public address exceeds the maximum length
+pub const ERR_PUBLIC_ADDRESS_TOO_LONG: &str = "Public address is too long";
+
+/// Error when public address contains a URL scheme
+pub const ERR_PUBLIC_ADDRESS_CONTAINS_SCHEME: &str = "Public address must not include a URL scheme";
+
+/// Error when public address contains brackets
+pub const ERR_PUBLIC_ADDRESS_CONTAINS_BRACKETS: &str = "Public address must not include brackets";
+
+/// Error when public address contains a path
+pub const ERR_PUBLIC_ADDRESS_CONTAINS_PATH: &str = "Public address must not include a path";
+
+/// Error when public address contains userinfo
+pub const ERR_PUBLIC_ADDRESS_CONTAINS_USERINFO: &str = "Public address must not include a username";
+
+/// Error when public address contains whitespace
+pub const ERR_PUBLIC_ADDRESS_CONTAINS_WHITESPACE: &str =
+    "Public address must not contain whitespace";
+
+/// Error when public address contains a port
+pub const ERR_PUBLIC_ADDRESS_CONTAINS_PORT: &str = "Public address must not include a port";
+
+/// Error when public address contains an IPv6 zone identifier
+pub const ERR_PUBLIC_ADDRESS_CONTAINS_ZONE_ID: &str =
+    "Public address must not include an IPv6 zone identifier";
+
+/// Error when public address is not a valid hostname, IPv4, or IPv6
+pub const ERR_PUBLIC_ADDRESS_INVALID_FORMAT: &str =
+    "Public address is not a valid hostname or IP address";
+
 /// Default server name (matches migration default)
 pub const DEFAULT_SERVER_NAME: &str = "Nexus BBS";
 
@@ -103,6 +139,9 @@ pub const DEFAULT_SERVER_DESCRIPTION: &str = "";
 
 /// Default server image (matches migration default)
 pub const DEFAULT_SERVER_IMAGE: &str = "";
+
+/// Default public address (empty = unset; admin must configure to enable URI sharing)
+pub const DEFAULT_PUBLIC_ADDRESS: &str = "";
 
 // =============================================================================
 // Database Configuration
@@ -128,6 +167,9 @@ pub const CONFIG_KEY_SERVER_DESCRIPTION: &str = "server_description";
 
 /// Database configuration key for server image
 pub const CONFIG_KEY_SERVER_IMAGE: &str = "server_image";
+
+/// Database configuration key for server public address
+pub const CONFIG_KEY_PUBLIC_ADDRESS: &str = "public_address";
 
 // =============================================================================
 // Feature Names
@@ -865,6 +907,8 @@ pub const LOG_SERVER_INFO_DB_CONNECTIONS: &str =
 pub const LOG_SERVER_INFO_DB_TRANSFERS: &str =
     "ServerInfoUpdate: database error setting max_transfers_per_ip";
 pub const LOG_SERVER_INFO_DB_IMAGE: &str = "ServerInfoUpdate: database error setting server image";
+pub const LOG_SERVER_INFO_DB_PUBLIC_ADDRESS: &str =
+    "ServerInfoUpdate: database error setting public_address";
 pub const LOG_SERVER_INFO_DB_REINDEX: &str =
     "ServerInfoUpdate: database error setting file_reindex_interval";
 pub const LOG_SERVER_INFO_DB_PERSISTENT: &str =

@@ -163,6 +163,15 @@ err-invalid-password-strength = Valore di sicurezza della password non valido
 err-server-image-too-large = L'immagine del server è troppo grande (massimo 512KB)
 err-server-image-invalid-format = Formato immagine del server non valido (deve essere un URI di dati con codifica base64)
 err-server-image-unsupported-type = Tipo di immagine del server non supportato (solo PNG, WebP, JPEG o SVG)
+err-public-address-too-long = L'indirizzo pubblico è troppo lungo (massimo { $max_length } byte)
+err-public-address-contains-scheme = L'indirizzo pubblico non deve includere uno schema URL
+err-public-address-contains-brackets = L'indirizzo pubblico non deve includere parentesi
+err-public-address-contains-path = L'indirizzo pubblico non deve includere un percorso
+err-public-address-contains-userinfo = L'indirizzo pubblico non deve includere un nome utente
+err-public-address-contains-whitespace = L'indirizzo pubblico non deve contenere spazi
+err-public-address-contains-port = L'indirizzo pubblico non deve includere una porta
+err-public-address-contains-zone-id = L'indirizzo pubblico non deve includere un identificatore di zona IPv6
+err-public-address-invalid-format = L'indirizzo pubblico non è un nome host o indirizzo IP valido
 
 # Errori delle notizie
 err-news-not-found = Notizia #{ $id } non trovata

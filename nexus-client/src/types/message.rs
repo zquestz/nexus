@@ -138,6 +138,8 @@ pub enum Message {
     EditServerInfoNameChanged(String),
     /// Server info edit: Persistent channels field changed
     EditServerInfoPersistentChannelsChanged(String),
+    /// Server info edit: Public address field changed
+    EditServerInfoPublicAddressChanged(String),
     /// Server info edit: Auto-join channels field changed
     EditServerInfoAutoJoinChannelsChanged(String),
     /// Server info edit: Min password strength changed
@@ -525,6 +527,8 @@ pub enum Message {
     FileTabClose(TabId),
     /// Files: Share - copy nexus:// link for file path to clipboard
     FileShare(String),
+    /// Server info: Copy the server's public `nexus://` URI to the clipboard
+    CopyServerUri(String),
     /// Files: Download file (from context menu)
     FileDownload(String),
     /// Files: Download directory (from context menu or toolbar)

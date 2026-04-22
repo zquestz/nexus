@@ -160,6 +160,15 @@ err-server-description-invalid-characters = Server description contains invalid 
 err-server-image-too-large = Server image is too large (max 512KB)
 err-server-image-invalid-format = Invalid server image format (must be a data URI with base64 encoding)
 err-server-image-unsupported-type = Unsupported server image type (PNG, WebP, JPEG, or SVG only)
+err-public-address-too-long = Public address is too long (max { $max_length } bytes)
+err-public-address-contains-scheme = Public address must not include a URL scheme
+err-public-address-contains-brackets = Public address must not include brackets
+err-public-address-contains-path = Public address must not include a path
+err-public-address-contains-userinfo = Public address must not include a username
+err-public-address-contains-whitespace = Public address must not contain whitespace
+err-public-address-contains-port = Public address must not include a port
+err-public-address-contains-zone-id = Public address must not include an IPv6 zone identifier
+err-public-address-invalid-format = Public address is not a valid hostname or IP address
 err-no-fields-to-update = No fields to update
 err-invalid-password-strength = Invalid password strength value
 

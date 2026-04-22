@@ -31,6 +31,8 @@ impl NexusApp {
         // and we need to decode it before storing.
         conn.server_name = server_info.name;
         conn.server_description = server_info.description;
+        // Normalize empty → None so `Some` always carries a non-empty address.
+        conn.public_address = server_info.public_address.filter(|s| !s.is_empty());
         conn.server_version = server_info.version;
         conn.max_connections_per_ip = server_info.max_connections_per_ip;
         conn.max_transfers_per_ip = server_info.max_transfers_per_ip;

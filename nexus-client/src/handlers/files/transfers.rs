@@ -26,20 +26,11 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Build raw URL without username
+        // Build the root URI (prefers public_address when advertised, with
+        // IPv6 bracketing and default-port omission handled centrally).
         let info = &conn.connection_info;
-        let port_suffix = if info.port == nexus_common::DEFAULT_PORT {
-            String::new()
-        } else {
-            format!(":{}", info.port)
-        };
-
-        // IPv6 addresses need brackets in URIs
-        let host = if info.address.parse::<std::net::Ipv6Addr>().is_ok() {
-            format!("[{}]", info.address)
-        } else {
-            info.address.clone()
-        };
+        let root =
+            crate::uri::build_share_uri(conn.public_address.as_deref(), &info.address, info.port);
 
         // Strip folder type suffixes from each path segment
         // Server resolves paths without suffixes (e.g., "uploads" -> "uploads [NEXUS-UL]")
@@ -49,12 +40,7 @@ impl NexusApp {
             .collect::<Vec<_>>()
             .join("/");
 
-        let url = format!(
-            "nexus://{}{}/files/{}",
-            host,
-            port_suffix,
-            url_encode_path(&clean_path)
-        );
+        let url = format!("{}/files/{}", root, url_encode_path(&clean_path));
 
         // Copy to clipboard, then show toast feedback
         let toast_text = t("toast-link-copied");

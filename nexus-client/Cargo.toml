@@ -35,6 +35,7 @@ deb_depends = ["libasound2"]
 
 [dependencies]
 nexus-common = { path = "../nexus-common" }
+idna = "1"
 iced = { version = "0.14", features = ["advanced", "image", "lazy", "markdown", "svg", "tokio"] }
 iced_aw = { version = "0.13", features = ["context_menu", "number_input", "tabs"] }
 iced_toasts = { git = "https://github.com/zquestz/iced-toasts" }

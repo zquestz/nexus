@@ -24,6 +24,9 @@ impl NexusApp {
             let Some(conn) = self.connections.get_mut(&connection_id) else {
                 return Task::none();
             };
+            // Reset the submit guard in case the server returned a generic
+            // `Error` instead of the typed response that normally resets it.
+            conn.user_management.is_submitting = false;
             conn.user_management.edit_error = Some(message);
             return Task::none();
         }
@@ -34,6 +37,10 @@ impl NexusApp {
                 return Task::none();
             };
             if let Some(edit_state) = &mut conn.server_info_edit {
+                // Reset the submit guard — server sent a generic `Error` rather
+                // than a typed `ServerInfoUpdateResponse`, so the normal reset
+                // path never fires and the Save button would stay disabled.
+                edit_state.is_submitting = false;
                 edit_state.error = Some(message);
                 return Task::none();
             }

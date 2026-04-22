@@ -185,6 +185,7 @@ The `LoginResponse` includes a `ServerInfo` object with server metadata and conn
 | ------------------------- | --------- | ---------------------------------------------------------------------------------- |
 | `name`                    | `string?` | Server display name (null if not set)                                              |
 | `description`             | `string?` | Server description (null if not set)                                               |
+| `public_address`          | `string?` | Hostname or IP advertised for shareable `nexus://` URIs (null if unset)            |
 | `version`                 | `string?` | Server software version (null if not set)                                          |
 | `fingerprint`             | `string?` | Server certificate fingerprint, SHA-256 colon-separated (null if not set)          |
 | `transfer_port`           | `u16`     | TCP file transfer port (typically 7501)                                            |

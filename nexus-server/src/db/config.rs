@@ -4,9 +4,10 @@ use std::collections::HashMap;
 use std::io;
 
 use nexus_common::validators::{
-    ChannelListError, PasswordStrength, ServerDescriptionError, ServerImageError, ServerNameError,
-    validate_auto_join_channels, validate_persistent_channels, validate_server_description,
-    validate_server_image, validate_server_name,
+    ChannelListError, PasswordStrength, PublicAddressError, ServerDescriptionError,
+    ServerImageError, ServerNameError, validate_auto_join_channels, validate_persistent_channels,
+    validate_public_address, validate_server_description, validate_server_image,
+    validate_server_name,
 };
 use sqlx::SqlitePool;
 
@@ -14,15 +15,19 @@ use crate::constants::{
     CONFIG_KEY_AUTO_JOIN_CHANNELS, CONFIG_KEY_CHAT_BURST_LIMIT, CONFIG_KEY_CHAT_RATE_LIMIT,
     CONFIG_KEY_FILE_REINDEX_INTERVAL, CONFIG_KEY_MAX_CONNECTIONS_PER_IP,
     CONFIG_KEY_MAX_TRANSFERS_PER_IP, CONFIG_KEY_MIN_PASSWORD_STRENGTH,
-    CONFIG_KEY_PERSISTENT_CHANNELS, CONFIG_KEY_SERVER_DESCRIPTION, CONFIG_KEY_SERVER_IMAGE,
-    CONFIG_KEY_SERVER_NAME, DEFAULT_AUTO_JOIN_CHANNELS, DEFAULT_CHAT_BURST_LIMIT,
-    DEFAULT_CHAT_RATE_LIMIT, DEFAULT_FILE_REINDEX_INTERVAL, DEFAULT_MAX_CONNECTIONS_PER_IP,
-    DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_MIN_PASSWORD_STRENGTH, DEFAULT_PERSISTENT_CHANNELS,
-    DEFAULT_SERVER_DESCRIPTION, DEFAULT_SERVER_IMAGE, DEFAULT_SERVER_NAME,
-    ERR_SERVER_DESC_INVALID_CHARS, ERR_SERVER_DESC_NEWLINES, ERR_SERVER_DESC_TOO_LONG,
-    ERR_SERVER_IMAGE_INVALID_FORMAT, ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNSUPPORTED_TYPE,
-    ERR_SERVER_NAME_EMPTY, ERR_SERVER_NAME_INVALID_CHARS, ERR_SERVER_NAME_NEWLINES,
-    ERR_SERVER_NAME_TOO_LONG,
+    CONFIG_KEY_PERSISTENT_CHANNELS, CONFIG_KEY_PUBLIC_ADDRESS, CONFIG_KEY_SERVER_DESCRIPTION,
+    CONFIG_KEY_SERVER_IMAGE, CONFIG_KEY_SERVER_NAME, DEFAULT_AUTO_JOIN_CHANNELS,
+    DEFAULT_CHAT_BURST_LIMIT, DEFAULT_CHAT_RATE_LIMIT, DEFAULT_FILE_REINDEX_INTERVAL,
+    DEFAULT_MAX_CONNECTIONS_PER_IP, DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_MIN_PASSWORD_STRENGTH,
+    DEFAULT_PERSISTENT_CHANNELS, DEFAULT_PUBLIC_ADDRESS, DEFAULT_SERVER_DESCRIPTION,
+    DEFAULT_SERVER_IMAGE, DEFAULT_SERVER_NAME, ERR_PUBLIC_ADDRESS_CONTAINS_BRACKETS,
+    ERR_PUBLIC_ADDRESS_CONTAINS_PATH, ERR_PUBLIC_ADDRESS_CONTAINS_PORT,
+    ERR_PUBLIC_ADDRESS_CONTAINS_SCHEME, ERR_PUBLIC_ADDRESS_CONTAINS_USERINFO,
+    ERR_PUBLIC_ADDRESS_CONTAINS_WHITESPACE, ERR_PUBLIC_ADDRESS_CONTAINS_ZONE_ID,
+    ERR_PUBLIC_ADDRESS_INVALID_FORMAT, ERR_PUBLIC_ADDRESS_TOO_LONG, ERR_SERVER_DESC_INVALID_CHARS,
+    ERR_SERVER_DESC_NEWLINES, ERR_SERVER_DESC_TOO_LONG, ERR_SERVER_IMAGE_INVALID_FORMAT,
+    ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNSUPPORTED_TYPE, ERR_SERVER_NAME_EMPTY,
+    ERR_SERVER_NAME_INVALID_CHARS, ERR_SERVER_NAME_NEWLINES, ERR_SERVER_NAME_TOO_LONG,
 };
 use crate::db::sql;
 
@@ -34,6 +39,7 @@ pub struct ServerConfig {
     pub server_name: String,
     pub server_description: String,
     pub server_image: String,
+    pub public_address: String,
     pub max_connections_per_ip: u32,
     pub max_transfers_per_ip: u32,
     pub file_reindex_interval: u32,
@@ -77,6 +83,9 @@ impl ConfigDb {
             server_image: map
                 .remove(CONFIG_KEY_SERVER_IMAGE)
                 .unwrap_or_else(|| DEFAULT_SERVER_IMAGE.to_string()),
+            public_address: map
+                .remove(CONFIG_KEY_PUBLIC_ADDRESS)
+                .unwrap_or_else(|| DEFAULT_PUBLIC_ADDRESS.to_string()),
             max_connections_per_ip: map
                 .remove(CONFIG_KEY_MAX_CONNECTIONS_PER_IP)
                 .and_then(|v| v.parse().ok())
@@ -284,6 +293,52 @@ impl ConfigDb {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(image)
             .bind(CONFIG_KEY_SERVER_IMAGE)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Get the public address advertised for `nexus://` URI sharing
+    ///
+    /// Returns the configured value, or "" (the default, meaning "not set") if not found.
+    #[cfg(test)]
+    pub async fn get_public_address(&self) -> String {
+        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
+            .bind(CONFIG_KEY_PUBLIC_ADDRESS)
+            .fetch_one(&self.pool)
+            .await
+            .unwrap_or_else(|_| DEFAULT_PUBLIC_ADDRESS.to_string())
+    }
+
+    /// Set the public address
+    ///
+    /// An empty string is allowed to clear the advertised address.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if validation fails or if the database update fails.
+    pub async fn set_public_address(&self, value: &str) -> io::Result<()> {
+        // Defense-in-depth validation (empty string is allowed to clear)
+        if let Err(e) = validate_public_address(value) {
+            let msg = match e {
+                PublicAddressError::TooLong => ERR_PUBLIC_ADDRESS_TOO_LONG,
+                PublicAddressError::ContainsScheme => ERR_PUBLIC_ADDRESS_CONTAINS_SCHEME,
+                PublicAddressError::ContainsBrackets => ERR_PUBLIC_ADDRESS_CONTAINS_BRACKETS,
+                PublicAddressError::ContainsPath => ERR_PUBLIC_ADDRESS_CONTAINS_PATH,
+                PublicAddressError::ContainsUserinfo => ERR_PUBLIC_ADDRESS_CONTAINS_USERINFO,
+                PublicAddressError::ContainsWhitespace => ERR_PUBLIC_ADDRESS_CONTAINS_WHITESPACE,
+                PublicAddressError::ContainsPort => ERR_PUBLIC_ADDRESS_CONTAINS_PORT,
+                PublicAddressError::ContainsZoneId => ERR_PUBLIC_ADDRESS_CONTAINS_ZONE_ID,
+                PublicAddressError::InvalidFormat => ERR_PUBLIC_ADDRESS_INVALID_FORMAT,
+            };
+            return Err(io::Error::other(msg));
+        }
+
+        sqlx::query(sql::SQL_SET_CONFIG)
+            .bind(value)
+            .bind(CONFIG_KEY_PUBLIC_ADDRESS)
             .execute(&self.pool)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
@@ -746,6 +801,90 @@ mod tests {
         let result = config_db.set_server_image(&large_image).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("too large"));
+    }
+
+    // =========================================================================
+    // Public Address Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_get_public_address_default() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+        let value = config_db.get_public_address().await;
+        assert_eq!(value, "");
+    }
+
+    #[tokio::test]
+    async fn test_set_public_address_hostname() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+        config_db
+            .set_public_address("bbs.example.com")
+            .await
+            .unwrap();
+        assert_eq!(config_db.get_public_address().await, "bbs.example.com");
+    }
+
+    #[tokio::test]
+    async fn test_set_public_address_ipv4() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+        config_db.set_public_address("203.0.113.5").await.unwrap();
+        assert_eq!(config_db.get_public_address().await, "203.0.113.5");
+    }
+
+    #[tokio::test]
+    async fn test_set_public_address_ipv6() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+        config_db.set_public_address("2001:db8::1").await.unwrap();
+        assert_eq!(config_db.get_public_address().await, "2001:db8::1");
+    }
+
+    #[tokio::test]
+    async fn test_set_public_address_unicode_preserved() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+        config_db.set_public_address("münchen.de").await.unwrap();
+        // Option C: stored as-typed, not normalized
+        assert_eq!(config_db.get_public_address().await, "münchen.de");
+    }
+
+    #[tokio::test]
+    async fn test_set_public_address_empty_clears() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+        config_db
+            .set_public_address("bbs.example.com")
+            .await
+            .unwrap();
+        config_db.set_public_address("").await.unwrap();
+        assert_eq!(config_db.get_public_address().await, "");
+    }
+
+    #[tokio::test]
+    async fn test_set_public_address_rejects_scheme() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+        let result = config_db.set_public_address("nexus://example.com").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_set_public_address_rejects_port() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+        let result = config_db.set_public_address("example.com:7500").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_set_public_address_rejects_brackets() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+        let result = config_db.set_public_address("[::1]").await;
+        assert!(result.is_err());
     }
 
     // =========================================================================

@@ -11,10 +11,10 @@ use crate::validators::{
     MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_FILE_PATH_LENGTH, MAX_GROUP_NAME_LENGTH,
     MAX_LOCALE_LENGTH, MAX_LOG_LEVEL_LENGTH, MAX_MESSAGE_LENGTH, MAX_NEWS_ACTION_LENGTH,
     MAX_NEWS_BODY_LENGTH, MAX_NEWS_IMAGE_DATA_URI_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH,
-    MAX_PERMISSION_LENGTH, MAX_PERSISTENT_CHANNELS_LENGTH, MAX_SEARCH_QUERY_LENGTH,
-    MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH,
-    MAX_STATUS_LENGTH, MAX_TARGET_LENGTH, MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH,
-    MAX_VERSION_LENGTH, SHA256_HEX_LENGTH, TRANSFER_ID_LENGTH,
+    MAX_PERMISSION_LENGTH, MAX_PERSISTENT_CHANNELS_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH,
+    MAX_SEARCH_QUERY_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH,
+    MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH, MAX_TARGET_LENGTH, MAX_TRUST_REASON_LENGTH,
+    MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH, SHA256_HEX_LENGTH, TRANSFER_ID_LENGTH,
 };
 
 // =============================================================================
@@ -826,9 +826,10 @@ const GROUP_INFO_STRUCT_SIZE: usize = json_first_i64_field("id")
     + 2; // {} braces
 
 /// ServerInfo struct size (nested object in responses):
-/// {"name":"...64...","description":"...256...","version":"...32...","fingerprint":"...95...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","transfer_port":u16,"transfer_websocket_port":u16,"file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","chat_burst_limit":u32,"chat_rate_limit":u32,"min_password_strength":u8,"log_level":"...5..."}
+/// {"name":"...64...","description":"...256...","public_address":"...253...","version":"...32...","fingerprint":"...95...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","transfer_port":u16,"transfer_websocket_port":u16,"file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","chat_burst_limit":u32,"chat_rate_limit":u32,"min_password_strength":u8,"log_level":"...5..."}
 const SERVER_INFO_STRUCT_SIZE: usize = json_first_string_field("name", MAX_SERVER_NAME_LENGTH)
     + json_string_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
+    + json_string_field("public_address", MAX_PUBLIC_ADDRESS_LENGTH)
     + json_string_field("version", MAX_VERSION_LENGTH)
     + json_string_field("fingerprint", SHA256_FINGERPRINT_LENGTH)
     + json_u32_field("max_connections_per_ip")
@@ -845,10 +846,11 @@ const SERVER_INFO_STRUCT_SIZE: usize = json_first_string_field("name", MAX_SERVE
     + json_string_field("log_level", MAX_LOG_LEVEL_LENGTH)
     + 2; // {} braces
 
-/// ServerInfoUpdate: {"type":"ServerInfoUpdate","name":"...64...","description":"...256...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","chat_burst_limit":u32,"chat_rate_limit":u32,"min_password_strength":u8}
+/// ServerInfoUpdate: {"type":"ServerInfoUpdate","name":"...64...","description":"...256...","public_address":"...253...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","chat_burst_limit":u32,"chat_rate_limit":u32,"min_password_strength":u8}
 const SERVER_INFO_UPDATE_SIZE: usize = json_type_base("ServerInfoUpdate")
     + json_string_field("name", MAX_SERVER_NAME_LENGTH)
     + json_string_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
+    + json_string_field("public_address", MAX_PUBLIC_ADDRESS_LENGTH)
     + json_u32_field("max_connections_per_ip")
     + json_u32_field("max_transfers_per_ip")
     + json_string_field("image", MAX_SERVER_IMAGE_DATA_URI_LENGTH)
@@ -1455,9 +1457,9 @@ mod tests {
         MAX_CHAT_TOPIC_LENGTH, MAX_ERROR_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT,
         MAX_FILE_PATH_LENGTH, MAX_GROUP_NAME_LENGTH, MAX_LOCALE_LENGTH, MAX_LOG_LEVEL_LENGTH,
         MAX_MESSAGE_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
-        MAX_PERSISTENT_CHANNELS_LENGTH, MAX_SEARCH_QUERY_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH,
-        MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH,
-        MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
+        MAX_PERSISTENT_CHANNELS_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH, MAX_SEARCH_QUERY_LENGTH,
+        MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH,
+        MAX_STATUS_LENGTH, MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH,
     };
 
     /// Helper to get serialized JSON size of a message
@@ -2303,6 +2305,7 @@ mod tests {
         let msg = ClientMessage::ServerInfoUpdate {
             name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
             description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
+            public_address: Some(str_of_len(MAX_PUBLIC_ADDRESS_LENGTH)),
             max_connections_per_ip: Some(u32::MAX),
             max_transfers_per_ip: Some(u32::MAX),
             image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
@@ -2622,6 +2625,7 @@ mod tests {
             server_info: Some(ServerInfo {
                 name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
+                public_address: Some(str_of_len(MAX_PUBLIC_ADDRESS_LENGTH)),
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
                 fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
@@ -2663,6 +2667,7 @@ mod tests {
             server_info: Some(ServerInfo {
                 name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
+                public_address: Some(str_of_len(MAX_PUBLIC_ADDRESS_LENGTH)),
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
                 fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
@@ -2697,6 +2702,7 @@ mod tests {
             server_info: ServerInfo {
                 name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
+                public_address: Some(str_of_len(MAX_PUBLIC_ADDRESS_LENGTH)),
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
                 fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),

@@ -149,6 +149,10 @@ async fn perform_login(
             server_description: server_info
                 .as_ref()
                 .and_then(|info| info.description.clone()),
+            public_address: server_info
+                .as_ref()
+                .and_then(|info| info.public_address.clone())
+                .filter(|s| !s.is_empty()),
             server_version: server_info.as_ref().and_then(|info| info.version.clone()),
             server_fingerprint: server_info
                 .as_ref()

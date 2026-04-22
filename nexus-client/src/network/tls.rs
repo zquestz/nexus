@@ -235,14 +235,46 @@ fn is_private_address(address: &str) -> bool {
     false
 }
 
+/// Encode a hostname for DNS resolution.
+///
+/// IP literals (v4 and v6, including bracketed and zone-scoped forms) are
+/// returned in the bare form the system resolver expects. Unicode IDN
+/// hostnames are converted to their ASCII/Punycode form since the system
+/// resolver and SOCKS5 both require ASCII.
+fn resolve_host_for_connection(address: &str) -> Result<String, String> {
+    // Strip any URI-style brackets a caller might have stored. IPv6 literals
+    // travel without brackets at this layer — `to_socket_addrs` and SOCKS5
+    // both want the bare form.
+    let bare = address
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(address);
+
+    if bare.parse::<Ipv4Addr>().is_ok() || bare.parse::<Ipv6Addr>().is_ok() {
+        return Ok(bare.to_string());
+    }
+    // Preserve IPv6 zone identifiers (e.g. `fe80::1%eth0`) without IDNA mangling.
+    if bare.contains('%') {
+        return Ok(bare.to_string());
+    }
+    idna::domain_to_ascii(bare).map_err(|e| {
+        t_args(
+            "err-invalid-address",
+            &[("address", address), ("error", &e.to_string())],
+        )
+    })
+}
+
 /// Establish a direct TLS connection (no proxy)
 async fn establish_direct_connection(
     address: &str,
     port: u16,
     server_name: ServerName<'static>,
 ) -> Result<(TlsStream, String), String> {
+    // IDNA-encode Unicode hostnames before handing to the system resolver.
+    let resolved = resolve_host_for_connection(address)?;
     // Use to_socket_addrs to support IPv6 zone identifiers (e.g., "fe80::1%eth0")
-    let mut addrs = (address, port).to_socket_addrs().map_err(|e| {
+    let mut addrs = (resolved.as_str(), port).to_socket_addrs().map_err(|e| {
         t_args(
             "err-invalid-address",
             &[("address", address), ("error", &e.to_string())],
@@ -287,6 +319,8 @@ async fn establish_proxied_connection(
     server_name: ServerName<'static>,
 ) -> Result<(TlsStream, String), String> {
     let proxy_addr = format!("{}:{}", proxy.address, proxy.port);
+    // IDNA-encode Unicode hostnames before sending over SOCKS5.
+    let resolved_target = resolve_host_for_connection(target_address)?;
 
     // Connect to the target through the SOCKS5 proxy with timeout
     let socks_stream = tokio::time::timeout(CONNECTION_TIMEOUT, async {
@@ -295,7 +329,7 @@ async fn establish_proxied_connection(
                 // Authenticated SOCKS5 connection
                 Socks5Stream::connect_with_password(
                     proxy_addr.as_str(),
-                    (target_address, target_port),
+                    (resolved_target.as_str(), target_port),
                     username.as_str(),
                     password.as_str(),
                 )
@@ -303,7 +337,8 @@ async fn establish_proxied_connection(
             }
             _ => {
                 // Unauthenticated SOCKS5 connection
-                Socks5Stream::connect(proxy_addr.as_str(), (target_address, target_port)).await
+                Socks5Stream::connect(proxy_addr.as_str(), (resolved_target.as_str(), target_port))
+                    .await
             }
         }
     })

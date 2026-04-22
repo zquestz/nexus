@@ -437,6 +437,7 @@ where
         ClientMessage::ServerInfoUpdate {
             name,
             description,
+            public_address,
             max_connections_per_ip,
             max_transfers_per_ip,
             image,
@@ -450,6 +451,7 @@ where
             let request = handlers::ServerInfoUpdateRequest {
                 name,
                 description,
+                public_address,
                 max_connections_per_ip,
                 max_transfers_per_ip,
                 image,

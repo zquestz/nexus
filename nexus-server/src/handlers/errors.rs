@@ -701,6 +701,55 @@ pub fn err_server_image_unsupported_type(locale: &str) -> String {
     t(locale, "err-server-image-unsupported-type")
 }
 
+/// Get translated "public address too long" error
+pub fn err_public_address_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-public-address-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "public address contains scheme" error
+pub fn err_public_address_contains_scheme(locale: &str) -> String {
+    t(locale, "err-public-address-contains-scheme")
+}
+
+/// Get translated "public address contains brackets" error
+pub fn err_public_address_contains_brackets(locale: &str) -> String {
+    t(locale, "err-public-address-contains-brackets")
+}
+
+/// Get translated "public address contains path" error
+pub fn err_public_address_contains_path(locale: &str) -> String {
+    t(locale, "err-public-address-contains-path")
+}
+
+/// Get translated "public address contains userinfo" error
+pub fn err_public_address_contains_userinfo(locale: &str) -> String {
+    t(locale, "err-public-address-contains-userinfo")
+}
+
+/// Get translated "public address contains whitespace" error
+pub fn err_public_address_contains_whitespace(locale: &str) -> String {
+    t(locale, "err-public-address-contains-whitespace")
+}
+
+/// Get translated "public address contains port" error
+pub fn err_public_address_contains_port(locale: &str) -> String {
+    t(locale, "err-public-address-contains-port")
+}
+
+/// Get translated "public address contains zone identifier" error
+pub fn err_public_address_contains_zone_id(locale: &str) -> String {
+    t(locale, "err-public-address-contains-zone-id")
+}
+
+/// Get translated "public address invalid format" error
+pub fn err_public_address_invalid_format(locale: &str) -> String {
+    t(locale, "err-public-address-invalid-format")
+}
+
 /// Get translated "no fields to update" error
 pub fn err_no_fields_to_update(locale: &str) -> String {
     t(locale, "err-no-fields-to-update")

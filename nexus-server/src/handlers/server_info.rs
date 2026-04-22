@@ -15,6 +15,7 @@ use crate::logging::server_log_level;
 pub struct ServerInfoValues {
     pub name: String,
     pub description: String,
+    pub public_address: String,
     pub version: String,
     pub image: String,
     pub max_connections_per_ip: u32,
@@ -44,8 +45,8 @@ pub struct ServerInfoOptions {
 
 /// Build a `ServerInfo` with permission-based field visibility.
 ///
-/// Fields visible to all users: name, description, version, fingerprint,
-/// max_connections_per_ip, max_transfers_per_ip, transfer_port,
+/// Fields visible to all users: name, description, public_address, version,
+/// fingerprint, max_connections_per_ip, max_transfers_per_ip, transfer_port,
 /// transfer_websocket_port, min_password_strength, log_level,
 /// chat_burst_limit, chat_rate_limit.
 ///
@@ -78,9 +79,17 @@ pub fn build_server_info(values: &ServerInfoValues, options: &ServerInfoOptions)
         None
     };
 
+    // Empty public_address is treated as unset — send None to keep the wire clean.
+    let public_address = if values.public_address.is_empty() {
+        None
+    } else {
+        Some(values.public_address.clone())
+    };
+
     ServerInfo {
         name: Some(values.name.clone()),
         description: Some(values.description.clone()),
+        public_address,
         version: Some(values.version.clone()),
         fingerprint: Some(values.fingerprint.clone()),
         max_connections_per_ip: Some(values.max_connections_per_ip),

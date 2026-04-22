@@ -16,8 +16,8 @@
 //! Linux and Windows do not have an equivalent mechanism, so this
 //! module is macOS-only.
 
-use objc2::runtime::AnyObject;
 use objc2::msg_send;
+use objc2::runtime::AnyObject;
 use objc2_foundation::NSString;
 
 /// `NSActivityUserInitiatedAllowingIdleSystemSleep`

@@ -119,6 +119,8 @@ pub struct ServerConnectionParams {
     pub server_name: Option<String>,
     /// Server description (from ServerInfo)
     pub server_description: Option<String>,
+    /// Public address advertised for `nexus://` URI sharing (from ServerInfo)
+    pub public_address: Option<String>,
     /// Server version (from ServerInfo)
     pub server_version: Option<String>,
     /// Server image data URI
@@ -191,6 +193,8 @@ pub struct ServerConnection {
     pub server_name: Option<String>,
     /// Server description (from ServerInfo)
     pub server_description: Option<String>,
+    /// Public address advertised for `nexus://` URI sharing (from ServerInfo)
+    pub public_address: Option<String>,
     /// Server version (from ServerInfo)
     pub server_version: Option<String>,
     /// Server image data URI (from ServerInfo, empty string if not set)
@@ -371,6 +375,7 @@ impl ServerConnection {
             locale: params.locale,
             server_name: params.server_name,
             server_description: params.server_description,
+            public_address: params.public_address,
             server_version: params.server_version,
             server_image: params.server_image,
             cached_server_image: params.cached_server_image,
@@ -455,6 +460,8 @@ pub struct NetworkConnection {
     pub server_name: Option<String>,
     /// Server description (if provided in ServerInfo)
     pub server_description: Option<String>,
+    /// Public address advertised for `nexus://` URI sharing (if provided in ServerInfo)
+    pub public_address: Option<String>,
     /// Server version (if provided in ServerInfo)
     pub server_version: Option<String>,
     /// Server image (if provided in ServerInfo)

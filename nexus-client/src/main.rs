@@ -939,6 +939,9 @@ impl NexusApp {
             Message::EditServerInfoPersistentChannelsChanged(channels) => {
                 self.handle_edit_server_info_persistent_channels_changed(channels)
             }
+            Message::EditServerInfoPublicAddressChanged(address) => {
+                self.handle_edit_server_info_public_address_changed(address)
+            }
             Message::EditServerInfoAutoJoinChannelsChanged(channels) => {
                 self.handle_edit_server_info_auto_join_channels_changed(channels)
             }
@@ -1036,6 +1039,7 @@ impl NexusApp {
             Message::FileTabSwitch(tab_id) => self.handle_file_tab_switch(tab_id),
             Message::FileTabClose(tab_id) => self.handle_file_tab_close(tab_id),
             Message::FileShare(path) => self.handle_file_share(path),
+            Message::CopyServerUri(uri) => self.handle_copy_server_uri(uri),
             Message::FileDownload(path) => self.handle_file_download(path),
             Message::FileDownloadAll(path) => self.handle_file_download_all(path),
             Message::FileUpload(destination) => self.handle_file_upload(destination),

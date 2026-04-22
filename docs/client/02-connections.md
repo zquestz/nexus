@@ -179,6 +179,10 @@ nexus://[user[:password]@]host[:port][/path]
 - **Username without password**: Looks for matching bookmark to get saved password
 - **Full credentials**: Uses the provided username and password (intended for shared accounts)
 
+### Shareable URIs from the Server Info panel
+
+When you copy a `nexus://` URI from the Server Info panel or the "Share" action on a file, the host comes from the admin-advertised **Public Address** if the server has one set. Otherwise it falls back to the address you used to connect. This means the URI you share may differ from the address you typed — especially if you connected via IP or a LAN hostname while the server advertises a public DNS name.
+
 ### Command Line
 
 Launch Nexus with a URI to connect on startup:

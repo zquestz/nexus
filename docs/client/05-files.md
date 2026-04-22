@@ -270,7 +270,7 @@ You can share files with other Nexus users by copying a link:
 3. A toast notification confirms the link was copied
 4. Paste the link anywhere — in Nexus chat, email, or messaging apps
 
-The copied link uses the `nexus://` scheme (e.g., `nexus://example.com/files/Music/song.mp3`). When another Nexus user clicks the link:
+The copied link uses the `nexus://` scheme (e.g., `nexus://example.com/files/Music/song.mp3`). The host is the admin-advertised **Public Address** if one is set (visible on the Server Info panel), or falls back to the address you connected to. When another Nexus user clicks the link:
 
 - If they're already connected to that server, Nexus navigates to the file location
 - If not connected, Nexus initiates a connection first

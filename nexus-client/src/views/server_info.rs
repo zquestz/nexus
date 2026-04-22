@@ -1,8 +1,8 @@
 //! Server info panel view
 
 use iced::widget::button as btn;
-use iced::widget::{Id, Space, button, image, pick_list, row, svg, text_input};
-use iced::{Center, Element, Fill, Length};
+use iced::widget::{Id, Space, button, image, pick_list, rich_text, row, span, svg, text_input};
+use iced::{Center, Element, Fill, Length, Theme};
 use iced_aw::{NumberInput, TabLabel, Tabs};
 use nexus_common::validators::PasswordStrength;
 
@@ -54,6 +54,12 @@ pub struct ServerInfoData<'a> {
     pub chat_rate_limit: Option<u32>,
     /// Server certificate fingerprint (SHA-256)
     pub fingerprint: Option<String>,
+    /// Address the client is currently connected to (fallback for the shareable URI)
+    pub connection_address: String,
+    /// Port the client is currently connected on
+    pub connection_port: u16,
+    /// Public address advertised by the admin for sharing (from ServerInfo)
+    pub public_address: Option<String>,
 }
 
 /// Render the server info panel
@@ -61,16 +67,16 @@ pub struct ServerInfoData<'a> {
 /// Displays server information received during login.
 /// Only shows fields that were provided by the server.
 /// Admins see an Edit button to modify server configuration.
-pub fn server_info_view(data: &ServerInfoData<'_>) -> Element<'static, Message> {
+pub fn server_info_view(data: &ServerInfoData<'_>, theme: &Theme) -> Element<'static, Message> {
     if let Some(edit_state) = data.edit_state {
         server_info_edit_view(edit_state)
     } else {
-        server_info_display_view(data)
+        server_info_display_view(data, theme)
     }
 }
 
 /// Render the server info display view (read-only)
-fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Message> {
+fn server_info_display_view(data: &ServerInfoData<'_>, theme: &Theme) -> Element<'static, Message> {
     let mut items: Vec<Element<'static, Message>> = Vec::new();
 
     // Server image at the top (if set)
@@ -102,6 +108,29 @@ fn server_info_display_view(data: &ServerInfoData<'_>) -> Element<'static, Messa
                 .into(),
         );
     }
+
+    // Shareable nexus:// URI — styled like a chat link; click copies to clipboard.
+    let share_uri = crate::uri::build_share_uri(
+        data.public_address.as_deref(),
+        &data.connection_address,
+        data.connection_port,
+    );
+    let share_link = rich_text![
+        span(share_uri.clone())
+            .color(theme.palette().primary)
+            .link(share_uri)
+    ]
+    .on_link_click(Message::CopyServerUri)
+    .size(TEXT_SIZE)
+    .align_x(Center);
+    items.push(
+        row![
+            Space::new().width(Fill),
+            share_link,
+            Space::new().width(Fill)
+        ]
+        .into(),
+    );
 
     // Determine which tabs to show based on available data
     let has_general = data.log_level.is_some()
@@ -406,6 +435,26 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
         row![desc_label, Space::new().width(ELEMENT_SPACING), desc_input]
             .align_y(Center)
             .into(),
+    );
+
+    // Public address input with inline label
+    let public_address_label = shaped_text(t("label-public-address")).size(TEXT_SIZE);
+    let public_address_input =
+        text_input(&t("placeholder-public-address"), &edit_state.public_address)
+            .on_input(Message::EditServerInfoPublicAddressChanged)
+            .on_submit(Message::UpdateServerInfoPressed)
+            .id(Id::from(InputId::EditServerInfoPublicAddress))
+            .padding(INPUT_PADDING)
+            .size(TEXT_SIZE)
+            .width(Fill);
+    form_items.push(
+        row![
+            public_address_label,
+            Space::new().width(ELEMENT_SPACING),
+            public_address_input
+        ]
+        .align_y(Center)
+        .into(),
     );
 
     // Image row with inline label

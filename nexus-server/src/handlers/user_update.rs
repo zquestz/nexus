@@ -859,6 +859,7 @@ where
                         let info_values = ServerInfoValues {
                             name: config.server_name,
                             description: config.server_description,
+                            public_address: config.public_address,
                             version: env!("CARGO_PKG_VERSION").to_string(),
                             image: config.server_image,
                             max_connections_per_ip: config.max_connections_per_ip,

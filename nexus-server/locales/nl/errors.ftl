@@ -163,6 +163,15 @@ err-invalid-password-strength = Ongeldige wachtwoordsterkte-waarde
 err-server-image-too-large = De serverafbeelding is te groot (maximaal 512KB)
 err-server-image-invalid-format = Ongeldig serverafbeeldingsformaat (moet een data-URI met base64-codering zijn)
 err-server-image-unsupported-type = Niet-ondersteund serverafbeeldingstype (alleen PNG, WebP, JPEG of SVG)
+err-public-address-too-long = Het openbare adres is te lang (maximaal { $max_length } bytes)
+err-public-address-contains-scheme = Het openbare adres mag geen URL-schema bevatten
+err-public-address-contains-brackets = Het openbare adres mag geen haakjes bevatten
+err-public-address-contains-path = Het openbare adres mag geen pad bevatten
+err-public-address-contains-userinfo = Het openbare adres mag geen gebruikersnaam bevatten
+err-public-address-contains-whitespace = Het openbare adres mag geen spaties bevatten
+err-public-address-contains-port = Het openbare adres mag geen poort bevatten
+err-public-address-contains-zone-id = Het openbare adres mag geen IPv6-zone-identificatie bevatten
+err-public-address-invalid-format = Het openbare adres is geen geldige hostnaam of IP-adres
 
 # Nieuwsfouten
 err-news-not-found = Nieuwsbericht #{ $id } niet gevonden

@@ -118,6 +118,7 @@ The `group_id` and `group_name` fields identify the user's account group (if any
   "server_info": {
     "name": "My BBS",
     "description": "Welcome to my server!",
+    "public_address": "bbs.example.com",
     "version": "0.7.6",
     "fingerprint": "AA:BB:CC:...",
     "transfer_port": 7501,
@@ -163,6 +164,7 @@ Included in successful login responses.
 | ------------------------- | ------- | ---------------------------------------------------------------------------------- |
 | `name`                    | string  | Server display name (null if not set)                                              |
 | `description`             | string  | Server description (null if not set)                                               |
+| `public_address`          | string  | Admin-advertised hostname or IP for shareable `nexus://` URIs (null if unset)      |
 | `version`                 | string  | Server software version (null if not set)                                          |
 | `fingerprint`             | string  | Server certificate fingerprint, SHA-256 colon-separated (null if not set)          |
 | `transfer_port`           | integer | Port for file transfers (required)                                                 |

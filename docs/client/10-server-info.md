@@ -26,6 +26,7 @@ The top of the panel shows the server's identity:
 - **Server Image** — Logo or banner (if set by the admin)
 - **Server Name** — Display name
 - **Description** — Server description text
+- **Public URI** — A clickable `nexus://` URI pointing at this server. Click the URI to copy it to your clipboard. If the admin set a **Public Address** the URI uses it; otherwise it falls back to the address you connected to. Port is shown only when it differs from the default.
 
 ### Tabs
 
@@ -82,8 +83,11 @@ Admins can edit server configuration by clicking the **Edit** button at the bott
 | **Min Password**        | Minimum password strength for accounts                               |
 | **Name**                | Server display name (1–64 characters)                                |
 | **Persistent Channels** | Space-separated channel names (e.g., `#general #support`)            |
+| **Public Address**      | Hostname or IP advertised for shareable `nexus://` URIs (optional)   |
 
 **Note:** Log Level is set by the server operator via command-line options. Version is determined by the server software. Neither field is editable from the client.
+
+**Public Address**: set this to the hostname (or IP) that users connecting from outside your network should see in shareable `nexus://` URIs. Accepts DNS hostnames, IPv4 literals, bare IPv6 literals, and internationalized domain names (Unicode). Reject cases include URL schemes, brackets, paths, `@`, whitespace, ports, and IPv6 zone identifiers — the field is just a host, never a full URL. Leave empty to fall back to whatever address each user connected to.
 
 ### Editing
 

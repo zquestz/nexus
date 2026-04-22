@@ -7,32 +7,39 @@ use tracing::{error, info, warn};
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
-    self, ServerDescriptionError, ServerImageError, ServerNameError, validate_channel,
-    validate_server_description, validate_server_image, validate_server_name,
+    self, PublicAddressError, ServerDescriptionError, ServerImageError, ServerNameError,
+    validate_channel, validate_public_address, validate_server_description, validate_server_image,
+    validate_server_name,
 };
 
 use super::{
     HandlerContext, ServerInfoValues, channel_error_to_message, err_admin_required,
     err_authentication, err_channel_list_invalid, err_database, err_invalid_password_strength,
-    err_no_fields_to_update, err_not_logged_in, err_server_description_contains_newlines,
-    err_server_description_invalid_characters, err_server_description_too_long,
-    err_server_image_invalid_format, err_server_image_too_large, err_server_image_unsupported_type,
-    err_server_name_contains_newlines, err_server_name_empty, err_server_name_invalid_characters,
-    err_server_name_too_long,
+    err_no_fields_to_update, err_not_logged_in, err_public_address_contains_brackets,
+    err_public_address_contains_path, err_public_address_contains_port,
+    err_public_address_contains_scheme, err_public_address_contains_userinfo,
+    err_public_address_contains_whitespace, err_public_address_contains_zone_id,
+    err_public_address_invalid_format, err_public_address_too_long,
+    err_server_description_contains_newlines, err_server_description_invalid_characters,
+    err_server_description_too_long, err_server_image_invalid_format, err_server_image_too_large,
+    err_server_image_unsupported_type, err_server_name_contains_newlines, err_server_name_empty,
+    err_server_name_invalid_characters, err_server_name_too_long,
 };
 use crate::constants::{
     LOG_SERVER_INFO_ADMIN_REQUIRED, LOG_SERVER_INFO_CHANNEL_CREATE_FAILED,
     LOG_SERVER_INFO_CHANNEL_DELETE_FAILED, LOG_SERVER_INFO_DB_AUTO_JOIN,
     LOG_SERVER_INFO_DB_CHAT_BURST, LOG_SERVER_INFO_DB_CHAT_RATE, LOG_SERVER_INFO_DB_CONNECTIONS,
     LOG_SERVER_INFO_DB_DESC, LOG_SERVER_INFO_DB_IMAGE, LOG_SERVER_INFO_DB_NAME,
-    LOG_SERVER_INFO_DB_PASSWORD, LOG_SERVER_INFO_DB_PERSISTENT, LOG_SERVER_INFO_DB_REINDEX,
-    LOG_SERVER_INFO_DB_TRANSFERS, LOG_SERVER_INFO_NOT_LOGGED_IN, LOG_SERVER_INFO_SUCCESS,
+    LOG_SERVER_INFO_DB_PASSWORD, LOG_SERVER_INFO_DB_PERSISTENT, LOG_SERVER_INFO_DB_PUBLIC_ADDRESS,
+    LOG_SERVER_INFO_DB_REINDEX, LOG_SERVER_INFO_DB_TRANSFERS, LOG_SERVER_INFO_NOT_LOGGED_IN,
+    LOG_SERVER_INFO_SUCCESS,
 };
 
 /// Request parameters for ServerInfoUpdate command
 pub struct ServerInfoUpdateRequest {
     pub name: Option<String>,
     pub description: Option<String>,
+    pub public_address: Option<String>,
     pub max_connections_per_ip: Option<u32>,
     pub max_transfers_per_ip: Option<u32>,
     pub image: Option<String>,
@@ -56,6 +63,7 @@ where
     let ServerInfoUpdateRequest {
         name,
         description,
+        public_address,
         max_connections_per_ip,
         max_transfers_per_ip,
         image,
@@ -97,6 +105,7 @@ where
     // Check that at least one field is being updated
     if name.is_none()
         && description.is_none()
+        && public_address.is_none()
         && max_connections_per_ip.is_none()
         && max_transfers_per_ip.is_none()
         && image.is_none()
@@ -145,6 +154,32 @@ where
             ServerDescriptionError::InvalidCharacters => {
                 err_server_description_invalid_characters(ctx.locale)
             }
+        };
+        return ctx.send_error(&error_msg, Some("ServerInfoUpdate")).await;
+    }
+
+    // Validate public_address if provided (empty string clears the advertised value)
+    if let Some(ref addr) = public_address
+        && let Err(e) = validate_public_address(addr)
+    {
+        let error_msg = match e {
+            PublicAddressError::TooLong => {
+                err_public_address_too_long(ctx.locale, validators::MAX_PUBLIC_ADDRESS_LENGTH)
+            }
+            PublicAddressError::ContainsScheme => err_public_address_contains_scheme(ctx.locale),
+            PublicAddressError::ContainsBrackets => {
+                err_public_address_contains_brackets(ctx.locale)
+            }
+            PublicAddressError::ContainsPath => err_public_address_contains_path(ctx.locale),
+            PublicAddressError::ContainsUserinfo => {
+                err_public_address_contains_userinfo(ctx.locale)
+            }
+            PublicAddressError::ContainsWhitespace => {
+                err_public_address_contains_whitespace(ctx.locale)
+            }
+            PublicAddressError::ContainsPort => err_public_address_contains_port(ctx.locale),
+            PublicAddressError::ContainsZoneId => err_public_address_contains_zone_id(ctx.locale),
+            PublicAddressError::InvalidFormat => err_public_address_invalid_format(ctx.locale),
         };
         return ctx.send_error(&error_msg, Some("ServerInfoUpdate")).await;
     }
@@ -214,6 +249,15 @@ where
         && let Err(e) = ctx.db.config.set_server_description(d).await
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_DESC);
+        return ctx
+            .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+            .await;
+    }
+
+    if let Some(ref addr) = public_address
+        && let Err(e) = ctx.db.config.set_public_address(addr).await
+    {
+        error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_PUBLIC_ADDRESS);
         return ctx
             .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
             .await;
@@ -403,6 +447,7 @@ where
         .broadcast_server_info_updated(ServerInfoValues {
             name: config.server_name,
             description: config.server_description,
+            public_address: config.public_address,
             version: env!("CARGO_PKG_VERSION").to_string(),
             max_connections_per_ip: config.max_connections_per_ip,
             max_transfers_per_ip: config.max_transfers_per_ip,
@@ -442,6 +487,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: Some("New Name".to_string()),
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -477,6 +523,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: Some("New Name".to_string()),
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -512,6 +559,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -547,6 +595,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: Some("".to_string()),
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -583,6 +632,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: Some(long_name),
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -619,6 +669,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: Some(long_desc),
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -655,6 +706,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: Some(0),
             max_transfers_per_ip: None,
             image: None,
@@ -694,6 +746,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: Some("My Custom Server".to_string()),
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -733,6 +786,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: Some("Welcome to my server!".to_string()),
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -772,6 +826,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: Some(10),
             max_transfers_per_ip: None,
             image: None,
@@ -811,6 +866,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: Some("Full Update Server".to_string()),
             description: Some("All fields updated".to_string()),
+            public_address: None,
             max_connections_per_ip: Some(15),
             max_transfers_per_ip: None,
             image: None,
@@ -865,6 +921,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: Some("".to_string()),
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -895,6 +952,234 @@ mod tests {
     }
 
     // =========================================================================
+    // Public Address Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_server_info_update_public_address_success() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            public_address: Some("bbs.example.com".to_string()),
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        // Broadcast travels through the mpsc channel (test_ctx.rx), not the socket.
+        let (broadcast, _) = test_ctx.rx.recv().await.expect("broadcast delivered");
+        match broadcast {
+            ServerMessage::ServerInfoUpdated { server_info } => {
+                assert_eq!(
+                    server_info.public_address,
+                    Some("bbs.example.com".to_string())
+                );
+            }
+            _ => panic!("Expected ServerInfoUpdated, got {:?}", broadcast),
+        }
+
+        // Response comes back over the socket.
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        let saved = test_ctx.db.config.get_public_address().await;
+        assert_eq!(saved, "bbs.example.com");
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_public_address_empty_clears() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Pre-seed so we can verify the clear actually took effect.
+        test_ctx
+            .db
+            .config
+            .set_public_address("bbs.example.com")
+            .await
+            .unwrap();
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            public_address: Some(String::new()),
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        // Empty stored value maps to None on the wire.
+        let (broadcast, _) = test_ctx.rx.recv().await.expect("broadcast delivered");
+        match broadcast {
+            ServerMessage::ServerInfoUpdated { server_info } => {
+                assert_eq!(server_info.public_address, None);
+            }
+            _ => panic!("Expected ServerInfoUpdated, got {:?}", broadcast),
+        }
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        let saved = test_ctx.db.config.get_public_address().await;
+        assert_eq!(saved, "");
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_public_address_empty_when_already_unset() {
+        // Server must handle `Some("")` on an already-unset field without error:
+        // the DB write is a no-op at the value level, but the broadcast still
+        // fires and still reports `None` on the wire. Guards against future
+        // client diff-logic refactors that might send this payload.
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Baseline: public_address is unset (migration seeds empty).
+        assert_eq!(test_ctx.db.config.get_public_address().await, "");
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            public_address: Some(String::new()),
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        // Broadcast still fires; empty stored value maps to None on the wire.
+        let (broadcast, _) = test_ctx.rx.recv().await.expect("broadcast delivered");
+        match broadcast {
+            ServerMessage::ServerInfoUpdated { server_info } => {
+                assert_eq!(server_info.public_address, None);
+            }
+            _ => panic!("Expected ServerInfoUpdated, got {:?}", broadcast),
+        }
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        assert_eq!(test_ctx.db.config.get_public_address().await, "");
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_public_address_too_long_fails() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let long_addr = "a".repeat(validators::MAX_PUBLIC_ADDRESS_LENGTH + 1);
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            public_address: Some(long_addr),
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::Error { message, command } => {
+                assert!(message.contains(&validators::MAX_PUBLIC_ADDRESS_LENGTH.to_string()));
+                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            }
+            _ => panic!("Expected Error message, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_public_address_invalid_format_fails() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Embedded port should trip the ContainsPort branch.
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            public_address: Some("example.com:7500".to_string()),
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::Error { message, command } => {
+                assert_eq!(
+                    message,
+                    err_public_address_contains_port(DEFAULT_TEST_LOCALE)
+                );
+                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            }
+            _ => panic!("Expected Error message, got {:?}", response),
+        }
+    }
+
+    // =========================================================================
     // Server Image Tests
     // =========================================================================
 
@@ -911,6 +1196,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: Some(test_image.to_string()),
@@ -959,6 +1245,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: Some("".to_string()),
@@ -1003,6 +1290,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: Some(large_image),
@@ -1041,6 +1329,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: Some(invalid_image.to_string()),
@@ -1082,6 +1371,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: Some(unsupported_image.to_string()),
@@ -1124,6 +1414,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1164,6 +1455,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1203,6 +1495,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1243,6 +1536,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1281,6 +1575,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1321,6 +1616,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1361,6 +1657,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1401,6 +1698,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1441,6 +1739,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1479,6 +1778,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1513,6 +1813,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1550,6 +1851,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1587,6 +1889,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1628,6 +1931,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,
@@ -1669,6 +1973,7 @@ mod tests {
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
+            public_address: None,
             max_connections_per_ip: None,
             max_transfers_per_ip: None,
             image: None,

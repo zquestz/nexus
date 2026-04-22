@@ -62,6 +62,8 @@ impl NexusApp {
         if let Some(info) = server_info {
             conn.server_name = info.name;
             conn.server_description = info.description;
+            // Normalize empty → None so `Some` always carries a non-empty address.
+            conn.public_address = info.public_address.filter(|s| !s.is_empty());
             conn.server_version = info.version;
             conn.max_connections_per_ip = info.max_connections_per_ip;
             conn.max_transfers_per_ip = info.max_transfers_per_ip;

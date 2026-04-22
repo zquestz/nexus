@@ -163,6 +163,15 @@ err-invalid-password-strength = 無效的密碼強度值
 err-server-image-too-large = 伺服器圖片太大（最大512KB）
 err-server-image-invalid-format = 伺服器圖片格式無效（必須是base64編碼的資料URI）
 err-server-image-unsupported-type = 不支援的伺服器圖片類型（僅支援PNG、WebP、JPEG或SVG）
+err-public-address-too-long = 公開位址太長（最多{ $max_length }個位元組）
+err-public-address-contains-scheme = 公開位址不能包含URL協定
+err-public-address-contains-brackets = 公開位址不能包含方括號
+err-public-address-contains-path = 公開位址不能包含路徑
+err-public-address-contains-userinfo = 公開位址不能包含使用者名稱
+err-public-address-contains-whitespace = 公開位址不能包含空格
+err-public-address-contains-port = 公開位址不能包含連接埠
+err-public-address-contains-zone-id = 公開位址不能包含IPv6區域識別碼
+err-public-address-invalid-format = 公開位址不是有效的主機名稱或IP位址
 
 # 新聞錯誤
 err-news-not-found = 找不到新聞 #{ $id }

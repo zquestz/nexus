@@ -148,6 +148,8 @@ pub enum InputId {
     EditServerInfoName,
     /// Server info edit: Description input
     EditServerInfoDescription,
+    /// Server info edit: Public address input
+    EditServerInfoPublicAddress,
     /// Server info edit: Auto-join channels input
     EditServerInfoAutoJoinChannels,
     /// Server info edit: Persistent channels input
@@ -211,6 +213,7 @@ impl From<InputId> for Id {
             InputId::EditNewPassword => "InputId::EditNewPassword",
             InputId::EditServerInfoName => "InputId::EditServerInfoName",
             InputId::EditServerInfoDescription => "InputId::EditServerInfoDescription",
+            InputId::EditServerInfoPublicAddress => "InputId::EditServerInfoPublicAddress",
             InputId::EditServerInfoAutoJoinChannels => "InputId::EditServerInfoAutoJoinChannels",
             InputId::EditServerInfoPersistentChannels => {
                 "InputId::EditServerInfoPersistentChannels"
