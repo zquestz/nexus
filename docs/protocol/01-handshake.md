@@ -25,20 +25,20 @@ Sent immediately after TLS connection is established.
 
 | Field     | Type   | Required | Description                                 |
 | --------- | ------ | -------- | ------------------------------------------- |
-| `version` | string | Yes      | Client's protocol version (e.g., `"0.7.6"`) |
+| `version` | string | Yes      | Client's protocol version (e.g., `"0.7.7"`) |
 
 **Example:**
 
 ```json
 {
-  "version": "0.7.6"
+  "version": "0.7.7"
 }
 ```
 
 **Full frame:**
 
 ```
-NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.7.6"}
+NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.7.7"}
 ```
 
 ### HandshakeResponse (Server → Client)
@@ -56,7 +56,7 @@ Server's response indicating whether the handshake succeeded.
 ```json
 {
   "success": true,
-  "version": "0.7.6"
+  "version": "0.7.7"
 }
 ```
 
@@ -65,7 +65,7 @@ Server's response indicating whether the handshake succeeded.
 ```json
 {
   "success": false,
-  "error": "Unsupported protocol version. Server: 0.7.6, Client: 0.3.0"
+  "error": "Unsupported protocol version. Server: 0.7.7, Client: 0.3.0"
 }
 ```
 
@@ -86,7 +86,7 @@ During pre-1.0 development, each minor version bump can introduce breaking proto
 | Client | Server | Compatible | Reason                   |
 | ------ | ------ | ---------- | ------------------------ |
 | 0.7.0  | 0.7.0  | ✅ Yes     | Exact match              |
-| 0.7.0  | 0.7.6  | ✅ Yes     | Patch difference ignored |
+| 0.7.0  | 0.7.7  | ✅ Yes     | Patch difference ignored |
 | 0.5.0  | 0.7.0  | ❌ No      | Minor mismatch (pre-1.0) |
 | 0.7.0  | 0.5.0  | ❌ No      | Minor mismatch (pre-1.0) |
 | 1.0.0  | 0.7.0  | ❌ No      | Major version mismatch   |

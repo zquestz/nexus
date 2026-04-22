@@ -103,7 +103,7 @@ Start the server with default settings:
 You'll see output like:
 
 ```
-Nexus BBS Server v0.7.6
+Nexus BBS Server v0.7.7
 Log level: info
 Log directory: ~/.local/share/nexusd/logs
 Database: ~/.local/share/nexusd/nexus.db

@@ -119,7 +119,7 @@ The `group_id` and `group_name` fields identify the user's account group (if any
     "name": "My BBS",
     "description": "Welcome to my server!",
     "public_address": "bbs.example.com",
-    "version": "0.7.6",
+    "version": "0.7.7",
     "fingerprint": "AA:BB:CC:...",
     "transfer_port": 7501,
     "max_connections_per_ip": 5,
