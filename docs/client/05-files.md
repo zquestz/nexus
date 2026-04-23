@@ -83,13 +83,13 @@ Click any column header to sort. When sorting by Name, directories appear first.
 
 ### Opening Results
 
-- **Left-click** a result to open it in a new tab
-  - Files: Opens the parent directory with the file visible
-  - Folders: Opens the folder itself
+- **Left-click** a result:
+  - Files: Starts a download (requires `file_download` permission; files without permission are not clickable)
+  - Folders: Opens the folder in a new tab
 - **Right-click** for context menu:
   - **Download** — Download the file or folder
   - **Info** — View detailed information
-  - **Open** — Same as left-click
+  - **Open** — Files: open the parent directory in a new tab; Folders: same as left-click
 
 ### Search Scope
 
