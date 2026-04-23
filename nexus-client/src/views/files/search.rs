@@ -108,12 +108,23 @@ pub(super) fn lazy_search_results_table(deps: SearchResultsDeps) -> Element<'sta
                 .align_y(iced::Alignment::Start)
                 .into();
 
-                // Left-click: open in new tab
-                let row_element: Element<'static, Message> = button(name_content)
-                    .padding(NO_SPACING)
-                    .style(transparent_icon_button_style)
-                    .on_press(Message::FileSearchResultClicked(result.clone()))
-                    .into();
+                // Left-click: directory → open in new tab, file → download.
+                // Files without download permission render as plain text.
+                let row_element: Element<'static, Message> = if is_directory {
+                    button(name_content)
+                        .padding(NO_SPACING)
+                        .style(transparent_icon_button_style)
+                        .on_press(Message::FileSearchResultClicked(result.clone()))
+                        .into()
+                } else if perms.file_download {
+                    button(name_content)
+                        .padding(NO_SPACING)
+                        .style(transparent_icon_button_style)
+                        .on_press(Message::FileSearchResultDownload(result.clone()))
+                        .into()
+                } else {
+                    name_content
+                };
 
                 // Build context menu - always show since Open is always available
                 LazyContextMenu::new(row_element, move || {
