@@ -46,7 +46,8 @@ jobs:
           # Remove Microsoft repos that cause 403 errors on ARM runners
           sudo rm -f /etc/apt/sources.list.d/microsoft*.list
           sudo rm -f /etc/apt/sources.list.d/azure*.list
-          sudo apt-get update && sudo apt-get install -y libasound2-dev libayatana-appindicator3-dev meson ninja-build pkg-config
+          sudo apt-get update && sudo apt-get install -y libasound2-dev libayatana-appindicator3-dev pkg-config
+          pip install meson ninja
 
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
@@ -103,7 +104,8 @@ jobs:
           # Remove Microsoft repos that cause 403 errors on ARM runners
           sudo rm -f /etc/apt/sources.list.d/microsoft*.list
           sudo rm -f /etc/apt/sources.list.d/azure*.list
-          sudo apt-get update && sudo apt-get install -y libasound2-dev libayatana-appindicator3-dev meson ninja-build pkg-config
+          sudo apt-get update && sudo apt-get install -y libasound2-dev libayatana-appindicator3-dev pkg-config
+          pip install meson ninja
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -335,7 +337,8 @@ jobs:
           sudo rm -f /etc/apt/sources.list.d/microsoft*.list
           sudo rm -f /etc/apt/sources.list.d/azure*.list
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libayatana-appindicator3-dev meson ninja-build pkg-config
+          sudo apt-get install -y libasound2-dev libayatana-appindicator3-dev pkg-config
+          pip install meson ninja
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable

@@ -34,7 +34,8 @@ jobs:
           sudo rm -f /etc/apt/sources.list.d/microsoft*.list
           sudo rm -f /etc/apt/sources.list.d/azure*.list
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libayatana-appindicator3-dev meson ninja-build pkg-config
+          sudo apt-get install -y libasound2-dev libayatana-appindicator3-dev pkg-config
+          pip install meson ninja
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
