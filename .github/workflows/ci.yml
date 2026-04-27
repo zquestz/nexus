@@ -372,7 +372,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle
-          key: cargo-bundle-linux-${{ matrix.arch }}-v2
+          key: cargo-bundle-linux-${{ matrix.arch }}-v3
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
