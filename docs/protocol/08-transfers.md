@@ -13,7 +13,7 @@ Both ports use the same TLS certificate, frame format, and authentication system
 
 **One connection = one transfer.** After a transfer completes, the server closes the connection. Clients reconnect for each new transfer.
 
-**Certificate verification:** Clients MUST verify that port 7501 presents the same certificate fingerprint as port 7500.
+**Certificate verification:** Both ports use the same TLS certificate, so the fingerprint is identical. The transfer-port handshake also returns the server's `fingerprint` in `HandshakeResponse`, allowing the same staged verification used on port 7500 — clients abort before sending credentials if either stage fails. See [01-handshake.md](01-handshake.md#handshakeresponse-server--client) for the field; see the main [README](README.md#tls) for the staged-verification model.
 
 ## Download Flow
 
@@ -24,7 +24,7 @@ Client                                        Server
    │                                             │
    │  Handshake { version }                      │
    │ ───────────────────────────────────────►    │
-   │         HandshakeResponse { version }       │
+   │  HandshakeResponse { version, fingerprint } │
    │ ◄───────────────────────────────────────    │
    │                                             │
    │  Login { username, password, ... }          │
@@ -68,7 +68,7 @@ Client                                        Server
    │                                             │
    │  Handshake { version }                      │
    │ ───────────────────────────────────────►    │
-   │         HandshakeResponse { version }       │
+   │  HandshakeResponse { version, fingerprint } │
    │ ◄───────────────────────────────────────    │
    │                                             │
    │  Login { username, password, ... }          │

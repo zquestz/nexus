@@ -20,6 +20,9 @@ pub struct TransferParams {
     pub file_index: Arc<FileIndex>,
     /// Transfer registry for ban signal handling
     pub transfer_registry: Arc<TransferRegistry>,
+    /// Server certificate fingerprint, included in HandshakeResponse so the
+    /// client can detect TLS interception before sending credentials.
+    pub fingerprint: &'static str,
 }
 
 /// Information about a file to transfer (for downloads)

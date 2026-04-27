@@ -513,6 +513,7 @@ err-unexpected-handshake-response = Неожиданный ответ рукоп
 err-no-session-id = Идентификатор сессии не получен
 err-login-failed = Ошибка входа
 err-unexpected-login-response = Неожиданный ответ при входе
+err-server-omitted-nickname = Ответ сервера не содержит псевдоним
 err-connection-closed = Соединение закрыто
 err-could-not-determine-config-dir = Не удалось определить каталог конфигурации
 err-message-too-long = Сообщение слишком длинное ({ $length } символов, макс { $max })

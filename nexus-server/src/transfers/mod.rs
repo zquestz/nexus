@@ -86,6 +86,7 @@ where
         file_root,
         file_index,
         transfer_registry,
+        fingerprint,
     } = params;
 
     debug!(ip = %peer_addr, "{}", LOG_TRANSFER_CONNECTION);
@@ -101,7 +102,7 @@ where
 
     // Phase 1: Handshake
     let handshake_result =
-        handle_transfer_handshake(&mut frame_reader, &mut frame_writer, &locale).await;
+        handle_transfer_handshake(&mut frame_reader, &mut frame_writer, &locale, fingerprint).await;
     if let Err(e) = handshake_result {
         debug!(ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_HANDSHAKE_FAILED);
         let _ = frame_writer.get_mut().shutdown().await;

@@ -6,6 +6,7 @@ use iced::{Element, Length};
 use super::fingerprint::format_fingerprint_multiline;
 use super::layout::scrollable_modal;
 use crate::i18n::t;
+use crate::network::FingerprintInterception;
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING,
     FINGERPRINT_SPACE_AFTER_LABEL, FINGERPRINT_SPACE_AFTER_SERVER_INFO,
@@ -13,7 +14,7 @@ use crate::style::{
     FINGERPRINT_SPACE_BEFORE_BUTTONS, FINGERPRINT_SPACE_BETWEEN_SECTIONS, MONOSPACE_FONT,
     TEXT_SIZE, panel_title, shaped_text, shaped_text_wrapped,
 };
-use crate::types::{FingerprintInterception, Message};
+use crate::types::Message;
 
 // ============================================================================
 // Dialog View
@@ -25,11 +26,20 @@ pub fn fingerprint_interception_dialog<'a>(
 ) -> Element<'a, Message> {
     let title = panel_title(t("title-fingerprint-mismatch"));
 
-    let server_line = shaped_text(format!(
-        "{} - [{}]:{}",
-        interception.server_name, interception.server_address, interception.server_port
-    ))
-    .size(TEXT_SIZE);
+    // Mirror the stage-1 mismatch dialog: only show the leading "name -" when
+    // we actually have a friendly name to display. Empty falls back to host:port.
+    let server_line_text = if interception.server_name.is_empty() {
+        format!(
+            "[{}]:{}",
+            interception.server_address, interception.server_port
+        )
+    } else {
+        format!(
+            "{} - [{}]:{}",
+            interception.server_name, interception.server_address, interception.server_port
+        )
+    };
+    let server_line = shaped_text(server_line_text).size(TEXT_SIZE);
 
     let warning = shaped_text_wrapped(t("fingerprint-interception-warning")).size(TEXT_SIZE);
 

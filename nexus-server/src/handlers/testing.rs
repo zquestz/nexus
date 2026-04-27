@@ -3,6 +3,14 @@
 /// Default locale for tests
 pub const DEFAULT_TEST_LOCALE: &str = "en";
 
+/// Fake server certificate fingerprint used in tests.
+///
+/// Real fingerprints are 32 hex pairs separated by colons (95 chars). Tests
+/// don't validate format, but using a realistic shape avoids surprises if a
+/// validator is added later. Reference this constant rather than the literal
+/// so it can be updated in one place.
+pub const TEST_FINGERPRINT: &str = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
+
 use std::collections::HashMap;
 use std::fs;
 use std::net::SocketAddr;
@@ -132,7 +140,7 @@ impl TestContext {
             channel_manager: &self.channel_manager,
             transfer_registry: self.transfer_registry.clone(),
             voice_registry: &self.voice_registry,
-            fingerprint: "AA:BB:CC:DD",
+            fingerprint: TEST_FINGERPRINT,
             flood_config: self.flood_config.clone(),
         }
     }

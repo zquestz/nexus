@@ -4,11 +4,9 @@
 //! - Connection results (manual and bookmark connections)
 //! - Message routing
 //! - Server message handling
-//! - Certificate fingerprint verification
 
 mod chat;
 mod connection;
-mod fingerprint;
 mod messages;
 
 pub mod constants;

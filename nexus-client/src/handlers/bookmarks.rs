@@ -88,6 +88,17 @@ impl NexusApp {
 
         self.bookmark_edit.is_submitting = true;
 
+        // Normalize whitespace on identifying fields so lookups don't miss due
+        // to user-typed leading/trailing whitespace. Password is left as-typed
+        // since users could have intentional whitespace there.
+        self.bookmark_edit.bookmark.name = self.bookmark_edit.bookmark.name.trim().to_string();
+        self.bookmark_edit.bookmark.address =
+            self.bookmark_edit.bookmark.address.trim().to_string();
+        self.bookmark_edit.bookmark.username =
+            self.bookmark_edit.bookmark.username.trim().to_string();
+        self.bookmark_edit.bookmark.nickname =
+            self.bookmark_edit.bookmark.nickname.trim().to_string();
+
         let bookmark = self.bookmark_edit.bookmark.clone();
 
         match self.bookmark_edit.mode {
@@ -186,6 +197,7 @@ impl NexusApp {
             let locale = get_locale().to_string();
             let avatar = self.config.settings.avatar.clone();
             let display_name = bookmark.name.clone();
+            let expected_fingerprint = bookmark.certificate_fingerprint.clone();
 
             // Build proxy config if enabled
             let proxy = if self.config.settings.proxy.enabled {
@@ -199,25 +211,29 @@ impl NexusApp {
                 None
             };
 
+            let params = ConnectionParams {
+                server_address,
+                port,
+                username,
+                password,
+                nickname,
+                locale,
+                avatar,
+                connection_id,
+                proxy,
+                expected_fingerprint,
+            };
+            // Clone for the result handler so an accept-after-mismatch can
+            // replay the original intent.
+            let retry_params = params.clone();
+
             return Task::perform(
-                async move {
-                    crate::network::connect_to_server(ConnectionParams {
-                        server_address,
-                        port,
-                        username,
-                        password,
-                        nickname,
-                        locale,
-                        avatar,
-                        connection_id,
-                        proxy,
-                    })
-                    .await
-                },
+                async move { crate::network::connect_to_server(params).await },
                 move |result| Message::BookmarkConnectionResult {
                     result,
-                    bookmark_id: Some(id),
-                    display_name: display_name.clone(),
+                    params: retry_params,
+                    bookmark_id: id,
+                    display_name,
                 },
             );
         }

@@ -36,10 +36,15 @@ pub enum Message {
     BookmarkAddressChanged(String),
     /// Bookmark editor: Auto-connect checkbox toggled
     BookmarkAutoConnectToggled(bool),
-    /// Network: Bookmark connection attempt completed (with display name)
+    /// Network: Bookmark connection attempt completed (with display name).
+    ///
+    /// `params` carries the original connection parameters so that on a
+    /// `FingerprintMismatch` the accept-and-retry path can be replayed
+    /// faithfully (same credentials, locale, proxy, etc.).
     BookmarkConnectionResult {
-        result: Result<NetworkConnection, String>,
-        bookmark_id: Option<Uuid>,
+        result: Result<NetworkConnection, crate::network::types::ConnectError>,
+        params: crate::network::types::ConnectionParams,
+        bookmark_id: Uuid,
         display_name: String,
     },
     /// Bookmark editor: Name field changed
@@ -111,8 +116,15 @@ pub enum Message {
     ConnectPressed,
     /// Connect to a bookmark by ID
     ConnectToBookmark(Uuid),
-    /// Network: Connection attempt completed
-    ConnectionResult(Result<NetworkConnection, String>),
+    /// Network: Connection attempt completed (manual form connect).
+    ///
+    /// `params` carries the original connection parameters so that on a
+    /// `FingerprintMismatch` the accept-and-retry path can be replayed
+    /// faithfully.
+    ConnectionResult {
+        result: Result<NetworkConnection, crate::network::types::ConnectError>,
+        params: crate::network::types::ConnectionParams,
+    },
     /// Bookmark editor: Confirm delete after confirmation modal
     ConfirmDeleteBookmark(Uuid),
     /// Bookmark editor: Delete button pressed (shows confirmation modal)
@@ -738,11 +750,14 @@ pub enum Message {
     UriReceivedFromIpc(String),
     /// IPC: Another instance requested we take focus
     FocusRequested,
-    /// URI: Connection attempt from URI completed (shows errors in console)
+    /// URI: Connection attempt from URI completed (shows errors in console).
+    ///
+    /// `params` carries the original connection parameters so that on a
+    /// `FingerprintMismatch` the accept-and-retry path replays the URI
+    /// flow including path navigation.
     UriConnectionResult {
-        result: Result<NetworkConnection, String>,
-        /// The host we tried to connect to (for error messages)
-        target_host: String,
+        result: Result<NetworkConnection, crate::network::types::ConnectError>,
+        params: crate::network::types::ConnectionParams,
         /// Display name for the connection (host:port)
         display_name: String,
         /// Path intent to navigate to after connection succeeds

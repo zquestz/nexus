@@ -56,6 +56,7 @@ impl ProxyConfig {
 }
 
 /// Parameters for connecting to a server
+#[derive(Clone)]
 pub struct ConnectionParams {
     /// Server address (IPv4 or IPv6)
     pub server_address: String,
@@ -75,6 +76,81 @@ pub struct ConnectionParams {
     pub connection_id: usize,
     /// Optional SOCKS5 proxy configuration
     pub proxy: Option<ProxyConfig>,
+    /// Bookmark's stored TLS fingerprint, if any. Used for the stage-1
+    /// (pre-handshake) TOFU check. `None` means no stored fingerprint —
+    /// either no bookmark, or a brand-new bookmark that will commit its
+    /// fingerprint after stage 2 passes.
+    pub expected_fingerprint: Option<String>,
+}
+
+impl std::fmt::Debug for ConnectionParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConnectionParams")
+            .field("server_address", &self.server_address)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .field("nickname", &self.nickname)
+            .field("locale", &self.locale)
+            .field("avatar", &self.avatar.as_ref().map(|_| "[data]"))
+            .field("connection_id", &self.connection_id)
+            .field("proxy", &self.proxy)
+            .field("expected_fingerprint", &self.expected_fingerprint)
+            .finish()
+    }
+}
+
+/// Certificate fingerprint mismatch details emitted by `connect_to_server`.
+///
+/// `connect_to_server` only knows the wire-level inputs (the server address
+/// it was asked to connect to, the expected fingerprint it was given, and
+/// the fingerprint it actually observed). The handler layer decorates this
+/// with bookmark identity and a `ReconnectAction` when queueing a
+/// `FingerprintMismatch`.
+#[derive(Debug, Clone)]
+pub struct FingerprintMismatchDetails {
+    /// Expected fingerprint (the value caller passed in `expected_fingerprint`)
+    pub expected: String,
+    /// Received fingerprint (TLS-observed)
+    pub received: String,
+    /// Server address (IP or hostname)
+    pub server_address: String,
+    /// Server port
+    pub server_port: String,
+}
+
+/// Certificate fingerprint interception detected (TLS-observed vs server-reported mismatch)
+#[derive(Debug, Clone)]
+pub struct FingerprintInterception {
+    /// Server name for display
+    pub server_name: String,
+    /// Server address for display
+    pub server_address: String,
+    /// Server port for display
+    pub server_port: String,
+    /// Fingerprint observed during TLS handshake
+    pub tls_fingerprint: String,
+    /// Fingerprint reported by server in ServerInfo
+    pub server_fingerprint: String,
+}
+
+/// Errors returned by `connect_to_server`.
+///
+/// Distinguishes the two pre-login fingerprint failures (which need dialog
+/// handling) from generic connection errors. `Other` carries any preexisting
+/// string-based error path (TLS failure, login refused, etc.).
+#[derive(Debug, Clone)]
+pub enum ConnectError {
+    /// Stage-1 mismatch: the TLS-observed fingerprint doesn't match the
+    /// bookmark's stored fingerprint. User can accept (cert rotation) or
+    /// reject (likely MITM).
+    FingerprintMismatch(Box<FingerprintMismatchDetails>),
+    /// Stage-2 mismatch: the server's self-reported fingerprint doesn't
+    /// match the TLS-observed fingerprint. Active interception in progress.
+    /// No accept path; informational only.
+    FingerprintInterception(Box<FingerprintInterception>),
+    /// Any other connection error (TLS, framing, login refused, etc.).
+    Other(String),
 }
 
 /// Type alias for TLS stream over direct TCP connection
@@ -184,8 +260,6 @@ pub struct LoginInfo {
     pub min_password_strength: PasswordStrength,
     /// Server log level (read-only, from ServerInfo)
     pub log_level: Option<String>,
-    /// Server-reported certificate fingerprint (for TLS interception detection)
-    pub server_fingerprint: Option<String>,
     pub transfer_port: u16,
     pub locale: String,
 }

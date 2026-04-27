@@ -513,6 +513,7 @@ err-unexpected-handshake-response = Risposta handshake inattesa
 err-no-session-id = Nessun ID sessione ricevuto
 err-login-failed = Accesso fallito
 err-unexpected-login-response = Risposta di accesso inattesa
+err-server-omitted-nickname = Risposta del server senza nickname
 err-connection-closed = Connessione chiusa
 err-could-not-determine-config-dir = Impossibile determinare la directory di configurazione
 err-message-too-long = Il messaggio è troppo lungo ({ $length } caratteri, max { $max })

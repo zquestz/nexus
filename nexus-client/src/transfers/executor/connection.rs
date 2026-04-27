@@ -55,10 +55,12 @@ where
     ReadHalf<TlsStream<S>>: Send,
     WriteHalf<TlsStream<S>>: Send,
 {
-    // Get and verify fingerprint before splitting
+    // Get and verify fingerprint before splitting. A missing peer cert is
+    // a TLS-layer anomaly (handshake completed without exposing a cert),
+    // not a fingerprint mismatch — surface it as a connection error.
     let (_, session) = tls_stream.get_ref();
     let fingerprint = crate::network::tls::get_certificate_fingerprint(session)
-        .ok_or(TransferError::CertificateMismatch)?;
+        .ok_or(TransferError::ConnectionError)?;
 
     if fingerprint != expected_fingerprint {
         return Err(TransferError::CertificateMismatch);
@@ -165,7 +167,24 @@ pub async fn connect_and_authenticate(
     let handshake_response = read_message_with_timeout(&mut reader, IDLE_TIMEOUT).await?;
 
     match handshake_response {
-        ServerMessage::HandshakeResponse { success: true, .. } => {}
+        ServerMessage::HandshakeResponse {
+            success: true,
+            fingerprint: server_fingerprint,
+            ..
+        } => {
+            // Stage 2: server-reported fingerprint must match the TLS-observed
+            // value. `verify_and_split` already confirmed the TLS-observed
+            // fingerprint equals `conn_info.certificate_fingerprint` (which
+            // was committed via TOFU on the BBS port), so comparing the
+            // server-reported value against `conn_info.certificate_fingerprint`
+            // is equivalent. They always should match — same TLS cert as the
+            // BBS port. A mismatch means active interception on 7501.
+            // Both sides come from the canonical `format_certificate_fingerprint`,
+            // so direct `!=` is correct — no normalization needed.
+            if server_fingerprint != conn_info.certificate_fingerprint {
+                return Err(TransferError::CertificateMismatch);
+            }
+        }
         ServerMessage::HandshakeResponse { success: false, .. } => {
             return Err(TransferError::UnsupportedVersion);
         }

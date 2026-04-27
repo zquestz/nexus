@@ -30,9 +30,6 @@ pub use panel::{
     UserManagementState, UserManagementTab,
 };
 pub use pending::{PendingRequests, ResponseRouting};
-pub use ui::{
-    ActivePanel, FingerprintInterception, FingerprintMismatch, FingerprintMismatchDetails, InputId,
-    ScrollableId, UiState,
-};
+pub use ui::{ActivePanel, FingerprintMismatch, InputId, ReconnectAction, ScrollableId, UiState};
 pub use view_config::{ToolbarState, ViewConfig};
 pub use voice::VoiceState;

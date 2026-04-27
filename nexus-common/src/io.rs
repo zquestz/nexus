@@ -587,7 +587,8 @@ mod tests {
     async fn test_send_with_specific_id() {
         let message = ServerMessage::HandshakeResponse {
             success: true,
-            version: Some("0.4.0".to_string()),
+            version: Some(crate::PROTOCOL_VERSION.to_string()),
+            fingerprint: "00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF".to_string(),
             error: None,
         };
         let specific_id = MessageId::new();

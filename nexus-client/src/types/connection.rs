@@ -468,8 +468,6 @@ pub struct NetworkConnection {
     pub server_image: String,
     /// Channels the user was auto-joined to on login
     pub channels: Vec<ChannelJoinInfo>,
-    /// Server-reported certificate fingerprint (for TLS interception detection)
-    pub server_fingerprint: Option<String>,
     /// Chat burst limit (from ServerInfo, visible to all users)
     pub chat_burst_limit: Option<u32>,
     /// Chat rate limit in messages per minute (from ServerInfo, visible to all users)

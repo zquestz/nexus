@@ -97,6 +97,15 @@ impl NexusApp {
 
         self.connection_form.error = None;
 
+        // Normalize whitespace on identifying fields so lookups don't miss due
+        // to user-typed leading/trailing whitespace. Password is left as-typed
+        // since users could have intentional whitespace there.
+        self.connection_form.server_name = self.connection_form.server_name.trim().to_string();
+        self.connection_form.server_address =
+            self.connection_form.server_address.trim().to_string();
+        self.connection_form.username = self.connection_form.username.trim().to_string();
+        self.connection_form.nickname = self.connection_form.nickname.trim().to_string();
+
         let port = self.connection_form.port;
 
         self.connection_form.is_connecting = true;
@@ -127,22 +136,42 @@ impl NexusApp {
             None
         };
 
+        // If the form data matches an existing bookmark, use that bookmark's
+        // stored fingerprint for the stage-1 TOFU check. Otherwise this is
+        // either a brand-new server or one without a stored fingerprint, and
+        // stage 1 is a no-op.
+        let expected_fingerprint = self
+            .config
+            .find_bookmark_matching(
+                &server_address,
+                port,
+                &username,
+                &self.connection_form.nickname,
+            )
+            .and_then(|b| b.certificate_fingerprint.clone());
+
+        let params = ConnectionParams {
+            server_address,
+            port,
+            username,
+            password,
+            nickname,
+            locale,
+            avatar,
+            connection_id,
+            proxy,
+            expected_fingerprint,
+        };
+        // Clone for the result handler so an accept-after-mismatch can
+        // replay the original intent.
+        let retry_params = params.clone();
+
         Task::perform(
-            async move {
-                network::connect_to_server(ConnectionParams {
-                    server_address,
-                    port,
-                    username,
-                    password,
-                    nickname,
-                    locale,
-                    avatar,
-                    connection_id,
-                    proxy,
-                })
-                .await
+            async move { network::connect_to_server(params).await },
+            move |result| Message::ConnectionResult {
+                result,
+                params: retry_params,
             },
-            Message::ConnectionResult,
         )
     }
 

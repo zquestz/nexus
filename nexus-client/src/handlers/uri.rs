@@ -76,13 +76,16 @@ impl NexusApp {
         let server_address = uri.host.clone();
         let port = uri.port;
 
-        // If URI has no credentials, look for a matching bookmark to use its credentials
-        let (username, password, nickname, display_name) =
+        // If URI has no credentials, look for a matching bookmark to use its credentials.
+        // If a bookmark is matched, also pull its stored fingerprint so the
+        // stage-1 TOFU check can run.
+        let (username, password, nickname, display_name, expected_fingerprint) =
             if uri.user.is_none() {
                 // Find bookmark matching host:port
-                if let Some(bookmark) = self.config.bookmarks.iter().find(|b| {
-                    b.address.to_lowercase() == uri.host.to_lowercase() && b.port == uri.port
-                }) {
+                if let Some(bookmark) = self
+                    .config
+                    .find_bookmark_matching_uri(&uri.host, uri.port, None)
+                {
                     (
                         bookmark.username.clone(),
                         bookmark.password.clone(),
@@ -92,6 +95,7 @@ impl NexusApp {
                             Some(bookmark.nickname.clone())
                         },
                         bookmark.name.clone(),
+                        bookmark.certificate_fingerprint.clone(),
                     )
                 } else {
                     // No bookmark found - use guest login
@@ -100,17 +104,17 @@ impl NexusApp {
                         String::new(),
                         self.config.settings.nickname.clone(),
                         format!("{}:{}", uri.host, uri.port),
+                        None,
                     )
                 }
             } else {
                 // URI has username - find matching bookmark for password and display name
                 let uri_user = uri.user.clone().unwrap_or_default();
 
-                if let Some(bookmark) = self.config.bookmarks.iter().find(|b| {
-                    b.address.to_lowercase() == uri.host.to_lowercase()
-                        && b.port == uri.port
-                        && b.username.to_lowercase() == uri_user.to_lowercase()
-                }) {
+                if let Some(bookmark) =
+                    self.config
+                        .find_bookmark_matching_uri(&uri.host, uri.port, Some(&uri_user))
+                {
                     // Use bookmark's password if URI didn't provide one
                     let password = uri
                         .password
@@ -125,6 +129,7 @@ impl NexusApp {
                             Some(bookmark.nickname.clone())
                         },
                         bookmark.name.clone(),
+                        bookmark.certificate_fingerprint.clone(),
                     )
                 } else {
                     // No matching bookmark - use URI credentials as-is
@@ -133,6 +138,7 @@ impl NexusApp {
                         uri.password.clone().unwrap_or_default(),
                         self.config.settings.nickname.clone(),
                         format!("{}:{}", uri.host, uri.port),
+                        None,
                     )
                 }
             };
@@ -152,28 +158,30 @@ impl NexusApp {
             None
         };
 
-        let target_host = uri.host.clone();
         let path = uri.path.clone();
+        let params = ConnectionParams {
+            server_address,
+            port,
+            username,
+            password,
+            nickname,
+            locale,
+            avatar,
+            connection_id,
+            proxy,
+            expected_fingerprint,
+        };
+        // Clone for the result handler so an accept-after-mismatch can
+        // replay the original intent (URI path navigation included).
+        let retry_params = params.clone();
+
         Task::perform(
-            async move {
-                crate::network::connect_to_server(ConnectionParams {
-                    server_address,
-                    port,
-                    username,
-                    password,
-                    nickname,
-                    locale,
-                    avatar,
-                    connection_id,
-                    proxy,
-                })
-                .await
-            },
+            async move { crate::network::connect_to_server(params).await },
             move |result| Message::UriConnectionResult {
                 result,
-                target_host: target_host.clone(),
-                display_name: display_name.clone(),
-                path: path.clone(),
+                params: retry_params,
+                display_name,
+                path,
             },
         )
     }
@@ -334,29 +342,33 @@ impl NexusApp {
     /// Handle URI connection result (success or failure)
     ///
     /// On success, creates the connection with proper display name.
-    /// On failure, shows error in the current connection's console (if any).
+    /// On fingerprint mismatch, queues an accept/reject dialog whose retry
+    /// preserves the URI path-navigation intent.
+    /// On other failures, shows error in the current connection's console.
     pub fn handle_uri_connection_result(
         &mut self,
-        result: Result<NetworkConnection, String>,
-        target_host: String,
+        result: Result<NetworkConnection, crate::network::types::ConnectError>,
+        params: crate::network::types::ConnectionParams,
         display_name: String,
         path: Option<NexusPath>,
     ) -> Task<Message> {
         use super::network::{ConnectionContext, ConnectionSource};
+        use crate::network::types::ConnectError;
+        use crate::types::ReconnectAction;
 
         match result {
             Ok(conn) => {
-                // Try to find a matching bookmark for this connection
+                // Try to find a matching bookmark for this connection.
+                // Same URI-shape lookup as connect_from_uri: 2-tuple if no
+                // creds were used, 3-tuple if username is set.
                 let bookmark_id = self
                     .config
-                    .bookmarks
-                    .iter()
-                    .find(|b| {
-                        b.address.to_lowercase() == conn.connection_info.address.to_lowercase()
-                            && b.port == conn.connection_info.port
-                            && b.username.to_lowercase()
-                                == conn.connection_info.username.to_lowercase()
-                    })
+                    .find_bookmark_matching_uri(
+                        &conn.connection_info.address,
+                        conn.connection_info.port,
+                        (!conn.connection_info.username.is_empty())
+                            .then_some(conn.connection_info.username.as_str()),
+                    )
                     .map(|b| b.id);
 
                 // Use bookmark name as display name if we found a match
@@ -378,13 +390,42 @@ impl NexusApp {
                 let path_task = self.process_uri_path(connection_id, path);
                 Task::batch([connect_task, path_task])
             }
-            Err(error) => {
+            Err(ConnectError::FingerprintMismatch(details)) => {
+                let action = ReconnectAction::Uri {
+                    params,
+                    display_name,
+                    path,
+                };
+                self.queue_fingerprint_mismatch(*details, action);
+                Task::none()
+            }
+            Err(ConnectError::FingerprintInterception(mut details)) => {
+                // Use the same URI-shape lookup as connect_from_uri so we
+                // resolve to the same bookmark identity. URIs without creds
+                // were matched by (host, port); with creds by (host, port,
+                // username). Empty params.username means "no creds at connect
+                // time" → 2-tuple match. Non-empty → 3-tuple match. If no
+                // bookmark, server_name stays empty and the dialog falls
+                // through to host:port.
+                details.server_name = self
+                    .config
+                    .find_bookmark_matching_uri(
+                        &params.server_address,
+                        params.port,
+                        (!params.username.is_empty()).then_some(params.username.as_str()),
+                    )
+                    .map(|b| b.name.clone())
+                    .unwrap_or_default();
+                self.fingerprint_interception_queue.push_back(*details);
+                Task::none()
+            }
+            Err(ConnectError::Other(error)) => {
                 // Show error in current connection's console if we have one
                 if let Some(conn_id) = self.active_connection {
                     if let Some(conn) = self.connections.get_mut(&conn_id) {
                         let error_msg = t_args(
                             "err-uri-connection-failed",
-                            &[("host", &target_host), ("error", &error)],
+                            &[("host", &params.server_address), ("error", &error)],
                         );
                         conn.console_messages.push(ChatMessage::error(error_msg));
                     }

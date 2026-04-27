@@ -576,10 +576,11 @@ const CHAT_TOPIC_UPDATE_RESPONSE_SIZE: usize = json_type_base("ChatTopicUpdateRe
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH);
 
-/// HandshakeResponse: {"type":"HandshakeResponse","success":false,"version":"...32...","error":"...2048..."}
+/// HandshakeResponse: {"type":"HandshakeResponse","success":false,"version":"...32...","fingerprint":"...95...","error":"...2048..."}
 const HANDSHAKE_RESPONSE_SIZE: usize = json_type_base("HandshakeResponse")
     + json_bool_field("success")
     + json_string_field("version", MAX_VERSION_LENGTH)
+    + json_string_field("fingerprint", SHA256_FINGERPRINT_LENGTH)
     + json_string_field("error", MAX_ERROR_LENGTH);
 
 /// ServerInfoUpdateResponse: {"type":"ServerInfoUpdateResponse","success":false,"error":"...2048..."}
@@ -826,12 +827,11 @@ const GROUP_INFO_STRUCT_SIZE: usize = json_first_i64_field("id")
     + 2; // {} braces
 
 /// ServerInfo struct size (nested object in responses):
-/// {"name":"...64...","description":"...256...","public_address":"...253...","version":"...32...","fingerprint":"...95...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","transfer_port":u16,"transfer_websocket_port":u16,"file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","chat_burst_limit":u32,"chat_rate_limit":u32,"min_password_strength":u8,"log_level":"...5..."}
+/// {"name":"...64...","description":"...256...","public_address":"...253...","version":"...32...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","transfer_port":u16,"transfer_websocket_port":u16,"file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","chat_burst_limit":u32,"chat_rate_limit":u32,"min_password_strength":u8,"log_level":"...5..."}
 const SERVER_INFO_STRUCT_SIZE: usize = json_first_string_field("name", MAX_SERVER_NAME_LENGTH)
     + json_string_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
     + json_string_field("public_address", MAX_PUBLIC_ADDRESS_LENGTH)
     + json_string_field("version", MAX_VERSION_LENGTH)
-    + json_string_field("fingerprint", SHA256_FINGERPRINT_LENGTH)
     + json_u32_field("max_connections_per_ip")
     + json_u32_field("max_transfers_per_ip")
     + json_string_field("image", MAX_SERVER_IMAGE_DATA_URI_LENGTH)
@@ -2587,7 +2587,8 @@ mod tests {
         let msg = ServerMessage::HandshakeResponse {
             success: false,
             version: Some(str_of_len(MAX_VERSION_LENGTH)),
-            error: Some(str_of_len(256)),
+            fingerprint: str_of_len(SHA256_FINGERPRINT_LENGTH),
+            error: Some(str_of_len(MAX_ERROR_LENGTH)),
         };
         assert!(
             json_size(&msg) <= max_payload_for_type("HandshakeResponse") as usize,
@@ -2627,7 +2628,6 @@ mod tests {
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
                 public_address: Some(str_of_len(MAX_PUBLIC_ADDRESS_LENGTH)),
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
-                fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
                 max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
@@ -2669,7 +2669,6 @@ mod tests {
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
                 public_address: Some(str_of_len(MAX_PUBLIC_ADDRESS_LENGTH)),
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
-                fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
                 max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),
@@ -2704,7 +2703,6 @@ mod tests {
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
                 public_address: Some(str_of_len(MAX_PUBLIC_ADDRESS_LENGTH)),
                 version: Some(str_of_len(MAX_VERSION_LENGTH)),
-                fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
                 max_connections_per_ip: Some(u32::MAX),
                 max_transfers_per_ip: Some(u32::MAX),
                 image: Some(str_of_len(MAX_SERVER_IMAGE_DATA_URI_LENGTH)),

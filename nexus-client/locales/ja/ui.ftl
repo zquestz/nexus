@@ -501,6 +501,7 @@ err-unexpected-handshake-response = 予期しないハンドシェイク応答
 err-no-session-id = セッションIDを受信できませんでした
 err-login-failed = ログインに失敗しました
 err-unexpected-login-response = 予期しないログイン応答
+err-server-omitted-nickname = サーバー応答にニックネームが含まれていません
 err-connection-closed = 接続が閉じられました
 err-could-not-determine-config-dir = 設定ディレクトリを特定できませんでした
 err-message-too-long = メッセージが長すぎます（{ $length }文字、最大{ $max }文字）

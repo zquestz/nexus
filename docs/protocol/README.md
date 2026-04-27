@@ -60,11 +60,23 @@ WebSocket connections go through the same security checks as TCP:
 
 All connections require TLS 1.2 or higher. Servers auto-generate self-signed certificates on first run.
 
-**Certificate Verification (TOFU):**
+**Certificate Verification (two-stage, before login credentials are sent):**
 
-1. On first connection, client stores the server's certificate fingerprint (SHA-256)
-2. On subsequent connections, client verifies the fingerprint matches
-3. If mismatch, client warns user (possible MITM attack or certificate regeneration)
+1. **Stage 1 (post-TLS, pre-handshake):** If a bookmark exists with a stored
+   fingerprint, the client compares it to the TLS-observed certificate
+   fingerprint. Mismatch shows the user an accept/reject dialog (cert rotation
+   vs. likely MITM). No protocol bytes have been sent.
+2. **Stage 2 (post-handshake, pre-login):** The client compares the
+   server-reported `fingerprint` from `HandshakeResponse` to the TLS-observed
+   value. Mismatch indicates active TLS interception — the connection is
+   aborted with an informational dialog (no accept path), and credentials
+   are never sent.
+3. **TOFU save:** Only after stage 2 passes does a brand-new bookmark commit
+   the observed fingerprint, so a first-time connection won't be trusted
+   until the server has confirmed it agrees with itself.
+
+Both stages run before `Login` is sent, so a fingerprint failure at either
+stage means the password never leaves the client.
 
 ## Frame Format
 
@@ -93,7 +105,7 @@ NX|<type_length>|<message_type>|<message_id>|<payload_length>|<json_payload>\n
 A handshake message:
 
 ```
-NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.7.8"}\n
+NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.8.0"}\n
 ```
 
 Breaking it down:
@@ -103,7 +115,7 @@ Breaking it down:
 - `Handshake` - Message type
 - `a1b2c3d4e5f6` - Message ID (12 hex characters)
 - `20` - Payload length (20 bytes)
-- `{"version":"0.7.8"}` - JSON payload
+- `{"version":"0.8.0"}` - JSON payload
 - `\n` - Terminator
 
 ### Message ID
@@ -126,12 +138,21 @@ Client                                        Server
    │                                             │
    │  ─────── TLS Handshake ───────────────►     │
    │  ◄─────────────────────────────────────     │
+   │   (client observes cert fingerprint)        │
+   │                                             │
+   │   ↳ Stage 1: compare TLS fingerprint        │
+   │     against bookmark's stored value         │
+   │     (if any). Mismatch → abort.             │
    │                                             │
    │  Handshake { version }                      │
    │ ───────────────────────────────────────►    │
    │                                             │
-   │         HandshakeResponse { version }       │
+   │  HandshakeResponse { version, fingerprint } │
    │ ◄───────────────────────────────────────    │
+   │                                             │
+   │   ↳ Stage 2: compare server-reported        │
+   │     fingerprint against TLS-observed.       │
+   │     Mismatch → abort, no accept path.       │
    │                                             │
    │  Login { username, password, ... }          │
    │ ───────────────────────────────────────►    │
@@ -143,7 +164,9 @@ Client                                        Server
    │                                             │
 ```
 
-After login, clients can send commands and receive broadcasts until disconnection.
+The two fingerprint checks run before `Login` is sent — credentials are only
+transmitted after both stages pass. After login, clients can send commands
+and receive broadcasts until disconnection.
 
 ## Protocol Version
 
@@ -153,7 +176,7 @@ The protocol version follows [Semantic Versioning](https://semver.org/):
 - **Minor** - New features (client minor ≤ server minor)
 - **Patch** - Bug fixes (ignored for compatibility)
 
-Current version: `0.7.8`
+Current version: `0.8.0`
 
 ## Documents
 
@@ -187,7 +210,6 @@ The `LoginResponse` includes a `ServerInfo` object with server metadata and conn
 | `description`             | `string?` | Server description (null if not set)                                               |
 | `public_address`          | `string?` | Hostname or IP advertised for shareable `nexus://` URIs (null if unset)            |
 | `version`                 | `string?` | Server software version (null if not set)                                          |
-| `fingerprint`             | `string?` | Server certificate fingerprint, SHA-256 colon-separated (null if not set)          |
 | `transfer_port`           | `u16`     | TCP file transfer port (typically 7501)                                            |
 | `transfer_websocket_port` | `u16?`    | WebSocket file transfer port (7503 if enabled, absent otherwise)                   |
 | `max_connections_per_ip`  | `u32?`    | Connection limit per IP (null if not set)                                          |

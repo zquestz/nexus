@@ -26,7 +26,6 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use clap::Parser;
-use sha2::{Digest, Sha256};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::ServerConfig;
@@ -444,6 +443,7 @@ async fn main() {
                             file_root: Some(file_root),
                             file_index: file_index.clone(),
                             transfer_registry: transfer_registry.clone(),
+                            fingerprint,
                         };
                         let tls_acceptor = tls_acceptor.clone();
 
@@ -595,6 +595,7 @@ async fn main() {
                             file_root: Some(file_root),
                             file_index: file_index.clone(),
                             transfer_registry: transfer_registry.clone(),
+                            fingerprint,
                         };
                         let tls_acceptor = tls_acceptor.clone();
                         let ip_rule_cache_for_check = ip_rule_cache.clone();
@@ -976,19 +977,9 @@ fn display_certificate_fingerprint(cert_path: &std::path::Path) -> Result<String
     // Parse PEM to get DER-encoded certificate
     let cert_der = pem::parse(&cert_pem).map_err(|e| format!("{}{}", ERR_PARSE_CERT, e))?;
 
-    // Calculate SHA-256 fingerprint
-    let mut hasher = Sha256::new();
-    hasher.update(cert_der.contents());
-    let fingerprint = hasher.finalize();
-
-    // Format as colon-separated hex string (uppercase)
-    let hex_str = hex::encode_upper(fingerprint);
-    let fingerprint_str = hex_str
-        .as_bytes()
-        .chunks(2)
-        .map(|chunk| std::str::from_utf8(chunk).expect("hex encoding produces valid ASCII"))
-        .collect::<Vec<_>>()
-        .join(":");
+    // Format via the workspace-canonical formatter (single source of truth).
+    let fingerprint_str =
+        nexus_common::fingerprint::format_certificate_fingerprint(cert_der.contents());
 
     info!("{}{}", MSG_CERT_FINGERPRINT, fingerprint_str);
     Ok(fingerprint_str)

@@ -119,8 +119,7 @@ The `group_id` and `group_name` fields identify the user's account group (if any
     "name": "My BBS",
     "description": "Welcome to my server!",
     "public_address": "bbs.example.com",
-    "version": "0.7.8",
-    "fingerprint": "AA:BB:CC:...",
+    "version": "0.8.0",
     "transfer_port": 7501,
     "max_connections_per_ip": 5,
     "max_transfers_per_ip": 3,
@@ -166,7 +165,6 @@ Included in successful login responses.
 | `description`             | string  | Server description (null if not set)                                               |
 | `public_address`          | string  | Admin-advertised hostname or IP for shareable `nexus://` URIs (null if unset)      |
 | `version`                 | string  | Server software version (null if not set)                                          |
-| `fingerprint`             | string  | Server certificate fingerprint, SHA-256 colon-separated (null if not set)          |
 | `transfer_port`           | integer | Port for file transfers (required)                                                 |
 | `transfer_websocket_port` | integer | Port for WebSocket file transfers (null if not enabled)                            |
 | `max_connections_per_ip`  | integer | Connection limit per IP (null if not set)                                          |

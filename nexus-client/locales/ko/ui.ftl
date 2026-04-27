@@ -501,6 +501,7 @@ err-unexpected-handshake-response = 예기치 않은 핸드셰이크 응답
 err-no-session-id = 세션 ID를 받지 못했습니다
 err-login-failed = 로그인 실패
 err-unexpected-login-response = 예기치 않은 로그인 응답
+err-server-omitted-nickname = 서버 응답에 별명이 없습니다
 err-connection-closed = 연결이 종료되었습니다
 err-could-not-determine-config-dir = 설정 디렉토리를 확인할 수 없습니다
 err-message-too-long = 메시지가 너무 깁니다 ({ $length }자, 최대 { $max }자)

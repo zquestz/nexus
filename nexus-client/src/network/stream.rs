@@ -89,7 +89,6 @@ pub(super) async fn setup_communication_channels(
         public_address: login_info.public_address,
         server_version: login_info.server_version,
         server_image: login_info.server_image,
-        server_fingerprint: login_info.server_fingerprint,
         channels: login_info.channels,
         chat_burst_limit: login_info.chat_burst_limit,
         chat_rate_limit: login_info.chat_rate_limit,

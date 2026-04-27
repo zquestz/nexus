@@ -28,13 +28,29 @@ This guide covers common issues and their solutions when using the Nexus BBS cli
 
 ### "Certificate fingerprint mismatch" warning
 
-**Cause:** The server's TLS certificate has changed since your last connection.
+The client verifies the server's TLS certificate in two stages before sending login credentials. The dialog you see depends on which stage failed.
 
-**What to do:**
+**Stage 1 — Stored fingerprint differs from observed**
 
-1. **If expected** (server reinstall, new certificate): Click **Accept** to save the new fingerprint
-2. **If unexpected**: Contact the server operator to verify — this could indicate a security issue
-3. Click **Cancel** to disconnect without saving
+Your bookmark's saved fingerprint doesn't match what the server is presenting now. Common causes: server certificate rotated (reinstall, renewal), or you're connecting to a different server than expected.
+
+The dialog shows **Expected** (your bookmark) and **Received** (current TLS) fingerprints, with **Accept** and **Cancel** buttons.
+
+1. **If expected** (server operator confirmed a cert change): click **Accept**. Your bookmark's stored fingerprint is updated and the connection retries automatically.
+2. **If unexpected**: contact the server operator out-of-band (not through Nexus) to verify. A mismatch you can't explain may indicate someone is impersonating the server.
+3. Click **Cancel** to abandon the attempt.
+
+**Stage 2 — Server's self-report differs from TLS-observed**
+
+The server reports one fingerprint over the protocol but presents a different certificate over TLS. This is a strong indicator of active TLS interception — typically a proxy terminating TLS with its own certificate while relaying traffic to the real server.
+
+The dialog shows **TLS fingerprint** and **Server fingerprint**, with only an **OK** button.
+
+1. The connection is denied automatically — there is no Accept option by design. Accepting this would defeat the check.
+2. Check your network path: corporate proxy, captive portal, compromised router, malware that installs a trusted root CA.
+3. If the server operator confirms they are NOT running a proxy, treat this as a security incident on your end.
+
+In both cases, no login credentials were sent — both stages run before authentication.
 
 ### Disconnected immediately after login
 

@@ -509,6 +509,7 @@ err-unexpected-handshake-response = Unerwartete Handshake-Antwort
 err-no-session-id = Keine Sitzungs-ID erhalten
 err-login-failed = Anmeldung fehlgeschlagen
 err-unexpected-login-response = Unerwartete Anmeldeantwort
+err-server-omitted-nickname = Antwort des Servers ohne Spitzname
 err-connection-closed = Verbindung geschlossen
 err-could-not-determine-config-dir = Konfigurationsverzeichnis konnte nicht ermittelt werden
 err-message-too-long = Nachricht ist zu lang ({ $length } Zeichen, max { $max })

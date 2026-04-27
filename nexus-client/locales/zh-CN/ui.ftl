@@ -502,6 +502,7 @@ err-unexpected-handshake-response = 意外的握手响应
 err-no-session-id = 未收到会话ID
 err-login-failed = 登录失败
 err-unexpected-login-response = 意外的登录响应
+err-server-omitted-nickname = 服务器响应缺少昵称
 err-connection-closed = 连接已关闭
 err-could-not-determine-config-dir = 无法确定配置目录
 err-message-too-long = 消息太长（{ $length } 个字符，最多 { $max }）

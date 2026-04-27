@@ -361,7 +361,6 @@ where
                     min_password_strength: config.min_password_strength.score(),
                     chat_burst_limit: config.chat_burst_limit,
                     chat_rate_limit: config.chat_rate_limit,
-                    fingerprint: ctx.fingerprint.to_string(),
                 };
 
                 // Deduplicate by user_id (regular accounts may have multiple sessions)
@@ -1380,7 +1379,6 @@ mod tests {
                 // All-user fields should be populated
                 assert!(info.name.is_some());
                 assert!(info.version.is_some());
-                assert!(info.fingerprint.is_some());
                 assert!(info.chat_burst_limit.is_some());
                 assert!(info.chat_rate_limit.is_some());
                 assert!(info.min_password_strength.is_some());

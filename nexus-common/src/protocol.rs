@@ -806,6 +806,10 @@ pub enum ServerMessage {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         version: Option<String>,
+        /// Server certificate fingerprint (SHA-256, colon-separated).
+        /// Always sent, including on failure responses, so the client can
+        /// detect TLS interception before considering the handshake outcome.
+        fingerprint: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
     },
@@ -1136,9 +1140,6 @@ pub struct ServerInfo {
     pub public_address: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
-    /// Server certificate fingerprint (SHA-256, for TLS interception detection)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub fingerprint: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_connections_per_ip: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2737,7 +2738,6 @@ mod tests {
             description: None,
             public_address: None,
             version: Some("0.5.0".to_string()),
-            fingerprint: None,
             max_connections_per_ip: Some(5),
             max_transfers_per_ip: Some(3),
             image: None,

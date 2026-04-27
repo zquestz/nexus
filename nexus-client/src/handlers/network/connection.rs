@@ -11,11 +11,12 @@ use crate::events::{EventContext, emit_event};
 use crate::history::HistoryManager;
 use crate::i18n::{t, t_args};
 use crate::image::decode_data_uri_max_width;
+use crate::network::types::{ConnectError, ConnectionParams};
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::types::ChatMessage;
 use crate::types::{
-    ActivePanel, ChannelState, FingerprintInterception, InputId, Message, NetworkConnection,
-    ServerBookmark, ServerConnection, ServerConnectionParams,
+    ActivePanel, ChannelState, FingerprintMismatch, InputId, Message, NetworkConnection,
+    ReconnectAction, ServerBookmark, ServerConnection, ServerConnectionParams,
 };
 use crate::views::constants::PERMISSION_USER_LIST;
 
@@ -53,7 +54,8 @@ impl NexusApp {
     /// Handle connection attempt result (success or failure)
     pub fn handle_connection_result(
         &mut self,
-        result: Result<NetworkConnection, String>,
+        result: Result<NetworkConnection, ConnectError>,
+        params: ConnectionParams,
     ) -> Task<Message> {
         self.connection_form.is_connecting = false;
 
@@ -61,19 +63,15 @@ impl NexusApp {
             Ok(conn) => {
                 self.connection_form.error = None;
 
-                // Find if this connection matches a bookmark (username/nickname case-insensitive)
+                // Find if this connection matches a bookmark.
                 let bookmark_id = self
                     .config
-                    .bookmarks
-                    .iter()
-                    .find(|b| {
-                        b.address == self.connection_form.server_address
-                            && b.port == self.connection_form.port
-                            && b.username.to_lowercase()
-                                == self.connection_form.username.to_lowercase()
-                            && b.nickname.to_lowercase()
-                                == self.connection_form.nickname.to_lowercase()
-                    })
+                    .find_bookmark_matching(
+                        &self.connection_form.server_address,
+                        self.connection_form.port,
+                        &self.connection_form.username,
+                        &self.connection_form.nickname,
+                    )
                     .map(|b| b.id);
 
                 let display_name = self.get_display_name(bookmark_id);
@@ -87,7 +85,18 @@ impl NexusApp {
 
                 self.handle_successful_connection(conn, ctx, ConnectionSource::Manual)
             }
-            Err(error) => {
+            Err(ConnectError::FingerprintMismatch(details)) => {
+                self.queue_fingerprint_mismatch(*details, ReconnectAction::Manual { params });
+                Task::none()
+            }
+            Err(ConnectError::FingerprintInterception(mut details)) => {
+                // Use the user-typed name from the form if any; empty falls
+                // through to host:port in the dialog.
+                details.server_name = self.connection_form.server_name.trim().to_string();
+                self.fingerprint_interception_queue.push_back(*details);
+                Task::none()
+            }
+            Err(ConnectError::Other(error)) => {
                 self.connection_form.error = Some(error);
                 Task::none()
             }
@@ -100,20 +109,19 @@ impl NexusApp {
     /// with the shared connection_form state.
     pub fn handle_bookmark_connection_result(
         &mut self,
-        result: Result<NetworkConnection, String>,
-        bookmark_id: Option<Uuid>,
+        result: Result<NetworkConnection, ConnectError>,
+        params: ConnectionParams,
+        bookmark_id: Uuid,
         display_name: String,
     ) -> Task<Message> {
         match result {
             Ok(conn) => {
                 // Clear the connecting lock and any previous error for this bookmark
-                if let Some(id) = bookmark_id {
-                    self.connecting_bookmarks.remove(&id);
-                    self.bookmark_errors.remove(&id);
-                }
+                self.connecting_bookmarks.remove(&bookmark_id);
+                self.bookmark_errors.remove(&bookmark_id);
 
                 let ctx = ConnectionContext {
-                    bookmark_id,
+                    bookmark_id: Some(bookmark_id),
                     display_name,
                     certificate_fingerprint: conn.connection_info.certificate_fingerprint.clone(),
                     connection_id: conn.connection_id,
@@ -121,11 +129,26 @@ impl NexusApp {
 
                 self.handle_successful_connection(conn, ctx, ConnectionSource::Bookmark)
             }
-            Err(error) => {
-                if let Some(id) = bookmark_id {
-                    self.connecting_bookmarks.remove(&id);
-                    self.bookmark_errors.insert(id, error);
-                }
+            Err(ConnectError::FingerprintMismatch(details)) => {
+                self.connecting_bookmarks.remove(&bookmark_id);
+                let action = ReconnectAction::Bookmark {
+                    params,
+                    bookmark_id,
+                    display_name,
+                };
+                self.queue_fingerprint_mismatch(*details, action);
+                Task::none()
+            }
+            Err(ConnectError::FingerprintInterception(mut details)) => {
+                self.connecting_bookmarks.remove(&bookmark_id);
+                // Bookmark connects always carry a non-empty display name.
+                details.server_name = display_name;
+                self.fingerprint_interception_queue.push_back(*details);
+                Task::none()
+            }
+            Err(ConnectError::Other(error)) => {
+                self.connecting_bookmarks.remove(&bookmark_id);
+                self.bookmark_errors.insert(bookmark_id, error);
                 Task::none()
             }
         }
@@ -213,51 +236,29 @@ impl NexusApp {
     // Helpers
     // =========================================================================
 
-    /// Common handler for successful connections from any source
+    /// Common handler for successful connections from any source.
+    ///
+    /// By the time this runs, both fingerprint stages have already passed
+    /// (stage 1 in `connect_to_server` against the bookmark's stored value,
+    /// stage 2 against the server's self-report from `HandshakeResponse`).
+    /// The only fingerprint work left here is the TOFU save: if the bookmark
+    /// has no stored fingerprint yet, commit the TLS-observed one now that
+    /// stage 2 has confirmed the server agrees with itself.
     pub fn handle_successful_connection(
         &mut self,
         conn: NetworkConnection,
         ctx: ConnectionContext,
         source: ConnectionSource,
     ) -> Task<Message> {
-        // Verify and save certificate fingerprint
-        if let Err(mismatch_details) =
-            self.verify_and_save_fingerprint(ctx.bookmark_id, &ctx.certificate_fingerprint)
+        // TOFU save: existing bookmark with no stored fingerprint commits now.
+        // (Brand-new bookmarks created via "save as bookmark" are handled below
+        // in `save_new_bookmark`, which already records the fingerprint.)
+        if let Some(id) = ctx.bookmark_id
+            && let Some(bookmark) = self.config.get_bookmark_mut(id)
+            && bookmark.certificate_fingerprint.is_none()
         {
-            // Clear bookmark connecting lock on fingerprint mismatch
-            if let Some(id) = ctx.bookmark_id {
-                self.connecting_bookmarks.remove(&id);
-            }
-            return self.handle_fingerprint_mismatch(*mismatch_details, conn, ctx.display_name);
-        }
-
-        // Check for TLS interception (server-reported fingerprint vs TLS-observed)
-        if let Some(ref server_fingerprint) = conn.server_fingerprint {
-            let tls_fingerprint = &ctx.certificate_fingerprint;
-            if server_fingerprint.to_lowercase() != tls_fingerprint.to_lowercase() {
-                // Build display name for the server
-                let server_name = conn
-                    .server_name
-                    .clone()
-                    .unwrap_or_else(|| conn.connection_info.address.clone());
-
-                self.fingerprint_interception_queue
-                    .push_back(FingerprintInterception {
-                        server_name,
-                        server_address: conn.connection_info.address.clone(),
-                        server_port: conn.connection_info.port.to_string(),
-                        tls_fingerprint: tls_fingerprint.clone(),
-                        server_fingerprint: server_fingerprint.clone(),
-                    });
-
-                // Clear bookmark connecting lock
-                if let Some(id) = ctx.bookmark_id {
-                    self.connecting_bookmarks.remove(&id);
-                }
-
-                self.connection_form.is_connecting = false;
-                return Task::none();
-            }
+            bookmark.certificate_fingerprint = Some(ctx.certificate_fingerprint.clone());
+            let _ = self.config.save();
         }
 
         // Create and register connection
@@ -606,6 +607,66 @@ impl NexusApp {
             return Err(format!("{}: {}", t("err-connection-broken"), e));
         }
         Ok(())
+    }
+
+    /// Queue a stage-1 fingerprint mismatch for user verification.
+    ///
+    /// Decorates the wire-format `FingerprintMismatchDetails` with the
+    /// matched bookmark identity (for dialog display) and a `ReconnectAction`
+    /// (for the accept-and-retry path).
+    pub(crate) fn queue_fingerprint_mismatch(
+        &mut self,
+        details: crate::network::FingerprintMismatchDetails,
+        retry_action: ReconnectAction,
+    ) {
+        // Look up the bookmark from the params/action so we can populate the
+        // dialog's bookmark identity. Stage-1 mismatch can only happen when
+        // there's a stored fingerprint, which can only come from a bookmark,
+        // so a match is expected — but if the bookmark was deleted between
+        // initiating the connect and the mismatch firing, fall back to nil.
+        let (bookmark_id, bookmark_name) = match &retry_action {
+            ReconnectAction::Manual { params } => self
+                .config
+                .find_bookmark_matching(
+                    &params.server_address,
+                    params.port,
+                    &params.username,
+                    params.nickname.as_deref().unwrap_or_default(),
+                )
+                .map(|b| (b.id, b.name.clone()))
+                .unwrap_or((Uuid::nil(), String::new())),
+            ReconnectAction::Bookmark {
+                bookmark_id,
+                display_name: name,
+                ..
+            } => (*bookmark_id, name.clone()),
+            ReconnectAction::Uri {
+                params,
+                display_name: name,
+                ..
+            } => self
+                .config
+                .find_bookmark_matching_uri(
+                    &params.server_address,
+                    params.port,
+                    (!params.username.is_empty()).then_some(params.username.as_str()),
+                )
+                .map(|b| (b.id, b.name.clone()))
+                .unwrap_or((Uuid::nil(), name.clone())),
+        };
+
+        self.fingerprint_mismatch_queue
+            .push_back(FingerprintMismatch {
+                bookmark_id,
+                expected: details.expected,
+                received: details.received,
+                bookmark_name,
+                server_address: details.server_address,
+                server_port: details.server_port,
+                retry_action,
+            });
+
+        self.connection_form.is_connecting = false;
     }
 
     /// Save a new bookmark from the current connection form

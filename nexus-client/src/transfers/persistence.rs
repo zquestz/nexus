@@ -476,19 +476,20 @@ impl TransferManager {
             .filter(|t| t.status == TransferStatus::Paused)
     }
 
-    /// Update certificate fingerprint for all queued/paused transfers belonging to a bookmark
+    /// Update certificate fingerprint for resume-eligible transfers belonging to a bookmark.
     ///
-    /// This is called when a user accepts a new certificate fingerprint. Any transfers
-    /// that were queued before the fingerprint change need to be updated so they can
-    /// connect successfully.
+    /// Called when a user accepts a new certificate fingerprint. Any transfer
+    /// that could be resumed against the new fingerprint needs to be updated
+    /// so it doesn't fail stage-1 with a stale snapshot. This includes
+    /// `Queued`, `Paused`, `Connecting`, and `Failed` — `handle_transfer_resume`
+    /// allows resuming `Paused | Failed`, so `Failed` must be in this set.
     pub fn update_fingerprint_for_bookmark(&mut self, bookmark_id: Uuid, new_fingerprint: &str) {
         for transfer in self.transfers.values_mut() {
-            // Update transfers for this bookmark that haven't completed
-            // This includes Queued, Paused, and Connecting (which will retry)
             if transfer.bookmark_id == Some(bookmark_id)
                 && (transfer.status == TransferStatus::Queued
                     || transfer.status == TransferStatus::Paused
-                    || transfer.status == TransferStatus::Connecting)
+                    || transfer.status == TransferStatus::Connecting
+                    || transfer.status == TransferStatus::Failed)
             {
                 transfer.connection_info.certificate_fingerprint = new_fingerprint.to_string();
                 self.dirty = true;
@@ -984,6 +985,12 @@ mod tests {
         connecting.status = TransferStatus::Connecting;
         let connecting_id = connecting.id;
 
+        let mut failed = test_transfer();
+        failed.bookmark_id = Some(bookmark_id);
+        failed.connection_info.certificate_fingerprint = old_fingerprint.to_string();
+        failed.status = TransferStatus::Failed;
+        let failed_id = failed.id;
+
         let mut completed = test_transfer();
         completed.bookmark_id = Some(bookmark_id);
         completed.connection_info.certificate_fingerprint = old_fingerprint.to_string();
@@ -999,6 +1006,7 @@ mod tests {
         manager.add(queued);
         manager.add(paused);
         manager.add(connecting);
+        manager.add(failed);
         manager.add(completed);
         manager.add(other_bookmark);
         manager.dirty = false;
@@ -1006,7 +1014,10 @@ mod tests {
         // Update fingerprint for the bookmark
         manager.update_fingerprint_for_bookmark(bookmark_id, new_fingerprint);
 
-        // Queued, Paused, and Connecting should be updated
+        // Queued, Paused, Connecting, and Failed should be updated
+        // (Failed is a resume-eligible status — handle_transfer_resume allows
+        // resuming Paused | Failed, so a stale fingerprint there would fail
+        // stage-1 on the resume attempt.)
         assert_eq!(
             manager
                 .get(queued_id)
@@ -1026,6 +1037,14 @@ mod tests {
         assert_eq!(
             manager
                 .get(connecting_id)
+                .unwrap()
+                .connection_info
+                .certificate_fingerprint,
+            new_fingerprint
+        );
+        assert_eq!(
+            manager
+                .get(failed_id)
                 .unwrap()
                 .connection_info
                 .certificate_fingerprint,

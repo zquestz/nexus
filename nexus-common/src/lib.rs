@@ -5,6 +5,7 @@
 use std::time::Duration;
 
 mod error_kind;
+pub mod fingerprint;
 pub mod framing;
 pub mod hash;
 pub mod io;
@@ -21,7 +22,7 @@ pub use error_kind::{
 };
 
 /// Version information for the Nexus protocol
-pub const PROTOCOL_VERSION: &str = "0.7.8";
+pub const PROTOCOL_VERSION: &str = "0.8.0";
 
 /// Default port for Nexus BBS connections
 pub const DEFAULT_PORT: u16 = 7500;

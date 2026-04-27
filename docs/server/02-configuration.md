@@ -217,10 +217,12 @@ To use your own certificates, replace `cert.pem` and `key.pem` before starting t
 The server displays the certificate fingerprint on startup:
 
 ```
-Certificate fingerprint: SHA256:abc123def456...
+Certificate fingerprint (SHA-256): AB:CD:12:34:56:78:90:AB:CD:12:34:56:78:90:AB:CD:12:34:56:78:90:AB:CD:12:34:56:78:90:AB:CD:12:34
 ```
 
-Clients use this fingerprint for Trust On First Use (TOFU) verification.
+Clients verify this fingerprint via Trust On First Use (TOFU) and a separate
+server-self-report check before sending login credentials. See the [protocol
+TLS section](../protocol/README.md#tls) for the staged-verification model.
 
 ## Server Settings (Runtime)
 

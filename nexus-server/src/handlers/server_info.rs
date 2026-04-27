@@ -28,7 +28,6 @@ pub struct ServerInfoValues {
     pub min_password_strength: u8,
     pub chat_burst_limit: u32,
     pub chat_rate_limit: u32,
-    pub fingerprint: String,
 }
 
 /// Options controlling what's included in the built ServerInfo.
@@ -46,7 +45,7 @@ pub struct ServerInfoOptions {
 /// Build a `ServerInfo` with permission-based field visibility.
 ///
 /// Fields visible to all users: name, description, public_address, version,
-/// fingerprint, max_connections_per_ip, max_transfers_per_ip, transfer_port,
+/// max_connections_per_ip, max_transfers_per_ip, transfer_port,
 /// transfer_websocket_port, min_password_strength, log_level,
 /// chat_burst_limit, chat_rate_limit.
 ///
@@ -91,7 +90,6 @@ pub fn build_server_info(values: &ServerInfoValues, options: &ServerInfoOptions)
         description: Some(values.description.clone()),
         public_address,
         version: Some(values.version.clone()),
-        fingerprint: Some(values.fingerprint.clone()),
         max_connections_per_ip: Some(values.max_connections_per_ip),
         max_transfers_per_ip: Some(values.max_transfers_per_ip),
         image,

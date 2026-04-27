@@ -73,32 +73,39 @@ Nexus supports connecting to multiple servers simultaneously:
 
 ## Certificate Management
 
-Nexus uses Trust On First Use (TOFU) for certificate verification:
+Nexus verifies the server's TLS certificate fingerprint **in two stages**, both of which run before your password is sent. If either stage fails, the connection aborts before any credentials leave your machine.
 
-- **First connection**: The certificate fingerprint is saved automatically
-- **Subsequent connections**: The fingerprint is verified against the saved value
-- **Mismatch**: A warning dialog appears if the fingerprint changes
+**Stage 1 — Trust On First Use (TOFU):** As soon as the TLS connection is established, the client compares the observed certificate fingerprint to the value stored in your bookmark.
 
-### Accepting a New Certificate
+- **First connection (no stored fingerprint yet):** stage 1 has nothing to compare against and is skipped. Stage 2 still runs.
+- **Stored fingerprint matches:** stage 1 passes silently and the handshake proceeds.
+- **Stored fingerprint differs:** the connection is dropped immediately and a mismatch dialog appears (see below).
 
-If a server's certificate changes (e.g., after server reinstall):
+**Stage 2 — TLS Interception Detection:** After the protocol handshake, the server self-reports its fingerprint. The client compares it to the TLS-observed value.
 
-1. A fingerprint mismatch dialog will appear
-2. Verify with the server operator that the change is legitimate
-3. Click **Accept** to save the new fingerprint, or **Cancel** to disconnect
+- **Match:** the connection proceeds to login. If this was a first-time connection, the bookmark commits the fingerprint now (TOFU save) — only after the server has confirmed it agrees with itself.
+- **Mismatch:** active interception is happening. The connection aborts with an informational warning dialog. There is no accept path; credentials are never sent.
 
-The new fingerprint replaces the old one in your bookmark.
+### Accepting a New Certificate (stage 1 mismatch)
 
-### TLS Interception Detection
+If a server's certificate changes (e.g., after server reinstall) and the stored bookmark fingerprint no longer matches:
 
-After login, Nexus compares the server's self-reported certificate fingerprint against the fingerprint observed during the TLS handshake. If they don't match, it indicates a TLS-terminating proxy is intercepting the connection.
+1. A fingerprint mismatch dialog appears showing the expected and received values.
+2. Verify with the server operator out-of-band that the change is legitimate.
+3. Click **Accept** to update the bookmark and reconnect, or **Cancel** to abandon the attempt.
 
-- A security warning dialog is displayed showing both fingerprints
-- The connection is automatically closed
-- There is no option to accept — the connection cannot continue
-- This check is skipped for older servers that don't report their fingerprint
+When you click Accept, Nexus does the following automatically:
 
-This is a defense-in-depth measure that detects man-in-the-middle proxies that present their own certificate while relaying traffic to the real server.
+- The new fingerprint replaces the old one in the bookmark.
+- Your encrypted chat history files are re-keyed for the new fingerprint.
+- Queued and in-flight transfers for that bookmark pick up the new fingerprint.
+- A fresh connection attempt is dispatched preserving your **original intent** — whether you launched from a bookmark, the manual connect form, or a `nexus://` URI (URI path navigation is preserved across the retry).
+
+If stage 2 also fails on the retry, the interception dialog appears and the connection is denied — the bookmark is **not** modified in this case.
+
+### Why no accept path for stage 2?
+
+Stage 2 mismatch means the server is actively presenting a different certificate over TLS than it self-reports over the protocol. The most plausible cause is an attacker terminating TLS between you and the real server. Accepting that situation would defeat the purpose of the check, so the dialog is informational only and the connection is denied. Investigate the network path (corporate proxy, captive portal, compromised router) before retrying.
 
 ## Proxy Support
 

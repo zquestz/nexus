@@ -13,26 +13,83 @@ use crate::types::{ConnectionInfo, NetworkConnection};
 use super::constants::DEFAULT_FEATURES;
 use super::stream::setup_communication_channels;
 use super::tls::establish_connection;
-use super::types::{ConnectionParams, LoginInfo, Reader, Writer};
+use super::types::{
+    ConnectError, ConnectionParams, FingerprintInterception, FingerprintMismatchDetails, LoginInfo,
+    Reader, Writer,
+};
 
-/// Connect to server, perform handshake and login
+/// Connect to server, perform staged fingerprint verification, handshake, and login.
 ///
-/// Establishes a TCP connection, performs protocol handshake and authentication,
-/// then sets up bidirectional communication channels. Returns a NetworkConnection
-/// handle for sending messages to the server.
-pub async fn connect_to_server(params: ConnectionParams) -> Result<NetworkConnection, String> {
-    // Establish TCP connection and get certificate fingerprint
-    // If proxy is configured, tunnel through SOCKS5
-    let (tls_stream, fingerprint) =
-        establish_connection(&params.server_address, params.port, params.proxy.as_ref()).await?;
+/// Two-stage fingerprint verification protects credentials from active TLS
+/// interception:
+///
+/// 1. **Stage 1 (post-TLS, pre-handshake):** if `params.expected_fingerprint`
+///    is `Some`, the TLS-observed fingerprint must match. Catches cert
+///    rotation / wrong-server scenarios entirely offline (no protocol bytes
+///    exchanged). On mismatch, the user is shown an accept/reject dialog by
+///    the caller.
+/// 2. **Stage 2 (post-handshake, pre-login):** the server's self-reported
+///    fingerprint (from `HandshakeResponse`) must match the TLS-observed
+///    fingerprint. Catches naive MITMs that don't bother to rewrite the
+///    protocol response. No accept path — a mismatch here means active
+///    interception is in progress.
+///
+/// Credentials are sent only after both stages pass.
+pub async fn connect_to_server(
+    params: ConnectionParams,
+) -> Result<NetworkConnection, ConnectError> {
+    // Establish TCP+TLS connection and observe the server certificate fingerprint.
+    let (tls_stream, tls_fingerprint) =
+        establish_connection(&params.server_address, params.port, params.proxy.as_ref())
+            .await
+            .map_err(ConnectError::Other)?;
+
+    // Stage 1: TOFU check against bookmark's stored fingerprint, if any.
+    // Both sides come from `nexus_common::fingerprint::format_certificate_fingerprint`
+    // (single canonical producer), so direct `!=` is correct — no normalization needed.
+    if let Some(expected) = &params.expected_fingerprint
+        && expected != &tls_fingerprint
+    {
+        return Err(ConnectError::FingerprintMismatch(Box::new(
+            FingerprintMismatchDetails {
+                expected: expected.clone(),
+                received: tls_fingerprint.clone(),
+                server_address: params.server_address.clone(),
+                server_port: params.port.to_string(),
+            },
+        )));
+    }
 
     let (reader, writer) = tokio::io::split(tls_stream);
     let buf_reader = BufReader::new(reader);
     let mut frame_reader = FrameReader::new(buf_reader);
     let mut frame_writer = FrameWriter::new(writer);
 
-    // Perform handshake and login
-    perform_handshake(&mut frame_reader, &mut frame_writer).await?;
+    // Handshake — server self-reports its certificate fingerprint here.
+    let server_fingerprint = perform_handshake(&mut frame_reader, &mut frame_writer)
+        .await
+        .map_err(ConnectError::Other)?;
+
+    // Stage 2: server-reported fingerprint must match TLS-observed.
+    // Both produced by the same canonical formatter — direct `!=` is correct.
+    // Mismatch here = active TLS interception. No accept path; bail before
+    // sending credentials.
+    if server_fingerprint != tls_fingerprint {
+        return Err(ConnectError::FingerprintInterception(Box::new(
+            FingerprintInterception {
+                // Left empty — connect.rs has no friendly name. Result handlers
+                // populate this with the user-typed form name, bookmark name,
+                // or matched-URI bookmark name as appropriate.
+                server_name: String::new(),
+                server_address: params.server_address.clone(),
+                server_port: params.port.to_string(),
+                tls_fingerprint: tls_fingerprint.clone(),
+                server_fingerprint,
+            },
+        )));
+    }
+
+    // Both stages passed — safe to send credentials.
     let login_info = perform_login(
         &mut frame_reader,
         &mut frame_writer,
@@ -42,10 +99,11 @@ pub async fn connect_to_server(params: ConnectionParams) -> Result<NetworkConnec
         params.locale,
         params.avatar,
     )
-    .await?;
+    .await
+    .map_err(ConnectError::Other)?;
 
-    // Build connection info from connection params and login response
-    // Resolve server_name: prefer server-provided name, fall back to address
+    // Build connection info from connection params and login response.
+    // Resolve server_name: prefer server-provided name, fall back to address.
     let server_name = login_info
         .server_name
         .clone()
@@ -56,7 +114,7 @@ pub async fn connect_to_server(params: ConnectionParams) -> Result<NetworkConnec
         address: params.server_address,
         port: params.port,
         transfer_port: login_info.transfer_port,
-        certificate_fingerprint: fingerprint,
+        certificate_fingerprint: tls_fingerprint,
         username: params.username,
         password: params.password,
         nickname: params.nickname.unwrap_or_default(),
@@ -71,10 +129,14 @@ pub async fn connect_to_server(params: ConnectionParams) -> Result<NetworkConnec
         params.connection_id,
     )
     .await
+    .map_err(ConnectError::Other)
 }
 
-/// Perform protocol handshake with the server
-async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<(), String> {
+/// Perform protocol handshake with the server.
+///
+/// Returns the server's self-reported certificate fingerprint, which the
+/// caller compares against the TLS-observed fingerprint before login.
+async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<String, String> {
     let handshake = ClientMessage::Handshake {
         version: PROTOCOL_VERSION.to_string(),
     };
@@ -88,7 +150,11 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<(
         .ok_or_else(|| t("err-connection-closed"))?;
 
     match received.message {
-        ServerMessage::HandshakeResponse { success: true, .. } => Ok(()),
+        ServerMessage::HandshakeResponse {
+            success: true,
+            fingerprint,
+            ..
+        } => Ok(fingerprint),
         ServerMessage::HandshakeResponse {
             success: false,
             error,
@@ -143,7 +209,11 @@ async fn perform_login(
         } => Ok(LoginInfo {
             is_admin: is_admin.unwrap_or(false),
             user_id,
-            nickname: nickname.unwrap_or_default(),
+            // The protocol guarantees `nickname` is set on every successful
+            // LoginResponse (since v0.5.2). The handshake compatibility check
+            // already rejects pre-0.5 servers, so a missing nickname here
+            // means the server is buggy or malicious — refuse to proceed.
+            nickname: nickname.ok_or_else(|| t("err-server-omitted-nickname"))?,
             permissions: permissions.unwrap_or_default(),
             server_name: server_info.as_ref().and_then(|info| info.name.clone()),
             server_description: server_info
@@ -154,9 +224,6 @@ async fn perform_login(
                 .and_then(|info| info.public_address.clone())
                 .filter(|s| !s.is_empty()),
             server_version: server_info.as_ref().and_then(|info| info.version.clone()),
-            server_fingerprint: server_info
-                .as_ref()
-                .and_then(|info| info.fingerprint.clone()),
             server_image: server_info
                 .as_ref()
                 .and_then(|info| info.image.clone())

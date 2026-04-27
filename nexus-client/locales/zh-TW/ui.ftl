@@ -501,6 +501,7 @@ err-unexpected-handshake-response = 意外的握手回應
 err-no-session-id = 未收到工作階段ID
 err-login-failed = 登入失敗
 err-unexpected-login-response = 意外的登入回應
+err-server-omitted-nickname = 伺服器回應缺少暱稱
 err-connection-closed = 連線已關閉
 err-could-not-determine-config-dir = 無法確定設定目錄
 err-message-too-long = 訊息太長（{ $length } 個字元，最多 { $max }）

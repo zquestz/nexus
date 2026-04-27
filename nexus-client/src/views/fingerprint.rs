@@ -34,11 +34,18 @@ pub fn format_fingerprint_multiline(fingerprint: &str) -> String {
 pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Element<'a, Message> {
     let title = panel_title(t("title-fingerprint-mismatch"));
 
-    let server_line = shaped_text(format!(
-        "{} - [{}]:{}",
-        mismatch.bookmark_name, mismatch.server_address, mismatch.server_port
-    ))
-    .size(TEXT_SIZE);
+    // Bookmarks normally have a non-empty name (validated at edit time), but
+    // a stage-1 mismatch followed by a concurrent bookmark deletion would
+    // leave us with an empty name. Drop the leading "name -" in that race.
+    let server_line_text = if mismatch.bookmark_name.is_empty() {
+        format!("[{}]:{}", mismatch.server_address, mismatch.server_port)
+    } else {
+        format!(
+            "{} - [{}]:{}",
+            mismatch.bookmark_name, mismatch.server_address, mismatch.server_port
+        )
+    };
+    let server_line = shaped_text(server_line_text).size(TEXT_SIZE);
 
     let warning = shaped_text_wrapped(t("fingerprint-warning")).size(TEXT_SIZE);
 

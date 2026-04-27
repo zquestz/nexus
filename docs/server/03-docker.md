@@ -76,8 +76,8 @@ docker compose up -d
 | Tag      | Description                          |
 | -------- | ------------------------------------ |
 | `latest` | Most recent stable release           |
-| `0.7.8`  | Specific version                     |
-| `0.7`    | Latest patch release in 0.7.x series |
+| `0.8.0`  | Specific version                     |
+| `0.8`    | Latest patch release in 0.8.x series |
 | `0`      | Latest release in 0.x.x series       |
 
 ### Supported Architectures

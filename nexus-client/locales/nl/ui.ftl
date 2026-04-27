@@ -511,6 +511,7 @@ err-unexpected-handshake-response = Onverwachte handshake-respons
 err-no-session-id = Geen sessie-ID ontvangen
 err-login-failed = Aanmelding mislukt
 err-unexpected-login-response = Onverwachte aanmeldrespons
+err-server-omitted-nickname = Serverantwoord zonder bijnaam
 err-connection-closed = Verbinding gesloten
 err-could-not-determine-config-dir = Kan configuratiemap niet bepalen
 err-message-too-long = Bericht is te lang ({ $length } tekens, max { $max })

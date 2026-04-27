@@ -4,7 +4,6 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
 use std::sync::Arc;
 
 use once_cell::sync::Lazy;
-use sha2::{Digest, Sha256};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::rustls::ClientConfig;
@@ -108,35 +107,19 @@ pub fn create_tls_config() -> ClientConfig {
     config
 }
 
-/// Format a certificate's raw bytes as a SHA-256 fingerprint string
-///
-/// Returns a colon-separated uppercase hex string (e.g., "AA:BB:CC:...").
-fn format_certificate_fingerprint(cert_bytes: &[u8]) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(cert_bytes);
-    let fingerprint = hasher.finalize();
-
-    // Format as colon-separated hex string (uppercase)
-    let hex_str = hex::encode_upper(fingerprint);
-    hex_str
-        .as_bytes()
-        .chunks(2)
-        .map(|chunk| std::str::from_utf8(chunk).expect("hex encoding produces valid ASCII"))
-        .collect::<Vec<_>>()
-        .join(":")
-}
-
 /// Get the certificate fingerprint from a TLS session
 ///
 /// Returns the SHA-256 fingerprint of the server's certificate as a colon-separated
-/// hex string (e.g., "AA:BB:CC:...").
+/// hex string (e.g., "AA:BB:CC:...") via the workspace-canonical formatter.
 pub fn get_certificate_fingerprint(session: &ClientConnection) -> Option<String> {
     let certs = session.peer_certificates()?;
     if certs.is_empty() {
         return None;
     }
 
-    Some(format_certificate_fingerprint(certs[0].as_ref()))
+    Some(nexus_common::fingerprint::format_certificate_fingerprint(
+        certs[0].as_ref(),
+    ))
 }
 
 /// Establish TLS connection to the server and return certificate fingerprint
@@ -377,7 +360,9 @@ fn calculate_certificate_fingerprint(tls_stream: &TlsStream) -> Result<String, S
         return Err(t("err-no-certificates-in-chain"));
     }
 
-    Ok(format_certificate_fingerprint(certs[0].as_ref()))
+    Ok(nexus_common::fingerprint::format_certificate_fingerprint(
+        certs[0].as_ref(),
+    ))
 }
 
 #[cfg(test)]

@@ -533,7 +533,6 @@ where
         min_password_strength: config.min_password_strength.score(),
         chat_burst_limit: config.chat_burst_limit,
         chat_rate_limit: config.chat_rate_limit,
-        fingerprint: ctx.fingerprint.to_string(),
     };
 
     let server_info_options = ServerInfoOptions {

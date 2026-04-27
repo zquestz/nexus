@@ -36,6 +36,7 @@ where
         let response = ServerMessage::HandshakeResponse {
             success: false,
             version: Some(server_version_str.to_string()),
+            fingerprint: ctx.fingerprint.to_string(),
             error: Some(err_handshake_already_completed(ctx.locale)),
         };
         ctx.send_message(&response).await?;
@@ -56,6 +57,7 @@ where
             let response = ServerMessage::HandshakeResponse {
                 success: false,
                 version: Some(server_version_str.to_string()),
+                fingerprint: ctx.fingerprint.to_string(),
                 error: Some(error_msg),
             };
             ctx.send_message(&response).await?;
@@ -71,6 +73,7 @@ where
             let response = ServerMessage::HandshakeResponse {
                 success: true,
                 version: Some(server_version_str.to_string()),
+                fingerprint: ctx.fingerprint.to_string(),
                 error: None,
             };
             ctx.send_message(&response).await
@@ -83,6 +86,7 @@ where
             let response = ServerMessage::HandshakeResponse {
                 success: false,
                 version: Some(server_version_str.to_string()),
+                fingerprint: ctx.fingerprint.to_string(),
                 error: Some(err_version_major_mismatch(
                     ctx.locale,
                     server_major,
@@ -100,6 +104,7 @@ where
             let response = ServerMessage::HandshakeResponse {
                 success: false,
                 version: Some(server_version_str.to_string()),
+                fingerprint: ctx.fingerprint.to_string(),
                 error: Some(err_version_minor_mismatch(
                     ctx.locale,
                     server_version_str,
@@ -117,6 +122,7 @@ where
             let response = ServerMessage::HandshakeResponse {
                 success: false,
                 version: Some(server_version_str.to_string()),
+                fingerprint: ctx.fingerprint.to_string(),
                 error: Some(err_version_client_too_new(
                     ctx.locale,
                     server_version_str,
@@ -132,7 +138,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::handlers::testing::{create_test_context, read_server_message};
+    use crate::handlers::testing::{TEST_FINGERPRINT, create_test_context, read_server_message};
     use nexus_common::version;
 
     #[tokio::test]
@@ -164,10 +170,15 @@ mod tests {
             ServerMessage::HandshakeResponse {
                 success,
                 version,
+                fingerprint,
                 error,
             } => {
                 assert!(success, "Response should indicate success");
                 assert_eq!(version, Some(nexus_common::PROTOCOL_VERSION.to_string()));
+                assert_eq!(
+                    fingerprint, TEST_FINGERPRINT,
+                    "Fingerprint should match the test context value"
+                );
                 assert!(error.is_none(), "Error should be None on success");
             }
             _ => panic!("Expected HandshakeResponse"),
@@ -220,11 +231,16 @@ mod tests {
                 success,
                 error,
                 version: resp_version,
+                fingerprint,
             } => {
                 assert!(!success, "Response should indicate failure");
                 assert_eq!(
                     resp_version,
                     Some(nexus_common::PROTOCOL_VERSION.to_string())
+                );
+                assert_eq!(
+                    fingerprint, TEST_FINGERPRINT,
+                    "Fingerprint must be sent even on failure responses"
                 );
                 let error_msg = error.expect("Should have error message");
                 assert!(
@@ -284,11 +300,16 @@ mod tests {
                 success,
                 error,
                 version: resp_version,
+                fingerprint,
             } => {
                 assert!(!success, "Response should indicate failure");
                 assert_eq!(
                     resp_version,
                     Some(nexus_common::PROTOCOL_VERSION.to_string())
+                );
+                assert_eq!(
+                    fingerprint, TEST_FINGERPRINT,
+                    "Fingerprint must be sent even on failure responses"
                 );
                 let error_msg = error.expect("Should have error message");
                 assert!(
@@ -358,8 +379,17 @@ mod tests {
         let response_msg = read_server_message(&mut test_ctx).await;
 
         match response_msg {
-            ServerMessage::HandshakeResponse { success, error, .. } => {
+            ServerMessage::HandshakeResponse {
+                success,
+                error,
+                fingerprint,
+                ..
+            } => {
                 assert!(!success, "Response should indicate failure");
+                assert_eq!(
+                    fingerprint, TEST_FINGERPRINT,
+                    "Fingerprint must be sent even on failure responses"
+                );
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
                 assert!(
@@ -396,8 +426,17 @@ mod tests {
         let response_msg = read_server_message(&mut test_ctx).await;
 
         match response_msg {
-            ServerMessage::HandshakeResponse { success, error, .. } => {
+            ServerMessage::HandshakeResponse {
+                success,
+                error,
+                fingerprint,
+                ..
+            } => {
                 assert!(!success, "Response should indicate failure");
+                assert_eq!(
+                    fingerprint, TEST_FINGERPRINT,
+                    "Fingerprint must be sent even on failure responses"
+                );
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
                 assert!(
@@ -432,8 +471,17 @@ mod tests {
         let response_msg = read_server_message(&mut test_ctx).await;
 
         match response_msg {
-            ServerMessage::HandshakeResponse { success, error, .. } => {
+            ServerMessage::HandshakeResponse {
+                success,
+                error,
+                fingerprint,
+                ..
+            } => {
                 assert!(!success, "Response should indicate failure");
+                assert_eq!(
+                    fingerprint, TEST_FINGERPRINT,
+                    "Fingerprint must be sent even on failure responses"
+                );
                 assert!(error.is_some(), "Should have error message");
                 let error_msg = error.unwrap();
                 assert!(

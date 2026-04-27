@@ -49,10 +49,11 @@ use style::toast_style;
 
 use config::events::EventType;
 
+use network::FingerprintInterception;
 use style::{WINDOW_HEIGHT_MIN, WINDOW_TITLE, WINDOW_WIDTH_MIN};
 use types::{
-    BookmarkEditState, ConnectionFormState, FingerprintInterception, FingerprintMismatch, InputId,
-    Message, ServerConnection, SettingsFormState, SettingsTab, UiState, ViewConfig,
+    BookmarkEditState, ConnectionFormState, FingerprintMismatch, InputId, Message,
+    ServerConnection, SettingsFormState, SettingsTab, UiState, ViewConfig,
 };
 
 /// Startup URI passed via command line (consumed by NexusApp::new)
@@ -976,10 +977,13 @@ impl NexusApp {
             // Network events (async results)
             Message::BookmarkConnectionResult {
                 result,
+                params,
                 bookmark_id,
                 display_name,
-            } => self.handle_bookmark_connection_result(result, bookmark_id, display_name),
-            Message::ConnectionResult(result) => self.handle_connection_result(result),
+            } => self.handle_bookmark_connection_result(result, params, bookmark_id, display_name),
+            Message::ConnectionResult { result, params } => {
+                self.handle_connection_result(result, params)
+            }
             Message::NetworkError(connection_id, error) => {
                 self.handle_network_error(connection_id, error)
             }
@@ -1221,10 +1225,10 @@ impl NexusApp {
             }
             Message::UriConnectionResult {
                 result,
-                target_host,
+                params,
                 display_name,
                 path,
-            } => self.handle_uri_connection_result(result, target_host, display_name, path),
+            } => self.handle_uri_connection_result(result, params, display_name, path),
         }
     }
 

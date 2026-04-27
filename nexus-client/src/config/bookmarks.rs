@@ -41,6 +41,93 @@ impl Config {
             *existing = bookmark;
         }
     }
+
+    /// Find a bookmark whose connection params match the given values.
+    ///
+    /// String fields (`address`, `username`, `nickname`) are compared
+    /// case-insensitively via `to_lowercase()` to handle IDN / Unicode input
+    /// correctly — e.g. `Server.com` matches a bookmark stored as
+    /// `server.com`. The port is compared exactly.
+    ///
+    /// **Nickname equivalence for regular accounts:** the server resolves
+    /// nickname = username for regular accounts, so the stored bookmark
+    /// nickname can be empty *or* a case-insensitive match for the username
+    /// without changing what the connection means. We treat both as the
+    /// same canonical "regular-account" form for matching, so a bookmark
+    /// saved with explicit `nickname = "alice"` (= username) matches a
+    /// connection attempt with an empty form-nickname, and vice versa.
+    /// Shared-account nicknames (anything else) compare directly.
+    ///
+    /// Returns None if no bookmark matches. This is the canonical lookup
+    /// used by the manual-form connect flow (resolving the stored
+    /// fingerprint, the TOFU-save target, and the mismatch dialog's
+    /// bookmark identity); URI flows match on a different shape and have
+    /// their own inline lookups.
+    pub fn find_bookmark_matching(
+        &self,
+        address: &str,
+        port: u16,
+        username: &str,
+        nickname: &str,
+    ) -> Option<&ServerBookmark> {
+        let address_lc = address.to_lowercase();
+        let username_lc = username.to_lowercase();
+        let our_canonical_nick = canonical_nickname(nickname, username);
+        self.bookmarks.iter().find(|b| {
+            b.address.to_lowercase() == address_lc
+                && b.port == port
+                && b.username.to_lowercase() == username_lc
+                && canonical_nickname(&b.nickname, &b.username) == our_canonical_nick
+        })
+    }
+
+    /// Find a bookmark by URI shape (host/port, optionally also username).
+    ///
+    /// `nexus://` URIs don't carry a nickname; the bookmark's nickname is
+    /// whatever's stored locally. URIs without credentials match by
+    /// `(host, port)` only; URIs with credentials add a username predicate.
+    /// String fields compared case-insensitively via `to_lowercase()`.
+    ///
+    /// This is the canonical lookup for the URI-connect flow. Both the
+    /// connect-time bookmark resolution (for credentials, display name,
+    /// stored fingerprint) and the result-time identity lookup (for the
+    /// fingerprint-interception dialog's `server_name`) go through here,
+    /// so they always agree on which bookmark — if any — is associated
+    /// with a given URI.
+    pub fn find_bookmark_matching_uri(
+        &self,
+        address: &str,
+        port: u16,
+        username: Option<&str>,
+    ) -> Option<&ServerBookmark> {
+        let address_lc = address.to_lowercase();
+        let username_lc = username.map(|u| u.to_lowercase());
+        self.bookmarks.iter().find(|b| {
+            b.address.to_lowercase() == address_lc
+                && b.port == port
+                && match &username_lc {
+                    Some(u) => &b.username.to_lowercase() == u,
+                    None => true,
+                }
+        })
+    }
+}
+
+/// Reduce a nickname to its canonical form for bookmark matching.
+///
+/// Empty or username-equal (case-insensitive) → empty string.
+/// Anything else → lowercased nickname.
+///
+/// Used by `find_bookmark_matching` so connection attempts that produce the
+/// same server-side login resolve to the same bookmark regardless of which
+/// equivalent form the nickname was saved or typed in.
+fn canonical_nickname(nickname: &str, username: &str) -> String {
+    let lc = nickname.to_lowercase();
+    if lc.is_empty() || lc == username.to_lowercase() {
+        String::new()
+    } else {
+        lc
+    }
 }
 
 // =============================================================================
@@ -160,5 +247,380 @@ mod tests {
 
         assert_eq!(config.bookmarks.len(), 1);
         assert_eq!(config.bookmarks[0].name, "Server 1");
+    }
+
+    /// Helper to build a bookmark with full connection params for matching tests.
+    fn bookmark_with_params(
+        name: &str,
+        address: &str,
+        port: u16,
+        username: &str,
+        nickname: &str,
+    ) -> ServerBookmark {
+        ServerBookmark {
+            id: Uuid::new_v4(),
+            name: name.to_string(),
+            address: address.to_string(),
+            port,
+            username: username.to_string(),
+            nickname: nickname.to_string(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_exact() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        let result = config.find_bookmark_matching("server.example", 7500, "alice", "Alice");
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_case_insensitive_address() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        // User typed mixed case — should still find the bookmark.
+        let result = config.find_bookmark_matching("Server.Example", 7500, "alice", "Alice");
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_case_insensitive_username() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        let result = config.find_bookmark_matching("server.example", 7500, "ALICE", "Alice");
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_case_insensitive_nickname() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        let result = config.find_bookmark_matching("server.example", 7500, "alice", "alice");
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_unicode_case_folded() {
+        // Non-ASCII case folding — confirms we use to_lowercase, not eq_ignore_ascii_case.
+        // Turkish dotted-I example: Ä lowercases to ä.
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "Ärlich.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        let result = config.find_bookmark_matching("ärlich.example", 7500, "alice", "Alice");
+        assert!(
+            result.is_some(),
+            "Unicode case folding must work for non-ASCII addresses"
+        );
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_port_mismatch() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        let result = config.find_bookmark_matching("server.example", 7501, "alice", "Alice");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_username_mismatch() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        let result = config.find_bookmark_matching("server.example", 7500, "bob", "Alice");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_nickname_mismatch() {
+        // Two shared-account bookmarks differing only by nickname must resolve
+        // to the right one. This is the H1 regression case: missing nickname
+        // predicate would let "alice/Alice" and "alice/Bob" collide.
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "AliceBM",
+            "server.example",
+            7500,
+            "shared",
+            "Alice",
+        ));
+        config.add_bookmark(bookmark_with_params(
+            "BobBM",
+            "server.example",
+            7500,
+            "shared",
+            "Bob",
+        ));
+
+        let result = config.find_bookmark_matching("server.example", 7500, "shared", "Bob");
+        assert_eq!(result.map(|b| b.name.as_str()), Some("BobBM"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_empty_nickname() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "",
+        ));
+
+        // Both bookmark and lookup carry an empty nickname — should match.
+        let result = config.find_bookmark_matching("server.example", 7500, "alice", "");
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_no_bookmarks() {
+        let config = Config::default();
+        let result = config.find_bookmark_matching("server.example", 7500, "alice", "Alice");
+        assert!(result.is_none());
+    }
+
+    // -- canonical-nickname equivalence (regular-account variants) ---------
+
+    #[test]
+    fn test_find_bookmark_matching_form_empty_bookmark_username() {
+        // Bookmark saved with nickname == username; user typed empty nickname.
+        // Server-side these resolve to the same regular-account login, so
+        // the lookup must match.
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "alice", // bookmark nickname == username
+        ));
+
+        let result = config.find_bookmark_matching("server.example", 7500, "alice", "");
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_bookmark_empty_form_username() {
+        // Symmetric to the above: bookmark saved without a nickname; user
+        // typed nickname = username.
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "", // empty bookmark nickname
+        ));
+
+        let result = config.find_bookmark_matching("server.example", 7500, "alice", "alice");
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_canonical_handles_case() {
+        // Bookmark stored with mixed-case username-as-nickname; form has
+        // empty nickname. Both canonicalize to empty.
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice", // case differs from username; still canonical-empty
+        ));
+
+        let result = config.find_bookmark_matching("server.example", 7500, "alice", "");
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_shared_account_distinct_nickname() {
+        // Shared account: nickname is meaningful. A connection attempt with
+        // a different nickname must NOT match.
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "BobBM",
+            "server.example",
+            7500,
+            "shared",
+            "Bob",
+        ));
+
+        let result = config.find_bookmark_matching("server.example", 7500, "shared", "Charlie");
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_canonical_first_match_wins() {
+        // Two bookmarks both canonicalize to regular-account (empty nickname):
+        // one stored with "" and one stored with username-as-nickname. Form
+        // input matches both. Pin "first match wins" — Vec::iter().find()
+        // returns insertion order, so the older bookmark wins. A storage-order
+        // change (or switch to a different lookup primitive) would be caught.
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "First",
+            "server.example",
+            7500,
+            "alice",
+            "", // canonical-empty
+        ));
+        config.add_bookmark(bookmark_with_params(
+            "Second",
+            "server.example",
+            7500,
+            "alice",
+            "alice", // also canonical-empty (= username)
+        ));
+
+        let result = config.find_bookmark_matching("server.example", 7500, "alice", "");
+        assert_eq!(result.map(|b| b.name.as_str()), Some("First"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_whitespace_address_does_not_match() {
+        // The helper itself is strict on address — caller is responsible for
+        // trimming whitespace before lookup. In practice callers DO trim at
+        // input boundaries (handle_save_bookmark and handle_connect_pressed),
+        // so this case shouldn't fire in normal flows; pin the contract here.
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        let result = config.find_bookmark_matching("server.example ", 7500, "alice", "Alice");
+        assert!(result.is_none());
+    }
+
+    // -- find_bookmark_matching_uri (URI-shape lookup) ---------------------
+
+    #[test]
+    fn test_find_bookmark_matching_uri_no_username() {
+        // URI without creds: 2-tuple match on (host, port).
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        let result = config.find_bookmark_matching_uri("server.example", 7500, None);
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_uri_with_username() {
+        // URI with creds: 3-tuple match on (host, port, username).
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        let result = config.find_bookmark_matching_uri("server.example", 7500, Some("alice"));
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_uri_username_mismatch() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        let result = config.find_bookmark_matching_uri("server.example", 7500, Some("bob"));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_uri_case_insensitive() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        // Mixed case host AND username — both lowercased on match.
+        let result = config.find_bookmark_matching_uri("Server.Example", 7500, Some("ALICE"));
+        assert_eq!(result.map(|b| b.name.as_str()), Some("Test"));
+    }
+
+    #[test]
+    fn test_find_bookmark_matching_uri_port_mismatch() {
+        let mut config = Config::default();
+        config.add_bookmark(bookmark_with_params(
+            "Test",
+            "server.example",
+            7500,
+            "alice",
+            "Alice",
+        ));
+
+        let result = config.find_bookmark_matching_uri("server.example", 7501, None);
+        assert!(result.is_none());
     }
 }

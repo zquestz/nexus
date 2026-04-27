@@ -1,6 +1,6 @@
 [package]
 name = "nexus-client"
-version = "0.7.8"
+version = "0.8.0"
 edition = "2024"
 license = "MIT"
 authors = ["Josh Ellithorpe <quest@mac.com>"]
@@ -94,7 +94,10 @@ tempfile = "3.20"
 serial_test = "3.2"
 
 [build-dependencies]
-iced_fontello = { git = "https://github.com/hecrj/iced_fontello", branch = "master" }
+# Pinned to a known-good rev: upstream master tracks iced master (incompatible
+# with our `iced = "0.14"`), and crates.io `0.14.1`'s transitive tree includes
+# a broken `lzma-rust2 0.15.3`. Bump alongside iced upgrades.
+iced_fontello = { git = "https://github.com/hecrj/iced_fontello", rev = "4b3ffa010f18d56baf6d72927dbacbd77b948eb0" }
 
 [[bin]]
 name = "nexus"

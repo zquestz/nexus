@@ -55,44 +55,35 @@ impl Default for UiState {
     }
 }
 
-/// Certificate fingerprint interception detected (TLS-observed vs server-reported mismatch)
+/// What to do if the user accepts a fingerprint mismatch and we need to
+/// retry the connection. Carries the original `ConnectionParams` so retry
+/// uses the exact same intent (credentials, locale, proxy) the user picked.
+///
+/// The variant determines which `Message::*ConnectionResult` the retry
+/// dispatches to, preserving variant-specific behavior (URI path navigation,
+/// bookmark error routing, manual-form lifecycle).
 #[derive(Debug, Clone)]
-pub struct FingerprintInterception {
-    /// Server name for display
-    pub server_name: String,
-    /// Server address for display
-    pub server_address: String,
-    /// Server port for display
-    pub server_port: String,
-    /// Fingerprint observed during TLS handshake
-    pub tls_fingerprint: String,
-    /// Fingerprint reported by server in ServerInfo
-    pub server_fingerprint: String,
+pub enum ReconnectAction {
+    /// Retry a manual-form connect. Form data is preserved across the
+    /// dialog because the form is only cleared on connection success.
+    Manual {
+        params: crate::network::types::ConnectionParams,
+    },
+    /// Retry a bookmark connect.
+    Bookmark {
+        params: crate::network::types::ConnectionParams,
+        bookmark_id: Uuid,
+        display_name: String,
+    },
+    /// Retry a `nexus://` URI connect, preserving the path-navigation intent.
+    Uri {
+        params: crate::network::types::ConnectionParams,
+        display_name: String,
+        path: Option<crate::uri::NexusPath>,
+    },
 }
 
-/// Certificate fingerprint mismatch details (without connection)
-///
-/// Used as return type from fingerprint verification to avoid creating
-/// dummy NetworkConnection objects.
-#[derive(Debug, Clone)]
-pub struct FingerprintMismatchDetails {
-    /// Bookmark ID with mismatched fingerprint
-    pub bookmark_id: Uuid,
-    /// Expected fingerprint (stored)
-    pub expected: String,
-    /// Received fingerprint (new)
-    pub received: String,
-    /// Bookmark name for display
-    pub bookmark_name: String,
-    /// Server address (IP or hostname)
-    pub server_address: String,
-    /// Server port
-    pub server_port: String,
-}
-
-/// Certificate fingerprint mismatch information (with connection)
-///
-/// Used in the mismatch queue for user verification.
+/// Certificate fingerprint mismatch entry in the user-verification queue.
 #[derive(Debug, Clone)]
 pub struct FingerprintMismatch {
     /// Bookmark ID with mismatched fingerprint
@@ -107,10 +98,8 @@ pub struct FingerprintMismatch {
     pub server_address: String,
     /// Server port
     pub server_port: String,
-    /// The network connection to complete if user accepts
-    pub connection: crate::types::NetworkConnection,
-    /// Display name for the connection
-    pub display_name: String,
+    /// What to dispatch on accept.
+    pub retry_action: ReconnectAction,
 }
 
 /// Text input IDs for focus management

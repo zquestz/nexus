@@ -31,6 +31,7 @@ pub(crate) async fn handle_transfer_handshake<R, W>(
     frame_reader: &mut FrameReader<R>,
     frame_writer: &mut FrameWriter<W>,
     locale: &str,
+    fingerprint: &'static str,
 ) -> io::Result<()>
 where
     R: AsyncReadExt + Unpin,
@@ -51,6 +52,7 @@ where
             let response = ServerMessage::HandshakeResponse {
                 success: false,
                 version: Some(server_version_str.to_string()),
+                fingerprint: fingerprint.to_string(),
                 error: Some(err_handshake_required(locale)),
             };
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
@@ -72,6 +74,7 @@ where
             let response = ServerMessage::HandshakeResponse {
                 success: false,
                 version: Some(server_version_str.to_string()),
+                fingerprint: fingerprint.to_string(),
                 error: Some(error_msg),
             };
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
@@ -85,6 +88,7 @@ where
             let response = ServerMessage::HandshakeResponse {
                 success: true,
                 version: Some(server_version_str.to_string()),
+                fingerprint: fingerprint.to_string(),
                 error: None,
             };
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
@@ -97,6 +101,7 @@ where
             let response = ServerMessage::HandshakeResponse {
                 success: false,
                 version: Some(server_version_str.to_string()),
+                fingerprint: fingerprint.to_string(),
                 error: Some(err_version_major_mismatch(
                     locale,
                     server_major,
@@ -113,6 +118,7 @@ where
             let response = ServerMessage::HandshakeResponse {
                 success: false,
                 version: Some(server_version_str.to_string()),
+                fingerprint: fingerprint.to_string(),
                 error: Some(err_version_minor_mismatch(
                     locale,
                     server_version_str,
@@ -131,6 +137,7 @@ where
             let response = ServerMessage::HandshakeResponse {
                 success: false,
                 version: Some(server_version_str.to_string()),
+                fingerprint: fingerprint.to_string(),
                 error: Some(err_version_client_too_new(
                     locale,
                     server_version_str,
@@ -335,5 +342,117 @@ where
                 "Expected FileDownload or FileUpload message",
             ))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use tokio::io::BufReader;
+    use tokio::net::{TcpListener, TcpStream};
+
+    use nexus_common::PROTOCOL_VERSION;
+    use nexus_common::io::{read_server_message, send_client_message};
+
+    use crate::handlers::testing::{DEFAULT_TEST_LOCALE, TEST_FINGERPRINT};
+
+    /// Set up a TCP socket pair and run `handle_transfer_handshake` server-side
+    /// while sending `client_handshake_version` from the client side. Returns
+    /// the parsed `HandshakeResponse` fields plus the server-side result.
+    async fn run_handshake(
+        client_handshake_version: &str,
+    ) -> (io::Result<()>, bool, Option<String>, String, Option<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let client_handle = tokio::spawn(async move { TcpStream::connect(addr).await.unwrap() });
+        let (server_stream, _) = listener.accept().await.unwrap();
+        let client_stream = client_handle.await.unwrap();
+
+        let (server_read, server_write) = server_stream.into_split();
+        let mut server_frame_reader = FrameReader::new(BufReader::new(server_read));
+        let mut server_frame_writer = FrameWriter::new(server_write);
+
+        let (client_read, client_write) = client_stream.into_split();
+        let mut client_frame_writer = FrameWriter::new(client_write);
+        let mut client_frame_reader = FrameReader::new(BufReader::new(client_read));
+
+        let server_task = tokio::spawn(async move {
+            let result = handle_transfer_handshake(
+                &mut server_frame_reader,
+                &mut server_frame_writer,
+                DEFAULT_TEST_LOCALE,
+                TEST_FINGERPRINT,
+            )
+            .await;
+            (result, server_frame_writer)
+        });
+
+        let handshake = ClientMessage::Handshake {
+            version: client_handshake_version.to_string(),
+        };
+        send_client_message(&mut client_frame_writer, &handshake)
+            .await
+            .unwrap();
+
+        let received = read_server_message(&mut client_frame_reader)
+            .await
+            .unwrap()
+            .expect("Server should send a HandshakeResponse before closing");
+
+        let (server_result, _writer) = server_task.await.unwrap();
+
+        match received.message {
+            ServerMessage::HandshakeResponse {
+                success,
+                version,
+                fingerprint,
+                error,
+            } => (server_result, success, version, fingerprint, error),
+            other => panic!("Expected HandshakeResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_transfer_handshake_success_includes_fingerprint() {
+        let (result, success, version, fingerprint, error) = run_handshake(PROTOCOL_VERSION).await;
+
+        assert!(
+            result.is_ok(),
+            "Handshake should succeed with matching version"
+        );
+        assert!(success, "Response should indicate success");
+        assert_eq!(version, Some(PROTOCOL_VERSION.to_string()));
+        assert_eq!(fingerprint, TEST_FINGERPRINT);
+        assert!(error.is_none(), "Error should be None on success");
+    }
+
+    #[tokio::test]
+    async fn test_transfer_handshake_invalid_semver_includes_fingerprint() {
+        let (result, success, _version, fingerprint, error) = run_handshake("not-valid").await;
+
+        assert!(result.is_err(), "Handshake should fail with invalid semver");
+        assert!(!success, "Response should indicate failure");
+        assert_eq!(
+            fingerprint, TEST_FINGERPRINT,
+            "Fingerprint must be sent even on failure responses"
+        );
+        assert!(error.is_some(), "Should have error message");
+    }
+
+    #[tokio::test]
+    async fn test_transfer_handshake_major_mismatch_includes_fingerprint() {
+        let server_ver = nexus_common::version::protocol_version();
+        let client_version = format!("{}.0.0", server_ver.major + 1);
+        let (result, success, _version, fingerprint, error) = run_handshake(&client_version).await;
+
+        assert!(result.is_err(), "Handshake should fail with major mismatch");
+        assert!(!success, "Response should indicate failure");
+        assert_eq!(
+            fingerprint, TEST_FINGERPRINT,
+            "Fingerprint must be sent even on failure responses"
+        );
+        assert!(error.is_some(), "Should have error message");
     }
 }

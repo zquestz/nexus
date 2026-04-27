@@ -8,12 +8,16 @@ The handshake is the first message exchange after TLS connection. It establishes
 Client                                        Server
    │                                             │
    │  ─────── TLS Connection ──────────────►     │
+   │     (client observes cert fingerprint)      │
    │                                             │
    │  Handshake { version }                      │
    │ ───────────────────────────────────────►    │
    │                                             │
-   │         HandshakeResponse { ... }           │
+   │  HandshakeResponse { version, fingerprint } │
    │ ◄───────────────────────────────────────    │
+   │                                             │
+   │  (client verifies server-reported           │
+   │   fingerprint matches TLS-observed)         │
    │                                             │
 ```
 
@@ -25,38 +29,42 @@ Sent immediately after TLS connection is established.
 
 | Field     | Type   | Required | Description                                 |
 | --------- | ------ | -------- | ------------------------------------------- |
-| `version` | string | Yes      | Client's protocol version (e.g., `"0.7.8"`) |
+| `version` | string | Yes      | Client's protocol version (e.g., `"0.8.0"`) |
 
 **Example:**
 
 ```json
 {
-  "version": "0.7.8"
+  "version": "0.8.0"
 }
 ```
 
 **Full frame:**
 
 ```
-NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.7.8"}
+NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.8.0"}
 ```
 
 ### HandshakeResponse (Server → Client)
 
 Server's response indicating whether the handshake succeeded.
 
-| Field     | Type    | Required   | Description                          |
-| --------- | ------- | ---------- | ------------------------------------ |
-| `success` | boolean | Yes        | Whether the handshake succeeded      |
-| `version` | string  | If success | Server's protocol version            |
-| `error`   | string  | If failure | Error message explaining the failure |
+| Field         | Type    | Required   | Description                                                         |
+| ------------- | ------- | ---------- | ------------------------------------------------------------------- |
+| `success`     | boolean | Yes        | Whether the handshake succeeded                                     |
+| `version`     | string  | If success | Server's protocol version                                           |
+| `fingerprint` | string  | Yes        | Server's TLS certificate fingerprint (SHA-256, colon-separated hex) |
+| `error`       | string  | If failure | Error message explaining the failure                                |
+
+The `fingerprint` field is sent on **every** response — both success and failure — so the client can detect TLS interception even when the handshake itself errors out (e.g., a MITM forging a "version mismatch" response). The client compares this server-reported value to the TLS-observed fingerprint before trusting the connection. See [Connection Flow](README.md#connection-flow) for details.
 
 **Success example:**
 
 ```json
 {
   "success": true,
-  "version": "0.7.8"
+  "version": "0.8.0",
+  "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
 }
 ```
 
@@ -65,7 +73,9 @@ Server's response indicating whether the handshake succeeded.
 ```json
 {
   "success": false,
-  "error": "Unsupported protocol version. Server: 0.7.8, Client: 0.3.0"
+  "version": "0.8.0",
+  "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
+  "error": "Unsupported protocol version. Server: 0.8.0, Client: 0.3.0"
 }
 ```
 
@@ -85,12 +95,12 @@ During pre-1.0 development, each minor version bump can introduce breaking proto
 
 | Client | Server | Compatible | Reason                   |
 | ------ | ------ | ---------- | ------------------------ |
-| 0.7.0  | 0.7.0  | ✅ Yes     | Exact match              |
-| 0.7.0  | 0.7.8  | ✅ Yes     | Patch difference ignored |
-| 0.5.0  | 0.7.0  | ❌ No      | Minor mismatch (pre-1.0) |
-| 0.7.0  | 0.5.0  | ❌ No      | Minor mismatch (pre-1.0) |
-| 1.0.0  | 0.7.0  | ❌ No      | Major version mismatch   |
-| 0.7.0  | 1.0.0  | ❌ No      | Major version mismatch   |
+| 0.8.0  | 0.8.0  | ✅ Yes     | Exact match              |
+| 0.8.0  | 0.8.5  | ✅ Yes     | Patch difference ignored |
+| 0.7.0  | 0.8.0  | ❌ No      | Minor mismatch (pre-1.0) |
+| 0.8.0  | 0.7.0  | ❌ No      | Minor mismatch (pre-1.0) |
+| 1.0.0  | 0.8.0  | ❌ No      | Major version mismatch   |
+| 0.8.0  | 1.0.0  | ❌ No      | Major version mismatch   |
 
 ## Error Handling
 
