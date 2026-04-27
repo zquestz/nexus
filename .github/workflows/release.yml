@@ -60,9 +60,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target
-          key: linux-${{ matrix.arch }}-client-cargo-build-v2-${{ hashFiles('**/Cargo.lock') }}
+          key: linux-${{ matrix.arch }}-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-client-cargo-build-v2-
+            linux-${{ matrix.arch }}-client-cargo-build-v3-
 
       - name: Cache cargo-bundle
         id: cache-cargo-bundle
@@ -138,9 +138,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target
-          key: linux-${{ matrix.arch }}-server-cargo-build-v2-${{ hashFiles('**/Cargo.lock') }}
+          key: linux-${{ matrix.arch }}-server-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            linux-${{ matrix.arch }}-server-cargo-build-v2-
+            linux-${{ matrix.arch }}-server-cargo-build-v3-
 
       - name: Build server
         run: cargo build --release --package nexus-server
@@ -198,16 +198,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target
-          key: macos-arm64-client-cargo-build-v2-${{ hashFiles('**/Cargo.lock') }}
+          key: macos-arm64-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-arm64-client-cargo-build-v2-
+            macos-arm64-client-cargo-build-v3-
 
       - name: Cache cargo-bundle
         id: cache-cargo-bundle
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle
-          key: cargo-bundle-macos-arm64-v2
+          key: cargo-bundle-macos-arm64-v3
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
@@ -278,9 +278,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target
-          key: macos-x64-client-cargo-build-v2-${{ hashFiles('**/Cargo.lock') }}
+          key: macos-x64-client-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-x64-client-cargo-build-v2-
+            macos-x64-client-cargo-build-v3-
 
       - name: Build client (x64)
         run: cargo build --release --package nexus-client --target x86_64-apple-darwin
@@ -405,9 +405,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target
-          key: macos-server-cargo-build-v2-${{ hashFiles('**/Cargo.lock') }}
+          key: macos-server-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            macos-server-cargo-build-v2-
+            macos-server-cargo-build-v3-
 
       - name: Build server (arm64)
         run: cargo build --release --package nexus-server --target aarch64-apple-darwin
@@ -486,7 +486,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cargo/bin/cargo-bundle.exe
-          key: cargo-bundle-windows-x64-v2
+          key: cargo-bundle-windows-x64-v3
 
       - name: Install cargo-bundle
         if: steps.cache-cargo-bundle.outputs.cache-hit != 'true'
@@ -546,9 +546,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: target
-          key: windows-server-cargo-build-v2-${{ hashFiles('**/Cargo.lock') }}
+          key: windows-server-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            windows-server-cargo-build-v2-
+            windows-server-cargo-build-v3-
 
       - name: Build server
         run: cargo build --release --package nexus-server
