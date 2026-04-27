@@ -21,9 +21,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-24.04
+          - runner: ubuntu-22.04
             arch: x64
-          - runner: ubuntu-24.04-arm
+          - runner: ubuntu-22.04-arm
             arch: arm64
     steps:
       - uses: actions/checkout@v4
@@ -107,9 +107,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-24.04
+          - runner: ubuntu-22.04
             arch: x64
-          - runner: ubuntu-24.04-arm
+          - runner: ubuntu-22.04-arm
             arch: arm64
     steps:
       - uses: actions/checkout@v4
@@ -575,7 +575,7 @@ jobs:
   # Create GitHub release with all artifacts
   release:
     name: Create Release
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     needs: [build-linux-client, build-linux-server, build-macos-client-universal, build-macos-server, build-windows-client, build-windows-server]
     permissions:
@@ -706,7 +706,7 @@ jobs:
   # Build Docker image (amd64) - native build
   build-docker-amd64:
     name: Build Docker Image (amd64)
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     timeout-minutes: 45
     permissions:
       contents: read
@@ -744,7 +744,7 @@ jobs:
   # Build Docker image (arm64) - native build
   build-docker-arm64:
     name: Build Docker Image (arm64)
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-22.04-arm
     timeout-minutes: 45
     permissions:
       contents: read
