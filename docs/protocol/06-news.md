@@ -210,7 +210,7 @@ Create a new news item.
 
 | Field   | Type   | Required | Description                            |
 | ------- | ------ | -------- | -------------------------------------- |
-| `body`  | string | No       | Markdown content (max 4096 characters) |
+| `body`  | string | No       | Markdown content (max 4096 bytes)      |
 | `image` | string | No       | Image as data URI (max 700KB)          |
 
 At least one of `body` or `image` must be provided.
@@ -496,7 +496,7 @@ Admins have all permissions automatically.
 
 | Rule             | Value                         | Error              |
 | ---------------- | ----------------------------- | ------------------ |
-| Max length       | 4096 characters               | Body too long      |
+| Max length       | 4096 bytes                    | Body too long      |
 | No control chars | Except `\n`, `\r`, `\t`       | Invalid characters |
 | Empty allowed    | Can be null if image provided | —                  |
 
@@ -542,7 +542,7 @@ News items are returned newest first (descending by creation date).
 | Not logged in                           | Sent before authentication       | Disconnected    |
 | Permission denied                       | Missing required permission      | Stays connected |
 | News item not found                     | Invalid ID                       | Stays connected |
-| Body too long                           | Exceeds 4096 characters          | Stays connected |
+| Body too long                           | Exceeds 4096 bytes               | Stays connected |
 | Invalid characters                      | Control characters in body       | Stays connected |
 | Image too large                         | Exceeds 700KB                    | Stays connected |
 | Invalid image format                    | Not PNG/WebP/JPEG/SVG            | Stays connected |

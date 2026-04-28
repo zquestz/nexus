@@ -49,14 +49,16 @@ NX|9|Handshake|a1b2c3d4e5f6|19|{"version":"0.8.1"}
 
 Server's response indicating whether the handshake succeeded.
 
-| Field         | Type    | Required   | Description                                                         |
-| ------------- | ------- | ---------- | ------------------------------------------------------------------- |
-| `success`     | boolean | Yes        | Whether the handshake succeeded                                     |
-| `version`     | string  | If success | Server's protocol version                                           |
-| `fingerprint` | string  | Yes        | Server's TLS certificate fingerprint (SHA-256, colon-separated hex) |
-| `error`       | string  | If failure | Error message explaining the failure                                |
+| Field         | Type    | Required   | Description                                                      |
+| ------------- | ------- | ---------- | ---------------------------------------------------------------- |
+| `success`     | boolean | Yes        | Whether the handshake succeeded                                  |
+| `version`     | string  | If success | Server's protocol version                                        |
+| `fingerprint` | string  | Yes        | Server's TLS certificate fingerprint, canonical form (see below) |
+| `error`       | string  | If failure | Error message explaining the failure                             |
 
 The `fingerprint` field is sent on **every** response — both success and failure — so the client can detect TLS interception even when the handshake itself errors out (e.g., a MITM forging a "version mismatch" response). The client compares this server-reported value to the TLS-observed fingerprint before trusting the connection. See [Connection Flow](README.md#connection-flow) for details.
+
+**Fingerprint format.** The `fingerprint` field follows the canonical Nexus fingerprint format: 32 uppercase hex bytes separated by colons (95 bytes total — `AA:BB:CC:...`). This matches the output of `format_certificate_fingerprint` in `nexus-common`, the single source of truth for fingerprint shape across the workspace. Implementations MUST emit fingerprints in this canonical form so that comparisons can use byte equality without normalization.
 
 **Success example:**
 

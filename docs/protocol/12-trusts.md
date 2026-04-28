@@ -326,7 +326,7 @@ This allows updating the duration or reason of an existing trust entry.
 | ---------------------------- | ---------------------------------- |
 | `err-trust-invalid-target`   | Invalid IP address or CIDR format  |
 | `err-trust-invalid-duration` | Invalid duration format            |
-| `err-reason-too-long`        | Reason exceeds 2048 characters     |
+| `err-reason-too-long`        | Reason exceeds 2048 bytes          |
 | `err-reason-invalid`         | Reason contains invalid characters |
 | `err-target-too-long`        | Target string too long             |
 

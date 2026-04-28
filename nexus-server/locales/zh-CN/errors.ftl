@@ -12,7 +12,7 @@ err-nickname-required = 共享账户需要昵称
 err-nickname-too-long = 昵称太长（最多{ $max_length }个字符）
 
 # 离开消息错误
-err-status-too-long = 离开消息太长（最多{ $max_length }个字符）
+err-status-too-long = 离开消息太长（最多{ $max_length }个字节）
 err-status-contains-newlines = 离开消息不能包含换行符
 err-status-invalid-characters = 离开消息包含无效字符
 
@@ -31,7 +31,7 @@ err-cannot-delete-guest = 访客账户不能被删除
 
 # 头像验证错误
 err-avatar-invalid-format = 头像格式无效（必须是base64编码的数据URI）
-err-avatar-too-large = 头像太大（最多{ $max_length }个字符）
+err-avatar-too-large = 头像太大（最多{ $max_length }个字节）
 err-avatar-unsupported-type = 不支持的头像类型（仅支持PNG、WebP或SVG）
 err-authentication = 身份验证错误
 err-invalid-credentials = 用户名或密码无效
@@ -87,12 +87,12 @@ err-topic-invalid-characters = 主题包含无效字符
 
 # 版本验证错误
 err-version-empty = 版本不能为空
-err-version-too-long = 版本太长（最多{ $max_length }个字符）
+err-version-too-long = 版本太长（最多{ $max_length }个字节）
 err-version-invalid-semver = 版本必须是semver格式（MAJOR.MINOR.PATCH）
 
 # 密码验证错误
 err-password-empty = 密码不能为空
-err-password-too-long = 密码太长（最多{ $max_length }个字符）
+err-password-too-long = 密码太长（最多{ $max_length }个字节）
 err-password-too-weak = 密码强度不足，最低要求为 { $required ->
     [0] 弱
     [1] 一般
@@ -103,13 +103,13 @@ err-password-too-weak = 密码强度不足，最低要求为 { $required ->
 }
 
 # 区域设置验证错误
-err-locale-too-long = 区域设置太长（最多{ $max_length }个字符）
+err-locale-too-long = 区域设置太长（最多{ $max_length }个字节）
 err-locale-invalid-characters = 区域设置包含无效字符
 
 # 功能验证错误
 err-features-too-many = 功能太多（最多{ $max_count }个）
 err-features-empty-feature = 功能名称不能为空
-err-features-feature-too-long = 功能名称太长（最多{ $max_length }个字符）
+err-features-feature-too-long = 功能名称太长（最多{ $max_length }个字节）
 err-features-invalid-characters = 功能名称包含无效字符
 
 # 消息验证错误
@@ -125,9 +125,9 @@ err-username-invalid = 用户名包含无效字符（允许字母、数字和符
 err-unknown-permission = 未知权限: '{ $permission }'
 
 # 动态错误消息（带参数）
-err-broadcast-too-long = 消息太长（最多{ $max_length }个字符）
-err-chat-too-long = 消息太长（最多{ $max_length }个字符）
-err-topic-too-long = 主题不能超过{ $max_length }个字符
+err-broadcast-too-long = 消息太长（最多{ $max_length }个字节）
+err-chat-too-long = 消息太长（最多{ $max_length }个字节）
+err-topic-too-long = 主题不能超过{ $max_length }个字节
 err-version-major-mismatch = 不兼容的协议版本：服务器是版本{ $server_major }.x，客户端是版本{ $client_major }.x
 err-version-client-too-new = 客户端版本{ $client_version }比服务器版本{ $server_version }更新。请更新服务器或使用旧版客户端。
 err-version-minor-mismatch = 不兼容的协议版本。服务器: { $server_version }，客户端: { $client_version }。双方必须使用相同的次要版本。
@@ -143,17 +143,17 @@ err-username-too-long = 用户名太长（最多{ $max_length }个字符）
 # 权限验证错误
 err-permissions-too-many = 权限太多（最多{ $max_count }个）
 err-permissions-empty-permission = 权限名称不能为空
-err-permissions-permission-too-long = 权限名称太长（最多{ $max_length }个字符）
+err-permissions-permission-too-long = 权限名称太长（最多{ $max_length }个字节）
 err-permissions-contains-newlines = 权限名称不能包含换行符
 err-permissions-invalid-characters = 权限名称包含无效字符
 
 # 服务器更新错误
 err-admin-required = 需要管理员权限
 err-server-name-empty = 服务器名称不能为空
-err-server-name-too-long = 服务器名称太长（最多{ $max_length }个字符）
+err-server-name-too-long = 服务器名称太长（最多{ $max_length }个字节）
 err-server-name-contains-newlines = 服务器名称不能包含换行符
 err-server-name-invalid-characters = 服务器名称包含无效字符
-err-server-description-too-long = 服务器描述太长（最多{ $max_length }个字符）
+err-server-description-too-long = 服务器描述太长（最多{ $max_length }个字节）
 err-server-description-contains-newlines = 服务器描述不能包含换行符
 err-server-description-invalid-characters = 服务器描述包含无效字符
 
@@ -175,7 +175,7 @@ err-public-address-invalid-format = 公开地址不是有效的主机名或IP地
 
 # 新闻错误
 err-news-not-found = 新闻 #{ $id } 未找到
-err-news-body-too-long = 新闻内容太长（最多{ $max_length }个字符）
+err-news-body-too-long = 新闻内容太长（最多{ $max_length }个字节）
 err-news-body-invalid-characters = 新闻内容包含无效字符
 err-news-image-too-large = 新闻图片太大（最大512KB）
 err-news-image-invalid-format = 新闻图片格式无效（必须是base64编码的数据URI）
@@ -242,7 +242,7 @@ err-banned-with-expiry = 您已被此服务器封禁（{ $remaining } 后解除�
 
 # File Search Errors
 err-search-query-empty = 搜索查询不能为空
-err-search-query-too-short = 搜索查询过短（最少 { $min_length } 个字符）
+err-search-query-too-short = 搜索查询过短（最少 { $min_length } 个字节）
 err-search-query-too-long = 搜索查询过长（最多 { $max_length } 个字符）
 err-search-query-invalid = 搜索查询包含无效字符
 err-search-failed = 搜索失败

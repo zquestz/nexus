@@ -12,7 +12,7 @@ err-nickname-required = 共有アカウントにはニックネームが必要�
 err-nickname-too-long = ニックネームが長すぎます（最大{ $max_length }文字）
 
 # 離席メッセージエラー
-err-status-too-long = 離席メッセージが長すぎます（最大{ $max_length }文字）
+err-status-too-long = 離席メッセージが長すぎます（最大{ $max_length }バイト）
 err-status-contains-newlines = 離席メッセージに改行を含めることはできません
 err-status-invalid-characters = 離席メッセージに無効な文字が含まれています
 
@@ -31,7 +31,7 @@ err-cannot-delete-guest = ゲストアカウントは削除できません
 
 # アバター検証エラー
 err-avatar-invalid-format = アバター形式が無効です（base64エンコードのデータURIである必要があります）
-err-avatar-too-large = アバターが大きすぎます（最大{ $max_length }文字）
+err-avatar-too-large = アバターが大きすぎます（最大{ $max_length }バイト）
 err-avatar-unsupported-type = サポートされていないアバタータイプです（PNG、WebP、SVGのみ）
 err-authentication = 認証エラー
 err-invalid-credentials = ユーザー名またはパスワードが無効です
@@ -87,12 +87,12 @@ err-topic-invalid-characters = トピックに無効な文字が含まれてい�
 
 # バージョン検証のエラー
 err-version-empty = バージョンを空にすることはできません
-err-version-too-long = バージョンが長すぎます（最大{ $max_length }文字）
+err-version-too-long = バージョンが長すぎます（最大{ $max_length }バイト）
 err-version-invalid-semver = バージョンはsemver形式（MAJOR.MINOR.PATCH）である必要があります
 
 # パスワード検証のエラー
 err-password-empty = パスワードを空にすることはできません
-err-password-too-long = パスワードが長すぎます（最大{ $max_length }文字）
+err-password-too-long = パスワードが長すぎます（最大{ $max_length }バイト）
 err-password-too-weak = パスワードが弱すぎます。最低強度は { $required ->
     [0] 弱い
     [1] やや弱い
@@ -103,13 +103,13 @@ err-password-too-weak = パスワードが弱すぎます。最低強度は { $r
 } です
 
 # ロケール検証のエラー
-err-locale-too-long = ロケールが長すぎます（最大{ $max_length }文字）
+err-locale-too-long = ロケールが長すぎます（最大{ $max_length }バイト）
 err-locale-invalid-characters = ロケールに無効な文字が含まれています
 
 # 機能検証のエラー
 err-features-too-many = 機能が多すぎます（最大{ $max_count }）
 err-features-empty-feature = 機能名を空にすることはできません
-err-features-feature-too-long = 機能名が長すぎます（最大{ $max_length }文字）
+err-features-feature-too-long = 機能名が長すぎます（最大{ $max_length }バイト）
 err-features-invalid-characters = 機能名に無効な文字が含まれています
 
 # メッセージ検証のエラー
@@ -125,9 +125,9 @@ err-username-invalid = ユーザー名に無効な文字が含まれています
 err-unknown-permission = 不明な権限: '{ $permission }'
 
 # 動的エラーメッセージ（パラメータ付き）
-err-broadcast-too-long = メッセージが長すぎます（最大{ $max_length }文字）
-err-chat-too-long = メッセージが長すぎます（最大{ $max_length }文字）
-err-topic-too-long = トピックは{ $max_length }文字を超えることはできません
+err-broadcast-too-long = メッセージが長すぎます（最大{ $max_length }バイト）
+err-chat-too-long = メッセージが長すぎます（最大{ $max_length }バイト）
+err-topic-too-long = トピックは{ $max_length }バイトを超えることはできません
 err-version-major-mismatch = 互換性のないプロトコルバージョン：サーバーはバージョン{ $server_major }.x、クライアントはバージョン{ $client_major }.x
 err-version-client-too-new = クライアントバージョン{ $client_version }はサーバーバージョン{ $server_version }より新しいです。サーバーを更新するか、古いクライアントを使用してください。
 err-version-minor-mismatch = 互換性のないプロトコルバージョンです。サーバー: { $server_version }、クライアント: { $client_version }。両方とも同じマイナーバージョンを使用する必要があります。
@@ -143,17 +143,17 @@ err-username-too-long = ユーザー名が長すぎます（最大{ $max_length 
 # 権限バリデーションエラー
 err-permissions-too-many = 権限が多すぎます（最大{ $max_count }個）
 err-permissions-empty-permission = 権限名を空にすることはできません
-err-permissions-permission-too-long = 権限名が長すぎます（最大{ $max_length }文字）
+err-permissions-permission-too-long = 権限名が長すぎます（最大{ $max_length }バイト）
 err-permissions-contains-newlines = 権限名に改行を含めることはできません
 err-permissions-invalid-characters = 権限名に無効な文字が含まれています
 
 # サーバー更新エラー
 err-admin-required = 管理者権限が必要です
 err-server-name-empty = サーバー名を空にすることはできません
-err-server-name-too-long = サーバー名が長すぎます（最大{ $max_length }文字）
+err-server-name-too-long = サーバー名が長すぎます（最大{ $max_length }バイト）
 err-server-name-contains-newlines = サーバー名に改行を含めることはできません
 err-server-name-invalid-characters = サーバー名に無効な文字が含まれています
-err-server-description-too-long = サーバーの説明が長すぎます（最大{ $max_length }文字）
+err-server-description-too-long = サーバーの説明が長すぎます（最大{ $max_length }バイト）
 err-server-description-contains-newlines = サーバーの説明に改行を含めることはできません
 err-server-description-invalid-characters = サーバーの説明に無効な文字が含まれています
 
@@ -175,7 +175,7 @@ err-public-address-invalid-format = 公開アドレスは有効なホスト名�
 
 # ニュースエラー
 err-news-not-found = ニュース #{ $id } が見つかりません
-err-news-body-too-long = ニュース本文が長すぎます（最大{ $max_length }文字）
+err-news-body-too-long = ニュース本文が長すぎます（最大{ $max_length }バイト）
 err-news-body-invalid-characters = ニュース本文に無効な文字が含まれています
 err-news-image-too-large = ニュース画像が大きすぎます（最大512KB）
 err-news-image-invalid-format = ニュース画像の形式が無効です（base64エンコードのデータURIである必要があります）
@@ -242,7 +242,7 @@ err-banned-with-expiry = このサーバーからBANされました（{ $remaini
 
 # File Search Errors
 err-search-query-empty = 検索クエリを空にすることはできません
-err-search-query-too-short = 検索クエリが短すぎます（最小{ $min_length }文字）
+err-search-query-too-short = 検索クエリが短すぎます（最小{ $min_length }バイト）
 err-search-query-too-long = 検索クエリが長すぎます（最大{ $max_length }文字）
 err-search-query-invalid = 検索クエリに無効な文字が含まれています
 err-search-failed = 検索に失敗しました

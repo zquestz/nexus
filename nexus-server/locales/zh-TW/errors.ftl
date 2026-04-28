@@ -12,7 +12,7 @@ err-nickname-required = 共享帳戶需要暱稱
 err-nickname-too-long = 暱稱太長（最多{ $max_length }個字元）
 
 # 離開訊息錯誤
-err-status-too-long = 離開訊息太長（最多{ $max_length }個字元）
+err-status-too-long = 離開訊息太長（最多{ $max_length }個位元組）
 err-status-contains-newlines = 離開訊息不能包含換行符
 err-status-invalid-characters = 離開訊息包含無效字元
 
@@ -31,7 +31,7 @@ err-cannot-delete-guest = 訪客帳戶無法刪除
 
 # 頭像驗證錯誤
 err-avatar-invalid-format = 頭像格式無效（必須是base64編碼的資料URI）
-err-avatar-too-large = 頭像太大（最多{ $max_length }個字元）
+err-avatar-too-large = 頭像太大（最多{ $max_length }個位元組）
 err-avatar-unsupported-type = 不支援的頭像類型（僅支援PNG、WebP或SVG）
 err-authentication = 身份驗證錯誤
 err-invalid-credentials = 使用者名稱或密碼無效
@@ -87,12 +87,12 @@ err-topic-invalid-characters = 主題包含無效字元
 
 # 版本驗證錯誤
 err-version-empty = 版本不能為空
-err-version-too-long = 版本太長（最多{ $max_length }個字元）
+err-version-too-long = 版本太長（最多{ $max_length }個位元組）
 err-version-invalid-semver = 版本必須採用 semver 格式（MAJOR.MINOR.PATCH）
 
 # 密碼驗證錯誤
 err-password-empty = 密碼不能為空
-err-password-too-long = 密碼太長（最多{ $max_length }個字元）
+err-password-too-long = 密碼太長（最多{ $max_length }個位元組）
 err-password-too-weak = 密碼強度不足，最低要求為 { $required ->
     [0] 弱
     [1] 一般
@@ -103,13 +103,13 @@ err-password-too-weak = 密碼強度不足，最低要求為 { $required ->
 }
 
 # 地區設定驗證錯誤
-err-locale-too-long = 地區設定太長（最多{ $max_length }個字元）
+err-locale-too-long = 地區設定太長（最多{ $max_length }個位元組）
 err-locale-invalid-characters = 地區設定包含無效字元
 
 # 功能驗證錯誤
 err-features-too-many = 功能太多（最多{ $max_count }個）
 err-features-empty-feature = 功能名稱不能為空
-err-features-feature-too-long = 功能名稱太長（最多{ $max_length }個字元）
+err-features-feature-too-long = 功能名稱太長（最多{ $max_length }個位元組）
 err-features-invalid-characters = 功能名稱包含無效字元
 
 # 訊息驗證錯誤
@@ -125,9 +125,9 @@ err-username-invalid = 使用者名稱包含無效字元（允許字母、數字
 err-unknown-permission = 未知權限: '{ $permission }'
 
 # 動態錯誤訊息（帶參數）
-err-broadcast-too-long = 訊息太長（最多{ $max_length }個字元）
-err-chat-too-long = 訊息太長（最多{ $max_length }個字元）
-err-topic-too-long = 主題不能超過{ $max_length }個字元
+err-broadcast-too-long = 訊息太長（最多{ $max_length }個位元組）
+err-chat-too-long = 訊息太長（最多{ $max_length }個位元組）
+err-topic-too-long = 主題不能超過{ $max_length }個位元組
 err-version-major-mismatch = 不相容的協定版本：伺服器是版本{ $server_major }.x，客戶端是版本{ $client_major }.x
 err-version-client-too-new = 客戶端版本{ $client_version }比伺服器版本{ $server_version }更新。請更新伺服器或使用較舊的客戶端。
 err-version-minor-mismatch = 不相容的協定版本。伺服器: { $server_version }，客戶端: { $client_version }。雙方必須使用相同的次要版本。
@@ -143,17 +143,17 @@ err-username-too-long = 使用者名稱太長（最多{ $max_length }個字元�
 # 權限驗證錯誤
 err-permissions-too-many = 權限太多（最多{ $max_count }個）
 err-permissions-empty-permission = 權限名稱不能為空
-err-permissions-permission-too-long = 權限名稱太長（最多{ $max_length }個字元）
+err-permissions-permission-too-long = 權限名稱太長（最多{ $max_length }個位元組）
 err-permissions-contains-newlines = 權限名稱不能包含換行符
 err-permissions-invalid-characters = 權限名稱包含無效字元
 
 # 伺服器更新錯誤
 err-admin-required = 需要管理員權限
 err-server-name-empty = 伺服器名稱不能為空
-err-server-name-too-long = 伺服器名稱太長（最多{ $max_length }個字元）
+err-server-name-too-long = 伺服器名稱太長（最多{ $max_length }個位元組）
 err-server-name-contains-newlines = 伺服器名稱不能包含換行符號
 err-server-name-invalid-characters = 伺服器名稱包含無效字元
-err-server-description-too-long = 伺服器描述太長（最多{ $max_length }個字元）
+err-server-description-too-long = 伺服器描述太長（最多{ $max_length }個位元組）
 err-server-description-contains-newlines = 伺服器描述不能包含換行符號
 err-server-description-invalid-characters = 伺服器描述包含無效字元
 
@@ -175,7 +175,7 @@ err-public-address-invalid-format = 公開位址不是有效的主機名稱或IP
 
 # 新聞錯誤
 err-news-not-found = 找不到新聞 #{ $id }
-err-news-body-too-long = 新聞內容太長（最多{ $max_length }個字元）
+err-news-body-too-long = 新聞內容太長（最多{ $max_length }個位元組）
 err-news-body-invalid-characters = 新聞內容包含無效字元
 err-news-image-too-large = 新聞圖片太大（最大512KB）
 err-news-image-invalid-format = 新聞圖片格式無效（必須是base64編碼的資料URI）
@@ -242,7 +242,7 @@ err-banned-with-expiry = 您已被此伺服器封鎖（{ $remaining } 後解除�
 
 # File Search Errors
 err-search-query-empty = 搜尋查詢不能為空
-err-search-query-too-short = 搜尋查詢太短（最少 { $min_length } 個字元）
+err-search-query-too-short = 搜尋查詢太短（最少 { $min_length } 個位元組）
 err-search-query-too-long = 搜尋查詢太長（最多 { $max_length } 個字元）
 err-search-query-invalid = 搜尋查詢包含無效字元
 err-search-failed = 搜尋失敗

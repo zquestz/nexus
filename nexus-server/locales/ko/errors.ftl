@@ -12,7 +12,7 @@ err-nickname-required = 공유 계정에는 닉네임이 필요합니다
 err-nickname-too-long = 닉네임이 너무 깁니다 (최대 { $max_length }자)
 
 # 부재 메시지 오류
-err-status-too-long = 부재 메시지가 너무 깁니다 (최대 { $max_length }자)
+err-status-too-long = 부재 메시지가 너무 깁니다 (최대 { $max_length } 바이트)
 err-status-contains-newlines = 부재 메시지에는 줄 바꿈을 포함할 수 없습니다
 err-status-invalid-characters = 부재 메시지에 잘못된 문자가 포함되어 있습니다
 
@@ -31,7 +31,7 @@ err-cannot-delete-guest = 게스트 계정은 삭제할 수 없습니다
 
 # 아바타 유효성 검사 오류
 err-avatar-invalid-format = 아바타 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
-err-avatar-too-large = 아바타가 너무 큽니다 (최대 { $max_length }자)
+err-avatar-too-large = 아바타가 너무 큽니다 (최대 { $max_length } 바이트)
 err-avatar-unsupported-type = 지원되지 않는 아바타 유형입니다 (PNG, WebP 또는 SVG만 가능)
 err-authentication = 인증 오류
 err-invalid-credentials = 잘못된 사용자 이름 또는 비밀번호
@@ -87,12 +87,12 @@ err-topic-invalid-characters = 주제에 잘못된 문자가 포함되어 있습
 
 # 버전 검증 오류
 err-version-empty = 버전은 비어 있을 수 없습니다
-err-version-too-long = 버전이 너무 깁니다 (최대 { $max_length }자)
+err-version-too-long = 버전이 너무 깁니다 (최대 { $max_length } 바이트)
 err-version-invalid-semver = 버전은 semver 형식이어야 합니다 (MAJOR.MINOR.PATCH)
 
 # 비밀번호 검증 오류
 err-password-empty = 비밀번호는 비어 있을 수 없습니다
-err-password-too-long = 비밀번호가 너무 깁니다 (최대 { $max_length }자)
+err-password-too-long = 비밀번호가 너무 깁니다 (최대 { $max_length } 바이트)
 err-password-too-weak = 비밀번호가 너무 약합니다. 최소 강도는 { $required ->
     [0] 약함
     [1] 보통
@@ -103,13 +103,13 @@ err-password-too-weak = 비밀번호가 너무 약합니다. 최소 강도는 { 
 }입니다
 
 # 로케일 검증 오류
-err-locale-too-long = 로케일이 너무 깁니다 (최대 { $max_length }자)
+err-locale-too-long = 로케일이 너무 깁니다 (최대 { $max_length } 바이트)
 err-locale-invalid-characters = 로케일에 잘못된 문자가 포함되어 있습니다
 
 # 기능 검증 오류
 err-features-too-many = 기능이 너무 많습니다 (최대 { $max_count })
 err-features-empty-feature = 기능 이름은 비어 있을 수 없습니다
-err-features-feature-too-long = 기능 이름이 너무 깁니다 (최대 { $max_length }자)
+err-features-feature-too-long = 기능 이름이 너무 깁니다 (최대 { $max_length } 바이트)
 err-features-invalid-characters = 기능 이름에 잘못된 문자가 포함되어 있습니다
 
 # 메시지 검증 오류
@@ -125,9 +125,9 @@ err-username-invalid = 사용자 이름에 잘못된 문자가 포함되어 있�
 err-unknown-permission = 알 수 없는 권한: '{ $permission }'
 
 # 동적 오류 메시지 (매개변수 포함)
-err-broadcast-too-long = 메시지가 너무 깁니다 (최대 { $max_length }자)
-err-chat-too-long = 메시지가 너무 깁니다 (최대 { $max_length }자)
-err-topic-too-long = 주제는 { $max_length }자를 초과할 수 없습니다
+err-broadcast-too-long = 메시지가 너무 깁니다 (최대 { $max_length } 바이트)
+err-chat-too-long = 메시지가 너무 깁니다 (최대 { $max_length } 바이트)
+err-topic-too-long = 주제는 { $max_length } 바이트를 초과할 수 없습니다
 err-version-major-mismatch = 호환되지 않는 프로토콜 버전: 서버는 버전 { $server_major }.x, 클라이언트는 버전 { $client_major }.x입니다
 err-version-client-too-new = 클라이언트 버전 { $client_version }이(가) 서버 버전 { $server_version }보다 최신입니다. 서버를 업데이트하거나 이전 클라이언트를 사용하세요.
 err-version-minor-mismatch = 호환되지 않는 프로토콜 버전입니다. 서버: { $server_version }, 클라이언트: { $client_version }. 양쪽 모두 동일한 마이너 버전을 사용해야 합니다.
@@ -143,17 +143,17 @@ err-username-too-long = 사용자 이름이 너무 깁니다 (최대 { $max_leng
 # 권한 유효성 검사 오류
 err-permissions-too-many = 권한이 너무 많습니다 (최대 { $max_count }개)
 err-permissions-empty-permission = 권한 이름은 비워둘 수 없습니다
-err-permissions-permission-too-long = 권한 이름이 너무 깁니다 (최대 { $max_length }자)
+err-permissions-permission-too-long = 권한 이름이 너무 깁니다 (최대 { $max_length } 바이트)
 err-permissions-contains-newlines = 권한 이름에 줄바꿈을 포함할 수 없습니다
 err-permissions-invalid-characters = 권한 이름에 잘못된 문자가 포함되어 있습니다
 
 # 서버 업데이트 오류
 err-admin-required = 관리자 권한이 필요합니다
 err-server-name-empty = 서버 이름은 비어 있을 수 없습니다
-err-server-name-too-long = 서버 이름이 너무 깁니다 (최대 { $max_length }자)
+err-server-name-too-long = 서버 이름이 너무 깁니다 (최대 { $max_length } 바이트)
 err-server-name-contains-newlines = 서버 이름에 줄 바꿈을 포함할 수 없습니다
 err-server-name-invalid-characters = 서버 이름에 잘못된 문자가 포함되어 있습니다
-err-server-description-too-long = 서버 설명이 너무 깁니다 (최대 { $max_length }자)
+err-server-description-too-long = 서버 설명이 너무 깁니다 (최대 { $max_length } 바이트)
 err-server-description-contains-newlines = 서버 설명에 줄 바꿈을 포함할 수 없습니다
 err-server-description-invalid-characters = 서버 설명에 잘못된 문자가 포함되어 있습니다
 
@@ -175,7 +175,7 @@ err-public-address-invalid-format = 공개 주소가 유효한 호스트 이름 
 
 # 뉴스 오류
 err-news-not-found = 뉴스 #{ $id }을(를) 찾을 수 없습니다
-err-news-body-too-long = 뉴스 내용이 너무 깁니다 (최대 { $max_length }자)
+err-news-body-too-long = 뉴스 내용이 너무 깁니다 (최대 { $max_length } 바이트)
 err-news-body-invalid-characters = 뉴스 내용에 잘못된 문자가 포함되어 있습니다
 err-news-image-too-large = 뉴스 이미지가 너무 큽니다 (최대 512KB)
 err-news-image-invalid-format = 뉴스 이미지 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
@@ -242,7 +242,7 @@ err-banned-with-expiry = 이 서버에서 차단되었습니다 ({ $remaining } 
 
 # File Search Errors
 err-search-query-empty = 검색어를 입력해주세요
-err-search-query-too-short = 검색어가 너무 짧습니다 (최소 { $min_length }자)
+err-search-query-too-short = 검색어가 너무 짧습니다 (최소 { $min_length } 바이트)
 err-search-query-too-long = 검색어가 너무 깁니다 (최대 { $max_length }자)
 err-search-query-invalid = 검색어에 잘못된 문자가 포함되어 있습니다
 err-search-failed = 검색에 실패했습니다

@@ -12,7 +12,7 @@ err-nickname-required = Псевдоним обязателен для общи�
 err-nickname-too-long = Псевдоним слишком длинный (макс. { $max_length } символов)
 
 # Ошибки сообщения об отсутствии
-err-status-too-long = Сообщение об отсутствии слишком длинное (макс. { $max_length } символов)
+err-status-too-long = Сообщение об отсутствии слишком длинное (макс. { $max_length } байт)
 err-status-contains-newlines = Сообщение об отсутствии не может содержать переносы строк
 err-status-invalid-characters = Сообщение об отсутствии содержит недопустимые символы
 
@@ -31,7 +31,7 @@ err-cannot-delete-guest = Гостевую учетную запись нель�
 
 # Ошибки валидации аватара
 err-avatar-invalid-format = Недопустимый формат аватара (должен быть data URI с кодировкой base64)
-err-avatar-too-large = Аватар слишком большой (макс. { $max_length } символов)
+err-avatar-too-large = Аватар слишком большой (макс. { $max_length } байт)
 err-avatar-unsupported-type = Неподдерживаемый тип аватара (только PNG, WebP или SVG)
 err-authentication = Ошибка аутентификации
 err-invalid-credentials = Неверное имя пользователя или пароль
@@ -87,12 +87,12 @@ err-topic-invalid-characters = Тема содержит недопустимы�
 
 # Ошибки проверки версии
 err-version-empty = Версия не может быть пустой
-err-version-too-long = Версия слишком длинная (максимум { $max_length } символов)
+err-version-too-long = Версия слишком длинная (максимум { $max_length } байт)
 err-version-invalid-semver = Версия должна быть в формате semver (MAJOR.MINOR.PATCH)
 
 # Ошибки проверки пароля
 err-password-empty = Пароль не может быть пустым
-err-password-too-long = Пароль слишком длинный (максимум { $max_length } символов)
+err-password-too-long = Пароль слишком длинный (максимум { $max_length } байт)
 err-password-too-weak = Пароль слишком слабый, минимальная надёжность — { $required ->
     [0] Слабый
     [1] Средний
@@ -103,13 +103,13 @@ err-password-too-weak = Пароль слишком слабый, минимал
 }
 
 # Ошибки проверки локали
-err-locale-too-long = Локаль слишком длинная (максимум { $max_length } символов)
+err-locale-too-long = Локаль слишком длинная (максимум { $max_length } байт)
 err-locale-invalid-characters = Локаль содержит недопустимые символы
 
 # Ошибки проверки функций
 err-features-too-many = Слишком много функций (максимум { $max_count })
 err-features-empty-feature = Название функции не может быть пустым
-err-features-feature-too-long = Название функции слишком длинное (максимум { $max_length } символов)
+err-features-feature-too-long = Название функции слишком длинное (максимум { $max_length } байт)
 err-features-invalid-characters = Название функции содержит недопустимые символы
 
 # Ошибки проверки сообщений
@@ -125,9 +125,9 @@ err-username-invalid = Имя пользователя содержит недо
 err-unknown-permission = Неизвестное разрешение: '{ $permission }'
 
 # Динамические сообщения об ошибках (с параметрами)
-err-broadcast-too-long = Сообщение слишком длинное (максимум { $max_length } символов)
-err-chat-too-long = Сообщение слишком длинное (максимум { $max_length } символов)
-err-topic-too-long = Тема не может превышать { $max_length } символов
+err-broadcast-too-long = Сообщение слишком длинное (максимум { $max_length } байт)
+err-chat-too-long = Сообщение слишком длинное (максимум { $max_length } байт)
+err-topic-too-long = Тема не может превышать { $max_length } байт
 err-version-major-mismatch = Несовместимая версия протокола: сервер версии { $server_major }.x, клиент версии { $client_major }.x
 err-version-client-too-new = Версия клиента { $client_version } новее версии сервера { $server_version }. Пожалуйста, обновите сервер или используйте более старый клиент.
 err-version-minor-mismatch = Несовместимая версия протокола. Сервер: { $server_version }, Клиент: { $client_version }. Обе стороны должны использовать одну и ту же минорную версию.
@@ -143,17 +143,17 @@ err-username-too-long = Имя пользователя слишком длин�
 # Ошибки валидации разрешений
 err-permissions-too-many = Слишком много разрешений (максимум { $max_count })
 err-permissions-empty-permission = Название разрешения не может быть пустым
-err-permissions-permission-too-long = Название разрешения слишком длинное (максимум { $max_length } символов)
+err-permissions-permission-too-long = Название разрешения слишком длинное (максимум { $max_length } байт)
 err-permissions-contains-newlines = Название разрешения не может содержать переносы строк
 err-permissions-invalid-characters = Название разрешения содержит недопустимые символы
 
 # Ошибки обновления сервера
 err-admin-required = Требуются права администратора
 err-server-name-empty = Имя сервера не может быть пустым
-err-server-name-too-long = Имя сервера слишком длинное (максимум { $max_length } символов)
+err-server-name-too-long = Имя сервера слишком длинное (максимум { $max_length } байт)
 err-server-name-contains-newlines = Имя сервера не может содержать переносы строк
 err-server-name-invalid-characters = Имя сервера содержит недопустимые символы
-err-server-description-too-long = Описание сервера слишком длинное (максимум { $max_length } символов)
+err-server-description-too-long = Описание сервера слишком длинное (максимум { $max_length } байт)
 err-server-description-contains-newlines = Описание сервера не может содержать переносы строк
 err-server-description-invalid-characters = Описание сервера содержит недопустимые символы
 
@@ -175,7 +175,7 @@ err-public-address-invalid-format = Публичный адрес не явля�
 
 # Ошибки новостей
 err-news-not-found = Новость #{ $id } не найдена
-err-news-body-too-long = Текст новости слишком длинный (максимум { $max_length } символов)
+err-news-body-too-long = Текст новости слишком длинный (максимум { $max_length } байт)
 err-news-body-invalid-characters = Текст новости содержит недопустимые символы
 err-news-image-too-large = Изображение новости слишком большое (максимум 512КБ)
 err-news-image-invalid-format = Недопустимый формат изображения новости (должен быть data URI с кодировкой base64)
@@ -242,7 +242,7 @@ err-banned-with-expiry = Вы заблокированы на этом серв�
 
 # File Search Errors
 err-search-query-empty = Поисковый запрос не может быть пустым
-err-search-query-too-short = Поисковый запрос слишком короткий (минимум { $min_length } символов)
+err-search-query-too-short = Поисковый запрос слишком короткий (минимум { $min_length } байт)
 err-search-query-too-long = Поисковый запрос слишком длинный (максимум { $max_length } символов)
 err-search-query-invalid = Поисковый запрос содержит недопустимые символы
 err-search-failed = Ошибка поиска

@@ -12,7 +12,7 @@ err-nickname-required = Bijnaam vereist voor gedeelde accounts
 err-nickname-too-long = Bijnaam is te lang (max. { $max_length } tekens)
 
 # Afwezigheidsbericht-fouten
-err-status-too-long = Afwezigheidsbericht is te lang (max. { $max_length } tekens)
+err-status-too-long = Afwezigheidsbericht is te lang (max. { $max_length } bytes)
 err-status-contains-newlines = Afwezigheidsbericht mag geen regelovergangen bevatten
 err-status-invalid-characters = Afwezigheidsbericht bevat ongeldige tekens
 
@@ -31,7 +31,7 @@ err-cannot-delete-guest = Het gastaccount kan niet worden verwijderd
 
 # Avatar Validatiefouten
 err-avatar-invalid-format = Ongeldig avatar-formaat (moet een data-URI zijn met base64-codering)
-err-avatar-too-large = Avatar is te groot (max. { $max_length } tekens)
+err-avatar-too-large = Avatar is te groot (max. { $max_length } bytes)
 err-avatar-unsupported-type = Niet-ondersteund avatar-type (alleen PNG, WebP of SVG)
 err-authentication = Authenticatiefout
 err-invalid-credentials = Ongeldige gebruikersnaam of wachtwoord
@@ -87,12 +87,12 @@ err-topic-invalid-characters = Het onderwerp bevat ongeldige tekens
 
 # Versievalidatiefouten
 err-version-empty = De versie mag niet leeg zijn
-err-version-too-long = De versie is te lang (maximaal { $max_length } tekens)
+err-version-too-long = De versie is te lang (maximaal { $max_length } bytes)
 err-version-invalid-semver = De versie moet in semver-formaat zijn (MAJOR.MINOR.PATCH)
 
 # Wachtwoordvalidatiefouten
 err-password-empty = Het wachtwoord mag niet leeg zijn
-err-password-too-long = Het wachtwoord is te lang (maximaal { $max_length } tekens)
+err-password-too-long = Het wachtwoord is te lang (maximaal { $max_length } bytes)
 err-password-too-weak = Wachtwoord is te zwak, minimale sterkte is { $required ->
     [0] Zwak
     [1] Matig
@@ -103,13 +103,13 @@ err-password-too-weak = Wachtwoord is te zwak, minimale sterkte is { $required -
 }
 
 # Taalvalidatiefouten
-err-locale-too-long = De taal is te lang (maximaal { $max_length } tekens)
+err-locale-too-long = De taal is te lang (maximaal { $max_length } bytes)
 err-locale-invalid-characters = De taal bevat ongeldige tekens
 
 # Functievalidatiefouten
 err-features-too-many = Te veel functies (maximaal { $max_count })
 err-features-empty-feature = De functienaam mag niet leeg zijn
-err-features-feature-too-long = De functienaam is te lang (maximaal { $max_length } tekens)
+err-features-feature-too-long = De functienaam is te lang (maximaal { $max_length } bytes)
 err-features-invalid-characters = De functienaam bevat ongeldige tekens
 
 # Berichtvalidatiefouten
@@ -125,9 +125,9 @@ err-username-invalid = De gebruikersnaam bevat ongeldige tekens (letters, cijfer
 err-unknown-permission = Onbekende machtiging: '{ $permission }'
 
 # Dynamische foutmeldingen (met parameters)
-err-broadcast-too-long = Bericht te lang (maximaal { $max_length } tekens)
-err-chat-too-long = Bericht te lang (maximaal { $max_length } tekens)
-err-topic-too-long = Het onderwerp mag niet meer dan { $max_length } tekens bevatten
+err-broadcast-too-long = Bericht te lang (maximaal { $max_length } bytes)
+err-chat-too-long = Bericht te lang (maximaal { $max_length } bytes)
+err-topic-too-long = Het onderwerp mag niet meer dan { $max_length } bytes bevatten
 err-version-major-mismatch = Incompatibele protocolversie: server is versie { $server_major }.x, client is versie { $client_major }.x
 err-version-client-too-new = Clientversie { $client_version } is nieuwer dan serverversie { $server_version }. Werk de server bij of gebruik een oudere client.
 err-version-minor-mismatch = Incompatibele protocolversie. Server: { $server_version }, Client: { $client_version }. Beide moeten dezelfde subversie gebruiken.
@@ -143,17 +143,17 @@ err-username-too-long = De gebruikersnaam is te lang (maximaal { $max_length } t
 # Machtigingsvalidatiefouten
 err-permissions-too-many = Te veel machtigingen (maximaal { $max_count })
 err-permissions-empty-permission = De machtigingsnaam mag niet leeg zijn
-err-permissions-permission-too-long = De machtigingsnaam is te lang (maximaal { $max_length } tekens)
+err-permissions-permission-too-long = De machtigingsnaam is te lang (maximaal { $max_length } bytes)
 err-permissions-contains-newlines = De machtigingsnaam mag geen regelafbrekingen bevatten
 err-permissions-invalid-characters = De machtigingsnaam bevat ongeldige tekens
 
 # Serverupdatefouten
 err-admin-required = Beheerdersrechten vereist
 err-server-name-empty = De servernaam mag niet leeg zijn
-err-server-name-too-long = De servernaam is te lang (maximaal { $max_length } tekens)
+err-server-name-too-long = De servernaam is te lang (maximaal { $max_length } bytes)
 err-server-name-contains-newlines = De servernaam mag geen regeleinden bevatten
 err-server-name-invalid-characters = De servernaam bevat ongeldige tekens
-err-server-description-too-long = De serverbeschrijving is te lang (maximaal { $max_length } tekens)
+err-server-description-too-long = De serverbeschrijving is te lang (maximaal { $max_length } bytes)
 err-server-description-contains-newlines = De serverbeschrijving mag geen regeleinden bevatten
 err-server-description-invalid-characters = De serverbeschrijving bevat ongeldige tekens
 
@@ -175,7 +175,7 @@ err-public-address-invalid-format = Het openbare adres is geen geldige hostnaam 
 
 # Nieuwsfouten
 err-news-not-found = Nieuwsbericht #{ $id } niet gevonden
-err-news-body-too-long = Nieuwstekst is te lang (maximaal { $max_length } tekens)
+err-news-body-too-long = Nieuwstekst is te lang (maximaal { $max_length } bytes)
 err-news-body-invalid-characters = Nieuwstekst bevat ongeldige tekens
 err-news-image-too-large = Nieuwsafbeelding is te groot (maximaal 512KB)
 err-news-image-invalid-format = Ongeldig nieuwsafbeeldingsformaat (moet een data-URI met base64-codering zijn)
@@ -242,7 +242,7 @@ err-banned-with-expiry = U bent verbannen van deze server (verloopt over { $rema
 
 # File Search Errors
 err-search-query-empty = Zoekopdracht mag niet leeg zijn
-err-search-query-too-short = Zoekopdracht is te kort (minimaal { $min_length } tekens)
+err-search-query-too-short = Zoekopdracht is te kort (minimaal { $min_length } bytes)
 err-search-query-too-long = Zoekopdracht is te lang (maximaal { $max_length } tekens)
 err-search-query-invalid = Zoekopdracht bevat ongeldige tekens
 err-search-failed = Zoekopdracht mislukt

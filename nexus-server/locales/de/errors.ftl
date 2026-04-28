@@ -12,7 +12,7 @@ err-nickname-required = Spitzname für gemeinsame Konten erforderlich
 err-nickname-too-long = Spitzname ist zu lang (max. { $max_length } Zeichen)
 
 # Abwesenheitsnachricht-Fehler
-err-status-too-long = Abwesenheitsnachricht ist zu lang (max. { $max_length } Zeichen)
+err-status-too-long = Abwesenheitsnachricht ist zu lang (max. { $max_length } Bytes)
 err-status-contains-newlines = Abwesenheitsnachricht darf keine Zeilenumbrüche enthalten
 err-status-invalid-characters = Abwesenheitsnachricht enthält ungültige Zeichen
 
@@ -31,7 +31,7 @@ err-cannot-delete-guest = Das Gastkonto kann nicht gelöscht werden
 
 # Avatar-Validierungsfehler
 err-avatar-invalid-format = Ungültiges Avatar-Format (muss eine Data-URI mit Base64-Kodierung sein)
-err-avatar-too-large = Avatar ist zu groß (max. { $max_length } Zeichen)
+err-avatar-too-large = Avatar ist zu groß (max. { $max_length } Bytes)
 err-avatar-unsupported-type = Nicht unterstützter Avatar-Typ (nur PNG, WebP oder SVG)
 err-authentication = Authentifizierungsfehler
 err-invalid-credentials = Ungültiger Benutzername oder Passwort
@@ -87,7 +87,7 @@ err-topic-invalid-characters = Das Thema enthält ungültige Zeichen
 
 # Versionsvalidierungsfehler
 err-version-empty = Die Version darf nicht leer sein
-err-version-too-long = Die Version ist zu lang (maximal { $max_length } Zeichen)
+err-version-too-long = Die Version ist zu lang (maximal { $max_length } Bytes)
 err-version-invalid-semver = Die Version muss im Semver-Format vorliegen (MAJOR.MINOR.PATCH)
 err-version-major-mismatch = Inkompatible Protokollversion: Server ist Version { $server_major }.x, Client ist Version { $client_major }.x
 err-version-client-too-new = Die Client-Version { $client_version } ist neuer als die Server-Version { $server_version }. Bitte aktualisieren Sie den Server oder verwenden Sie einen älteren Client.
@@ -95,7 +95,7 @@ err-version-minor-mismatch = Inkompatible Protokollversion. Server: { $server_ve
 
 # Passwortvalidierungsfehler
 err-password-empty = Das Passwort darf nicht leer sein
-err-password-too-long = Das Passwort ist zu lang (maximal { $max_length } Zeichen)
+err-password-too-long = Das Passwort ist zu lang (maximal { $max_length } Bytes)
 err-password-too-weak = Passwort ist zu schwach, Mindeststärke ist { $required ->
     [0] Schwach
     [1] Mäßig
@@ -106,13 +106,13 @@ err-password-too-weak = Passwort ist zu schwach, Mindeststärke ist { $required 
 }
 
 # Gebietsschema-Validierungsfehler
-err-locale-too-long = Das Gebietsschema ist zu lang (maximal { $max_length } Zeichen)
+err-locale-too-long = Das Gebietsschema ist zu lang (maximal { $max_length } Bytes)
 err-locale-invalid-characters = Das Gebietsschema enthält ungültige Zeichen
 
 # Features-Validierungsfehler
 err-features-too-many = Zu viele Features (maximal { $max_count })
 err-features-empty-feature = Der Feature-Name darf nicht leer sein
-err-features-feature-too-long = Der Feature-Name ist zu lang (maximal { $max_length } Zeichen)
+err-features-feature-too-long = Der Feature-Name ist zu lang (maximal { $max_length } Bytes)
 err-features-invalid-characters = Der Feature-Name enthält ungültige Zeichen
 
 # Nachrichtenvalidierungsfehler
@@ -128,9 +128,9 @@ err-username-invalid = Der Benutzername enthält ungültige Zeichen (Buchstaben,
 err-unknown-permission = Unbekannte Berechtigung: '{ $permission }'
 
 # Dynamische Fehlermeldungen (mit Parametern)
-err-broadcast-too-long = Nachricht zu lang (maximal { $max_length } Zeichen)
-err-chat-too-long = Nachricht zu lang (maximal { $max_length } Zeichen)
-err-topic-too-long = Das Thema darf { $max_length } Zeichen nicht überschreiten
+err-broadcast-too-long = Nachricht zu lang (maximal { $max_length } Bytes)
+err-chat-too-long = Nachricht zu lang (maximal { $max_length } Bytes)
+err-topic-too-long = Das Thema darf { $max_length } Bytes nicht überschreiten
 err-kicked-by = Sie wurden von { $username } hinausgeworfen
 err-kicked-by-reason = Sie wurden von { $username } hinausgeworfen: { $reason }
 err-username-exists = Der Benutzername „{ $username }" existiert bereits
@@ -143,17 +143,17 @@ err-username-too-long = Der Benutzername ist zu lang (maximal { $max_length } Ze
 # Berechtigungsvalidierungsfehler
 err-permissions-too-many = Zu viele Berechtigungen (maximal { $max_count })
 err-permissions-empty-permission = Der Berechtigungsname darf nicht leer sein
-err-permissions-permission-too-long = Der Berechtigungsname ist zu lang (maximal { $max_length } Zeichen)
+err-permissions-permission-too-long = Der Berechtigungsname ist zu lang (maximal { $max_length } Bytes)
 err-permissions-contains-newlines = Der Berechtigungsname darf keine Zeilenumbrüche enthalten
 err-permissions-invalid-characters = Der Berechtigungsname enthält ungültige Zeichen
 
 # Server-Update-Fehler
 err-admin-required = Administratorrechte erforderlich
 err-server-name-empty = Der Servername darf nicht leer sein
-err-server-name-too-long = Der Servername ist zu lang (maximal { $max_length } Zeichen)
+err-server-name-too-long = Der Servername ist zu lang (maximal { $max_length } Bytes)
 err-server-name-contains-newlines = Der Servername darf keine Zeilenumbrüche enthalten
 err-server-name-invalid-characters = Der Servername enthält ungültige Zeichen
-err-server-description-too-long = Die Serverbeschreibung ist zu lang (maximal { $max_length } Zeichen)
+err-server-description-too-long = Die Serverbeschreibung ist zu lang (maximal { $max_length } Bytes)
 err-server-description-contains-newlines = Die Serverbeschreibung darf keine Zeilenumbrüche enthalten
 err-server-description-invalid-characters = Die Serverbeschreibung enthält ungültige Zeichen
 
@@ -175,7 +175,7 @@ err-public-address-invalid-format = Die öffentliche Adresse ist kein gültiger 
 
 # News-Fehler
 err-news-not-found = News-Eintrag #{ $id } nicht gefunden
-err-news-body-too-long = News-Text ist zu lang (maximal { $max_length } Zeichen)
+err-news-body-too-long = News-Text ist zu lang (maximal { $max_length } Bytes)
 err-news-body-invalid-characters = News-Text enthält ungültige Zeichen
 err-news-image-too-large = News-Bild ist zu groß (maximal 512KB)
 err-news-image-invalid-format = Ungültiges News-Bild-Format (muss eine Data-URI mit Base64-Kodierung sein)
@@ -242,7 +242,7 @@ err-banned-with-expiry = Sie wurden von diesem Server gesperrt (läuft ab in { $
 
 # File Search Errors
 err-search-query-empty = Suchanfrage darf nicht leer sein
-err-search-query-too-short = Suchanfrage ist zu kurz (mindestens { $min_length } Zeichen)
+err-search-query-too-short = Suchanfrage ist zu kurz (mindestens { $min_length } Bytes)
 err-search-query-too-long = Suchanfrage ist zu lang (maximal { $max_length } Zeichen)
 err-search-query-invalid = Suchanfrage enthält ungültige Zeichen
 err-search-failed = Suche fehlgeschlagen

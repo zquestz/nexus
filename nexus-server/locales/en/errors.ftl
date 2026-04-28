@@ -12,7 +12,7 @@ err-nickname-required = Nickname required for shared accounts
 err-nickname-too-long = Nickname is too long (max { $max_length } characters)
 
 # Away Message Errors
-err-status-too-long = Status message is too long (max { $max_length } characters)
+err-status-too-long = Status message is too long (max { $max_length } bytes)
 err-status-contains-newlines = Status message cannot contain newlines
 err-status-invalid-characters = Status message contains invalid characters
 
@@ -31,7 +31,7 @@ err-cannot-delete-guest = The guest account cannot be deleted
 
 # Avatar Validation Errors
 err-avatar-invalid-format = Invalid avatar format (must be a data URI with base64 encoding)
-err-avatar-too-large = Avatar is too large (max { $max_length } characters)
+err-avatar-too-large = Avatar is too large (max { $max_length } bytes)
 err-avatar-unsupported-type = Unsupported avatar type (PNG, WebP, or SVG only)
 err-authentication = Authentication error
 err-invalid-credentials = Invalid username or password
@@ -87,12 +87,12 @@ err-channel-list-invalid = Invalid channel '{ $channel }': { $reason }
 
 # Version Validation Errors
 err-version-empty = Version cannot be empty
-err-version-too-long = Version is too long (max { $max_length } characters)
+err-version-too-long = Version is too long (max { $max_length } bytes)
 err-version-invalid-semver = Version must be in semver format (MAJOR.MINOR.PATCH)
 
 # Password Validation Errors
 err-password-empty = Password cannot be empty
-err-password-too-long = Password is too long (max { $max_length } characters)
+err-password-too-long = Password is too long (max { $max_length } bytes)
 err-password-too-weak = Password is too weak, minimum strength is { $required ->
     [0] Weak
     [1] Fair
@@ -103,19 +103,19 @@ err-password-too-weak = Password is too weak, minimum strength is { $required ->
 }
 
 # Locale Validation Errors
-err-locale-too-long = Locale is too long (max { $max_length } characters)
+err-locale-too-long = Locale is too long (max { $max_length } bytes)
 err-locale-invalid-characters = Locale contains invalid characters
 
 # Features Validation Errors
 err-features-too-many = Too many features (max { $max_count })
 err-features-empty-feature = Feature name cannot be empty
-err-features-feature-too-long = Feature name is too long (max { $max_length } characters)
+err-features-feature-too-long = Feature name is too long (max { $max_length } bytes)
 err-features-invalid-characters = Feature name contains invalid characters
 
 # Permissions Validation Errors
 err-permissions-too-many = Too many permissions (max { $max_count })
 err-permissions-empty-permission = Permission name cannot be empty
-err-permissions-permission-too-long = Permission name is too long (max { $max_length } characters)
+err-permissions-permission-too-long = Permission name is too long (max { $max_length } bytes)
 err-permissions-contains-newlines = Permission name cannot contain newlines
 err-permissions-invalid-characters = Permission name contains invalid characters
 
@@ -132,9 +132,9 @@ err-username-invalid = Username contains invalid characters (letters, numbers, a
 err-unknown-permission = Unknown permission: '{ $permission }'
 
 # Dynamic Error Messages (with parameters)
-err-broadcast-too-long = Message too long (max { $max_length } characters)
-err-chat-too-long = Message too long (max { $max_length } characters)
-err-topic-too-long = Topic cannot exceed { $max_length } characters
+err-broadcast-too-long = Message too long (max { $max_length } bytes)
+err-chat-too-long = Message too long (max { $max_length } bytes)
+err-topic-too-long = Topic cannot exceed { $max_length } bytes
 err-version-major-mismatch = Incompatible protocol version: server is version { $server_major }.x, client is version { $client_major }.x
 err-version-client-too-new = Client version { $client_version } is newer than server version { $server_version }. Please update the server or use an older client.
 err-version-minor-mismatch = Incompatible protocol version. Server: { $server_version }, Client: { $client_version }. Both must use the same minor version.
@@ -151,10 +151,10 @@ err-username-too-long = Username is too long (max { $max_length } characters)
 # Server Update Errors
 err-admin-required = Admin privileges required
 err-server-name-empty = Server name cannot be empty
-err-server-name-too-long = Server name is too long (max { $max_length } characters)
+err-server-name-too-long = Server name is too long (max { $max_length } bytes)
 err-server-name-contains-newlines = Server name cannot contain newlines
 err-server-name-invalid-characters = Server name contains invalid characters
-err-server-description-too-long = Server description is too long (max { $max_length } characters)
+err-server-description-too-long = Server description is too long (max { $max_length } bytes)
 err-server-description-contains-newlines = Server description cannot contain newlines
 err-server-description-invalid-characters = Server description contains invalid characters
 err-server-image-too-large = Server image is too large (max 512KB)
@@ -174,7 +174,7 @@ err-invalid-password-strength = Invalid password strength value
 
 # News Errors
 err-news-not-found = News item #{ $id } not found
-err-news-body-too-long = News body is too long (max { $max_length } characters)
+err-news-body-too-long = News body is too long (max { $max_length } bytes)
 err-news-body-invalid-characters = News body contains invalid characters
 err-news-image-too-large = News image is too large (max 512KB)
 err-news-image-invalid-format = Invalid news image format (must be a data URI with base64 encoding)
@@ -245,7 +245,7 @@ err-trust-not-found = No trusted entry found for '{ $target }'
 
 # File Search Errors
 err-search-query-empty = Search query cannot be empty
-err-search-query-too-short = Search query is too short (min { $min_length } characters)
+err-search-query-too-short = Search query is too short (min { $min_length } bytes)
 err-search-query-too-long = Search query is too long (max { $max_length } characters)
 err-search-query-invalid = Search query contains invalid characters
 err-search-failed = Search failed

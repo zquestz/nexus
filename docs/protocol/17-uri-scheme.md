@@ -16,6 +16,25 @@ nexus://[user[:password]@]host[:port][/path]
 | `port`     | No       | Server port (default: 7500)                      |
 | `path`     | No       | Resource path (intent)                           |
 
+## WebSocket Variant
+
+WebSocket-based Nexus clients use the `nexus-ws://` scheme instead of
+`nexus://`. The two schemes share identical syntax, path intents, credential
+resolution, connection matching rules, and URL encoding — they differ only
+in transport:
+
+| Scheme        | Transport | Default Port |
+| ------------- | --------- | ------------ |
+| `nexus://`    | TCP       | 7500         |
+| `nexus-ws://` | WebSocket | 7502         |
+
+A TCP session and a WebSocket session to the same `host:port` are distinct
+connections; clients that support both schemes match them separately.
+
+The reference Nexus client is TCP-only and does not handle `nexus-ws://`
+URIs. This section exists so WebSocket-capable clients have a documented
+URI form to use and share.
+
 ## Connection Examples
 
 | URI                              | Behavior                                                    |

@@ -2,19 +2,19 @@
 
 ## Implementation Order (Pre-Launch)
 
-| #   | Feature                  | Effort | Status  |
-| --- | ------------------------ | ------ | ------- |
-| 1   | Account groups           | Low    | ✅ Done |
-| 2   | Password strength        | Low    | ✅ Done |
-| 3   | Streaming hash transfers | Medium | ✅ Done |
-| 4   | Boards                   | High   | Planned |
-| 5   | File previews            | Low    | Planned |
-| 6   | Trackers                 | Medium | Planned |
-| 7   | Speed limiting           | Medium | Planned |
-| 8   | Flood protection         | Low    | ✅ Done |
-| 9   | Server logs              | Medium | ✅ Done |
-| 10  | Auto-away                | Low    | ✅ Done |
-| 11  | Invite system            | Medium | Planned |
+| #   | Feature                  | Effort | Status     |
+| --- | ------------------------ | ------ | ---------- |
+| 1   | Account groups           | Low    | ✅ Done    |
+| 2   | Password strength        | Low    | ✅ Done    |
+| 3   | Streaming hash transfers | Medium | ✅ Done    |
+| 4   | Boards                   | High   | Planned    |
+| 5   | File previews            | Low    | Planned    |
+| 6   | Trackers                 | Medium | Spec ready |
+| 7   | Speed limiting           | Medium | Planned    |
+| 8   | Flood protection         | Low    | ✅ Done    |
+| 9   | Server logs              | Medium | ✅ Done    |
+| 10  | Auto-away                | Low    | ✅ Done    |
+| 11  | Invite system            | Medium | Planned    |
 
 **Post-launch:** IRC gateway (if demand exists)
 
@@ -93,3 +93,14 @@ Preview files before downloading.
 
 - Syntax highlighting via `syntect` (light/dark themes)
 - Line numbers
+
+### Trackers
+
+Discovery service for Nexus servers. Protocol design is complete; see
+[protocol/18-trackers.md](protocol/18-trackers.md) for the full spec
+(tracker protocol v0.1.0).
+
+Implementation prep notes — new `ErrorKind` variants needed and
+non-obvious design invariants — are recorded in `CLAUDE.md` under the
+"Tracker (Pending Implementation)" section. The reference implementation
+will land as a separate `nexus-tracker` crate.

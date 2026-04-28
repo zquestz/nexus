@@ -316,7 +316,7 @@ This allows updating the duration or reason of an existing ban.
 | `err-ban-admin-by-ip`       | Trying to ban an IP/CIDR with admin connected |
 | `err-ban-invalid-target`    | Invalid IP address or CIDR format             |
 | `err-ban-invalid-duration`  | Invalid duration format                       |
-| `err-reason-too-long`       | Reason exceeds 2048 characters                |
+| `err-reason-too-long`       | Reason exceeds 2048 bytes                     |
 | `err-reason-invalid`        | Reason contains invalid characters            |
 | `err-target-too-long`       | Target string too long                        |
 

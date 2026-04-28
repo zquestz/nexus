@@ -19,10 +19,14 @@ Nexus uses a custom framed JSON protocol over TLS. The protocol is designed to b
 | 7501 | Transfers           | TCP      | File uploads and downloads                             |
 | 7502 | WebSocket BBS       | TCP      | Main protocol over WebSocket (requires `--websocket`)  |
 | 7503 | WebSocket Transfers | TCP      | File transfers over WebSocket (requires `--websocket`) |
+| 7510 | Tracker             | TCP      | Server discovery (TLS, framed JSON)                    |
+| 7511 | WebSocket Tracker   | TCP      | Tracker over WebSocket (requires `--websocket`)        |
 
 **Note:** Port 7500 is shared between TCP (BBS protocol) and UDP (voice chat). The operating system routes packets to the correct handler based on protocol.
 
-All ports use the same TLS certificate and frame format. The transfer port is communicated to clients in the `LoginResponse` via `transfer_port`. If WebSocket is enabled, `transfer_websocket_port` is also included.
+All BBS server ports use the same TLS certificate and frame format. The transfer port is communicated to clients in the `LoginResponse` via `transfer_port`. If WebSocket is enabled, `transfer_websocket_port` is also included.
+
+Trackers run as a separate daemon with their own TLS certificate, but share the `NX|...` frame format. See [18-trackers.md](18-trackers.md).
 
 ## Transport
 
@@ -32,7 +36,7 @@ Nexus supports two transport mechanisms:
 
 Raw TCP connections with TLS. This is the standard transport used by the native client.
 
-### WebSocket (Optional)
+### WebSocket Transport
 
 WebSocket connections over TLS (WSS). Enabled with the `--websocket` server flag. This transport is designed for web-based clients.
 
@@ -168,15 +172,24 @@ The two fingerprint checks run before `Login` is sent — credentials are only
 transmitted after both stages pass. After login, clients can send commands
 and receive broadcasts until disconnection.
 
-## Protocol Version
+## BBS Protocol Version
 
-The protocol version follows [Semantic Versioning](https://semver.org/):
+The BBS protocol version follows [Semantic Versioning](https://semver.org/):
 
 - **Major** - Breaking changes (must match between client and server)
 - **Minor** - New features (client minor ≤ server minor)
 - **Patch** - Bug fixes (ignored for compatibility)
 
 Current version: `0.8.1`
+
+## Tracker Protocol Version
+
+The tracker protocol versions independently of the BBS protocol but
+follows the same SemVer rules within its own namespace. See
+[Chapter 18](18-trackers.md#protocol-version) for the version exchanged
+on the wire.
+
+Current version: `0.1.0`
 
 ## Documents
 
@@ -199,6 +212,7 @@ Current version: `0.8.1`
 | [15-keepalive.md](15-keepalive.md)                   | Ping/pong keepalive for NAT timeout prevention |
 | [16-errors.md](16-errors.md)                         | Error handling                                 |
 | [17-uri-scheme.md](17-uri-scheme.md)                 | `nexus://` URI scheme for deep linking         |
+| [18-trackers.md](18-trackers.md)                     | Tracker discovery service                      |
 
 ## ServerInfo Fields
 

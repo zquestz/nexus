@@ -94,7 +94,7 @@ Create a new user account.
 | Field         | Type    | Required | Description                                                                   |
 | ------------- | ------- | -------- | ----------------------------------------------------------------------------- |
 | `username`    | string  | Yes      | Account username (1-32 characters)                                            |
-| `password`    | string  | Yes      | Account password (1-256 characters, must meet server's min password strength) |
+| `password`    | string  | Yes      | Account password (1-256 bytes, must meet server's min password strength)      |
 | `is_admin`    | boolean | Yes      | Whether user has admin privileges                                             |
 | `is_shared`   | boolean | No       | Whether this is a shared account (default: false)                             |
 | `enabled`     | boolean | Yes      | Whether account is enabled                                                    |
@@ -447,8 +447,8 @@ Update server configuration.
 
 | Field                    | Type    | Required | Description                                                                     |
 | ------------------------ | ------- | -------- | ------------------------------------------------------------------------------- |
-| `name`                   | string  | No       | Server display name (1-64 characters)                                           |
-| `description`            | string  | No       | Server description (0-512 characters)                                           |
+| `name`                   | string  | No       | Server display name (1-64 bytes)                                                |
+| `description`            | string  | No       | Server description (0-512 bytes)                                                |
 | `public_address`         | string  | No       | Hostname or IP advertised for shareable `nexus://` URIs (empty string clears)   |
 | `max_connections_per_ip` | integer | No       | Max connections per IP                                                          |
 | `max_transfers_per_ip`   | integer | No       | Max transfers per IP                                                            |
@@ -804,8 +804,8 @@ Users cannot:
 
 | Field                    | Rules                                                       |
 | ------------------------ | ----------------------------------------------------------- |
-| `name`                   | 1-64 characters, no newlines, no control characters         |
-| `description`            | 0-512 characters, no newlines, no control characters        |
+| `name`                   | 1-64 bytes, no newlines, no control characters              |
+| `description`            | 0-512 bytes, no newlines, no control characters             |
 | `image`                  | Max 700KB data URI, PNG/WebP/JPEG/SVG formats               |
 | `max_connections_per_ip` | Positive integer                                            |
 | `max_transfers_per_ip`   | Positive integer                                            |
@@ -833,7 +833,7 @@ Users cannot:
 | Invalid username        | Contains invalid characters                |
 | Username already exists | Account with that name exists              |
 | Password is empty       | Empty password provided                    |
-| Password too long       | Exceeds 256 characters                     |
+| Password too long       | Exceeds 256 bytes                          |
 | Password too weak       | Does not meet minimum strength requirement |
 
 ### UserUpdate Errors
@@ -874,11 +874,11 @@ Users cannot:
 | ------------------------------------------------------- | ------------------------------- |
 | Permission denied                                       | Non-admin attempted update      |
 | Server name cannot be empty                             | Empty name provided             |
-| Server name too long                                    | Exceeds 64 characters           |
-| Description too long                                    | Exceeds 512 characters          |
+| Server name too long                                    | Exceeds 64 bytes                |
+| Description too long                                    | Exceeds 512 bytes               |
 | Image too large                                         | Exceeds 700KB                   |
 | Invalid image format                                    | Not PNG/WebP/JPEG/SVG           |
-| Public address is too long                              | Exceeds 253 characters          |
+| Public address is too long                              | Exceeds 253 bytes               |
 | Public address must not include a URL scheme            | Contains `://`                  |
 | Public address must not include brackets                | Bracketed IPv6 (e.g. `[::1]`)   |
 | Public address must not include a path                  | Contains `/`                    |

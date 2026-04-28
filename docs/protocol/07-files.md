@@ -597,7 +597,7 @@ Search for files and directories by name.
 {
   "type": "FileSearchResponse",
   "success": false,
-  "error": "Search query is too short (min 3 characters)"
+  "error": "Search query is too short (min 3 bytes)"
 }
 ```
 
@@ -752,7 +752,7 @@ Admins have all permissions automatically.
 
 | Rule             | Description                           |
 | ---------------- | ------------------------------------- |
-| Max length       | 4096 characters                       |
+| Max length       | 4096 bytes                            |
 | No `..`          | Parent directory references forbidden |
 | No null bytes    | `\0` not allowed                      |
 | No control chars | ASCII control characters forbidden    |

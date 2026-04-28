@@ -259,14 +259,14 @@ All human-readable error messages are translated **server-side** before being se
 | Error                           | Cause                          | Connection      |
 | ------------------------------- | ------------------------------ | --------------- |
 | Message cannot be empty         | Empty or whitespace message    | Varies          |
-| Message too long                | Exceeds 1024 characters        | Varies          |
+| Message too long                | Exceeds 1024 bytes             | Varies          |
 | Message cannot contain newlines | Contains `\n` or `\r`          | Varies          |
 | Invalid characters              | Contains control characters    | Varies          |
 | Username is empty               | Empty username                 | Stays connected |
 | Username too long               | Exceeds 32 characters          | Stays connected |
 | Invalid username                | Invalid characters in username | Stays connected |
 | Password is empty               | Empty password                 | Stays connected |
-| Password too long               | Exceeds 256 characters         | Stays connected |
+| Password too long               | Exceeds 256 bytes              | Stays connected |
 
 ### Resource Errors
 
@@ -330,7 +330,7 @@ The `command` field helps with debugging:
 
 ```json
 {
-  "message": "Message too long (max 1024 characters)",
+  "message": "Message too long (max 1024 bytes)",
   "command": "ChatSend"
 }
 ```
@@ -359,3 +359,4 @@ Servers log security-relevant errors:
 - [Files](07-files.md) for file operation errors
 - [Transfers](08-transfers.md) for transfer errors
 - [Admin](09-admin.md) for administration errors
+- [Trackers](18-trackers.md) for tracker errors

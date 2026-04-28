@@ -12,7 +12,7 @@ err-nickname-required = Se requiere apodo para cuentas compartidas
 err-nickname-too-long = El apodo es demasiado largo (máx. { $max_length } caracteres)
 
 # Errores de mensaje de ausencia
-err-status-too-long = El mensaje de ausencia es demasiado largo (máx. { $max_length } caracteres)
+err-status-too-long = El mensaje de ausencia es demasiado largo (máx. { $max_length } bytes)
 err-status-contains-newlines = El mensaje de ausencia no puede contener saltos de línea
 err-status-invalid-characters = El mensaje de ausencia contiene caracteres inválidos
 
@@ -31,7 +31,7 @@ err-cannot-delete-guest = La cuenta de invitado no puede ser eliminada
 
 # Errores de Validación de Avatar
 err-avatar-invalid-format = Formato de avatar no válido (debe ser una URI de datos con codificación base64)
-err-avatar-too-large = El avatar es demasiado grande (máx. { $max_length } caracteres)
+err-avatar-too-large = El avatar es demasiado grande (máx. { $max_length } bytes)
 err-avatar-unsupported-type = Tipo de avatar no compatible (solo PNG, WebP o SVG)
 err-authentication = Error de autenticación
 err-invalid-credentials = Usuario o contraseña inválidos
@@ -88,12 +88,12 @@ err-topic-invalid-characters = El tema contiene caracteres inválidos
 
 # Errores de validación de versión
 err-version-empty = La versión no puede estar vacía
-err-version-too-long = La versión es demasiado larga (máx. { $max_length } caracteres)
+err-version-too-long = La versión es demasiado larga (máx. { $max_length } bytes)
 err-version-invalid-semver = La versión debe estar en formato semver (MAJOR.MINOR.PATCH)
 
 # Errores de validación de contraseña
 err-password-empty = La contraseña no puede estar vacía
-err-password-too-long = La contraseña es demasiado larga (máx. { $max_length } caracteres)
+err-password-too-long = La contraseña es demasiado larga (máx. { $max_length } bytes)
 err-password-too-weak = La contraseña es demasiado débil, la fuerza mínima es { $required ->
     [0] Débil
     [1] Regular
@@ -104,13 +104,13 @@ err-password-too-weak = La contraseña es demasiado débil, la fuerza mínima es
 }
 
 # Errores de validación de configuración regional
-err-locale-too-long = La configuración regional es demasiado larga (máx. { $max_length } caracteres)
+err-locale-too-long = La configuración regional es demasiado larga (máx. { $max_length } bytes)
 err-locale-invalid-characters = La configuración regional contiene caracteres inválidos
 
 # Errores de validación de características
 err-features-too-many = Demasiadas características (máx. { $max_count })
 err-features-empty-feature = El nombre de la característica no puede estar vacío
-err-features-feature-too-long = El nombre de la característica es demasiado largo (máx. { $max_length } caracteres)
+err-features-feature-too-long = El nombre de la característica es demasiado largo (máx. { $max_length } bytes)
 err-features-invalid-characters = El nombre de la característica contiene caracteres inválidos
 
 # Errores de validación de mensajes
@@ -126,9 +126,9 @@ err-username-invalid = El nombre de usuario contiene caracteres inválidos (se p
 err-unknown-permission = Permiso desconocido: '{ $permission }'
 
 # Mensajes de error dinámicos (con parámetros)
-err-broadcast-too-long = Mensaje demasiado largo (máx. { $max_length } caracteres)
-err-chat-too-long = Mensaje demasiado largo (máx. { $max_length } caracteres)
-err-topic-too-long = El tema no puede exceder { $max_length } caracteres
+err-broadcast-too-long = Mensaje demasiado largo (máx. { $max_length } bytes)
+err-chat-too-long = Mensaje demasiado largo (máx. { $max_length } bytes)
+err-topic-too-long = El tema no puede exceder { $max_length } bytes
 err-version-major-mismatch = Versión de protocolo incompatible: el servidor es versión { $server_major }.x, el cliente es versión { $client_major }.x
 err-version-client-too-new = La versión del cliente { $client_version } es más nueva que la versión del servidor { $server_version }. Por favor actualice el servidor o use un cliente más antiguo.
 err-version-minor-mismatch = Versión de protocolo incompatible. Servidor: { $server_version }, Cliente: { $client_version }. Ambos deben usar la misma versión menor.
@@ -144,17 +144,17 @@ err-username-too-long = El nombre de usuario es demasiado largo (máx. { $max_le
 # Errores de validación de permisos
 err-permissions-too-many = Demasiados permisos (máx. { $max_count })
 err-permissions-empty-permission = El nombre del permiso no puede estar vacío
-err-permissions-permission-too-long = El nombre del permiso es demasiado largo (máx. { $max_length } caracteres)
+err-permissions-permission-too-long = El nombre del permiso es demasiado largo (máx. { $max_length } bytes)
 err-permissions-contains-newlines = El nombre del permiso no puede contener saltos de línea
 err-permissions-invalid-characters = El nombre del permiso contiene caracteres inválidos
 
 # Errores de actualización del servidor
 err-admin-required = Se requieren privilegios de administrador
 err-server-name-empty = El nombre del servidor no puede estar vacío
-err-server-name-too-long = El nombre del servidor es demasiado largo (máx. { $max_length } caracteres)
+err-server-name-too-long = El nombre del servidor es demasiado largo (máx. { $max_length } bytes)
 err-server-name-contains-newlines = El nombre del servidor no puede contener saltos de línea
 err-server-name-invalid-characters = El nombre del servidor contiene caracteres inválidos
-err-server-description-too-long = La descripción del servidor es demasiado larga (máx. { $max_length } caracteres)
+err-server-description-too-long = La descripción del servidor es demasiado larga (máx. { $max_length } bytes)
 err-server-description-contains-newlines = La descripción del servidor no puede contener saltos de línea
 err-server-description-invalid-characters = La descripción del servidor contiene caracteres inválidos
 
@@ -176,7 +176,7 @@ err-public-address-invalid-format = La dirección pública no es un nombre de ho
 
 # Errores de noticias
 err-news-not-found = Noticia #{ $id } no encontrada
-err-news-body-too-long = El contenido de la noticia es demasiado largo (máx. { $max_length } caracteres)
+err-news-body-too-long = El contenido de la noticia es demasiado largo (máx. { $max_length } bytes)
 err-news-body-invalid-characters = El contenido de la noticia contiene caracteres inválidos
 err-news-image-too-large = La imagen de la noticia es demasiado grande (máx. 512KB)
 err-news-image-invalid-format = Formato de imagen de noticia inválido (debe ser una URI de datos con codificación base64)
@@ -243,7 +243,7 @@ err-banned-with-expiry = Ha sido baneado de este servidor (expira en { $remainin
 
 # File Search Errors
 err-search-query-empty = La búsqueda no puede estar vacía
-err-search-query-too-short = La búsqueda es muy corta (mínimo { $min_length } caracteres)
+err-search-query-too-short = La búsqueda es muy corta (mínimo { $min_length } bytes)
 err-search-query-too-long = La búsqueda es muy larga (máximo { $max_length } caracteres)
 err-search-query-invalid = La búsqueda contiene caracteres inválidos
 err-search-failed = La búsqueda falló
