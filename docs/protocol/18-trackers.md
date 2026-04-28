@@ -105,8 +105,8 @@ Server                                          Tracker
    │  TrackerRegister { password?, ... }           │
    │ ─────────────────────────────────────────►    │
    │                                               │
-   │         TrackerRegisterResponse { success,    │
-   │                                  refresh_interval }│
+   │         TrackerRegisterResponse {             │
+   │           success, refresh_interval }         │
    │ ◄─────────────────────────────────────────    │
    │                                               │
    │  ... ( refresh_interval elapses ) ...         │
@@ -114,8 +114,8 @@ Server                                          Tracker
    │  TrackerRegister { password?, ... }           │
    │ ─────────────────────────────────────────►    │
    │                                               │
-   │         TrackerRegisterResponse { success,    │
-   │                                  refresh_interval }│
+   │         TrackerRegisterResponse {             │
+   │           success, refresh_interval }         │
    │ ◄─────────────────────────────────────────    │
    │                                               │
    │  ... ( connection closes — any reason ) ...   │
@@ -324,8 +324,8 @@ Client                                          Tracker
    │  TrackerList { password? }                    │
    │ ─────────────────────────────────────────►    │
    │                                               │
-   │         TrackerListResponse { success,        │
-   │                              servers }        │
+   │         TrackerListResponse {                 │
+   │           success, servers }                  │
    │ ◄─────────────────────────────────────────    │
    │                                               │
    │  ─────── Connection Closed ────────────       │
