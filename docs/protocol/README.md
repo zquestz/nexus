@@ -105,7 +105,7 @@ NX|<type_length>|<message_type>|<message_id>|<payload_length>|<json_payload>\n
 A handshake message:
 
 ```
-NX|9|Handshake|a1b2c3d4e5f6|20|{"version":"0.8.0"}\n
+NX|9|Handshake|a1b2c3d4e5f6|19|{"version":"0.8.1"}\n
 ```
 
 Breaking it down:
@@ -114,8 +114,8 @@ Breaking it down:
 - `9` - Type length ("Handshake" is 9 characters)
 - `Handshake` - Message type
 - `a1b2c3d4e5f6` - Message ID (12 hex characters)
-- `20` - Payload length (20 bytes)
-- `{"version":"0.8.0"}` - JSON payload
+- `19` - Payload length (19 bytes)
+- `{"version":"0.8.1"}` - JSON payload
 - `\n` - Terminator
 
 ### Message ID
@@ -176,7 +176,7 @@ The protocol version follows [Semantic Versioning](https://semver.org/):
 - **Minor** - New features (client minor ≤ server minor)
 - **Patch** - Bug fixes (ignored for compatibility)
 
-Current version: `0.8.0`
+Current version: `0.8.1`
 
 ## Documents
 

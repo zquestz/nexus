@@ -24,7 +24,7 @@ pub mod operations;
 pub mod path;
 
 pub use area::resolve_user_area;
-pub use folder_type::{FolderType, parse_folder_type};
+pub use folder_type::{FolderType, in_owned_dropbox, parse_folder_type};
 pub use index::{FileIndex, MAX_SEARCH_RESULTS};
 pub use operations::{
     copy_path_recursive, copy_path_recursive_async, is_subpath, remove_path, remove_path_async,

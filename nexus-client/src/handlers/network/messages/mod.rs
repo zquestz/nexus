@@ -445,6 +445,7 @@ impl NexusApp {
                 path,
                 entries,
                 can_upload,
+                dropbox_owner,
             } => self.handle_file_list_response(
                 connection_id,
                 message_id,
@@ -454,6 +455,7 @@ impl NexusApp {
                     path,
                     entries,
                     can_upload,
+                    dropbox_owner,
                 },
             ),
 

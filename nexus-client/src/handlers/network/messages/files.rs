@@ -22,6 +22,7 @@ pub struct FileListResponseData {
     pub path: Option<String>,
     pub entries: Option<Vec<FileEntry>>,
     pub can_upload: bool,
+    pub dropbox_owner: Option<String>,
 }
 
 impl NexusApp {
@@ -63,6 +64,7 @@ impl NexusApp {
 
             // Use server-provided can_upload flag for the current directory
             tab.current_dir_can_upload = data.can_upload;
+            tab.dropbox_owner = data.dropbox_owner;
 
             tab.entries = data.entries;
             tab.error = None;

@@ -165,13 +165,14 @@ NX|8|FileList|a1b2c3d4e5f6|25|{"path":"/Documents"}
 
 Response containing directory entries.
 
-| Field        | Type    | Required   | Description                                                  |
-| ------------ | ------- | ---------- | ------------------------------------------------------------ |
-| `success`    | boolean | Yes        | Whether the request succeeded                                |
-| `error`      | string  | If failure | Error message                                                |
-| `path`       | string  | If success | Resolved directory path                                      |
-| `entries`    | array   | If success | Array of `FileEntry` objects                                 |
-| `can_upload` | boolean | If success | True if the current directory is an upload or dropbox folder |
+| Field           | Type    | Required   | Description                                                                                                    |
+| --------------- | ------- | ---------- | -------------------------------------------------------------------------------------------------------------- |
+| `success`       | boolean | Yes        | Whether the request succeeded                                                                                  |
+| `error`         | string  | If failure | Error message                                                                                                  |
+| `path`          | string  | If success | Resolved directory path                                                                                        |
+| `entries`       | array   | If success | Array of `FileEntry` objects                                                                                   |
+| `can_upload`    | boolean | If success | True if the current directory is an upload or dropbox folder                                                   |
+| `dropbox_owner` | string  | Optional   | Username of the `[NEXUS-DB-username]` drop box enclosing the listed directory (`null`/omitted when not in one) |
 
 **Success example:**
 
@@ -681,12 +682,12 @@ Represents a single search result.
 
 Directories can have special types indicated by name suffixes:
 
-| Suffix             | Type           | List          | Download      | Upload |
-| ------------------ | -------------- | ------------- | ------------- | ------ |
-| _(none)_           | `default`      | ✅            | ✅            | ❌     |
-| ` [NEXUS-UL]`      | `upload`       | ✅            | ✅            | ✅     |
-| ` [NEXUS-DB]`      | `dropbox`      | Admins only   | Admins only   | ✅     |
-| ` [NEXUS-DB-user]` | `dropbox_user` | User + Admins | User + Admins | ✅     |
+| Suffix             | Type           | List          | Download      | Upload | Delete / Rename (contents)         |
+| ------------------ | -------------- | ------------- | ------------- | ------ | ---------------------------------- |
+| _(none)_           | `default`      | ✅            | ✅            | ❌     | `file_delete` / `file_rename` only |
+| ` [NEXUS-UL]`      | `upload`       | ✅            | ✅            | ✅     | `file_delete` / `file_rename` only |
+| ` [NEXUS-DB]`      | `dropbox`      | Admins only   | Admins only   | ✅     | `file_delete` / `file_rename` only |
+| ` [NEXUS-DB-user]` | `dropbox_user` | User + Admins | User + Admins | ✅     | global perm OR is owner            |
 
 **Notes:**
 
@@ -694,6 +695,7 @@ Directories can have special types indicated by name suffixes:
 - Suffixes are case-insensitive
 - Client should strip suffix for display (e.g., `Uploads [NEXUS-UL]` → "Uploads")
 - Upload permission is inherited by subdirectories
+- `[NEXUS-DB-user]` owners can delete and rename files _inside_ their drop box (and empty subdirectories) without holding `file_delete` or `file_rename`. They cannot delete or rename the drop-box folder itself — that remains an admin operation. Move and copy are not part of the bypass (they can target paths outside the drop box). The server signals this to the client via `FileListResponse.dropbox_owner`.
 
 ## User Areas
 

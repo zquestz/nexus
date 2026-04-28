@@ -43,7 +43,7 @@ This guide covers common issues when running the Nexus BBS server.
 
 1. Check permissions on the data directory
 2. Verify disk has free space
-3. Delete existing `cert.pem` and `key.pem` to regenerate
+3. Delete existing `server.crt` and `server.key` to regenerate
 
 ## Connection Issues
 

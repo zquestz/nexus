@@ -96,6 +96,13 @@ pub struct FileTab {
     pub viewing_root: bool,
     /// Whether the current directory allows uploads (from FileListResponse)
     pub current_dir_can_upload: bool,
+    /// Username that owns the `[NEXUS-DB-username]` folder enclosing the
+    /// current path (or `None` when not inside a user drop box).
+    /// Populated from the server's `FileListResponse.dropbox_owner`. The
+    /// view composes it with the connection's account username (not
+    /// nickname — must match the server's ownership check) to enable the
+    /// delete and rename bypass for the drop-box owner.
+    pub dropbox_owner: Option<String>,
     /// Current sort column
     pub sort_column: FileSortColumn,
     /// Sort ascending (true) or descending (false)
@@ -159,6 +166,7 @@ impl Default for FileTab {
             error: None,
             viewing_root: false,
             current_dir_can_upload: false,
+            dropbox_owner: None,
             sort_column: FileSortColumn::Name,
             sort_ascending: true,
             sorted_entries: None,
@@ -202,6 +210,7 @@ impl FileTab {
             error: None,
             viewing_root: other.viewing_root,
             current_dir_can_upload: false,
+            dropbox_owner: None,
             sort_column: other.sort_column,
             sort_ascending: other.sort_ascending,
             sorted_entries: None,
@@ -242,6 +251,7 @@ impl FileTab {
             error: None,
             viewing_root,
             current_dir_can_upload: false,
+            dropbox_owner: None,
             sort_column: FileSortColumn::Name,
             sort_ascending: true,
             sorted_entries: None,
@@ -357,6 +367,7 @@ impl FileTab {
         self.sorted_entries = None;
         self.error = None;
         self.current_dir_can_upload = false;
+        self.dropbox_owner = None;
     }
 
     /// Open the new directory dialog
@@ -855,6 +866,7 @@ mod tests {
             error: None,
             viewing_root: false,
             current_dir_can_upload: false,
+            dropbox_owner: None,
             sort_column: FileSortColumn::Name,
             sort_ascending: true,
             sorted_entries: None,

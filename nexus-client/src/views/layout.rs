@@ -1004,7 +1004,8 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
                     &ctx.conn.files_management,
                     perms,
                     ctx.show_hidden,
-                    ctx.show_drop_overlay
+                    ctx.show_drop_overlay,
+                    &ctx.conn.connection_info.username,
                 )
             ]
             .width(Fill)

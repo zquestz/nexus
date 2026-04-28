@@ -113,6 +113,11 @@ struct FileRowData {
     perms: FilePermissions,
     /// Whether clipboard has content (for paste option)
     has_clipboard: bool,
+    /// Whether the requesting user is the owner of the enclosing
+    /// `[NEXUS-DB-username]` drop box (uniform across all rows in a single
+    /// listing). Composes with `file_delete` / `file_rename` to enable the
+    /// Delete and Rename menu items.
+    bypass_via_ownership: bool,
 }
 
 impl Hash for FileRowData {
@@ -126,6 +131,7 @@ impl Hash for FileRowData {
         self.is_cut.hash(state);
         self.perms.hash(state);
         self.has_clipboard.hash(state);
+        self.bypass_via_ownership.hash(state);
     }
 }
 
@@ -174,8 +180,18 @@ pub fn files_view<'a>(
     perms: FilePermissions,
     show_hidden: bool,
     show_drop_overlay: bool,
+    username: &str,
 ) -> Element<'a, Message> {
     let tab = files_management.active_tab();
+    // Compose the active listing's drop-box owner with the user's account
+    // username (matching the server-side `in_owned_dropbox` semantics — the
+    // dropbox suffix names an account, not a nickname). Lowercase comparison
+    // matches the server and respects IDN/Unicode handling.
+    let username_lower = username.to_lowercase();
+    let bypass_via_ownership = tab
+        .dropbox_owner
+        .as_ref()
+        .is_some_and(|owner| owner.to_lowercase() == username_lower);
 
     // If overwrite confirmation is pending, show that dialog
     if let Some(pending) = &tab.pending_overwrite {
@@ -391,6 +407,7 @@ pub fn files_view<'a>(
                             is_cut,
                             perms,
                             has_clipboard: files_management.clipboard.is_some(),
+                            bypass_via_ownership,
                         }
                     })
                     .collect();

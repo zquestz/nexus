@@ -76,7 +76,7 @@ docker compose up -d
 | Tag      | Description                          |
 | -------- | ------------------------------------ |
 | `latest` | Most recent stable release           |
-| `0.8.0`  | Specific version                     |
+| `0.8.1`  | Specific version                     |
 | `0.8`    | Latest patch release in 0.8.x series |
 | `0`      | Latest release in 0.x.x series       |
 
@@ -174,7 +174,7 @@ environment:
 The named volume `nexus-data` stores:
 
 - Database (`nexus.db`)
-- TLS certificates (`cert.pem`, `key.pem`)
+- TLS certificates (`server.crt`, `server.key`)
 - File area (`files/`)
 - Log files (`logs/`)
 

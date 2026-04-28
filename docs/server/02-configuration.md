@@ -195,29 +195,29 @@ If UPnP fails, the server continues without port forwarding and prints a warning
 
 Certificates are stored in the same directory as the database:
 
-| Platform | Certificate Location                            |
-| -------- | ----------------------------------------------- |
-| Linux    | `~/.local/share/nexusd/cert.pem`                |
-| macOS    | `~/Library/Application Support/nexusd/cert.pem` |
-| Windows  | `%APPDATA%\nexusd\cert.pem`                     |
+| Platform | Certificate Location                              |
+| -------- | ------------------------------------------------- |
+| Linux    | `~/.local/share/nexusd/server.crt`                |
+| macOS    | `~/Library/Application Support/nexusd/server.crt` |
+| Windows  | `%APPDATA%\nexusd\server.crt`                     |
 
 ### Automatic Generation
 
 On first run, the server generates:
 
-- `cert.pem` — Self-signed certificate (valid 10 years)
-- `key.pem` — Private key
+- `server.crt` — Self-signed certificate (valid 10 years)
+- `server.key` — Private key
 
 ### Custom Certificates
 
-To use your own certificates, replace `cert.pem` and `key.pem` before starting the server. The server uses the same certificate for both ports.
+To use your own certificates, replace `server.crt` and `server.key` before starting the server. The server uses the same certificate for both ports.
 
 ### Certificate Fingerprint
 
 The server displays the certificate fingerprint on startup:
 
 ```
-Certificate fingerprint (SHA-256): AB:CD:12:34:56:78:90:AB:CD:12:34:56:78:90:AB:CD:12:34:56:78:90:AB:CD:12:34:56:78:90:AB:CD:12:34
+2026-04-28T09:00:05.374193Z  INFO Certificate fingerprint (SHA-256): AB:CD:12:34:56:78:90:AB:CD:12:34:56:78:90:AB:CD:12:34:56:78:90:AB:CD:12:34:56:78:90:AB:CD:12:34
 ```
 
 Clients verify this fingerprint via Trust On First Use (TOFU) and a separate

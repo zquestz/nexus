@@ -117,6 +117,17 @@ Clients strip the suffix for display:
 | Admin  | Full access  | Full access        | Full access      |
 | Others | Upload only  | Upload only        | Upload only      |
 
+### Owner Cleanup of `[NEXUS-DB-username]`
+
+The named user of a `[NEXUS-DB-username]` folder can delete and rename files (and empty subdirectories) _inside_ their drop box even when they don't hold the `file_delete` or `file_rename` permissions. This lets a user clean up and label what someone dropped for them — for example, renaming an `IMG_2391.jpg` upload to `beach-trip.jpg` before grabbing it — without needing admin rights.
+
+The bypass is scoped strictly to drop-box contents:
+
+- The owner **cannot** delete or rename the drop-box folder itself — that remains an admin operation.
+- The bypass does not extend to other folders (no global delete or rename).
+- Other users (non-owners) still need the corresponding global permission.
+- The bypass covers delete and rename only. Move and copy are excluded — they can target paths outside the drop box.
+
 ## Example File Structure
 
 ```

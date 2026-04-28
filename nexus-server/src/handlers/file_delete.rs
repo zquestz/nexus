@@ -18,7 +18,9 @@ use crate::constants::{
 };
 use crate::db::Permission;
 use crate::files::path::PathError;
-use crate::files::{build_and_validate_candidate_path, resolve_path, resolve_user_area};
+use crate::files::{
+    build_and_validate_candidate_path, in_owned_dropbox, resolve_path, resolve_user_area,
+};
 
 /// Handle a file delete request
 pub async fn handle_file_delete<W>(
@@ -64,16 +66,6 @@ where
         };
         return ctx.send_message(&response).await;
     };
-
-    // Check FileDelete permission
-    if !requesting_user.has_permission(Permission::FileDelete) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_DELETE_PERMISSION_DENIED);
-        let response = ServerMessage::FileDeleteResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
-    }
 
     // Check FileRoot permission if root browsing requested
     if root && !requesting_user.has_permission(Permission::FileRoot) {
@@ -133,6 +125,22 @@ where
             return ctx.send_message(&response).await;
         }
     };
+
+    // Permission check: either the global `file_delete` permission, or
+    // ownership of an enclosing `[NEXUS-DB-username]` folder. The owner
+    // bypass uses the virtual `candidate` path (not the canonical resolved
+    // path) so drop boxes implemented as symlinks are still recognized.
+    // Bypass is non-root-mode only — root mode is admin territory.
+    let bypass_via_ownership =
+        !root && in_owned_dropbox(&candidate, &area_root, &requesting_user.username);
+    if !requesting_user.has_permission(Permission::FileDelete) && !bypass_via_ownership {
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_DELETE_PERMISSION_DENIED);
+        let response = ServerMessage::FileDeleteResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Check if the candidate path is a symlink (without following it)
     // We use symlink_metadata to avoid following the final symlink component
@@ -1009,5 +1017,256 @@ mod tests {
                 .join(unicode_filename)
                 .exists()
         );
+    }
+
+    /// Owner of a `[NEXUS-DB-username]` folder can delete files inside it
+    /// without the global `file_delete` permission. Cleaning up your own
+    /// drop box shouldn't require admin-level rights.
+    #[tokio::test]
+    async fn test_delete_owner_can_delete_inside_user_dropbox_without_permission() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        // Create alice's user dropbox in shared (alice has no personal area,
+        // so her area_root is shared/) with a file inside.
+        let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
+        fs::create_dir(&dropbox).expect("Failed to create dropbox");
+        fs::write(dropbox.join("incoming.txt"), "data").expect("Failed to create file");
+
+        // Alice has FileList only — no FileDelete.
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_delete(
+            "For Alice [NEXUS-DB-alice]/incoming.txt".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileDeleteResponse { success, error } => {
+                assert!(
+                    success,
+                    "Owner should be able to delete inside own dropbox without file_delete: {:?}",
+                    error
+                );
+            }
+            _ => panic!("Expected FileDeleteResponse"),
+        }
+        assert!(!dropbox.join("incoming.txt").exists());
+    }
+
+    /// The owner bypass is recursive — files deep inside their dropbox
+    /// also delete-able without the global permission.
+    #[tokio::test]
+    async fn test_delete_owner_can_delete_nested_inside_user_dropbox() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
+        fs::create_dir_all(dropbox.join("sub/deep")).expect("Failed to create nested dirs");
+        fs::write(dropbox.join("sub/deep/buried.txt"), "data").expect("Failed to create file");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_delete(
+            "For Alice [NEXUS-DB-alice]/sub/deep/buried.txt".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileDeleteResponse { success, error } => {
+                assert!(success, "Owner nested delete should succeed: {:?}", error);
+            }
+            _ => panic!("Expected FileDeleteResponse"),
+        }
+        assert!(!dropbox.join("sub/deep/buried.txt").exists());
+    }
+
+    /// The owner bypass does NOT extend to deleting the dropbox folder
+    /// itself — only its contents. The folder is admin-managed.
+    #[tokio::test]
+    async fn test_delete_owner_cannot_delete_user_dropbox_folder_itself() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        // Empty dropbox (so directory removal would otherwise succeed).
+        let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
+        fs::create_dir(&dropbox).expect("Failed to create dropbox");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_delete(
+            "For Alice [NEXUS-DB-alice]".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileDeleteResponse { success, error } => {
+                assert!(!success, "Owner must not be able to delete dropbox folder");
+                assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected FileDeleteResponse"),
+        }
+        assert!(dropbox.exists(), "Dropbox folder should remain");
+    }
+
+    /// A non-owner user cannot use the bypass to delete files in someone
+    /// else's `[NEXUS-DB-username]` folder.
+    #[tokio::test]
+    async fn test_delete_non_owner_cannot_use_dropbox_bypass() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
+        fs::create_dir(&dropbox).expect("Failed to create dropbox");
+        fs::write(dropbox.join("private.txt"), "alice's").expect("Failed to create file");
+
+        // Bob — not the owner — has FileList only.
+        let session_id = login_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_delete(
+            "For Alice [NEXUS-DB-alice]/private.txt".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileDeleteResponse { success, error } => {
+                assert!(!success, "Non-owner must not bypass file_delete");
+                assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected FileDeleteResponse"),
+        }
+        assert!(dropbox.join("private.txt").exists());
+    }
+
+    /// Without `file_delete`, the owner bypass is scoped to inside their
+    /// dropbox — it doesn't grant deletion of arbitrary files elsewhere.
+    #[tokio::test]
+    async fn test_delete_owner_bypass_does_not_apply_outside_dropbox() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        // Alice owns a dropbox, but the file we target is NOT inside it.
+        fs::create_dir(file_area.path().join("shared/For Alice [NEXUS-DB-alice]"))
+            .expect("Failed to create dropbox");
+        fs::write(file_area.path().join("shared/elsewhere.txt"), "not yours")
+            .expect("Failed to create file");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_delete(
+            "elsewhere.txt".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileDeleteResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected FileDeleteResponse"),
+        }
+        assert!(file_area.path().join("shared/elsewhere.txt").exists());
+    }
+
+    /// The owner bypass works for empty subdirectories too — cleanup
+    /// includes removing folders the user created inside their dropbox.
+    #[tokio::test]
+    async fn test_delete_owner_can_delete_empty_subdir_inside_dropbox() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
+        fs::create_dir_all(dropbox.join("empty_sub")).expect("Failed to create dirs");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_delete(
+            "For Alice [NEXUS-DB-alice]/empty_sub".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileDeleteResponse { success, error } => {
+                assert!(
+                    success,
+                    "Owner empty-subdir delete should succeed: {:?}",
+                    error
+                );
+            }
+            _ => panic!("Expected FileDeleteResponse"),
+        }
+        assert!(!dropbox.join("empty_sub").exists());
     }
 }

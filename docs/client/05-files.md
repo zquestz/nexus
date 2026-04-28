@@ -146,7 +146,7 @@ Servers use special folder suffixes to control permissions:
 
 **Drop boxes** — You can upload but can't see what's inside. Used for blind submissions.
 
-**User drop boxes** — Like drop boxes, but you (and admins) can see your own uploads.
+**User drop boxes** — Like drop boxes, but you (and admins) can see what's been dropped for you. As the named owner you can also delete and rename what's inside, even if you don't have the global delete or rename permissions — useful for cleaning up after someone drops a file with a generic name. The drop-box folder itself stays admin-managed.
 
 ## Downloading
 

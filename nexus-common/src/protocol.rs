@@ -692,6 +692,17 @@ pub enum ServerMessage {
         /// Whether the current directory allows uploads (for UI to enable "New Directory" button)
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         can_upload: bool,
+        /// Username that owns the `[NEXUS-DB-username]` folder enclosing the
+        /// listed directory (or the listed directory itself, if it is the
+        /// drop box). `None` when the listing is not inside a user drop box.
+        ///
+        /// The named user implicitly gains delete and rename permissions
+        /// for files inside their own drop box, so the client composes this
+        /// with its own account username to decide whether to show Delete
+        /// and Rename UI on entries. The comparison uses the account
+        /// username (not nickname) to match the server-side ownership check.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        dropbox_owner: Option<String>,
     },
     FileMoveResponse {
         success: bool,

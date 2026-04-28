@@ -103,20 +103,22 @@ Start the server with default settings:
 You'll see output like:
 
 ```
-Nexus BBS Server v0.8.0
-Log level: info
-Log directory: ~/.local/share/nexusd/logs
-Database: ~/.local/share/nexusd/nexus.db
-File area: ~/.local/share/nexusd/files
-Generating self-signed TLS certificate...
-Certificate generated: ~/.local/share/nexusd/cert.pem
-Private key generated: ~/.local/share/nexusd/key.pem
-Certificate fingerprint (SHA-256): AB:CD:12:34:...
-Certificates: ~/.local/share/nexusd
-BBS port: 0.0.0.0:7500
-Transfer port: 0.0.0.0:7501
-Voice UDP port: 0.0.0.0:7500
+2026-04-28T09:00:05.360381Z  INFO Nexus BBS Server v0.8.1
+2026-04-28T09:00:05.360455Z  INFO Log level: info
+2026-04-28T09:00:05.360473Z  INFO Log directory: ~/.local/share/nexusd/logs
+2026-04-28T09:00:05.371466Z  INFO Database: ~/.local/share/nexusd/nexus.db
+2026-04-28T09:00:05.373577Z  INFO File area: ~/.local/share/nexusd/files
+2026-04-28T09:00:05.373620Z  INFO Generating self-signed TLS certificate...
+2026-04-28T09:00:05.373922Z  INFO Certificate generated: ~/.local/share/nexusd/server.crt
+2026-04-28T09:00:05.373946Z  INFO Private key generated: ~/.local/share/nexusd/server.key
+2026-04-28T09:00:05.374193Z  INFO Certificate fingerprint (SHA-256): AB:CD:12:34:...
+2026-04-28T09:00:05.374219Z  INFO Certificates: ~/.local/share/nexusd
+2026-04-28T09:00:05.374518Z  INFO BBS port: 0.0.0.0:7500
+2026-04-28T09:00:05.374602Z  INFO Transfer port: 0.0.0.0:7501
+2026-04-28T09:00:05.378921Z  INFO Voice UDP port: 0.0.0.0:7500
 ```
+
+Each line carries an ISO-8601 timestamp and a level (`INFO`, `WARN`, `ERROR`, `DEBUG`). Use `--no-log-timestamps` to drop the timestamp prefix on stderr (useful when running under a service manager that adds its own timestamps).
 
 The server automatically:
 
@@ -161,8 +163,8 @@ The server stores data in platform-specific directories:
 Contents:
 
 - `nexus.db` — SQLite database (users, settings, news)
-- `cert.pem` — TLS certificate
-- `key.pem` — TLS private key
+- `server.crt` — TLS certificate
+- `server.key` — TLS private key
 - `files/` — File area root
 - `logs/` — Server log files (JSONL, daily rotation)
 

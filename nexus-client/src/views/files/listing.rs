@@ -115,9 +115,11 @@ pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> 
             };
 
             // Context menu
+            let can_delete = row.perms.file_delete || row.bypass_via_ownership;
+            let can_rename = row.perms.file_rename || row.bypass_via_ownership;
             let has_any_permission = row.perms.file_info
-                || row.perms.file_delete
-                || row.perms.file_rename
+                || can_delete
+                || can_rename
                 || row.perms.file_move
                 || row.perms.file_copy
                 || row.perms.file_download
@@ -132,6 +134,7 @@ pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> 
                         row.entry.can_upload,
                         row.perms,
                         row.has_clipboard,
+                        row.bypass_via_ownership,
                     )
                 })
                 .into()
@@ -255,6 +258,7 @@ fn build_lazy_context_menu(
     can_upload: bool,
     perms: FilePermissions,
     has_clipboard: bool,
+    bypass_via_ownership: bool,
 ) -> Element<'static, Message> {
     let mut menu_items: Vec<Element<'_, Message>> = vec![];
     let mut has_clipboard_section = false;
@@ -378,8 +382,15 @@ fn build_lazy_context_menu(
         );
     }
 
+    // Rename and Delete are both granted by either the global permission
+    // or by ownership of the enclosing `[NEXUS-DB-username]` drop box.
+    // Rename is safe under the bypass because the destination is always
+    // in the same parent directory — it can't escape the drop box.
+    let can_rename = perms.file_rename || bypass_via_ownership;
+    let can_delete = perms.file_delete || bypass_via_ownership;
+
     // Rename
-    if perms.file_rename {
+    if can_rename {
         menu_items.push(
             MenuButton::new(shaped_text(t("files-rename")).size(TEXT_SIZE))
                 .padding(CONTEXT_MENU_ITEM_PADDING)
@@ -391,7 +402,7 @@ fn build_lazy_context_menu(
     }
 
     // Delete separator (Share is always present, so there's always content before Delete)
-    if perms.file_delete {
+    if can_delete {
         menu_items.push(
             container(Space::new())
                 .width(Fill)
@@ -402,7 +413,7 @@ fn build_lazy_context_menu(
     }
 
     // Delete
-    if perms.file_delete {
+    if can_delete {
         menu_items.push(
             MenuButton::new(shaped_text(t("files-delete")).size(TEXT_SIZE))
                 .padding(CONTEXT_MENU_ITEM_PADDING)

@@ -19,7 +19,8 @@ use crate::constants::{
 };
 use crate::db::Permission;
 use crate::files::{
-    build_and_validate_candidate_path, rename_path_async, resolve_path, resolve_user_area,
+    build_and_validate_candidate_path, in_owned_dropbox, rename_path_async, resolve_path,
+    resolve_user_area,
 };
 
 /// Handle a file rename request
@@ -67,16 +68,6 @@ where
         };
         return ctx.send_message(&response).await;
     };
-
-    // Check FileRename permission
-    if !requesting_user.has_permission(Permission::FileRename) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_PERMISSION_DENIED);
-        let response = ServerMessage::FileRenameResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
-    }
 
     // Check FileRoot permission if root browsing requested
     if root && !requesting_user.has_permission(Permission::FileRoot) {
@@ -155,6 +146,25 @@ where
             return ctx.send_message(&response).await;
         }
     };
+
+    // Permission check: either the global `file_rename` permission, or
+    // ownership of an enclosing `[NEXUS-DB-username]` folder. The owner
+    // bypass uses the virtual `candidate` path so drop boxes implemented
+    // as symlinks are still recognized. Bypass is non-root-mode only.
+    //
+    // Rename is safe to allow under the bypass because the destination is
+    // always `source.parent().join(new_name)` — the entry stays in the
+    // same parent directory, so it cannot escape the drop box.
+    let bypass_via_ownership =
+        !root && in_owned_dropbox(&candidate, &area_root, &requesting_user.username);
+    if !requesting_user.has_permission(Permission::FileRename) && !bypass_via_ownership {
+        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_PERMISSION_DENIED);
+        let response = ServerMessage::FileRenameResponse {
+            success: false,
+            error: Some(err_permission_denied(ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Check if the candidate path exists (using symlink_metadata to not follow symlinks)
     let symlink_meta = std::fs::symlink_metadata(&candidate);
@@ -856,5 +866,220 @@ mod tests {
                 .join("users/testuser/renamed_personal.txt")
                 .exists()
         );
+    }
+
+    /// Owner of a `[NEXUS-DB-username]` folder can rename files inside it
+    /// without the global `file_rename` permission. Cleanup workflow.
+    #[tokio::test]
+    async fn test_rename_owner_can_rename_inside_user_dropbox_without_permission() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
+        fs::create_dir(&dropbox).expect("Failed to create dropbox");
+        fs::write(dropbox.join("IMG_2391.jpg"), "data").expect("Failed to create file");
+
+        // Alice has FileList only — no FileRename.
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_rename(
+            "For Alice [NEXUS-DB-alice]/IMG_2391.jpg".to_string(),
+            "beach-trip.jpg".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileRenameResponse { success, error } => {
+                assert!(
+                    success,
+                    "Owner should be able to rename inside own dropbox without file_rename: {:?}",
+                    error
+                );
+            }
+            _ => panic!("Expected FileRenameResponse"),
+        }
+        assert!(!dropbox.join("IMG_2391.jpg").exists());
+        assert!(dropbox.join("beach-trip.jpg").exists());
+    }
+
+    /// The owner bypass works for nested files too.
+    #[tokio::test]
+    async fn test_rename_owner_can_rename_nested_inside_user_dropbox() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
+        fs::create_dir_all(dropbox.join("sub")).expect("Failed to create nested dirs");
+        fs::write(dropbox.join("sub/old.txt"), "data").expect("Failed to create file");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_rename(
+            "For Alice [NEXUS-DB-alice]/sub/old.txt".to_string(),
+            "new.txt".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileRenameResponse { success, error } => {
+                assert!(success, "Owner nested rename should succeed: {:?}", error);
+            }
+            _ => panic!("Expected FileRenameResponse"),
+        }
+        assert!(!dropbox.join("sub/old.txt").exists());
+        assert!(dropbox.join("sub/new.txt").exists());
+    }
+
+    /// The owner bypass does NOT extend to renaming the dropbox folder
+    /// itself — only its contents. The folder is admin-managed.
+    #[tokio::test]
+    async fn test_rename_owner_cannot_rename_user_dropbox_folder_itself() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
+        fs::create_dir(&dropbox).expect("Failed to create dropbox");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_rename(
+            "For Alice [NEXUS-DB-alice]".to_string(),
+            "Just Alice".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileRenameResponse { success, error } => {
+                assert!(!success, "Owner must not rename dropbox folder itself");
+                assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected FileRenameResponse"),
+        }
+        assert!(dropbox.exists(), "Dropbox folder should remain unchanged");
+        assert!(
+            !file_area.path().join("shared/Just Alice").exists(),
+            "Renamed-to path should not exist"
+        );
+    }
+
+    /// A non-owner cannot use the bypass to rename files in someone
+    /// else's `[NEXUS-DB-username]` folder.
+    #[tokio::test]
+    async fn test_rename_non_owner_cannot_use_dropbox_bypass() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
+        fs::create_dir(&dropbox).expect("Failed to create dropbox");
+        fs::write(dropbox.join("private.txt"), "alice's").expect("Failed to create file");
+
+        // Bob — not the owner.
+        let session_id = login_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_rename(
+            "For Alice [NEXUS-DB-alice]/private.txt".to_string(),
+            "stolen.txt".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileRenameResponse { success, error } => {
+                assert!(!success, "Non-owner must not bypass file_rename");
+                assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected FileRenameResponse"),
+        }
+        assert!(dropbox.join("private.txt").exists());
+    }
+
+    /// Without `file_rename`, the owner bypass is scoped to inside their
+    /// dropbox — it doesn't grant rename of arbitrary files elsewhere.
+    #[tokio::test]
+    async fn test_rename_owner_bypass_does_not_apply_outside_dropbox() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        // Alice owns a dropbox, but the file we target is NOT inside it.
+        fs::create_dir(file_area.path().join("shared/For Alice [NEXUS-DB-alice]"))
+            .expect("Failed to create dropbox");
+        fs::write(file_area.path().join("shared/elsewhere.txt"), "not yours")
+            .expect("Failed to create file");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_rename(
+            "elsewhere.txt".to_string(),
+            "renamed.txt".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileRenameResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected FileRenameResponse"),
+        }
+        assert!(file_area.path().join("shared/elsewhere.txt").exists());
     }
 }

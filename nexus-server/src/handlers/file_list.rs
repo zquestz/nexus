@@ -151,6 +151,7 @@ where
                 path: None,
                 entries: None,
                 can_upload: false,
+                dropbox_owner: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -165,6 +166,7 @@ where
             path: None,
             entries: None,
             can_upload: false,
+            dropbox_owner: None,
         };
         return ctx.send_message(&response).await;
     };
@@ -178,6 +180,7 @@ where
             path: None,
             entries: None,
             can_upload: false,
+            dropbox_owner: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -191,6 +194,7 @@ where
             path: None,
             entries: None,
             can_upload: false,
+            dropbox_owner: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -211,6 +215,7 @@ where
             path: None,
             entries: None,
             can_upload: false,
+            dropbox_owner: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -233,6 +238,7 @@ where
                 path: Some(path),
                 entries: Some(Vec::new()),
                 can_upload: false,
+                dropbox_owner: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -248,6 +254,7 @@ where
                 path: None,
                 entries: None,
                 can_upload: false,
+                dropbox_owner: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -261,6 +268,7 @@ where
                 path: None,
                 entries: None,
                 can_upload: false,
+                dropbox_owner: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -271,6 +279,7 @@ where
                 path: None,
                 entries: None,
                 can_upload: false,
+                dropbox_owner: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -284,6 +293,7 @@ where
             path: None,
             entries: None,
             can_upload: false,
+            dropbox_owner: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -293,18 +303,33 @@ where
     // `file_upload_anywhere` bypass) when deciding whether to show upload UI.
     let current_dir_can_upload = allows_upload(&area_root, &resolved);
 
-    // Check if we're inside a dropbox - if unauthorized, return empty listing
-    // This check is done once before the loop for efficiency
+    // Classify the listing's drop-box context once before reading entries.
+    // Both fields come from a single ancestor walk.
+    //
+    // We walk the *virtual* `candidate` path (not the canonical `resolved`)
+    // so a drop box implemented as a symlink is still recognized by its
+    // suffix. This keeps visibility classification consistent with the
+    // delete/rename owner bypass, which uses the same virtual path.
     let is_admin = requesting_user.is_admin;
     let username = &requesting_user.username;
-    if should_hide_entry(&resolved, &area_root, is_admin, username) {
-        // User is inside a dropbox they can't see - return empty listing
+    let DropboxContext {
+        hide_contents,
+        dropbox_owner,
+    } = dropbox_context(&candidate, &area_root, is_admin, username);
+
+    if hide_contents {
+        // User is inside a dropbox they can't see - return empty listing.
+        // `dropbox_owner` is reported as a structural fact regardless of
+        // viewer; the owner is already encoded in the folder name (visible
+        // from the parent listing) and in the path the client navigated
+        // through to get here, so it's not private.
         let response = ServerMessage::FileListResponse {
             success: true,
             error: None,
             path: Some(path),
             entries: Some(Vec::new()),
             can_upload: current_dir_can_upload,
+            dropbox_owner,
         };
         return ctx.send_message(&response).await;
     }
@@ -327,6 +352,7 @@ where
                 path: None,
                 entries: None,
                 can_upload: false,
+                dropbox_owner: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -338,31 +364,56 @@ where
         path: Some(path),
         entries: Some(entries),
         can_upload: current_dir_can_upload,
+        dropbox_owner,
     };
 
     ctx.send_message(&response).await
 }
 
-/// Check if we should hide entries because we're inside a dropbox
-fn should_hide_entry(
+/// Result of walking the listed directory's ancestor chain to detect drop
+/// boxes. Computed once per listing.
+struct DropboxContext {
+    /// True when the caller should return an empty listing — used for
+    /// generic drop boxes seen by non-admins, and for user drop boxes seen
+    /// by users who are neither the named owner nor an admin.
+    hide_contents: bool,
+
+    /// Owner of the innermost enclosing `[NEXUS-DB-username]` folder
+    /// (including the listed directory itself, if it is the drop box).
+    /// `None` when the listing is not inside any user drop box.
+    ///
+    /// Reported regardless of whether the requester is the owner — the
+    /// client composes this with its own nickname to decide whether the
+    /// file-delete bypass applies. Generic `[NEXUS-DB]` folders have no
+    /// owner so this stays `None` for those.
+    dropbox_owner: Option<String>,
+}
+
+/// Walk from `current_dir` up to `area_root`, classifying the listed
+/// directory's drop-box context.
+fn dropbox_context(
     current_dir: &std::path::Path,
     area_root: &std::path::Path,
     is_admin: bool,
     username: &str,
-) -> bool {
-    // Walk up from current_dir to area_root, checking for dropbox folders
+) -> DropboxContext {
     let mut path = current_dir;
 
     while path != area_root {
         if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
             match parse_folder_type(name) {
                 FolderType::DropBox => {
-                    // Inside a generic dropbox - only admins can see contents
-                    return !is_admin;
+                    return DropboxContext {
+                        hide_contents: !is_admin,
+                        dropbox_owner: None,
+                    };
                 }
                 FolderType::UserDropBox(owner) => {
-                    // Inside a user dropbox - only the owner and admins can see contents
-                    return !is_admin && owner.to_lowercase() != username.to_lowercase();
+                    let is_owner = owner.to_lowercase() == username.to_lowercase();
+                    return DropboxContext {
+                        hide_contents: !is_admin && !is_owner,
+                        dropbox_owner: Some(owner),
+                    };
                 }
                 _ => {}
             }
@@ -374,7 +425,10 @@ fn should_hide_entry(
         }
     }
 
-    false
+    DropboxContext {
+        hide_contents: false,
+        dropbox_owner: None,
+    }
 }
 
 #[cfg(test)]
@@ -383,7 +437,7 @@ mod tests {
     use crate::db;
     use crate::handlers::testing::{
         DEFAULT_TEST_LOCALE, create_test_context, login_user, read_server_message,
-        setup_file_area_full,
+        setup_file_area_basic, setup_file_area_full,
     };
     use std::fs;
 
@@ -1479,6 +1533,314 @@ mod tests {
                     !entries.iter().any(|e| e.name == ".hidden_dir"),
                     "Should not see .hidden_dir"
                 );
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    /// Listings outside any drop box report `dropbox_owner: None`.
+    #[tokio::test]
+    async fn test_file_list_dropbox_owner_none_outside_dropbox() {
+        let mut test_ctx = create_test_context().await;
+        let _file_area = setup_file_area_full(&mut test_ctx);
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_list(
+            "/".to_string(),
+            false,
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileListResponse {
+                success,
+                dropbox_owner,
+                ..
+            } => {
+                assert!(success);
+                assert_eq!(dropbox_owner, None);
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    /// When the owner lists their own user drop box, the response carries
+    /// the owner string so the client can enable the delete bypass.
+    #[tokio::test]
+    async fn test_file_list_dropbox_owner_set_when_owner_lists_own_dropbox() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        fs::create_dir(file_area.path().join("shared/For Alice [NEXUS-DB-alice]"))
+            .expect("Failed to create dropbox");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_list(
+            "/For Alice [NEXUS-DB-alice]".to_string(),
+            false,
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileListResponse {
+                success,
+                dropbox_owner,
+                ..
+            } => {
+                assert!(success);
+                assert_eq!(dropbox_owner.as_deref(), Some("alice"));
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    /// When an admin browses someone else's user drop box, `dropbox_owner`
+    /// reports the actual owner — it's a structural fact, not a request
+    /// for the bypass. The client's identity check decides bypass.
+    #[tokio::test]
+    async fn test_file_list_dropbox_owner_reports_actual_owner_for_admin() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        fs::create_dir(file_area.path().join("shared/For Bob [NEXUS-DB-bob]"))
+            .expect("Failed to create dropbox");
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        handle_file_list(
+            "/For Bob [NEXUS-DB-bob]".to_string(),
+            false,
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileListResponse {
+                success,
+                dropbox_owner,
+                ..
+            } => {
+                assert!(success);
+                assert_eq!(dropbox_owner.as_deref(), Some("bob"));
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    /// Generic `[NEXUS-DB]` drop boxes have no owner — the field is None
+    /// even when listing one (admin only, since non-admins get hidden).
+    #[tokio::test]
+    async fn test_file_list_dropbox_owner_none_for_generic_dropbox() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        fs::create_dir(file_area.path().join("shared/Submissions [NEXUS-DB]"))
+            .expect("Failed to create dropbox");
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        handle_file_list(
+            "/Submissions [NEXUS-DB]".to_string(),
+            false,
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileListResponse {
+                success,
+                dropbox_owner,
+                ..
+            } => {
+                assert!(success);
+                assert_eq!(dropbox_owner, None);
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    /// Non-owner non-admin attempting to list someone else's user drop
+    /// box gets an empty (hidden) listing — but `dropbox_owner` is still
+    /// reported as a structural fact. The owner is already encoded in the
+    /// folder name (visible from the parent listing) and in the path the
+    /// client just navigated through, so reporting it here adds nothing
+    /// new. The hide protects *contents*, not metadata that's already
+    /// public via the path itself.
+    #[tokio::test]
+    async fn test_file_list_dropbox_owner_reported_even_when_contents_hidden() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
+        fs::create_dir(&dropbox).expect("Failed to create dropbox");
+        fs::write(dropbox.join("private.txt"), "alice's").expect("Failed to create file");
+
+        // Bob — not the owner, not an admin.
+        let session_id = login_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_list(
+            "/For Alice [NEXUS-DB-alice]".to_string(),
+            false,
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileListResponse {
+                success,
+                entries,
+                dropbox_owner,
+                ..
+            } => {
+                assert!(success);
+                let entries = entries.expect("Expected entries");
+                assert!(entries.is_empty(), "Bob must not see contents");
+                assert_eq!(
+                    dropbox_owner.as_deref(),
+                    Some("alice"),
+                    "Owner is structural — reported even when contents hidden"
+                );
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    /// A user drop box implemented as a symlink (admin-created) is still
+    /// recognized by its suffix in the virtual path. The listing reports
+    /// `dropbox_owner` correctly so the client can enable the cleanup
+    /// bypass.
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn test_file_list_dropbox_owner_recognized_through_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        // Real directory with the dropbox content lives outside the area.
+        let external = tempfile::TempDir::new().expect("Failed to create external dir");
+        fs::write(external.path().join("for-alice.txt"), "data").expect("Failed to create file");
+
+        // Admin links it into shared/ as a user-dropbox-named symlink.
+        symlink(
+            external.path(),
+            file_area.path().join("shared/For Alice [NEXUS-DB-alice]"),
+        )
+        .expect("Failed to create dropbox symlink");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_list(
+            "/For Alice [NEXUS-DB-alice]".to_string(),
+            false,
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileListResponse {
+                success,
+                dropbox_owner,
+                ..
+            } => {
+                assert!(success);
+                assert_eq!(
+                    dropbox_owner.as_deref(),
+                    Some("alice"),
+                    "Symlinked drop box must be recognized via its virtual-path suffix"
+                );
+            }
+            _ => panic!("Expected FileListResponse"),
+        }
+    }
+
+    /// `dropbox_owner` is also reported on subdirectories inside a user
+    /// drop box, not just the drop-box folder itself.
+    #[tokio::test]
+    async fn test_file_list_dropbox_owner_set_on_nested_subdir() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
+        fs::create_dir_all(dropbox.join("sub")).expect("Failed to create nested dirs");
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileList],
+            false,
+        )
+        .await;
+
+        handle_file_list(
+            "/For Alice [NEXUS-DB-alice]/sub".to_string(),
+            false,
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::FileListResponse {
+                success,
+                dropbox_owner,
+                ..
+            } => {
+                assert!(success);
+                assert_eq!(dropbox_owner.as_deref(), Some("alice"));
             }
             _ => panic!("Expected FileListResponse"),
         }
