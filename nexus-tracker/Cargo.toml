@@ -1,0 +1,39 @@
+[package]
+name = "nexus-tracker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["Josh Ellithorpe <quest@mac.com>"]
+description = "Discovery service for Nexus BBS servers"
+
+[dependencies]
+nexus-common = { path = "../nexus-common" }
+clap = { version = "4.5", features = ["derive"] }
+tokio = { version = "1.49", features = ["net", "rt-multi-thread", "macros", "io-util", "sync", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json"] }
+tracing-appender = "0.2"
+humantime = "2.1"
+serde_json = "1.0"
+socket2 = "0.6"
+chrono = "0.4"
+dirs = "6.0"
+argon2 = { version = "0.5", features = ["std"] }
+rpassword = "7.4"
+tokio-rustls = "0.26"
+tokio-tungstenite = "0.29"
+futures-util = "0.3"
+rustls-pemfile = "2.2"
+rcgen = "0.14"
+pem = "3.0"
+igd-next = "0.17"
+fluent = "0.17"
+fluent-bundle = "0.16"
+unic-langid = "0.9"
+
+[dev-dependencies]
+tempfile = "3.20"
+
+[[bin]]
+name = "nexus-trackerd"
+path = "src/main.rs"

@@ -5,6 +5,7 @@ members = [
     "nexus-common",
     "nexus-server",
     "nexus-client",
+    "nexus-tracker",
 ]
 
 [workspace.package]
