@@ -46,6 +46,15 @@ pub enum PasswordKind {
     Listing,
 }
 
+impl std::fmt::Display for PasswordKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PasswordKind::Registration => write!(f, "registration"),
+            PasswordKind::Listing => write!(f, "listing"),
+        }
+    }
+}
+
 /// Nexus tracker daemon
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -104,11 +113,13 @@ pub enum Command {
     /// Set a password from stdin (TTY → interactive prompt; pipe → first line).
     SetPassword {
         /// Which password to set
+        #[arg(value_name = "registration|listing")]
         kind: PasswordKind,
     },
     /// Clear a password (the corresponding flow becomes open).
     ClearPassword {
         /// Which password to clear
+        #[arg(value_name = "registration|listing")]
         kind: PasswordKind,
     },
 }

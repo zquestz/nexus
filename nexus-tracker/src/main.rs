@@ -3,9 +3,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{error, info, warn};
 
+use args::PasswordKind;
+
 mod args;
 mod constants;
 mod logging;
+mod password;
 
 fn main() {
     let mut cli = args::Cli::parse();
@@ -31,22 +34,63 @@ fn main() {
     let log_path = logging::log_dir(&data_dir);
     logging::purge_old_logs(&log_path, cli.log_retention);
 
+    info!("{}{}", constants::MSG_BANNER, env!("CARGO_PKG_VERSION"));
+    info!("{}{}", constants::MSG_LOG_LEVEL, cli.log_level);
+    if cli.log_level != logging::LogLevel::None && cli.log_retention > std::time::Duration::ZERO {
+        info!("{}{}", constants::MSG_LOG_DIR, log_path.display());
+    }
+
     match cli.command {
         Some(args::Command::SetPassword { kind }) => {
-            warn!(?kind, "set-password not yet implemented");
+            if let Err(e) = run_set_password(&data_dir, kind) {
+                error!("{}", e);
+                std::process::exit(1);
+            }
         }
         Some(args::Command::ClearPassword { kind }) => {
-            warn!(?kind, "clear-password not yet implemented");
+            if let Err(e) = run_clear_password(&data_dir, kind) {
+                error!("{}", e);
+                std::process::exit(1);
+            }
         }
         None => {
             info!(
-                version = env!("CARGO_PKG_VERSION"),
                 bind = %cli.bind,
                 port = cli.port,
                 "nexus-trackerd starting (not yet implemented)"
             );
         }
     }
+}
+
+/// Prompt for and store a new password under the data directory.
+///
+/// Reads the password twice from the controlling terminal (entry +
+/// confirmation) via `rpassword`, hashes with Argon2id, and writes the
+/// resulting PHC string to `<data-dir>/<kind>.password` with mode `0o600`
+/// on Unix.
+fn run_set_password(data_dir: &Path, kind: PasswordKind) -> Result<(), String> {
+    info!(kind = %kind, "{}", constants::LOG_PASSWORD_SETTING);
+    let plain = rpassword::prompt_password(constants::PROMPT_NEW_PASSWORD)
+        .map_err(|e| format!("{}{}", constants::ERR_PROMPT_PASSWORD, e))?;
+    let confirm = rpassword::prompt_password(constants::PROMPT_CONFIRM_PASSWORD)
+        .map_err(|e| format!("{}{}", constants::ERR_PROMPT_PASSWORD, e))?;
+    if plain != confirm {
+        return Err(constants::ERR_PASSWORD_MISMATCH.to_string());
+    }
+    password::set_password(data_dir, kind, &plain)?;
+    info!(kind = %kind, "{}", constants::LOG_PASSWORD_SET);
+    Ok(())
+}
+
+/// Remove the stored password file for `kind`, if any.
+fn run_clear_password(data_dir: &Path, kind: PasswordKind) -> Result<(), String> {
+    if password::clear_password(data_dir, kind)? {
+        info!(kind = %kind, "{}", constants::LOG_PASSWORD_CLEARED);
+    } else {
+        info!(kind = %kind, "{}", constants::LOG_PASSWORD_NOT_PRESENT);
+    }
+    Ok(())
 }
 
 /// Resolve the tracker data directory, preferring the CLI override when
