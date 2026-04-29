@@ -36,7 +36,7 @@ impl CompatibilityResult {
     }
 }
 
-/// Parse the protocol version constant
+/// Parse the BBS protocol version constant.
 ///
 /// # Panics
 ///
@@ -49,7 +49,26 @@ pub fn protocol_version() -> Version {
         .expect("PROTOCOL_VERSION must be valid semver")
 }
 
-/// Check if a client version is compatible with the server's protocol version.
+/// Parse the tracker protocol version constant.
+///
+/// Independent from the BBS protocol version — see
+/// [`crate::TRACKER_PROTOCOL_VERSION`].
+///
+/// # Panics
+///
+/// Panics if `TRACKER_PROTOCOL_VERSION` is not valid semver. This should
+/// never happen as the constant is defined in this crate.
+#[must_use]
+pub fn tracker_protocol_version() -> Version {
+    crate::TRACKER_PROTOCOL_VERSION
+        .parse()
+        .expect("TRACKER_PROTOCOL_VERSION must be valid semver")
+}
+
+/// Check whether `client`'s protocol version is compatible with `server`'s.
+///
+/// The rules apply identically to either protocol (BBS or tracker); the
+/// caller passes the appropriate server version.
 ///
 /// Compatibility rules:
 /// - Major versions must match
@@ -65,9 +84,7 @@ pub fn protocol_version() -> Version {
 /// A `CompatibilityResult` indicating whether the versions are compatible
 /// and, if not, why.
 #[must_use]
-pub fn check_compatibility(client: &Version) -> CompatibilityResult {
-    let server = protocol_version();
-
+pub fn check_compatibility(server: &Version, client: &Version) -> CompatibilityResult {
     if server.major != client.major {
         return CompatibilityResult::MajorMismatch {
             server_major: server.major,
@@ -108,7 +125,8 @@ mod tests {
 
     #[test]
     fn test_compatibility_same_version() {
-        let result = check_compatibility(&protocol_version());
+        let server = protocol_version();
+        let result = check_compatibility(&server, &server);
         assert!(result.is_compatible());
         assert_eq!(result, CompatibilityResult::Compatible);
     }
@@ -119,7 +137,7 @@ mod tests {
         // During 0.x, older minor versions are incompatible
         if server.major == 0 && server.minor > 0 {
             let client = Version::new(0, server.minor - 1, 0);
-            let result = check_compatibility(&client);
+            let result = check_compatibility(&server, &client);
             assert!(!result.is_compatible());
             assert!(matches!(result, CompatibilityResult::MinorMismatch { .. }));
         }
@@ -131,7 +149,7 @@ mod tests {
         // During 0.x, newer minor versions are also incompatible
         if server.major == 0 {
             let client = Version::new(0, server.minor + 1, 0);
-            let result = check_compatibility(&client);
+            let result = check_compatibility(&server, &client);
             assert!(!result.is_compatible());
             assert!(matches!(result, CompatibilityResult::MinorMismatch { .. }));
         }
@@ -143,7 +161,7 @@ mod tests {
 
         // Client with different patch
         let client = Version::new(server.major, server.minor, server.patch + 5);
-        assert!(check_compatibility(&client).is_compatible());
+        assert!(check_compatibility(&server, &client).is_compatible());
     }
 
     #[test]
@@ -152,7 +170,7 @@ mod tests {
 
         // Client major too high
         let client = Version::new(server.major + 1, 0, 0);
-        let result = check_compatibility(&client);
+        let result = check_compatibility(&server, &client);
         assert!(!result.is_compatible());
         assert!(matches!(result, CompatibilityResult::MajorMismatch { .. }));
     }
@@ -162,7 +180,7 @@ mod tests {
         // This tests the post-1.0 path; for 0.x, MinorMismatch fires first
         let server = protocol_version();
         let client = Version::new(server.major, server.minor + 1, 0);
-        let result = check_compatibility(&client);
+        let result = check_compatibility(&server, &client);
         assert!(!result.is_compatible());
         if server.major == 0 {
             assert!(matches!(result, CompatibilityResult::MinorMismatch { .. }));
@@ -203,6 +221,31 @@ mod tests {
         let client: Version = format!("{}.{}.{}-alpha", server.major, server.minor, server.patch)
             .parse()
             .unwrap();
-        assert!(check_compatibility(&client).is_compatible());
+        assert!(check_compatibility(&server, &client).is_compatible());
+    }
+
+    #[test]
+    fn test_tracker_protocol_version_parses() {
+        let v = tracker_protocol_version();
+        assert_eq!(v.to_string(), crate::TRACKER_PROTOCOL_VERSION);
+    }
+
+    #[test]
+    fn test_check_compatibility_independent_of_server_choice() {
+        // The same client+server pair should produce the same result
+        // regardless of whether the server happens to be BBS or tracker —
+        // proving the function is fully parameterized.
+        let server_a = Version::new(0, 8, 0);
+        let server_b = Version::new(0, 1, 0);
+        let client = Version::new(0, 8, 0);
+
+        let result_a = check_compatibility(&server_a, &client);
+        let result_b = check_compatibility(&server_b, &client);
+
+        assert!(result_a.is_compatible());
+        assert!(matches!(
+            result_b,
+            CompatibilityResult::MinorMismatch { .. }
+        ));
     }
 }

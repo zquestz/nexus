@@ -1,16 +1,16 @@
 use clap::Parser;
 use std::fs;
-use std::io::IsTerminal;
+use std::io::{self, IsTerminal};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use tracing::{error, info, warn};
+use tokio::net::TcpListener;
+use tokio_rustls::TlsAcceptor;
+use tracing::{debug, error, info, warn};
 
-use args::PasswordKind;
-
-mod args;
-mod auth;
-mod constants;
-mod logging;
-mod tls;
+use nexus_tracker::{
+    args::{self, PasswordKind},
+    auth, connection, constants, logging, tls,
+};
 
 #[tokio::main]
 async fn main() {
@@ -64,7 +64,7 @@ async fn main() {
             }
         }
         None => {
-            if let Err(e) = run_daemon_startup(&data_dir, &cli) {
+            if let Err(e) = run_daemon_startup(&data_dir, &cli).await {
                 error!("{}", e);
                 std::process::exit(1);
             }
@@ -122,25 +122,105 @@ fn run_clear_password(data_dir: &Path, kind: PasswordKind) -> Result<(), String>
     Ok(())
 }
 
-/// Daemon-mode startup: ensure TLS material is on disk, log auth gating
-/// status, and (eventually) start listening. The listener itself is the
-/// next implementation step; for now this just confirms the daemon's
-/// preconditions are healthy.
-fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), String> {
+/// Daemon-mode startup: ensure TLS material is on disk, build the TLS
+/// acceptor, log auth gating status, bind the listener, and run the
+/// accept loop until shutdown.
+async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), String> {
     // Ensure cert + key exist. `ensure_cert` logs the fingerprint and
     // generation messages internally.
-    tls::ensure_cert(data_dir)?;
+    let fingerprint = tls::ensure_cert(data_dir)?;
+    let tls_acceptor = tls::build_acceptor(data_dir)?;
     info!("{}{}", constants::MSG_CERTIFICATES, data_dir.display());
 
     log_auth_status(data_dir, PasswordKind::Registration)?;
     log_auth_status(data_dir, PasswordKind::Listing)?;
 
-    info!(
-        bind = %cli.bind,
-        port = cli.port,
-        "nexus-trackerd starting (not yet implemented)"
-    );
+    let bind_addr = SocketAddr::new(cli.bind, cli.port);
+    let listener = TcpListener::bind(bind_addr)
+        .await
+        .map_err(|e| format!("{}{}: {}", constants::ERR_BIND_FAILED, bind_addr, e))?;
+    let local_addr = listener.local_addr().unwrap_or(bind_addr);
+    info!("{}{}", constants::MSG_LISTENING, local_addr);
+
+    accept_loop(listener, tls_acceptor, fingerprint).await;
     Ok(())
+}
+
+/// Accept loop, terminated by SIGINT / SIGTERM (or Ctrl+C on Windows).
+async fn accept_loop(listener: TcpListener, tls_acceptor: TlsAcceptor, fingerprint: String) {
+    tokio::select! {
+        () = run_accepts(&listener, tls_acceptor, fingerprint) => {}
+        () = setup_shutdown_signal() => {
+            info!("{}", constants::MSG_SHUTDOWN_RECEIVED);
+        }
+    }
+}
+
+/// Run the inner accept loop. Each accepted connection is spawned as its
+/// own task; an `accept()` failure logs and brief-sleeps to avoid a
+/// busy loop on persistent errors (e.g., file-descriptor exhaustion).
+async fn run_accepts(listener: &TcpListener, tls_acceptor: TlsAcceptor, fingerprint: String) {
+    loop {
+        match listener.accept().await {
+            Ok((stream, peer_addr)) => {
+                let acceptor = tls_acceptor.clone();
+                let fingerprint = fingerprint.clone();
+                tokio::spawn(async move {
+                    if let Err(e) =
+                        connection::handle_connection(stream, peer_addr, acceptor, fingerprint)
+                            .await
+                    {
+                        log_connection_error(&e, peer_addr);
+                    }
+                });
+            }
+            Err(e) => {
+                warn!(err = %e, "{}", constants::LOG_ACCEPT_ERROR);
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+    }
+}
+
+/// Categorize and log a connection error from `handle_connection`.
+///
+/// - `close_notify` warnings (clients disconnecting abruptly) → silent.
+/// - `TLS handshake failed:` prefix (scanners, incompatible clients) → debug.
+/// - everything else (frame errors, write failures, etc.) → error.
+///
+/// Mirrors `nexus-server`'s shared logger so the two daemons categorize
+/// connection noise the same way. When WebSocket support lands the same
+/// function will route those errors too.
+fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
+    let msg = error.to_string();
+    if msg.contains(constants::TLS_CLOSE_NOTIFY_MSG) {
+        return;
+    }
+    if msg.contains(constants::TLS_HANDSHAKE_FAILED_PREFIX) {
+        debug!(ip = %peer_addr, err = %error, "{}", constants::LOG_CONNECTION_ERROR_TLS);
+        return;
+    }
+    error!(ip = %peer_addr, err = %error, "{}", constants::LOG_CONNECTION_ERROR);
+}
+
+/// Resolve when SIGINT/SIGTERM (Ctrl+C on Windows) is received.
+async fn setup_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut sigterm = signal(SignalKind::terminate()).expect(constants::ERR_SIGNAL_SIGTERM);
+        let mut sigint = signal(SignalKind::interrupt()).expect(constants::ERR_SIGNAL_SIGINT);
+        tokio::select! {
+            _ = sigterm.recv() => {},
+            _ = sigint.recv() => {},
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        tokio::signal::ctrl_c()
+            .await
+            .expect(constants::ERR_SIGNAL_CTRLC);
+    }
 }
 
 /// Log whether the given auth flow is open (no hash file) or gated

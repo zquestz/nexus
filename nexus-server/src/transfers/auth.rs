@@ -83,7 +83,7 @@ where
     };
 
     // Check compatibility
-    match version::check_compatibility(&client_version) {
+    match version::check_compatibility(&version::protocol_version(), &client_version) {
         CompatibilityResult::Compatible => {
             let response = ServerMessage::HandshakeResponse {
                 success: true,

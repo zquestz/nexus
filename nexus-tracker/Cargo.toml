@@ -37,6 +37,10 @@ unic-langid = "0.9"
 [dev-dependencies]
 tempfile = "3.20"
 
+[lib]
+name = "nexus_tracker"
+path = "src/lib.rs"
+
 [[bin]]
 name = "nexus-trackerd"
 path = "src/main.rs"

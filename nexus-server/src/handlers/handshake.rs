@@ -66,7 +66,7 @@ where
     };
 
     // Check semver compatibility using the already-parsed version
-    match version::check_compatibility(&client_version) {
+    match version::check_compatibility(&version::protocol_version(), &client_version) {
         CompatibilityResult::Compatible => {
             // Version is compatible - complete handshake
             *handshake_complete = true;

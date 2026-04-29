@@ -221,3 +221,98 @@ pub const ERR_NO_KEY_FOUND: &str = "No private key found in key file";
 
 /// rustls `ServerConfig` construction failed (caller appends underlying error).
 pub const ERR_CREATE_TLS_CONFIG: &str = "Failed to create TLS configuration: ";
+
+// =============================================================================
+// Internationalization
+// =============================================================================
+
+/// Default locale (English). Used as the fallback when a peer-supplied
+/// locale is unsupported or a key is missing in the requested locale.
+pub const DEFAULT_LOCALE: &str = "en";
+
+/// FluentResource construction failed (panics — indicates a malformed
+/// `errors.ftl` baked into the binary, not an operator-actionable failure).
+pub const ERR_I18N_PARSE_FTL: &str = "Failed to parse FTL file";
+
+/// FluentBundle resource registration failed (panics — same character
+/// as `ERR_I18N_PARSE_FTL`).
+pub const ERR_I18N_ADD_RESOURCE: &str = "Failed to add resource to bundle";
+
+/// Translation key missing in English (panics — programming error, the
+/// key was added to a call site without a corresponding `errors.ftl` entry).
+pub const ERR_I18N_MISSING_KEY_ENGLISH: &str = "Missing translation key in English";
+
+/// Log message: Fluent reported recoverable formatting errors while
+/// resolving a translation. Paired with `key = %key, errors = ?errors`.
+pub const LOG_TRANSLATION_ERRORS: &str = "Translation errors";
+
+/// Log message: a translation key was missing in the requested locale
+/// (falls back to English). Paired with `key = %key, locale = %locale`.
+pub const LOG_MISSING_TRANSLATION_KEY: &str = "Missing translation key";
+
+// =============================================================================
+// Listener / connection lifecycle
+// =============================================================================
+
+/// Tracker port listening display (caller appends bound `SocketAddr`).
+pub const MSG_LISTENING: &str = "Tracker port: ";
+
+/// Operator-facing message printed on graceful shutdown.
+pub const MSG_SHUTDOWN_RECEIVED: &str = "\nShutdown signal received";
+
+/// Listener bind failure prefix (caller appends `addr` and underlying error).
+pub const ERR_BIND_FAILED: &str = "Failed to bind to ";
+
+/// Maximum time the tracker waits for a `Handshake` after TLS completes.
+/// Spec §Timeouts: "TLS accepted, awaiting Handshake — 30 seconds."
+pub const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// Log: TCP `accept()` returned an error (paired with `err = %e`).
+pub const LOG_ACCEPT_ERROR: &str = "Accept error";
+
+/// Log: connection error after TLS (frame, JSON, or unexpected disconnect).
+pub const LOG_CONNECTION_ERROR: &str = "Connection error";
+
+/// Log: TLS handshake itself failed (paired with `ip = %addr, err = %e`).
+pub const LOG_CONNECTION_ERROR_TLS: &str = "Connection error (TLS handshake)";
+
+/// Log: peer sent a non-Handshake message before completing the handshake.
+pub const LOG_HANDSHAKE_REQUIRED: &str = "Handshake: required";
+
+/// Log: peer sent a Handshake after the handshake had already completed.
+#[allow(dead_code)] // used once role-locking lands
+pub const LOG_HANDSHAKE_DUPLICATE: &str = "Handshake: duplicate attempt";
+
+/// Log: handshake major version mismatch (paired with version fields).
+pub const LOG_HANDSHAKE_MAJOR_MISMATCH: &str = "Handshake: major version mismatch";
+
+/// Log: handshake minor version mismatch (paired with version fields).
+pub const LOG_HANDSHAKE_MINOR_MISMATCH: &str = "Handshake: minor version mismatch";
+
+/// Log: client minor version newer than server's (paired with version fields).
+pub const LOG_HANDSHAKE_CLIENT_TOO_NEW: &str = "Handshake: client too new";
+
+/// Substring of the rustls "close_notify" warning we treat as benign
+/// (clients disconnecting without proper TLS shutdown).
+pub const TLS_CLOSE_NOTIFY_MSG: &str = "peer closed connection without sending TLS close_notify";
+
+/// Prefix prepended to TLS handshake failures when bubbling them out of
+/// `handle_connection`. The shared `log_connection_error` filters on this
+/// to downgrade scanner / incompatible-client noise to debug level.
+pub const TLS_HANDSHAKE_FAILED_PREFIX: &str = "TLS handshake failed:";
+
+// =============================================================================
+// Signal handling
+// =============================================================================
+
+/// SIGTERM handler setup error (panics — required for graceful shutdown).
+#[cfg(unix)]
+pub const ERR_SIGNAL_SIGTERM: &str = "Failed to setup SIGTERM handler";
+
+/// SIGINT handler setup error (panics — required for graceful shutdown).
+#[cfg(unix)]
+pub const ERR_SIGNAL_SIGINT: &str = "Failed to setup SIGINT handler";
+
+/// Ctrl+C handler setup error on Windows (panics — required for graceful shutdown).
+#[cfg(not(unix))]
+pub const ERR_SIGNAL_CTRLC: &str = "Failed to setup Ctrl+C handler";
