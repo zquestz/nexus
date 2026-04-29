@@ -144,11 +144,19 @@ pub const DEFAULT_SERVER_IMAGE: &str = "";
 pub const DEFAULT_PUBLIC_ADDRESS: &str = "";
 
 // =============================================================================
-// Database Configuration
+// Data Directory
 // =============================================================================
 
-/// Database directory name
+/// Subdirectory name within the platform data directory
+/// (e.g., `~/.local/share/nexusd/` on Linux). Hosts the database, TLS
+/// certificate and key, file search index, and log files.
 pub const DATA_DIR_NAME: &str = "nexusd";
+
+/// Permissions mode for the data directory and its subdirectories on Unix.
+/// Owner-only (`0o700`) so directory listings don't leak filenames or
+/// existence to other local users.
+#[cfg(unix)]
+pub const DATA_DIR_MODE: u32 = 0o700;
 
 /// Logs directory name (inside data dir)
 pub const LOGS_DIR_NAME: &str = "logs";
@@ -158,6 +166,10 @@ pub const LOG_FILE_PREFIX: &str = "nexusd";
 
 /// Database file name
 pub const DATABASE_FILENAME: &str = "nexus.db";
+
+// =============================================================================
+// Database Configuration
+// =============================================================================
 
 /// Database configuration key for server name
 pub const CONFIG_KEY_SERVER_NAME: &str = "server_name";
@@ -303,17 +315,48 @@ pub const MSG_SHUTDOWN_RECEIVED: &str = "\nShutdown signal received";
 // Server Error Messages (operator-facing)
 // =============================================================================
 
-/// Generic error prefix
-pub const ERR_GENERIC: &str = "Error: ";
+/// Rustls crypto provider initialization (panics if it fails — required for
+/// any TLS or DTLS operation).
+pub const ERR_RUSTLS_PROVIDER: &str = "failed to install rustls crypto provider";
+
+/// IP rule cache lock poisoned (panics if it fires — indicates a panic in
+/// another thread while holding the lock, unrecoverable).
+pub const ERR_IP_CACHE_POISONED: &str = "ip rule cache lock poisoned";
+
+/// `logging::init` called more than once (panics if it fires — indicates
+/// a programming error, not an operator-actionable failure).
+pub const ERR_LOG_LEVEL_ALREADY_SET: &str = "log level already initialized";
+
+/// Log level parsing failed (caller appends the offending value).
+pub const ERR_LOG_LEVEL_INVALID: &str =
+    "Invalid log level (valid values: none, error, warn, info, debug): ";
+
+/// Log retention parsing failed (caller appends the value and underlying error).
+pub const ERR_LOG_RETENTION_INVALID: &str = "Invalid log retention: ";
+
+/// Log retention below the 1-day minimum (caller appends the value).
+pub const ERR_LOG_RETENTION_TOO_SHORT: &str =
+    "Log retention must be 0 (disabled) or at least 1 day, got: ";
+
+/// Log directory creation failed (caller appends the path and underlying error).
+pub const ERR_CREATE_LOG_DIR: &str = "Failed to create log directory: ";
+
+/// Platform does not provide a data directory (extremely rare — Windows
+/// without `%APPDATA%`, Linux without `HOME`, etc.)
+pub const ERR_NO_DATA_DIR: &str = "Platform does not provide a data directory";
+
+/// `--data-dir` rejected because the supplied path is relative
+pub const ERR_DATA_DIR_NOT_ABSOLUTE: &str = "--data-dir must be an absolute path: ";
+
+/// Data directory creation error
+pub const ERR_CREATE_DATA_DIR: &str = "Failed to create data directory: ";
+
+/// Data directory permissions error
+#[cfg(unix)]
+pub const ERR_SET_DATA_DIR_PERMS: &str = "Failed to set data directory permissions: ";
 
 /// Database initialization error
 pub const ERR_DATABASE_INIT: &str = "Failed to initialize database: ";
-
-/// Database path error
-pub const ERR_DB_PATH_NO_PARENT: &str = "Database path should have a parent directory";
-
-/// Data directory error
-pub const ERR_NO_DATA_DIR: &str = "Unable to determine data directory for your platform";
 
 /// TLS initialization error
 pub const ERR_TLS_INIT: &str = "Failed to initialize TLS: ";
@@ -405,8 +448,8 @@ pub const ERR_CREATE_TLS_CONFIG: &str = "Failed to create TLS configuration: ";
 // UPnP Messages (operator-facing)
 // =============================================================================
 
-/// UPnP setup failure warning
-pub const MSG_UPNP_WARNING: &str = "Warning: UPnP setup failed: ";
+/// UPnP setup failure log message (paired with structured `err = %e` field).
+pub const LOG_UPNP_SETUP_FAILED: &str = "UPnP setup failed";
 
 /// UPnP disabled continuation message
 pub const MSG_UPNP_CONTINUE: &str = "Server will continue without UPnP port forwarding.";
@@ -415,8 +458,8 @@ pub const MSG_UPNP_CONTINUE: &str = "Server will continue without UPnP port forw
 pub const MSG_UPNP_MANUAL: &str =
     "You may need to manually configure port forwarding on your router.";
 
-/// UPnP mapping removal failure warning
-pub const WARN_UPNP_REMOVE_MAPPING_FAILED: &str = "Warning: Failed to remove UPnP port mapping: ";
+/// UPnP mapping removal failure log message (paired with structured `err = %e` field).
+pub const LOG_UPNP_REMOVE_FAILED: &str = "Failed to remove UPnP port mapping";
 
 // =============================================================================
 // UPnP Error Messages (operator-facing)
@@ -440,14 +483,8 @@ pub const ERR_UPNP_GET_EXTERNAL_IP: &str = "Failed to get external IP: ";
 /// Port forwarding task error
 pub const ERR_UPNP_PORT_FORWARD_TASK: &str = "Port forwarding task failed: ";
 
-/// Port mapping addition error
-pub const ERR_UPNP_ADD_PORT_MAPPING: &str = "Failed to add port mapping: ";
-
 /// Port mapping removal task error
 pub const ERR_UPNP_REMOVE_PORT_TASK: &str = "Remove port mapping task failed: ";
-
-/// Port mapping removal error
-pub const ERR_UPNP_REMOVE_PORT_MAPPING: &str = "Failed to remove port mapping: ";
 
 /// Lease renewal error
 pub const ERR_UPNP_RENEW_LEASE: &str = "Failed to renew lease: ";
@@ -532,11 +569,9 @@ pub const ERR_I18N_ADD_RESOURCE: &str = "Failed to add resource to bundle";
 /// File area root path display
 pub const MSG_FILE_ROOT: &str = "File area: ";
 
-/// Error when file root directory cannot be determined
-pub const ERR_NO_FILE_ROOT: &str = "Unable to determine file root directory for your platform";
-
-/// Error when creating file area directories fails
-pub const ERR_CREATE_FILE_DIR: &str = "Failed to create file area directory: ";
+/// Error when initializing the file area fails (caller-side prefix wrapping
+/// any `init_file_area` failure).
+pub const ERR_INIT_FILE_AREA: &str = "Failed to initialize file area: ";
 
 /// Error when path resolution fails due to invalid path
 pub const ERR_FILE_INVALID_PATH: &str = "Invalid file path";
@@ -601,9 +636,6 @@ pub const LOG_UPLOAD_BYPASS_FOLDER_RESTRICTION: &str =
     "Upload bypassed folder restriction via file_upload_anywhere";
 pub const LOG_VOICE_DTLS_FAILED: &str = "Voice DTLS listener failed";
 pub const LOG_VOICE_UNAVAILABLE: &str = "Voice chat will be unavailable";
-
-// --- Database ---
-pub const LOG_DB_DIR_CREATE_FAILED: &str = "Failed to create database directory";
 
 // --- File Index ---
 pub const LOG_FILE_INDEX_REBUILT: &str = "File index rebuilt";

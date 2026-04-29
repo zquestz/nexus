@@ -103,7 +103,7 @@ async fn add_port_mapping(
     })
     .await
     .map_err(|e| format!("{}{}", ERR_UPNP_PORT_FORWARD_TASK, e))?
-    .map_err(|e| format!("{}{}", ERR_UPNP_ADD_PORT_MAPPING, e))?;
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -251,7 +251,7 @@ impl UpnpGateway {
         })
         .await
         .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_TASK, e))?
-        .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_MAPPING, e))?;
+        .map_err(|e| e.to_string())?;
 
         // Remove transfer port mapping
         let transfer_port = self.transfer_port;
@@ -261,7 +261,7 @@ impl UpnpGateway {
         })
         .await
         .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_TASK, e))?
-        .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_MAPPING, e))?;
+        .map_err(|e| e.to_string())?;
 
         // Remove UDP voice port mapping (same port as main)
         let voice_port = self.main_port;
@@ -271,7 +271,7 @@ impl UpnpGateway {
         })
         .await
         .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_TASK, e))?
-        .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_MAPPING, e))?;
+        .map_err(|e| e.to_string())?;
 
         // Remove WebSocket BBS port mapping if enabled
         if let Some(websocket_port) = self.websocket_port {
@@ -281,7 +281,7 @@ impl UpnpGateway {
             })
             .await
             .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_TASK, e))?
-            .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_MAPPING, e))?;
+            .map_err(|e| e.to_string())?;
         }
 
         // Remove WebSocket transfer port mapping if enabled
@@ -291,7 +291,7 @@ impl UpnpGateway {
             })
             .await
             .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_TASK, e))?
-            .map_err(|e| format!("{}{}", ERR_UPNP_REMOVE_PORT_MAPPING, e))?;
+            .map_err(|e| e.to_string())?;
         }
 
         Ok(())

@@ -13,8 +13,8 @@ nexusd [OPTIONS]
 | `--bind <IP>`                      | `-b`  | `0.0.0.0`          | IP address to bind to                                      |
 | `--port <PORT>`                    | `-p`  | `7500`             | Main BBS port                                              |
 | `--transfer-port <PORT>`           | `-t`  | `7501`             | File transfer port                                         |
-| `--database <PATH>`                | `-d`  | (platform default) | Database file path                                         |
-| `--file-root <PATH>`               | `-f`  | (platform default) | File area root directory                                   |
+| `--data-dir <PATH>`                | `-d`  | (platform default) | Server data directory (database, certs, logs, file index)  |
+| `--file-root <PATH>`               | `-f`  | `<data-dir>/files/` | File area root directory                                  |
 | `--log-level <LEVEL>`              |       | `info`             | Log level (none, error, warn, info, debug)                 |
 | `--log-retention <DURATION>`       |       | `30d`              | Log file retention (e.g. "30d", "7d", "0" for stderr only) |
 | `--no-log-timestamps`              |       | `false`            | Disable timestamps in stderr output                        |
@@ -73,31 +73,54 @@ Ports below 1024 require root/admin privileges on most systems.
 
 WebSocket ports are only active when `--websocket` is enabled. Voice chat uses the same port number as BBS but over UDP; the operating system routes packets based on protocol.
 
-## Database
+## Data Directory
+
+The server stores its database, TLS certificate and key, file search index, and log files in a single data directory.
 
 ### Default Locations
 
-| Platform | Default Path                                    |
-| -------- | ----------------------------------------------- |
-| Linux    | `~/.local/share/nexusd/nexus.db`                |
-| macOS    | `~/Library/Application Support/nexusd/nexus.db` |
-| Windows  | `%APPDATA%\nexusd\nexus.db`                     |
+| Platform | Default Path                            |
+| -------- | --------------------------------------- |
+| Linux    | `~/.local/share/nexusd/`                |
+| macOS    | `~/Library/Application Support/nexusd/` |
+| Windows  | `%APPDATA%\nexusd\`                     |
 
 ### Custom Location
 
 ```bash
-nexusd --database /var/lib/nexusd/nexus.db
+nexusd --data-dir /var/lib/nexusd
 ```
 
-The parent directory must exist. The database file is created if it doesn't exist.
+The directory is created automatically on first run. The path **must be
+absolute** — relative paths are rejected at startup so the daemon's
+behavior doesn't depend on its launch directory.
 
-### Database Security
+### Contents
 
-On Unix systems, the database file is automatically set to mode `0600` (owner read/write only).
+| File         | Purpose                                       |
+| ------------ | --------------------------------------------- |
+| `nexus.db`   | SQLite database (users, settings, news)       |
+| `server.crt` | TLS certificate (auto-generated on first run) |
+| `server.key` | TLS private key (auto-generated on first run) |
+| `files.idx`  | File search index                             |
+| `logs/`      | JSONL log files (when `--log-retention > 0`)  |
+
+### Security (Unix)
+
+The data directory itself is created with mode `0700` (owner-only) so its
+listing doesn't leak filenames to other local users. The mode is set
+atomically at creation; a pre-existing data directory is corrected on
+startup.
+
+Files inside are mode `0600`: `nexus.db`, `server.crt`, `server.key`,
+and `files.idx`. The `logs/` subdirectory is `0700`.
 
 ## File Area
 
 ### Default Locations
+
+The file area lives at `<data-dir>/files/` by default. With the data
+directory at its platform default, this resolves to:
 
 | Platform | Default Path                                  |
 | -------- | --------------------------------------------- |
@@ -106,6 +129,9 @@ On Unix systems, the database file is automatically set to mode `0600` (owner re
 | Windows  | `%APPDATA%\nexusd\files\`                     |
 
 ### Custom Location
+
+Override with `--file-root` to place the file area outside the data
+directory entirely (e.g., bulk storage on a different volume):
 
 ```bash
 nexusd --file-root /srv/nexus/files
@@ -146,7 +172,7 @@ Log levels (most to least verbose):
 | `error` | Database failures, filesystem errors, internal errors          |
 | `none`  | Logging disabled                                               |
 
-Log files are written as JSONL (one JSON object per line) to `~/.local/share/nexusd/logs/` with daily rotation. Old files are purged based on `--log-retention`.
+Log files are written as JSONL (one JSON object per line) to `<data-dir>/logs/` with daily rotation. Old files are purged based on `--log-retention`.
 
 ## WebSocket Support
 
@@ -193,13 +219,7 @@ If UPnP fails, the server continues without port forwarding and prints a warning
 
 ## TLS Certificates
 
-Certificates are stored in the same directory as the database:
-
-| Platform | Certificate Location                              |
-| -------- | ------------------------------------------------- |
-| Linux    | `~/.local/share/nexusd/server.crt`                |
-| macOS    | `~/Library/Application Support/nexusd/server.crt` |
-| Windows  | `%APPDATA%\nexusd\server.crt`                     |
+Certificates are stored in the data directory.
 
 ### Automatic Generation
 
@@ -210,7 +230,7 @@ On first run, the server generates:
 
 ### Custom Certificates
 
-To use your own certificates, replace `server.crt` and `server.key` before starting the server. The server uses the same certificate for both ports.
+To use your own certificates, replace `server.crt` and `server.key` in the data directory before starting the server. The server uses the same certificate for both ports.
 
 ### Certificate Fingerprint
 
@@ -266,7 +286,7 @@ nexusd \
   --bind 0.0.0.0 \
   --port 7500 \
   --transfer-port 7501 \
-  --database /var/lib/nexusd/nexus.db \
+  --data-dir /var/lib/nexusd \
   --file-root /srv/nexus/files
 ```
 
@@ -278,7 +298,7 @@ nexusd \
   --port 7500 \
   --transfer-port 7501 \
   --websocket \
-  --database /var/lib/nexusd/nexus.db \
+  --data-dir /var/lib/nexusd \
   --file-root /srv/nexus/files
 ```
 

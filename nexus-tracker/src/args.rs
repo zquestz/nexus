@@ -6,24 +6,32 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::constants::ERR_DATA_DIR_NOT_ABSOLUTE;
 use crate::logging::{LogLevel, parse_log_retention};
+
+/// Reject relative `--data-dir` paths at parse time. Daemons should run
+/// with absolute paths so behavior doesn't depend on launch CWD.
+fn absolute_data_dir(s: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(s);
+    if !path.is_absolute() {
+        return Err(format!("{}{}", ERR_DATA_DIR_NOT_ABSOLUTE, s));
+    }
+    Ok(path)
+}
 
 /// Get default data directory help text for the current platform.
 fn default_data_dir_help() -> String {
     #[cfg(target_os = "linux")]
-    return "Data directory for cert and password hashes (default: ~/.local/share/nexus-trackerd/)"
-        .to_string();
+    return "Data directory (default: ~/.local/share/nexus-trackerd/)".to_string();
 
     #[cfg(target_os = "macos")]
-    return "Data directory for cert and password hashes (default: ~/Library/Application Support/nexus-trackerd/)"
-        .to_string();
+    return "Data directory (default: ~/Library/Application Support/nexus-trackerd/)".to_string();
 
     #[cfg(target_os = "windows")]
-    return "Data directory for cert and password hashes (default: %APPDATA%\\nexus-trackerd\\)"
-        .to_string();
+    return "Data directory (default: %APPDATA%\\nexus-trackerd\\)".to_string();
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    return "Data directory for cert and password hashes (overrides platform default)".to_string();
+    return "Data directory (overrides platform default)".to_string();
 }
 
 /// Which password to operate on with `set-password` / `clear-password`.
@@ -51,7 +59,7 @@ pub struct Cli {
     pub port: u16,
 
     /// Data directory (overrides platform default)
-    #[arg(long, help = default_data_dir_help(), global = true)]
+    #[arg(short, long, help = default_data_dir_help(), global = true, value_parser = absolute_data_dir)]
     pub data_dir: Option<PathBuf>,
 
     /// Log level (none, error, warn, info, debug)

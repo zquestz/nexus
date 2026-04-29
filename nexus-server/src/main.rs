@@ -52,29 +52,49 @@ async fn main() {
     // which needs an explicit crypto provider selection
     tokio_rustls::rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("Failed to install rustls crypto provider");
+        .expect(ERR_RUSTLS_PROVIDER);
 
-    let args = Args::parse();
+    let mut args = Args::parse();
 
-    // Initialize logging (global log level + tracing subscriber)
-    if let Err(e) = logging::init(&args.log_level, args.log_retention, args.no_log_timestamps) {
+    // Resolve data directory (CLI override or platform default).
+    let data_dir = resolve_data_dir(args.data_dir.take());
+
+    // Initialize logging (global log level + tracing subscriber).
+    if let Err(e) = logging::init(
+        &data_dir,
+        args.log_level,
+        args.log_retention,
+        args.no_log_timestamps,
+    ) {
+        // `init` installs a stderr-only fallback subscriber before
+        // returning Err, so this warning still reaches the user.
         warn!(err = %e, "{}", LOG_LOGGING_INIT_FAILED);
     }
 
-    // Purge old log files on startup
-    if args.log_retention > std::time::Duration::ZERO && args.log_level != LogLevel::None {
-        logging::purge_old_logs(args.log_retention);
+    // Create the data directory if needed and lock it to owner-only on Unix.
+    if let Err(e) = ensure_data_dir(&data_dir) {
+        error!("{}", e);
+        std::process::exit(1);
     }
+
+    // Resolve the log directory path once and reuse for purge, startup
+    // info, and the daily timer task below.
+    let log_dir = logging::log_dir(&data_dir);
+
+    // Purge old log files on startup. `purge_old_logs` no-ops when retention
+    // is zero, so no outer gate needed.
+    logging::purge_old_logs(&log_dir, args.log_retention);
 
     // Startup info
     info!("{}{}", MSG_BANNER, env!("CARGO_PKG_VERSION"));
     info!("{}{}", MSG_LOG_LEVEL, args.log_level);
     if args.log_level != LogLevel::None && args.log_retention > std::time::Duration::ZERO {
-        info!("{}{}", MSG_LOG_DIR, logging::log_dir().display());
+        info!("{}{}", MSG_LOG_DIR, log_dir.display());
     }
 
     // Setup database
-    let (database, user_manager, db_path) = setup_db(args.database).await;
+    let db_path = db::database_path(&data_dir);
+    let (database, user_manager) = setup_db(&db_path).await;
 
     // Setup IP rule cache - cleanup expired entries, then load active ones
     let expired_bans = database
@@ -130,7 +150,7 @@ async fn main() {
     );
 
     // Setup file area
-    let file_root = setup_file_area(args.file_root);
+    let file_root = setup_file_area(args.file_root, &data_dir);
 
     // Setup network (TCP listeners + TLS, optionally WebSocket listeners)
     let websocket_enabled = args.websocket;
@@ -140,7 +160,6 @@ async fn main() {
         ws_listener,
         ws_transfer_listener,
         (tls_acceptor, fingerprint),
-        cert_dir,
     ) = setup_network(
         args.bind,
         args.port,
@@ -155,14 +174,15 @@ async fn main() {
         } else {
             None
         },
-        &db_path,
+        &data_dir,
     )
     .await;
 
-    // Setup voice DTLS listener (same port as TCP, OS routes by protocol)
+    // Setup voice DTLS listener (same port as TCP, OS routes by protocol).
+    // Certificates live directly in the data directory.
     let voice_addr = SocketAddr::new(args.bind, args.port);
-    let cert_path = cert_dir.join(CERT_FILENAME);
-    let key_path = cert_dir.join(KEY_FILENAME);
+    let cert_path = data_dir.join(CERT_FILENAME);
+    let key_path = data_dir.join(KEY_FILENAME);
     let voice_listener = match create_voice_listener(voice_addr, &cert_path, &key_path).await {
         Ok(listener) => {
             info!("{}{}", MSG_VOICE_LISTENING, voice_addr);
@@ -221,10 +241,7 @@ async fn main() {
     let file_root: &'static Path = Box::leak(file_root.into_boxed_path());
 
     // Setup file index for searching
-    let data_dir = db_path
-        .parent()
-        .expect("database path should have parent directory");
-    let file_index = Arc::new(FileIndex::new(data_dir, file_root));
+    let file_index = Arc::new(FileIndex::new(&data_dir, file_root));
 
     // Trigger initial index build in background
     file_index.trigger_reindex();
@@ -324,6 +341,7 @@ async fn main() {
     // Capture values for the log purge timer
     let log_level = args.log_level;
     let log_retention = args.log_retention;
+    let log_dir_for_timer = log_dir.clone();
 
     // Main server loops - accept incoming connections on both ports
     tokio::select! {
@@ -336,7 +354,7 @@ async fn main() {
 
                 // Remove port mapping
                 if let Err(e) = gateway.remove_port_mapping().await {
-                    warn!("{}{}", WARN_UPNP_REMOVE_MAPPING_FAILED, e);
+                    warn!(err = %e, "{}", LOG_UPNP_REMOVE_FAILED);
                 }
             }
         }
@@ -389,13 +407,13 @@ async fn main() {
                             let should_allow = {
                                 let cache = ip_rule_cache_for_check
                                     .read()
-                                    .expect("ip rule cache lock poisoned");
+                                    .expect(ERR_IP_CACHE_POISONED);
                                 if cache.needs_rebuild() {
                                     // Drop read lock before acquiring write lock
                                     drop(cache);
                                     ip_rule_cache_for_check
                                         .write()
-                                        .expect("ip rule cache lock poisoned")
+                                        .expect(ERR_IP_CACHE_POISONED)
                                         .should_allow(peer_addr.ip())
                                 } else {
                                     cache.should_allow_read_only(peer_addr.ip())
@@ -461,13 +479,13 @@ async fn main() {
                             let should_allow = {
                                 let cache = ip_rule_cache_for_check
                                     .read()
-                                    .expect("ip rule cache lock poisoned");
+                                    .expect(ERR_IP_CACHE_POISONED);
                                 if cache.needs_rebuild() {
                                     // Drop read lock before acquiring write lock
                                     drop(cache);
                                     ip_rule_cache_for_check
                                         .write()
-                                        .expect("ip rule cache lock poisoned")
+                                        .expect(ERR_IP_CACHE_POISONED)
                                         .should_allow(peer_addr.ip())
                                 } else {
                                     cache.should_allow_read_only(peer_addr.ip())
@@ -539,12 +557,12 @@ async fn main() {
                             let should_allow = {
                                 let cache = ip_rule_cache_for_check
                                     .read()
-                                    .expect("ip rule cache lock poisoned");
+                                    .expect(ERR_IP_CACHE_POISONED);
                                 if cache.needs_rebuild() {
                                     drop(cache);
                                     ip_rule_cache_for_check
                                         .write()
-                                        .expect("ip rule cache lock poisoned")
+                                        .expect(ERR_IP_CACHE_POISONED)
                                         .should_allow(peer_addr.ip())
                                 } else {
                                     cache.should_allow_read_only(peer_addr.ip())
@@ -607,12 +625,12 @@ async fn main() {
                             let should_allow = {
                                 let cache = ip_rule_cache_for_check
                                     .read()
-                                    .expect("ip rule cache lock poisoned");
+                                    .expect(ERR_IP_CACHE_POISONED);
                                 if cache.needs_rebuild() {
                                     drop(cache);
                                     ip_rule_cache_for_check
                                         .write()
-                                        .expect("ip rule cache lock poisoned")
+                                        .expect(ERR_IP_CACHE_POISONED)
                                         .should_allow(peer_addr.ip())
                                 } else {
                                     cache.should_allow_read_only(peer_addr.ip())
@@ -686,7 +704,7 @@ async fn main() {
             }
             loop {
                 tokio::time::sleep(Duration::from_secs(24 * 60 * 60)).await;
-                logging::purge_old_logs(log_retention);
+                logging::purge_old_logs(&log_dir_for_timer, log_retention);
             }
         } => {}
     }
@@ -694,10 +712,10 @@ async fn main() {
 
 /// Load existing TLS configuration or generate new self-signed certificate
 fn load_or_generate_tls_config(
-    cert_dir: &std::path::Path,
+    data_dir: &std::path::Path,
 ) -> Result<(TlsAcceptor, String), String> {
-    let cert_path = cert_dir.join(CERT_FILENAME);
-    let key_path = cert_dir.join(KEY_FILENAME);
+    let cert_path = data_dir.join(CERT_FILENAME);
+    let key_path = data_dir.join(KEY_FILENAME);
 
     // Check if certificate and key already exist
     if cert_path.exists() && key_path.exists() {
@@ -801,21 +819,60 @@ fn set_secure_permissions(path: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Setup database connection and initialize user manager
-async fn setup_db(
-    database_path: Option<std::path::PathBuf>,
-) -> (db::Database, UserManager, std::path::PathBuf) {
-    // Determine database path (use provided path or platform default)
-    let db_path = database_path.unwrap_or_else(|| match db::default_database_path() {
-        Ok(path) => path,
-        Err(e) => {
-            error!("{}{}", ERR_GENERIC, e);
-            std::process::exit(1);
-        }
-    });
+/// Resolve the server data directory, preferring the CLI override when set
+/// and otherwise falling back to the platform default.
+///
+/// Panics only if the platform itself cannot supply a data directory
+/// (`dirs::data_dir()` returns `None` — e.g., Windows without `%APPDATA%`,
+/// Linux without `HOME`). This is platform-broken territory, not an
+/// operator-actionable error.
+fn resolve_data_dir(override_path: Option<std::path::PathBuf>) -> std::path::PathBuf {
+    if let Some(p) = override_path {
+        return p;
+    }
+    dirs::data_dir()
+        .map(|d| d.join(DATA_DIR_NAME))
+        .expect(ERR_NO_DATA_DIR)
+}
 
+/// Create the data directory if it doesn't already exist and lock it to
+/// owner-only permissions (`DATA_DIR_MODE`) on Unix. The directory hosts
+/// the database, TLS private key, and (by default) log files, so a
+/// permissive parent directory undercuts the per-file protections inside.
+///
+/// On Unix, the mode is set atomically at creation via `DirBuilder::mode`
+/// — there is no window where a fresh data directory is world-readable.
+/// `set_permissions` is then applied to handle the case where the
+/// directory pre-existed with the wrong mode.
+fn ensure_data_dir(data_dir: &Path) -> Result<(), String> {
+    let create_result = {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            let mut builder = fs::DirBuilder::new();
+            builder.recursive(true);
+            builder.mode(DATA_DIR_MODE);
+            builder.create(data_dir)
+        }
+        #[cfg(not(unix))]
+        {
+            fs::create_dir_all(data_dir)
+        }
+    };
+    create_result.map_err(|e| format!("{}{}", ERR_CREATE_DATA_DIR, e))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(data_dir, fs::Permissions::from_mode(DATA_DIR_MODE))
+            .map_err(|e| format!("{}{}", ERR_SET_DATA_DIR_PERMS, e))?;
+    }
+    Ok(())
+}
+
+/// Setup database connection and initialize user manager
+async fn setup_db(db_path: &Path) -> (db::Database, UserManager) {
     // Initialize database connection pool and run migrations
-    let pool = match db::init_db(&db_path).await {
+    let pool = match db::init_db(db_path).await {
         Ok(pool) => pool,
         Err(e) => {
             error!("{}{}", ERR_DATABASE_INIT, e);
@@ -826,7 +883,7 @@ async fn setup_db(
 
     // Set secure permissions on database file (0o600) - Unix only
     #[cfg(unix)]
-    if let Err(e) = set_secure_permissions(&db_path) {
+    if let Err(e) = set_secure_permissions(db_path) {
         error!("{}{}", ERR_SET_PERMISSIONS, e);
         std::process::exit(1);
     }
@@ -836,7 +893,7 @@ async fn setup_db(
     let database = db::Database::new(pool);
     let user_manager = UserManager::new();
 
-    (database, user_manager, db_path)
+    (database, user_manager)
 }
 
 /// Setup UPnP port forwarding if enabled
@@ -868,7 +925,7 @@ async fn setup_upnp(
             Some((gateway_arc, renewal_task))
         }
         Err(e) => {
-            warn!("{}{}", MSG_UPNP_WARNING, e);
+            warn!(err = %e, "{}", LOG_UPNP_SETUP_FAILED);
             warn!("{}", MSG_UPNP_CONTINUE);
             warn!("{}", MSG_UPNP_MANUAL);
             None
@@ -883,27 +940,23 @@ async fn setup_network(
     transfer_port: u16,
     websocket_port: Option<u16>,
     transfer_websocket_port: Option<u16>,
-    db_path: &std::path::Path,
+    data_dir: &Path,
 ) -> (
     TcpListener,
     TcpListener,
     Option<TcpListener>,
     Option<TcpListener>,
     (TlsAcceptor, String),
-    std::path::PathBuf, // cert_dir for voice DTLS
 ) {
-    // Get certificate directory (same parent as database)
-    let cert_dir = db_path.parent().expect(ERR_DB_PATH_NO_PARENT).to_path_buf();
-
-    // Load or generate TLS certificate
-    let tls_acceptor = match load_or_generate_tls_config(&cert_dir) {
+    // Load or generate TLS certificate (lives directly in the data directory).
+    let tls_acceptor = match load_or_generate_tls_config(data_dir) {
         Ok(acceptor) => acceptor,
         Err(e) => {
             error!("{}{}", ERR_TLS_INIT, e);
             std::process::exit(1);
         }
     };
-    info!("{}{}", MSG_CERTIFICATES, cert_dir.display());
+    info!("{}{}", MSG_CERTIFICATES, data_dir.display());
 
     // Create main BBS listener
     let addr = SocketAddr::new(bind, port);
@@ -964,7 +1017,6 @@ async fn setup_network(
         ws_listener,
         ws_transfer_listener,
         tls_acceptor,
-        cert_dir,
     )
 }
 
@@ -989,19 +1041,13 @@ fn display_certificate_fingerprint(cert_path: &std::path::Path) -> Result<String
 ///
 /// Returns the canonicalized path to the file area root, ready for use
 /// with `resolve_path()` and other security-sensitive operations.
-fn setup_file_area(file_root: Option<std::path::PathBuf>) -> std::path::PathBuf {
-    // Determine file root path (use provided path or platform default)
-    let root = file_root.unwrap_or_else(|| match files::default_file_root() {
-        Ok(path) => path,
-        Err(e) => {
-            error!("{}{}", ERR_GENERIC, e);
-            std::process::exit(1);
-        }
-    });
+fn setup_file_area(file_root: Option<std::path::PathBuf>, data_dir: &Path) -> std::path::PathBuf {
+    // Determine file root path (use provided path or default under data dir)
+    let root = file_root.unwrap_or_else(|| files::default_file_root(data_dir));
 
     // Initialize file area directories (creates them if needed)
     if let Err(e) = files::init_file_area(&root) {
-        error!("{}{}", ERR_GENERIC, e);
+        error!("{}{}", ERR_INIT_FILE_AREA, e);
         std::process::exit(1);
     }
 
@@ -1010,7 +1056,7 @@ fn setup_file_area(file_root: Option<std::path::PathBuf>) -> std::path::PathBuf 
     let canonical_root = match root.canonicalize() {
         Ok(path) => path,
         Err(e) => {
-            error!("{}{}{}", ERR_GENERIC, ERR_FILE_ROOT_CANONICALIZE, e);
+            error!("{}{}", ERR_FILE_ROOT_CANONICALIZE, e);
             std::process::exit(1);
         }
     };
@@ -1060,5 +1106,62 @@ async fn setup_shutdown_signal() {
     #[cfg(not(unix))]
     {
         tokio::signal::ctrl_c().await.expect(ERR_SIGNAL_CTRLC);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_resolve_data_dir_override_returned_verbatim() {
+        let override_path = std::path::PathBuf::from("/var/lib/nexusd-custom");
+        assert_eq!(resolve_data_dir(Some(override_path.clone())), override_path);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_ensure_data_dir_creates_fresh_with_owner_only_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("create tempdir");
+        let data_dir = tmp.path().join("data");
+
+        ensure_data_dir(&data_dir).expect("ensure_data_dir");
+
+        let mode = std::fs::metadata(&data_dir)
+            .expect("read metadata")
+            .permissions()
+            .mode();
+        assert_eq!(
+            mode & 0o777,
+            DATA_DIR_MODE,
+            "fresh data dir should be created with 0o700"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_ensure_data_dir_corrects_pre_existing_loose_mode() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = tempfile::tempdir().expect("create tempdir");
+        let data_dir = tmp.path().join("data");
+
+        // Pre-create with world-readable perms to simulate a wrongly-
+        // permissioned data directory left over from a previous run.
+        std::fs::create_dir(&data_dir).expect("pre-create dir");
+        std::fs::set_permissions(&data_dir, std::fs::Permissions::from_mode(0o755))
+            .expect("set initial perms");
+
+        ensure_data_dir(&data_dir).expect("ensure_data_dir");
+
+        let mode = std::fs::metadata(&data_dir)
+            .expect("read metadata")
+            .permissions()
+            .mode();
+        assert_eq!(
+            mode & 0o777,
+            DATA_DIR_MODE,
+            "pre-existing loose data dir should be corrected to 0o700"
+        );
     }
 }

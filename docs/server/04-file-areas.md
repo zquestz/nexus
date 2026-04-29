@@ -24,13 +24,18 @@ files/
 
 ## Default Location
 
+The file area lives at `<data-dir>/files/` by default. With the data
+directory at its platform default, this resolves to:
+
 | Platform | Default Path                                  |
 | -------- | --------------------------------------------- |
 | Linux    | `~/.local/share/nexusd/files/`                |
 | macOS    | `~/Library/Application Support/nexusd/files/` |
 | Windows  | `%APPDATA%\nexusd\files\`                     |
 
-Override with the `--file-root` option:
+Setting `--data-dir` moves the default to `<data-dir>/files/`. Override
+with `--file-root` to place the file area outside the data directory
+entirely (e.g., bulk storage on a different volume):
 
 ```bash
 nexusd --file-root /srv/nexus/files
@@ -219,6 +224,9 @@ find /path/to/files -size +100M -type f
 The server maintains a search index for fast file lookups.
 
 ### Index Location
+
+The index file is `<data-dir>/files.idx`. With the data directory at its
+platform default, this resolves to:
 
 | Platform | Default Path                                     |
 | -------- | ------------------------------------------------ |

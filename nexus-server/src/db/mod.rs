@@ -1,7 +1,5 @@
 //! Database module for persistent storage
 
-use tracing::error;
-
 pub mod bans;
 pub mod channels;
 pub mod config;
@@ -59,32 +57,18 @@ impl Database {
     }
 }
 
-/// Get the default database path for the platform
-///
-/// Returns the platform-specific path where the database file should be stored:
-/// - **Linux**: `~/.local/share/nexusd/nexus.db`
-/// - **macOS**: `~/Library/Application Support/nexusd/nexus.db`
-/// - **Windows**: `%APPDATA%\nexusd\nexus.db`
-///
-/// # Errors
-///
-/// Returns an error if the platform's data directory cannot be determined.
-/// This is rare but can happen on unsupported or misconfigured systems.
-pub fn default_database_path() -> Result<PathBuf, String> {
-    let data_dir = dirs::data_dir().ok_or_else(|| ERR_NO_DATA_DIR.to_string())?;
-    Ok(data_dir.join(DATA_DIR_NAME).join(DATABASE_FILENAME))
+/// Get the database file path under the given server data directory
+/// (`<data_dir>/nexus.db`).
+pub fn database_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(DATABASE_FILENAME)
 }
 
-/// Initialize the database connection pool and run migrations
+/// Initialize the database connection pool and run migrations.
+///
+/// The parent directory of `database_path` must already exist; the caller
+/// is responsible for ensuring the data directory is created (typically
+/// via `ensure_data_dir` in `main.rs`).
 pub async fn init_db(database_path: &Path) -> Result<SqlitePool, sqlx::Error> {
-    // Create parent directories if they don't exist
-    if let Some(parent) = database_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            error!(err = %e, "{}", LOG_DB_DIR_CREATE_FAILED);
-            sqlx::Error::Io(e)
-        })?;
-    }
-
     let database_url = format!("sqlite://{}?mode=rwc", database_path.display());
 
     // Create connection pool
@@ -97,4 +81,15 @@ pub async fn init_db(database_path: &Path) -> Result<SqlitePool, sqlx::Error> {
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     Ok(pool)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_database_path_under_data_dir() {
+        let data = Path::new("/var/lib/nexusd");
+        assert_eq!(database_path(data), Path::new("/var/lib/nexusd/nexus.db"));
+    }
 }

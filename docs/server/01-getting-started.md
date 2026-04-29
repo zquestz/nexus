@@ -152,7 +152,8 @@ All TCP ports use TLS encryption. UDP voice uses DTLS encryption with the same c
 
 ## Data Locations
 
-The server stores data in platform-specific directories:
+The server stores data in a single data directory, configurable with
+`--data-dir`. With no override, it defaults to a platform-specific path:
 
 | Platform | Default Location                        |
 | -------- | --------------------------------------- |
@@ -165,7 +166,8 @@ Contents:
 - `nexus.db` — SQLite database (users, settings, news)
 - `server.crt` — TLS certificate
 - `server.key` — TLS private key
-- `files/` — File area root
+- `files.idx` — File search index
+- `files/` — File area root (default; can be moved with `--file-root`)
 - `logs/` — Server log files (JSONL, daily rotation)
 
 ## Quick Configuration
@@ -188,8 +190,8 @@ nexusd --upnp
 # Enable WebSocket support (ports 7502/7503)
 nexusd --websocket
 
-# Custom database location
-nexusd --database /path/to/nexus.db
+# Custom data directory
+nexusd --data-dir /var/lib/nexusd
 
 # Custom file area
 nexusd --file-root /path/to/files

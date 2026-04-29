@@ -12,10 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::constants::{
-    DATA_DIR_NAME, ERR_CREATE_FILE_DIR, ERR_NO_FILE_ROOT, FILES_DIR_NAME, FILES_SHARED_DIR,
-    FILES_USERS_DIR,
-};
+use crate::constants::{FILES_DIR_NAME, FILES_SHARED_DIR, FILES_USERS_DIR};
 
 pub mod area;
 pub mod folder_type;
@@ -36,20 +33,11 @@ pub use path::{
     validate_and_build_candidate_path,
 };
 
-/// Get the default file root path for the platform
-///
-/// Returns the platform-specific path where the file area should be stored:
-/// - **Linux**: `~/.local/share/nexusd/files/`
-/// - **macOS**: `~/Library/Application Support/nexusd/files/`
-/// - **Windows**: `%APPDATA%\nexusd\files\`
-///
-/// # Errors
-///
-/// Returns an error if the platform's data directory cannot be determined.
-#[must_use = "file root result should be used"]
-pub fn default_file_root() -> Result<PathBuf, String> {
-    let data_dir = dirs::data_dir().ok_or_else(|| ERR_NO_FILE_ROOT.to_string())?;
-    Ok(data_dir.join(DATA_DIR_NAME).join(FILES_DIR_NAME))
+/// Get the default file root path under the given server data directory
+/// (`<data_dir>/files/`).
+#[must_use]
+pub fn default_file_root(data_dir: &Path) -> PathBuf {
+    data_dir.join(FILES_DIR_NAME)
 }
 
 /// Initialize file area directories
@@ -66,18 +54,15 @@ pub fn default_file_root() -> Result<PathBuf, String> {
 /// Returns an error if directory creation fails.
 pub fn init_file_area(root: &Path) -> Result<(), String> {
     // Create root directory
-    std::fs::create_dir_all(root)
-        .map_err(|e| format!("{}{}: {}", ERR_CREATE_FILE_DIR, root.display(), e))?;
+    std::fs::create_dir_all(root).map_err(|e| format!("{}: {}", root.display(), e))?;
 
     // Create shared directory
     let shared_dir = root.join(FILES_SHARED_DIR);
-    std::fs::create_dir_all(&shared_dir)
-        .map_err(|e| format!("{}{}: {}", ERR_CREATE_FILE_DIR, shared_dir.display(), e))?;
+    std::fs::create_dir_all(&shared_dir).map_err(|e| format!("{}: {}", shared_dir.display(), e))?;
 
     // Create users directory
     let users_dir = root.join(FILES_USERS_DIR);
-    std::fs::create_dir_all(&users_dir)
-        .map_err(|e| format!("{}{}: {}", ERR_CREATE_FILE_DIR, users_dir.display(), e))?;
+    std::fs::create_dir_all(&users_dir).map_err(|e| format!("{}: {}", users_dir.display(), e))?;
 
     Ok(())
 }
@@ -87,6 +72,12 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn test_default_file_root_under_data_dir() {
+        let data = Path::new("/var/lib/nexusd");
+        assert_eq!(default_file_root(data), Path::new("/var/lib/nexusd/files"));
+    }
 
     #[test]
     fn test_init_file_area_creates_directories() {

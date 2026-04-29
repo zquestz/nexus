@@ -247,7 +247,7 @@ pub fn validate_and_build_candidate_path(
 /// let resolved = resolve_path(&root, &candidate)?;
 /// // resolved is the canonical path (may be outside area_root if symlinks are involved)
 /// ```
-#[must_use = "path resolution result should be used"]
+#[must_use = "use the returned path; reusing the input bypasses the area-root containment check"]
 pub fn resolve_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, PathError> {
     // Verify area_root is absolute (we can't verify it's canonical, but absolute is required)
     if !area_root.is_absolute() {
@@ -335,7 +335,7 @@ fn validate_path_components(path: &Path) -> Result<(), PathError> {
 /// # Errors
 ///
 /// Returns `InvalidPath` if `candidate` equals `area_root` (can't create nameless files).
-#[must_use = "path resolution result should be used"]
+#[must_use = "use the returned path; reusing the input bypasses the area-root containment check"]
 pub fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, PathError> {
     // Verify area_root is absolute
     if !area_root.is_absolute() {

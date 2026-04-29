@@ -8,25 +8,35 @@ use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::constants::ERR_DATA_DIR_NOT_ABSOLUTE;
 use crate::logging::{LogLevel, parse_log_retention};
 
-/// Get default database path help text for current platform
-fn default_database_help() -> String {
-    #[cfg(target_os = "linux")]
-    return "Database file path (default: ~/.local/share/nexusd/nexus.db)".to_string();
-
-    #[cfg(target_os = "macos")]
-    return "Database file path (default: ~/Library/Application Support/nexusd/nexus.db)"
-        .to_string();
-
-    #[cfg(target_os = "windows")]
-    return "Database file path (default: %APPDATA%\\nexusd\\nexus.db)".to_string();
-
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    return "Database file path (overrides platform default)".to_string();
+/// Reject relative `--data-dir` paths at parse time. Daemons should run
+/// with absolute paths so behavior doesn't depend on launch CWD.
+fn absolute_data_dir(s: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(s);
+    if !path.is_absolute() {
+        return Err(format!("{}{}", ERR_DATA_DIR_NOT_ABSOLUTE, s));
+    }
+    Ok(path)
 }
 
-/// Get default file root help text for current platform
+/// Get default data directory help text for the current platform.
+fn default_data_dir_help() -> String {
+    #[cfg(target_os = "linux")]
+    return "Data directory (default: ~/.local/share/nexusd/)".to_string();
+
+    #[cfg(target_os = "macos")]
+    return "Data directory (default: ~/Library/Application Support/nexusd/)".to_string();
+
+    #[cfg(target_os = "windows")]
+    return "Data directory (default: %APPDATA%\\nexusd\\)".to_string();
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    return "Data directory (overrides platform default)".to_string();
+}
+
+/// Get default file root help text for the current platform.
 fn default_file_root_help() -> String {
     #[cfg(target_os = "linux")]
     return "File area root directory (default: ~/.local/share/nexusd/files/)".to_string();
@@ -54,9 +64,9 @@ pub struct Args {
     #[arg(short, long, default_value_t = DEFAULT_PORT)]
     pub port: u16,
 
-    /// Database file path (overrides platform default)
-    #[arg(short, long, help = default_database_help())]
-    pub database: Option<PathBuf>,
+    /// Data directory (overrides platform default)
+    #[arg(short, long, help = default_data_dir_help(), value_parser = absolute_data_dir)]
+    pub data_dir: Option<PathBuf>,
 
     /// File area root directory (overrides platform default)
     #[arg(short = 'f', long = "file-root", help = default_file_root_help())]

@@ -175,6 +175,7 @@ The named volume `nexus-data` stores:
 
 - Database (`nexus.db`)
 - TLS certificates (`server.crt`, `server.key`)
+- File search index (`files.idx`)
 - File area (`files/`)
 - Log files (`logs/`)
 

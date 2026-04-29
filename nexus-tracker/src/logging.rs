@@ -13,7 +13,12 @@ use tracing_subscriber::{
     Layer, fmt as subscriber_fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
-use crate::constants::{LOG_FILE_PREFIX, LOGS_DIR_NAME};
+#[cfg(unix)]
+use crate::constants::DATA_DIR_MODE;
+use crate::constants::{
+    ERR_CREATE_LOG_DIR, ERR_LOG_LEVEL_ALREADY_SET, ERR_LOG_LEVEL_INVALID,
+    ERR_LOG_RETENTION_INVALID, ERR_LOG_RETENTION_TOO_SHORT, LOG_FILE_PREFIX, LOGS_DIR_NAME,
+};
 
 /// Tracker log level
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,9 +57,7 @@ impl std::str::FromStr for LogLevel {
             "warn" => Ok(LogLevel::Warn),
             "info" => Ok(LogLevel::Info),
             "debug" => Ok(LogLevel::Debug),
-            _ => Err(format!(
-                "Invalid log level '{s}'. Valid values: none, error, warn, info, debug"
-            )),
+            _ => Err(format!("{}{}", ERR_LOG_LEVEL_INVALID, s)),
         }
     }
 }
@@ -83,14 +86,12 @@ pub fn parse_log_retention(s: &str) -> Result<Duration, String> {
         return Ok(Duration::ZERO);
     }
 
-    let duration =
-        humantime::parse_duration(s).map_err(|e| format!("Invalid log retention '{s}': {e}"))?;
+    let duration = humantime::parse_duration(s)
+        .map_err(|e| format!("{}{} ({})", ERR_LOG_RETENTION_INVALID, s, e))?;
 
     let one_day = Duration::from_secs(24 * 60 * 60);
     if duration < one_day {
-        return Err(format!(
-            "Log retention must be 0 (disabled) or at least 1 day, got '{s}'"
-        ));
+        return Err(format!("{}{}", ERR_LOG_RETENTION_TOO_SHORT, s));
     }
 
     Ok(duration)
@@ -121,7 +122,7 @@ pub fn init(
 ) -> Result<(), String> {
     LOG_LEVEL
         .set(level.to_string())
-        .expect("log level already initialized");
+        .expect(ERR_LOG_LEVEL_ALREADY_SET);
 
     let Some(tracing_level) = level.to_tracing_level() else {
         return Ok(());
@@ -150,24 +151,43 @@ pub fn init(
 
     if retention > Duration::ZERO {
         let log_path = log_dir(data_dir);
-        if let Err(e) = std::fs::create_dir_all(&log_path) {
+        // Create both `<data_dir>` (if missing) and `<data_dir>/logs/`
+        // with owner-only mode atomically on Unix, so there is no window
+        // where the data directory is world-readable.
+        let create_result = {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                let mut builder = std::fs::DirBuilder::new();
+                builder.recursive(true);
+                builder.mode(DATA_DIR_MODE);
+                builder.create(&log_path)
+            }
+            #[cfg(not(unix))]
+            {
+                std::fs::create_dir_all(&log_path)
+            }
+        };
+        if let Err(e) = create_result {
             // Fall back to stderr-only so the error can be logged.
             tracing_subscriber::registry()
                 .with(build_stderr_layer(filter))
                 .init();
             return Err(format!(
-                "Failed to create log directory {}: {}",
+                "{}{}: {}",
+                ERR_CREATE_LOG_DIR,
                 log_path.display(),
                 e
             ));
         }
 
-        // Restrict log directory to owner only (0o700) — logs may contain
-        // IPs and passwords-in-error-paths.
+        // Force-set the mode on pre-existing directories so a wrongly-
+        // permissioned `logs/` from a previous run gets corrected.
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&log_path, std::fs::Permissions::from_mode(0o700));
+            let _ =
+                std::fs::set_permissions(&log_path, std::fs::Permissions::from_mode(DATA_DIR_MODE));
         }
 
         let file_appender = tracing_appender::rolling::daily(&log_path, LOG_FILE_PREFIX);

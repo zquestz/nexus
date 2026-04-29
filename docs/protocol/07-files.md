@@ -840,7 +840,7 @@ The server maintains a CSV index of all files for fast searching:
 
 | Aspect   | Value                                             |
 | -------- | ------------------------------------------------- |
-| Location | `~/.local/share/nexusd/files.idx`                 |
+| Location | `<data-dir>/files.idx`                            |
 | Format   | CSV: `path,name,size,modified,is_directory`       |
 | Rebuild  | On startup, on dirty flag, via `/reindex` command |
 

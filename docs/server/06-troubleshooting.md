@@ -30,10 +30,9 @@ This guide covers common issues when running the Nexus BBS server.
 
 **Solutions:**
 
-1. Check the parent directory exists
-2. Verify write permissions
-3. Ensure disk has free space
-4. Try a custom path: `nexusd --database /tmp/nexus.db`
+1. Verify write permissions on the data directory
+2. Ensure disk has free space
+3. Try a custom path: `nexusd --data-dir /tmp/nexusd-data`
 
 ### Certificate generation fails
 
@@ -287,7 +286,7 @@ Shows all log messages including:
 - Channel initialization and cleanup
 - IP ban/trust cache operations
 
-Log files are also written to `~/.local/share/nexusd/logs/` (unless `--log-retention 0`).
+Log files are also written to `<data-dir>/logs/` (unless `--log-retention 0`).
 
 ### Check server status
 
@@ -306,19 +305,34 @@ ps aux | grep nexusd
 
 ### Reset to factory defaults
 
+To start over with empty users, settings, news, and a freshly generated
+TLS certificate, **move the data directory aside** rather than deleting
+it. This way you can roll back if you change your mind.
+
 ```bash
-# Stop server
-rm -rf ~/.local/share/nexusd/
-# Restart — everything recreated fresh
+# Stop the server first.
+
+# Move the data directory aside. Use the path matching --data-dir if
+# you set one. The example below shows the Linux default; see
+# Configuration → Data Directory for macOS and Windows paths.
+mv ~/.local/share/nexusd ~/.local/share/nexusd.bak
+
+# Restart — a fresh data directory is created.
 ```
 
-**Warning:** This deletes all users, settings, news, and certificates.
+If `--file-root` was set to a path **outside** the data directory, the
+file area is untouched by this. If `--file-root` was using the default
+(`<data-dir>/files/`), the file area moved with the rest of the data
+directory and is preserved in the `.bak` directory.
+
+Once you're sure the new install is what you want, you can delete the
+backup at your leisure.
 
 ### Migrate to new server
 
 1. Stop old server
 2. Copy entire data directory to new server
-3. Start new server with same `--database` and `--file-root` paths
+3. Start new server with same `--data-dir` and `--file-root` paths
 
 ## Getting Help
 

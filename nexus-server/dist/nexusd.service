@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 User=nexus
 Group=nexus
-ExecStart=/usr/local/bin/nexusd --database /var/lib/nexusd/nexus.db --file-root /var/lib/nexusd/files
+ExecStart=/usr/local/bin/nexusd --data-dir /var/lib/nexusd
 Restart=on-failure
 RestartSec=5
 

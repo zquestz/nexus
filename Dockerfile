@@ -28,21 +28,25 @@
 FROM rust:1.95-bookworm AS builder
 WORKDIR /build
 
-# Copy workspace manifests first for dependency caching
+# Copy workspace manifests first for dependency caching.
+# Every workspace member's Cargo.toml must be present even when building
+# only nexus-server, because cargo loads the full workspace.
 COPY Cargo.toml Cargo.lock ./
 COPY nexus-common/Cargo.toml nexus-common/Cargo.toml
 COPY nexus-server/Cargo.toml nexus-server/Cargo.toml
 COPY nexus-client/Cargo.toml nexus-client/Cargo.toml
+COPY nexus-tracker/Cargo.toml nexus-tracker/Cargo.toml
 
 # Create dummy source files to build dependencies
 # nexus-server has both lib.rs and main.rs targets
-RUN mkdir -p nexus-common/src nexus-server/src nexus-client/src && \
+RUN mkdir -p nexus-common/src nexus-server/src nexus-client/src nexus-tracker/src && \
   echo "pub fn dummy() {}" > nexus-common/src/lib.rs && \
   echo "" > nexus-server/src/lib.rs && \
   echo "fn main() {}" > nexus-server/src/main.rs && \
   echo "fn main() {}" > nexus-client/src/main.rs && \
+  echo "fn main() {}" > nexus-tracker/src/main.rs && \
   cargo build --release --package nexus-server && \
-  rm -rf nexus-common/src nexus-server/src nexus-client/src
+  rm -rf nexus-common/src nexus-server/src nexus-client/src nexus-tracker/src
 
 # Copy actual source and rebuild
 COPY nexus-common/src nexus-common/src

@@ -69,8 +69,8 @@ pub struct FileIndex {
 impl FileIndex {
     /// Create a new file index
     ///
-    /// The index file will be stored in the same directory as the database,
-    /// not in the file area itself.
+    /// The index file is stored in the data directory (alongside the
+    /// database), not in the file area — so it isn't moved by `--file-root`.
     pub fn new(data_dir: &Path, file_root: &Path) -> Self {
         Self {
             index_path: data_dir.join(INDEX_FILE_NAME),
