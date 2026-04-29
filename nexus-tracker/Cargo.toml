@@ -23,7 +23,7 @@ argon2 = { version = "0.5", features = ["std"] }
 # in a way that confused the universal2 cross-compile). Revisit if 7.6+
 # fixes it.
 rpassword = "=7.4.0"
-tokio-rustls = "0.26"
+tokio-rustls = { version = "0.26", features = ["ring"] }
 tokio-tungstenite = "0.29"
 futures-util = "0.3"
 rustls-pemfile = "2.2"

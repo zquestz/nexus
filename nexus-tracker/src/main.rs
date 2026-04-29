@@ -1,16 +1,26 @@
 use clap::Parser;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use tracing::{error, info, warn};
 
 use args::PasswordKind;
 
 mod args;
+mod auth;
 mod constants;
 mod logging;
-mod password;
+mod tls;
 
-fn main() {
+#[tokio::main]
+async fn main() {
+    // Install rustls crypto provider before any TLS operation. Required
+    // because both tokio-rustls and our own TLS-using paths talk to
+    // rustls 0.23 which needs an explicit provider selection.
+    tokio_rustls::rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect(constants::ERR_RUSTLS_PROVIDER);
+
     let mut cli = args::Cli::parse();
 
     let data_dir = resolve_data_dir(cli.data_dir.take());
@@ -54,42 +64,99 @@ fn main() {
             }
         }
         None => {
-            info!(
-                bind = %cli.bind,
-                port = cli.port,
-                "nexus-trackerd starting (not yet implemented)"
-            );
+            if let Err(e) = run_daemon_startup(&data_dir, &cli) {
+                error!("{}", e);
+                std::process::exit(1);
+            }
         }
     }
 }
 
-/// Prompt for and store a new password under the data directory.
+/// Prompt for (or read piped) and store a new password under the data
+/// directory.
 ///
-/// Reads the password twice from the controlling terminal (entry +
-/// confirmation) via `rpassword`, hashes with Argon2id, and writes the
-/// resulting PHC string to `<data-dir>/<kind>.password` with mode `0o600`
-/// on Unix.
+/// When stdin is a TTY: prompts twice with `rpassword` (entry +
+/// confirmation, no echo). When stdin is piped: reads a single line of
+/// stdin verbatim (no confirmation — the operator is scripted). Hashes
+/// with Argon2id and writes the resulting PHC string to
+/// `<data-dir>/<kind>.hash` atomically with mode `0o600` on Unix.
 fn run_set_password(data_dir: &Path, kind: PasswordKind) -> Result<(), String> {
     info!(kind = %kind, "{}", constants::LOG_PASSWORD_SETTING);
-    let plain = rpassword::prompt_password(constants::PROMPT_NEW_PASSWORD)
-        .map_err(|e| format!("{}{}", constants::ERR_PROMPT_PASSWORD, e))?;
-    let confirm = rpassword::prompt_password(constants::PROMPT_CONFIRM_PASSWORD)
-        .map_err(|e| format!("{}{}", constants::ERR_PROMPT_PASSWORD, e))?;
-    if plain != confirm {
-        return Err(constants::ERR_PASSWORD_MISMATCH.to_string());
-    }
-    password::set_password(data_dir, kind, &plain)?;
+    let plain = read_new_password_input()?;
+    auth::set_password(data_dir, kind, &plain)?;
     info!(kind = %kind, "{}", constants::LOG_PASSWORD_SET);
     Ok(())
 }
 
-/// Remove the stored password file for `kind`, if any.
+/// Read a fresh password either from a TTY (with confirmation) or from
+/// piped stdin (single line). The TTY path is the operator-friendly
+/// interactive form; the pipe path lets ops scripts do
+/// `printf %s "$pw" | nexus-trackerd set-password registration`.
+fn read_new_password_input() -> Result<String, String> {
+    if std::io::stdin().is_terminal() {
+        let plain = rpassword::prompt_password(constants::PROMPT_NEW_PASSWORD)
+            .map_err(|e| format!("{}{}", constants::ERR_PROMPT_PASSWORD, e))?;
+        let confirm = rpassword::prompt_password(constants::PROMPT_CONFIRM_PASSWORD)
+            .map_err(|e| format!("{}{}", constants::ERR_PROMPT_PASSWORD, e))?;
+        if plain != confirm {
+            return Err(constants::ERR_PASSWORD_MISMATCH.to_string());
+        }
+        Ok(plain)
+    } else {
+        let mut line = String::new();
+        std::io::stdin()
+            .read_line(&mut line)
+            .map_err(|e| format!("{}{}", constants::ERR_READ_STDIN, e))?;
+        // Strip a single trailing CR / LF / CRLF added by `echo`/`printf`.
+        Ok(line.trim_end_matches(['\r', '\n']).to_string())
+    }
+}
+
+/// Remove the stored password hash file for `kind`, if any.
 fn run_clear_password(data_dir: &Path, kind: PasswordKind) -> Result<(), String> {
-    if password::clear_password(data_dir, kind)? {
+    if auth::clear_password(data_dir, kind)? {
         info!(kind = %kind, "{}", constants::LOG_PASSWORD_CLEARED);
     } else {
         info!(kind = %kind, "{}", constants::LOG_PASSWORD_NOT_PRESENT);
     }
+    Ok(())
+}
+
+/// Daemon-mode startup: ensure TLS material is on disk, log auth gating
+/// status, and (eventually) start listening. The listener itself is the
+/// next implementation step; for now this just confirms the daemon's
+/// preconditions are healthy.
+fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), String> {
+    // Ensure cert + key exist. `ensure_cert` logs the fingerprint and
+    // generation messages internally.
+    tls::ensure_cert(data_dir)?;
+    info!("{}{}", constants::MSG_CERTIFICATES, data_dir.display());
+
+    log_auth_status(data_dir, PasswordKind::Registration)?;
+    log_auth_status(data_dir, PasswordKind::Listing)?;
+
+    info!(
+        bind = %cli.bind,
+        port = cli.port,
+        "nexus-trackerd starting (not yet implemented)"
+    );
+    Ok(())
+}
+
+/// Log whether the given auth flow is open (no hash file) or gated
+/// (hash file present).
+fn log_auth_status(data_dir: &Path, kind: PasswordKind) -> Result<(), String> {
+    let present = auth::load_password_hash(data_dir, kind)?.is_some();
+    let label = match kind {
+        PasswordKind::Registration => constants::LABEL_REGISTRATION,
+        PasswordKind::Listing => constants::LABEL_LISTING,
+    };
+    let status = if present {
+        constants::STATUS_GATED
+    } else {
+        constants::STATUS_OPEN
+    };
+    info!("{}: {}", label, status);
     Ok(())
 }
 

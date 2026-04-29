@@ -1,14 +1,15 @@
-//! Tracker password storage
+//! Tracker authentication (password hash storage)
 //!
 //! On-disk hashes for the optional `registration` and `listing` passwords.
 //! Each password lives in its own file under the data directory:
 //!
-//! - `<data-dir>/registration.password`
-//! - `<data-dir>/listing.password`
+//! - `<data-dir>/registration.hash`
+//! - `<data-dir>/listing.hash`
 //!
 //! Each file holds a single PHC-encoded Argon2id hash. The file's *presence*
 //! is the gating signal — absent file means that password is not required.
-//! Files are written with mode `0o600` on Unix.
+//! Files are written atomically (temp file + rename) with mode `0o600` on
+//! Unix.
 
 use std::fs;
 use std::io::Write;
@@ -16,54 +17,61 @@ use std::path::{Path, PathBuf};
 
 use argon2::password_hash::{PasswordHash, SaltString, rand_core::OsRng};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
+use nexus_common::validators::MAX_PASSWORD_LENGTH;
 
 use crate::args::PasswordKind;
+#[cfg(unix)]
+use crate::constants::PASSWORD_FILE_MODE;
 use crate::constants::{
     ERR_DELETE_PASSWORD_FILE, ERR_HASH_PASSWORD, ERR_PARSE_PASSWORD_HASH, ERR_PASSWORD_EMPTY,
-    ERR_READ_PASSWORD_FILE, ERR_WRITE_PASSWORD_FILE, LISTING_PASSWORD_FILENAME,
-    REGISTRATION_PASSWORD_FILENAME,
+    ERR_PASSWORD_TOO_LONG, ERR_READ_PASSWORD_FILE, ERR_RENAME_FILE, ERR_WRITE_PASSWORD_FILE,
+    LISTING_HASH_FILENAME, REGISTRATION_HASH_FILENAME,
 };
-#[cfg(unix)]
-use crate::constants::{ERR_SET_PASSWORD_PERMS, PASSWORD_FILE_MODE};
 
-/// Path to the password file for the given kind under `data_dir`.
+/// Path to the password hash file for the given kind under `data_dir`.
 #[must_use]
-pub fn password_path(data_dir: &Path, kind: PasswordKind) -> PathBuf {
+pub fn hash_path(data_dir: &Path, kind: PasswordKind) -> PathBuf {
     let filename = match kind {
-        PasswordKind::Registration => REGISTRATION_PASSWORD_FILENAME,
-        PasswordKind::Listing => LISTING_PASSWORD_FILENAME,
+        PasswordKind::Registration => REGISTRATION_HASH_FILENAME,
+        PasswordKind::Listing => LISTING_HASH_FILENAME,
     };
     data_dir.join(filename)
 }
 
-/// Hash `plain` with Argon2id and write the PHC-encoded result to the
-/// password file. Truncates an existing file if present.
+/// Hash `plain` with Argon2id and atomically write the PHC-encoded result
+/// to the hash file (writes to `<file>.tmp` then renames).
 ///
 /// # Errors
 ///
 /// Returns an error string (already prefixed with the relevant operator-
-/// facing constant) if `plain` is empty, hashing fails, or the file
-/// cannot be written or its permissions cannot be set.
+/// facing constant) if `plain` is empty, exceeds `MAX_PASSWORD_LENGTH`,
+/// hashing fails, or the file cannot be written.
 pub fn set_password(data_dir: &Path, kind: PasswordKind, plain: &str) -> Result<(), String> {
     if plain.is_empty() {
         return Err(ERR_PASSWORD_EMPTY.to_string());
+    }
+    if plain.len() > MAX_PASSWORD_LENGTH {
+        return Err(format!(
+            "{}{} bytes",
+            ERR_PASSWORD_TOO_LONG, MAX_PASSWORD_LENGTH
+        ));
     }
     let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default()
         .hash_password(plain.as_bytes(), &salt)
         .map_err(|e| format!("{}{}", ERR_HASH_PASSWORD, e))?
         .to_string();
-    write_password_file(data_dir, kind, &hash)
+    write_hash_file(data_dir, kind, &hash)
 }
 
-/// Delete the password file for `kind`. Returns `Ok(true)` if a file was
+/// Delete the hash file for `kind`. Returns `Ok(true)` if a file was
 /// actually removed and `Ok(false)` if no file was present (already cleared).
 ///
 /// # Errors
 ///
 /// Returns an error string if the file exists but cannot be deleted.
 pub fn clear_password(data_dir: &Path, kind: PasswordKind) -> Result<bool, String> {
-    let path = password_path(data_dir, kind);
+    let path = hash_path(data_dir, kind);
     match fs::remove_file(&path) {
         Ok(()) => Ok(true),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
@@ -82,9 +90,8 @@ pub fn clear_password(data_dir: &Path, kind: PasswordKind) -> Result<bool, Strin
 /// # Errors
 ///
 /// Returns an error string if the file exists but cannot be read.
-#[allow(dead_code)] // used by TrackerRegister/TrackerList handlers (next step)
 pub fn load_password_hash(data_dir: &Path, kind: PasswordKind) -> Result<Option<String>, String> {
-    let path = password_path(data_dir, kind);
+    let path = hash_path(data_dir, kind);
     match fs::read_to_string(&path) {
         Ok(s) => Ok(Some(s.trim().to_string())),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -113,36 +120,55 @@ pub fn verify_password(plain: &str, phc_hash: &str) -> Result<bool, String> {
         .is_ok())
 }
 
-#[cfg(unix)]
-fn write_password_file(data_dir: &Path, kind: PasswordKind, hash: &str) -> Result<(), String> {
-    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+/// Append `.tmp` to a file path, preserving the rest. Used as the
+/// destination for the write step of the atomic write+rename pattern.
+fn temp_path_for(path: &Path) -> PathBuf {
+    let mut s = path.as_os_str().to_os_string();
+    s.push(".tmp");
+    PathBuf::from(s)
+}
 
-    let path = password_path(data_dir, kind);
-    // OpenOptions::mode applies on first creation; if the file already
-    // exists the mode is left untouched, so we reassert it below.
-    let mut file = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .mode(PASSWORD_FILE_MODE)
-        .open(&path)
-        .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, path.display(), e))?;
-    file.write_all(hash.as_bytes())
-        .and_then(|()| file.write_all(b"\n"))
-        .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, path.display(), e))?;
-    fs::set_permissions(&path, fs::Permissions::from_mode(PASSWORD_FILE_MODE))
-        .map_err(|e| format!("{}{}: {}", ERR_SET_PASSWORD_PERMS, path.display(), e))?;
+#[cfg(unix)]
+fn write_hash_file(data_dir: &Path, kind: PasswordKind, hash: &str) -> Result<(), String> {
+    use std::os::unix::fs::OpenOptionsExt;
+
+    let path = hash_path(data_dir, kind);
+    let tmp = temp_path_for(&path);
+
+    // Write to `<file>.tmp` with 0o600 atomically on create; rename swaps
+    // it into place. Crash between write and rename leaves a `.tmp` file
+    // but the previous hash file is untouched.
+    {
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(PASSWORD_FILE_MODE)
+            .open(&tmp)
+            .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, tmp.display(), e))?;
+        file.write_all(hash.as_bytes())
+            .and_then(|()| file.write_all(b"\n"))
+            .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, tmp.display(), e))?;
+    }
+
+    fs::rename(&tmp, &path).map_err(|e| format!("{}{}: {}", ERR_RENAME_FILE, path.display(), e))?;
     Ok(())
 }
 
 #[cfg(not(unix))]
-fn write_password_file(data_dir: &Path, kind: PasswordKind, hash: &str) -> Result<(), String> {
-    let path = password_path(data_dir, kind);
-    let mut file = fs::File::create(&path)
-        .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, path.display(), e))?;
-    file.write_all(hash.as_bytes())
-        .and_then(|()| file.write_all(b"\n"))
-        .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, path.display(), e))?;
+fn write_hash_file(data_dir: &Path, kind: PasswordKind, hash: &str) -> Result<(), String> {
+    let path = hash_path(data_dir, kind);
+    let tmp = temp_path_for(&path);
+
+    {
+        let mut file = fs::File::create(&tmp)
+            .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, tmp.display(), e))?;
+        file.write_all(hash.as_bytes())
+            .and_then(|()| file.write_all(b"\n"))
+            .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, tmp.display(), e))?;
+    }
+
+    fs::rename(&tmp, &path).map_err(|e| format!("{}{}: {}", ERR_RENAME_FILE, path.display(), e))?;
     Ok(())
 }
 
@@ -151,15 +177,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_password_path_uses_kind_specific_filename() {
+    fn test_hash_path_uses_kind_specific_filename() {
         let dir = Path::new("/data");
         assert_eq!(
-            password_path(dir, PasswordKind::Registration),
-            Path::new("/data/registration.password")
+            hash_path(dir, PasswordKind::Registration),
+            Path::new("/data/registration.hash")
         );
         assert_eq!(
-            password_path(dir, PasswordKind::Listing),
-            Path::new("/data/listing.password")
+            hash_path(dir, PasswordKind::Listing),
+            Path::new("/data/listing.hash")
         );
     }
 
@@ -206,7 +232,7 @@ mod tests {
 
         // Confirm the file was *truncated* and rewritten, not appended:
         // a single PHC string means a single `$argon2id$` prefix.
-        let raw = fs::read_to_string(password_path(tmp.path(), PasswordKind::Registration))
+        let raw = fs::read_to_string(hash_path(tmp.path(), PasswordKind::Registration))
             .expect("read raw");
         assert_eq!(
             raw.matches("$argon2id$").count(),
@@ -244,7 +270,7 @@ mod tests {
 
         // Simulate a hand-pasted or non-Unix-line-ending file by stripping
         // the trailing newline `set_password` writes.
-        let path = password_path(tmp.path(), PasswordKind::Registration);
+        let path = hash_path(tmp.path(), PasswordKind::Registration);
         let raw = fs::read_to_string(&path).expect("read");
         let trimmed = raw.trim_end_matches('\n');
         fs::write(&path, trimmed).expect("rewrite without newline");
@@ -296,6 +322,50 @@ mod tests {
     }
 
     #[test]
+    fn test_set_too_long_password_is_rejected() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let too_long = "a".repeat(MAX_PASSWORD_LENGTH + 1);
+        let err = set_password(tmp.path(), PasswordKind::Registration, &too_long)
+            .expect_err("over-length password must error");
+        assert!(
+            err.starts_with(ERR_PASSWORD_TOO_LONG),
+            "error should start with ERR_PASSWORD_TOO_LONG, got: {err}"
+        );
+        // And nothing was written.
+        assert!(
+            load_password_hash(tmp.path(), PasswordKind::Registration)
+                .expect("load")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_set_at_max_length_is_accepted() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let plain = "a".repeat(MAX_PASSWORD_LENGTH);
+        set_password(tmp.path(), PasswordKind::Registration, &plain).expect("set");
+        let stored = load_password_hash(tmp.path(), PasswordKind::Registration)
+            .expect("load")
+            .expect("present");
+        assert!(verify_password(&plain, &stored).expect("verify"));
+    }
+
+    #[test]
+    fn test_set_leaves_no_tmp_file_behind() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        set_password(tmp.path(), PasswordKind::Registration, "hunter2").expect("set");
+
+        let final_path = hash_path(tmp.path(), PasswordKind::Registration);
+        let tmp_path = temp_path_for(&final_path);
+        assert!(final_path.exists(), "final hash file should exist");
+        assert!(
+            !tmp_path.exists(),
+            "tmp file should have been renamed away, not left behind: {}",
+            tmp_path.display()
+        );
+    }
+
+    #[test]
     fn test_kinds_are_independent() {
         let tmp = tempfile::tempdir().expect("tempdir");
         set_password(tmp.path(), PasswordKind::Registration, "regpass").expect("set reg");
@@ -325,7 +395,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         set_password(tmp.path(), PasswordKind::Registration, "hunter2").expect("set");
 
-        let path = password_path(tmp.path(), PasswordKind::Registration);
+        let path = hash_path(tmp.path(), PasswordKind::Registration);
         let mode = fs::metadata(&path).expect("metadata").permissions().mode();
         assert_eq!(
             mode & 0o777,
@@ -342,8 +412,9 @@ mod tests {
         set_password(tmp.path(), PasswordKind::Registration, "first").expect("set first");
 
         // Loosen the existing file's perms to simulate tampering or a
-        // botched manual setup, then re-set and confirm we tighten them.
-        let path = password_path(tmp.path(), PasswordKind::Registration);
+        // botched manual setup, then re-set and confirm the atomic
+        // rename naturally restores 0o600 (rename swaps the inode).
+        let path = hash_path(tmp.path(), PasswordKind::Registration);
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("loosen");
 
         set_password(tmp.path(), PasswordKind::Registration, "second").expect("set second");
@@ -352,7 +423,7 @@ mod tests {
         assert_eq!(
             mode & 0o777,
             PASSWORD_FILE_MODE,
-            "overwrite should reassert 0o600"
+            "atomic rename should restore 0o600 from the freshly-created tmp file"
         );
     }
 

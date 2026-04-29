@@ -172,12 +172,12 @@ Platform-specific data-dir defaults (via `dirs::data_dir().join("nexus-trackerd"
 
 **Data layout (`<data-dir>/`):**
 
-| File                         | Mode | Purpose                                       |
-| ---------------------------- | ---- | --------------------------------------------- |
-| `tracker.crt`                | 0644 | TLS certificate (auto-generated on first run) |
-| `tracker.key`                | 0600 | TLS private key (auto-generated on first run) |
-| `registration.password.hash` | 0600 | Argon2id PHC string (absent = open)           |
-| `listing.password.hash`      | 0600 | Argon2id PHC string (absent = open)           |
+| File                | Mode | Purpose                                       |
+| ------------------- | ---- | --------------------------------------------- |
+| `tracker.crt`       | 0600 | TLS certificate (auto-generated on first run) |
+| `tracker.key`       | 0600 | TLS private key (auto-generated on first run) |
+| `registration.hash` | 0600 | Argon2id PHC string (absent = open)           |
+| `listing.hash`      | 0600 | Argon2id PHC string (absent = open)           |
 
 **Password management:**
 
