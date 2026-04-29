@@ -99,6 +99,12 @@ pub struct Cli {
     #[arg(long, default_value_t = 10_000, value_parser = clap::value_parser!(u32).range(0..=1_000_000))]
     pub max_entries: u32,
 
+    /// Maximum entries from a single source IP (0 = unlimited).
+    /// Default 1 keeps the listing one-per-operator; raise for shared
+    /// NAT'd networks where multiple operators register from the same IP.
+    #[arg(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(0..=1000))]
+    pub max_entries_per_ip: u32,
+
     /// Refresh interval to instruct servers (seconds)
     #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u32).range(120..=600))]
     pub refresh_interval: u32,

@@ -622,6 +622,36 @@ The protocol does not prescribe specific limits. Trackers are free to
 respond with typed-response rate-limit errors or to drop connections at
 the framing layer.
 
+### Per-Source-IP Entry Cap
+
+Rate limits cap *frequency* and the global capacity setting caps
+*total* entries, but neither prevents a single operator from quietly
+filling a sizable share of the listing one slow refresh at a time.
+Trackers SHOULD cap the number of *currently-registered* entries per
+source IP.
+
+The reference implementation defaults this cap to **1**: one IP, one
+listed server. The reasoning is that during a hard-crash → reconnect
+window the old entry briefly survives in the registry until stale
+eviction; with the cap at 1, the listing shows the still-correct
+`address` / `port` / `fingerprint` with a slightly outdated
+`user_count` for that window — a milder failure than the duplicate
+entries cap=2 would produce. Operators on shared NAT'd networks
+(office, household, school) where multiple distinct operators
+register from the same egress IP can raise the cap explicitly.
+
+When the cap is hit, the tracker responds with a typed
+`TrackerRegisterResponse { success: false, error_kind: "capacity" }`.
+The same `error_kind` is used for both the global and per-IP caps;
+the human-readable `error` message is what distinguishes them.
+
+A coordinated multi-IP attacker still wins against this single
+control — they can rent IPs cheaply enough to exhaust whatever
+registration password the tracker has set. The per-IP cap is a
+**price-raising measure**, not a hard barrier; gated trackers and
+operator-side moderation are the controls that handle deliberate
+abuse.
+
 ### Operator Visibility
 
 Tracker operators see every registration and every listing query,

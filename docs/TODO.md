@@ -189,10 +189,11 @@ Platform-specific data-dir defaults (via `dirs::data_dir().join("nexus-trackerd"
 
 **Validations (clap value parsers):**
 
-| Flag                 | Range           | Notes                                                                                                                                        |
-| -------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--max-entries`      | `0..=1_000_000` | 0 = unlimited; default 10,000 catches typos and prevents unintentional unbounded growth                                                      |
-| `--refresh-interval` | `120..=600`     | Min: matches the protocol's 120s server-side floor. Max: matches the spec's "exceeding ~600 seconds risks NAT-induced disconnects" guidance. |
+| Flag                    | Range           | Notes                                                                                                                                                                                                                          |
+| ----------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--max-entries`         | `0..=1_000_000` | 0 = unlimited; default 10,000 catches typos and prevents unintentional unbounded growth                                                                                                                                        |
+| `--max-entries-per-ip`  | `0..=1000`      | 0 = unlimited; default 1 (one operator per source IP). Reuses `error_kind: capacity` on rejection. Operators on shared NAT'd networks can raise. See `docs/protocol/18-trackers.md` § Per-Source-IP Entry Cap.                  |
+| `--refresh-interval`    | `120..=600`     | Min: matches the protocol's 120s server-side floor. Max: matches the spec's "exceeding ~600 seconds risks NAT-induced disconnects" guidance.                                                                                   |
 
 **Locales:**
 

@@ -20,6 +20,7 @@ err-tracker-locale-too-long = Locale code is too long (max { $max_length } bytes
 # Rate / capacity
 err-tracker-rate-limited = Rate limit exceeded; try again later
 err-tracker-capacity = Tracker is at capacity; try again later
+err-tracker-per-ip-capacity = Too many entries from your IP on this tracker
 
 # Protocol-level
 err-tracker-malformed-message = Malformed message

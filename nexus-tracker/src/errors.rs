@@ -116,6 +116,14 @@ pub fn err_tracker_capacity(locale: &str) -> String {
     t(locale, "err-tracker-capacity")
 }
 
+/// Source IP has reached `--max-entries-per-ip` and cannot register
+/// another entry until one of its existing entries unregisters or
+/// stale-evicts.
+#[allow(dead_code)] // used by TrackerRegister handler (later step)
+pub fn err_tracker_per_ip_capacity(locale: &str) -> String {
+    t(locale, "err-tracker-per-ip-capacity")
+}
+
 // =============================================================================
 // Protocol-level
 // =============================================================================
@@ -204,6 +212,7 @@ mod tests {
             err_tracker_locale_too_long("en", 16),
             err_tracker_rate_limited("en"),
             err_tracker_capacity("en"),
+            err_tracker_per_ip_capacity("en"),
             err_tracker_malformed_message("en"),
             err_tracker_handshake_required("en"),
             err_tracker_handshake_already_completed("en"),
