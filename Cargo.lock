@@ -4718,6 +4718,7 @@ dependencies = [
 name = "nexus-common"
 version = "0.8.1"
 dependencies = [
+ "futures-util",
  "hex",
  "idna",
  "rand 0.10.1",
@@ -4727,6 +4728,7 @@ dependencies = [
  "sha2 0.11.0",
  "tempfile",
  "tokio",
+ "tokio-tungstenite",
  "uuid",
  "zxcvbn",
 ]

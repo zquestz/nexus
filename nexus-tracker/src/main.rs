@@ -13,7 +13,7 @@ use nexus_tracker::{
     auth, connection, constants, logging,
     registry::Registry,
     state::TrackerState,
-    tls,
+    tls, websocket,
 };
 
 #[tokio::main]
@@ -162,29 +162,57 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     let local_addr = listener.local_addr().unwrap_or(bind_addr);
     info!("{}{}", constants::MSG_LISTENING, local_addr);
 
-    accept_loop(listener, tls_acceptor, fingerprint, state).await;
+    // Optional second listener for WebSocket clients. The same TLS
+    // acceptor + state are shared with the TCP listener; the WS
+    // entry point upgrades to WebSocket after TLS and then delegates
+    // to the same connection task.
+    let ws_listener = if cli.websocket {
+        let ws_bind_addr = SocketAddr::new(cli.bind, cli.websocket_port);
+        let listener = TcpListener::bind(ws_bind_addr)
+            .await
+            .map_err(|e| format!("{}{}: {}", constants::ERR_BIND_FAILED, ws_bind_addr, e))?;
+        let local = listener.local_addr().unwrap_or(ws_bind_addr);
+        info!("{}{}", constants::MSG_WS_LISTENING, local);
+        Some(listener)
+    } else {
+        None
+    };
+
+    accept_loop(listener, ws_listener, tls_acceptor, fingerprint, state).await;
     Ok(())
 }
 
 /// Accept loop, terminated by SIGINT / SIGTERM (or Ctrl+C on Windows).
+/// Runs the TCP accept loop and (when `--websocket`) the WS accept
+/// loop concurrently; either exiting on shutdown drains both.
 async fn accept_loop(
     listener: TcpListener,
+    ws_listener: Option<TcpListener>,
     tls_acceptor: TlsAcceptor,
     fingerprint: String,
     state: Arc<TrackerState>,
 ) {
+    let tcp = run_tcp_accepts(
+        &listener,
+        tls_acceptor.clone(),
+        fingerprint.clone(),
+        Arc::clone(&state),
+    );
+    let ws = run_optional_ws_accepts(ws_listener, tls_acceptor, fingerprint, state);
+
     tokio::select! {
-        () = run_accepts(&listener, tls_acceptor, fingerprint, state) => {}
+        () = tcp => {}
+        () = ws => {}
         () = setup_shutdown_signal() => {
             info!("{}", constants::MSG_SHUTDOWN_RECEIVED);
         }
     }
 }
 
-/// Run the inner accept loop. Each accepted connection is spawned as its
+/// Run the TCP accept loop. Each accepted connection is spawned as its
 /// own task; an `accept()` failure logs and brief-sleeps to avoid a
 /// busy loop on persistent errors (e.g., file-descriptor exhaustion).
-async fn run_accepts(
+async fn run_tcp_accepts(
     listener: &TcpListener,
     tls_acceptor: TlsAcceptor,
     fingerprint: String,
@@ -198,6 +226,47 @@ async fn run_accepts(
                 let state = Arc::clone(&state);
                 tokio::spawn(async move {
                     if let Err(e) = connection::handle_connection(
+                        stream,
+                        peer_addr,
+                        acceptor,
+                        fingerprint,
+                        state,
+                    )
+                    .await
+                    {
+                        log_connection_error(&e, peer_addr);
+                    }
+                });
+            }
+            Err(e) => {
+                warn!(err = %e, "{}", constants::LOG_ACCEPT_ERROR);
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+        }
+    }
+}
+
+/// Run the WebSocket accept loop when `--websocket` is enabled. When
+/// the listener is `None` (flag not set) this future never resolves —
+/// it sits in the `tokio::select!` and lets the TCP loop run.
+async fn run_optional_ws_accepts(
+    listener: Option<TcpListener>,
+    tls_acceptor: TlsAcceptor,
+    fingerprint: String,
+    state: Arc<TrackerState>,
+) {
+    let Some(listener) = listener else {
+        std::future::pending::<()>().await;
+        return;
+    };
+    loop {
+        match listener.accept().await {
+            Ok((stream, peer_addr)) => {
+                let acceptor = tls_acceptor.clone();
+                let fingerprint = fingerprint.clone();
+                let state = Arc::clone(&state);
+                tokio::spawn(async move {
+                    if let Err(e) = websocket::handle_tracker_websocket_connection(
                         stream,
                         peer_addr,
                         acceptor,

@@ -396,7 +396,10 @@ fn make_register(name: &str, user_count: u32) -> TrackerClientMessage {
 
 /// Send a tracker client message via the underlying frame writer. This
 /// mirrors `send_client_message` but for tracker-protocol payloads.
-async fn send_tracker_client(writer: &mut ClientWriter, msg: &TrackerClientMessage) {
+async fn send_tracker_client<W>(writer: &mut FrameWriter<W>, msg: &TrackerClientMessage)
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
     use nexus_common::framing::{MessageId, RawFrame};
     use nexus_common::io::tracker_client_message_type;
     let payload = serde_json::to_vec(msg).expect("serialize");
@@ -627,7 +630,10 @@ async fn test_unauthorized_register_when_password_required() {
 /// Read a `TrackerServerMessage` from the wire, parsing the frame
 /// payload directly. (`nexus-common`'s `read_server_message` decodes
 /// BBS `ServerMessage`; we need the tracker-protocol parallel here.)
-async fn read_tracker_server(reader: &mut ClientReader) -> TrackerServerMessage {
+async fn read_tracker_server<R>(reader: &mut FrameReader<R>) -> TrackerServerMessage
+where
+    R: tokio::io::AsyncRead + Unpin,
+{
     use nexus_common::framing::FrameError;
     let frame = match reader
         .read_frame_with_full_timeout(Duration::from_secs(5), Duration::from_secs(5))
@@ -755,4 +761,117 @@ async fn test_register_rejected_when_per_ip_cap_reached() {
     drop(a_writer);
     drop(b_reader);
     drop(b_writer);
+}
+
+// =============================================================================
+// WebSocket roundtrip
+// =============================================================================
+
+use nexus_common::websocket::WebSocketAdapter;
+
+/// Spawn a tracker that accepts WebSocket connections (TLS + WS upgrade
+/// + protocol). Returns the bound address and cert fingerprint.
+async fn spawn_ws_only_tracker(
+    data_dir: &std::path::Path,
+    state: Arc<TrackerState>,
+) -> (std::net::SocketAddr, String) {
+    let fingerprint = nexus_tracker::tls::ensure_cert(data_dir).expect("ensure_cert");
+    let acceptor = nexus_tracker::tls::build_acceptor(data_dir).expect("build_acceptor");
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let local_addr = listener.local_addr().expect("local_addr");
+
+    let fp_for_loop = fingerprint.clone();
+    tokio::spawn(async move {
+        loop {
+            let (stream, peer) = match listener.accept().await {
+                Ok(p) => p,
+                Err(_) => break,
+            };
+            let acceptor = acceptor.clone();
+            let fp = fp_for_loop.clone();
+            let state = Arc::clone(&state);
+            tokio::spawn(async move {
+                let _ = nexus_tracker::websocket::handle_tracker_websocket_connection(
+                    stream, peer, acceptor, fp, state,
+                )
+                .await;
+            });
+        }
+    });
+
+    (local_addr, fingerprint)
+}
+
+#[tokio::test]
+async fn test_websocket_handshake_register_list_roundtrip() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    let state = Arc::new(TrackerState::new(Registry::new(0, 0), None, None, 300));
+    let (server_addr, _expected_fingerprint) =
+        spawn_ws_only_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    // Client side: TCP → TLS → WebSocket upgrade. The same
+    // `WebSocketAdapter` from nexus-common works on both sides — it's
+    // a generic Stream+Sink adapter — so once we have the WS stream
+    // wrapped, the rest of the protocol code is identical to the TCP
+    // path's.
+    let connector = build_test_client();
+    let tcp = TcpStream::connect(server_addr).await.expect("connect");
+    let server_name = ServerName::try_from("localhost").expect("server name");
+    let tls = connector
+        .connect(server_name, tcp)
+        .await
+        .expect("tls connect");
+
+    let (ws_stream, _resp) = tokio_tungstenite::client_async("wss://localhost/", tls)
+        .await
+        .expect("ws upgrade");
+    let adapter = WebSocketAdapter::new(ws_stream);
+    let (read, write) = tokio::io::split(adapter);
+    let mut reader = FrameReader::new(read);
+    let mut writer = FrameWriter::new(write);
+
+    // Drive the protocol exactly like the TCP tests.
+    send_client_message(
+        &mut writer,
+        &ClientMessage::Handshake {
+            version: TRACKER_PROTOCOL_VERSION.to_string(),
+        },
+    )
+    .await
+    .expect("send Handshake");
+
+    let response = read_server_message(&mut reader)
+        .await
+        .expect("read handshake response")
+        .expect("frame");
+    match response.message {
+        ServerMessage::HandshakeResponse { success: true, .. } => {}
+        other => panic!("expected successful HandshakeResponse, got {other:?}"),
+    }
+
+    // Register over WS.
+    send_tracker_client(&mut writer, &make_register("WS BBS", 9)).await;
+    match read_tracker_server(&mut reader).await {
+        TrackerServerMessage::TrackerRegisterResponse {
+            success: true,
+            refresh_interval,
+            ..
+        } => {
+            assert_eq!(refresh_interval, Some(300));
+        }
+        other => panic!("expected successful register, got {other:?}"),
+    }
+
+    // Verify the entry is in the registry — proving the server-side
+    // adapter delivered our bytes intact through the WS layer.
+    {
+        let registry = state.registry.lock().expect("registry mutex");
+        let listing = registry.list();
+        assert_eq!(listing.len(), 1);
+        assert_eq!(listing[0].name, "WS BBS");
+        assert_eq!(listing[0].user_count, 9);
+    }
 }

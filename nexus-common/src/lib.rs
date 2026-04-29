@@ -15,6 +15,8 @@ pub mod tracker_protocol;
 pub mod validators;
 pub mod version;
 pub mod voice;
+#[cfg(feature = "websocket")]
+pub mod websocket;
 
 pub use error_kind::{
     ERROR_KIND_CAPACITY, ERROR_KIND_CONFLICT, ERROR_KIND_EXISTS, ERROR_KIND_HASH_MISMATCH,

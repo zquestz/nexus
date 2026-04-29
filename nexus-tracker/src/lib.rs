@@ -16,3 +16,4 @@ pub mod logging;
 pub mod registry;
 pub mod state;
 pub mod tls;
+pub mod websocket;

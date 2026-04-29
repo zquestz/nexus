@@ -18,6 +18,17 @@ sha2 = "0.11"
 hex = "0.4"
 zxcvbn = "3.1"
 
+# Optional, enabled by the `websocket` feature.
+futures-util = { version = "0.3", optional = true }
+tokio-tungstenite = { version = "0.29", optional = true }
+
+[features]
+# WebSocket byte-stream adapter (`nexus_common::websocket::WebSocketAdapter`).
+# Enabled by daemons that need to serve WS in addition to TCP. Pulls in
+# `tokio-tungstenite` and `futures-util`. Disabled by default so consumers
+# that don't need WS plumbing (e.g., nexus-client) don't pay for it.
+websocket = ["dep:futures-util", "dep:tokio-tungstenite"]
+
 [dev-dependencies]
 tempfile = "3.20"
 

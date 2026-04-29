@@ -7,7 +7,7 @@ authors = ["Josh Ellithorpe <quest@mac.com>"]
 description = "Discovery service for Nexus BBS servers"
 
 [dependencies]
-nexus-common = { path = "../nexus-common" }
+nexus-common = { path = "../nexus-common", features = ["websocket"] }
 clap = { version = "4.5", features = ["derive"] }
 tokio = { version = "1.49", features = ["net", "rt-multi-thread", "macros", "io-util", "sync", "signal"] }
 tracing = "0.1"

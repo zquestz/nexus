@@ -24,10 +24,9 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
-use tokio_rustls::server::TlsStream;
 use tracing::{info, warn};
 
 use nexus_common::framing::{FrameError, FrameReader, FrameWriter};
@@ -51,9 +50,6 @@ use crate::handlers::tracker_list::{ListParams, handle_tracker_list};
 use crate::handlers::tracker_register::{RegisterOutcome, RegisterParams, handle_tracker_register};
 use crate::registry::ConnectionId;
 use crate::state::TrackerState;
-
-type TrackerReader = FrameReader<ReadHalf<TlsStream<TcpStream>>>;
-type TrackerWriter = FrameWriter<WriteHalf<TlsStream<TcpStream>>>;
 
 /// Drive a single accepted connection through TLS, handshake, and the
 /// post-handshake protocol flow.
@@ -84,7 +80,23 @@ pub async fn handle_connection(
         .await
         .map_err(|e| io::Error::other(format!("{} {}", TLS_HANDSHAKE_FAILED_PREFIX, e)))?;
 
-    let (read_half, write_half) = tokio::io::split(tls_stream);
+    handle_connection_inner(tls_stream, peer_addr, fingerprint, state).await
+}
+
+/// Inner connection handler that works with any `AsyncRead + AsyncWrite`
+/// stream. Used directly by both the TCP path (after the TLS handshake)
+/// and the WebSocket path (after TLS *and* WS upgrade, with the stream
+/// wrapped in `WebSocketAdapter`).
+pub async fn handle_connection_inner<S>(
+    socket: S,
+    peer_addr: SocketAddr,
+    fingerprint: String,
+    state: Arc<TrackerState>,
+) -> io::Result<()>
+where
+    S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+{
+    let (read_half, write_half) = tokio::io::split(socket);
     let mut reader = FrameReader::new(read_half);
     let mut writer = FrameWriter::new(write_half);
 
@@ -146,12 +158,16 @@ where
 /// matching handler. The connection's role is locked here:
 /// `TrackerRegister` → server connection (entering the refresh loop);
 /// `TrackerList` → client connection (handler runs and we close).
-async fn dispatch_post_handshake(
-    reader: &mut TrackerReader,
-    writer: &mut TrackerWriter,
+async fn dispatch_post_handshake<R, W>(
+    reader: &mut FrameReader<R>,
+    writer: &mut FrameWriter<W>,
     state: &Arc<TrackerState>,
     peer_addr: SocketAddr,
-) -> io::Result<()> {
+) -> io::Result<()>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     let received = match read_tracker_client_message_with_full_timeout(
         reader,
         Some(ROLE_ESTABLISH_TIMEOUT),
@@ -224,13 +240,17 @@ async fn dispatch_post_handshake(
 /// Loop reading further `TrackerRegister` (refresh) messages on a
 /// server connection until the peer disconnects, refresh times out,
 /// or sends a non-Register message (role violation).
-async fn run_refresh_loop(
-    reader: &mut TrackerReader,
-    writer: &mut TrackerWriter,
+async fn run_refresh_loop<R, W>(
+    reader: &mut FrameReader<R>,
+    writer: &mut FrameWriter<W>,
     id: ConnectionId,
     state: &Arc<TrackerState>,
     peer_addr: SocketAddr,
-) -> io::Result<()> {
+) -> io::Result<()>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     let timeout = Duration::from_secs(u64::from(state.refresh_interval) * 2);
 
     loop {

@@ -256,6 +256,10 @@ pub const LOG_MISSING_TRANSLATION_KEY: &str = "Missing translation key";
 /// Tracker port listening display (caller appends bound `SocketAddr`).
 pub const MSG_LISTENING: &str = "Tracker port: ";
 
+/// WebSocket tracker port listening display (caller appends bound `SocketAddr`).
+/// Only emitted when `--websocket` is enabled.
+pub const MSG_WS_LISTENING: &str = "WebSocket tracker port: ";
+
 /// Operator-facing message printed on graceful shutdown.
 pub const MSG_SHUTDOWN_RECEIVED: &str = "\nShutdown signal received";
 
