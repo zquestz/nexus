@@ -11,18 +11,26 @@ pub mod hash;
 pub mod io;
 pub mod protocol;
 pub mod time;
+pub mod tracker_protocol;
 pub mod validators;
 pub mod version;
 pub mod voice;
 
 pub use error_kind::{
-    ERROR_KIND_CONFLICT, ERROR_KIND_EXISTS, ERROR_KIND_HASH_MISMATCH, ERROR_KIND_INVALID,
-    ERROR_KIND_INVALID_PATH, ERROR_KIND_IO_ERROR, ERROR_KIND_NOT_FOUND, ERROR_KIND_PERMISSION,
-    ERROR_KIND_PROTOCOL_ERROR, ErrorKind,
+    ERROR_KIND_CAPACITY, ERROR_KIND_CONFLICT, ERROR_KIND_EXISTS, ERROR_KIND_HASH_MISMATCH,
+    ERROR_KIND_INVALID, ERROR_KIND_INVALID_PATH, ERROR_KIND_IO_ERROR, ERROR_KIND_NOT_FOUND,
+    ERROR_KIND_PERMISSION, ERROR_KIND_PROTOCOL_ERROR, ERROR_KIND_RATE_LIMITED,
+    ERROR_KIND_UNAUTHORIZED, ErrorKind,
 };
 
-/// Version information for the Nexus protocol
+/// Version information for the Nexus BBS protocol
 pub const PROTOCOL_VERSION: &str = "0.8.1";
+
+/// Version information for the Nexus tracker protocol
+///
+/// Versioned independently of `PROTOCOL_VERSION` so the BBS protocol and
+/// tracker protocol can evolve at their own pace.
+pub const TRACKER_PROTOCOL_VERSION: &str = "0.1.0";
 
 /// Default port for Nexus BBS connections
 pub const DEFAULT_PORT: u16 = 7500;
@@ -35,6 +43,12 @@ pub const DEFAULT_WEBSOCKET_PORT: u16 = 7502;
 
 /// Default port for WebSocket file transfers
 pub const DEFAULT_TRANSFER_WEBSOCKET_PORT: u16 = 7503;
+
+/// Default port for tracker connections
+pub const DEFAULT_TRACKER_PORT: u16 = 7510;
+
+/// Default port for WebSocket tracker connections
+pub const DEFAULT_TRACKER_WEBSOCKET_PORT: u16 = 7511;
 
 /// Buffer size for SHA-256 hashing operations (1MB for fewer syscalls)
 pub const HASH_BUFFER_SIZE: usize = 1024 * 1024;
@@ -256,6 +270,16 @@ mod tests {
     }
 
     #[test]
+    fn test_tracker_protocol_version() {
+        // Verify tracker protocol version is valid semver
+        let version: semver::Version = TRACKER_PROTOCOL_VERSION
+            .parse()
+            .expect("TRACKER_PROTOCOL_VERSION must be valid semver");
+        // Verify round-trip
+        assert_eq!(version.to_string(), TRACKER_PROTOCOL_VERSION);
+    }
+
+    #[test]
     fn test_default_port() {
         // Verify default port is the expected value
         assert_eq!(DEFAULT_PORT, 7500);
@@ -277,6 +301,18 @@ mod tests {
     fn test_default_transfer_websocket_port() {
         // Verify default WebSocket transfer port is the expected value
         assert_eq!(DEFAULT_TRANSFER_WEBSOCKET_PORT, 7503);
+    }
+
+    #[test]
+    fn test_default_tracker_port() {
+        // Verify default tracker port is the expected value
+        assert_eq!(DEFAULT_TRACKER_PORT, 7510);
+    }
+
+    #[test]
+    fn test_default_tracker_websocket_port() {
+        // Verify default WebSocket tracker port is the expected value
+        assert_eq!(DEFAULT_TRACKER_WEBSOCKET_PORT, 7511);
     }
 
     #[test]

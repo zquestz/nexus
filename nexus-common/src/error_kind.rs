@@ -37,6 +37,15 @@ pub const ERROR_KIND_HASH_MISMATCH: &str = "hash_mismatch";
 /// Error kind string: upload conflict (another upload to same file in progress)
 pub const ERROR_KIND_CONFLICT: &str = "conflict";
 
+/// Error kind string: authentication failed (wrong or missing credentials)
+pub const ERROR_KIND_UNAUTHORIZED: &str = "unauthorized";
+
+/// Error kind string: rate limit exceeded
+pub const ERROR_KIND_RATE_LIMITED: &str = "rate_limited";
+
+/// Error kind string: service is at capacity
+pub const ERROR_KIND_CAPACITY: &str = "capacity";
+
 // =============================================================================
 // Enum
 // =============================================================================
@@ -93,6 +102,24 @@ pub enum ErrorKind {
     ///
     /// Another upload to the same file is already in progress.
     Conflict,
+
+    /// Authentication failed
+    ///
+    /// Wrong or missing credentials. Used by the tracker for
+    /// password-gated registration or listing flows.
+    Unauthorized,
+
+    /// Request rejected due to rate limiting
+    ///
+    /// The peer has exceeded a per-IP rate limit. Used by the
+    /// tracker for failed-auth, connection, and listing rate caps.
+    RateLimited,
+
+    /// Service is at capacity
+    ///
+    /// The tracker has reached its configured entry limit and cannot
+    /// accept new registrations.
+    Capacity,
 }
 
 impl ErrorKind {
@@ -109,6 +136,9 @@ impl ErrorKind {
             Self::ProtocolError => ERROR_KIND_PROTOCOL_ERROR,
             Self::HashMismatch => ERROR_KIND_HASH_MISMATCH,
             Self::Conflict => ERROR_KIND_CONFLICT,
+            Self::Unauthorized => ERROR_KIND_UNAUTHORIZED,
+            Self::RateLimited => ERROR_KIND_RATE_LIMITED,
+            Self::Capacity => ERROR_KIND_CAPACITY,
         }
     }
 
@@ -125,6 +155,9 @@ impl ErrorKind {
             ERROR_KIND_PROTOCOL_ERROR => Some(Self::ProtocolError),
             ERROR_KIND_HASH_MISMATCH => Some(Self::HashMismatch),
             ERROR_KIND_CONFLICT => Some(Self::Conflict),
+            ERROR_KIND_UNAUTHORIZED => Some(Self::Unauthorized),
+            ERROR_KIND_RATE_LIMITED => Some(Self::RateLimited),
+            ERROR_KIND_CAPACITY => Some(Self::Capacity),
             _ => None,
         }
     }
@@ -157,6 +190,9 @@ mod tests {
         assert_eq!(ErrorKind::ProtocolError.as_str(), "protocol_error");
         assert_eq!(ErrorKind::HashMismatch.as_str(), "hash_mismatch");
         assert_eq!(ErrorKind::Conflict.as_str(), "conflict");
+        assert_eq!(ErrorKind::Unauthorized.as_str(), "unauthorized");
+        assert_eq!(ErrorKind::RateLimited.as_str(), "rate_limited");
+        assert_eq!(ErrorKind::Capacity.as_str(), "capacity");
     }
 
     #[test]
@@ -179,6 +215,15 @@ mod tests {
             Some(ErrorKind::HashMismatch)
         );
         assert_eq!(ErrorKind::parse("conflict"), Some(ErrorKind::Conflict));
+        assert_eq!(
+            ErrorKind::parse("unauthorized"),
+            Some(ErrorKind::Unauthorized)
+        );
+        assert_eq!(
+            ErrorKind::parse("rate_limited"),
+            Some(ErrorKind::RateLimited)
+        );
+        assert_eq!(ErrorKind::parse("capacity"), Some(ErrorKind::Capacity));
         assert_eq!(ErrorKind::parse("unknown"), None);
         assert_eq!(ErrorKind::parse(""), None);
     }
@@ -209,6 +254,9 @@ mod tests {
             ErrorKind::ProtocolError,
             ErrorKind::HashMismatch,
             ErrorKind::Conflict,
+            ErrorKind::Unauthorized,
+            ErrorKind::RateLimited,
+            ErrorKind::Capacity,
         ] {
             assert_eq!(ErrorKind::parse(kind.as_str()), Some(kind));
         }
@@ -226,5 +274,8 @@ mod tests {
         assert_eq!(ERROR_KIND_PROTOCOL_ERROR, ErrorKind::ProtocolError.as_str());
         assert_eq!(ERROR_KIND_HASH_MISMATCH, ErrorKind::HashMismatch.as_str());
         assert_eq!(ERROR_KIND_CONFLICT, ErrorKind::Conflict.as_str());
+        assert_eq!(ERROR_KIND_UNAUTHORIZED, ErrorKind::Unauthorized.as_str());
+        assert_eq!(ERROR_KIND_RATE_LIMITED, ErrorKind::RateLimited.as_str());
+        assert_eq!(ERROR_KIND_CAPACITY, ErrorKind::Capacity.as_str());
     }
 }
