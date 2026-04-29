@@ -111,13 +111,31 @@ pub fn load_password_hash(data_dir: &Path, kind: PasswordKind) -> Result<Option<
 /// # Errors
 ///
 /// Returns an error string if `phc_hash` cannot be parsed as a PHC string.
-#[allow(dead_code)] // used by TrackerRegister/TrackerList handlers (next step)
 pub fn verify_password(plain: &str, phc_hash: &str) -> Result<bool, String> {
     let parsed =
         PasswordHash::new(phc_hash).map_err(|e| format!("{}{}", ERR_PARSE_PASSWORD_HASH, e))?;
     Ok(Argon2::default()
         .verify_password(plain.as_bytes(), &parsed)
         .is_ok())
+}
+
+/// Open / gated password check used by the `TrackerRegister` and
+/// `TrackerList` handlers.
+///
+/// Spec semantics:
+/// - `stored_hash = None` → flow is open; any password (or none) passes.
+/// - `stored_hash = Some(_)`, `provided = None` → fail (gated, missing).
+/// - `stored_hash = Some(_)`, `provided = Some(p)` → pass iff `p` verifies
+///   against `stored_hash`. A parse error in the stored PHC string also
+///   counts as a failure — the operator should be notified, but never by
+///   accepting unauthenticated requests.
+#[must_use]
+pub fn check_password(provided: Option<&str>, stored_hash: Option<&str>) -> bool {
+    match (provided, stored_hash) {
+        (_, None) => true,
+        (Some(plain), Some(hash)) => verify_password(plain, hash).unwrap_or(false),
+        (None, Some(_)) => false,
+    }
 }
 
 /// Append `.tmp` to a file path, preserving the rest. Used as the

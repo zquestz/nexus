@@ -142,12 +142,6 @@ pub fn err_tracker_handshake_required(locale: &str) -> String {
     t(locale, "err-tracker-handshake-required")
 }
 
-/// Peer sent `Handshake` after the handshake had already completed.
-#[allow(dead_code)] // used once role-locking lands
-pub fn err_tracker_handshake_already_completed(locale: &str) -> String {
-    t(locale, "err-tracker-handshake-already-completed")
-}
-
 /// `TrackerList` on a server connection, or `TrackerRegister` on a
 /// client connection.
 #[allow(dead_code)] // used by connection task (later step)
@@ -215,7 +209,6 @@ mod tests {
             err_tracker_per_ip_capacity("en"),
             err_tracker_malformed_message("en"),
             err_tracker_handshake_required("en"),
-            err_tracker_handshake_already_completed("en"),
             err_tracker_role_violation("en"),
             err_tracker_handshake_version_invalid("en"),
             err_tracker_protocol_version_mismatch("en", "0.1.0", "1.0.0"),

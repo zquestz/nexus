@@ -7,3 +7,5 @@
 //! [`FrameWriter`]: nexus_common::framing::FrameWriter
 
 pub mod handshake;
+pub mod tracker_list;
+pub mod tracker_register;

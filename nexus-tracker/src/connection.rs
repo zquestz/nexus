@@ -1,57 +1,83 @@
 //! Per-connection task
 //!
-//! Handles the lifecycle of a single accepted TCP connection from TLS
-//! through protocol handshake. After the handshake, the connection is
-//! closed (subsequent steps will read the role-establishing message
-//! here and dispatch to TrackerRegister / TrackerList handlers).
+//! Drives a single accepted TCP connection through:
+//!
+//! 1. TLS handshake.
+//! 2. Protocol handshake (BBS-shaped `Handshake` / `HandshakeResponse`).
+//! 3. Post-handshake dispatch on the first `TrackerClientMessage`:
+//!    - `TrackerRegister` → server connection. Enters the refresh loop;
+//!      subsequent `TrackerRegister` messages on the same connection
+//!      are refreshes. A `TrackerList` arrival on a server connection
+//!      is a role violation: surface `Error`, close.
+//!    - `TrackerList` → client connection. The handler sends one
+//!      response and we close.
+//! 4. Cleanup. Server connections are unregistered from the [`Registry`]
+//!    via a drop guard so cancellation, panics, and timeouts all clean
+//!    up.
 //!
 //! Errors from this function bubble out to the spawning task in
 //! `main.rs`, which routes them through `log_connection_error` for
-//! consistent filter / severity handling across all listener sites
-//! (matching `nexus-server`'s pattern).
+//! consistent filter / severity handling across all listener sites.
 
 use std::io;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::Duration;
 
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
-use tracing::warn;
+use tokio_rustls::server::TlsStream;
+use tracing::{info, warn};
 
-use nexus_common::framing::{FrameReader, FrameWriter};
+use nexus_common::framing::{FrameError, FrameReader, FrameWriter};
 use nexus_common::io::{
-    client_message_type, read_client_message_with_full_timeout, send_server_message,
+    client_message_type, read_client_message_with_full_timeout,
+    read_tracker_client_message_with_full_timeout, send_server_message,
+    send_tracker_server_message,
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
+use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 
 use crate::constants::{
-    DEFAULT_LOCALE, HANDSHAKE_TIMEOUT, LOG_HANDSHAKE_REQUIRED, TLS_HANDSHAKE_FAILED_PREFIX,
+    DEFAULT_LOCALE, HANDSHAKE_TIMEOUT, LOG_HANDSHAKE_REQUIRED, LOG_REGISTER_DISCONNECTED,
+    LOG_ROLE_VIOLATION, ROLE_ESTABLISH_TIMEOUT, TLS_HANDSHAKE_FAILED_PREFIX,
 };
-use crate::errors::{err_tracker_frame_error, err_tracker_handshake_required};
+use crate::errors::{
+    err_tracker_frame_error, err_tracker_handshake_required, err_tracker_role_violation,
+};
 use crate::handlers;
+use crate::handlers::tracker_list::{ListParams, handle_tracker_list};
+use crate::handlers::tracker_register::{RegisterOutcome, RegisterParams, handle_tracker_register};
+use crate::registry::ConnectionId;
+use crate::state::TrackerState;
 
-/// Drive a single accepted connection through TLS + handshake.
+type TrackerReader = FrameReader<ReadHalf<TlsStream<TcpStream>>>;
+type TrackerWriter = FrameWriter<WriteHalf<TlsStream<TcpStream>>>;
+
+/// Drive a single accepted connection through TLS, handshake, and the
+/// post-handshake protocol flow.
 ///
-/// On peer-protocol violations (non-Handshake first message), a typed
-/// `Error` response is sent and `Ok(())` is returned — the violation
-/// is part of the normal protocol surface, not an I/O failure.
+/// On peer-protocol violations a typed `Error` (or typed-response
+/// failure for Register/List) is sent and `Ok(())` is returned — the
+/// violation is part of the normal protocol surface, not an I/O failure.
 ///
 /// On real I/O errors (TLS handshake failure, frame errors, write
-/// failures), a best-effort `Error` is sent before the underlying
-/// error bubbles via `?`. The TLS handshake failure is wrapped with
-/// `TLS_HANDSHAKE_FAILED_PREFIX` so the shared logger can downgrade
+/// failures), a best-effort error is sent before the underlying error
+/// bubbles via `?`. The TLS handshake failure is wrapped with
+/// [`TLS_HANDSHAKE_FAILED_PREFIX`] so the shared logger can downgrade
 /// it to debug.
 ///
 /// # Errors
 ///
 /// Returns `io::Error` for TLS handshake failures, frame errors, and
-/// write failures during the handshake response. The caller is expected
-/// to log via `log_connection_error`.
+/// write failures. The caller logs via `log_connection_error`.
 pub async fn handle_connection(
     stream: TcpStream,
     peer_addr: SocketAddr,
     tls_acceptor: TlsAcceptor,
     fingerprint: String,
+    state: Arc<TrackerState>,
 ) -> io::Result<()> {
     let tls_stream = tls_acceptor
         .accept(stream)
@@ -62,23 +88,36 @@ pub async fn handle_connection(
     let mut reader = FrameReader::new(read_half);
     let mut writer = FrameWriter::new(write_half);
 
-    // The handshake doesn't carry a locale field, so any error sent
-    // before/during the handshake uses the default locale.
-    let locale = DEFAULT_LOCALE;
+    if !run_handshake_phase(&mut reader, &mut writer, &fingerprint, peer_addr).await? {
+        // Handshake failed (version mismatch, invalid version string, or
+        // peer sent the wrong message first). Response already on the
+        // wire; just close.
+        return Ok(());
+    }
 
+    dispatch_post_handshake(&mut reader, &mut writer, &state, peer_addr).await
+}
+
+/// Read the first frame, expect a `Handshake`, and run the handshake
+/// handler. Returns `Ok(true)` only when the handshake completed
+/// successfully and the connection should continue into the
+/// post-handshake phase.
+async fn run_handshake_phase<R, W>(
+    reader: &mut FrameReader<R>,
+    writer: &mut FrameWriter<W>,
+    fingerprint: &str,
+    peer_addr: SocketAddr,
+) -> io::Result<bool>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     let received =
-        match read_client_message_with_full_timeout(&mut reader, Some(HANDSHAKE_TIMEOUT), None)
-            .await
-        {
+        match read_client_message_with_full_timeout(reader, Some(HANDSHAKE_TIMEOUT), None).await {
             Ok(Some(msg)) => msg,
-            Ok(None) => {
-                // Clean disconnect before sending anything.
-                return Ok(());
-            }
+            Ok(None) => return Ok(false), // clean pre-handshake disconnect
             Err(e) => {
-                // Best-effort `Error` to the peer, then bubble the underlying
-                // frame error so the shared logger can categorize it.
-                send_error(&mut writer, None, err_tracker_frame_error(locale)).await;
+                send_handshake_error(writer, None, err_tracker_frame_error(DEFAULT_LOCALE)).await;
                 return Err(e.into());
             }
         };
@@ -86,39 +125,289 @@ pub async fn handle_connection(
     let version = match received.message {
         ClientMessage::Handshake { version } => version,
         other => {
-            // Per-spec: any non-Handshake first message is a protocol
-            // violation. Match nexus-server's convention and surface the
-            // offending message type as the `command` field on the Error.
-            // Returning Ok because this is a typed-response outcome, not
-            // an I/O failure.
+            // Match nexus-server's convention: surface the offending
+            // message type as the `command` field.
             let cmd = client_message_type(&other);
-            warn!(ip = %peer_addr, command = %cmd, "{}", LOG_HANDSHAKE_REQUIRED);
-            send_error(
-                &mut writer,
+            warn!(ip = %peer_addr.ip(), command = %cmd, "{}", LOG_HANDSHAKE_REQUIRED);
+            send_handshake_error(
+                writer,
                 Some(cmd.to_string()),
-                err_tracker_handshake_required(locale),
+                err_tracker_handshake_required(DEFAULT_LOCALE),
             )
             .await;
-            return Ok(());
+            return Ok(false);
         }
     };
 
-    let _handshake_ok =
-        handlers::handshake::handle_handshake(&version, locale, &fingerprint, &mut writer).await?;
-
-    // Step #3 closes after the handshake; later steps will read the
-    // role-establishing message (`TrackerRegister` or `TrackerList`).
-    Ok(())
+    handlers::handshake::handle_handshake(&version, DEFAULT_LOCALE, fingerprint, writer).await
 }
 
-/// Best-effort `Error` send. Failures are silent — the connection is
-/// already closing or about to surface a real error to the caller.
-/// `command` carries the offending message type when known (matching
-/// `nexus-server`'s convention), and `None` otherwise.
-async fn send_error<W>(writer: &mut FrameWriter<W>, command: Option<String>, message: String)
-where
+/// Read the first post-handshake message and dispatch it to the
+/// matching handler. The connection's role is locked here:
+/// `TrackerRegister` → server connection (entering the refresh loop);
+/// `TrackerList` → client connection (handler runs and we close).
+async fn dispatch_post_handshake(
+    reader: &mut TrackerReader,
+    writer: &mut TrackerWriter,
+    state: &Arc<TrackerState>,
+    peer_addr: SocketAddr,
+) -> io::Result<()> {
+    let received = match read_tracker_client_message_with_full_timeout(
+        reader,
+        Some(ROLE_ESTABLISH_TIMEOUT),
+        None,
+    )
+    .await
+    {
+        Ok(Some(msg)) => msg,
+        Ok(None) => return Ok(()), // clean disconnect; nothing to clean up yet
+        Err(e) => {
+            send_tracker_error(writer, None, err_tracker_frame_error(DEFAULT_LOCALE)).await;
+            return Err(e.into());
+        }
+    };
+
+    match received.message {
+        TrackerClientMessage::TrackerList { password, locale } => {
+            handle_tracker_list(ListParams { password, locale }, state, writer, peer_addr).await?;
+            Ok(())
+        }
+        TrackerClientMessage::TrackerRegister {
+            password,
+            locale,
+            name,
+            description,
+            address,
+            port,
+            websocket_port,
+            version,
+            fingerprint,
+            user_count,
+            allows_guest,
+        } => {
+            let params = RegisterParams {
+                password,
+                locale,
+                name,
+                description,
+                address,
+                port,
+                websocket_port,
+                version,
+                fingerprint,
+                user_count,
+                allows_guest,
+            };
+            let outcome = handle_tracker_register(params, None, state, writer, peer_addr).await?;
+            match outcome {
+                RegisterOutcome::Registered(id) => {
+                    // The drop guard ensures the registry slot is
+                    // freed when the refresh loop exits — clean
+                    // disconnect, role violation, timeout, panic.
+                    let _guard = RegistrationGuard {
+                        state: Arc::clone(state),
+                        id,
+                    };
+                    run_refresh_loop(reader, writer, id, state, peer_addr).await
+                }
+                RegisterOutcome::Refreshed => {
+                    // First register can't be a refresh — handler returns
+                    // Refreshed only when called with `existing_id = Some`.
+                    unreachable!("first register cannot return Refreshed");
+                }
+                RegisterOutcome::Rejected => Ok(()),
+            }
+        }
+    }
+}
+
+/// Loop reading further `TrackerRegister` (refresh) messages on a
+/// server connection until the peer disconnects, refresh times out,
+/// or sends a non-Register message (role violation).
+async fn run_refresh_loop(
+    reader: &mut TrackerReader,
+    writer: &mut TrackerWriter,
+    id: ConnectionId,
+    state: &Arc<TrackerState>,
+    peer_addr: SocketAddr,
+) -> io::Result<()> {
+    let timeout = Duration::from_secs(u64::from(state.refresh_interval) * 2);
+
+    loop {
+        let received = match read_tracker_client_message_with_full_timeout(
+            reader,
+            Some(timeout),
+            None,
+        )
+        .await
+        {
+            Ok(Some(msg)) => msg,
+            // Clean TCP close (Ok(None)) and idle-timeout (stale entry)
+            // are both silent disconnects per spec; drop guard handles
+            // unregister and logs the reason.
+            Ok(None) => {
+                info!(
+                    ip = %peer_addr.ip(),
+                    id = id,
+                    reason = "clean_close",
+                    "{}",
+                    LOG_REGISTER_DISCONNECTED
+                );
+                return Ok(());
+            }
+            Err(FrameError::IdleTimeout) => {
+                info!(
+                    ip = %peer_addr.ip(),
+                    id = id,
+                    reason = "stale_timeout",
+                    "{}",
+                    LOG_REGISTER_DISCONNECTED
+                );
+                return Ok(());
+            }
+            // Other frame errors (malformed JSON, payload too large,
+            // bad framing): match `dispatch_post_handshake`'s
+            // best-effort `Error` send before closing.
+            Err(e) => {
+                warn!(
+                    ip = %peer_addr.ip(),
+                    id = id,
+                    err = ?e,
+                    reason = "frame_error",
+                    "{}",
+                    LOG_REGISTER_DISCONNECTED
+                );
+                send_tracker_error(writer, None, err_tracker_frame_error(DEFAULT_LOCALE)).await;
+                return Ok(());
+            }
+        };
+
+        match received.message {
+            TrackerClientMessage::TrackerRegister {
+                password,
+                locale,
+                name,
+                description,
+                address,
+                port,
+                websocket_port,
+                version,
+                fingerprint,
+                user_count,
+                allows_guest,
+            } => {
+                let params = RegisterParams {
+                    password,
+                    locale,
+                    name,
+                    description,
+                    address,
+                    port,
+                    websocket_port,
+                    version,
+                    fingerprint,
+                    user_count,
+                    allows_guest,
+                };
+                let outcome =
+                    handle_tracker_register(params, Some(id), state, writer, peer_addr).await?;
+                match outcome {
+                    RegisterOutcome::Refreshed => continue,
+                    RegisterOutcome::Rejected => {
+                        info!(
+                            ip = %peer_addr.ip(),
+                            id = id,
+                            reason = "rejected",
+                            "{}",
+                            LOG_REGISTER_DISCONNECTED
+                        );
+                        return Ok(());
+                    }
+                    RegisterOutcome::Registered(_) => {
+                        unreachable!("refresh path cannot return Registered");
+                    }
+                }
+            }
+            TrackerClientMessage::TrackerList { locale, .. } => {
+                // Role violation: surface and close.
+                warn!(ip = %peer_addr.ip(), command = "TrackerList", "{}", LOG_ROLE_VIOLATION);
+                let translation_locale = if locale.is_empty() {
+                    DEFAULT_LOCALE
+                } else {
+                    &locale
+                };
+                send_tracker_error(
+                    writer,
+                    Some("TrackerList".to_string()),
+                    err_tracker_role_violation(translation_locale),
+                )
+                .await;
+                info!(
+                    ip = %peer_addr.ip(),
+                    id = id,
+                    reason = "role_violation",
+                    "{}",
+                    LOG_REGISTER_DISCONNECTED
+                );
+                return Ok(());
+            }
+        }
+    }
+}
+
+/// Drop guard that unregisters a server connection's entry when the
+/// per-connection task exits.
+///
+/// **Why a Drop guard rather than explicit cleanup** (which is what
+/// `nexus-server` does for sessions): tracker connections have many
+/// exit paths — clean TCP close, idle timeout, role violation, frame
+/// error, register-rejection, panic — and the registry must release
+/// its slot in *every* case. A guard catches them all uniformly,
+/// including async cancellation. `unregister` is idempotent so a
+/// future explicit unregister wouldn't be wrong, but the guard is the
+/// load-bearing mechanism today.
+///
+/// `run_refresh_loop` logs the disconnect reason before returning, so
+/// the guard's `Drop` performs only the registry mutation (no log
+/// here, to avoid double-logging on normal exit paths). On a panic
+/// the registry is still cleaned up, just without an attribution log.
+struct RegistrationGuard {
+    state: Arc<TrackerState>,
+    id: ConnectionId,
+}
+
+impl Drop for RegistrationGuard {
+    fn drop(&mut self) {
+        self.state
+            .registry
+            .lock()
+            .expect("registry mutex poisoned")
+            .unregister(self.id);
+    }
+}
+
+/// Best-effort `ServerMessage::Error` send during the BBS-shaped
+/// handshake phase. Failures silent — connection is closing.
+async fn send_handshake_error<W>(
+    writer: &mut FrameWriter<W>,
+    command: Option<String>,
+    message: String,
+) where
     W: AsyncWriteExt + Unpin,
 {
     let response = ServerMessage::Error { message, command };
     let _ = send_server_message(writer, &response).await;
+}
+
+/// Best-effort `TrackerServerMessage::Error` send for post-handshake
+/// protocol violations (frame error, role violation). Failures silent.
+async fn send_tracker_error<W>(
+    writer: &mut FrameWriter<W>,
+    command: Option<String>,
+    message: String,
+) where
+    W: AsyncWriteExt + Unpin,
+{
+    let response = TrackerServerMessage::Error { message, command };
+    let _ = send_tracker_server_message(writer, &response).await;
 }

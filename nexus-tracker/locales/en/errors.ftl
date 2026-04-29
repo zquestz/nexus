@@ -25,7 +25,6 @@ err-tracker-per-ip-capacity = Too many entries from your IP on this tracker
 # Protocol-level
 err-tracker-malformed-message = Malformed message
 err-tracker-handshake-required = Handshake required before any other message
-err-tracker-handshake-already-completed = Handshake already completed
 err-tracker-role-violation = Message not allowed for this connection's role
 err-tracker-protocol-version-mismatch = Incompatible tracker protocol version (server: { $server }, client: { $client })
 err-tracker-handshake-version-invalid = Invalid handshake version (must be valid semver)

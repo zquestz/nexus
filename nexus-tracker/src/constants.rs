@@ -114,7 +114,6 @@ pub const ERR_PASSWORD_TOO_LONG: &str = "Password exceeds maximum length of ";
 pub const ERR_PASSWORD_MISMATCH: &str = "Passwords do not match";
 
 /// Stored password hash failed to parse as PHC (caller appends underlying error).
-#[allow(dead_code)] // used by TrackerRegister/TrackerList handlers (next step)
 pub const ERR_PARSE_PASSWORD_HASH: &str = "Failed to parse stored password hash: ";
 
 /// Log message: about to prompt for a new password (paired with `kind = %kind`).
@@ -267,6 +266,12 @@ pub const ERR_BIND_FAILED: &str = "Failed to bind to ";
 /// Spec §Timeouts: "TLS accepted, awaiting Handshake — 30 seconds."
 pub const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// Maximum time the tracker waits for the first role-establishing
+/// message (`TrackerRegister` or `TrackerList`) after a successful
+/// handshake. Spec §Timeouts: "Awaiting first role-establishing
+/// message after handshake — 30 seconds."
+pub const ROLE_ESTABLISH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// Log: TCP `accept()` returned an error (paired with `err = %e`).
 pub const LOG_ACCEPT_ERROR: &str = "Accept error";
 
@@ -279,10 +284,6 @@ pub const LOG_CONNECTION_ERROR_TLS: &str = "Connection error (TLS handshake)";
 /// Log: peer sent a non-Handshake message before completing the handshake.
 pub const LOG_HANDSHAKE_REQUIRED: &str = "Handshake: required";
 
-/// Log: peer sent a Handshake after the handshake had already completed.
-#[allow(dead_code)] // used once role-locking lands
-pub const LOG_HANDSHAKE_DUPLICATE: &str = "Handshake: duplicate attempt";
-
 /// Log: handshake major version mismatch (paired with version fields).
 pub const LOG_HANDSHAKE_MAJOR_MISMATCH: &str = "Handshake: major version mismatch";
 
@@ -291,6 +292,39 @@ pub const LOG_HANDSHAKE_MINOR_MISMATCH: &str = "Handshake: minor version mismatc
 
 /// Log: client minor version newer than server's (paired with version fields).
 pub const LOG_HANDSHAKE_CLIENT_TOO_NEW: &str = "Handshake: client too new";
+
+// Post-handshake dispatch / role-locking
+/// Log: a server connection successfully registered a fresh entry.
+/// Paired with `ip = %peer_addr.ip(), id = %connection_id, name = %name`.
+pub const LOG_REGISTER_NEW: &str = "TrackerRegister: new entry";
+
+/// Log: a server connection refreshed an existing entry.
+/// Paired with `id = %connection_id, user_count = %user_count`.
+pub const LOG_REGISTER_REFRESH: &str = "TrackerRegister: refresh";
+
+/// Log: TrackerRegister rejected for an operator-actionable reason
+/// (validation failure, capacity, unauthorized). Paired with
+/// `ip = %peer_addr.ip(), reason = %short_str`.
+pub const LOG_REGISTER_REJECTED: &str = "TrackerRegister: rejected";
+
+/// Log: TrackerList received and a snapshot returned.
+/// Paired with `ip = %peer_addr.ip(), count = %returned_count`.
+pub const LOG_LIST_RESPONSE: &str = "TrackerList: response sent";
+
+/// Log: TrackerList rejected for an operator-actionable reason.
+/// Paired with `ip = %peer_addr.ip(), reason = %short_str`.
+pub const LOG_LIST_REJECTED: &str = "TrackerList: rejected";
+
+/// Log: peer sent the wrong message type for its locked role
+/// (TrackerList on a server connection, or TrackerRegister on a
+/// client connection — but the latter is impossible since List
+/// connections close immediately). Paired with `ip = %peer_addr.ip()`.
+pub const LOG_ROLE_VIOLATION: &str = "Role violation";
+
+/// Log: a registered server connection closed; its entry has been
+/// removed from the registry. Paired with `ip = %peer_addr.ip(), id = %id`.
+pub const LOG_REGISTER_DISCONNECTED: &str =
+    "TrackerRegister: connection closed; entry unregistered";
 
 /// Substring of the rustls "close_notify" warning we treat as benign
 /// (clients disconnecting without proper TLS shutdown).

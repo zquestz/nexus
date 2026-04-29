@@ -3,13 +3,17 @@ use std::fs;
 use std::io::{self, IsTerminal};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
 
 use nexus_tracker::{
     args::{self, PasswordKind},
-    auth, connection, constants, logging, tls,
+    auth, connection, constants, logging,
+    registry::Registry,
+    state::TrackerState,
+    tls,
 };
 
 #[tokio::main]
@@ -123,8 +127,8 @@ fn run_clear_password(data_dir: &Path, kind: PasswordKind) -> Result<(), String>
 }
 
 /// Daemon-mode startup: ensure TLS material is on disk, build the TLS
-/// acceptor, log auth gating status, bind the listener, and run the
-/// accept loop until shutdown.
+/// acceptor, load auth state, bind the listener, and run the accept
+/// loop until shutdown.
 async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), String> {
     // Ensure cert + key exist. `ensure_cert` logs the fingerprint and
     // generation messages internally.
@@ -132,8 +136,24 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     let tls_acceptor = tls::build_acceptor(data_dir)?;
     info!("{}{}", constants::MSG_CERTIFICATES, data_dir.display());
 
-    log_auth_status(data_dir, PasswordKind::Registration)?;
-    log_auth_status(data_dir, PasswordKind::Listing)?;
+    // Load password hashes once at startup. SIGHUP reload is future work
+    // per TODO.md; for v0.1.0 the daemon must restart to pick up changes.
+    let registration_password_hash =
+        auth::load_password_hash(data_dir, PasswordKind::Registration)?;
+    let listing_password_hash = auth::load_password_hash(data_dir, PasswordKind::Listing)?;
+    log_auth_status_value(
+        PasswordKind::Registration,
+        registration_password_hash.is_some(),
+    );
+    log_auth_status_value(PasswordKind::Listing, listing_password_hash.is_some());
+
+    let registry = Registry::new(cli.max_entries, cli.max_entries_per_ip);
+    let state = Arc::new(TrackerState::new(
+        registry,
+        registration_password_hash,
+        listing_password_hash,
+        cli.refresh_interval,
+    ));
 
     let bind_addr = SocketAddr::new(cli.bind, cli.port);
     let listener = TcpListener::bind(bind_addr)
@@ -142,14 +162,19 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     let local_addr = listener.local_addr().unwrap_or(bind_addr);
     info!("{}{}", constants::MSG_LISTENING, local_addr);
 
-    accept_loop(listener, tls_acceptor, fingerprint).await;
+    accept_loop(listener, tls_acceptor, fingerprint, state).await;
     Ok(())
 }
 
 /// Accept loop, terminated by SIGINT / SIGTERM (or Ctrl+C on Windows).
-async fn accept_loop(listener: TcpListener, tls_acceptor: TlsAcceptor, fingerprint: String) {
+async fn accept_loop(
+    listener: TcpListener,
+    tls_acceptor: TlsAcceptor,
+    fingerprint: String,
+    state: Arc<TrackerState>,
+) {
     tokio::select! {
-        () = run_accepts(&listener, tls_acceptor, fingerprint) => {}
+        () = run_accepts(&listener, tls_acceptor, fingerprint, state) => {}
         () = setup_shutdown_signal() => {
             info!("{}", constants::MSG_SHUTDOWN_RECEIVED);
         }
@@ -159,16 +184,27 @@ async fn accept_loop(listener: TcpListener, tls_acceptor: TlsAcceptor, fingerpri
 /// Run the inner accept loop. Each accepted connection is spawned as its
 /// own task; an `accept()` failure logs and brief-sleeps to avoid a
 /// busy loop on persistent errors (e.g., file-descriptor exhaustion).
-async fn run_accepts(listener: &TcpListener, tls_acceptor: TlsAcceptor, fingerprint: String) {
+async fn run_accepts(
+    listener: &TcpListener,
+    tls_acceptor: TlsAcceptor,
+    fingerprint: String,
+    state: Arc<TrackerState>,
+) {
     loop {
         match listener.accept().await {
             Ok((stream, peer_addr)) => {
                 let acceptor = tls_acceptor.clone();
                 let fingerprint = fingerprint.clone();
+                let state = Arc::clone(&state);
                 tokio::spawn(async move {
-                    if let Err(e) =
-                        connection::handle_connection(stream, peer_addr, acceptor, fingerprint)
-                            .await
+                    if let Err(e) = connection::handle_connection(
+                        stream,
+                        peer_addr,
+                        acceptor,
+                        fingerprint,
+                        state,
+                    )
+                    .await
                     {
                         log_connection_error(&e, peer_addr);
                     }
@@ -225,19 +261,17 @@ async fn setup_shutdown_signal() {
 
 /// Log whether the given auth flow is open (no hash file) or gated
 /// (hash file present).
-fn log_auth_status(data_dir: &Path, kind: PasswordKind) -> Result<(), String> {
-    let present = auth::load_password_hash(data_dir, kind)?.is_some();
+fn log_auth_status_value(kind: PasswordKind, gated: bool) {
     let label = match kind {
         PasswordKind::Registration => constants::LABEL_REGISTRATION,
         PasswordKind::Listing => constants::LABEL_LISTING,
     };
-    let status = if present {
+    let status = if gated {
         constants::STATUS_GATED
     } else {
         constants::STATUS_OPEN
     };
     info!("{}: {}", label, status);
-    Ok(())
 }
 
 /// Resolve the tracker data directory, preferring the CLI override when
