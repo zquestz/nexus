@@ -4786,16 +4786,13 @@ name = "nexus-tracker"
 version = "0.1.0"
 dependencies = [
  "argon2",
- "chrono",
  "clap",
  "dirs",
  "fluent",
  "fluent-bundle",
- "futures-util",
  "nexus-common",
  "rpassword",
  "serde_json",
- "socket2",
  "tempfile",
  "tokio",
  "tokio-rustls",

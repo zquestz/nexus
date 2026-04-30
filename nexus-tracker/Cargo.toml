@@ -11,9 +11,6 @@ nexus-common = { path = "../nexus-common", features = ["logging", "tls", "upnp",
 clap = { version = "4.5", features = ["derive"] }
 tokio = { version = "1.49", features = ["net", "rt-multi-thread", "macros", "io-util", "sync", "signal"] }
 tracing = "0.1"
-serde_json = "1.0"
-socket2 = "0.6"
-chrono = "0.4"
 dirs = "6.0"
 argon2 = { version = "0.5", features = ["std"] }
 # Pinned: 7.5 broke the macOS CI build (transitively bumped windows-sys
@@ -22,12 +19,12 @@ argon2 = { version = "0.5", features = ["std"] }
 rpassword = "=7.4.0"
 tokio-rustls = { version = "0.26", features = ["ring"] }
 tokio-tungstenite = "0.29"
-futures-util = "0.3"
 fluent = "0.17"
 fluent-bundle = "0.16"
 unic-langid = "0.9"
 
 [dev-dependencies]
+serde_json = "1.0"
 tempfile = "3.20"
 
 [lib]
