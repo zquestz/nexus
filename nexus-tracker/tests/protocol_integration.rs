@@ -558,6 +558,104 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
 }
 
 #[tokio::test]
+async fn test_register_omitted_address_substitutes_peer_ip() {
+    // When `address` is None (or empty), the tracker substitutes the
+    // peer's source IP — kernel-truthful, no validation needed. This
+    // test pins the substitution behavior so a future change that,
+    // e.g., applied `classify_invalid` to the substituted IP and
+    // started rejecting loopback peers shows up immediately.
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
+    // Build a register with `address: None`.
+    let mut msg = make_register("Implicit Address BBS", 1);
+    if let TrackerClientMessage::TrackerServerRegister {
+        address: ref mut a, ..
+    } = msg
+    {
+        *a = None;
+    }
+    send_tracker_client(&mut s_writer, &msg).await;
+    match read_tracker_server(&mut s_reader).await {
+        TrackerServerMessage::TrackerServerRegisterResponse { success, .. } => {
+            assert!(success, "register with omitted address should succeed");
+        }
+        other => panic!("expected TrackerServerRegisterResponse, got {other:?}"),
+    }
+
+    let registry = state.registry.lock().expect("registry mutex");
+    let listing = registry.list();
+    assert_eq!(listing.len(), 1);
+    // Integration tests connect over TCP to 127.0.0.1, so the peer IP
+    // the tracker sees is the IPv4 loopback. The substituted address
+    // is the stringified peer IP.
+    assert_eq!(listing[0].address, "127.0.0.1");
+}
+
+#[tokio::test]
+async fn test_register_unicode_idn_address_stored_as_typed() {
+    // The IDN policy stores the address as-typed (Unicode preserved);
+    // Punycode is only used for the DNS lookup. This test pins the
+    // contract so a future refactor that, e.g., reuses the ASCII form
+    // as the entry's stored address would surface as a failure.
+    //
+    // The integration harness uses a loopback peer, so the LAN-peer
+    // bypass keeps the resolver out of this path entirely — the test
+    // is purely about what gets stored. That's the right scope: the
+    // resolver-vs-storage interaction is exercised by the unit test
+    // `unicode_idn_hostname_resolves_via_punycode`.
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
+    let mut msg = make_register("Unicode IDN BBS", 1);
+    if let TrackerClientMessage::TrackerServerRegister {
+        address: ref mut a, ..
+    } = msg
+    {
+        *a = Some("münchen.de".to_string());
+    }
+    send_tracker_client(&mut s_writer, &msg).await;
+    match read_tracker_server(&mut s_reader).await {
+        TrackerServerMessage::TrackerServerRegisterResponse { success, .. } => {
+            assert!(success, "register with Unicode IDN address should succeed");
+        }
+        other => panic!("expected TrackerServerRegisterResponse, got {other:?}"),
+    }
+
+    let registry = state.registry.lock().expect("registry mutex");
+    let listing = registry.list();
+    assert_eq!(listing.len(), 1);
+    assert_eq!(
+        listing[0].address, "münchen.de",
+        "stored address should be the Unicode form, not the Punycode `xn--mnchen-3ya.de`"
+    );
+}
+
+#[tokio::test]
 async fn test_register_refresh_updates_user_count() {
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");

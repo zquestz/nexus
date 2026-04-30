@@ -8,6 +8,7 @@ description = "Common code for Nexus BBS"
 
 [dependencies]
 idna = "1"
+ipnet = "2.11"
 rand = "0.10"
 semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }

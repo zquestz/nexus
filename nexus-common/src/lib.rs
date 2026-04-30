@@ -4,6 +4,7 @@
 
 use std::time::Duration;
 
+pub mod address;
 mod error_kind;
 pub mod fingerprint;
 pub mod framing;

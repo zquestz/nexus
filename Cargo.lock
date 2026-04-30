@@ -4682,7 +4682,6 @@ dependencies = [
  "idna",
  "image",
  "interprocess",
- "ipnet",
  "ksni",
  "lewton",
  "linkify",
@@ -4723,6 +4722,7 @@ dependencies = [
  "humantime",
  "idna",
  "igd-next",
+ "ipnet",
  "pem",
  "rand 0.10.1",
  "rcgen 0.14.7",
@@ -4786,10 +4786,12 @@ name = "nexus-tracker"
 version = "0.1.0"
 dependencies = [
  "argon2",
+ "async-trait",
  "clap",
  "dirs",
  "fluent",
  "fluent-bundle",
+ "idna",
  "nexus-common",
  "rpassword",
  "serde_json",

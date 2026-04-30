@@ -14,6 +14,7 @@ pub mod handlers;
 pub mod i18n;
 pub mod rate_limiter;
 pub mod registry;
+pub mod resolver;
 pub mod state;
 pub mod upnp;
 pub mod websocket;

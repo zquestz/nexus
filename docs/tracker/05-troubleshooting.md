@@ -73,13 +73,66 @@ nexus-trackerd --data-dir /var/lib/nexus-trackerd
 
 **Possible protocol-level causes:**
 
-| `error_kind`     | Meaning                                                                              |
-| ---------------- | ------------------------------------------------------------------------------------ |
-| `unauthorized`   | Tracker has a registration password set; the server sent the wrong one or none       |
-| `capacity`       | The tracker hit `--max-entries` or the server's source IP hit `--max-entries-per-ip` |
-| `rate_limited`   | The server's source IP hit `--rate-connections` or `--rate-auth-failures`            |
-| `invalid`        | Malformed registration (bad fingerprint format, invalid address, etc.)               |
-| `protocol_error` | Wrong protocol version, non-handshake first message, role-locked connection misuse   |
+| `error_kind`   | Meaning                                                                                                                                                                          |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unauthorized` | Tracker has a registration password set; the server sent the wrong one or none                                                                                                   |
+| `capacity`     | The tracker hit `--max-entries` or the server's source IP hit `--max-entries-per-ip`                                                                                             |
+| `rate_limited` | The server's source IP hit `--rate-connections` or `--rate-auth-failures`                                                                                                        |
+| `invalid`      | Field-validation failure: bad fingerprint format, length over limit, or address-validation rejection (see [Address validation rejections](#address-validation-rejections) below) |
+
+**Protocol-level violations** (wrong protocol version, non-handshake
+first message, role-locked connection misuse, malformed frames) are
+_not_ surfaced as a typed `error_kind`. They use the generic `Error`
+message instead and drop the connection — see the spec's
+[Failure Conditions](../protocol/18-trackers.md#failure-conditions)
+table.
+
+### Address validation rejections
+
+When a registrant supplies a non-empty `address` field, the tracker
+validates it against the registrant's source IP. Rejections are returned
+to the registrant as `error_kind: invalid` and logged on the tracker side
+with a structured `reason` field. The `reason` distinguishes sub-cases
+without parsing the human-readable error string.
+
+| `reason` (log)                | Meaning                                                                                                                    |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `address_invalid`             | Structural rejection — scheme, brackets, path, userinfo, embedded port, IPv6 zone identifier, whitespace, or malformed IDN |
+| `address_loopback`            | IP literal in `127.0.0.0/8` or `::1` (never a public unicast endpoint)                                                     |
+| `address_unspecified`         | `0.0.0.0` / `::` or anywhere in `0.0.0.0/8` (RFC 1122 "this network")                                                      |
+| `address_link_local`          | `169.254.0.0/16` or `fe80::/10`                                                                                            |
+| `address_multicast`           | `224.0.0.0/4` or `ff00::/8`                                                                                                |
+| `address_documentation`       | `192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`, or `2001:db8::/32`                                                    |
+| `address_broadcast`           | `255.255.255.255` (IPv4 limited broadcast)                                                                                 |
+| `address_ip_literal_mismatch` | The advertised IP literal didn't equal the peer's source IP, and the peer wasn't on a private network (no LAN bypass)      |
+| `address_hostname_not_found`  | The advertised hostname returned NXDOMAIN (or an empty result set)                                                         |
+| `address_hostname_no_match`   | The advertised hostname resolved successfully but the peer's source IP wasn't in the result set                            |
+| `address_hostname_dns_failed` | Transient resolver failure (timeout, network error) on initial register; refresh soft-passes the same conditions           |
+
+**What to do:**
+
+- For _hard-reject categories_ (loopback, unspecified, link-local, multicast, documentation, broadcast): correct the registrant's `address` to a real public endpoint.
+- For `address_ip_literal_mismatch`: the registrant is connecting from a different address than the one they're advertising. Common cause: the registrant's `ServerInfo.public_address` is stale, or they're behind a proxy/NAT that rewrote the source IP. Check the registrant's outbound IP and update.
+- For `address_hostname_not_found` / `address_hostname_no_match`: the DNS for the advertised hostname doesn't exist or doesn't include the registrant's source IP. Wait for DNS propagation, or update the A/AAAA record to include the correct address.
+- For `address_hostname_dns_failed`: a one-off transient failure on initial register — the registrant should retry. If it persists, the tracker host's resolver may be misconfigured or unreachable.
+
+The full validation contract (order of checks, LAN-peer bypass rules,
+mode asymmetry between initial register and refresh) is documented in
+the protocol spec at [`docs/protocol/18-trackers.md`](../protocol/18-trackers.md).
+
+### Dual-stack registration fails as `address_ip_literal_mismatch`
+
+**Cause:** The registrant is reachable on both IPv4 and IPv6, but the
+tracker connection happened to be routed over one family while the
+registrant is advertising an IP literal in the other family. The
+literal-match check is strict on family, so a peer connected via IPv6
+advertising an IPv4 literal (or vice versa) is rejected.
+
+**Solution:** Register a hostname with both A and AAAA records instead
+of an IP literal. The hostname-resolution path matches whichever family
+the kernel routed the registration over, so dual-stack works
+transparently. This is the recommended posture for any operator
+reachable on more than one address family.
 
 ### Clients can't list servers
 

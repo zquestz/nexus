@@ -69,7 +69,10 @@ pub use password::{
     validate_password_input,
 };
 pub use permissions::{MAX_PERMISSION_LENGTH, PermissionsError, validate_permissions};
-pub use public_address::{MAX_PUBLIC_ADDRESS_LENGTH, PublicAddressError, validate_public_address};
+pub use public_address::{
+    MAX_PUBLIC_ADDRESS_LENGTH, PublicAddressError, validate_and_normalize_public_address,
+    validate_public_address,
+};
 pub use search_query::{
     MAX_SEARCH_QUERY_LENGTH, MIN_PRIMARY_TERM_LENGTH, MIN_QUERY_LENGTH, MIN_TERM_LENGTH,
     SearchQueryError, extract_search_terms, validate_search_query,

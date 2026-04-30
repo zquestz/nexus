@@ -61,7 +61,6 @@ rfd = "0.17"
 base64 = "0.22"
 identicon-rs = "7.0"
 image = "0.25"
-ipnet = "2.11"
 uuid = { version = "1.20", features = ["v4", "serde"] }
 webrtc-audio-processing = { git = "https://github.com/zquestz/webrtc-audio-processing", features = ["bundled"] }
 hex = "0.4"

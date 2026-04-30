@@ -263,6 +263,67 @@ pub const LOG_REGISTER_REFRESH: &str = "TrackerServerRegister: refresh";
 /// `ip = %peer_addr.ip(), reason = %short_str`.
 pub const LOG_REGISTER_REJECTED: &str = "TrackerServerRegister: rejected";
 
+// Address-validation rejection reasons (passed as `reason` to `LOG_REGISTER_REJECTED`).
+//
+// All address-related rejections share the single operator-facing
+// `err_tracker_address_invalid` i18n string; the per-reason granularity
+// is for tracker-operator log analysis (which check failed) rather than
+// for the registrant.
+
+/// `address` failed `validate_public_address` (malformed hostname /
+/// embedded port / scheme / etc).
+pub const REASON_ADDRESS_INVALID: &str = "address_invalid";
+
+/// `address` parsed as an IP literal in the loopback range.
+pub const REASON_ADDRESS_LOOPBACK: &str = "address_loopback";
+
+/// `address` parsed as the unspecified IP (`0.0.0.0` / `::`) or
+/// anywhere in the broader `0.0.0.0/8` "this network" range
+/// (RFC 1122 §3.2.1.3) — both route to this telemetry bucket.
+pub const REASON_ADDRESS_UNSPECIFIED: &str = "address_unspecified";
+
+/// `address` parsed as an IP literal in the link-local range.
+pub const REASON_ADDRESS_LINK_LOCAL: &str = "address_link_local";
+
+/// `address` parsed as an IP literal in a multicast range.
+pub const REASON_ADDRESS_MULTICAST: &str = "address_multicast";
+
+/// `address` parsed as an IP literal in a documentation range.
+pub const REASON_ADDRESS_DOCUMENTATION: &str = "address_documentation";
+
+/// `address` parsed as the IPv4 limited broadcast (`255.255.255.255`).
+pub const REASON_ADDRESS_BROADCAST: &str = "address_broadcast";
+
+/// `address` parsed as an IP literal that didn't match the peer IP and
+/// the peer was not on a private network (so the LAN bypass didn't apply).
+pub const REASON_ADDRESS_IP_LITERAL_MISMATCH: &str = "address_ip_literal_mismatch";
+
+/// Hostname `address` resolved to zero IPs (NXDOMAIN-equivalent).
+pub const REASON_ADDRESS_HOSTNAME_NOT_FOUND: &str = "address_hostname_not_found";
+
+/// Hostname `address` resolved successfully but none of the returned
+/// IPs matched the peer source IP.
+pub const REASON_ADDRESS_HOSTNAME_NO_MATCH: &str = "address_hostname_no_match";
+
+/// Hostname `address` couldn't be resolved due to a transient
+/// resolver failure (timeout, network error). Distinguished from
+/// `REASON_ADDRESS_HOSTNAME_NOT_FOUND` (NXDOMAIN) so operators can
+/// tell intermittent DNS issues apart from "the host doesn't exist."
+/// Only emitted on initial register; refresh soft-passes transient
+/// errors so an established entry isn't evicted by a brief DNS blip.
+pub const REASON_ADDRESS_HOSTNAME_DNS_FAILED: &str = "address_hostname_dns_failed";
+
+/// Log: hostname address validation hit a transient resolver failure
+/// (timeout, network error). Always emitted at warn level when the
+/// transient is encountered. The downstream outcome is mode-dependent:
+/// refresh soft-passes (the entry stays registered), initial register
+/// hard-rejects (so a brand-new entry can't slip in unverified during
+/// a DNS blip) — so initial-register transients additionally fire
+/// `LOG_REGISTER_REJECTED` with `REASON_ADDRESS_HOSTNAME_DNS_FAILED`.
+/// Paired with `ip = %peer_addr.ip(), host = %ascii_host, err = %resolver_err`.
+pub const LOG_ADDRESS_DNS_TRANSIENT: &str =
+    "TrackerServerRegister: address DNS lookup transient failure";
+
 /// Log: TrackerServerList received and a snapshot returned.
 /// Paired with `ip = %peer_addr.ip(), count = %returned_count`.
 pub const LOG_LIST_RESPONSE: &str = "TrackerServerList: response sent";
@@ -371,6 +432,14 @@ pub const LOG_AUTH_RATE_LIMITED: &str = "Auth rate-limited";
 /// Hardcoded (not operator-tunable) because it's a protocol-derived
 /// value, not a policy knob.
 pub const REFRESH_FLOOR_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Bound on the time spent resolving a registrant-supplied hostname
+/// during address validation. Lookups past this point are treated as
+/// transient — handler outcome is mode-asymmetric (initial register
+/// rejects, refresh soft-passes). 5 seconds: generous enough that
+/// healthy resolvers comfortably finish in milliseconds, short enough
+/// that a stuck resolver can't pin a connection task.
+pub const ADDRESS_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Stale-timeout multiplier applied to a server's `refresh_interval`.
 /// Per the tracker protocol spec (`docs/protocol/18-trackers.md`,

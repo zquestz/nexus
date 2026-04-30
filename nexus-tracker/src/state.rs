@@ -22,6 +22,7 @@ use crate::constants::{
 };
 use crate::rate_limiter::RateLimiter;
 use crate::registry::Registry;
+use crate::resolver::{Resolver, TokioResolver};
 
 /// Daemon-level state shared across connection tasks.
 ///
@@ -70,6 +71,12 @@ pub struct TrackerState {
     /// `Duration::ZERO` to disable the floor and exercise the refresh
     /// path without waiting out the window.
     pub refresh_floor: Duration,
+
+    /// DNS resolver used by the address-validation step in
+    /// `TrackerServerRegister`. Defaults to [`TokioResolver`] in
+    /// [`Self::new`]; tests substitute a mock via
+    /// [`Self::with_resolver`].
+    pub resolver: Box<dyn Resolver>,
 }
 
 impl TrackerState {
@@ -98,7 +105,19 @@ impl TrackerState {
             connection_rate_limiter: RateLimiter::per_minute(connection_rate),
             auth_failure_rate_limiter: RateLimiter::per_minute(auth_failure_rate),
             refresh_floor,
+            resolver: Box::new(TokioResolver),
         }
+    }
+
+    /// Replace the DNS resolver used by address validation. Intended
+    /// for tests that need deterministic DNS responses (NXDOMAIN /
+    /// resolved-but-no-match / transient failure). Production code
+    /// should rely on the [`TokioResolver`] default installed by
+    /// [`Self::new`].
+    #[must_use]
+    pub fn with_resolver(mut self, resolver: Box<dyn Resolver>) -> Self {
+        self.resolver = resolver;
+        self
     }
 
     /// Whether registration requires a password (true when a hash is loaded).

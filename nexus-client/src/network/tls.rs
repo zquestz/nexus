@@ -3,6 +3,7 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
 use std::sync::Arc;
 
+use nexus_common::address;
 use once_cell::sync::Lazy;
 use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
@@ -14,9 +15,7 @@ use tokio_socks::tcp::Socks5Stream;
 use crate::constants::ERR_LOCALHOST_INVALID_DNS;
 use crate::i18n::{t, t_args};
 
-use super::constants::{
-    CONNECTION_TIMEOUT, IPV6_ULA, PRIVATE_10, PRIVATE_172, PRIVATE_192, YGGDRASIL_NETWORK,
-};
+use super::constants::CONNECTION_TIMEOUT;
 use super::types::{ProxyConfig, TlsStream};
 
 /// Global TLS connector (accepts any certificate, no hostname verification)
@@ -152,71 +151,21 @@ pub(crate) async fn establish_connection(
     Ok((tls_stream, fingerprint))
 }
 
-/// Check if an address should bypass the proxy
+/// Whether `address` should bypass any configured SOCKS5 proxy.
 ///
-/// Bypasses:
-/// - Localhost/loopback addresses (127.x.x.x, ::1)
-/// - Yggdrasil mesh network addresses (0200::/7)
+/// String-form wrapper around [`nexus_common::address::is_proxy_bypassable`]:
+/// strips IPv6 zone identifiers and surrounding brackets, treats the
+/// literal `"localhost"` as loopback, and parses the result as an
+/// `IpAddr` before delegating to the shared classifier. Hostnames
+/// other than `"localhost"` (which require DNS to classify) return
+/// `false` — they'll be routed through the proxy normally.
 pub(crate) fn should_bypass_proxy(address: &str) -> bool {
-    is_loopback_address(address) || is_yggdrasil_address(address) || is_private_address(address)
-}
-
-/// Normalize an address by removing brackets and zone identifiers
-///
-/// Handles formats like: "127.0.0.1", "::1", "[::1]", "::1%eth0", "[::1%eth0]"
-fn normalize_address(address: &str) -> &str {
-    let trimmed = address.trim_start_matches('[').trim_end_matches(']');
-    trimmed.split('%').next().unwrap_or(trimmed)
-}
-
-/// Check if an address is a loopback/localhost address
-///
-/// Matches:
-/// - "localhost" hostname
-/// - IPv4 loopback (127.x.x.x)
-/// - IPv6 loopback (::1)
-fn is_loopback_address(address: &str) -> bool {
     if address.to_lowercase() == "localhost" {
         return true;
     }
-
-    normalize_address(address)
+    address::normalize_ip_literal(address)
         .parse::<IpAddr>()
-        .is_ok_and(|ip| ip.is_loopback())
-}
-
-/// Check if an address is in the Yggdrasil range (0200::/7)
-///
-/// Returns false for IPv4 addresses since Yggdrasil only uses IPv6.
-fn is_yggdrasil_address(address: &str) -> bool {
-    normalize_address(address)
-        .parse::<Ipv6Addr>()
-        .is_ok_and(|ip| YGGDRASIL_NETWORK.contains(&ip))
-}
-
-/// Check if an address is in a private/LAN range
-///
-/// Matches RFC 1918 private IPv4 ranges and IPv6 ULA:
-/// - 10.0.0.0/8
-/// - 172.16.0.0/12
-/// - 192.168.0.0/16
-/// - fc00::/7 (IPv6 Unique Local Addresses)
-fn is_private_address(address: &str) -> bool {
-    let normalized = normalize_address(address);
-
-    // Check IPv4 private ranges
-    if let Ok(ipv4) = normalized.parse::<Ipv4Addr>() {
-        return PRIVATE_10.contains(&ipv4)
-            || PRIVATE_172.contains(&ipv4)
-            || PRIVATE_192.contains(&ipv4);
-    }
-
-    // Check IPv6 ULA range
-    if let Ok(ipv6) = normalized.parse::<Ipv6Addr>() {
-        return IPV6_ULA.contains(&ipv6);
-    }
-
-    false
+        .is_ok_and(address::is_proxy_bypassable)
 }
 
 /// Encode a hostname for DNS resolution.
@@ -474,43 +423,5 @@ mod tests {
         // Just outside Yggdrasil range
         assert!(!should_bypass_proxy("1ff::1")); // Below 200::
         assert!(!should_bypass_proxy("400::1")); // Above 3ff::
-    }
-
-    #[test]
-    fn test_is_loopback_address() {
-        // Localhost hostname
-        assert!(is_loopback_address("localhost"));
-        assert!(is_loopback_address("LOCALHOST"));
-
-        // IPv4 loopback
-        assert!(is_loopback_address("127.0.0.1"));
-        assert!(is_loopback_address("127.255.255.255"));
-
-        // IPv6 loopback
-        assert!(is_loopback_address("::1"));
-        assert!(is_loopback_address("[::1]"));
-        assert!(is_loopback_address("::1%lo"));
-
-        // Not loopback
-        assert!(!is_loopback_address("192.168.1.1"));
-        assert!(!is_loopback_address("example.com"));
-        assert!(!is_loopback_address("200::1"));
-    }
-
-    #[test]
-    fn test_is_yggdrasil_address() {
-        // In range (0x200-0x3ff)
-        assert!(is_yggdrasil_address("200::1"));
-        assert!(is_yggdrasil_address("3ff::1"));
-        assert!(is_yggdrasil_address("[200::1]"));
-        assert!(is_yggdrasil_address("200::1%eth0"));
-        assert!(is_yggdrasil_address("2FF::1")); // Case insensitive
-
-        // Out of range
-        assert!(!is_yggdrasil_address("1ff::1"));
-        assert!(!is_yggdrasil_address("400::1"));
-        assert!(!is_yggdrasil_address("::1"));
-        assert!(!is_yggdrasil_address("2001:db8::1"));
-        assert!(!is_yggdrasil_address("localhost"));
     }
 }

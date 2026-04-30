@@ -34,20 +34,50 @@ pub enum PublicAddressError {
     InvalidFormat,
 }
 
-/// Validate a public address string
+/// Validate a public address string.
 ///
 /// Accepts internationalized domain names (IDN) in Unicode or Punycode form
 /// (validated per IDNA 2008), IPv4 literals, and bare IPv6 literals (no
-/// brackets). Input is preserved as-typed; callers that need DNS wire-form
-/// can run `idna::domain_to_ascii` themselves. Empty input is treated as
-/// "unset" and returns `Ok(())`.
+/// brackets). Empty input is treated as "unset" and returns `Ok(())`.
+///
+/// Use this when you only need a yes/no validation answer — input is
+/// preserved as-typed at the call site. If you also need the DNS-wire
+/// (Punycode) / canonical-IP form for downstream use (e.g. handing to
+/// a system resolver), call [`validate_and_normalize_public_address`]
+/// instead so the IDN encoding happens once.
 ///
 /// # Errors
 ///
 /// Returns a `PublicAddressError` variant describing the validation failure.
 pub fn validate_public_address(addr: &str) -> Result<(), PublicAddressError> {
+    validate_and_normalize_public_address(addr).map(|_| ())
+}
+
+/// Validate a public address string and return its normalized form.
+///
+/// On success returns:
+/// - `""` for empty input (consistent with [`validate_public_address`]'s
+///   "unset" semantics).
+/// - For IPv4 / IPv6 literals: the canonical string form via
+///   `Ipv4Addr::to_string` / `Ipv6Addr::to_string` — e.g.,
+///   `"2001:DB8::1"` becomes `"2001:db8::1"` and `"127.000.000.001"`-
+///   style malformed inputs are already rejected by the parser.
+/// - For Unicode / Punycode / ASCII hostnames: the Punycode ASCII form
+///   produced by `idna::domain_to_ascii_strict`, suitable for handing
+///   to a system resolver verbatim.
+///
+/// Callers that store the user-typed form (preserving Unicode IDN for
+/// display) should keep their own copy of the input — this function's
+/// return value is the *normalized* form, not necessarily what the
+/// user typed. Use this when you need both the validation answer
+/// *and* the normalized form, to avoid double-encoding via `idna`.
+///
+/// # Errors
+///
+/// Returns a `PublicAddressError` variant describing the validation failure.
+pub fn validate_and_normalize_public_address(addr: &str) -> Result<String, PublicAddressError> {
     if addr.is_empty() {
-        return Ok(());
+        return Ok(String::new());
     }
     if addr.len() > MAX_PUBLIC_ADDRESS_LENGTH {
         return Err(PublicAddressError::TooLong);
@@ -75,15 +105,14 @@ pub fn validate_public_address(addr: &str) -> Result<(), PublicAddressError> {
         if addr.contains('%') {
             return Err(PublicAddressError::ContainsZoneId);
         }
-        return if addr.parse::<Ipv6Addr>().is_ok() {
-            Ok(())
-        } else {
-            Err(PublicAddressError::ContainsPort)
+        return match addr.parse::<Ipv6Addr>() {
+            Ok(ip) => Ok(ip.to_string()),
+            Err(_) => Err(PublicAddressError::ContainsPort),
         };
     }
 
-    if addr.parse::<Ipv4Addr>().is_ok() {
-        return Ok(());
+    if let Ok(ip) = addr.parse::<Ipv4Addr>() {
+        return Ok(ip.to_string());
     }
 
     // IDNA: accepts ASCII hostnames, Unicode IDN, and pre-encoded Punycode.
@@ -105,7 +134,7 @@ pub fn validate_public_address(addr: &str) -> Result<(), PublicAddressError> {
     {
         return Err(PublicAddressError::InvalidFormat);
     }
-    Ok(())
+    Ok(ascii)
 }
 
 #[cfg(test)]
@@ -285,6 +314,90 @@ mod tests {
         assert_eq!(
             validate_public_address("xn--"),
             Err(PublicAddressError::InvalidFormat)
+        );
+    }
+
+    // ---- validate_and_normalize_public_address ----
+
+    #[test]
+    fn test_normalize_empty_returns_empty() {
+        assert_eq!(validate_and_normalize_public_address(""), Ok(String::new()));
+    }
+
+    #[test]
+    fn test_normalize_ipv4_returns_canonical() {
+        // Already canonical — round-trips unchanged.
+        assert_eq!(
+            validate_and_normalize_public_address("127.0.0.1"),
+            Ok("127.0.0.1".to_string())
+        );
+        assert_eq!(
+            validate_and_normalize_public_address("8.8.8.8"),
+            Ok("8.8.8.8".to_string())
+        );
+    }
+
+    #[test]
+    fn test_normalize_ipv6_lowercases() {
+        // IPv6 canonical form is lowercase; a mixed-case input parses
+        // and the canonical form returned is lowercase.
+        assert_eq!(
+            validate_and_normalize_public_address("2001:DB8::1"),
+            Ok("2001:db8::1".to_string())
+        );
+        // Already canonical — round-trips unchanged.
+        assert_eq!(
+            validate_and_normalize_public_address("::1"),
+            Ok("::1".to_string())
+        );
+    }
+
+    #[test]
+    fn test_normalize_unicode_idn_returns_punycode() {
+        assert_eq!(
+            validate_and_normalize_public_address("münchen.de"),
+            Ok("xn--mnchen-3ya.de".to_string())
+        );
+        assert_eq!(
+            validate_and_normalize_public_address("日本.jp"),
+            Ok("xn--wgv71a.jp".to_string())
+        );
+    }
+
+    #[test]
+    fn test_normalize_punycode_passes_through() {
+        // Pre-encoded Punycode is already ASCII and round-trips.
+        assert_eq!(
+            validate_and_normalize_public_address("xn--mnchen-3ya.de"),
+            Ok("xn--mnchen-3ya.de".to_string())
+        );
+    }
+
+    #[test]
+    fn test_normalize_ascii_hostname_lowercases() {
+        // `idna::domain_to_ascii_strict` lowercases ASCII hostnames as
+        // a side effect of the IDNA 2008 mapping.
+        assert_eq!(
+            validate_and_normalize_public_address("Example.COM"),
+            Ok("example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn test_normalize_propagates_validation_errors() {
+        // Same rejection set as `validate_public_address` — the
+        // wrapping function calls into this one, but verify directly.
+        assert_eq!(
+            validate_and_normalize_public_address("https://example.com"),
+            Err(PublicAddressError::ContainsScheme)
+        );
+        assert_eq!(
+            validate_and_normalize_public_address("[::1]"),
+            Err(PublicAddressError::ContainsBrackets)
+        );
+        assert_eq!(
+            validate_and_normalize_public_address("example.com:7500"),
+            Err(PublicAddressError::ContainsPort)
         );
     }
 }

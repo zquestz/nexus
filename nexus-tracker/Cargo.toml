@@ -13,6 +13,8 @@ tokio = { version = "1.49", features = ["net", "rt-multi-thread", "macros", "io-
 tracing = "0.1"
 dirs = "6.0"
 argon2 = { version = "0.5", features = ["std"] }
+async-trait = "0.1"
+idna = "1"
 # Pinned: 7.5 broke the macOS CI build (transitively bumped windows-sys
 # in a way that confused the universal2 cross-compile). Revisit if 7.6+
 # fixes it.
@@ -26,6 +28,7 @@ unic-langid = "0.9"
 [dev-dependencies]
 serde_json = "1.0"
 tempfile = "3.20"
+tokio = { version = "1.49", features = ["test-util"] }
 
 [lib]
 name = "nexus_tracker"

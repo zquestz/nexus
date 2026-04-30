@@ -171,17 +171,87 @@ this format on each `TrackerServerRegister` and reject non-canonical values
 guarantees clients see a single canonical form and can compare byte-equal
 without normalization.
 
-**Address resolution.** If `address` is omitted, the tracker substitutes the
-remote IP of the registering connection. This supports servers on dynamic
-IP addresses without requiring `ServerInfo.public_address` to be configured.
-Servers behind NAT or proxies that want a stable hostname should set
-`address` explicitly.
+**Address resolution.** If `address` is omitted (or empty), the tracker
+substitutes the remote IP of the registering connection without further
+checks — the peer IP is kernel-supplied evidence that the registrant
+controls that endpoint. This supports servers on dynamic IP addresses
+without requiring `ServerInfo.public_address` to be configured. Servers
+behind NAT or proxies that want a stable hostname should set `address`
+explicitly, in which case the tracker validates it as described below.
+
+**Address validation.** When `address` is provided (non-empty), trackers
+MUST validate it before accepting the registration. Validation runs in
+the order below; the first failure produces a typed
+`TrackerServerRegisterResponse { success: false, error_kind: "invalid" }`
+and closes the connection.
+
+1. **Structural.** Reject schemes (`://`), URL brackets (`[`, `]`),
+   path components (`/`), userinfo separators (`@`), embedded ports
+   (e.g., `host:port`), IPv6 zone identifiers (`fe80::1%eth0`), and
+   whitespace. Hostnames must pass IDNA 2008 well-formedness, with
+   per-label and total length caps matching DNS wire-form (63 octets
+   per label, 253 octets total).
+2. **Hard-reject classification.** When `address` parses as an IP
+   literal, reject the following categories regardless of the peer's
+   source IP — they are never valid public unicast endpoints:
+
+   | Category      | IPv4                                                | IPv6            |
+   | ------------- | --------------------------------------------------- | --------------- |
+   | Loopback      | `127.0.0.0/8`                                       | `::1`           |
+   | Unspecified   | `0.0.0.0/8` ("this network", RFC 1122)              | `::`            |
+   | Link-local    | `169.254.0.0/16`                                    | `fe80::/10`     |
+   | Multicast     | `224.0.0.0/4`                                       | `ff00::/8`      |
+   | Documentation | `192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24` | `2001:db8::/32` |
+   | Broadcast     | `255.255.255.255`                                   | (n/a)           |
+
+3. **LAN-peer bypass.** When the peer's source IP is on a private
+   network — RFC 1918 (`10.0.0.0/8`, `172.16.0.0/12`,
+   `192.168.0.0/16`), IPv6 ULA (`fc00::/7`), or IPv4/IPv6 loopback —
+   the tracker accepts `address` without further checks. Local DNS
+   may not resolve advertised hostnames; an operator on a LAN can't
+   make a public address match their RFC 1918 source IP. Yggdrasil
+   mesh (`0200::/7`) is _not_ in the bypass set: those addresses
+   behave like public addresses within the mesh, so the same
+   address-vs-peer binding applies. CGNAT (`100.64.0.0/10`,
+   RFC 6598) is also not in the bypass set: a CGNAT-fronted operator
+   should register a hostname (e.g., dynamic DNS) so the
+   hostname-vs-peer match still applies.
+4. **IP-literal match.** For peers not in the bypass set, an IP-
+   literal `address` MUST equal the peer's source IP exactly. Family
+   mismatch (IPv4 literal advertised by an IPv6-connected peer or
+   vice versa) is rejected; see the dual-stack note below.
+5. **Hostname resolution.** For peers not in the bypass set, the
+   tracker resolves the address (after IDN → Punycode conversion) via
+   the host's resolver and accepts the registration only if the
+   peer's source IP appears in the result set. The DNS lookup is
+   bounded by a tracker-side timeout (5 seconds in the reference
+   implementation). Resolver outcomes:
+
+   | Outcome                            | Initial register    | Refresh            |
+   | ---------------------------------- | ------------------- | ------------------ |
+   | Peer IP in result set              | Accept              | Accept             |
+   | Peer IP not in result set          | Reject (no match)   | Reject (no match)  |
+   | NXDOMAIN / empty result            | Reject (not found)  | Reject (not found) |
+   | Transient (timeout, network error) | Reject (DNS failed) | Soft-pass          |
+
+   Initial register hard-rejects on transient resolver failures so a
+   brand-new entry can't slip in unverified during a DNS blip.
+   Refresh soft-passes the same conditions so an established entry
+   isn't evicted by a brief blip — the next refresh will re-validate.
+
+**Dual-stack registration.** A registrant reachable on both IPv4 and
+IPv6 SHOULD register a hostname with both A and AAAA records rather
+than an IP literal. The literal-match check binds to a single address
+family, so a peer connected via IPv6 advertising an IPv4 literal (or
+vice versa) is rejected. The hostname path matches whichever family
+the kernel routed the registration over.
 
 **Address encoding.** When `address` is a hostname, it MAY be Unicode
 (IDN) or Punycode. Trackers store the address as-typed and return it
-unchanged in `TrackerServerListResponse`. Clients are responsible for IDN →
-Punycode conversion at connection time, matching the handling used for
-`ServerInfo.public_address` elsewhere in Nexus.
+unchanged in `TrackerServerListResponse`; the Punycode form is used
+internally only for the resolution step in validation. Clients are
+responsible for IDN → Punycode conversion at connection time, matching
+the handling used for `ServerInfo.public_address` elsewhere in Nexus.
 
 **Refresh semantics.** Every refresh re-sends the full structure; the
 tracker replaces the stored entry in full. There is no per-field update or
@@ -234,12 +304,12 @@ ranges of their declared types.
 
 Sent by the tracker in reply to each `TrackerServerRegister`.
 
-| Field              | Type    | Required   | Description                                                              |
-| ------------------ | ------- | ---------- | ------------------------------------------------------------------------ |
-| `success`          | boolean | Yes        | Whether the registration was accepted                                    |
-| `refresh_interval` | u32     | If success | Seconds before sending the next `TrackerServerRegister`                  |
-| `error`            | string  | If failure | Human-readable explanation, localized per request `locale`               |
-| `error_kind`       | string  | If failure | Machine-readable error category (see [Errors](#errors))                  |
+| Field              | Type    | Required   | Description                                                |
+| ------------------ | ------- | ---------- | ---------------------------------------------------------- |
+| `success`          | boolean | Yes        | Whether the registration was accepted                      |
+| `refresh_interval` | u32     | If success | Seconds before sending the next `TrackerServerRegister`    |
+| `error`            | string  | If failure | Human-readable explanation, localized per request `locale` |
+| `error_kind`       | string  | If failure | Machine-readable error category (see [Errors](#errors))    |
 
 **Refresh interval.** The tracker dictates the refresh cadence so it can
 pace load (longer interval at scale, shorter for small or debug trackers).
@@ -394,20 +464,21 @@ or wrong password, malformed `TrackerServerList`, rate-limited.
 
 Each element of `TrackerServerListResponse.servers` has the following structure.
 The fields mirror `TrackerServerRegister` with two differences: `password` is
-never advertised, and `address` is always populated (the tracker resolves
-the connecting-IP fallback before listing).
+never advertised, and `address` is always populated — either the registrant's
+validated as-typed input (preserving any Unicode IDN form) or, when the
+registration omitted `address`, the connecting-IP substitution.
 
-| Field            | Type   | Required | Description                                                                      |
-| ---------------- | ------ | -------- | -------------------------------------------------------------------------------- |
-| `name`           | string | Yes      | Server display name                                                              |
-| `description`    | string | No       | Free-form description                                                            |
-| `address`        | string | Yes      | Public hostname or IP (resolved by tracker)                                      |
-| `port`           | u16    | Yes      | BBS TCP port                                                                     |
-| `websocket_port` | u16    | No       | BBS WebSocket port (if the server has `--websocket`)                             |
-| `version`        | string | Yes      | Server software version (e.g., `"0.8.1"`)                                        |
-| `fingerprint`    | string | Yes      | TLS cert fingerprint, canonical form                                             |
-| `user_count`     | u32    | Yes      | Distinct online users (matches the user list)                                    |
-| `allows_guest`   | bool   | Yes      | Whether the guest account is enabled                                             |
+| Field            | Type   | Required | Description                                                                 |
+| ---------------- | ------ | -------- | --------------------------------------------------------------------------- |
+| `name`           | string | Yes      | Server display name                                                         |
+| `description`    | string | No       | Free-form description                                                       |
+| `address`        | string | Yes      | Public hostname or IP (validated registrant input, or peer-IP substitution) |
+| `port`           | u16    | Yes      | BBS TCP port                                                                |
+| `websocket_port` | u16    | No       | BBS WebSocket port (if the server has `--websocket`)                        |
+| `version`        | string | Yes      | Server software version (e.g., `"0.8.1"`)                                   |
+| `fingerprint`    | string | Yes      | TLS cert fingerprint, canonical form                                        |
+| `user_count`     | u32    | Yes      | Distinct online users (matches the user list)                               |
+| `allows_guest`   | bool   | Yes      | Whether the guest account is enabled                                        |
 
 **Trust note.** The listed `fingerprint` is a display aid, not a trust
 assertion. Clients SHOULD perform their own TOFU fingerprint check on
@@ -546,6 +617,15 @@ The generic `Error` message does not carry an `error_kind` — its
 violation space is exclusively protocol-level, and clients do not branch
 on it for happy-path logic.
 
+**Field-validation sub-categories.** A typed response with
+`error_kind: "invalid"` covers every field-level validation failure,
+including the address-validation step described in
+[`TrackerServerRegister` → Address validation](#trackerserverregister).
+The reference tracker emits a structured `reason` field in its rejection
+log — `address_loopback`, `address_hostname_no_match`,
+`address_hostname_dns_failed`, etc. — which operators can use to
+distinguish sub-cases without parsing the human-readable `error` string.
+
 ## Timeouts
 
 The tracker enforces low-level timeouts to bound resource use from
@@ -587,7 +667,12 @@ Both passwords are access gates, not identity or privacy guarantees:
 
 - A **registration password** restricts who can submit entries. It does
   not authenticate which server is registering — anyone who knows the
-  password can register any `name`, `address`, or `fingerprint`.
+  password can register any `name` or `fingerprint`. The `address`
+  field is bound to the registrant's source IP via the address-
+  validation step (see
+  [`TrackerServerRegister` → Address validation](#trackerserverregister)),
+  so a remote attacker can't claim arbitrary network endpoints — but a
+  LAN-coresident attacker can, by virtue of the LAN-peer bypass.
 - A **listing password** restricts who can read the list. There is no
   key rotation, no per-user credential, and no audit trail on the wire.
 
@@ -636,16 +721,16 @@ per-entry refresh floor:
   who triggered the limit can't sneak through with a guess.
 - **Refresh floor** (60s, hardcoded): a registered server's
   `TrackerServerRegister` refreshes are rejected with
-  `error_kind: rate_limited` *and the connection is closed* if they
+  `error_kind: rate_limited` _and the connection is closed_ if they
   arrive less than 60 seconds after the previous accepted refresh.
   Half the protocol-level minimum `refresh_interval` (120s), so any
   well-behaved server is well clear — hitting this floor means the
   client is going at least 2× too fast, which is broken or malicious
   rather than over-eager. The drop guard unregisters the entry on
-  disconnect. The floor is checked *before* password verification so
+  disconnect. The floor is checked _before_ password verification so
   a misbehaving long-lived connection can't pin CPU on Argon2 hashing.
 
-A separate `TrackerServerList`-rate limiter is *not* implemented in
+A separate `TrackerServerList`-rate limiter is _not_ implemented in
 v0.1.0. List requests are one-shot per connection in this protocol, so
 the connection-rate limiter already bounds list-scraping at the same
 rate. A dedicated list limiter would only matter if it were stricter
@@ -653,10 +738,10 @@ than the connection limiter.
 
 ### Per-Source-IP Entry Cap
 
-Rate limits cap *frequency* and the global capacity setting caps
-*total* entries, but neither prevents a single operator from quietly
+Rate limits cap _frequency_ and the global capacity setting caps
+_total_ entries, but neither prevents a single operator from quietly
 filling a sizable share of the listing one slow refresh at a time.
-Trackers SHOULD cap the number of *currently-registered* entries per
+Trackers SHOULD cap the number of _currently-registered_ entries per
 source IP.
 
 The reference implementation defaults this cap to **1**: one IP, one
