@@ -107,11 +107,11 @@ Discovery service for Nexus servers. Protocol design is complete; see
   systemd unit, `release.yml` integration with independently versioned
   artifacts and Docker tags
 - ✅ Operator docs — [docs/tracker/](tracker/)
+- ✅ Locales — all 13 languages populated in `nexus-tracker/locales/`
 
 **Remaining work:**
 
-| Item                              | Notes                                                                                                                             |
-| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Server-side publisher integration | `nexusd` gains a `--tracker <url>` flag (or persisted server-config equivalent) and registers itself on the refresh interval      |
-| Client-side browser integration   | `nexus-client` queries one or more trackers and surfaces the listing in the bookmarks / server-list UI                            |
-| Locales (12 non-English)          | `nexus-tracker/locales/` currently has `en` only; populate before tagging tracker v0.1.0 (loader falls back to English meanwhile) |
+| Item                              | Notes                                                                                                                        |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Server-side publisher integration | `nexusd` gains a `--tracker <url>` flag (or persisted server-config equivalent) and registers itself on the refresh interval |
+| Client-side browser integration   | `nexus-client` queries one or more trackers and surfaces the listing in the bookmarks / server-list UI                       |
