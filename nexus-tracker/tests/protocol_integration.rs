@@ -107,7 +107,15 @@ async fn spawn_one_shot_tracker(data_dir: &std::path::Path) -> (std::net::Socket
     let local_addr = listener.local_addr().expect("local_addr");
 
     // Open tracker (no passwords), unlimited capacity, default refresh.
-    let state = Arc::new(TrackerState::new(Registry::new(0, 0), None, None, 300));
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
 
     let fp_clone = fingerprint.clone();
     tokio::spawn(async move {
@@ -441,7 +449,15 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
     // Open tracker: unlimited entries, no passwords, default refresh.
-    let state = Arc::new(TrackerState::new(Registry::new(0, 0), None, None, 300));
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     // Phase 1: open a server connection and register.
@@ -536,7 +552,15 @@ async fn test_register_refresh_updates_user_count() {
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    let state = Arc::new(TrackerState::new(Registry::new(0, 0), None, None, 300));
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     // Server connection: register, then refresh with new user_count.
@@ -562,7 +586,15 @@ async fn test_role_violation_on_server_connection_disconnects() {
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    let state = Arc::new(TrackerState::new(Registry::new(0, 0), None, None, 300));
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     // Establish a server connection first.
@@ -614,6 +646,9 @@ async fn test_unauthorized_register_when_password_required() {
         Some(hash),
         None,
         300,
+        0,
+        0,
+        Duration::ZERO,
     ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
@@ -665,7 +700,15 @@ async fn test_stale_entry_evicted_when_server_stops_refreshing() {
     // refresh loop's idle timeout uses this same window, so a server
     // that registers and then never refreshes will get evicted on
     // idle-timeout from the refresh loop.
-    let state = Arc::new(TrackerState::new(Registry::new(0, 0), None, None, 1));
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        1,
+        0,
+        0,
+        Duration::ZERO,
+    ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
@@ -692,7 +735,15 @@ async fn test_register_rejected_when_global_capacity_reached() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
     // max_entries=1 ⇒ second registration must fail with `capacity`.
-    let state = Arc::new(TrackerState::new(Registry::new(1, 0), None, None, 300));
+    let state = Arc::new(TrackerState::new(
+        Registry::new(1, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     // First register: succeeds.
@@ -741,7 +792,15 @@ async fn test_register_rejected_when_per_ip_cap_reached() {
     // max_entries unlimited but max_per_ip=1. Both connections come
     // from 127.0.0.1 (the test fixture binds to loopback), so the
     // second register from the same source IP must fail.
-    let state = Arc::new(TrackerState::new(Registry::new(0, 1), None, None, 300));
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 1),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     let (mut a_reader, mut a_writer) = connect_and_handshake(server_addr).await;
@@ -816,7 +875,15 @@ async fn test_websocket_handshake_register_list_roundtrip() {
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    let state = Arc::new(TrackerState::new(Registry::new(0, 0), None, None, 300));
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
     let (server_addr, _expected_fingerprint) =
         spawn_ws_only_tracker(tmp.path(), Arc::clone(&state)).await;
 
@@ -882,4 +949,252 @@ async fn test_websocket_handshake_register_list_roundtrip() {
         assert_eq!(listing[0].name, "WS BBS");
         assert_eq!(listing[0].user_count, 9);
     }
+}
+
+// =============================================================================
+// Rate limiting
+// =============================================================================
+
+/// Argon2id PHC hash of "secret", suitable for use as a tracker password
+/// hash in tests that need a gated tracker.
+fn hash_secret() -> String {
+    use argon2::password_hash::{SaltString, rand_core::OsRng};
+    use argon2::{Argon2, PasswordHasher};
+    let salt = SaltString::generate(&mut OsRng);
+    Argon2::default()
+        .hash_password(b"secret", &salt)
+        .expect("hash")
+        .to_string()
+}
+
+/// Build a `TrackerServerRegister` with an explicit password (overriding
+/// `make_register`'s `password: None`).
+fn make_register_with_password(name: &str, password: Option<&str>) -> TrackerClientMessage {
+    let mut msg = make_register(name, 0);
+    if let TrackerClientMessage::TrackerServerRegister {
+        password: ref mut p,
+        ..
+    } = msg
+    {
+        *p = password.map(str::to_string);
+    }
+    msg
+}
+
+#[tokio::test]
+async fn test_register_auth_failure_rate_limit_rejects_after_burst() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    // Gated tracker, auth-failure capacity 2. Two wrong-password attempts
+    // burn the bucket; the third (and any further attempts, even with the
+    // CORRECT password) get rate_limited until refill.
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        Some(hash_secret()),
+        None,
+        300,
+        0,              // connection rate disabled
+        2,              // auth-failure rate
+        Duration::ZERO, // refresh floor disabled (so successive registers are isolated)
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    // Three wrong-password attempts in succession.
+    for attempt in 1..=3 {
+        let (mut r, mut w) = connect_and_handshake(server_addr).await;
+        send_tracker_client(&mut w, &make_register_with_password("Brute", Some("wrong"))).await;
+        match read_tracker_server(&mut r).await {
+            TrackerServerMessage::TrackerServerRegisterResponse {
+                success: false,
+                error_kind,
+                ..
+            } => match attempt {
+                1 | 2 => assert_eq!(
+                    error_kind.as_deref(),
+                    Some("unauthorized"),
+                    "attempt {attempt} should be unauthorized (bucket still has tokens)",
+                ),
+                3 => assert_eq!(
+                    error_kind.as_deref(),
+                    Some("rate_limited"),
+                    "attempt {attempt} should be rate-limited (bucket empty)",
+                ),
+                _ => unreachable!(),
+            },
+            other => panic!("attempt {attempt}: expected typed failure, got {other:?}"),
+        }
+    }
+
+    // Even the CORRECT password is rate-limited until the bucket refills:
+    // an attacker who triggered the limit can't sneak through with a guess.
+    let (mut r, mut w) = connect_and_handshake(server_addr).await;
+    send_tracker_client(
+        &mut w,
+        &make_register_with_password("Brute", Some("secret")),
+    )
+    .await;
+    match read_tracker_server(&mut r).await {
+        TrackerServerMessage::TrackerServerRegisterResponse {
+            success: false,
+            error_kind,
+            ..
+        } => assert_eq!(
+            error_kind.as_deref(),
+            Some("rate_limited"),
+            "correct password while rate-limited should still be rejected",
+        ),
+        other => panic!("expected rate_limited rejection, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_correct_password_does_not_burn_auth_failure_tokens() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    // Gated tracker, auth-failure capacity 1. Successful auths must NOT
+    // debit the bucket — otherwise the second correct attempt below
+    // would already see an empty bucket and be rate-limited.
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0), // unlimited entries
+        Some(hash_secret()),
+        None,
+        300,
+        0,              // connection rate disabled
+        1,              // auth-failure rate (very low)
+        Duration::ZERO, // refresh floor disabled
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    // Three successful registrations across three fresh connections.
+    // None should consume the auth-failure bucket. Use distinct names
+    // so the per-IP cap (which we left at default 0 = unlimited via
+    // Registry::new(0, 0)) isn't a confound either.
+    for i in 1..=3 {
+        let (mut r, mut w) = connect_and_handshake(server_addr).await;
+        send_tracker_client(
+            &mut w,
+            &make_register_with_password(&format!("OK-{i}"), Some("secret")),
+        )
+        .await;
+        match read_tracker_server(&mut r).await {
+            TrackerServerMessage::TrackerServerRegisterResponse { success: true, .. } => {}
+            other => panic!("attempt {i}: expected success, got {other:?}"),
+        }
+        // Drop the connection so the next iteration is a fresh registration.
+        drop(r);
+        drop(w);
+    }
+
+    // The bucket still has its single token: the next WRONG password
+    // gets unauthorized (consumes the token). If any prior success had
+    // burned a token, this would already be rate_limited.
+    let (mut r, mut w) = connect_and_handshake(server_addr).await;
+    send_tracker_client(
+        &mut w,
+        &make_register_with_password("First-Failure", Some("wrong")),
+    )
+    .await;
+    match read_tracker_server(&mut r).await {
+        TrackerServerMessage::TrackerServerRegisterResponse {
+            success: false,
+            error_kind,
+            ..
+        } => assert_eq!(
+            error_kind.as_deref(),
+            Some("unauthorized"),
+            "first failure after successes should be unauthorized, not rate_limited",
+        ),
+        other => panic!("expected unauthorized, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_connection_rate_limit_drops_excess_connections() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    // Connection rate capacity 1: the first TCP connect succeeds (and
+    // its TLS handshake completes), the second is dropped pre-TLS by
+    // the accept loop.
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        1, // connection rate
+        0, // auth-failure rate disabled
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    // First connection: succeeds and we can do a normal handshake.
+    let (mut _r, mut _w) = connect_and_handshake(server_addr).await;
+
+    // Second connection: TCP accepts, but the server drops the stream
+    // before TLS, so the client's TLS handshake fails. The exact error
+    // varies by platform (EOF / unexpected close); we only assert that
+    // the TLS handshake doesn't *succeed*.
+    let connector = build_test_client();
+    let stream = TcpStream::connect(server_addr).await.expect("tcp connect");
+    let server_name = ServerName::try_from("localhost").expect("server name");
+    let tls_result = connector.connect(server_name, stream).await;
+    assert!(
+        tls_result.is_err(),
+        "second connection should be dropped pre-TLS, got Ok",
+    );
+}
+
+#[tokio::test]
+async fn test_refresh_too_soon_rejected_and_disconnected() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    // Open tracker (no auth gates) so the only thing in our way is
+    // the per-entry refresh floor — set to the production default here
+    // (other tests pass `Duration::ZERO` to disable it).
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        nexus_tracker::constants::REFRESH_FLOOR_INTERVAL,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    // Phase 1: open a long-lived connection and register.
+    let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
+    send_tracker_client(&mut s_writer, &make_register("Throttled BBS", 5)).await;
+    match read_tracker_server(&mut s_reader).await {
+        TrackerServerMessage::TrackerServerRegisterResponse { success: true, .. } => {}
+        other => panic!("expected initial register to succeed, got {other:?}"),
+    }
+
+    // Phase 2: immediate refresh on the same connection. Floor is 60s;
+    // we're well under that. The tracker must reject with
+    // `error_kind: rate_limited` AND close the connection — a client
+    // refreshing > 2× the proper rate is broken or malicious.
+    send_tracker_client(&mut s_writer, &make_register("Throttled BBS", 6)).await;
+    match read_tracker_server(&mut s_reader).await {
+        TrackerServerMessage::TrackerServerRegisterResponse {
+            success: false,
+            error_kind,
+            ..
+        } => assert_eq!(
+            error_kind.as_deref(),
+            Some("rate_limited"),
+            "refresh inside the floor window should be rate-limited",
+        ),
+        other => panic!("expected rate_limited rejection, got {other:?}"),
+    }
+
+    // The connection must be closed and the entry unregistered (drop
+    // guard runs as the connection task exits). `wait_for_registry_len`
+    // polls until the registry shows 0 entries.
+    drop(s_reader);
+    drop(s_writer);
+    wait_for_registry_len(&state, 0).await;
 }

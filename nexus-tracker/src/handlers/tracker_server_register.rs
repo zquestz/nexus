@@ -32,18 +32,22 @@ use nexus_common::validators::{
     MAX_LOCALE_LENGTH, MAX_PASSWORD_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH,
     MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_VERSION_LENGTH,
 };
-use nexus_common::{ERROR_KIND_CAPACITY, ERROR_KIND_INVALID, ERROR_KIND_UNAUTHORIZED};
+use nexus_common::{
+    ERROR_KIND_CAPACITY, ERROR_KIND_INVALID, ERROR_KIND_RATE_LIMITED, ERROR_KIND_UNAUTHORIZED,
+};
 
 use crate::auth::check_password;
 use crate::constants::{
-    DEFAULT_LOCALE, LOG_REGISTER_NEW, LOG_REGISTER_REFRESH, LOG_REGISTER_REJECTED,
+    DEFAULT_LOCALE, LOG_AUTH_RATE_LIMITED, LOG_REFRESH_TOO_SOON, LOG_REGISTER_NEW,
+    LOG_REGISTER_REFRESH, LOG_REGISTER_REJECTED,
 };
 use crate::errors::{
     err_tracker_address_invalid, err_tracker_address_too_long, err_tracker_capacity,
     err_tracker_description_too_long, err_tracker_fingerprint_invalid, err_tracker_locale_too_long,
     err_tracker_name_too_long, err_tracker_password_too_long, err_tracker_per_ip_capacity,
-    err_tracker_unauthorized, err_tracker_version_too_long,
+    err_tracker_rate_limited, err_tracker_unauthorized, err_tracker_version_too_long,
 };
+use crate::rate_limiter::RateCheck;
 use crate::registry::{ConnectionId, RegistryError};
 use crate::state::TrackerState;
 
@@ -73,6 +77,10 @@ pub enum RegisterOutcome {
     /// and `last_refresh` reset.
     Refreshed,
     /// Rejected with a typed failure response. Connection should close.
+    /// The drop guard on the connection task unregisters any associated
+    /// registry entry. Refresh-floor violations land here too — a client
+    /// refreshing faster than half the protocol minimum is broken or
+    /// malicious, so we kick rather than tolerate.
     Rejected,
 }
 
@@ -172,11 +180,73 @@ where
         .await;
     }
 
-    // Password check (gated registration).
-    if !check_password(
-        params.password.as_deref(),
-        state.registration_password_hash.as_deref(),
-    ) {
+    let now = Instant::now();
+
+    // Per-entry refresh floor. Only applies on the refresh path
+    // (`existing_id: Some`); the initial register's accept already
+    // burned a connection-rate token. Checking *before* Argon2
+    // verification means a misbehaving server hammering refreshes can't
+    // pin CPU on password hashing. We don't update `last_refresh` on
+    // rejection — preserves the slide-protection property (rapid
+    // rejected refreshes can't keep an entry alive).
+    //
+    // The lock is released before any `.await` (held only across the
+    // `last_refresh` peek) so the future stays `Send`. A zero
+    // `refresh_floor` (set by tests) skips the check entirely.
+    let last_refresh_at = if state.refresh_floor.is_zero() {
+        None
+    } else {
+        existing_id.and_then(|id| {
+            state
+                .registry
+                .lock()
+                .expect("registry mutex poisoned")
+                .last_refresh(id)
+        })
+    };
+    if let Some(last) = last_refresh_at
+        && now.duration_since(last) < state.refresh_floor
+    {
+        let id = existing_id.expect("set when last_refresh_at is Some");
+        warn!(ip = %peer_addr.ip(), id = id, "{}", LOG_REFRESH_TOO_SOON);
+        return reject(
+            writer,
+            ip(&peer_addr),
+            "refresh_too_soon",
+            ERROR_KIND_RATE_LIMITED,
+            err_tracker_rate_limited(&params.locale),
+        )
+        .await;
+    }
+
+    // Password check (gated registration). Two-phase rate limiting:
+    // peek the auth-failure bucket BEFORE verification so an attacker
+    // with too many recent failures can't sneak through with a guess;
+    // record the failure only on actual mismatch so legitimate
+    // operators with the correct password don't burn tokens.
+    //
+    // Snapshot the hash once and use it for every decision below so
+    // that a SIGHUP-driven hash swap mid-handler doesn't make the
+    // gated/open and verify decisions disagree.
+    let stored_hash = state.registration_password_snapshot();
+    let gated = stored_hash.is_some();
+    if gated && state.auth_failure_rate_limiter.check_only(peer_addr.ip()) == RateCheck::Limited {
+        warn!(ip = %peer_addr.ip(), "{}", LOG_AUTH_RATE_LIMITED);
+        return reject(
+            writer,
+            ip(&peer_addr),
+            "rate_limited",
+            ERROR_KIND_RATE_LIMITED,
+            err_tracker_rate_limited(&params.locale),
+        )
+        .await;
+    }
+    if !check_password(params.password.as_deref(), stored_hash.as_deref()) {
+        if gated {
+            state
+                .auth_failure_rate_limiter
+                .record_failure(peer_addr.ip());
+        }
         return reject(
             writer,
             ip(&peer_addr),
@@ -220,7 +290,6 @@ where
         user_count: params.user_count,
         allows_guest: params.allows_guest,
     };
-    let now = Instant::now();
     let locale = params.locale;
 
     // Register or refresh.

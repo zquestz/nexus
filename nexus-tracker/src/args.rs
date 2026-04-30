@@ -109,6 +109,19 @@ pub struct Cli {
     #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u32).range(120..=600))]
     pub refresh_interval: u32,
 
+    /// Connections per minute per source IP (0 = unlimited).
+    /// When the bucket is empty, new connections from the offending IP
+    /// are dropped at the framing layer (no response sent).
+    #[arg(long, default_value_t = 20, value_parser = clap::value_parser!(u32).range(0..=10_000))]
+    pub rate_connections: u32,
+
+    /// Failed authentication attempts per minute per source IP (0 = unlimited).
+    /// Successful auths don't debit; only failures (wrong / missing
+    /// password on a gated tracker) do. Once empty, further attempts
+    /// from the offending IP are rejected with `error_kind: rate_limited`.
+    #[arg(long, default_value_t = 5, value_parser = clap::value_parser!(u32).range(0..=10_000))]
+    pub rate_auth_failures: u32,
+
     #[command(subcommand)]
     pub command: Option<Command>,
 }

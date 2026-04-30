@@ -135,6 +135,14 @@ impl Registry {
         Ok(())
     }
 
+    /// Read-only peek at an entry's `last_refresh`. Returns `None` if
+    /// `id` is not registered. Used by the refresh handler to enforce
+    /// the per-entry floor before paying for password verification.
+    #[must_use]
+    pub fn last_refresh(&self, id: ConnectionId) -> Option<Instant> {
+        self.entries.get(&id).map(|r| r.last_refresh)
+    }
+
     /// Remove an entry. Idempotent — calling on an unknown id is a no-op.
     pub fn unregister(&mut self, id: ConnectionId) {
         if let Some(removed) = self.entries.remove(&id) {
@@ -495,5 +503,24 @@ mod tests {
             r.register(make_entry("S"), ip(i), now).unwrap();
         }
         assert!(!r.is_full());
+    }
+
+    #[test]
+    fn test_last_refresh_returns_registered_instant() {
+        let mut r = Registry::new(0, 0);
+        let t0 = Instant::now();
+        let id = r.register(make_entry("X"), ip(1), t0).unwrap();
+        assert_eq!(r.last_refresh(id), Some(t0));
+
+        // refresh() updates last_refresh.
+        let t1 = t0 + Duration::from_secs(10);
+        r.refresh(id, make_entry("X"), t1).unwrap();
+        assert_eq!(r.last_refresh(id), Some(t1));
+    }
+
+    #[test]
+    fn test_last_refresh_returns_none_for_unknown_id() {
+        let r = Registry::new(0, 0);
+        assert_eq!(r.last_refresh(999), None);
     }
 }

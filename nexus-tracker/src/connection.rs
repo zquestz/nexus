@@ -27,7 +27,7 @@ use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use nexus_common::framing::{FrameError, FrameReader, FrameWriter};
 use nexus_common::io::{
@@ -39,8 +39,9 @@ use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 
 use crate::constants::{
-    DEFAULT_LOCALE, HANDSHAKE_TIMEOUT, LOG_HANDSHAKE_REQUIRED, LOG_REGISTER_DISCONNECTED,
-    LOG_ROLE_VIOLATION, ROLE_ESTABLISH_TIMEOUT, TLS_HANDSHAKE_FAILED_PREFIX,
+    DEFAULT_LOCALE, HANDSHAKE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED, LOG_HANDSHAKE_REQUIRED,
+    LOG_REGISTER_DISCONNECTED, LOG_ROLE_VIOLATION, ROLE_ESTABLISH_TIMEOUT,
+    TLS_HANDSHAKE_FAILED_PREFIX,
 };
 use crate::errors::{
     err_tracker_frame_error, err_tracker_handshake_required, err_tracker_role_violation,
@@ -50,6 +51,7 @@ use crate::handlers::tracker_server_list::{ListParams, handle_tracker_server_lis
 use crate::handlers::tracker_server_register::{
     RegisterOutcome, RegisterParams, handle_tracker_server_register,
 };
+use crate::rate_limiter::RateCheck;
 use crate::registry::ConnectionId;
 use crate::state::TrackerState;
 
@@ -77,6 +79,16 @@ pub async fn handle_connection(
     fingerprint: String,
     state: Arc<TrackerState>,
 ) -> io::Result<()> {
+    // Per-IP connection-rate gate. We check pre-TLS so over-limit peers
+    // don't pay (or make us pay) the cost of a TLS handshake. The
+    // `stream` is dropped here, closing the TCP connection silently —
+    // per protocol spec §Rate Limiting we may "drop connections at the
+    // framing layer" without sending any response.
+    if state.connection_rate_limiter.try_consume(peer_addr.ip()) == RateCheck::Limited {
+        debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_RATE_LIMITED);
+        return Ok(());
+    }
+
     let tls_stream = tls_acceptor
         .accept(stream)
         .await

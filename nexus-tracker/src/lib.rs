@@ -13,6 +13,7 @@ pub mod errors;
 pub mod handlers;
 pub mod i18n;
 pub mod logging;
+pub mod rate_limiter;
 pub mod registry;
 pub mod state;
 pub mod tls;

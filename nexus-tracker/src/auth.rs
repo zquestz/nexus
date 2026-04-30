@@ -89,19 +89,31 @@ pub fn clear_password(data_dir: &Path, kind: PasswordKind) -> Result<bool, Strin
 ///
 /// # Errors
 ///
-/// Returns an error string if the file exists but cannot be read.
+/// Returns an error string if the file exists but cannot be read, or if
+/// its contents don't parse as a valid PHC string. Validation here means
+/// startup refuses to proceed with a corrupt hash file, and the SIGHUP
+/// reload path can preserve the previous in-memory state on parse error
+/// rather than silently breaking every auth attempt.
 pub fn load_password_hash(data_dir: &Path, kind: PasswordKind) -> Result<Option<String>, String> {
     let path = hash_path(data_dir, kind);
-    match fs::read_to_string(&path) {
-        Ok(s) => Ok(Some(s.trim().to_string())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(format!(
-            "{}{}: {}",
-            ERR_READ_PASSWORD_FILE,
-            path.display(),
-            e
-        )),
-    }
+    let raw = match fs::read_to_string(&path) {
+        Ok(s) => s.trim().to_string(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => {
+            return Err(format!(
+                "{}{}: {}",
+                ERR_READ_PASSWORD_FILE,
+                path.display(),
+                e
+            ));
+        }
+    };
+    // Parse-check: reject the file at load time rather than at first
+    // auth attempt. `verify_password` would otherwise return Err and
+    // `check_password` would swallow it as `false`, silently failing
+    // every authentication.
+    PasswordHash::new(&raw).map_err(|e| format!("{}{}", ERR_PARSE_PASSWORD_HASH, e))?;
+    Ok(Some(raw))
 }
 
 /// Verify `plain` against a previously-stored PHC hash. Returns `Ok(true)`

@@ -622,6 +622,35 @@ The protocol does not prescribe specific limits. Trackers are free to
 respond with typed-response rate-limit errors or to drop connections at
 the framing layer.
 
+**Reference implementation.** Two per-IP token-bucket limiters plus a
+per-entry refresh floor:
+
+- **Connection rate** (`--rate-connections`, default `20`/min): bucket
+  drained at TCP accept; over-limit peers have their connection dropped
+  silently at the framing layer.
+- **Failed auth attempts** (`--rate-auth-failures`, default `5`/min):
+  successful authentications don't debit the bucket; only failed
+  password verifications do. Once the bucket is empty, further attempts
+  from that IP — including correct passwords — are rejected with
+  `error_kind: rate_limited` until the bucket refills, so an attacker
+  who triggered the limit can't sneak through with a guess.
+- **Refresh floor** (60s, hardcoded): a registered server's
+  `TrackerServerRegister` refreshes are rejected with
+  `error_kind: rate_limited` *and the connection is closed* if they
+  arrive less than 60 seconds after the previous accepted refresh.
+  Half the protocol-level minimum `refresh_interval` (120s), so any
+  well-behaved server is well clear — hitting this floor means the
+  client is going at least 2× too fast, which is broken or malicious
+  rather than over-eager. The drop guard unregisters the entry on
+  disconnect. The floor is checked *before* password verification so
+  a misbehaving long-lived connection can't pin CPU on Argon2 hashing.
+
+A separate `TrackerServerList`-rate limiter is *not* implemented in
+v0.1.0. List requests are one-shot per connection in this protocol, so
+the connection-rate limiter already bounds list-scraping at the same
+rate. A dedicated list limiter would only matter if it were stricter
+than the connection limiter.
+
 ### Per-Source-IP Entry Cap
 
 Rate limits cap *frequency* and the global capacity setting caps

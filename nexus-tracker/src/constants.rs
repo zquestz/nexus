@@ -129,6 +129,22 @@ pub const LOG_PASSWORD_CLEARED: &str = "Password cleared";
 /// (paired with `kind = %kind`).
 pub const LOG_PASSWORD_NOT_PRESENT: &str = "No password configured";
 
+/// Log message: SIGHUP received and we're about to reload password hashes
+/// from disk.
+#[cfg(unix)]
+pub const LOG_SIGHUP_RECEIVED: &str = "SIGHUP received; reloading passwords";
+
+/// Log message: a single password kind was successfully reloaded
+/// (paired with `kind = %kind, gated = %bool`). Logged for both
+/// transitions (open → gated, gated → open) and for "still
+/// gated, hash possibly changed" reloads.
+pub const LOG_PASSWORD_RELOADED: &str = "Password reloaded";
+
+/// Log message: reload of one password kind failed (paired with
+/// `kind = %kind, err = %err`). Previous in-memory state is
+/// preserved — the daemon does not crash on a typo in a hash file.
+pub const LOG_PASSWORD_RELOAD_FAILED: &str = "Password reload failed; previous state preserved";
+
 /// Auth-flow label: registration. Composed with a status label for the
 /// startup status line, e.g. `format!("{LABEL_REGISTRATION}: {STATUS_OPEN}")`.
 pub const LABEL_REGISTRATION: &str = "Registration";
@@ -354,6 +370,45 @@ pub const ERR_SIGNAL_SIGINT: &str = "Failed to setup SIGINT handler";
 /// Ctrl+C handler setup error on Windows (panics — required for graceful shutdown).
 #[cfg(not(unix))]
 pub const ERR_SIGNAL_CTRLC: &str = "Failed to setup Ctrl+C handler";
+
+// =============================================================================
+// Rate limiting
+// =============================================================================
+
+/// How often the background task sweeps idle entries from the per-IP
+/// rate-limit maps. 60s is a tradeoff: short enough that long-lived
+/// daemons under disposable-IP attack don't accumulate too many stale
+/// entries between sweeps, long enough that the sweep itself is cheap.
+pub const RATE_LIMITER_GC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Bucket idle TTL — how long an IP's bucket sticks around after its
+/// last touch. Set well above the 60s refill window so we don't thrash
+/// (evict + re-create) under bursty but legitimate traffic, but not so
+/// long that disposable-IP spam wastes memory.
+pub const RATE_LIMITER_IDLE_TTL: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Log: a TCP connection was dropped pre-TLS because the source IP's
+/// connection-rate bucket is empty. Paired with `ip = %peer_addr.ip()`.
+/// Debug-level — this is expected, normal-operation noise.
+pub const LOG_CONNECTION_RATE_LIMITED: &str = "Connection rate-limited; dropping";
+
+/// Log: an auth attempt was rejected because the source IP's
+/// auth-failure-rate bucket is empty. Paired with `ip = %peer_addr.ip()`.
+pub const LOG_AUTH_RATE_LIMITED: &str = "Auth rate-limited";
+
+/// Minimum elapsed time between successive `TrackerServerRegister`
+/// refreshes on a single connection. Half the protocol-level minimum
+/// `refresh_interval` (120s) — anything faster than this is misbehavior
+/// by definition. Bounds Argon2 / mutex-contention abuse from a
+/// long-lived connection that's already past the connection-rate gate.
+/// Hardcoded (not operator-tunable) because it's a protocol-derived
+/// value, not a policy knob.
+pub const REFRESH_FLOOR_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// Log: a `TrackerServerRegister` refresh arrived too soon after the
+/// previous accepted refresh on the same entry. Paired with
+/// `ip = %peer_addr.ip(), id = %connection_id`.
+pub const LOG_REFRESH_TOO_SOON: &str = "TrackerServerRegister: refresh too soon";
 
 // =============================================================================
 // UPnP (operator-facing)

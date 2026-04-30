@@ -104,7 +104,6 @@ pub fn err_tracker_locale_too_long(locale: &str, max_length: usize) -> String {
 // =============================================================================
 
 /// Per-IP rate limit hit (token bucket exhausted).
-#[allow(dead_code)] // used by rate limiter (later step)
 pub fn err_tracker_rate_limited(locale: &str) -> String {
     t(locale, "err-tracker-rate-limited")
 }

@@ -136,8 +136,10 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     let tls_acceptor = tls::build_acceptor(data_dir)?;
     info!("{}{}", constants::MSG_CERTIFICATES, data_dir.display());
 
-    // Load password hashes once at startup. SIGHUP reload is future work
-    // per TODO.md; for v0.1.0 the daemon must restart to pick up changes.
+    // Load password hashes at startup. The daemon refuses to start if a
+    // hash file exists but is unparseable. After startup, SIGHUP (Unix)
+    // reloads both files via `TrackerState::reload_passwords`; on
+    // Windows, password changes require a daemon restart.
     let registration_password_hash =
         auth::load_password_hash(data_dir, PasswordKind::Registration)?;
     let listing_password_hash = auth::load_password_hash(data_dir, PasswordKind::Listing)?;
@@ -153,6 +155,9 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
         registration_password_hash,
         listing_password_hash,
         cli.refresh_interval,
+        cli.rate_connections,
+        cli.rate_auth_failures,
+        constants::REFRESH_FLOOR_INTERVAL,
     ));
 
     let bind_addr = SocketAddr::new(cli.bind, cli.port);
@@ -191,6 +196,16 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     )
     .await;
 
+    // Background sweep that drops idle, fully-refilled rate-limit buckets.
+    // No-op when both limiters are disabled (capacity 0). The handle is
+    // aborted on shutdown.
+    let rate_limiter_gc_task = spawn_rate_limiter_gc(Arc::clone(&state));
+
+    // SIGHUP password-reload task (Unix only). On Windows, password
+    // changes require a daemon restart.
+    #[cfg(unix)]
+    let sighup_task = spawn_sighup_handler(Arc::clone(&state), data_dir.to_path_buf());
+
     accept_loop(
         listener,
         ws_listener,
@@ -198,9 +213,52 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
         fingerprint,
         state,
         upnp_handle,
+        rate_limiter_gc_task,
+        #[cfg(unix)]
+        sighup_task,
     )
     .await;
     Ok(())
+}
+
+/// Spawn a long-lived task that listens for SIGHUP and re-reads the
+/// password hash files on each receipt. Returns a `JoinHandle` so
+/// graceful shutdown can abort it.
+#[cfg(unix)]
+fn spawn_sighup_handler(
+    state: Arc<TrackerState>,
+    data_dir: PathBuf,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut sighup = signal(SignalKind::hangup()).expect("SIGHUP handler installation failed");
+        loop {
+            sighup.recv().await;
+            info!("{}", constants::LOG_SIGHUP_RECEIVED);
+            // `reload_passwords` does its own per-flow logging
+            // (success / failure with previous-state-preserved
+            // semantics).
+            state.reload_passwords(&data_dir);
+        }
+    })
+}
+
+/// Spawn the background rate-limiter GC task.
+fn spawn_rate_limiter_gc(state: Arc<TrackerState>) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(constants::RATE_LIMITER_GC_INTERVAL);
+        // Skip the initial immediate tick.
+        interval.tick().await;
+        loop {
+            interval.tick().await;
+            state
+                .connection_rate_limiter
+                .gc(constants::RATE_LIMITER_IDLE_TTL);
+            state
+                .auth_failure_rate_limiter
+                .gc(constants::RATE_LIMITER_IDLE_TTL);
+        }
+    })
 }
 
 /// Set up UPnP port forwarding for the tracker if `enabled`. On failure
@@ -234,6 +292,7 @@ async fn setup_upnp(
 /// Accept loop, terminated by SIGINT / SIGTERM (or Ctrl+C on Windows).
 /// Runs the TCP accept loop and (when `--websocket`) the WS accept
 /// loop concurrently; either exiting on shutdown drains both.
+#[allow(clippy::too_many_arguments)] // internal daemon-startup glue; bundling adds noise without improving the call site
 async fn accept_loop(
     listener: TcpListener,
     ws_listener: Option<TcpListener>,
@@ -241,6 +300,8 @@ async fn accept_loop(
     fingerprint: String,
     state: Arc<TrackerState>,
     upnp_handle: Option<(Arc<upnp::Gateway>, tokio::task::JoinHandle<()>)>,
+    rate_limiter_gc_task: tokio::task::JoinHandle<()>,
+    #[cfg(unix)] sighup_task: tokio::task::JoinHandle<()>,
 ) {
     let tcp = run_tcp_accepts(
         &listener,
@@ -255,6 +316,13 @@ async fn accept_loop(
         () = ws => {}
         () = setup_shutdown_signal() => {
             info!("{}", constants::MSG_SHUTDOWN_RECEIVED);
+
+            // Stop the rate-limiter GC sweep.
+            rate_limiter_gc_task.abort();
+
+            // Stop the SIGHUP listener.
+            #[cfg(unix)]
+            sighup_task.abort();
 
             // Cleanup UPnP port forwarding if enabled.
             if let Some((gateway, renewal_task)) = upnp_handle {

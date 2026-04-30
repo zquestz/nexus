@@ -13,11 +13,13 @@ use std::sync::Arc;
 
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
+use tracing::debug;
 
 use nexus_common::websocket::WebSocketAdapter;
 
 use crate::connection::handle_connection_inner;
-use crate::constants::TLS_HANDSHAKE_FAILED_PREFIX;
+use crate::constants::{LOG_CONNECTION_RATE_LIMITED, TLS_HANDSHAKE_FAILED_PREFIX};
+use crate::rate_limiter::RateCheck;
 use crate::state::TrackerState;
 
 /// Drive a single WebSocket connection. Mirrors `handle_connection`
@@ -37,6 +39,14 @@ pub async fn handle_tracker_websocket_connection(
     fingerprint: String,
     state: Arc<TrackerState>,
 ) -> io::Result<()> {
+    // Per-IP connection-rate gate, identical to the TCP path. Drop
+    // pre-TLS / pre-WS so over-limit peers don't pay for the upgrade
+    // dance.
+    if state.connection_rate_limiter.try_consume(peer_addr.ip()) == RateCheck::Limited {
+        debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_RATE_LIMITED);
+        return Ok(());
+    }
+
     // TLS first, same as the TCP path. Wrapping with the prefix lets
     // `log_connection_error` downgrade scanner / incompatible-client
     // noise to debug.
