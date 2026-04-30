@@ -47,7 +47,18 @@ Pre-built binaries are available on the [Releases](https://github.com/zquestz/ne
 | Linux    | `nexusd-{version}-linux-{x64,arm64}.tar.gz` |
 | Docker   | `ghcr.io/zquestz/nexusd:{version}`          |
 
-See [Client Installation](docs/client/01-getting-started.md) and [Server Installation](docs/server/01-getting-started.md) for detailed instructions.
+### Tracker
+
+The tracker is an optional discovery daemon that maintains a list of registered Nexus servers. It is versioned independently from the BBS server and client.
+
+| Platform | Download                                              |
+| -------- | ----------------------------------------------------- |
+| macOS    | `nexus-trackerd-{version}-macos-{x64,arm64}.tar.gz`   |
+| Windows  | `nexus-trackerd-{version}-windows-x64.zip`            |
+| Linux    | `nexus-trackerd-{version}-linux-{x64,arm64}.tar.gz`   |
+| Docker   | `ghcr.io/zquestz/nexus-trackerd:{version}`            |
+
+See [Client Installation](docs/client/01-getting-started.md), [Server Installation](docs/server/01-getting-started.md), and [Tracker Installation](docs/tracker/01-getting-started.md) for detailed instructions.
 
 ## Quick Start (from source)
 
@@ -66,11 +77,18 @@ See [Server Documentation](docs/server/01-getting-started.md) for configuration 
 
 ## Docker
 
+The repo's `docker-compose.yml` ships both the server (`nexusd`) and the tracker (`nexus-trackerd`):
+
 ```bash
+# Start both
 docker compose up -d
+
+# Or start just one
+docker compose up -d nexusd
+docker compose up -d nexus-trackerd
 ```
 
-See [Docker Documentation](docs/server/03-docker.md) for details.
+See [Server Docker](docs/server/03-docker.md) and [Tracker Docker](docs/tracker/03-docker.md) for details.
 
 ## Screenshots
 
@@ -80,15 +98,17 @@ _Coming soon_
 
 - **[Client Guide](docs/README.md#client-user-guide)** — Connections, chat, files, settings
 - **[Server Guide](docs/README.md#server-admin-guide)** — Setup, configuration, user management
+- **[Tracker Guide](docs/README.md#tracker-admin-guide)** — Discovery service setup and password management
 - **[Protocol Specification](docs/protocol/README.md)** — Technical protocol details
 
 ## Architecture
 
-| Crate          | Description                   |
-| -------------- | ----------------------------- |
-| `nexus-common` | Shared protocol and utilities |
-| `nexus-server` | Server daemon (`nexusd`)      |
-| `nexus-client` | GUI client (`nexus`)          |
+| Crate           | Description                          |
+| --------------- | ------------------------------------ |
+| `nexus-common`  | Shared protocol and utilities        |
+| `nexus-server`  | Server daemon (`nexusd`)             |
+| `nexus-client`  | GUI client (`nexus`)                 |
+| `nexus-tracker` | Tracker daemon (`nexus-trackerd`)    |
 
 ## Build Requirements
 
