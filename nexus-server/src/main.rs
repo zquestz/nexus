@@ -345,25 +345,23 @@ async fn main() {
         LOG_FILE_PREFIX.to_string(),
     );
 
+    // Bundle every background task that needs explicit teardown into
+    // `DaemonHandles`. Adding a new background task means adding one
+    // field plus one line in `shutdown()` — no inlined if-let block in
+    // the `tokio::select!` shutdown arm. Accept loops, the voice
+    // server, and the file-reindex timer live inside the `select!` and
+    // are auto-dropped when the select! returns, so they aren't
+    // bundled here.
+    let handles = DaemonHandles {
+        log_purge: log_purge_task,
+        upnp: upnp_handle,
+    };
+
     // Main server loops - accept incoming connections on both ports
     tokio::select! {
         _ = shutdown_signal => {
             info!("{}", MSG_SHUTDOWN_RECEIVED);
-
-            // Cleanup UPnP port forwarding if enabled
-            if let Some((gateway, renewal_task)) = upnp_handle {
-                renewal_task.abort();
-
-                // Remove port mapping
-                if let Err(e) = gateway.remove_port_mapping().await {
-                    warn!(err = %e, "{}", LOG_UPNP_REMOVE_FAILED);
-                }
-            }
-
-            // Stop the daily log-purge task if it was spawned.
-            if let Some(handle) = log_purge_task {
-                handle.abort();
-            }
+            handles.shutdown().await;
         }
         // Main BBS port accept loop
         _ = async {
@@ -797,6 +795,42 @@ async fn setup_db(db_path: &Path) -> (db::Database, UserManager) {
     let user_manager = UserManager::new();
 
     (database, user_manager)
+}
+
+/// Background tasks and resources owned by the daemon for the lifetime
+/// of the main `tokio::select!`. Bundled so the shutdown branch has a
+/// single `handles.shutdown().await` call instead of inlined teardown
+/// for each task.
+///
+/// Only standalone-spawned tasks live here. Accept loops, the voice
+/// server, and the file-reindex timer run as `_ = async { … } => {}`
+/// arms inside the `select!` and are auto-dropped when the `select!`
+/// returns, so they don't need a handle.
+struct DaemonHandles {
+    /// Daily log-retention purge task. `None` when file logging is
+    /// disabled (level == None or retention == 0).
+    log_purge: Option<tokio::task::JoinHandle<()>>,
+    /// UPnP gateway plus its lease-renewal task. `None` when `--upnp`
+    /// is not set or setup failed. Listed last because shutdown's
+    /// only async / fallible step is the port-mapping removal here.
+    upnp: Option<(Arc<upnp::Gateway>, tokio::task::JoinHandle<()>)>,
+}
+
+impl DaemonHandles {
+    /// Stop every background task and release every external resource
+    /// (UPnP port mapping). Failures during teardown are best-effort —
+    /// the daemon is going down anyway.
+    async fn shutdown(self) {
+        if let Some(handle) = self.log_purge {
+            handle.abort();
+        }
+        if let Some((gateway, renewal_task)) = self.upnp {
+            renewal_task.abort();
+            if let Err(e) = gateway.remove_port_mapping().await {
+                warn!(err = %e, "{}", LOG_UPNP_REMOVE_FAILED);
+            }
+        }
+    }
 }
 
 /// Setup UPnP port forwarding if enabled
