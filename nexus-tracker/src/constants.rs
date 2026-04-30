@@ -372,6 +372,15 @@ pub const LOG_AUTH_RATE_LIMITED: &str = "Auth rate-limited";
 /// value, not a policy knob.
 pub const REFRESH_FLOOR_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
+/// Stale-timeout multiplier applied to a server's `refresh_interval`.
+/// Per the tracker protocol spec (`docs/protocol/18-trackers.md`,
+/// "Stale timeout"), an entry is evicted after twice its refresh
+/// interval has passed without a refresh — this gives one missed
+/// refresh worth of slack for transient network blips before
+/// declaring the server gone. Hardcoded (protocol-derived, not a
+/// policy knob).
+pub const STALE_TIMEOUT_REFRESH_MULTIPLIER: u32 = 2;
+
 /// Log: a `TrackerServerRegister` refresh arrived too soon after the
 /// previous accepted refresh on the same entry. Paired with
 /// `ip = %peer_addr.ip(), id = %connection_id`.

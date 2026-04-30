@@ -43,6 +43,7 @@ use nexus_common::TLS_HANDSHAKE_FAILED_PREFIX;
 use crate::constants::{
     DEFAULT_LOCALE, ERR_REGISTRY_MUTEX_POISONED, HANDSHAKE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED,
     LOG_HANDSHAKE_REQUIRED, LOG_REGISTER_DISCONNECTED, LOG_ROLE_VIOLATION, ROLE_ESTABLISH_TIMEOUT,
+    STALE_TIMEOUT_REFRESH_MULTIPLIER,
 };
 use crate::errors::{
     err_tracker_frame_error, err_tracker_handshake_required, err_tracker_role_violation,
@@ -265,7 +266,9 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let timeout = Duration::from_secs(u64::from(state.refresh_interval) * 2);
+    let timeout = Duration::from_secs(
+        u64::from(state.refresh_interval) * u64::from(STALE_TIMEOUT_REFRESH_MULTIPLIER),
+    );
 
     loop {
         let received = match read_tracker_client_message_with_full_timeout(
