@@ -360,7 +360,7 @@ where
         .await?;
         return Ok(ValidationOutcome::Rejected);
     }
-    if !is_canonical_fingerprint(&fingerprint) {
+    if !nexus_common::fingerprint::is_canonical_fingerprint(&fingerprint) {
         reject(
             writer,
             ip(&peer_addr),
@@ -449,27 +449,6 @@ where
         },
         locale,
     }))
-}
-
-/// Validate that `fp` is the canonical SHA-256 fingerprint form: 32
-/// uppercase hex pairs separated by colons, exactly 95 ASCII bytes.
-/// Matches the format produced by
-/// `nexus_common::fingerprint::format_certificate_fingerprint`.
-#[must_use]
-pub fn is_canonical_fingerprint(fp: &str) -> bool {
-    if fp.len() != 95 {
-        return false;
-    }
-    for (i, &b) in fp.as_bytes().iter().enumerate() {
-        if i % 3 == 2 {
-            if b != b':' {
-                return false;
-            }
-        } else if !(b.is_ascii_digit() || (b'A'..=b'F').contains(&b)) {
-            return false;
-        }
-    }
-    true
 }
 
 /// Send a successful `TrackerServerRegisterResponse`.

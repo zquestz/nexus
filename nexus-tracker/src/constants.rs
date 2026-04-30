@@ -156,9 +156,9 @@ pub const ERR_RUSTLS_PROVIDER: &str = "failed to install rustls crypto provider"
 // Internationalization
 // =============================================================================
 
-/// Default locale (English). Used as the fallback when a peer-supplied
-/// locale is unsupported or a key is missing in the requested locale.
-pub const DEFAULT_LOCALE: &str = "en";
+/// Default locale (English) — re-exported from `nexus-common` so the
+/// value is defined once for the workspace.
+pub use nexus_common::DEFAULT_LOCALE;
 
 // Supported locale codes. Generic codes (`pt`, `zh`) normalize to a
 // regional variant in `i18n::get_bundle`.

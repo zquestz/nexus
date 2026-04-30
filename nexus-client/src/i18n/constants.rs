@@ -26,8 +26,9 @@ pub(super) const MSG_FOR_LOCALE: &str = "for locale";
 // Locale Constants
 // =============================================================================
 
-/// Default locale (English)
-pub const DEFAULT_LOCALE: &str = "en";
+/// Default locale (English) — re-exported from `nexus-common` so the
+/// value is defined once for the workspace.
+pub use nexus_common::DEFAULT_LOCALE;
 
 /// Supported locale: Chinese (generic/Simplified)
 pub(super) const LOCALE_CHINESE: &str = "zh";

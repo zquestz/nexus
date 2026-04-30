@@ -365,8 +365,9 @@ pub const LOG_UPNP_REMOVE_FAILED: &str = "Failed to remove UPnP port mapping";
 // Internationalization Configuration and Error Messages (operator-facing)
 // =============================================================================
 
-/// Default locale (English)
-pub const DEFAULT_LOCALE: &str = "en";
+/// Default locale (English) — re-exported from `nexus-common` so the
+/// value is defined once for the workspace.
+pub use nexus_common::DEFAULT_LOCALE;
 
 /// Supported locale: Spanish
 pub const LOCALE_SPANISH: &str = "es";

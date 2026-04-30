@@ -20,7 +20,7 @@
 use serde::{Deserialize, Serialize};
 
 fn default_locale() -> String {
-    "en".to_string()
+    crate::DEFAULT_LOCALE.to_string()
 }
 
 /// A registered server in a tracker's listing.

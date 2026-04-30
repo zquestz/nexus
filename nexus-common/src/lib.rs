@@ -56,6 +56,13 @@ pub const DEFAULT_TRANSFER_WEBSOCKET_PORT: u16 = 7503;
 /// Default port for tracker connections
 pub const DEFAULT_TRACKER_PORT: u16 = 7510;
 
+/// Default locale for daemons (English). Used as the fallback when a
+/// peer-supplied locale is unknown or a translation key is missing in
+/// the requested locale. Each daemon re-exports this from its own
+/// `constants.rs` so internal call sites keep their existing import
+/// paths.
+pub const DEFAULT_LOCALE: &str = "en";
+
 /// Owner-only directory mode for daemon data directories on Unix.
 ///
 /// Used by `nexus-server` and `nexus-tracker` for both the data
