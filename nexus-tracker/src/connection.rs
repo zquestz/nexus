@@ -24,7 +24,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, info, warn};
@@ -112,7 +112,10 @@ where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     let (read_half, write_half) = tokio::io::split(socket);
-    let mut reader = FrameReader::new(read_half);
+    // Wrap with `BufReader` so frame-header reads (magic byte, type
+    // length, etc.) coalesce into one syscall per buffer fill instead
+    // of one syscall per byte. Same posture as `nexus-server`.
+    let mut reader = FrameReader::new(BufReader::new(read_half));
     let mut writer = FrameWriter::new(write_half);
 
     if !run_handshake_phase(&mut reader, &mut writer, &fingerprint, peer_addr).await? {
