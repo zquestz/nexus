@@ -245,6 +245,23 @@ pub const ERR_CREATE_TLS_CONFIG: &str = "Failed to create TLS configuration: ";
 /// locale is unsupported or a key is missing in the requested locale.
 pub const DEFAULT_LOCALE: &str = "en";
 
+// Supported locale codes. Generic codes (`pt`, `zh`) normalize to a
+// regional variant in `i18n::get_bundle`.
+pub const LOCALE_SPANISH: &str = "es";
+pub const LOCALE_JAPANESE: &str = "ja";
+pub const LOCALE_FRENCH: &str = "fr";
+pub const LOCALE_GERMAN: &str = "de";
+pub const LOCALE_PORTUGUESE: &str = "pt";
+pub const LOCALE_PORTUGUESE_PT: &str = "pt-PT";
+pub const LOCALE_PORTUGUESE_BR: &str = "pt-BR";
+pub const LOCALE_RUSSIAN: &str = "ru";
+pub const LOCALE_CHINESE: &str = "zh";
+pub const LOCALE_CHINESE_CN: &str = "zh-CN";
+pub const LOCALE_CHINESE_TW: &str = "zh-TW";
+pub const LOCALE_KOREAN: &str = "ko";
+pub const LOCALE_ITALIAN: &str = "it";
+pub const LOCALE_DUTCH: &str = "nl";
+
 /// FluentResource construction failed (panics — indicates a malformed
 /// `errors.ftl` baked into the binary, not an operator-actionable failure).
 pub const ERR_I18N_PARSE_FTL: &str = "Failed to parse FTL file";
