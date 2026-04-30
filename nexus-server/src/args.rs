@@ -55,7 +55,7 @@ fn default_file_root_help() -> String {
 /// Nexus BBS Server
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
-pub struct Args {
+pub struct Cli {
     /// IP address to bind to (IPv4 or IPv6)
     #[arg(short, long, default_value = "0.0.0.0")]
     pub bind: IpAddr,

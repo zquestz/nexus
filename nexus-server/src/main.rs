@@ -29,7 +29,7 @@ use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
 
-use args::Args;
+use args::Cli;
 use channels::{Channel, ChannelManager};
 use connection::ConnectionParams;
 use connection_tracker::ConnectionTracker;
@@ -51,17 +51,17 @@ async fn main() {
         .install_default()
         .expect(ERR_RUSTLS_PROVIDER);
 
-    let mut args = Args::parse();
+    let mut cli = Cli::parse();
 
     // Resolve data directory (CLI override or platform default).
-    let data_dir = resolve_data_dir(args.data_dir.take());
+    let data_dir = resolve_data_dir(cli.data_dir.take());
 
     // Initialize logging (global log level + tracing subscriber).
     if let Err(e) = logging::init(LogInitParams {
         data_dir: &data_dir,
-        level: args.log_level,
-        retention: args.log_retention,
-        no_timestamps: args.no_log_timestamps,
+        level: cli.log_level,
+        retention: cli.log_retention,
+        no_timestamps: cli.no_log_timestamps,
         log_file_prefix: LOG_FILE_PREFIX,
     }) {
         // `init` installs a stderr-only fallback subscriber before
@@ -81,12 +81,12 @@ async fn main() {
 
     // Purge old log files on startup. `purge_old_logs` no-ops when retention
     // is zero, so no outer gate needed.
-    logging::purge_old_logs(&log_dir, args.log_retention, LOG_FILE_PREFIX);
+    logging::purge_old_logs(&log_dir, cli.log_retention, LOG_FILE_PREFIX);
 
     // Startup info
     info!("{}{}", MSG_BANNER, env!("CARGO_PKG_VERSION"));
-    info!("{}{}", MSG_LOG_LEVEL, args.log_level);
-    if args.log_level != LogLevel::None && args.log_retention > std::time::Duration::ZERO {
+    info!("{}{}", MSG_LOG_LEVEL, cli.log_level);
+    if cli.log_level != LogLevel::None && cli.log_retention > std::time::Duration::ZERO {
         info!("{}{}", MSG_LOG_DIR, log_dir.display());
     }
 
@@ -148,10 +148,10 @@ async fn main() {
     );
 
     // Setup file area
-    let file_root = setup_file_area(args.file_root, &data_dir);
+    let file_root = setup_file_area(cli.file_root, &data_dir);
 
     // Setup network (TCP listeners + TLS, optionally WebSocket listeners)
-    let websocket_enabled = args.websocket;
+    let websocket_enabled = cli.websocket;
     let (
         listener,
         transfer_listener,
@@ -159,16 +159,16 @@ async fn main() {
         ws_transfer_listener,
         (tls_acceptor, fingerprint),
     ) = setup_network(
-        args.bind,
-        args.port,
-        args.transfer_port,
+        cli.bind,
+        cli.port,
+        cli.transfer_port,
         if websocket_enabled {
-            Some(args.websocket_port)
+            Some(cli.websocket_port)
         } else {
             None
         },
         if websocket_enabled {
-            Some(args.transfer_websocket_port)
+            Some(cli.transfer_websocket_port)
         } else {
             None
         },
@@ -178,7 +178,7 @@ async fn main() {
 
     // Setup voice DTLS listener (same port as TCP, OS routes by protocol).
     // Certificates live directly in the data directory.
-    let voice_addr = SocketAddr::new(args.bind, args.port);
+    let voice_addr = SocketAddr::new(cli.bind, cli.port);
     let cert_path = data_dir.join(CERT_FILENAME);
     let key_path = data_dir.join(KEY_FILENAME);
     let voice_listener = match create_voice_listener(voice_addr, &cert_path, &key_path).await {
@@ -194,21 +194,21 @@ async fn main() {
     };
 
     // Store transfer ports for ServerInfo
-    let transfer_port = args.transfer_port;
+    let transfer_port = cli.transfer_port;
     let transfer_websocket_port = if websocket_enabled {
-        Some(args.transfer_websocket_port)
+        Some(cli.transfer_websocket_port)
     } else {
         None
     };
 
     // Setup UPnP port forwarding if requested (forwards WS ports only if enabled)
     let upnp_handle = setup_upnp(
-        args.upnp,
-        args.bind,
-        args.port,
+        cli.upnp,
+        cli.bind,
+        cli.port,
         transfer_port,
         if websocket_enabled {
-            Some(args.websocket_port)
+            Some(cli.websocket_port)
         } else {
             None
         },
@@ -340,8 +340,8 @@ async fn main() {
     // when file logging is disabled — purge is a no-op in that case.
     let log_purge_task = logging::spawn_purge_task(
         data_dir.clone(),
-        args.log_level,
-        args.log_retention,
+        cli.log_level,
+        cli.log_retention,
         LOG_FILE_PREFIX.to_string(),
     );
 
