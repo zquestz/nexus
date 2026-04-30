@@ -15,6 +15,5 @@ pub mod i18n;
 pub mod rate_limiter;
 pub mod registry;
 pub mod state;
-pub mod tls;
 pub mod upnp;
 pub mod websocket;

@@ -18,7 +18,7 @@ mod voice;
 mod websocket;
 
 use std::fs;
-use std::io::{self, BufReader};
+use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -27,8 +27,6 @@ use std::time::Duration;
 use clap::Parser;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
-use tokio_rustls::rustls::ServerConfig;
-use tokio_rustls::rustls::pki_types::CertificateDer;
 use tracing::{debug, error, info, warn};
 
 use args::Args;
@@ -708,115 +706,6 @@ async fn main() {
     }
 }
 
-/// Load existing TLS configuration or generate new self-signed certificate
-fn load_or_generate_tls_config(
-    data_dir: &std::path::Path,
-) -> Result<(TlsAcceptor, String), String> {
-    let cert_path = data_dir.join(CERT_FILENAME);
-    let key_path = data_dir.join(KEY_FILENAME);
-
-    // Check if certificate and key already exist
-    if cert_path.exists() && key_path.exists() {
-        // Load existing certificate
-        let acceptor = load_tls_config(&cert_path, &key_path)?;
-        let fingerprint = display_certificate_fingerprint(&cert_path)?;
-        Ok((acceptor, fingerprint))
-    } else {
-        // Generate new self-signed certificate
-        info!("{}", MSG_GENERATING_CERT);
-        generate_self_signed_cert(&cert_path, &key_path)?;
-        let acceptor = load_tls_config(&cert_path, &key_path)?;
-        let fingerprint = display_certificate_fingerprint(&cert_path)?;
-        Ok((acceptor, fingerprint))
-    }
-}
-
-/// Generate a self-signed certificate and private key
-fn generate_self_signed_cert(
-    cert_path: &std::path::Path,
-    key_path: &std::path::Path,
-) -> Result<(), String> {
-    use rcgen::{CertificateParams, KeyPair};
-
-    // Generate key pair
-    let key_pair = KeyPair::generate().map_err(|e| format!("{}{}", ERR_GENERATE_KEYPAIR, e))?;
-
-    // Create certificate parameters
-    let mut params =
-        CertificateParams::new(vec![]).map_err(|e| format!("{}{}", ERR_CREATE_CERT_PARAMS, e))?;
-
-    params
-        .distinguished_name
-        .push(rcgen::DnType::CommonName, TLS_CERT_COMMON_NAME);
-
-    // Generate certificate
-    let cert = params
-        .self_signed(&key_pair)
-        .map_err(|e| format!("{}{}", ERR_GENERATE_CERT, e))?;
-
-    // Write certificate to file
-    fs::write(cert_path, cert.pem()).map_err(|e| format!("{}{}", ERR_WRITE_CERT_FILE, e))?;
-    #[cfg(unix)]
-    set_secure_permissions(cert_path).map_err(|e| format!("{}{}", ERR_SET_CERT_PERMISSIONS, e))?;
-
-    // Write private key to file
-    fs::write(key_path, key_pair.serialize_pem())
-        .map_err(|e| format!("{}{}", ERR_WRITE_KEY_FILE, e))?;
-    #[cfg(unix)]
-    set_secure_permissions(key_path).map_err(|e| format!("{}{}", ERR_SET_KEY_PERMISSIONS, e))?;
-
-    info!("{}{}", MSG_CERT_GENERATED, cert_path.display());
-    info!("{}{}", MSG_KEY_GENERATED, key_path.display());
-
-    Ok(())
-}
-
-/// Load TLS configuration from certificate and key files
-fn load_tls_config(
-    cert_path: &std::path::Path,
-    key_path: &std::path::Path,
-) -> Result<TlsAcceptor, String> {
-    // Load certificate chain
-    let cert_file =
-        fs::File::open(cert_path).map_err(|e| format!("{}{}", ERR_OPEN_CERT_FILE, e))?;
-    let mut cert_reader = BufReader::new(cert_file);
-    let certs: Vec<CertificateDer> = rustls_pemfile::certs(&mut cert_reader)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|e| format!("{}{}", ERR_PARSE_CERT, e))?;
-
-    if certs.is_empty() {
-        return Err(ERR_NO_CERTS_FOUND.to_string());
-    }
-
-    // Load private key
-    let key_file = fs::File::open(key_path).map_err(|e| format!("{}{}", ERR_OPEN_KEY_FILE, e))?;
-    let mut key_reader = BufReader::new(key_file);
-    let private_key = rustls_pemfile::private_key(&mut key_reader)
-        .map_err(|e| format!("{}{}", ERR_PARSE_KEY, e))?
-        .ok_or(ERR_NO_KEY_FOUND)?;
-
-    // Create TLS server configuration
-    let config = ServerConfig::builder()
-        .with_no_client_auth()
-        .with_single_cert(certs, private_key)
-        .map_err(|e| format!("{}{}", ERR_CREATE_TLS_CONFIG, e))?;
-
-    Ok(TlsAcceptor::from(Arc::new(config)))
-}
-
-/// Set secure file permissions (0o600 - owner read/write only)
-/// Unix only - Windows uses NTFS ACLs by default
-#[cfg(unix)]
-fn set_secure_permissions(path: &std::path::Path) -> Result<(), String> {
-    use std::os::unix::fs::PermissionsExt;
-
-    let metadata = fs::metadata(path).map_err(|e| format!("{}{}", ERR_READ_METADATA, e))?;
-    let mut permissions = metadata.permissions();
-    permissions.set_mode(0o600);
-    fs::set_permissions(path, permissions).map_err(|e| format!("{}{}", ERR_SET_PERMS, e))?;
-    Ok(())
-}
-
 /// Resolve the server data directory, preferring the CLI override when set
 /// and otherwise falling back to the platform default.
 ///
@@ -882,11 +771,20 @@ async fn setup_db(db_path: &Path) -> (db::Database, UserManager) {
     };
     info!("{}{}", MSG_DATABASE, db_path.display());
 
-    // Set secure permissions on database file (0o600) - Unix only
+    // Set secure permissions on the database file. SQLx creates it
+    // through `init_db` above, but with the process's umask (typically
+    // `0o644`); chmod down to owner-only here. Unix only — Windows
+    // uses NTFS ACLs.
     #[cfg(unix)]
-    if let Err(e) = set_secure_permissions(db_path) {
-        error!("{}{}", ERR_SET_PERMISSIONS, e);
-        std::process::exit(1);
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Err(e) = fs::set_permissions(
+            db_path,
+            fs::Permissions::from_mode(nexus_common::secure_file::SECURE_FILE_MODE),
+        ) {
+            error!("{}{}", ERR_SET_PERMISSIONS, e);
+            std::process::exit(1);
+        }
     }
 
     // Create database and user manager instances
@@ -949,8 +847,22 @@ async fn setup_network(
     Option<TcpListener>,
     (TlsAcceptor, String),
 ) {
-    // Load or generate TLS certificate (lives directly in the data directory).
-    let tls_acceptor = match load_or_generate_tls_config(data_dir) {
+    // Ensure cert + key exist (generates a fresh self-signed pair on
+    // first run) and compute the SHA-256 fingerprint for handshake
+    // reporting. Cert + key live directly in the data directory.
+    let tls_config = nexus_common::tls::TlsCertConfig {
+        cert_filename: CERT_FILENAME,
+        key_filename: KEY_FILENAME,
+        common_name: TLS_CERT_COMMON_NAME,
+    };
+    let fingerprint = match nexus_common::tls::ensure_cert(data_dir, tls_config) {
+        Ok(fp) => fp,
+        Err(e) => {
+            error!("{}{}", ERR_TLS_INIT, e);
+            std::process::exit(1);
+        }
+    };
+    let tls_acceptor = match nexus_common::tls::build_acceptor(data_dir, tls_config) {
         Ok(acceptor) => acceptor,
         Err(e) => {
             error!("{}{}", ERR_TLS_INIT, e);
@@ -1017,25 +929,8 @@ async fn setup_network(
         transfer_listener,
         ws_listener,
         ws_transfer_listener,
-        tls_acceptor,
+        (tls_acceptor, fingerprint),
     )
-}
-
-/// Calculate and display certificate fingerprint (SHA-256)
-fn display_certificate_fingerprint(cert_path: &std::path::Path) -> Result<String, String> {
-    // Read certificate file
-    let cert_pem =
-        fs::read_to_string(cert_path).map_err(|e| format!("{}{}", ERR_OPEN_CERT_FILE, e))?;
-
-    // Parse PEM to get DER-encoded certificate
-    let cert_der = pem::parse(&cert_pem).map_err(|e| format!("{}{}", ERR_PARSE_CERT, e))?;
-
-    // Format via the workspace-canonical formatter (single source of truth).
-    let fingerprint_str =
-        nexus_common::fingerprint::format_certificate_fingerprint(cert_der.contents());
-
-    info!("{}{}", MSG_CERT_FINGERPRINT, fingerprint_str);
-    Ok(fingerprint_str)
 }
 
 /// Setup file area directories

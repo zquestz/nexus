@@ -100,8 +100,13 @@ async fn spawn_one_shot_tracker(data_dir: &std::path::Path) -> (std::net::Socket
     use nexus_tracker::state::TrackerState;
     use std::sync::Arc;
 
-    let fingerprint = nexus_tracker::tls::ensure_cert(data_dir).expect("ensure_cert");
-    let acceptor = nexus_tracker::tls::build_acceptor(data_dir).expect("build_acceptor");
+    let tls_config = nexus_common::tls::TlsCertConfig {
+        cert_filename: nexus_tracker::constants::CERT_FILENAME,
+        key_filename: nexus_tracker::constants::KEY_FILENAME,
+        common_name: nexus_tracker::constants::TLS_CERT_COMMON_NAME,
+    };
+    let fingerprint = nexus_common::tls::ensure_cert(data_dir, tls_config).expect("ensure_cert");
+    let acceptor = nexus_common::tls::build_acceptor(data_dir, tls_config).expect("build_acceptor");
 
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let local_addr = listener.local_addr().expect("local_addr");
@@ -320,8 +325,13 @@ async fn spawn_multi_tracker(
     data_dir: &std::path::Path,
     state: Arc<TrackerState>,
 ) -> (std::net::SocketAddr, String) {
-    let fingerprint = nexus_tracker::tls::ensure_cert(data_dir).expect("ensure_cert");
-    let acceptor = nexus_tracker::tls::build_acceptor(data_dir).expect("build_acceptor");
+    let tls_config = nexus_common::tls::TlsCertConfig {
+        cert_filename: nexus_tracker::constants::CERT_FILENAME,
+        key_filename: nexus_tracker::constants::KEY_FILENAME,
+        common_name: nexus_tracker::constants::TLS_CERT_COMMON_NAME,
+    };
+    let fingerprint = nexus_common::tls::ensure_cert(data_dir, tls_config).expect("ensure_cert");
+    let acceptor = nexus_common::tls::build_acceptor(data_dir, tls_config).expect("build_acceptor");
 
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let local_addr = listener.local_addr().expect("local_addr");
@@ -842,8 +852,13 @@ async fn spawn_ws_only_tracker(
     data_dir: &std::path::Path,
     state: Arc<TrackerState>,
 ) -> (std::net::SocketAddr, String) {
-    let fingerprint = nexus_tracker::tls::ensure_cert(data_dir).expect("ensure_cert");
-    let acceptor = nexus_tracker::tls::build_acceptor(data_dir).expect("build_acceptor");
+    let tls_config = nexus_common::tls::TlsCertConfig {
+        cert_filename: nexus_tracker::constants::CERT_FILENAME,
+        key_filename: nexus_tracker::constants::KEY_FILENAME,
+        common_name: nexus_tracker::constants::TLS_CERT_COMMON_NAME,
+    };
+    let fingerprint = nexus_common::tls::ensure_cert(data_dir, tls_config).expect("ensure_cert");
+    let acceptor = nexus_common::tls::build_acceptor(data_dir, tls_config).expect("build_acceptor");
 
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
     let local_addr = listener.local_addr().expect("local_addr");

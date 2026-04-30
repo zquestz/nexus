@@ -9,12 +9,13 @@ use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
 
 use nexus_common::logging::{self, LogInitParams};
+use nexus_common::tls;
 use nexus_tracker::{
     args::{self, PasswordKind},
     auth, connection, constants,
     registry::Registry,
     state::TrackerState,
-    tls, upnp, websocket,
+    upnp, websocket,
 };
 
 #[tokio::main]
@@ -134,8 +135,13 @@ fn run_clear_password(data_dir: &Path, kind: PasswordKind) -> Result<(), String>
 async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), String> {
     // Ensure cert + key exist. `ensure_cert` logs the fingerprint and
     // generation messages internally.
-    let fingerprint = tls::ensure_cert(data_dir)?;
-    let tls_acceptor = tls::build_acceptor(data_dir)?;
+    let tls_config = tls::TlsCertConfig {
+        cert_filename: constants::CERT_FILENAME,
+        key_filename: constants::KEY_FILENAME,
+        common_name: constants::TLS_CERT_COMMON_NAME,
+    };
+    let fingerprint = tls::ensure_cert(data_dir, tls_config)?;
+    let tls_acceptor = tls::build_acceptor(data_dir, tls_config)?;
     info!("{}{}", constants::MSG_CERTIFICATES, data_dir.display());
 
     // Load password hashes at startup. The daemon refuses to start if a

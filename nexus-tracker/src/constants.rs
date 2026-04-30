@@ -52,19 +52,11 @@ pub const REGISTRATION_HASH_FILENAME: &str = "registration.hash";
 /// Presence of this file gates `TrackerServerList`; absence means open listing.
 pub const LISTING_HASH_FILENAME: &str = "listing.hash";
 
-/// Permissions mode for password hash files on Unix (owner read/write only).
-#[cfg(unix)]
-pub const PASSWORD_FILE_MODE: u32 = 0o600;
-
 /// Argon2 hashing failed (caller appends underlying error).
 pub const ERR_HASH_PASSWORD: &str = "Failed to hash password: ";
 
 /// Password hash file write failed (caller appends path and underlying error).
 pub const ERR_WRITE_PASSWORD_FILE: &str = "Failed to write password file: ";
-
-/// Atomic rename of `<file>.tmp` to the final path failed (caller appends
-/// path and underlying error). Used by both auth.rs and tls.rs.
-pub const ERR_RENAME_FILE: &str = "Failed to finalize file: ";
 
 /// Password hash file read failed (caller appends path and underlying error).
 pub const ERR_READ_PASSWORD_FILE: &str = "Failed to read password file: ";
@@ -153,64 +145,12 @@ pub const KEY_FILENAME: &str = "tracker.key";
 /// Common Name embedded in the auto-generated self-signed certificate.
 pub const TLS_CERT_COMMON_NAME: &str = "Nexus Tracker";
 
-/// Permissions mode for the TLS cert and key on Unix (owner read/write only).
-#[cfg(unix)]
-pub const TLS_FILE_MODE: u32 = 0o600;
-
-/// Status: about to generate a fresh self-signed certificate.
-pub const MSG_GENERATING_CERT: &str = "Generating self-signed TLS certificate...";
-
-/// Status: certificate file successfully written (caller appends path).
-pub const MSG_CERT_GENERATED: &str = "Certificate generated: ";
-
-/// Status: private key file successfully written (caller appends path).
-pub const MSG_KEY_GENERATED: &str = "Private key generated: ";
-
-/// Status: certificate fingerprint display (caller appends 95-char fingerprint).
-pub const MSG_CERT_FINGERPRINT: &str = "Certificate fingerprint (SHA-256): ";
-
 /// Status: certificate directory display (caller appends path; matches server style).
 pub const MSG_CERTIFICATES: &str = "Certificates: ";
 
 /// Rustls crypto provider installation failed (panics — required for any
 /// TLS operation). Should never fire in practice.
 pub const ERR_RUSTLS_PROVIDER: &str = "failed to install rustls crypto provider";
-
-/// Key pair generation failed (caller appends underlying error).
-pub const ERR_GENERATE_KEYPAIR: &str = "Failed to generate key pair: ";
-
-/// Certificate parameter creation failed (caller appends underlying error).
-pub const ERR_CREATE_CERT_PARAMS: &str = "Failed to create certificate parameters: ";
-
-/// Certificate signing failed (caller appends underlying error).
-pub const ERR_GENERATE_CERT: &str = "Failed to generate certificate: ";
-
-/// Certificate file write failed (caller appends path and underlying error).
-pub const ERR_WRITE_CERT_FILE: &str = "Failed to write certificate file: ";
-
-/// Private key file write failed (caller appends path and underlying error).
-pub const ERR_WRITE_KEY_FILE: &str = "Failed to write private key file: ";
-
-/// Certificate file open failed (caller appends path and underlying error).
-pub const ERR_OPEN_CERT_FILE: &str = "Failed to open certificate file: ";
-
-/// Certificate PEM parsing failed (caller appends underlying error).
-pub const ERR_PARSE_CERT: &str = "Failed to parse certificate: ";
-
-/// Certificate file contained no certificates.
-pub const ERR_NO_CERTS_FOUND: &str = "No certificates found in certificate file";
-
-/// Private key file open failed (caller appends path and underlying error).
-pub const ERR_OPEN_KEY_FILE: &str = "Failed to open private key file: ";
-
-/// Private key PEM parsing failed (caller appends underlying error).
-pub const ERR_PARSE_KEY: &str = "Failed to parse private key: ";
-
-/// Private key file contained no keys.
-pub const ERR_NO_KEY_FOUND: &str = "No private key found in key file";
-
-/// rustls `ServerConfig` construction failed (caller appends underlying error).
-pub const ERR_CREATE_TLS_CONFIG: &str = "Failed to create TLS configuration: ";
 
 // =============================================================================
 // Internationalization

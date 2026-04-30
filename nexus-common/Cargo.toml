@@ -31,6 +31,12 @@ tracing-subscriber = { version = "0.3", features = ["json"], optional = true }
 tracing-appender = { version = "0.2", optional = true }
 humantime = { version = "2.1", optional = true }
 
+# Optional, enabled by the `tls` feature.
+tokio-rustls = { version = "0.26", features = ["ring"], optional = true }
+rustls-pemfile = { version = "2.2", optional = true }
+rcgen = { version = "0.14", optional = true }
+pem = { version = "3.0", optional = true }
+
 [features]
 # WebSocket byte-stream adapter (`nexus_common::websocket::WebSocketAdapter`).
 # Enabled by daemons that need to serve WS in addition to TCP. Pulls in
@@ -52,6 +58,20 @@ logging = [
     "dep:tracing-subscriber",
     "dep:tracing-appender",
     "dep:humantime",
+]
+
+# TLS certificate lifecycle (`nexus_common::tls`). Enabled by daemons
+# that load or generate self-signed cert + key on disk and build a
+# `TlsAcceptor`. Pulls in `tokio-rustls`, `rustls-pemfile`, `rcgen`,
+# `pem`, and `tracing` (for operator-visible info logs). Disabled by
+# default — `nexus-client` does TLS as a *client* and doesn't need
+# this.
+tls = [
+    "dep:tokio-rustls",
+    "dep:rustls-pemfile",
+    "dep:rcgen",
+    "dep:pem",
+    "dep:tracing",
 ]
 
 [dev-dependencies]

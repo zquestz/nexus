@@ -12,20 +12,18 @@
 //! Unix.
 
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use argon2::password_hash::{PasswordHash, SaltString, rand_core::OsRng};
 use argon2::{Argon2, PasswordHasher, PasswordVerifier};
+use nexus_common::secure_file;
 use nexus_common::validators::MAX_PASSWORD_LENGTH;
 
 use crate::args::PasswordKind;
-#[cfg(unix)]
-use crate::constants::PASSWORD_FILE_MODE;
 use crate::constants::{
     ERR_DELETE_PASSWORD_FILE, ERR_HASH_PASSWORD, ERR_PARSE_PASSWORD_HASH, ERR_PASSWORD_EMPTY,
-    ERR_PASSWORD_TOO_LONG, ERR_READ_PASSWORD_FILE, ERR_RENAME_FILE, ERR_WRITE_PASSWORD_FILE,
-    LISTING_HASH_FILENAME, REGISTRATION_HASH_FILENAME,
+    ERR_PASSWORD_TOO_LONG, ERR_READ_PASSWORD_FILE, ERR_WRITE_PASSWORD_FILE, LISTING_HASH_FILENAME,
+    REGISTRATION_HASH_FILENAME,
 };
 
 /// Path to the password hash file for the given kind under `data_dir`.
@@ -150,56 +148,16 @@ pub fn check_password(provided: Option<&str>, stored_hash: Option<&str>) -> bool
     }
 }
 
-/// Append `.tmp` to a file path, preserving the rest. Used as the
-/// destination for the write step of the atomic write+rename pattern.
-fn temp_path_for(path: &Path) -> PathBuf {
-    let mut s = path.as_os_str().to_os_string();
-    s.push(".tmp");
-    PathBuf::from(s)
-}
-
-#[cfg(unix)]
-fn write_hash_file(data_dir: &Path, kind: PasswordKind, hash: &str) -> Result<(), String> {
-    use std::os::unix::fs::OpenOptionsExt;
-
-    let path = hash_path(data_dir, kind);
-    let tmp = temp_path_for(&path);
-
-    // Write to `<file>.tmp` with 0o600 atomically on create; rename swaps
-    // it into place. Crash between write and rename leaves a `.tmp` file
-    // but the previous hash file is untouched.
-    {
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .mode(PASSWORD_FILE_MODE)
-            .open(&tmp)
-            .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, tmp.display(), e))?;
-        file.write_all(hash.as_bytes())
-            .and_then(|()| file.write_all(b"\n"))
-            .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, tmp.display(), e))?;
-    }
-
-    fs::rename(&tmp, &path).map_err(|e| format!("{}{}: {}", ERR_RENAME_FILE, path.display(), e))?;
-    Ok(())
-}
-
-#[cfg(not(unix))]
+/// Hash files contain a single line: the PHC string followed by `\n`.
+/// The trailing newline keeps the file "POSIX text" so cat / grep / etc.
+/// work as operators expect.
 fn write_hash_file(data_dir: &Path, kind: PasswordKind, hash: &str) -> Result<(), String> {
     let path = hash_path(data_dir, kind);
-    let tmp = temp_path_for(&path);
-
-    {
-        let mut file = fs::File::create(&tmp)
-            .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, tmp.display(), e))?;
-        file.write_all(hash.as_bytes())
-            .and_then(|()| file.write_all(b"\n"))
-            .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, tmp.display(), e))?;
-    }
-
-    fs::rename(&tmp, &path).map_err(|e| format!("{}{}: {}", ERR_RENAME_FILE, path.display(), e))?;
-    Ok(())
+    let mut contents = Vec::with_capacity(hash.len() + 1);
+    contents.extend_from_slice(hash.as_bytes());
+    contents.push(b'\n');
+    secure_file::write_atomic(&path, &contents)
+        .map_err(|e| format!("{}{}: {}", ERR_WRITE_PASSWORD_FILE, path.display(), e))
 }
 
 #[cfg(test)]
@@ -381,21 +339,6 @@ mod tests {
     }
 
     #[test]
-    fn test_set_leaves_no_tmp_file_behind() {
-        let tmp = tempfile::tempdir().expect("tempdir");
-        set_password(tmp.path(), PasswordKind::Registration, "hunter2").expect("set");
-
-        let final_path = hash_path(tmp.path(), PasswordKind::Registration);
-        let tmp_path = temp_path_for(&final_path);
-        assert!(final_path.exists(), "final hash file should exist");
-        assert!(
-            !tmp_path.exists(),
-            "tmp file should have been renamed away, not left behind: {}",
-            tmp_path.display()
-        );
-    }
-
-    #[test]
     fn test_kinds_are_independent() {
         let tmp = tempfile::tempdir().expect("tempdir");
         set_password(tmp.path(), PasswordKind::Registration, "regpass").expect("set reg");
@@ -429,7 +372,7 @@ mod tests {
         let mode = fs::metadata(&path).expect("metadata").permissions().mode();
         assert_eq!(
             mode & 0o777,
-            PASSWORD_FILE_MODE,
+            secure_file::SECURE_FILE_MODE,
             "password file should be created with 0o600"
         );
     }
@@ -452,7 +395,7 @@ mod tests {
         let mode = fs::metadata(&path).expect("metadata").permissions().mode();
         assert_eq!(
             mode & 0o777,
-            PASSWORD_FILE_MODE,
+            secure_file::SECURE_FILE_MODE,
             "atomic rename should restore 0o600 from the freshly-created tmp file"
         );
     }

@@ -283,18 +283,6 @@ pub const MSG_WS_TRANSFER_LISTENING: &str = "WebSocket transfer port: ";
 /// Voice UDP port listening display
 pub const MSG_VOICE_LISTENING: &str = "Voice UDP port: ";
 
-/// Certificate fingerprint display
-pub const MSG_CERT_FINGERPRINT: &str = "Certificate fingerprint (SHA-256): ";
-
-/// Certificate generation start message
-pub const MSG_GENERATING_CERT: &str = "Generating self-signed TLS certificate...";
-
-/// Certificate file generated message
-pub const MSG_CERT_GENERATED: &str = "Certificate generated: ";
-
-/// Private key file generated message
-pub const MSG_KEY_GENERATED: &str = "Private key generated: ";
-
 /// Log level display
 pub const MSG_LOG_LEVEL: &str = "Log level: ";
 
@@ -343,14 +331,6 @@ pub const ERR_BIND_FAILED: &str = "Failed to bind to ";
 #[cfg(unix)]
 pub const ERR_SET_PERMISSIONS: &str = "Failed to set file permissions: ";
 
-/// File metadata read error
-#[cfg(unix)]
-pub const ERR_READ_METADATA: &str = "Failed to read file metadata: ";
-
-/// Permission set error
-#[cfg(unix)]
-pub const ERR_SET_PERMS: &str = "Failed to set permissions: ";
-
 // =============================================================================
 // Signal Handler Errors (operator-facing)
 // =============================================================================
@@ -366,58 +346,6 @@ pub const ERR_SIGNAL_SIGINT: &str = "Failed to setup SIGINT handler";
 /// Ctrl+C handler setup error (Windows)
 #[cfg(not(unix))]
 pub const ERR_SIGNAL_CTRLC: &str = "Failed to setup Ctrl+C handler";
-
-// =============================================================================
-// TLS Certificate Generation Errors (operator-facing)
-// =============================================================================
-
-/// Key pair generation error
-pub const ERR_GENERATE_KEYPAIR: &str = "Failed to generate key pair: ";
-
-/// Certificate parameters creation error
-pub const ERR_CREATE_CERT_PARAMS: &str = "Failed to create certificate parameters: ";
-
-/// Certificate generation error
-pub const ERR_GENERATE_CERT: &str = "Failed to generate certificate: ";
-
-/// Certificate file write error
-pub const ERR_WRITE_CERT_FILE: &str = "Failed to write certificate file: ";
-
-/// Certificate permissions error
-#[cfg(unix)]
-pub const ERR_SET_CERT_PERMISSIONS: &str = "Failed to set certificate permissions: ";
-
-/// Key file write error
-pub const ERR_WRITE_KEY_FILE: &str = "Failed to write private key file: ";
-
-/// Key permissions error
-#[cfg(unix)]
-pub const ERR_SET_KEY_PERMISSIONS: &str = "Failed to set key permissions: ";
-
-// =============================================================================
-// TLS Certificate Loading Errors (operator-facing)
-// =============================================================================
-
-/// Certificate file open error
-pub const ERR_OPEN_CERT_FILE: &str = "Failed to open certificate file: ";
-
-/// Certificate parsing error
-pub const ERR_PARSE_CERT: &str = "Failed to parse certificate: ";
-
-/// No certificates found error
-pub const ERR_NO_CERTS_FOUND: &str = "No certificates found in certificate file";
-
-/// Key file open error
-pub const ERR_OPEN_KEY_FILE: &str = "Failed to open private key file: ";
-
-/// Key parsing error
-pub const ERR_PARSE_KEY: &str = "Failed to parse private key: ";
-
-/// No key found error
-pub const ERR_NO_KEY_FOUND: &str = "No private key found in key file";
-
-/// TLS configuration creation error
-pub const ERR_CREATE_TLS_CONFIG: &str = "Failed to create TLS configuration: ";
 
 // =============================================================================
 // UPnP Messages (operator-facing)

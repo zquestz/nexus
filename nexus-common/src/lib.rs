@@ -12,7 +12,10 @@ pub mod io;
 #[cfg(feature = "logging")]
 pub mod logging;
 pub mod protocol;
+pub mod secure_file;
 pub mod time;
+#[cfg(feature = "tls")]
+pub mod tls;
 pub mod tracker_protocol;
 #[cfg(feature = "upnp")]
 pub mod upnp;

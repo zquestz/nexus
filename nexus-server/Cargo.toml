@@ -7,7 +7,7 @@ authors = ["Josh Ellithorpe <quest@mac.com>"]
 description = "Cross-platform BBS server"
 
 [dependencies]
-nexus-common = { path = "../nexus-common", features = ["logging", "upnp", "websocket"] }
+nexus-common = { path = "../nexus-common", features = ["logging", "tls", "upnp", "websocket"] }
 clap = { version = "4.5", features = ["derive"] }
 tokio = { version = "1.49", features = ["net", "rt-multi-thread", "macros", "io-util", "sync", "signal"] }
 tracing = "0.1"
@@ -21,10 +21,7 @@ strum = { version = "0.28", features = ["derive"] }
 tokio-rustls = "0.26"
 tokio-tungstenite = "0.29"
 futures-util = "0.3"
-rustls-pemfile = "2.2"
-rcgen = "0.14"
 sha2 = "0.11"
-pem = "3.0"
 fluent = "0.17"
 fluent-bundle = "0.16"
 hex = "0.4"
