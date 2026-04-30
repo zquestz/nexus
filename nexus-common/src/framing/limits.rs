@@ -21,6 +21,13 @@ use crate::validators::{
 // JSON Size Helper Constants
 // =============================================================================
 
+/// Panic message: [`max_payload_for_type`] called with a message type
+/// that isn't in `MESSAGE_TYPE_LIMITS`. Programmer-error: the framing
+/// layer rejects unknown types in `read_frame()` before any code can
+/// reach this lookup.
+const ERR_UNKNOWN_MESSAGE_TYPE: &str =
+    "unknown message types should be rejected before calling max_payload_for_type";
+
 /// Maximum JSON representation of a boolean: `false` (5 chars)
 const MAX_JSON_BOOL: usize = 5;
 
@@ -1481,7 +1488,7 @@ pub fn max_payload_for_type(message_type: &str) -> u64 {
     MESSAGE_TYPE_LIMITS
         .get(message_type)
         .copied()
-        .expect("unknown message types should be rejected before calling max_payload_for_type")
+        .expect(ERR_UNKNOWN_MESSAGE_TYPE)
 }
 
 /// Check if a message type is known

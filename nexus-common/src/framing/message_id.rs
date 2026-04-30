@@ -7,6 +7,11 @@ use rand::RngExt;
 use super::MSG_ID_LENGTH;
 use super::error::FrameError;
 
+/// Panic message: the internal byte buffer somehow contains non-ASCII.
+/// Programmer-error: `new()` only writes ASCII hex chars, and
+/// `from_bytes()` validates with `is_ascii_hexdigit` before storing.
+const ERR_NON_ASCII_BYTES: &str = "MessageId contains valid ASCII";
+
 /// A 12-character hex message ID for request-response correlation
 ///
 /// Message IDs provide 48 bits of entropy (12 hex characters × 4 bits each),
@@ -64,7 +69,7 @@ impl MessageId {
     #[must_use]
     pub fn as_str(&self) -> &str {
         // SAFETY: We only store valid ASCII hex characters
-        std::str::from_utf8(&self.0).expect("MessageId contains valid ASCII")
+        std::str::from_utf8(&self.0).expect(ERR_NON_ASCII_BYTES)
     }
 }
 

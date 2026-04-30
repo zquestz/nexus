@@ -6,6 +6,16 @@
 
 pub use semver::Version;
 
+/// Panic message: [`crate::PROTOCOL_VERSION`] failed to parse as semver.
+/// Programmer-error: the constant is hand-edited at release time and
+/// should always be valid.
+const ERR_PROTOCOL_VERSION_INVALID: &str = "PROTOCOL_VERSION must be valid semver";
+
+/// Panic message: [`crate::TRACKER_PROTOCOL_VERSION`] failed to parse
+/// as semver. Same reasoning as `ERR_PROTOCOL_VERSION_INVALID`.
+const ERR_TRACKER_PROTOCOL_VERSION_INVALID: &str =
+    "TRACKER_PROTOCOL_VERSION must be valid semver";
+
 /// Result of checking version compatibility
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompatibilityResult {
@@ -46,7 +56,7 @@ impl CompatibilityResult {
 pub fn protocol_version() -> Version {
     crate::PROTOCOL_VERSION
         .parse()
-        .expect("PROTOCOL_VERSION must be valid semver")
+        .expect(ERR_PROTOCOL_VERSION_INVALID)
 }
 
 /// Parse the tracker protocol version constant.
@@ -62,7 +72,7 @@ pub fn protocol_version() -> Version {
 pub fn tracker_protocol_version() -> Version {
     crate::TRACKER_PROTOCOL_VERSION
         .parse()
-        .expect("TRACKER_PROTOCOL_VERSION must be valid semver")
+        .expect(ERR_TRACKER_PROTOCOL_VERSION_INVALID)
 }
 
 /// Check whether `client`'s protocol version is compatible with `server`'s.

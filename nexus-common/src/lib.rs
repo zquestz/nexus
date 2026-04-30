@@ -265,23 +265,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_protocol_version() {
-        // Verify protocol version is valid semver
-        let version = version::protocol_version();
-        // Verify round-trip
-        assert_eq!(version.to_string(), PROTOCOL_VERSION);
-    }
-
-    #[test]
-    fn test_tracker_protocol_version() {
-        // Verify tracker protocol version is valid semver
-        let version: semver::Version = TRACKER_PROTOCOL_VERSION
-            .parse()
-            .expect("TRACKER_PROTOCOL_VERSION must be valid semver");
-        // Verify round-trip
-        assert_eq!(version.to_string(), TRACKER_PROTOCOL_VERSION);
-    }
+    // Protocol-version semver validity is covered by `version::tests::test_protocol_version_parses`
+    // and `test_tracker_protocol_version_parses`; not duplicated here.
 
     #[test]
     fn test_default_port() {

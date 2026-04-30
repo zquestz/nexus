@@ -7,6 +7,11 @@
 
 use sha2::{Digest, Sha256};
 
+/// Panic message: `hex::encode_upper` somehow produced non-ASCII bytes.
+/// Programmer-error: hex encoding is guaranteed to produce ASCII; this
+/// `.expect()` only exists because `from_utf8` returns `Result`.
+const ERR_HEX_NOT_ASCII: &str = "hex encoding produces valid ASCII";
+
 /// Compute the SHA-256 fingerprint of certificate DER bytes and format it
 /// as a colon-separated uppercase hex string (e.g., "AA:BB:CC:..." — 95 chars).
 pub fn format_certificate_fingerprint(cert_bytes: &[u8]) -> String {
@@ -22,7 +27,7 @@ pub fn format_certificate_fingerprint(cert_bytes: &[u8]) -> String {
         if i > 0 {
             out.push(':');
         }
-        out.push_str(std::str::from_utf8(chunk).expect("hex encoding produces valid ASCII"));
+        out.push_str(std::str::from_utf8(chunk).expect(ERR_HEX_NOT_ASCII));
     }
     out
 }

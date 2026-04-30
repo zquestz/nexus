@@ -76,6 +76,11 @@ const ERR_IPV6_EXPECTED_IPV4: &str = "Local address is IPv6, expected IPv4";
 const ERR_GET_LOCAL_ADDRESS: &str = "Failed to get local address: ";
 const ERR_IPV6_NOT_SUPPORTED: &str = "UPnP is not supported for IPv6 addresses. Use IPv4 binding (e.g., --bind 0.0.0.0) for UPnP support.";
 
+// Panic message for an unrecoverable poisoned-mutex condition. A
+// poisoned `RwLock` means another thread panicked while holding the
+// lock, which leaves the gateway state in an unknown shape — fatal.
+const ERR_GATEWAY_LOCK_POISONED: &str = "UPnP gateway lock poisoned";
+
 const LOG_CONFIGURED: &str = "UPnP configured";
 const LOG_RENEWAL_FAILED: &str = "UPnP lease renewal failed";
 const LOG_REDISCOVERING: &str = "UPnP rediscovering gateway";
@@ -264,7 +269,7 @@ impl UpnpGateway {
         let gateway = self
             .gateway
             .read()
-            .expect("UPnP gateway lock poisoned")
+            .expect(ERR_GATEWAY_LOCK_POISONED)
             .clone();
 
         for mapping in &self.ports {
@@ -286,7 +291,7 @@ impl UpnpGateway {
         let gateway = self
             .gateway
             .read()
-            .expect("UPnP gateway lock poisoned")
+            .expect(ERR_GATEWAY_LOCK_POISONED)
             .clone();
         let local_ip = *self.local_addr.ip();
 
@@ -319,7 +324,7 @@ impl UpnpGateway {
             add_port_mapping(&new_gateway, *mapping, local_ip, &self.description).await?;
         }
 
-        *self.gateway.write().expect("UPnP gateway lock poisoned") = new_gateway;
+        *self.gateway.write().expect(ERR_GATEWAY_LOCK_POISONED) = new_gateway;
         Ok(())
     }
 
