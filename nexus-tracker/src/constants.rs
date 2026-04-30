@@ -354,3 +354,20 @@ pub const ERR_SIGNAL_SIGINT: &str = "Failed to setup SIGINT handler";
 /// Ctrl+C handler setup error on Windows (panics — required for graceful shutdown).
 #[cfg(not(unix))]
 pub const ERR_SIGNAL_CTRLC: &str = "Failed to setup Ctrl+C handler";
+
+// =============================================================================
+// UPnP (operator-facing)
+// =============================================================================
+
+/// UPnP setup failure log message (paired with structured `err = %e` field).
+pub const LOG_UPNP_SETUP_FAILED: &str = "UPnP setup failed";
+
+/// UPnP disabled continuation message printed alongside setup failure.
+pub const MSG_UPNP_CONTINUE: &str = "Tracker will continue without UPnP port forwarding.";
+
+/// UPnP manual configuration suggestion printed alongside setup failure.
+pub const MSG_UPNP_MANUAL: &str =
+    "You may need to manually configure port forwarding on your router.";
+
+/// UPnP mapping removal failure log message (paired with `err = %e`).
+pub const LOG_UPNP_REMOVE_FAILED: &str = "Failed to remove UPnP port mapping";

@@ -904,12 +904,12 @@ async fn setup_upnp(
     transfer_port: u16,
     websocket_port: Option<u16>,
     transfer_websocket_port: Option<u16>,
-) -> Option<(Arc<upnp::UpnpGateway>, tokio::task::JoinHandle<()>)> {
+) -> Option<(Arc<upnp::Gateway>, tokio::task::JoinHandle<()>)> {
     if !enabled {
         return None;
     }
 
-    match upnp::UpnpGateway::setup(
+    match upnp::setup(
         bind,
         main_port,
         transfer_port,

@@ -22,12 +22,21 @@ zxcvbn = "3.1"
 futures-util = { version = "0.3", optional = true }
 tokio-tungstenite = { version = "0.29", optional = true }
 
+# Optional, enabled by the `upnp` feature.
+igd-next = { version = "0.17", optional = true }
+tracing = { version = "0.1", optional = true }
+
 [features]
 # WebSocket byte-stream adapter (`nexus_common::websocket::WebSocketAdapter`).
 # Enabled by daemons that need to serve WS in addition to TCP. Pulls in
 # `tokio-tungstenite` and `futures-util`. Disabled by default so consumers
 # that don't need WS plumbing (e.g., nexus-client) don't pay for it.
 websocket = ["dep:futures-util", "dep:tokio-tungstenite"]
+
+# UPnP/IGD port-forwarding (`nexus_common::upnp::UpnpGateway`). Enabled by
+# daemons that want optional NAT traversal at startup. Pulls in `igd-next`
+# and `tracing` for operator-facing log output.
+upnp = ["dep:igd-next", "dep:tracing"]
 
 [dev-dependencies]
 tempfile = "3.20"

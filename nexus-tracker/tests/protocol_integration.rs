@@ -413,15 +413,23 @@ where
 
 /// Spin (poll) until the registry length reaches `target`, with a
 /// bounded timeout. Used to assert post-disconnect cleanup completed.
+///
+/// The 5-second deadline accommodates the stale-eviction test, where
+/// eviction lands ~2 s after registration (idle timeout fires once
+/// `refresh_interval * 2` elapses). On slower CI runners — Windows in
+/// particular — the eviction can land at T≈2.1–2.3 s, and a tighter
+/// deadline produced flaky failures. Fast post-disconnect cleanup
+/// paths return almost immediately, so the longer deadline only
+/// matters when the test is genuinely broken.
 async fn wait_for_registry_len(state: &Arc<TrackerState>, target: usize) {
-    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
     loop {
         let len = state.registry.lock().expect("registry mutex").len();
         if len == target {
             return;
         }
         if std::time::Instant::now() >= deadline {
-            panic!("registry length didn't reach {target} within 2s (current: {len})");
+            panic!("registry length didn't reach {target} within 5s (current: {len})");
         }
         tokio::time::sleep(Duration::from_millis(20)).await;
     }

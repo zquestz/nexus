@@ -13,7 +13,7 @@ use nexus_tracker::{
     auth, connection, constants, logging,
     registry::Registry,
     state::TrackerState,
-    tls, websocket,
+    tls, upnp, websocket,
 };
 
 #[tokio::main]
@@ -178,8 +178,57 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
         None
     };
 
-    accept_loop(listener, ws_listener, tls_acceptor, fingerprint, state).await;
+    // Setup UPnP port forwarding if requested (forwards WS port only if enabled).
+    let upnp_handle = setup_upnp(
+        cli.upnp,
+        cli.bind,
+        cli.port,
+        if cli.websocket {
+            Some(cli.websocket_port)
+        } else {
+            None
+        },
+    )
+    .await;
+
+    accept_loop(
+        listener,
+        ws_listener,
+        tls_acceptor,
+        fingerprint,
+        state,
+        upnp_handle,
+    )
+    .await;
     Ok(())
+}
+
+/// Set up UPnP port forwarding for the tracker if `enabled`. On failure
+/// the daemon continues without forwarding (the operator log carries
+/// the diagnostic), mirroring the BBS server's non-fatal posture.
+async fn setup_upnp(
+    enabled: bool,
+    bind: std::net::IpAddr,
+    main_port: u16,
+    websocket_port: Option<u16>,
+) -> Option<(Arc<upnp::Gateway>, tokio::task::JoinHandle<()>)> {
+    if !enabled {
+        return None;
+    }
+
+    match upnp::setup(bind, main_port, websocket_port).await {
+        Ok(gateway) => {
+            let gateway_arc = Arc::new(gateway);
+            let renewal_task = upnp::spawn_lease_renewal_task(Arc::clone(&gateway_arc));
+            Some((gateway_arc, renewal_task))
+        }
+        Err(e) => {
+            warn!(err = %e, "{}", constants::LOG_UPNP_SETUP_FAILED);
+            warn!("{}", constants::MSG_UPNP_CONTINUE);
+            warn!("{}", constants::MSG_UPNP_MANUAL);
+            None
+        }
+    }
 }
 
 /// Accept loop, terminated by SIGINT / SIGTERM (or Ctrl+C on Windows).
@@ -191,6 +240,7 @@ async fn accept_loop(
     tls_acceptor: TlsAcceptor,
     fingerprint: String,
     state: Arc<TrackerState>,
+    upnp_handle: Option<(Arc<upnp::Gateway>, tokio::task::JoinHandle<()>)>,
 ) {
     let tcp = run_tcp_accepts(
         &listener,
@@ -205,6 +255,14 @@ async fn accept_loop(
         () = ws => {}
         () = setup_shutdown_signal() => {
             info!("{}", constants::MSG_SHUTDOWN_RECEIVED);
+
+            // Cleanup UPnP port forwarding if enabled.
+            if let Some((gateway, renewal_task)) = upnp_handle {
+                renewal_task.abort();
+                if let Err(e) = gateway.remove_port_mapping().await {
+                    warn!(err = %e, "{}", constants::LOG_UPNP_REMOVE_FAILED);
+                }
+            }
         }
     }
 }

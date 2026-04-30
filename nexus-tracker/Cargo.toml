@@ -7,7 +7,7 @@ authors = ["Josh Ellithorpe <quest@mac.com>"]
 description = "Discovery service for Nexus BBS servers"
 
 [dependencies]
-nexus-common = { path = "../nexus-common", features = ["websocket"] }
+nexus-common = { path = "../nexus-common", features = ["upnp", "websocket"] }
 clap = { version = "4.5", features = ["derive"] }
 tokio = { version = "1.49", features = ["net", "rt-multi-thread", "macros", "io-util", "sync", "signal"] }
 tracing = "0.1"
@@ -29,7 +29,6 @@ futures-util = "0.3"
 rustls-pemfile = "2.2"
 rcgen = "0.14"
 pem = "3.0"
-igd-next = "0.17"
 fluent = "0.17"
 fluent-bundle = "0.16"
 unic-langid = "0.9"

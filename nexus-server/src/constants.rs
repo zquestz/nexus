@@ -462,49 +462,6 @@ pub const MSG_UPNP_MANUAL: &str =
 pub const LOG_UPNP_REMOVE_FAILED: &str = "Failed to remove UPnP port mapping";
 
 // =============================================================================
-// UPnP Error Messages (operator-facing)
-// =============================================================================
-
-/// UPnP IPv6 not supported error
-pub const ERR_IPV6_NOT_SUPPORTED: &str = "UPnP is not supported for IPv6 addresses. Use IPv4 binding (e.g., --bind 0.0.0.0) for UPnP support.";
-
-/// UPnP search task failure
-pub const ERR_UPNP_SEARCH_TASK_FAILED: &str = "UPnP search task failed: ";
-
-/// UPnP gateway not found error
-pub const ERR_UPNP_GATEWAY_NOT_FOUND: &str = "UPnP gateway not found: ";
-
-/// External IP task error
-pub const ERR_UPNP_GET_EXTERNAL_IP_TASK: &str = "Failed to get external IP task: ";
-
-/// External IP retrieval error
-pub const ERR_UPNP_GET_EXTERNAL_IP: &str = "Failed to get external IP: ";
-
-/// Port forwarding task error
-pub const ERR_UPNP_PORT_FORWARD_TASK: &str = "Port forwarding task failed: ";
-
-/// Port mapping removal task error
-pub const ERR_UPNP_REMOVE_PORT_TASK: &str = "Remove port mapping task failed: ";
-
-/// Lease renewal error
-pub const ERR_UPNP_RENEW_LEASE: &str = "Failed to renew lease: ";
-
-/// UDP socket creation error
-pub const ERR_UPNP_CREATE_UDP_SOCKET: &str = "Failed to create UDP socket: ";
-
-/// Routing determination error
-pub const ERR_UPNP_DETERMINE_ROUTING: &str = "Failed to determine routing: ";
-
-/// Loopback only error
-pub const ERR_UPNP_LOOPBACK_ONLY: &str = "Only loopback address available";
-
-/// IPv6 address error when IPv4 expected
-pub const ERR_UPNP_IPV6_EXPECTED_IPV4: &str = "Local address is IPv6, expected IPv4";
-
-/// Local address retrieval error
-pub const ERR_UPNP_GET_LOCAL_ADDRESS: &str = "Failed to get local address: ";
-
-// =============================================================================
 // Internationalization Configuration and Error Messages (operator-facing)
 // =============================================================================
 
@@ -646,14 +603,6 @@ pub const LOG_FILE_INDEX_DELETE_FAILED: &str = "Failed to delete corrupted index
 // --- i18n ---
 pub const LOG_TRANSLATION_ERRORS: &str = "Translation errors";
 pub const LOG_MISSING_TRANSLATION_KEY: &str = "Missing translation key";
-
-// --- UPnP ---
-pub const LOG_UPNP_CONFIGURED: &str = "UPnP configured";
-pub const LOG_UPNP_RENEWAL_FAILED: &str = "UPnP lease renewal failed";
-pub const LOG_UPNP_REDISCOVERING: &str = "UPnP rediscovering gateway";
-pub const LOG_UPNP_REDISCOVERED: &str = "UPnP gateway rediscovered";
-pub const LOG_UPNP_REDISCOVERY_FAILED: &str = "UPnP rediscovery failed";
-pub const LOG_UPNP_PORT_EXPIRE: &str = "UPnP port mappings may expire";
 
 // --- Transfers ---
 pub const LOG_TRANSFER_CONNECTION: &str = "Transfer: connection";

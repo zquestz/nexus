@@ -12,6 +12,8 @@ pub mod io;
 pub mod protocol;
 pub mod time;
 pub mod tracker_protocol;
+#[cfg(feature = "upnp")]
+pub mod upnp;
 pub mod validators;
 pub mod version;
 pub mod voice;
