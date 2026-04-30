@@ -18,6 +18,8 @@ use nexus_common::protocol::ServerMessage;
 
 use crate::files::FileIndex;
 
+#[cfg(test)]
+use super::registry::TransferRegistration;
 use super::registry::{ActiveTransfer, TransferId, TransferRegistry, TransferRegistryGuard};
 
 /// Chunk size for streaming file data (64KB)
@@ -62,6 +64,18 @@ impl From<io::Error> for StreamError {
     }
 }
 
+/// Server-side context that every transfer needs: who the
+/// authenticated peer is, what locale to use for translated errors,
+/// where the file root and index live, and which registry the transfer
+/// belongs to. Bundled so [`Transfer::new`]'s signature stays narrow.
+pub struct TransferContext<'a> {
+    pub user: AuthenticatedUser,
+    pub locale: String,
+    pub file_root: &'a Path,
+    pub file_index: &'a Arc<FileIndex>,
+    pub registry: &'a TransferRegistry,
+}
+
 /// A file transfer connection with integrated ban handling
 ///
 /// This struct owns the reader and writer for a transfer connection, along with
@@ -84,7 +98,8 @@ pub struct Transfer<'a, R, W> {
     // Shared transfer state (for metrics and monitoring)
     info: Arc<ActiveTransfer>,
 
-    // Context - public for handler access
+    // Per-transfer context — exposed via accessor methods (`user()`,
+    // `locale()`, `file_root()`, `file_index()`).
     user: AuthenticatedUser,
     locale: String,
     file_root: &'a Path,
@@ -104,30 +119,26 @@ where
     /// Uses the provided `ActiveTransfer` for shared state (progress tracking,
     /// metadata for monitoring). The transfer will automatically unregister
     /// from the registry when dropped.
-    #[allow(clippy::too_many_arguments)]
     pub fn new(
         reader: FrameReader<R>,
         writer: FrameWriter<W>,
         ban_rx: oneshot::Receiver<()>,
         info: Arc<ActiveTransfer>,
-        user: AuthenticatedUser,
-        locale: String,
-        file_root: &'a Path,
-        file_index: &'a Arc<FileIndex>,
-        registry: &'a TransferRegistry,
-        transfer_id: TransferId,
+        ctx: TransferContext<'a>,
     ) -> Self {
+        // Read out the id before `info` is moved into the struct.
+        let id = info.id;
         Self {
             reader,
             writer,
             ban_rx: Some(ban_rx),
             banned: false,
             info,
-            user,
-            locale,
-            file_root,
-            file_index,
-            _guard: TransferRegistryGuard::new(registry, transfer_id),
+            user: ctx.user,
+            locale: ctx.locale,
+            file_root: ctx.file_root,
+            file_index: ctx.file_index,
+            _guard: TransferRegistryGuard::new(ctx.registry, id),
         }
     }
 
@@ -517,16 +528,16 @@ mod tests {
         let (server_read, server_write) = tokio::io::split(server);
 
         let peer_addr = make_test_addr();
-        let (transfer_id, info, ban_rx) = registry.register(
+        let (info, ban_rx) = registry.register(TransferRegistration {
             peer_addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/test/file.zip".to_string(),
-            1000,
-        );
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: 1000,
+        });
 
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
@@ -537,15 +548,16 @@ mod tests {
             FrameWriter::new(server_write),
             ban_rx,
             info.clone(),
-            make_test_user(),
-            "en".to_string(),
-            file_root,
-            &file_index,
-            &registry,
-            transfer_id,
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                registry: &registry,
+            },
         );
 
-        assert_eq!(transfer.id(), transfer_id);
+        assert_eq!(transfer.id(), info.id);
         assert_eq!(transfer.bytes_transferred(), 0);
         assert_eq!(transfer.peer_addr(), peer_addr);
 
@@ -563,16 +575,16 @@ mod tests {
         let (server_read, server_write) = tokio::io::split(server);
 
         let peer_addr = make_test_addr();
-        let (transfer_id, info, ban_rx) = registry.register(
+        let (info, ban_rx) = registry.register(TransferRegistration {
             peer_addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/test/file.zip".to_string(),
-            0,
-        );
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: 0,
+        });
 
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
@@ -583,12 +595,13 @@ mod tests {
             FrameWriter::new(server_write),
             ban_rx,
             info,
-            make_test_user(),
-            "en".to_string(),
-            file_root,
-            &file_index,
-            &registry,
-            transfer_id,
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                registry: &registry,
+            },
         );
 
         // Not banned yet
@@ -614,16 +627,16 @@ mod tests {
         let (server_read, server_write) = tokio::io::split(server);
 
         let peer_addr = make_test_addr();
-        let (transfer_id, info, ban_rx) = registry.register(
+        let (info, ban_rx) = registry.register(TransferRegistration {
             peer_addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/test/file.zip".to_string(),
-            0,
-        );
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: 0,
+        });
 
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
@@ -634,12 +647,13 @@ mod tests {
             FrameWriter::new(server_write),
             ban_rx,
             info,
-            make_test_user(),
-            "en".to_string(),
-            file_root,
-            &file_index,
-            &registry,
-            transfer_id,
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                registry: &registry,
+            },
         );
 
         // Ban the transfer
@@ -665,16 +679,16 @@ mod tests {
         let (server_read, server_write) = tokio::io::split(server);
 
         let peer_addr = make_test_addr();
-        let (transfer_id, info, ban_rx) = registry.register(
+        let (info, ban_rx) = registry.register(TransferRegistration {
             peer_addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/test/file.zip".to_string(),
-            0,
-        );
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: 0,
+        });
 
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
@@ -685,12 +699,13 @@ mod tests {
             FrameWriter::new(server_write),
             ban_rx,
             info,
-            make_test_user(),
-            "en".to_string(),
-            file_root,
-            &file_index,
-            &registry,
-            transfer_id,
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                registry: &registry,
+            },
         );
 
         // Ban before starting - this tests the pre-stream check
@@ -714,16 +729,16 @@ mod tests {
         let (server_read, server_write) = tokio::io::split(server);
 
         let peer_addr = make_test_addr();
-        let (transfer_id, info, ban_rx) = registry.register(
+        let (info, ban_rx) = registry.register(TransferRegistration {
             peer_addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/test/file.zip".to_string(),
-            0,
-        );
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: 0,
+        });
 
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
@@ -734,12 +749,13 @@ mod tests {
             FrameWriter::new(server_write),
             ban_rx,
             info,
-            make_test_user(),
-            "en".to_string(),
-            file_root,
-            &file_index,
-            &registry,
-            transfer_id,
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                registry: &registry,
+            },
         );
 
         // Ban before starting stream
@@ -761,16 +777,16 @@ mod tests {
         let registry = TransferRegistry::new();
 
         let peer_addr = make_test_addr();
-        let (transfer_id, info, ban_rx) = registry.register(
+        let (info, ban_rx) = registry.register(TransferRegistration {
             peer_addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/test/file.zip".to_string(),
-            0,
-        );
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: 0,
+        });
 
         assert_eq!(registry.active_count(), 1);
 
@@ -787,12 +803,13 @@ mod tests {
                 FrameWriter::new(server_write),
                 ban_rx,
                 info,
-                make_test_user(),
-                "en".to_string(),
-                file_root,
-                &file_index,
-                &registry,
-                transfer_id,
+                TransferContext {
+                    user: make_test_user(),
+                    locale: "en".to_string(),
+                    file_root,
+                    file_index: &file_index,
+                    registry: &registry,
+                },
             );
 
             assert_eq!(registry.active_count(), 1);
@@ -809,16 +826,16 @@ mod tests {
         let (server_read, server_write) = tokio::io::split(server);
 
         let peer_addr = make_test_addr();
-        let (transfer_id, info, ban_rx) = registry.register(
+        let (info, ban_rx) = registry.register(TransferRegistration {
             peer_addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/test/file.zip".to_string(),
-            1000,
-        );
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: 1000,
+        });
 
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
@@ -829,12 +846,13 @@ mod tests {
             FrameWriter::new(server_write),
             ban_rx,
             info.clone(),
-            make_test_user(),
-            "en".to_string(),
-            file_root,
-            &file_index,
-            &registry,
-            transfer_id,
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                registry: &registry,
+            },
         );
 
         // Initial state

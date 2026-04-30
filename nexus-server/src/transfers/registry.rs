@@ -9,8 +9,8 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use nexus_common::protocol::TransferInfo;
@@ -52,6 +52,30 @@ impl std::fmt::Display for TransferDirection {
     }
 }
 
+/// Parameters for [`TransferRegistry::register`] / [`ActiveTransfer::new`].
+///
+/// Bundles the transfer's identity (peer + authenticated user) with
+/// the description (direction, path, total size) so the constructors
+/// stay narrow.
+pub struct TransferRegistration {
+    /// Client's socket address (IP + port).
+    pub peer_addr: SocketAddr,
+    /// Display name (equals username for regular accounts).
+    pub nickname: String,
+    /// Username of the authenticated user.
+    pub username: String,
+    /// Whether the user is an admin.
+    pub is_admin: bool,
+    /// Whether this is a shared account.
+    pub is_shared: bool,
+    /// Upload or download.
+    pub direction: TransferDirection,
+    /// Path being transferred (requested path for downloads, destination for uploads).
+    pub path: String,
+    /// Total size in bytes (0 if unknown).
+    pub total_size: u64,
+}
+
 /// Runtime state for an active transfer
 ///
 /// This struct is shared between the registry and the Transfer via Arc.
@@ -87,30 +111,18 @@ pub struct ActiveTransfer {
 }
 
 impl ActiveTransfer {
-    /// Create a new ActiveTransfer
-    #[allow(clippy::too_many_arguments)]
-    fn new(
-        id: TransferId,
-        peer_addr: SocketAddr,
-        nickname: String,
-        username: String,
-        is_admin: bool,
-        is_shared: bool,
-        direction: TransferDirection,
-        path: String,
-        total_size: u64,
-        ban_tx: oneshot::Sender<()>,
-    ) -> Self {
+    /// Create a new ActiveTransfer from a registration bundle.
+    fn new(id: TransferId, params: TransferRegistration, ban_tx: oneshot::Sender<()>) -> Self {
         Self {
             id,
-            peer_addr,
-            nickname,
-            username,
-            is_admin,
-            is_shared,
-            direction,
-            path,
-            total_size: AtomicU64::new(total_size),
+            peer_addr: params.peer_addr,
+            nickname: params.nickname,
+            username: params.username,
+            is_admin: params.is_admin,
+            is_shared: params.is_shared,
+            direction: params.direction,
+            path: params.path,
+            total_size: AtomicU64::new(params.total_size),
             bytes_transferred: AtomicU64::new(0),
             started_at: Instant::now(),
             ban_tx: Mutex::new(Some(ban_tx)),
@@ -207,7 +219,7 @@ impl std::fmt::Debug for ActiveTransfer {
 /// The registry uses oneshot channels to signal bans, so transfer tasks can
 /// use `tokio::select!` to check for bans during I/O without polling.
 pub struct TransferRegistry {
-    transfers: Mutex<HashMap<TransferId, std::sync::Arc<ActiveTransfer>>>,
+    transfers: Mutex<HashMap<TransferId, Arc<ActiveTransfer>>>,
     next_id: AtomicU64,
 }
 
@@ -220,53 +232,26 @@ impl TransferRegistry {
         }
     }
 
-    /// Register a new transfer and get its ID, shared info, and ban signal receiver
+    /// Register a new transfer and get its shared info plus ban signal receiver.
     ///
     /// The returned receiver will receive `()` if this transfer's IP
-    /// is banned while the transfer is active.
-    ///
-    /// # Arguments
-    /// * `peer_addr` - Client's socket address
-    /// * `nickname` - Display name
-    /// * `username` - Authenticated username
-    /// * `is_admin` - Whether the user is an admin
-    /// * `is_shared` - Whether this is a shared account
-    /// * `direction` - Upload or Download
-    /// * `path` - Path being transferred
-    /// * `total_size` - Total size in bytes (0 if unknown)
-    ///
-    /// # Returns
-    /// Tuple of (TransferId, Arc<ActiveTransfer>, ban_rx)
-    #[allow(clippy::too_many_arguments)]
+    /// is banned while the transfer is active. The transfer's id is
+    /// available as `info.id`.
     pub fn register(
         &self,
-        peer_addr: SocketAddr,
-        nickname: String,
-        username: String,
-        is_admin: bool,
-        is_shared: bool,
-        direction: TransferDirection,
-        path: String,
-        total_size: u64,
-    ) -> (
-        TransferId,
-        std::sync::Arc<ActiveTransfer>,
-        oneshot::Receiver<()>,
-    ) {
+        params: TransferRegistration,
+    ) -> (Arc<ActiveTransfer>, oneshot::Receiver<()>) {
         let id = TransferId(self.next_id.fetch_add(1, Ordering::Relaxed));
         let (ban_tx, ban_rx) = oneshot::channel();
 
-        let info = std::sync::Arc::new(ActiveTransfer::new(
-            id, peer_addr, nickname, username, is_admin, is_shared, direction, path, total_size,
-            ban_tx,
-        ));
+        let info = Arc::new(ActiveTransfer::new(id, params, ban_tx));
 
         self.transfers
             .lock()
             .expect("transfer registry lock poisoned")
-            .insert(id, std::sync::Arc::clone(&info));
+            .insert(id, Arc::clone(&info));
 
-        (id, info, ban_rx)
+        (info, ban_rx)
     }
 
     /// Unregister a transfer (called when transfer completes or fails)
@@ -311,7 +296,7 @@ impl TransferRegistry {
     /// Returns cloned Arc references to all active transfer structs.
     /// Safe to call while transfers are in progress.
     #[allow(dead_code)] // Public API for future connection monitor integration
-    pub fn snapshot(&self) -> Vec<std::sync::Arc<ActiveTransfer>> {
+    pub fn snapshot(&self) -> Vec<Arc<ActiveTransfer>> {
         self.transfers
             .lock()
             .expect("transfer registry lock poisoned")
@@ -378,16 +363,16 @@ mod tests {
         let registry = TransferRegistry::new();
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
-        let (id, info, _rx) = registry.register(
-            addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/files/test.zip".to_string(),
-            1024,
-        );
+        let (info, _rx) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/files/test.zip".to_string(),
+            total_size: 1024,
+        });
 
         assert_eq!(registry.active_count(), 1);
         assert_eq!(info.username, "testuser");
@@ -395,7 +380,7 @@ mod tests {
         assert_eq!(info.path, "/files/test.zip");
         assert_eq!(info.get_total_size(), 1024);
 
-        registry.unregister(id);
+        registry.unregister(info.id);
         assert_eq!(registry.active_count(), 0);
     }
 
@@ -404,40 +389,40 @@ mod tests {
         let registry = TransferRegistry::new();
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
-        let (id1, _, _rx1) = registry.register(
-            addr,
-            "user1".to_string(),
-            "user1".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file1".to_string(),
-            0,
-        );
-        let (id2, _, _rx2) = registry.register(
-            addr,
-            "user2".to_string(),
-            "user2".to_string(),
-            false,
-            false,
-            TransferDirection::Upload,
-            "/file2".to_string(),
-            0,
-        );
-        let (id3, _, _rx3) = registry.register(
-            addr,
-            "user3".to_string(),
-            "user3".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file3".to_string(),
-            0,
-        );
+        let (info1, _rx1) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "user1".to_string(),
+            username: "user1".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file1".to_string(),
+            total_size: 0,
+        });
+        let (info2, _rx2) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "user2".to_string(),
+            username: "user2".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Upload,
+            path: "/file2".to_string(),
+            total_size: 0,
+        });
+        let (info3, _rx3) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "user3".to_string(),
+            username: "user3".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file3".to_string(),
+            total_size: 0,
+        });
 
-        assert_ne!(id1, id2);
-        assert_ne!(id2, id3);
-        assert_ne!(id1, id3);
+        assert_ne!(info1.id, info2.id);
+        assert_ne!(info2.id, info3.id);
+        assert_ne!(info1.id, info3.id);
     }
 
     #[test]
@@ -446,36 +431,36 @@ mod tests {
         let banned_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
         let safe_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 200));
 
-        let (_id1, _, mut rx1) = registry.register(
-            make_test_addr(banned_ip),
-            "banned1".to_string(),
-            "banned1".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file".to_string(),
-            0,
-        );
-        let (_id2, _, mut rx2) = registry.register(
-            make_test_addr(safe_ip),
-            "safe".to_string(),
-            "safe".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file".to_string(),
-            0,
-        );
-        let (_id3, _, mut rx3) = registry.register(
-            make_test_addr(banned_ip),
-            "banned2".to_string(),
-            "banned2".to_string(),
-            false,
-            false,
-            TransferDirection::Upload,
-            "/file".to_string(),
-            0,
-        );
+        let (_, mut rx1) = registry.register(TransferRegistration {
+            peer_addr: make_test_addr(banned_ip),
+            nickname: "banned1".to_string(),
+            username: "banned1".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file".to_string(),
+            total_size: 0,
+        });
+        let (_, mut rx2) = registry.register(TransferRegistration {
+            peer_addr: make_test_addr(safe_ip),
+            nickname: "safe".to_string(),
+            username: "safe".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file".to_string(),
+            total_size: 0,
+        });
+        let (_, mut rx3) = registry.register(TransferRegistration {
+            peer_addr: make_test_addr(banned_ip),
+            nickname: "banned2".to_string(),
+            username: "banned2".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Upload,
+            path: "/file".to_string(),
+            total_size: 0,
+        });
 
         assert_eq!(registry.active_count(), 3);
 
@@ -502,36 +487,36 @@ mod tests {
         let ip2 = IpAddr::V4(Ipv4Addr::new(10, 0, 1, 254));
         let ip3 = IpAddr::V4(Ipv4Addr::new(10, 0, 2, 1)); // Different subnet
 
-        let (_id1, _, _rx1) = registry.register(
-            make_test_addr(ip1),
-            "user1".to_string(),
-            "user1".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file".to_string(),
-            0,
-        );
-        let (_id2, _, _rx2) = registry.register(
-            make_test_addr(ip2),
-            "user2".to_string(),
-            "user2".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file".to_string(),
-            0,
-        );
-        let (_id3, _, _rx3) = registry.register(
-            make_test_addr(ip3),
-            "user3".to_string(),
-            "user3".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file".to_string(),
-            0,
-        );
+        let (_, _rx1) = registry.register(TransferRegistration {
+            peer_addr: make_test_addr(ip1),
+            nickname: "user1".to_string(),
+            username: "user1".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file".to_string(),
+            total_size: 0,
+        });
+        let (_, _rx2) = registry.register(TransferRegistration {
+            peer_addr: make_test_addr(ip2),
+            nickname: "user2".to_string(),
+            username: "user2".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file".to_string(),
+            total_size: 0,
+        });
+        let (_, _rx3) = registry.register(TransferRegistration {
+            peer_addr: make_test_addr(ip3),
+            nickname: "user3".to_string(),
+            username: "user3".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file".to_string(),
+            total_size: 0,
+        });
 
         // Predicate checks if IP is in 10.0.1.0/24
         let disconnected = registry.disconnect_matching(|ip| {
@@ -553,26 +538,26 @@ mod tests {
         let ipv4 = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
         let ipv6 = IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1));
 
-        let (_id1, _, _rx1) = registry.register(
-            make_test_addr(ipv4),
-            "user1".to_string(),
-            "user1".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file".to_string(),
-            0,
-        );
-        let (_id2, _, mut rx2) = registry.register(
-            make_test_addr(ipv6),
-            "user2".to_string(),
-            "user2".to_string(),
-            false,
-            false,
-            TransferDirection::Upload,
-            "/file".to_string(),
-            0,
-        );
+        let (_, _rx1) = registry.register(TransferRegistration {
+            peer_addr: make_test_addr(ipv4),
+            nickname: "user1".to_string(),
+            username: "user1".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file".to_string(),
+            total_size: 0,
+        });
+        let (_, mut rx2) = registry.register(TransferRegistration {
+            peer_addr: make_test_addr(ipv6),
+            nickname: "user2".to_string(),
+            username: "user2".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Upload,
+            path: "/file".to_string(),
+            total_size: 0,
+        });
 
         let disconnected = registry.disconnect_matching(|ip| ip == ipv6);
 
@@ -585,20 +570,20 @@ mod tests {
         let registry = TransferRegistry::new();
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
-        let (id, _, _rx) = registry.register(
-            addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file".to_string(),
-            0,
-        );
+        let (info, _rx) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file".to_string(),
+            total_size: 0,
+        });
         assert_eq!(registry.active_count(), 1);
 
         {
-            let _guard = TransferRegistryGuard::new(&registry, id);
+            let _guard = TransferRegistryGuard::new(&registry, info.id);
             assert_eq!(registry.active_count(), 1);
         } // guard dropped here
 
@@ -610,17 +595,17 @@ mod tests {
         let registry = TransferRegistry::new();
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
-        let (id, _, _rx) = registry.register(
-            addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file".to_string(),
-            0,
-        );
-        registry.unregister(id);
+        let (info, _rx) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file".to_string(),
+            total_size: 0,
+        });
+        registry.unregister(info.id);
 
         // Should not panic or error when trying to disconnect an already-gone transfer
         let disconnected = registry.disconnect_matching(|_| true);
@@ -632,16 +617,16 @@ mod tests {
         let registry = TransferRegistry::new();
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
-        let (_id, _, rx) = registry.register(
-            addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file".to_string(),
-            0,
-        );
+        let (_, rx) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file".to_string(),
+            total_size: 0,
+        });
         drop(rx); // Simulate transfer ending before ban
 
         // Should not panic when receiver is dropped
@@ -658,26 +643,26 @@ mod tests {
         let addr1 = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
         let addr2 = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 2)));
 
-        let (_id1, _, _rx1) = registry.register(
-            addr1,
-            "user1".to_string(),
-            "user1".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/downloads/file1.zip".to_string(),
-            1000,
-        );
-        let (_id2, _, _rx2) = registry.register(
-            addr2,
-            "user2".to_string(),
-            "user2".to_string(),
-            false,
-            false,
-            TransferDirection::Upload,
-            "/uploads".to_string(),
-            2000,
-        );
+        let (_, _rx1) = registry.register(TransferRegistration {
+            peer_addr: addr1,
+            nickname: "user1".to_string(),
+            username: "user1".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/downloads/file1.zip".to_string(),
+            total_size: 1000,
+        });
+        let (_, _rx2) = registry.register(TransferRegistration {
+            peer_addr: addr2,
+            nickname: "user2".to_string(),
+            username: "user2".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Upload,
+            path: "/uploads".to_string(),
+            total_size: 2000,
+        });
 
         let snapshot = registry.snapshot();
         assert_eq!(snapshot.len(), 2);
@@ -693,16 +678,16 @@ mod tests {
         let registry = TransferRegistry::new();
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
-        let (_id, info, _rx) = registry.register(
-            addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file".to_string(),
-            1000,
-        );
+        let (info, _rx) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file".to_string(),
+            total_size: 1000,
+        });
 
         assert_eq!(info.get_bytes_transferred(), 0);
 
@@ -718,16 +703,16 @@ mod tests {
         let registry = TransferRegistry::new();
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
-        let (_id, info, _rx) = registry.register(
-            addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file".to_string(),
-            0, // Unknown at registration
-        );
+        let (info, _rx) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file".to_string(),
+            total_size: 0, // Unknown at registration
+        });
 
         assert_eq!(info.get_total_size(), 0);
 
@@ -754,16 +739,16 @@ mod tests {
         let registry = TransferRegistry::new();
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
-        let (_id, _, _rx) = registry.register(
-            addr,
-            "testuser".to_string(),
-            "testuser".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/file".to_string(),
-            0,
-        );
+        let (_, _rx) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/file".to_string(),
+            total_size: 0,
+        });
 
         // First disconnect should succeed
         let disconnected1 = registry.disconnect_matching(|_| true);

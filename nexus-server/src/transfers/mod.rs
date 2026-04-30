@@ -46,8 +46,8 @@ use crate::handlers::err_file_area_not_configured;
 use auth::{handle_transfer_handshake, handle_transfer_login, handle_transfer_request};
 use download::handle_download;
 use helpers::send_error_and_close;
-use registry::TransferDirection;
-use transfer::Transfer;
+use registry::{TransferDirection, TransferRegistration};
+use transfer::{Transfer, TransferContext};
 use types::TransferRequest;
 use upload::handle_upload;
 
@@ -155,16 +155,16 @@ where
 
     // Register with transfer registry for ban signal handling
     // We do this after authentication so we have the user's locale for error messages
-    let (transfer_id, info, ban_rx) = transfer_registry.register(
+    let (info, ban_rx) = transfer_registry.register(TransferRegistration {
         peer_addr,
-        user.nickname.clone(),
-        user.username.clone(),
-        user.is_admin,
-        user.is_shared,
+        nickname: user.nickname.clone(),
+        username: user.username.clone(),
+        is_admin: user.is_admin,
+        is_shared: user.is_shared,
         direction,
         path,
         total_size,
-    );
+    });
 
     // Create Transfer struct that owns the connection and handles ban signals
     // The Transfer is automatically unregistered when dropped via RAII guard
@@ -173,12 +173,13 @@ where
         frame_writer,
         ban_rx,
         info,
-        user,
-        locale,
-        file_root,
-        &file_index,
-        &transfer_registry,
-        transfer_id,
+        TransferContext {
+            user,
+            locale,
+            file_root,
+            file_index: &file_index,
+            registry: &transfer_registry,
+        },
     );
 
     // Dispatch to appropriate handler

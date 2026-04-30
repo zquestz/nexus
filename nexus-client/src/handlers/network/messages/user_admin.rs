@@ -7,7 +7,9 @@ use nexus_common::framing::MessageId;
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::InputId;
-use crate::types::{ActivePanel, ChatMessage, Message, ResponseRouting, UserManagementMode};
+use crate::types::{
+    ActivePanel, ChatMessage, Message, ResponseRouting, UserEditInit, UserManagementMode,
+};
 
 /// Data from a UserEditResponse message
 pub struct UserEditResponseData {
@@ -163,17 +165,17 @@ impl NexusApp {
                     conn.user_management.available_groups = Some(groups);
                 }
 
-                conn.user_management.enter_edit_mode(
-                    data.id.unwrap_or(0),
-                    data.username.unwrap_or_default(),
-                    data.is_admin.unwrap_or(false),
-                    data.is_shared.unwrap_or(false),
-                    data.enabled.unwrap_or(true),
-                    data.permissions.unwrap_or_default(),
-                    data.group_id,
-                    data.group_permissions.unwrap_or_default(),
-                    data.revoked_permissions.unwrap_or_default(),
-                );
+                conn.user_management.enter_edit_mode(UserEditInit {
+                    id: data.id.unwrap_or(0),
+                    username: data.username.unwrap_or_default(),
+                    is_admin: data.is_admin.unwrap_or(false),
+                    is_shared: data.is_shared.unwrap_or(false),
+                    enabled: data.enabled.unwrap_or(true),
+                    permissions: data.permissions.unwrap_or_default(),
+                    group_id: data.group_id,
+                    group_permissions: data.group_permissions.unwrap_or_default(),
+                    revoked_permissions: data.revoked_permissions.unwrap_or_default(),
+                });
             }
         } else {
             // On error, show in the appropriate place

@@ -184,7 +184,7 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     };
 
     // Setup UPnP port forwarding if requested (forwards WS port only if enabled).
-    let upnp_handle = setup_upnp(
+    let upnp = setup_upnp(
         cli.upnp,
         cli.bind,
         cli.port,
@@ -197,14 +197,20 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     .await;
 
     // Background sweep that drops idle, fully-refilled rate-limit buckets.
-    // No-op when both limiters are disabled (capacity 0). The handle is
-    // aborted on shutdown.
-    let rate_limiter_gc_task = spawn_rate_limiter_gc(Arc::clone(&state));
+    // No-op when both limiters are disabled (capacity 0). Aborted on shutdown.
+    let rate_limiter_gc = spawn_rate_limiter_gc(Arc::clone(&state));
 
     // SIGHUP password-reload task (Unix only). On Windows, password
     // changes require a daemon restart.
     #[cfg(unix)]
-    let sighup_task = spawn_sighup_handler(Arc::clone(&state), data_dir.to_path_buf());
+    let sighup = spawn_sighup_handler(Arc::clone(&state), data_dir.to_path_buf());
+
+    let handles = DaemonHandles {
+        rate_limiter_gc,
+        #[cfg(unix)]
+        sighup,
+        upnp,
+    };
 
     accept_loop(
         listener,
@@ -212,10 +218,7 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
         tls_acceptor,
         fingerprint,
         state,
-        upnp_handle,
-        rate_limiter_gc_task,
-        #[cfg(unix)]
-        sighup_task,
+        handles,
     )
     .await;
     Ok(())
@@ -289,19 +292,49 @@ async fn setup_upnp(
     }
 }
 
+/// Background tasks and resources owned by the daemon for the lifetime
+/// of `accept_loop`. Bundled so `accept_loop`'s signature stays narrow
+/// and its shutdown branch has a single `handles.shutdown().await`
+/// call instead of inlined teardown for each task.
+struct DaemonHandles {
+    /// Periodic rate-limiter bucket sweep.
+    rate_limiter_gc: tokio::task::JoinHandle<()>,
+    /// SIGHUP password-reload listener. Unix only.
+    #[cfg(unix)]
+    sighup: tokio::task::JoinHandle<()>,
+    /// UPnP gateway plus its lease-renewal task. `None` when `--upnp`
+    /// is not set or setup failed. Listed last because shutdown's
+    /// only async / fallible step is the port-mapping removal here.
+    upnp: Option<(Arc<upnp::Gateway>, tokio::task::JoinHandle<()>)>,
+}
+
+impl DaemonHandles {
+    /// Stop every background task and release every external resource
+    /// (UPnP port mapping). Failures during teardown are best-effort —
+    /// the daemon is going down anyway.
+    async fn shutdown(self) {
+        self.rate_limiter_gc.abort();
+        #[cfg(unix)]
+        self.sighup.abort();
+        if let Some((gateway, renewal_task)) = self.upnp {
+            renewal_task.abort();
+            if let Err(e) = gateway.remove_port_mapping().await {
+                warn!(err = %e, "{}", constants::LOG_UPNP_REMOVE_FAILED);
+            }
+        }
+    }
+}
+
 /// Accept loop, terminated by SIGINT / SIGTERM (or Ctrl+C on Windows).
 /// Runs the TCP accept loop and (when `--websocket`) the WS accept
 /// loop concurrently; either exiting on shutdown drains both.
-#[allow(clippy::too_many_arguments)] // internal daemon-startup glue; bundling adds noise without improving the call site
 async fn accept_loop(
     listener: TcpListener,
     ws_listener: Option<TcpListener>,
     tls_acceptor: TlsAcceptor,
     fingerprint: String,
     state: Arc<TrackerState>,
-    upnp_handle: Option<(Arc<upnp::Gateway>, tokio::task::JoinHandle<()>)>,
-    rate_limiter_gc_task: tokio::task::JoinHandle<()>,
-    #[cfg(unix)] sighup_task: tokio::task::JoinHandle<()>,
+    handles: DaemonHandles,
 ) {
     let tcp = run_tcp_accepts(
         &listener,
@@ -316,21 +349,7 @@ async fn accept_loop(
         () = ws => {}
         () = setup_shutdown_signal() => {
             info!("{}", constants::MSG_SHUTDOWN_RECEIVED);
-
-            // Stop the rate-limiter GC sweep.
-            rate_limiter_gc_task.abort();
-
-            // Stop the SIGHUP listener.
-            #[cfg(unix)]
-            sighup_task.abort();
-
-            // Cleanup UPnP port forwarding if enabled.
-            if let Some((gateway, renewal_task)) = upnp_handle {
-                renewal_task.abort();
-                if let Err(e) = gateway.remove_port_mapping().await {
-                    warn!(err = %e, "{}", constants::LOG_UPNP_REMOVE_FAILED);
-                }
-            }
+            handles.shutdown().await;
         }
     }
 }

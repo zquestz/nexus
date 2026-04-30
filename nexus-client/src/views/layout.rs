@@ -216,7 +216,7 @@ use super::{
     about::about_view,
     bookmark::bookmark_edit_view,
     broadcast::broadcast_view,
-    chat::{TimestampSettings, chat_view},
+    chat::{ChatViewStyle, ChatViewVoice, TimestampSettings, chat_view},
     connection::connection_form_view,
     server_list::server_list_panel,
     settings::{SettingsViewData, settings_view},
@@ -844,13 +844,17 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
     let chat = chat_view(
         ctx.conn,
         ctx.message_input,
-        ctx.theme.clone(),
-        ctx.chat_font_size,
-        ctx.timestamp_settings,
-        ctx.voice_target.clone(),
-        ctx.is_local_speaking,
-        ctx.is_deafened,
-        ctx.mic_level,
+        ChatViewStyle {
+            theme: ctx.theme.clone(),
+            font_size: ctx.chat_font_size,
+            timestamps: ctx.timestamp_settings,
+        },
+        ChatViewVoice {
+            target: ctx.voice_target.clone(),
+            is_local_speaking: ctx.is_local_speaking,
+            is_deafened: ctx.is_deafened,
+            mic_level: ctx.mic_level,
+        },
     );
 
     // Build the main content based on active panel

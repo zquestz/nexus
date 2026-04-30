@@ -1414,7 +1414,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bancreate_disconnects_active_transfers() {
-        use crate::transfers::registry::TransferDirection;
+        use crate::transfers::registry::{TransferDirection, TransferRegistration};
         use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
         let mut test_ctx = create_test_context().await;
@@ -1422,30 +1422,30 @@ mod tests {
         // Register a fake active transfer from an IP we'll ban
         let banned_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
         let banned_addr = SocketAddr::new(banned_ip, 12345);
-        let (transfer_id, _info, mut ban_rx) = test_ctx.transfer_registry.register(
-            banned_addr,
-            "banned_user".to_string(),
-            "banned_user".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/files/test.zip".to_string(),
-            0,
-        );
+        let (info, mut ban_rx) = test_ctx.transfer_registry.register(TransferRegistration {
+            peer_addr: banned_addr,
+            nickname: "banned_user".to_string(),
+            username: "banned_user".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/files/test.zip".to_string(),
+            total_size: 0,
+        });
 
         // Register another transfer from a different IP (should not be affected)
         let safe_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 200));
         let safe_addr = SocketAddr::new(safe_ip, 12346);
-        let (_safe_id, _safe_info, mut safe_rx) = test_ctx.transfer_registry.register(
-            safe_addr,
-            "safe_user".to_string(),
-            "safe_user".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/files/other.zip".to_string(),
-            0,
-        );
+        let (_safe_info, mut safe_rx) = test_ctx.transfer_registry.register(TransferRegistration {
+            peer_addr: safe_addr,
+            nickname: "safe_user".to_string(),
+            username: "safe_user".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/files/other.zip".to_string(),
+            total_size: 0,
+        });
 
         // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
@@ -1476,12 +1476,12 @@ mod tests {
         );
 
         // Clean up - unregister the transfers
-        test_ctx.transfer_registry.unregister(transfer_id);
+        test_ctx.transfer_registry.unregister(info.id);
     }
 
     #[tokio::test]
     async fn test_bancreate_cidr_disconnects_transfers_in_range() {
-        use crate::transfers::registry::TransferDirection;
+        use crate::transfers::registry::{TransferDirection, TransferRegistration};
         use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
         let mut test_ctx = create_test_context().await;
@@ -1491,36 +1491,36 @@ mod tests {
         let ip_in_range_2 = IpAddr::V4(Ipv4Addr::new(10, 0, 1, 200));
         let ip_outside_range = IpAddr::V4(Ipv4Addr::new(10, 0, 2, 50));
 
-        let (_id1, _info1, mut rx1) = test_ctx.transfer_registry.register(
-            SocketAddr::new(ip_in_range_1, 12345),
-            "user1".to_string(),
-            "user1".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/files/test1.zip".to_string(),
-            0,
-        );
-        let (_id2, _info2, mut rx2) = test_ctx.transfer_registry.register(
-            SocketAddr::new(ip_in_range_2, 12346),
-            "user2".to_string(),
-            "user2".to_string(),
-            false,
-            false,
-            TransferDirection::Upload,
-            "/uploads".to_string(),
-            0,
-        );
-        let (_id3, _info3, mut rx3) = test_ctx.transfer_registry.register(
-            SocketAddr::new(ip_outside_range, 12347),
-            "user3".to_string(),
-            "user3".to_string(),
-            false,
-            false,
-            TransferDirection::Download,
-            "/files/test3.zip".to_string(),
-            0,
-        );
+        let (_info1, mut rx1) = test_ctx.transfer_registry.register(TransferRegistration {
+            peer_addr: SocketAddr::new(ip_in_range_1, 12345),
+            nickname: "user1".to_string(),
+            username: "user1".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/files/test1.zip".to_string(),
+            total_size: 0,
+        });
+        let (_info2, mut rx2) = test_ctx.transfer_registry.register(TransferRegistration {
+            peer_addr: SocketAddr::new(ip_in_range_2, 12346),
+            nickname: "user2".to_string(),
+            username: "user2".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Upload,
+            path: "/uploads".to_string(),
+            total_size: 0,
+        });
+        let (_info3, mut rx3) = test_ctx.transfer_registry.register(TransferRegistration {
+            peer_addr: SocketAddr::new(ip_outside_range, 12347),
+            nickname: "user3".to_string(),
+            username: "user3".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/files/test3.zip".to_string(),
+            total_size: 0,
+        });
 
         // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;

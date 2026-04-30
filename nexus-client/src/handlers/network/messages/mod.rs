@@ -4,6 +4,7 @@
 
 use std::time::Instant;
 
+use chat::ChatMessageNotification;
 use chat_channel::ChatJoinResponseData;
 use files::FileListResponseData;
 use user_message::UserMessageParams;
@@ -84,13 +85,15 @@ impl NexusApp {
                 timestamp,
             } => self.handle_chat_message(
                 connection_id,
-                channel,
-                nickname,
-                message,
-                is_admin,
-                is_shared,
-                action,
-                timestamp,
+                ChatMessageNotification {
+                    channel,
+                    nickname,
+                    message,
+                    is_admin,
+                    is_shared,
+                    action,
+                    timestamp,
+                },
             ),
 
             ServerMessage::ChatUpdated {

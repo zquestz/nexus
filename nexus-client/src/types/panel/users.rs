@@ -214,6 +214,24 @@ impl std::fmt::Debug for UserManagementState {
     }
 }
 
+/// Initial state for [`UserManagementState::enter_edit_mode`]. Bundled
+/// so the call site doesn't need 9 positional args.
+pub struct UserEditInit {
+    pub id: i64,
+    pub username: String,
+    pub is_admin: bool,
+    pub is_shared: bool,
+    pub enabled: bool,
+    /// Effective (resolved) permission set for this user.
+    pub permissions: Vec<String>,
+    /// Assigned group (if any).
+    pub group_id: Option<i64>,
+    /// Base permissions of the assigned group (empty if no group).
+    pub group_permissions: Vec<String>,
+    /// Permissions explicitly revoked from the group for this user.
+    pub revoked_permissions: Vec<String>,
+}
+
 impl UserManagementState {
     /// Reset to list mode and clear all form state
     pub fn reset_to_list(&mut self) {
@@ -247,25 +265,21 @@ impl UserManagementState {
         self.mode = UserManagementMode::Create;
     }
 
-    /// Enter edit mode for a user (with pre-populated values from server)
+    /// Enter edit mode for a user (with pre-populated values from server).
     ///
-    /// `permissions` is the effective (resolved) permission set for this user.
-    /// `group_id` is the assigned group (if any).
-    /// `group_permissions` is the base permissions of the assigned group (empty if no group).
-    /// `revoked_permissions` are permissions explicitly revoked from the group for this user.
-    #[allow(clippy::too_many_arguments)]
-    pub fn enter_edit_mode(
-        &mut self,
-        id: i64,
-        username: String,
-        is_admin: bool,
-        is_shared: bool,
-        enabled: bool,
-        permissions: Vec<String>,
-        group_id: Option<i64>,
-        group_permissions: Vec<String>,
-        revoked_permissions: Vec<String>,
-    ) {
+    /// See [`UserEditInit`] for the field-by-field meaning.
+    pub fn enter_edit_mode(&mut self, init: UserEditInit) {
+        let UserEditInit {
+            id,
+            username,
+            is_admin,
+            is_shared,
+            enabled,
+            permissions,
+            group_id,
+            group_permissions,
+            revoked_permissions,
+        } = init;
         // Convert permissions Vec<String> to Vec<(String, bool)>
         let mut perm_map: Vec<(String, bool)> = ALL_PERMISSIONS
             .iter()

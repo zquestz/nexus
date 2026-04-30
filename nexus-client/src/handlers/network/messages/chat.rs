@@ -10,20 +10,34 @@ use crate::events::{EventContext, emit_event};
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, ChatTab, Message};
 
+/// Decoded `ChatMessage` notification fields, bundled so
+/// [`NexusApp::handle_chat_message`] doesn't need 8 positional args.
+pub struct ChatMessageNotification {
+    pub channel: String,
+    pub nickname: String,
+    pub message: String,
+    pub is_admin: bool,
+    pub is_shared: bool,
+    pub action: ChatAction,
+    pub timestamp: u64,
+}
+
 impl NexusApp {
     /// Handle incoming chat message from a channel
-    #[allow(clippy::too_many_arguments)]
     pub fn handle_chat_message(
         &mut self,
         connection_id: usize,
-        channel: String,
-        nickname: String,
-        message: String,
-        is_admin: bool,
-        is_shared: bool,
-        action: ChatAction,
-        timestamp: u64,
+        notif: ChatMessageNotification,
     ) -> Task<Message> {
+        let ChatMessageNotification {
+            channel,
+            nickname,
+            message,
+            is_admin,
+            is_shared,
+            action,
+            timestamp,
+        } = notif;
         // Extract mention/self info from connection (drop borrow before emit_event)
         let (is_from_self, is_mention) = if let Some(conn) = self.connections.get(&connection_id) {
             let our_nickname_lower = conn.nickname.to_lowercase();

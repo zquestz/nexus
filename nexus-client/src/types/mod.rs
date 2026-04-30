@@ -26,8 +26,8 @@ pub use panel::{
     DisconnectDialogState, FileSortColumn, FileTab, FilesManagementState, GroupManagementMode,
     GroupManagementSortColumn, NewsManagementMode, NewsManagementState, PasswordChangeState,
     PendingOverwrite, ServerInfoEditState, ServerInfoParams, ServerInfoTab, SettingsFormState,
-    SettingsTab, TabId, TransferSortColumn, UserManagementMode, UserManagementSortColumn,
-    UserManagementState, UserManagementTab,
+    SettingsTab, TabId, TransferSortColumn, UserEditInit, UserManagementMode,
+    UserManagementSortColumn, UserManagementState, UserManagementTab,
 };
 pub use pending::{PendingRequests, ResponseRouting};
 pub use ui::{ActivePanel, FingerprintMismatch, InputId, ReconnectAction, ScrollableId, UiState};

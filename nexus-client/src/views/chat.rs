@@ -25,6 +25,31 @@ use crate::views::voice::{build_input_row_with_voice, build_voice_bar};
 const CONSOLE_TAB_TOOLTIP_KEY: &str = "console-tab";
 
 // ============================================================================
+// chat_view argument bundles
+// ============================================================================
+
+/// Voice-state arguments to [`chat_view`]. Bundled so the function
+/// signature stays narrow.
+pub struct ChatViewVoice {
+    /// Active voice target (`#channel` or `nickname`), if any.
+    pub target: Option<String>,
+    /// Whether the local user is currently transmitting voice.
+    pub is_local_speaking: bool,
+    /// Whether the local user is deafened (output muted).
+    pub is_deafened: bool,
+    /// Microphone level for the input meter (0.0–1.0).
+    pub mic_level: f32,
+}
+
+/// Presentation arguments to [`chat_view`]: theme + font / timestamp
+/// settings.
+pub struct ChatViewStyle {
+    pub theme: Theme,
+    pub font_size: u8,
+    pub timestamps: TimestampSettings,
+}
+
+// ============================================================================
 // Timestamp Settings
 // ============================================================================
 
@@ -561,26 +586,33 @@ fn build_tab_bar(conn: &ServerConnection) -> (iced::widget::Row<'static, Message
 /// A voice button appears in the input row when the user has voice permissions
 /// and is on a channel or user message tab. When in a voice session, a voice bar
 /// appears above the input showing the target and participant count.
-#[allow(clippy::too_many_arguments)]
 pub fn chat_view<'a>(
     conn: &'a ServerConnection,
     message_input: &'a str,
-    theme: Theme,
-    chat_font_size: u8,
-    timestamp_settings: TimestampSettings,
-    voice_target: Option<String>,
-    is_local_speaking: bool,
-    is_deafened: bool,
-    mic_level: f32,
+    style: ChatViewStyle,
+    voice: ChatViewVoice,
 ) -> Element<'a, Message> {
-    let font_size = chat_font_size as f32;
+    let ChatViewStyle {
+        theme,
+        font_size,
+        timestamps,
+    } = style;
+    let ChatViewVoice {
+        target,
+        is_local_speaking,
+        is_deafened,
+        mic_level,
+    } = voice;
+    // Most downstream call sites need the font size as f32; shadow with
+    // the converted value so we don't carry a `_f32` suffix everywhere.
+    let font_size = f32::from(font_size);
 
     // Build tab bar
     let (tab_row, has_closeable_tabs) = build_tab_bar(conn);
     let tab_bar = tab_row.wrap();
 
     // Build message list
-    let chat_column = build_message_list(conn, &theme, font_size, timestamp_settings);
+    let chat_column = build_message_list(conn, &theme, font_size, timestamps);
 
     let chat_scrollable = scrollable(chat_column)
         .id(ScrollableId::ChatMessages)
@@ -594,13 +626,8 @@ pub fn chat_view<'a>(
         conn.has_permission(PERMISSION_VOICE_LISTEN) || conn.has_permission(PERMISSION_VOICE_TALK);
 
     // Build input row with voice button
-    let input_row = build_input_row_with_voice(
-        message_input,
-        font_size,
-        conn,
-        has_voice_permission,
-        voice_target,
-    );
+    let input_row =
+        build_input_row_with_voice(message_input, font_size, conn, has_voice_permission, target);
 
     // Build the bottom section (voice bar + input row)
     let bottom_section = if let Some(ref session) = conn.voice_session {
