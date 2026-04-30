@@ -7,8 +7,9 @@
 //! return Err(err_tracker_unauthorized(locale));
 //! ```
 //!
-//! Helpers used only by handlers that haven't been written yet are
-//! annotated `#[allow(dead_code)]` until those handlers wire them up.
+//! A few helpers cover protocol-level error_kinds the connection task
+//! doesn't differentiate yet; those carry an `#[allow(dead_code)]`
+//! attribute and a comment naming the future call site.
 
 use crate::i18n::{t, t_args};
 
@@ -18,7 +19,6 @@ use crate::i18n::{t, t_args};
 
 /// "Wrong or missing password" — sent when registration or listing is
 /// gated and the peer's password is missing or doesn't verify.
-#[allow(dead_code)] // used by TrackerServerRegister/TrackerServerList handlers (later step)
 pub fn err_tracker_unauthorized(locale: &str) -> String {
     t(locale, "err-tracker-unauthorized")
 }
@@ -28,13 +28,11 @@ pub fn err_tracker_unauthorized(locale: &str) -> String {
 // =============================================================================
 
 /// Cert fingerprint did not match the canonical 95-byte uppercase form.
-#[allow(dead_code)] // used by TrackerServerRegister handler (later step)
 pub fn err_tracker_fingerprint_invalid(locale: &str) -> String {
     t(locale, "err-tracker-fingerprint-invalid")
 }
 
 /// `name` exceeded `MAX_SERVER_NAME_LENGTH`.
-#[allow(dead_code)] // used by TrackerServerRegister handler (later step)
 pub fn err_tracker_name_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
@@ -44,7 +42,6 @@ pub fn err_tracker_name_too_long(locale: &str, max_length: usize) -> String {
 }
 
 /// `description` exceeded `MAX_SERVER_DESCRIPTION_LENGTH`.
-#[allow(dead_code)] // used by TrackerServerRegister handler (later step)
 pub fn err_tracker_description_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
@@ -54,7 +51,6 @@ pub fn err_tracker_description_too_long(locale: &str, max_length: usize) -> Stri
 }
 
 /// `password` exceeded `MAX_PASSWORD_LENGTH`.
-#[allow(dead_code)] // used by TrackerServerRegister/TrackerServerList handlers (later step)
 pub fn err_tracker_password_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
@@ -64,7 +60,6 @@ pub fn err_tracker_password_too_long(locale: &str, max_length: usize) -> String 
 }
 
 /// `address` exceeded `MAX_PUBLIC_ADDRESS_LENGTH`.
-#[allow(dead_code)] // used by TrackerServerRegister handler (later step)
 pub fn err_tracker_address_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
@@ -74,13 +69,11 @@ pub fn err_tracker_address_too_long(locale: &str, max_length: usize) -> String {
 }
 
 /// `address` failed semantic validation (not a valid hostname / IP).
-#[allow(dead_code)] // used by TrackerServerRegister handler (later step)
 pub fn err_tracker_address_invalid(locale: &str) -> String {
     t(locale, "err-tracker-address-invalid")
 }
 
 /// `version` exceeded `MAX_VERSION_LENGTH`.
-#[allow(dead_code)] // used by TrackerServerRegister handler (later step)
 pub fn err_tracker_version_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
@@ -90,7 +83,6 @@ pub fn err_tracker_version_too_long(locale: &str, max_length: usize) -> String {
 }
 
 /// `locale` exceeded `MAX_LOCALE_LENGTH`.
-#[allow(dead_code)] // used by TrackerServerRegister handler (later step)
 pub fn err_tracker_locale_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
@@ -110,7 +102,6 @@ pub fn err_tracker_rate_limited(locale: &str) -> String {
 
 /// Tracker is at `--max-entries`; new registrations are refused until
 /// existing entries expire or disconnect.
-#[allow(dead_code)] // used by TrackerServerRegister handler (later step)
 pub fn err_tracker_capacity(locale: &str) -> String {
     t(locale, "err-tracker-capacity")
 }
@@ -118,7 +109,6 @@ pub fn err_tracker_capacity(locale: &str) -> String {
 /// Source IP has reached `--max-entries-per-ip` and cannot register
 /// another entry until one of its existing entries unregisters or
 /// stale-evicts.
-#[allow(dead_code)] // used by TrackerServerRegister handler (later step)
 pub fn err_tracker_per_ip_capacity(locale: &str) -> String {
     t(locale, "err-tracker-per-ip-capacity")
 }
@@ -143,7 +133,6 @@ pub fn err_tracker_handshake_required(locale: &str) -> String {
 
 /// `TrackerServerList` on a server connection, or `TrackerServerRegister` on a
 /// client connection.
-#[allow(dead_code)] // used by connection task (later step)
 pub fn err_tracker_role_violation(locale: &str) -> String {
     t(locale, "err-tracker-role-violation")
 }
