@@ -11,7 +11,6 @@ mod flood;
 mod handlers;
 mod i18n;
 mod ip_rule_cache;
-mod logging;
 mod transfers;
 mod upnp;
 mod users;
@@ -40,7 +39,7 @@ use constants::*;
 use files::FileIndex;
 use flood::FloodConfig;
 use ip_rule_cache::IpRuleCache;
-use logging::LogLevel;
+use nexus_common::logging::{self, LogInitParams, LogLevel};
 use transfers::{TransferParams, TransferRegistry};
 use users::UserManager;
 use voice::{VoiceRegistry, VoiceUdpServer, create_voice_listener};
@@ -60,12 +59,13 @@ async fn main() {
     let data_dir = resolve_data_dir(args.data_dir.take());
 
     // Initialize logging (global log level + tracing subscriber).
-    if let Err(e) = logging::init(
-        &data_dir,
-        args.log_level,
-        args.log_retention,
-        args.no_log_timestamps,
-    ) {
+    if let Err(e) = logging::init(LogInitParams {
+        data_dir: &data_dir,
+        level: args.log_level,
+        retention: args.log_retention,
+        no_timestamps: args.no_log_timestamps,
+        log_file_prefix: LOG_FILE_PREFIX,
+    }) {
         // `init` installs a stderr-only fallback subscriber before
         // returning Err, so this warning still reaches the user.
         warn!(err = %e, "{}", LOG_LOGGING_INIT_FAILED);
@@ -83,7 +83,7 @@ async fn main() {
 
     // Purge old log files on startup. `purge_old_logs` no-ops when retention
     // is zero, so no outer gate needed.
-    logging::purge_old_logs(&log_dir, args.log_retention);
+    logging::purge_old_logs(&log_dir, args.log_retention, LOG_FILE_PREFIX);
 
     // Startup info
     info!("{}{}", MSG_BANNER, env!("CARGO_PKG_VERSION"));
@@ -338,10 +338,14 @@ async fn main() {
     let file_index_for_timer = file_index.clone();
     let database_for_timer = database.clone();
 
-    // Capture values for the log purge timer
-    let log_level = args.log_level;
-    let log_retention = args.log_retention;
-    let log_dir_for_timer = log_dir.clone();
+    // Spawn the daily log-retention purge task. Returns `None` (no task)
+    // when file logging is disabled — purge is a no-op in that case.
+    let log_purge_task = logging::spawn_purge_task(
+        data_dir.clone(),
+        args.log_level,
+        args.log_retention,
+        LOG_FILE_PREFIX.to_string(),
+    );
 
     // Main server loops - accept incoming connections on both ports
     tokio::select! {
@@ -356,6 +360,11 @@ async fn main() {
                 if let Err(e) = gateway.remove_port_mapping().await {
                     warn!(err = %e, "{}", LOG_UPNP_REMOVE_FAILED);
                 }
+            }
+
+            // Stop the daily log-purge task if it was spawned.
+            if let Some(handle) = log_purge_task {
+                handle.abort();
             }
         }
         // Main BBS port accept loop
@@ -696,17 +705,6 @@ async fn main() {
                 }
             }
         } => {}
-        // Log retention purge timer - runs daily
-        _ = async {
-            if log_retention == std::time::Duration::ZERO || log_level == LogLevel::None {
-                std::future::pending::<()>().await;
-                return;
-            }
-            loop {
-                tokio::time::sleep(Duration::from_secs(24 * 60 * 60)).await;
-                logging::purge_old_logs(&log_dir_for_timer, log_retention);
-            }
-        } => {}
     }
 }
 
@@ -836,7 +834,7 @@ fn resolve_data_dir(override_path: Option<std::path::PathBuf>) -> std::path::Pat
 }
 
 /// Create the data directory if it doesn't already exist and lock it to
-/// owner-only permissions (`DATA_DIR_MODE`) on Unix. The directory hosts
+/// owner-only permissions (`nexus_common::DATA_DIR_MODE`) on Unix. The directory hosts
 /// the database, TLS private key, and (by default) log files, so a
 /// permissive parent directory undercuts the per-file protections inside.
 ///
@@ -851,7 +849,7 @@ fn ensure_data_dir(data_dir: &Path) -> Result<(), String> {
             use std::os::unix::fs::DirBuilderExt;
             let mut builder = fs::DirBuilder::new();
             builder.recursive(true);
-            builder.mode(DATA_DIR_MODE);
+            builder.mode(nexus_common::DATA_DIR_MODE);
             builder.create(data_dir)
         }
         #[cfg(not(unix))]
@@ -863,8 +861,11 @@ fn ensure_data_dir(data_dir: &Path) -> Result<(), String> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(data_dir, fs::Permissions::from_mode(DATA_DIR_MODE))
-            .map_err(|e| format!("{}{}", ERR_SET_DATA_DIR_PERMS, e))?;
+        fs::set_permissions(
+            data_dir,
+            fs::Permissions::from_mode(nexus_common::DATA_DIR_MODE),
+        )
+        .map_err(|e| format!("{}{}", ERR_SET_DATA_DIR_PERMS, e))?;
     }
     Ok(())
 }
@@ -1134,7 +1135,7 @@ mod tests {
             .mode();
         assert_eq!(
             mode & 0o777,
-            DATA_DIR_MODE,
+            nexus_common::DATA_DIR_MODE,
             "fresh data dir should be created with 0o700"
         );
     }
@@ -1160,7 +1161,7 @@ mod tests {
             .mode();
         assert_eq!(
             mode & 0o777,
-            DATA_DIR_MODE,
+            nexus_common::DATA_DIR_MODE,
             "pre-existing loose data dir should be corrected to 0o700"
         );
     }

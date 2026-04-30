@@ -4720,6 +4720,7 @@ version = "0.8.1"
 dependencies = [
  "futures-util",
  "hex",
+ "humantime",
  "idna",
  "igd-next",
  "rand 0.10.1",
@@ -4731,6 +4732,8 @@ dependencies = [
  "tokio",
  "tokio-tungstenite",
  "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
  "uuid",
  "zxcvbn",
 ]
@@ -4751,7 +4754,6 @@ dependencies = [
  "grep-regex",
  "grep-searcher",
  "hex",
- "humantime",
  "infer",
  "ipnet",
  "iprange",
@@ -4771,8 +4773,6 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite",
  "tracing",
- "tracing-appender",
- "tracing-subscriber",
  "unic-langid",
  "uuid",
  "walkdir",
@@ -4790,7 +4790,6 @@ dependencies = [
  "fluent",
  "fluent-bundle",
  "futures-util",
- "humantime",
  "nexus-common",
  "pem",
  "rcgen 0.14.7",
@@ -4803,8 +4802,6 @@ dependencies = [
  "tokio-rustls",
  "tokio-tungstenite",
  "tracing",
- "tracing-appender",
- "tracing-subscriber",
  "unic-langid",
 ]
 

@@ -9,6 +9,8 @@ pub mod fingerprint;
 pub mod framing;
 pub mod hash;
 pub mod io;
+#[cfg(feature = "logging")]
+pub mod logging;
 pub mod protocol;
 pub mod time;
 pub mod tracker_protocol;
@@ -50,6 +52,16 @@ pub const DEFAULT_TRANSFER_WEBSOCKET_PORT: u16 = 7503;
 
 /// Default port for tracker connections
 pub const DEFAULT_TRACKER_PORT: u16 = 7510;
+
+/// Owner-only directory mode for daemon data directories on Unix.
+///
+/// Used by `nexus-server` and `nexus-tracker` for both the data
+/// directory itself and the `logs/` subdirectory inside it. The value is
+/// `0o700` (read/write/execute for owner only) so directory listings
+/// don't leak filenames or existence to other local users; the
+/// per-file `0o600` modes inside cover the contents.
+#[cfg(unix)]
+pub const DATA_DIR_MODE: u32 = 0o700;
 
 /// Default port for WebSocket tracker connections
 pub const DEFAULT_TRACKER_WEBSOCKET_PORT: u16 = 7511;

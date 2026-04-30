@@ -8,9 +8,10 @@ use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
 
+use nexus_common::logging::{self, LogInitParams};
 use nexus_tracker::{
     args::{self, PasswordKind},
-    auth, connection, constants, logging,
+    auth, connection, constants,
     registry::Registry,
     state::TrackerState,
     tls, upnp, websocket,
@@ -29,12 +30,13 @@ async fn main() {
 
     let data_dir = resolve_data_dir(cli.data_dir.take());
 
-    if let Err(e) = logging::init(
-        &data_dir,
-        cli.log_level,
-        cli.log_retention,
-        cli.no_log_timestamps,
-    ) {
+    if let Err(e) = logging::init(LogInitParams {
+        data_dir: &data_dir,
+        level: cli.log_level,
+        retention: cli.log_retention,
+        no_timestamps: cli.no_log_timestamps,
+        log_file_prefix: constants::LOG_FILE_PREFIX,
+    }) {
         // `init` installs a stderr-only fallback subscriber before
         // returning Err, so this warning still reaches the user.
         warn!(err = %e, "{}", constants::LOG_LOGGING_INIT_FAILED);
@@ -46,7 +48,7 @@ async fn main() {
     }
 
     let log_path = logging::log_dir(&data_dir);
-    logging::purge_old_logs(&log_path, cli.log_retention);
+    logging::purge_old_logs(&log_path, cli.log_retention, constants::LOG_FILE_PREFIX);
 
     info!("{}{}", constants::MSG_BANNER, env!("CARGO_PKG_VERSION"));
     info!("{}{}", constants::MSG_LOG_LEVEL, cli.log_level);
@@ -200,6 +202,15 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     // No-op when both limiters are disabled (capacity 0). Aborted on shutdown.
     let rate_limiter_gc = spawn_rate_limiter_gc(Arc::clone(&state));
 
+    // Daily log-retention purge task. Returns `None` (no task) when file
+    // logging is disabled — purge is a no-op in that case.
+    let log_purge = logging::spawn_purge_task(
+        data_dir.to_path_buf(),
+        cli.log_level,
+        cli.log_retention,
+        constants::LOG_FILE_PREFIX.to_string(),
+    );
+
     // SIGHUP password-reload task (Unix only). On Windows, password
     // changes require a daemon restart. Signal stream is installed
     // synchronously here so a setup failure surfaces as a startup
@@ -209,6 +220,7 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
 
     let handles = DaemonHandles {
         rate_limiter_gc,
+        log_purge,
         #[cfg(unix)]
         sighup,
         upnp,
@@ -305,6 +317,9 @@ async fn setup_upnp(
 struct DaemonHandles {
     /// Periodic rate-limiter bucket sweep.
     rate_limiter_gc: tokio::task::JoinHandle<()>,
+    /// Daily log-retention purge task. `None` when file logging is
+    /// disabled (level == None or retention == 0).
+    log_purge: Option<tokio::task::JoinHandle<()>>,
     /// SIGHUP password-reload listener. Unix only.
     #[cfg(unix)]
     sighup: tokio::task::JoinHandle<()>,
@@ -320,6 +335,9 @@ impl DaemonHandles {
     /// the daemon is going down anyway.
     async fn shutdown(self) {
         self.rate_limiter_gc.abort();
+        if let Some(handle) = self.log_purge {
+            handle.abort();
+        }
         #[cfg(unix)]
         self.sighup.abort();
         if let Some((gateway, renewal_task)) = self.upnp {
@@ -526,7 +544,7 @@ fn ensure_data_dir(data_dir: &Path) -> Result<(), String> {
             use std::os::unix::fs::DirBuilderExt;
             let mut builder = fs::DirBuilder::new();
             builder.recursive(true);
-            builder.mode(constants::DATA_DIR_MODE);
+            builder.mode(nexus_common::DATA_DIR_MODE);
             builder.create(data_dir)
         }
         #[cfg(not(unix))]
@@ -540,7 +558,7 @@ fn ensure_data_dir(data_dir: &Path) -> Result<(), String> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(
             data_dir,
-            fs::Permissions::from_mode(constants::DATA_DIR_MODE),
+            fs::Permissions::from_mode(nexus_common::DATA_DIR_MODE),
         )
         .map_err(|e| format!("{}{}", constants::ERR_SET_DATA_DIR_PERMS, e))?;
     }
@@ -572,7 +590,7 @@ mod tests {
             .mode();
         assert_eq!(
             mode & 0o777,
-            constants::DATA_DIR_MODE,
+            nexus_common::DATA_DIR_MODE,
             "fresh data dir should be created with 0o700"
         );
     }
@@ -598,7 +616,7 @@ mod tests {
             .mode();
         assert_eq!(
             mode & 0o777,
-            constants::DATA_DIR_MODE,
+            nexus_common::DATA_DIR_MODE,
             "pre-existing loose data dir should be corrected to 0o700"
         );
     }

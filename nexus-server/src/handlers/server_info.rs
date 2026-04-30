@@ -4,9 +4,8 @@
 //! permission-based field filtering is consistent. All three call sites use this
 //! instead of constructing `ServerInfo` directly.
 
+use nexus_common::logging::current_log_level;
 use nexus_common::protocol::ServerInfo;
-
-use crate::logging::server_log_level;
 
 /// Raw server info values before permission filtering.
 ///
@@ -101,6 +100,6 @@ pub fn build_server_info(values: &ServerInfoValues, options: &ServerInfoOptions)
         chat_burst_limit: Some(values.chat_burst_limit),
         chat_rate_limit: Some(values.chat_rate_limit),
         min_password_strength: Some(values.min_password_strength),
-        log_level: Some(server_log_level().to_string()),
+        log_level: Some(current_log_level().to_string()),
     }
 }

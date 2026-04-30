@@ -152,16 +152,9 @@ pub const DEFAULT_PUBLIC_ADDRESS: &str = "";
 /// certificate and key, file search index, and log files.
 pub const DATA_DIR_NAME: &str = "nexusd";
 
-/// Permissions mode for the data directory and its subdirectories on Unix.
-/// Owner-only (`0o700`) so directory listings don't leak filenames or
-/// existence to other local users.
-#[cfg(unix)]
-pub const DATA_DIR_MODE: u32 = 0o700;
-
-/// Logs directory name (inside data dir)
-pub const LOGS_DIR_NAME: &str = "logs";
-
-/// Log file prefix (tracing-appender appends date, e.g. nexusd.2025-07-11)
+/// Log file prefix (tracing-appender appends date, e.g. nexusd.2025-07-11).
+/// Daemon-specific; passed in to `nexus_common::logging::init` and
+/// `purge_old_logs` so the shared logging stack picks the right files.
 pub const LOG_FILE_PREFIX: &str = "nexusd";
 
 /// Database file name
@@ -322,24 +315,6 @@ pub const ERR_RUSTLS_PROVIDER: &str = "failed to install rustls crypto provider"
 /// IP rule cache lock poisoned (panics if it fires — indicates a panic in
 /// another thread while holding the lock, unrecoverable).
 pub const ERR_IP_CACHE_POISONED: &str = "ip rule cache lock poisoned";
-
-/// `logging::init` called more than once (panics if it fires — indicates
-/// a programming error, not an operator-actionable failure).
-pub const ERR_LOG_LEVEL_ALREADY_SET: &str = "log level already initialized";
-
-/// Log level parsing failed (caller appends the offending value).
-pub const ERR_LOG_LEVEL_INVALID: &str =
-    "Invalid log level (valid values: none, error, warn, info, debug): ";
-
-/// Log retention parsing failed (caller appends the value and underlying error).
-pub const ERR_LOG_RETENTION_INVALID: &str = "Invalid log retention: ";
-
-/// Log retention below the 1-day minimum (caller appends the value).
-pub const ERR_LOG_RETENTION_TOO_SHORT: &str =
-    "Log retention must be 0 (disabled) or at least 1 day, got: ";
-
-/// Log directory creation failed (caller appends the path and underlying error).
-pub const ERR_CREATE_LOG_DIR: &str = "Failed to create log directory: ";
 
 /// Platform does not provide a data directory (extremely rare — Windows
 /// without `%APPDATA%`, Linux without `HOME`, etc.)

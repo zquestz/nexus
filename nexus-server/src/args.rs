@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::constants::ERR_DATA_DIR_NOT_ABSOLUTE;
-use crate::logging::{LogLevel, parse_log_retention};
+use nexus_common::logging::{LogLevel, parse_log_retention};
 
 /// Reject relative `--data-dir` paths at parse time. Daemons should run
 /// with absolute paths so behavior doesn't depend on launch CWD.

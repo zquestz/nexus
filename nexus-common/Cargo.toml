@@ -22,9 +22,14 @@ zxcvbn = "3.1"
 futures-util = { version = "0.3", optional = true }
 tokio-tungstenite = { version = "0.29", optional = true }
 
-# Optional, enabled by the `upnp` feature.
+# Optional, enabled by the `upnp` or `logging` feature.
 igd-next = { version = "0.17", optional = true }
 tracing = { version = "0.1", optional = true }
+
+# Optional, enabled by the `logging` feature.
+tracing-subscriber = { version = "0.3", features = ["json"], optional = true }
+tracing-appender = { version = "0.2", optional = true }
+humantime = { version = "2.1", optional = true }
 
 [features]
 # WebSocket byte-stream adapter (`nexus_common::websocket::WebSocketAdapter`).
@@ -37,6 +42,17 @@ websocket = ["dep:futures-util", "dep:tokio-tungstenite"]
 # daemons that want optional NAT traversal at startup. Pulls in `igd-next`
 # and `tracing` for operator-facing log output.
 upnp = ["dep:igd-next", "dep:tracing"]
+
+# Tracing subscriber + log-file rotation (`nexus_common::logging`). Enabled
+# by daemons that want a shared logging stack (level parsing, daily file
+# rotation, retention purge timer, current-level accessor). Disabled by
+# default — `nexus-client` brings its own stderr-only setup.
+logging = [
+    "dep:tracing",
+    "dep:tracing-subscriber",
+    "dep:tracing-appender",
+    "dep:humantime",
+]
 
 [dev-dependencies]
 tempfile = "3.20"
