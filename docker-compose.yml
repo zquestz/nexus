@@ -1,15 +1,24 @@
-# Docker Compose for Nexus BBS Server
+# Docker Compose for Nexus BBS Server and Tracker
 #
-# Quick Start with Pre-built Image:
-#   docker compose up -d          # Start server
-#   docker compose logs -f        # View logs
-#   docker compose down           # Stop server
+# Quick Start with Pre-built Images:
+#   docker compose up -d                     # Start both server and tracker
+#   docker compose up -d nexusd              # Server only
+#   docker compose up -d nexus-trackerd      # Tracker only
+#   docker compose logs -f                   # View logs
+#   docker compose down                      # Stop everything
 #
 # Build from Source:
-#   docker compose build          # Build local image
-#   docker compose up -d          # Start server
+#   Uncomment the `build:` block under the service you want to build,
+#   then:
+#     docker compose build                   # Build local images
+#     docker compose up -d                   # Start
 #
-# First user to connect becomes admin.
+# First user to connect to the server becomes admin.
+
+# Pin the project name so volumes resolve to `nexus_nexus-data` /
+# `nexus_nexus-tracker-data` regardless of the directory the compose
+# file is run from.
+name: nexus
 
 services:
   nexusd:
@@ -32,5 +41,25 @@ services:
       - NEXUS_LOG_LEVEL=info
       - NEXUS_NO_LOG_TIMESTAMPS=true
 
+  nexus-trackerd:
+    # Use pre-built image from GitHub Container Registry
+    image: ghcr.io/zquestz/nexus-trackerd:latest
+    # Or build from source:
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile.tracker
+    container_name: nexus-trackerd
+    restart: unless-stopped
+    ports:
+      - "7510:7510"
+    volumes:
+      - nexus-tracker-data:/home/nexus-tracker/.local/share/nexus-trackerd
+    environment:
+      - NEXUS_TRACKER_BIND=0.0.0.0 # Use :: for IPv6
+      - NEXUS_TRACKER_PORT=7510
+      - NEXUS_TRACKER_LOG_LEVEL=info
+      - NEXUS_TRACKER_NO_LOG_TIMESTAMPS=true
+
 volumes:
   nexus-data:
+  nexus-tracker-data:

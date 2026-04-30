@@ -1,0 +1,126 @@
+# syntax=docker/dockerfile:1
+# check=skip=SecretsUsedInArgOrEnv
+#
+# Dockerfile for Nexus Tracker (nexus-trackerd)
+#
+# Build:
+#   docker build -f Dockerfile.tracker -t nexus-trackerd .
+#
+# Run (open tracker, no WebSocket):
+#   docker run -d \
+#     -p 7510:7510 \
+#     -v nexus-tracker-data:/home/nexus-tracker/.local/share/nexus-trackerd \
+#     --name nexus-trackerd \
+#     nexus-trackerd
+#
+# Run (with WebSocket enabled):
+#   docker run -d \
+#     -p 7510:7510 \
+#     -p 7511:7511 \
+#     -e NEXUS_TRACKER_WEBSOCKET=true \
+#     -v nexus-tracker-data:/home/nexus-tracker/.local/share/nexus-trackerd \
+#     --name nexus-trackerd \
+#     nexus-trackerd
+#
+# Set/clear passwords (after the container is running):
+#   docker exec -it nexus-trackerd nexus-trackerd set-password registration
+#   docker exec -it nexus-trackerd nexus-trackerd set-password listing
+#   docker exec -it nexus-trackerd nexus-trackerd clear-password registration
+
+# Build stage
+FROM rust:1.95-bookworm AS builder
+WORKDIR /build
+
+# Copy workspace manifests first for dependency caching.
+# Every workspace member's Cargo.toml must be present even when building
+# only nexus-tracker, because cargo loads the full workspace.
+COPY Cargo.toml Cargo.lock ./
+COPY nexus-common/Cargo.toml nexus-common/Cargo.toml
+COPY nexus-server/Cargo.toml nexus-server/Cargo.toml
+COPY nexus-client/Cargo.toml nexus-client/Cargo.toml
+COPY nexus-tracker/Cargo.toml nexus-tracker/Cargo.toml
+
+# Create dummy source files to build dependencies.
+# nexus-tracker has both lib.rs and main.rs targets.
+RUN mkdir -p nexus-common/src nexus-server/src nexus-client/src nexus-tracker/src && \
+  echo "pub fn dummy() {}" > nexus-common/src/lib.rs && \
+  echo "fn main() {}" > nexus-server/src/main.rs && \
+  echo "fn main() {}" > nexus-client/src/main.rs && \
+  echo "" > nexus-tracker/src/lib.rs && \
+  echo "fn main() {}" > nexus-tracker/src/main.rs && \
+  cargo build --release --package nexus-tracker && \
+  rm -rf nexus-common/src nexus-server/src nexus-client/src nexus-tracker/src
+
+# Copy actual source and rebuild
+COPY nexus-common/src nexus-common/src
+COPY nexus-tracker/src nexus-tracker/src
+COPY nexus-tracker/locales nexus-tracker/locales
+# Remove cached dummy build artifacts to force rebuild with real source
+RUN rm -rf target/release/.fingerprint/nexus-* \
+  target/release/deps/nexus* \
+  target/release/deps/libnexus* \
+  target/release/nexus-trackerd* && \
+  cargo build --release --package nexus-tracker && \
+  strip /build/target/release/nexus-trackerd
+
+# Runtime stage
+FROM debian:bookworm-slim
+
+# OCI labels (metadata-action sets source, revision, created, url, version automatically)
+LABEL org.opencontainers.image.title="Nexus Tracker" \
+  org.opencontainers.image.description="Discovery service for Nexus BBS servers" \
+  org.opencontainers.image.licenses="MIT"
+
+RUN apt-get update && \
+  apt-get install -y --no-install-recommends netcat-openbsd && \
+  rm -rf /var/lib/apt/lists/* && \
+  useradd --create-home nexus-tracker && \
+  mkdir -p /home/nexus-tracker/.local/share/nexus-trackerd && \
+  chown -R nexus-tracker:nexus-tracker /home/nexus-tracker/.local
+COPY --from=builder /build/target/release/nexus-trackerd /usr/local/bin/
+COPY LICENSE README.md /usr/share/doc/nexus-trackerd/
+USER nexus-tracker
+
+# Data volume for tracker state (passwords, etc.)
+VOLUME /home/nexus-tracker/.local/share/nexus-trackerd
+
+# Expose tracker ports
+# 7510: Tracker port (TCP)
+# 7511: WebSocket tracker port (requires --websocket)
+EXPOSE 7510 7511
+
+# Health check - verify tracker is accepting connections
+HEALTHCHECK --interval=5s --timeout=3s --start-period=2s --retries=3 \
+  CMD nc -z localhost ${NEXUS_TRACKER_PORT:-7510} || exit 1
+
+# Environment variables
+# NEXUS_TRACKER_WEBSOCKET: set to any non-empty value to enable WebSocket
+# NEXUS_TRACKER_NO_LOG_TIMESTAMPS: enabled by default (Docker provides timestamps); set to empty to re-enable
+ENV NEXUS_TRACKER_BIND=0.0.0.0 \
+  NEXUS_TRACKER_PORT=7510 \
+  NEXUS_TRACKER_WEBSOCKET= \
+  NEXUS_TRACKER_WEBSOCKET_PORT=7511 \
+  NEXUS_TRACKER_LOG_LEVEL=info \
+  NEXUS_TRACKER_LOG_RETENTION=30d \
+  NEXUS_TRACKER_NO_LOG_TIMESTAMPS=true \
+  NEXUS_TRACKER_MAX_ENTRIES=10000 \
+  NEXUS_TRACKER_MAX_ENTRIES_PER_IP=1 \
+  NEXUS_TRACKER_REFRESH_INTERVAL=300 \
+  NEXUS_TRACKER_RATE_CONNECTIONS=20 \
+  NEXUS_TRACKER_RATE_AUTH_FAILURES=5
+
+# Use shell to expand environment variables
+ENTRYPOINT ["/bin/sh", "-c", "exec nexus-trackerd \
+  --bind \"$NEXUS_TRACKER_BIND\" \
+  --port \"$NEXUS_TRACKER_PORT\" \
+  --log-level \"$NEXUS_TRACKER_LOG_LEVEL\" \
+  --log-retention \"$NEXUS_TRACKER_LOG_RETENTION\" \
+  --max-entries \"$NEXUS_TRACKER_MAX_ENTRIES\" \
+  --max-entries-per-ip \"$NEXUS_TRACKER_MAX_ENTRIES_PER_IP\" \
+  --refresh-interval \"$NEXUS_TRACKER_REFRESH_INTERVAL\" \
+  --rate-connections \"$NEXUS_TRACKER_RATE_CONNECTIONS\" \
+  --rate-auth-failures \"$NEXUS_TRACKER_RATE_AUTH_FAILURES\" \
+  ${NEXUS_TRACKER_WEBSOCKET:+--websocket} \
+  ${NEXUS_TRACKER_WEBSOCKET:+--websocket-port \"$NEXUS_TRACKER_WEBSOCKET_PORT\"} \
+  ${NEXUS_TRACKER_NO_LOG_TIMESTAMPS:+--no-log-timestamps} \
+  \"$@\"", "--"]

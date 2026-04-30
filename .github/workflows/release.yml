@@ -605,7 +605,7 @@ jobs:
         with:
           path: artifacts
           pattern: macos-client
-      
+
       - name: Download macOS server artifacts
         uses: actions/download-artifact@v4
         with:
@@ -687,7 +687,7 @@ jobs:
             | AppImage (all distros) | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-x64.AppImage` | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-arm64.AppImage` |
             | Debian/Ubuntu (.deb) | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-x64.deb` | `nexus-client-${{ steps.version.outputs.VERSION }}-linux-arm64.deb` |
 
-            > **Fedora/RHEL users:** Use the AppImage. RPM packages are not available due to [cargo-bundle not implementing RPM support](https://github.com/burtonageo/cargo-bundle/issues/92).
+            > **Fedora/RHEL users:** Use the AppImage. RPM packages are not available.
 
             ### Server (nexusd)
 

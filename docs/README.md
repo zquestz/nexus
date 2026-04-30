@@ -30,6 +30,16 @@ For operators running Nexus BBS servers.
 - [User Management](server/05-user-management.md) — Users, admins, permissions, and guest access
 - [Troubleshooting](server/06-troubleshooting.md) — Common issues and solutions
 
+## Tracker Admin Guide
+
+For operators running Nexus trackers (a discovery service for BBS servers).
+
+- [Getting Started](tracker/01-getting-started.md) — What a tracker is and how to run one
+- [Configuration](tracker/02-configuration.md) — Command-line options, registry limits, and rate limiting
+- [Docker](tracker/03-docker.md) — Container deployment with Docker and Compose
+- [Password Management](tracker/04-passwords.md) — Registration and listing passwords, SIGHUP reload, rotation
+- [Troubleshooting](tracker/05-troubleshooting.md) — Common issues and solutions
+
 ## Additional Resources
 
 - [Main README](../README.md) — Project overview and quick start

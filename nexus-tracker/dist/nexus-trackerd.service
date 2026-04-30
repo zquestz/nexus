@@ -1,17 +1,17 @@
 # Prerequisite: create the dedicated user/group before enabling this unit:
-#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin nexus
+#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin nexus-tracker
 
 [Unit]
-Description=Nexus BBS Server
+Description=Nexus Tracker
 Documentation=https://github.com/zquestz/nexus
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=nexus
-Group=nexus
-ExecStart=/usr/local/bin/nexusd --data-dir /var/lib/nexusd
+User=nexus-tracker
+Group=nexus-tracker
+ExecStart=/usr/local/bin/nexus-trackerd --data-dir /var/lib/nexus-trackerd
 Restart=on-failure
 RestartSec=5
 
@@ -22,9 +22,9 @@ ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
 
-# Data directory (systemd creates /var/lib/nexusd owned by nexus:nexus)
-StateDirectory=nexusd
-WorkingDirectory=/var/lib/nexusd
+# Data directory (systemd creates /var/lib/nexus-trackerd owned by nexus-tracker:nexus-tracker)
+StateDirectory=nexus-trackerd
+WorkingDirectory=/var/lib/nexus-trackerd
 
 [Install]
 WantedBy=multi-user.target

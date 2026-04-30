@@ -1,7 +1,7 @@
 # Dockerfile for Nexus BBS Server (nexusd)
 #
 # Build:
-#   docker build -t nexus-server .
+#   docker build -t nexusd .
 #
 # Run (without WebSocket):
 #   docker run -d \
@@ -10,7 +10,7 @@
 #     -p 7501:7501 \
 #     -v nexus-data:/home/nexus/.local/share/nexusd \
 #     --name nexusd \
-#     nexus-server
+#     nexusd
 #
 # Run (with WebSocket enabled):
 #   docker run -d \
@@ -22,7 +22,7 @@
 #     -e NEXUS_WEBSOCKET=true \
 #     -v nexus-data:/home/nexus/.local/share/nexusd \
 #     --name nexusd \
-#     nexus-server
+#     nexusd
 
 # Build stage
 FROM rust:1.95-bookworm AS builder

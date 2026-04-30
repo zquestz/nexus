@@ -36,39 +36,25 @@ docker run -d \
 
 ### Using Docker Compose with Pre-built Image
 
-Create a `docker-compose.yml` file:
+The repository ships a [`docker-compose.yml`](../../docker-compose.yml) that defines two services: the BBS server (`nexusd`) and the tracker (`nexus-trackerd`). Running `docker compose up -d` from the repo root brings up **both** services by default.
 
-```yaml
-services:
-  nexusd:
-    image: ghcr.io/zquestz/nexusd:latest
-    container_name: nexusd
-    restart: unless-stopped
-    ports:
-      - "7500:7500/tcp"
-      - "7500:7500/udp"
-      - "7501:7501"
-    volumes:
-      - nexus-data:/home/nexus/.local/share/nexusd
-    environment:
-      - NEXUS_BIND=0.0.0.0
-      - NEXUS_PORT=7500
-      - NEXUS_TRANSFER_PORT=7501
-      # Uncomment to enable WebSocket support
-      # - NEXUS_WEBSOCKET=true
-      # - NEXUS_WEBSOCKET_PORT=7502
-      # - NEXUS_TRANSFER_WEBSOCKET_PORT=7503
-      - NEXUS_LOG_LEVEL=info
-      - NEXUS_NO_LOG_TIMESTAMPS=true
-
-volumes:
-  nexus-data:
-```
-
-Then run:
+If you only want the server, scope the command to the service:
 
 ```bash
-docker compose up -d
+# Start the server only (skips the tracker)
+docker compose up -d nexusd
+```
+
+To enable WebSocket support, edit `docker-compose.yml` and add the WebSocket ports and env vars to the `nexusd` service:
+
+```yaml
+ports:
+  - "7502:7502"
+  - "7503:7503"
+environment:
+  - NEXUS_WEBSOCKET=true
+  - NEXUS_WEBSOCKET_PORT=7502
+  - NEXUS_TRANSFER_WEBSOCKET_PORT=7503
 ```
 
 ### Available Tags
@@ -95,26 +81,30 @@ If you prefer to build the image yourself, you can use the included Dockerfile.
 
 ### Using Docker Compose (Recommended)
 
+The repo's `docker-compose.yml` defines both `nexusd` and `nexus-trackerd`. The commands below scope to `nexusd` so only the server is built and run.
+
+To build from source, uncomment the `build: .` line under `nexusd` in `docker-compose.yml`, then:
+
 ```bash
 # Clone the repository
 git clone https://github.com/zquestz/nexus.git
 cd nexus
 
 # Start the server (builds automatically)
-docker compose up -d
+docker compose up -d nexusd
 
 # View logs
-docker compose logs -f
+docker compose logs -f nexusd
 
 # Stop the server
-docker compose down
+docker compose stop nexusd
 ```
 
 ### Using Docker Directly
 
 ```bash
 # Build the image
-docker build -t nexus-server .
+docker build -t nexusd .
 
 # Run the container
 docker run -d \
@@ -123,7 +113,7 @@ docker run -d \
   -p 7501:7501 \
   -v nexus-data:/home/nexus/.local/share/nexusd \
   --name nexusd \
-  nexus-server
+  nexusd
 ```
 
 ## Environment Variables
@@ -241,15 +231,15 @@ ports:
 ### Build the Image
 
 ```bash
-docker build -t nexus-server .
+docker build -t nexusd .
 ```
 
 ### Rebuild After Updates
 
 ```bash
 git pull
-docker compose build --no-cache
-docker compose up -d
+docker compose build --no-cache nexusd
+docker compose up -d nexusd
 ```
 
 ## Management
@@ -257,11 +247,11 @@ docker compose up -d
 ### View Logs
 
 ```bash
-# Follow logs
-docker compose logs -f
+# Follow server logs
+docker compose logs -f nexusd
 
 # Last 100 lines
-docker compose logs --tail 100
+docker compose logs --tail 100 nexusd
 
 # Specific container
 docker logs nexusd
@@ -270,76 +260,88 @@ docker logs nexusd
 ### Restart Server
 
 ```bash
-docker compose restart
+docker compose restart nexusd
 ```
 
 ### Stop Server
 
 ```bash
-docker compose down
+docker compose stop nexusd
 ```
 
 ### Remove Everything (Including Data)
+
+The default `docker-compose.yml` defines both `nexusd` and `nexus-trackerd`. Tear down the whole stack and delete all volumes:
 
 ```bash
 docker compose down -v
 ```
 
-**Warning:** This deletes all data including users, settings, and files.
+**Warning:** This deletes all data for **both** services — server users/settings/files and tracker state.
+
+To remove just the server's data, stop the service and remove only its named volume:
+
+```bash
+docker compose stop nexusd
+docker compose rm -f nexusd
+docker volume rm nexus_nexus-data
+```
 
 ## Updating
 
 ### Pre-built Images
 
 ```bash
-# Pull the latest image
+# Pull the latest server image
 docker pull ghcr.io/zquestz/nexusd:latest
 
-# Restart with new image
-docker compose down
-docker compose up -d
+# Restart the server with the new image
+docker compose stop nexusd
+docker compose up -d nexusd
 ```
 
 ### From Source
 
 ```bash
 git pull
-docker compose build --no-cache
-docker compose up -d
+docker compose build --no-cache nexusd
+docker compose up -d nexusd
 ```
 
 ## Backup and Restore
 
+The server's data lives in the `nexus-data` named volume (resolved by Docker as `nexus_nexus-data` when the project name is `nexus`). The tracker has its own volume and is unaffected by these commands.
+
 ### Backup
 
 ```bash
-# Stop the server
-docker compose down
+# Stop the server (tracker keeps running)
+docker compose stop nexusd
 
 # Backup the volume
 docker run --rm \
-  -v nexus-data:/data \
+  -v nexus_nexus-data:/data \
   -v $(pwd):/backup \
   alpine tar czf /backup/nexus-backup.tar.gz -C /data .
 
-# Restart
-docker compose up -d
+# Restart the server
+docker compose up -d nexusd
 ```
 
 ### Restore
 
 ```bash
-# Stop the server
-docker compose down
+# Stop the server (tracker keeps running)
+docker compose stop nexusd
 
 # Restore the volume
 docker run --rm \
-  -v nexus-data:/data \
+  -v nexus_nexus-data:/data \
   -v $(pwd):/backup \
   alpine sh -c "rm -rf /data/* && tar xzf /backup/nexus-backup.tar.gz -C /data"
 
-# Restart
-docker compose up -d
+# Restart the server
+docker compose up -d nexusd
 ```
 
 ## Production Considerations
@@ -386,10 +388,10 @@ When running behind a reverse proxy (nginx, Traefik, etc.), note that Nexus uses
 
 ### Container Won't Start
 
-Check logs:
+Check the server's logs:
 
 ```bash
-docker compose logs
+docker compose logs nexusd
 ```
 
 Common issues:
@@ -399,7 +401,7 @@ Common issues:
 
 ### Can't Connect
 
-1. Verify the container is running: `docker compose ps`
+1. Verify the container is running: `docker compose ps nexusd`
 2. Check the ports are mapped: `docker port nexusd`
 3. Verify firewall allows the ports
 4. Check the server logs for errors
