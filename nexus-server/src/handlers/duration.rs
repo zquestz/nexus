@@ -5,6 +5,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH;
 use nexus_common::time::{SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE};
 
 /// Parse duration string into expiry timestamp
@@ -69,7 +70,7 @@ pub fn parse_duration(duration: &Option<String>) -> Result<Option<i64>, ()> {
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("system time before Unix epoch")
+        .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH)
         .as_secs();
 
     Ok(Some((now + seconds) as i64))
@@ -88,7 +89,7 @@ pub fn parse_duration(duration: &Option<String>) -> Result<Option<i64>, ()> {
 pub fn format_duration_remaining(expires_at: i64) -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("system time before Unix epoch")
+        .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH)
         .as_secs() as i64;
 
     let remaining_secs = (expires_at - now).max(0);

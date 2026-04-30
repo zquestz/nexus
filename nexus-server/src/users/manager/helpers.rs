@@ -3,6 +3,7 @@
 use nexus_common::protocol::{ServerMessage, UserInfo};
 
 use super::UserManager;
+use crate::constants::ERR_SESSIONS_NOT_EMPTY;
 use crate::db::Permission;
 use crate::users::user::UserSession;
 
@@ -112,20 +113,20 @@ impl UserManager {
         let latest_login = sessions
             .iter()
             .max_by_key(|s| s.login_time)
-            .expect("sessions is not empty");
+            .expect(ERR_SESSIONS_NOT_EMPTY);
 
         // Most recently active: used for is_away, status (accurate presence)
         let most_active = sessions
             .iter()
             .max_by_key(|s| s.last_activity)
-            .expect("sessions is not empty");
+            .expect(ERR_SESSIONS_NOT_EMPTY);
 
         // Find the earliest login time for display
         let earliest_login_time = sessions
             .iter()
             .map(|s| s.login_time)
             .min()
-            .expect("sessions is not empty");
+            .expect(ERR_SESSIONS_NOT_EMPTY);
 
         // Collect all session IDs
         let session_ids: Vec<u32> = sessions.iter().map(|s| s.session_id).collect();

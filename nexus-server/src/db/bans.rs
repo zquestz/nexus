@@ -6,6 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ipnet::IpNet;
 use sqlx::sqlite::SqlitePool;
 
+use crate::constants::{ERR_SYSTEM_TIME_BEFORE_EPOCH, ERR_VALID_IP_PREFIX};
 use crate::db::sql;
 
 /// A ban record from the database
@@ -62,7 +63,7 @@ impl BanDb {
     fn now() -> i64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system time before Unix epoch")
+            .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH)
             .as_secs() as i64
     }
 
@@ -259,9 +260,11 @@ impl BanDb {
             } else if let Ok(ip) = ban.ip_address.parse::<IpAddr>() {
                 // Convert single IP to /32 or /128
                 match ip {
-                    IpAddr::V4(v4) => IpNet::V4(ipnet::Ipv4Net::new(v4, 32).expect("valid prefix")),
+                    IpAddr::V4(v4) => {
+                        IpNet::V4(ipnet::Ipv4Net::new(v4, 32).expect(ERR_VALID_IP_PREFIX))
+                    }
                     IpAddr::V6(v6) => {
-                        IpNet::V6(ipnet::Ipv6Net::new(v6, 128).expect("valid prefix"))
+                        IpNet::V6(ipnet::Ipv6Net::new(v6, 128).expect(ERR_VALID_IP_PREFIX))
                     }
                 }
             } else {

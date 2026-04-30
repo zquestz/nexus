@@ -12,7 +12,7 @@ use super::{
     HandlerContext, err_authentication, err_not_logged_in, err_status_contains_newlines,
     err_status_invalid_characters, err_status_too_long,
 };
-use crate::constants::LOG_USER_STATUS_NOT_LOGGED_IN;
+use crate::constants::{ERR_AT_LEAST_ONE_SESSION_EXISTS, LOG_USER_STATUS_NOT_LOGGED_IN};
 use crate::users::manager::UserManager;
 
 /// Handle UserStatus command - set status message and clear away status
@@ -82,7 +82,8 @@ where
             .user_manager
             .get_sessions_by_username(&session.username)
             .await;
-        UserManager::build_aggregated_user_info(&all_sessions).expect("at least one session exists")
+        UserManager::build_aggregated_user_info(&all_sessions)
+            .expect(ERR_AT_LEAST_ONE_SESSION_EXISTS)
     };
 
     let user_updated = ServerMessage::UserUpdated {

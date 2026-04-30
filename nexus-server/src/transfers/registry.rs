@@ -16,6 +16,8 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use nexus_common::protocol::TransferInfo;
 use tokio::sync::oneshot;
 
+use crate::constants::{ERR_BAN_TX_LOCK_POISONED, ERR_TRANSFER_REGISTRY_LOCK_POISONED};
+
 /// Unique identifier for a transfer session
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TransferId(u64);
@@ -159,7 +161,7 @@ impl ActiveTransfer {
     ///
     /// Returns true if signal was sent, false if already sent or receiver dropped.
     fn send_ban_signal(&self) -> bool {
-        let mut guard = self.ban_tx.lock().expect("ban_tx lock poisoned");
+        let mut guard = self.ban_tx.lock().expect(ERR_BAN_TX_LOCK_POISONED);
         if let Some(tx) = guard.take() {
             tx.send(()).is_ok()
         } else {
@@ -248,7 +250,7 @@ impl TransferRegistry {
 
         self.transfers
             .lock()
-            .expect("transfer registry lock poisoned")
+            .expect(ERR_TRANSFER_REGISTRY_LOCK_POISONED)
             .insert(id, Arc::clone(&info));
 
         (info, ban_rx)
@@ -258,7 +260,7 @@ impl TransferRegistry {
     pub fn unregister(&self, id: TransferId) {
         self.transfers
             .lock()
-            .expect("transfer registry lock poisoned")
+            .expect(ERR_TRANSFER_REGISTRY_LOCK_POISONED)
             .remove(&id);
     }
 
@@ -279,7 +281,7 @@ impl TransferRegistry {
         let transfers = self
             .transfers
             .lock()
-            .expect("transfer registry lock poisoned");
+            .expect(ERR_TRANSFER_REGISTRY_LOCK_POISONED);
 
         let mut count = 0;
         for info in transfers.values() {
@@ -299,7 +301,7 @@ impl TransferRegistry {
     pub fn snapshot(&self) -> Vec<Arc<ActiveTransfer>> {
         self.transfers
             .lock()
-            .expect("transfer registry lock poisoned")
+            .expect(ERR_TRANSFER_REGISTRY_LOCK_POISONED)
             .values()
             .cloned()
             .collect()
@@ -310,7 +312,7 @@ impl TransferRegistry {
     pub fn active_count(&self) -> usize {
         self.transfers
             .lock()
-            .expect("transfer registry lock poisoned")
+            .expect(ERR_TRANSFER_REGISTRY_LOCK_POISONED)
             .len()
     }
 }

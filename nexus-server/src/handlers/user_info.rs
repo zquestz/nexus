@@ -13,8 +13,8 @@ use super::{
     err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
-    DEFAULT_LOCALE, LOG_USER_INFO_DB_ERROR, LOG_USER_INFO_NOT_LOGGED_IN,
-    LOG_USER_INFO_PERMISSION_DENIED,
+    DEFAULT_LOCALE, ERR_TARGET_SESSIONS_NON_EMPTY, LOG_USER_INFO_DB_ERROR,
+    LOG_USER_INFO_NOT_LOGGED_IN, LOG_USER_INFO_PERMISSION_DENIED,
 };
 use crate::db::Permission;
 
@@ -97,7 +97,7 @@ where
     let db_lookup_username = target_sessions
         .first()
         .map(|s| s.username.clone())
-        .expect("target_sessions is non-empty");
+        .expect(ERR_TARGET_SESSIONS_NON_EMPTY);
 
     // Fetch target user account for admin status and created_at
     let target_account = match ctx.db.users.get_user_by_username(&db_lookup_username).await {
@@ -121,7 +121,7 @@ where
         .iter()
         .map(|s| s.login_time)
         .min()
-        .expect("target_sessions is non-empty");
+        .expect(ERR_TARGET_SESSIONS_NON_EMPTY);
     let locale = target_sessions
         .iter()
         .max_by_key(|s| s.login_time)

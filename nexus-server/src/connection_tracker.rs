@@ -4,6 +4,7 @@
 //! resource exhaustion attacks. It tracks main BBS connections,
 //! file transfer connections, and voice connections with separate limits.
 
+use crate::constants::{ERR_CONNECTION_TRACKER_LOCK, ERR_TRANSFER_TRACKER_LOCK};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -65,7 +66,7 @@ impl ConnectionTracker {
     /// The returned guard will automatically release the slot when dropped.
     pub fn try_acquire(&self, ip: IpAddr) -> Option<ConnectionGuard> {
         let max = self.max_connections_per_ip.load(Ordering::Relaxed);
-        let mut connections = self.connections.lock().expect("connection tracker lock");
+        let mut connections = self.connections.lock().expect(ERR_CONNECTION_TRACKER_LOCK);
         let count = connections.entry(ip).or_insert(0);
 
         // 0 means unlimited
@@ -91,7 +92,7 @@ impl ConnectionTracker {
         let mut connections = self
             .transfer_connections
             .lock()
-            .expect("transfer tracker lock");
+            .expect(ERR_TRANSFER_TRACKER_LOCK);
         let count = connections.entry(ip).or_insert(0);
 
         // 0 means unlimited
@@ -119,7 +120,7 @@ pub struct ConnectionGuard {
 
 impl Drop for ConnectionGuard {
     fn drop(&mut self) {
-        let mut connections = self.connections.lock().expect("connection tracker lock");
+        let mut connections = self.connections.lock().expect(ERR_CONNECTION_TRACKER_LOCK);
         if let Some(count) = connections.get_mut(&self.ip) {
             *count = count.saturating_sub(1);
             if *count == 0 {
@@ -141,7 +142,7 @@ pub struct TransferGuard {
 
 impl Drop for TransferGuard {
     fn drop(&mut self) {
-        let mut connections = self.connections.lock().expect("transfer tracker lock");
+        let mut connections = self.connections.lock().expect(ERR_TRANSFER_TRACKER_LOCK);
         if let Some(count) = connections.get_mut(&self.ip) {
             *count = count.saturating_sub(1);
             if *count == 0 {
@@ -169,7 +170,7 @@ mod tests {
 
         /// Get the current main connection count for an IP
         fn connection_count(&self, ip: IpAddr) -> usize {
-            let connections = self.connections.lock().expect("connection tracker lock");
+            let connections = self.connections.lock().expect(ERR_CONNECTION_TRACKER_LOCK);
             connections.get(&ip).copied().unwrap_or(0)
         }
 
@@ -178,13 +179,13 @@ mod tests {
             let connections = self
                 .transfer_connections
                 .lock()
-                .expect("transfer tracker lock");
+                .expect(ERR_TRANSFER_TRACKER_LOCK);
             connections.get(&ip).copied().unwrap_or(0)
         }
 
         /// Get the total number of active main connections across all IPs
         fn total_connections(&self) -> usize {
-            let connections = self.connections.lock().expect("connection tracker lock");
+            let connections = self.connections.lock().expect(ERR_CONNECTION_TRACKER_LOCK);
             connections.values().sum()
         }
 
@@ -193,7 +194,7 @@ mod tests {
             let connections = self
                 .transfer_connections
                 .lock()
-                .expect("transfer tracker lock");
+                .expect(ERR_TRANSFER_TRACKER_LOCK);
             connections.values().sum()
         }
     }
@@ -283,7 +284,10 @@ mod tests {
 
         // IP should be removed from the map when count reaches 0
         assert_eq!(tracker.connection_count(ip), 0);
-        let connections = tracker.connections.lock().expect("connection tracker lock");
+        let connections = tracker
+            .connections
+            .lock()
+            .expect(ERR_CONNECTION_TRACKER_LOCK);
         assert!(!connections.contains_key(&ip));
     }
 
@@ -431,7 +435,7 @@ mod tests {
         let connections = tracker
             .transfer_connections
             .lock()
-            .expect("transfer tracker lock");
+            .expect(ERR_TRANSFER_TRACKER_LOCK);
         assert!(!connections.contains_key(&ip));
     }
 

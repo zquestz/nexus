@@ -7,6 +7,7 @@ use nexus_common::framing::MessageId;
 use nexus_common::protocol::ServerMessage;
 use tokio::sync::mpsc;
 
+use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
 use crate::db::Permission;
 
 /// Parameters for creating a new user session
@@ -135,6 +136,6 @@ impl UserSession {
 fn current_timestamp() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("System time is before Unix epoch - check system clock configuration")
+        .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK)
         .as_secs() as i64
 }

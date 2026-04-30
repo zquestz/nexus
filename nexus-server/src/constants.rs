@@ -556,6 +556,75 @@ pub const ERR_FILE_INVALID_AREA_ROOT: &str = "Area root must be an absolute path
 pub const ERR_CHANNEL_CLOSED: &str = "channel closed";
 
 // =============================================================================
+// Mutex / lock poisoning panic messages (programmer-error invariants)
+// =============================================================================
+
+/// Panic message: the transfer-registry mutex is poisoned. A poisoned
+/// mutex means a previous holder panicked while updating the active
+/// transfer map; the in-memory state is unknown-shape.
+pub const ERR_TRANSFER_REGISTRY_LOCK_POISONED: &str = "transfer registry lock poisoned";
+
+/// Panic message: the per-transfer `ban_tx` mutex is poisoned. A
+/// poisoned mutex means a previous holder panicked while taking the
+/// oneshot sender, leaving the ban-signal state unknown.
+pub const ERR_BAN_TX_LOCK_POISONED: &str = "ban_tx lock poisoned";
+
+/// Panic message: the connection-tracker per-IP-count mutex used for
+/// limiting BBS connections.
+pub const ERR_CONNECTION_TRACKER_LOCK: &str = "connection tracker lock";
+
+/// Panic message: the connection-tracker per-IP-count mutex used for
+/// limiting transfer connections.
+pub const ERR_TRANSFER_TRACKER_LOCK: &str = "transfer tracker lock";
+
+// =============================================================================
+// Other panic messages (programmer-error invariants)
+// =============================================================================
+
+/// Panic message: `SystemTime::now().duration_since(UNIX_EPOCH)` failed
+/// (system clock is set before 1970-01-01). Used for ban / trust /
+/// duration / IP-rule-cache timestamps; the daemon can't sensibly
+/// continue with a clock skewed that far back.
+pub const ERR_SYSTEM_TIME_BEFORE_EPOCH: &str = "system time before Unix epoch";
+
+/// Panic message variant of [`ERR_SYSTEM_TIME_BEFORE_EPOCH`] with an
+/// operator hint about checking the system clock. Used at the
+/// `users::user::User::age_seconds()` site, which is hit early enough
+/// that the hint is actionable.
+pub const ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK: &str =
+    "system time is before Unix epoch — check system clock configuration";
+
+/// Panic message: alternate wording for the same condition as
+/// [`ERR_SYSTEM_TIME_BEFORE_EPOCH`], used by voice and the
+/// handler-level uptime / status timestamps.
+pub const ERR_SYSTEM_TIME_AFTER_EPOCH: &str = "system time should be after Unix epoch";
+
+/// Panic message: building an `IpNet` from a bare IP returned an error
+/// even though the IP came directly from a parsed `IpAddr`. Used by
+/// `db::bans::row_to_ban` and `db::trusts::row_to_trust` when
+/// constructing the prefix from a known-valid IP.
+pub const ERR_VALID_IP_PREFIX: &str = "valid prefix";
+
+/// Panic message: a code path expected the `sessions` collection to be
+/// non-empty (e.g., we just confirmed the user has at least one active
+/// session in the line above). Used by `users::manager::helpers`.
+pub const ERR_SESSIONS_NOT_EMPTY: &str = "sessions is not empty";
+
+/// Panic message: the user-status code paths require at least one
+/// active session for the target user. Used by handlers/user_away,
+/// user_back, user_status.
+pub const ERR_AT_LEAST_ONE_SESSION_EXISTS: &str = "at least one session exists";
+
+/// Panic message: handlers/user_info expected `target_sessions` to be
+/// non-empty — checked just upstream.
+pub const ERR_TARGET_SESSIONS_NON_EMPTY: &str = "target_sessions is non-empty";
+
+/// Panic message: `DEFAULT_LOCALE` failed to parse as a Fluent
+/// `LanguageIdentifier`. Programmer-error: the constant is hand-edited
+/// to be valid.
+pub const ERR_DEFAULT_LOCALE_INVALID: &str = "DEFAULT_LOCALE is a valid locale";
+
+// =============================================================================
 // Log Messages
 // =============================================================================
 

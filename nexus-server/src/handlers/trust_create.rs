@@ -176,10 +176,7 @@ where
 
     // Update the IP rule cache
     {
-        let mut cache = ctx
-            .ip_rule_cache
-            .write()
-            .expect("ip rule cache lock poisoned");
+        let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
         for target_str in &trusted_targets {
             cache.add_trust(target_str, expires_at);
         }

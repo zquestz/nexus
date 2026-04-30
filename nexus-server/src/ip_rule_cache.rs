@@ -24,6 +24,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use iprange::IpRange;
 
+use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH;
 use crate::db::bans::BanRecord;
 use crate::db::trusts::TrustRecord;
 
@@ -512,7 +513,7 @@ fn to_ipv4_mapped(v6: &Ipv6Addr) -> Option<Ipv4Addr> {
 fn current_timestamp() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .expect("system time before Unix epoch")
+        .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH)
         .as_secs() as i64
 }
 

@@ -88,10 +88,7 @@ where
             Ok(deleted_ips) => {
                 // Update cache
                 {
-                    let mut cache = ctx
-                        .ip_rule_cache
-                        .write()
-                        .expect("ip rule cache lock poisoned");
+                    let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
                     for ip in &deleted_ips {
                         cache.remove_ban(ip);
                     }
@@ -166,10 +163,7 @@ where
 
             // Update cache - remove the CIDR and all contained entries
             {
-                let mut cache = ctx
-                    .ip_rule_cache
-                    .write()
-                    .expect("ip rule cache lock poisoned");
+                let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
                 cache.remove_bans_contained_by(&net.to_string());
                 // Also remove the exact CIDR entry if it existed
                 cache.remove_ban(&net.to_string());
@@ -192,10 +186,7 @@ where
             Ok(true) => {
                 // Update cache
                 {
-                    let mut cache = ctx
-                        .ip_rule_cache
-                        .write()
-                        .expect("ip rule cache lock poisoned");
+                    let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
                     cache.remove_ban(&target);
                 }
 

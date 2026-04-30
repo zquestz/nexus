@@ -119,15 +119,12 @@ impl VoiceUdpServer {
                 Ok((conn, remote_addr)) => {
                     // Check IP ban before processing (trust bypasses ban)
                     let should_allow = {
-                        let cache = self
-                            .ip_rule_cache
-                            .read()
-                            .expect("ip rule cache lock poisoned");
+                        let cache = self.ip_rule_cache.read().expect(ERR_IP_CACHE_POISONED);
                         if cache.needs_rebuild() {
                             drop(cache);
                             self.ip_rule_cache
                                 .write()
-                                .expect("ip rule cache lock poisoned")
+                                .expect(ERR_IP_CACHE_POISONED)
                                 .should_allow(remote_addr.ip())
                         } else {
                             cache.should_allow_read_only(remote_addr.ip())

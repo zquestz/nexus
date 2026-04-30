@@ -390,6 +390,27 @@ pub const ERR_SIGNAL_SIGHUP: &str = "SIGHUP handler installation failed";
 /// the registry; the in-memory state is unknown-shape and unrecoverable.
 pub const ERR_REGISTRY_MUTEX_POISONED: &str = "registry mutex poisoned";
 
+/// Panic message: the per-IP rate-limiter bucket map's `Mutex` is
+/// poisoned. A poisoned mutex means a previous holder panicked while
+/// updating the rate-limit state; the bucket counts are unknown-shape.
+pub const ERR_RATE_LIMITER_MUTEX_POISONED: &str = "rate limiter mutex poisoned";
+
+/// Panic message: the registration password hash `RwLock` is poisoned.
+/// A poisoned lock means a prior holder panicked while reading or
+/// swapping the hash, leaving the in-memory state unknown.
+pub const ERR_REGISTRATION_HASH_LOCK_POISONED: &str = "registration password hash lock poisoned";
+
+/// Panic message: the listing password hash `RwLock` is poisoned.
+/// Same reasoning as [`ERR_REGISTRATION_HASH_LOCK_POISONED`].
+pub const ERR_LISTING_HASH_LOCK_POISONED: &str = "listing password hash lock poisoned";
+
+/// Panic message used by `TrackerState::reload_one`, where the lock
+/// is selected dynamically (registration or listing). Distinct from
+/// the flow-specific constants above so the panic still tells the
+/// operator *which kind* failed via the `kind = %kind` log field that
+/// surrounds the panic site.
+pub const ERR_PASSWORD_HASH_LOCK_POISONED: &str = "password hash lock poisoned";
+
 // =============================================================================
 // Rate limiting
 // =============================================================================

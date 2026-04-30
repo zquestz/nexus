@@ -8,7 +8,7 @@ use tracing::warn;
 use nexus_common::protocol::ServerMessage;
 
 use super::{HandlerContext, err_authentication, err_not_logged_in};
-use crate::constants::LOG_USER_BACK_NOT_LOGGED_IN;
+use crate::constants::{ERR_AT_LEAST_ONE_SESSION_EXISTS, LOG_USER_BACK_NOT_LOGGED_IN};
 use crate::users::manager::UserManager;
 
 /// Handle UserBack command - clear away status for all sessions of this user
@@ -53,7 +53,8 @@ where
             .user_manager
             .get_sessions_by_username(&session.username)
             .await;
-        UserManager::build_aggregated_user_info(&all_sessions).expect("at least one session exists")
+        UserManager::build_aggregated_user_info(&all_sessions)
+            .expect(ERR_AT_LEAST_ONE_SESSION_EXISTS)
     };
 
     let user_updated = ServerMessage::UserUpdated {

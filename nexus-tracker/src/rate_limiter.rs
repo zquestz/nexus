@@ -45,10 +45,7 @@ use std::net::IpAddr;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-/// Panic message: the per-IP bucket map's `Mutex` is poisoned. A
-/// poisoned mutex means a previous holder panicked while updating the
-/// rate-limit state; the bucket counts are unknown-shape.
-const ERR_RATE_LIMITER_MUTEX_POISONED: &str = "rate limiter mutex poisoned";
+use crate::constants::ERR_RATE_LIMITER_MUTEX_POISONED;
 
 /// Outcome of a rate-limit check.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

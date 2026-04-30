@@ -115,7 +115,7 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
-use crate::constants::ERR_CHANNEL_CLOSED;
+use crate::constants::{ERR_CHANNEL_CLOSED, ERR_SYSTEM_TIME_AFTER_EPOCH};
 
 use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
@@ -214,7 +214,7 @@ impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {
 pub fn current_timestamp() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("System time should be after UNIX_EPOCH")
+        .expect(ERR_SYSTEM_TIME_AFTER_EPOCH)
         .as_secs() as i64
 }
 

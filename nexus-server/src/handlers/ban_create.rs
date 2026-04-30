@@ -257,10 +257,7 @@ where
 
     // Update the IP rule cache
     {
-        let mut cache = ctx
-            .ip_rule_cache
-            .write()
-            .expect("ip rule cache lock poisoned");
+        let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
         for target_str in &banned_targets {
             cache.add_ban(target_str, expires_at);
         }
@@ -279,7 +276,7 @@ where
                 |ip| {
                     ctx.ip_rule_cache
                         .read()
-                        .expect("ip rule cache lock poisoned")
+                        .expect(ERR_IP_CACHE_POISONED)
                         .is_trusted_read_only(*ip)
                 },
             )
@@ -295,7 +292,7 @@ where
                 |ip| {
                     ctx.ip_rule_cache
                         .read()
-                        .expect("ip rule cache lock poisoned")
+                        .expect(ERR_IP_CACHE_POISONED)
                         .is_trusted_read_only(*ip)
                 },
             )
@@ -318,7 +315,7 @@ where
                         // Skip trusted IPs - they should stay connected
                         ctx.ip_rule_cache
                             .read()
-                            .expect("ip rule cache lock poisoned")
+                            .expect(ERR_IP_CACHE_POISONED)
                             .is_trusted_read_only(*ip)
                     },
                 )
@@ -333,7 +330,7 @@ where
                     && !ctx
                         .ip_rule_cache
                         .read()
-                        .expect("ip rule cache lock poisoned")
+                        .expect(ERR_IP_CACHE_POISONED)
                         .is_trusted_read_only(ip)
             });
         }
@@ -349,7 +346,7 @@ where
                         // Skip trusted IPs - they should stay connected
                         ctx.ip_rule_cache
                             .read()
-                            .expect("ip rule cache lock poisoned")
+                            .expect(ERR_IP_CACHE_POISONED)
                             .is_trusted_read_only(*ip)
                     },
                 )
@@ -366,7 +363,7 @@ where
                 && !ctx
                     .ip_rule_cache
                     .read()
-                    .expect("ip rule cache lock poisoned")
+                    .expect(ERR_IP_CACHE_POISONED)
                     .is_trusted_read_only(ip)
         });
     }

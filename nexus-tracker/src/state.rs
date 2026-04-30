@@ -16,26 +16,12 @@ use tracing::{error, info};
 
 use crate::args::PasswordKind;
 use crate::auth;
-use crate::constants::{LOG_PASSWORD_RELOAD_FAILED, LOG_PASSWORD_RELOADED};
+use crate::constants::{
+    ERR_LISTING_HASH_LOCK_POISONED, ERR_PASSWORD_HASH_LOCK_POISONED,
+    ERR_REGISTRATION_HASH_LOCK_POISONED, LOG_PASSWORD_RELOAD_FAILED, LOG_PASSWORD_RELOADED,
+};
 use crate::rate_limiter::RateLimiter;
 use crate::registry::Registry;
-
-/// Panic message: the registration password hash `RwLock` is poisoned.
-/// Programmer-error: a poisoned lock means a prior holder panicked
-/// while reading or swapping the hash, leaving the in-memory state
-/// unknown.
-const ERR_REGISTRATION_HASH_LOCK_POISONED: &str = "registration password hash lock poisoned";
-
-/// Panic message: the listing password hash `RwLock` is poisoned. Same
-/// reasoning as `ERR_REGISTRATION_HASH_LOCK_POISONED`.
-const ERR_LISTING_HASH_LOCK_POISONED: &str = "listing password hash lock poisoned";
-
-/// Panic message used by `reload_one`, where the lock is selected
-/// dynamically (registration or listing). Distinct from the
-/// flow-specific constants above so the panic still tells the
-/// operator *which kind* failed via the `kind = %kind` log field that
-/// surrounds the panic site.
-const ERR_PASSWORD_HASH_LOCK_POISONED: &str = "password hash lock poisoned";
 
 /// Daemon-level state shared across connection tasks.
 ///
