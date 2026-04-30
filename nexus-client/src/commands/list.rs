@@ -4,6 +4,7 @@ use iced::Task;
 use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
+use crate::constants::ERR_CONNECTION_EXISTS;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, Message, PendingRequests, ResponseRouting};
 use crate::views::constants::{PERMISSION_USER_DELETE, PERMISSION_USER_EDIT};
@@ -61,7 +62,7 @@ pub fn execute(
         let conn = app
             .connections
             .get_mut(&connection_id)
-            .expect("connection exists");
+            .expect(ERR_CONNECTION_EXISTS);
         conn.pending_requests
             .track(message_id, ResponseRouting::DisplayListInChat);
 

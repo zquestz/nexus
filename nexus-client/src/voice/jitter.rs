@@ -4,6 +4,7 @@
 //! and provides smooth audio output despite network jitter. The buffer size
 //! adjusts dynamically based on observed network conditions.
 
+use crate::constants::ERR_NEXT_SEQUENCE_NONE;
 use std::collections::BTreeMap;
 use std::time::Instant;
 
@@ -101,9 +102,7 @@ impl JitterBuffer {
             self.next_sequence = Some(sequence);
         }
 
-        let next = self
-            .next_sequence
-            .expect("next_sequence should be Some after initialization above");
+        let next = self.next_sequence.expect(ERR_NEXT_SEQUENCE_NONE);
 
         // Check if packet is too old
         if sequence_before(sequence, next) {

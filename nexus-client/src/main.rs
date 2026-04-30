@@ -56,6 +56,8 @@ use types::{
     ServerConnection, SettingsFormState, SettingsTab, UiState, ViewConfig,
 };
 
+use crate::constants::{ERR_IPC_PREFIX, ERR_RUSTLS_PROVIDER};
+
 /// Startup URI passed via command line (consumed by NexusApp::new)
 static STARTUP_URI: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
 
@@ -193,7 +195,7 @@ pub fn main() -> iced::Result {
     // which needs an explicit crypto provider selection
     tokio_rustls::rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("Failed to install rustls crypto provider");
+        .expect(ERR_RUSTLS_PROVIDER);
 
     // Single-instance enforcement: always check for an existing instance
     let startup_uri = get_startup_uri();
@@ -208,7 +210,7 @@ pub fn main() -> iced::Result {
         }
         Err(e) => {
             // Error connecting, log and continue
-            eprintln!("IPC error: {}", e);
+            eprintln!("{}{}", ERR_IPC_PREFIX, e);
         }
     }
 

@@ -11,6 +11,7 @@ use sha2::{Digest, Sha256};
 
 use iced::widget::image;
 
+use crate::constants::ERR_IDENTICON_GENERATION;
 use crate::image::{CachedImage, decode_data_uri_square};
 use crate::style::AVATAR_MAX_CACHE_SIZE;
 
@@ -33,9 +34,7 @@ use crate::style::AVATAR_MAX_CACHE_SIZE;
 /// or external dependencies that could cause failure.
 pub fn generate_identicon(seed: &str) -> CachedImage {
     let identicon = identicon_rs::Identicon::new(seed);
-    let png_data = identicon
-        .export_png_data()
-        .expect("Identicon PNG generation from string seed should not fail");
+    let png_data = identicon.export_png_data().expect(ERR_IDENTICON_GENERATION);
     CachedImage::Raster(image::Handle::from_bytes(png_data))
 }
 

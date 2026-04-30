@@ -10,6 +10,7 @@
 //! connects to the server). This prevents casual snooping but provides no
 //! protection against attackers who know the fingerprint.
 
+use crate::constants::ERR_HKDF_OUTPUT_LENGTH;
 use chacha20poly1305::{
     ChaCha20Poly1305, KeyInit, Nonce,
     aead::{Aead, OsRng, rand_core::RngCore},
@@ -43,8 +44,7 @@ impl HistoryCrypto {
         let hkdf = Hkdf::<Sha256>::new(Some(HKDF_SALT), fingerprint.as_bytes());
         let mut key = [0u8; 32];
         // info parameter is empty, unwrap is safe as 32 bytes is valid output length
-        hkdf.expand(&[], &mut key)
-            .expect("32 bytes is a valid output length for HKDF-SHA256");
+        hkdf.expand(&[], &mut key).expect(ERR_HKDF_OUTPUT_LENGTH);
         key
     }
 

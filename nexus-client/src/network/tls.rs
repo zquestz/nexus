@@ -11,6 +11,7 @@ use tokio_rustls::rustls::client::ClientConnection;
 use tokio_rustls::rustls::pki_types::ServerName;
 use tokio_socks::tcp::Socks5Stream;
 
+use crate::constants::ERR_LOCALHOST_INVALID_DNS;
 use crate::i18n::{t, t_args};
 
 use super::constants::{
@@ -135,7 +136,7 @@ pub(crate) async fn establish_connection(
     proxy: Option<&ProxyConfig>,
 ) -> Result<(TlsStream, String), String> {
     // Server name for TLS (doesn't matter - we accept any cert and disable SNI)
-    let server_name = ServerName::try_from("localhost").expect("'localhost' is a valid DNS name");
+    let server_name = ServerName::try_from("localhost").expect(ERR_LOCALHOST_INVALID_DNS);
 
     // Bypass proxy for localhost/loopback and Yggdrasil addresses
     let use_proxy = proxy.filter(|_| !should_bypass_proxy(address));

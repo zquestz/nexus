@@ -21,6 +21,7 @@ use nexus_common::io::send_client_message;
 use nexus_common::protocol::ClientMessage;
 
 use super::{PART_SUFFIX, TransferError};
+use crate::constants::ERR_HASH_KEEPALIVE_PREFIX;
 
 // =============================================================================
 // Local File Info (for uploads)
@@ -131,7 +132,7 @@ where
                 file: file_name.clone(),
             };
             if let Err(e) = send_client_message(writer, &msg).await {
-                eprintln!("[HASH] Failed to send keepalive: {:?}", e);
+                eprintln!("{}{:?}", ERR_HASH_KEEPALIVE_PREFIX, e);
             }
             last_keepalive = Instant::now();
         }

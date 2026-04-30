@@ -16,6 +16,7 @@ use uuid::Uuid;
 use nexus_common::voice::{VOICE_SAMPLES_PER_FRAME, VoiceQuality};
 
 use crate::config::audio::PttMode;
+use crate::constants::ERR_VOICE_THREAD_TOKIO_RUNTIME;
 
 use super::audio::{AudioCapture, AudioMixer};
 use super::codec::{DecoderPool, VoiceEncoder};
@@ -506,7 +507,7 @@ impl VoiceSessionHandle {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
-                .expect("Failed to create tokio runtime for voice thread");
+                .expect(ERR_VOICE_THREAD_TOKIO_RUNTIME);
 
             rt.block_on(run_voice_session(config, event_tx, command_rx));
         });

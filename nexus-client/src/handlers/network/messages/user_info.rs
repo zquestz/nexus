@@ -7,6 +7,7 @@ use nexus_common::protocol::{UserInfo as ProtocolUserInfo, UserInfoDetailed};
 
 use crate::NexusApp;
 use crate::avatar::{avatar_cache_key, compute_avatar_hash, get_or_create_avatar};
+use crate::constants::{ERR_CONNECTION_EXISTS, ERR_SYSTEM_TIME_AFTER_EPOCH};
 use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::{format_duration, sort_user_list};
 use crate::i18n::{t, t_args};
@@ -91,7 +92,7 @@ impl NexusApp {
         // Calculate session duration
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .expect("System time should be after UNIX epoch")
+            .expect(ERR_SYSTEM_TIME_AFTER_EPOCH)
             .as_secs() as i64;
         let session_duration_secs = now.saturating_sub(user.login_time) as u64;
         let duration_str = format_duration(session_duration_secs);
@@ -294,7 +295,7 @@ impl NexusApp {
         let conn = self
             .connections
             .get_mut(&connection_id)
-            .expect("connection exists");
+            .expect(ERR_CONNECTION_EXISTS);
         let user_list: Vec<ClientUserInfo> = users_vec
             .into_iter()
             .map(|u| {

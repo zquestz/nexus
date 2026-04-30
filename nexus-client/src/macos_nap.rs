@@ -16,6 +16,7 @@
 //! Linux and Windows do not have an equivalent mechanism, so this
 //! module is macOS-only.
 
+use crate::constants::{ERR_NSPROCESSINFO_BEGIN_ACTIVITY_NIL, ERR_NSPROCESSINFO_CLASS_NOT_FOUND};
 use objc2::msg_send;
 use objc2::runtime::AnyObject;
 use objc2_foundation::NSString;
@@ -43,7 +44,8 @@ pub fn disable_app_nap() {
     // [NSProcessInfo processInfo]
     let process_info: *mut AnyObject = unsafe {
         msg_send![
-            objc2::runtime::AnyClass::get(c"NSProcessInfo").expect("NSProcessInfo class not found"),
+            objc2::runtime::AnyClass::get(c"NSProcessInfo")
+                .expect(ERR_NSPROCESSINFO_CLASS_NOT_FOUND),
             processInfo
         ]
     };
@@ -70,7 +72,7 @@ pub fn disable_app_nap() {
             std::mem::forget(token);
         }
         None => {
-            eprintln!("macos_nap: beginActivityWithOptions returned nil");
+            eprintln!("{}", ERR_NSPROCESSINFO_BEGIN_ACTIVITY_NIL);
         }
     }
 }

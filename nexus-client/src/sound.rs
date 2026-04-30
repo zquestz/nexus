@@ -13,6 +13,7 @@ use lewton::inside_ogg::OggStreamReader;
 use once_cell::sync::Lazy;
 
 use crate::config::events::SoundChoice;
+use crate::constants::{ERR_AUDIO_STREAM_PREFIX, ERR_SOUND_PLAYBACK_PREFIX};
 
 // =============================================================================
 // Embedded Sounds
@@ -76,7 +77,7 @@ fn run_audio_thread(rx: mpsc::Receiver<SoundRequest>) {
     for request in rx {
         // Play each sound request (blocking until complete)
         if let Err(e) = play_sound_blocking(&request) {
-            eprintln!("Sound playback error: {}", e);
+            eprintln!("{}{}", ERR_SOUND_PLAYBACK_PREFIX, e);
         }
     }
 }
@@ -145,7 +146,7 @@ fn play_sound_blocking(request: &SoundRequest) -> Result<(), String> {
                     let _ = done_tx.send(());
                 }
             },
-            |err| eprintln!("Audio stream error: {}", err),
+            |err| eprintln!("{}{}", ERR_AUDIO_STREAM_PREFIX, err),
             None,
         )
         .map_err(|e| format!("Failed to build output stream: {}", e))?;

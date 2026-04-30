@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+use crate::constants::ERR_DECODER_MISSING_AFTER_INSERT;
 use nexus_common::voice::{
     VOICE_CHANNELS, VOICE_SAMPLE_RATE, VOICE_SAMPLES_PER_FRAME, VoiceQuality,
 };
@@ -225,7 +226,7 @@ impl DecoderPool {
             self.decoders.insert(key.clone(), new_decoder);
             self.decoders
                 .get_mut(&key)
-                .expect("Decoder should exist after insert")
+                .expect(ERR_DECODER_MISSING_AFTER_INSERT)
         };
 
         decoder.decode(data)

@@ -16,6 +16,7 @@ use ksni::menu::{MenuItem as KsniMenuItem, StandardItem};
 use ksni::{Icon as KsniIcon, Tray, TrayMethods};
 
 use super::{BYTES_PER_PIXEL, TRAY_ID, TRAY_SERVICE_CLOSED_DELAY, TRAY_TITLE, TrayState};
+use crate::constants::ERR_TRAY_RX_UNINITIALIZED;
 use crate::i18n::t;
 use crate::types::Message;
 
@@ -312,7 +313,7 @@ fn tray_event_stream() -> Pin<Box<dyn Stream<Item = Message> + Send>> {
             use iced::futures::SinkExt;
 
             // Take the receiver from the global static
-            let rx = TRAY_RX.get().expect("TRAY_RX not initialized");
+            let rx = TRAY_RX.get().expect(ERR_TRAY_RX_UNINITIALIZED);
 
             let mut rx = {
                 let mut guard = rx.lock().await;

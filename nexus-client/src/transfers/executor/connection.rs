@@ -19,6 +19,7 @@ use nexus_common::protocol::{ClientMessage, ServerMessage};
 
 use super::streaming::read_message_with_timeout;
 use super::{CONNECTION_TIMEOUT, IDLE_TIMEOUT, TransferError};
+use crate::constants::ERR_SNI_SERVER_NAME_INVALID;
 use crate::network::ProxyConfig;
 use crate::types::ConnectionInfo;
 
@@ -91,7 +92,7 @@ pub async fn connect_and_authenticate(
 
     let server_name = SNI_SERVER_NAME
         .try_into()
-        .expect("SNI_SERVER_NAME is valid");
+        .expect(ERR_SNI_SERVER_NAME_INVALID);
 
     // Check if we should bypass proxy for this address (localhost, Yggdrasil)
     let use_proxy = proxy.filter(|_| !crate::network::tls::should_bypass_proxy(target_addr));

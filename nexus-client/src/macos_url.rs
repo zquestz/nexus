@@ -16,6 +16,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use crate::constants::{
+    ERR_NSAPPLEEVENTMANAGER_CLASS_NOT_FOUND, ERR_NSAPPLEEVENTMANAGER_NOT_MAIN_THREAD,
+};
 use crossbeam_channel::{Receiver, Sender};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
@@ -100,7 +103,7 @@ impl UrlHandler {
 /// sends when a `nexus://` URL is opened (clicked in browser, Finder, etc.).
 pub fn install() {
     let Some(mtm) = MainThreadMarker::new() else {
-        eprintln!("macos_url: not on main thread, skipping URL handler install");
+        eprintln!("{}", ERR_NSAPPLEEVENTMANAGER_NOT_MAIN_THREAD);
         return;
     };
 
@@ -110,7 +113,7 @@ pub fn install() {
     let mgr: *mut AnyObject = unsafe {
         msg_send![
             objc2::runtime::AnyClass::get(c"NSAppleEventManager")
-                .expect("NSAppleEventManager class not found"),
+                .expect(ERR_NSAPPLEEVENTMANAGER_CLASS_NOT_FOUND),
             sharedAppleEventManager
         ]
     };

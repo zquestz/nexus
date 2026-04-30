@@ -5,6 +5,7 @@ use iced_toasts::{ToastLevel, toast};
 
 use super::sanitize_filename;
 use crate::NexusApp;
+use crate::constants::ERR_PATH_EMPTY;
 use crate::i18n::{t, t_args};
 use crate::types::{ActivePanel, FilesManagementState, Message};
 use crate::uri::url_encode_path;
@@ -129,7 +130,7 @@ impl NexusApp {
             let filename = trimmed_path
                 .rsplit('/')
                 .next()
-                .expect("non-empty path")
+                .expect(ERR_PATH_EMPTY)
                 .to_string();
             let path = std::path::PathBuf::from(&download_dir).join(&filename);
             (path, filename)

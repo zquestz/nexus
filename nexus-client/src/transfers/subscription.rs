@@ -26,6 +26,7 @@ use uuid::Uuid;
 use super::executor::{TransferEvent, execute_transfer};
 use super::{Transfer, TransferStatus};
 use crate::config::settings::ProxySettings;
+use crate::constants::ERR_TRANSFER_REGISTRY_POISONED;
 use crate::i18n::{t, t_args};
 use crate::network::ProxyConfig;
 use crate::types::Message;
@@ -73,7 +74,7 @@ fn register_transfer(transfer: Transfer, proxy: Option<ProxyConfig>) {
 
     let mut registry = TRANSFER_REGISTRY
         .lock()
-        .expect("transfer registry poisoned");
+        .expect(ERR_TRANSFER_REGISTRY_POISONED);
     registry.insert(id, entry);
 }
 
@@ -84,7 +85,7 @@ fn register_transfer(transfer: Transfer, proxy: Option<ProxyConfig>) {
 pub fn request_cancel(transfer_id: Uuid) {
     let registry = TRANSFER_REGISTRY
         .lock()
-        .expect("transfer registry poisoned");
+        .expect(ERR_TRANSFER_REGISTRY_POISONED);
     if let Some(entry) = registry.get(&transfer_id) {
         entry.cancel_flag.store(true, Ordering::SeqCst);
     }
@@ -96,7 +97,7 @@ fn get_transfer_entry(
 ) -> Option<(Transfer, Arc<AtomicBool>, Option<ProxyConfig>)> {
     let registry = TRANSFER_REGISTRY
         .lock()
-        .expect("transfer registry poisoned");
+        .expect(ERR_TRANSFER_REGISTRY_POISONED);
     registry.get(&transfer_id).map(|entry| {
         (
             entry.transfer.clone(),
@@ -110,7 +111,7 @@ fn get_transfer_entry(
 fn remove_transfer_entry(transfer_id: Uuid) {
     let mut registry = TRANSFER_REGISTRY
         .lock()
-        .expect("transfer registry poisoned");
+        .expect(ERR_TRANSFER_REGISTRY_POISONED);
     registry.remove(&transfer_id);
 }
 
@@ -122,7 +123,7 @@ fn remove_transfer_entry(transfer_id: Uuid) {
 pub fn update_registry_fingerprint(bookmark_id: Uuid, new_fingerprint: &str) {
     let mut registry = TRANSFER_REGISTRY
         .lock()
-        .expect("transfer registry poisoned");
+        .expect(ERR_TRANSFER_REGISTRY_POISONED);
     for entry in registry.values_mut() {
         if entry.transfer.bookmark_id == Some(bookmark_id) {
             entry.transfer.connection_info.certificate_fingerprint = new_fingerprint.to_string();
@@ -160,7 +161,7 @@ pub fn transfer_subscription(
     if transfer.status == TransferStatus::Queued {
         let registry = TRANSFER_REGISTRY
             .lock()
-            .expect("transfer registry poisoned");
+            .expect(ERR_TRANSFER_REGISTRY_POISONED);
         let already_registered = registry.contains_key(&transfer.id);
         drop(registry);
 

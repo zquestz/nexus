@@ -4,6 +4,7 @@ use fluent_bundle::{FluentBundle, FluentResource};
 use unic_langid::LanguageIdentifier;
 
 use super::constants::*;
+use crate::constants::ERR_DEFAULT_LOCALE_INVALID;
 
 /// Get a Fluent bundle for the specified locale
 ///
@@ -14,11 +15,9 @@ use super::constants::*;
 /// non-Send types (RefCell, TypeMap) which prevent safe caching across threads.
 /// For a GUI client, this performance trade-off is acceptable.
 pub(super) fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
-    let lang: LanguageIdentifier = locale.parse().unwrap_or_else(|_| {
-        DEFAULT_LOCALE
-            .parse()
-            .expect("DEFAULT_LOCALE is a valid locale")
-    });
+    let lang: LanguageIdentifier = locale
+        .parse()
+        .unwrap_or_else(|_| DEFAULT_LOCALE.parse().expect(ERR_DEFAULT_LOCALE_INVALID));
 
     let mut bundle = FluentBundle::new(vec![lang]);
 
