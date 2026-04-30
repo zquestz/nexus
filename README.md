@@ -51,12 +51,12 @@ Pre-built binaries are available on the [Releases](https://github.com/zquestz/ne
 
 The tracker is an optional discovery daemon that maintains a list of registered Nexus servers. It is versioned independently from the BBS server and client.
 
-| Platform | Download                                              |
-| -------- | ----------------------------------------------------- |
-| macOS    | `nexus-trackerd-{version}-macos-{x64,arm64}.tar.gz`   |
-| Windows  | `nexus-trackerd-{version}-windows-x64.zip`            |
-| Linux    | `nexus-trackerd-{version}-linux-{x64,arm64}.tar.gz`   |
-| Docker   | `ghcr.io/zquestz/nexus-trackerd:{version}`            |
+| Platform | Download                                            |
+| -------- | --------------------------------------------------- |
+| macOS    | `nexus-trackerd-{version}-macos-{x64,arm64}.tar.gz` |
+| Windows  | `nexus-trackerd-{version}-windows-x64.zip`          |
+| Linux    | `nexus-trackerd-{version}-linux-{x64,arm64}.tar.gz` |
+| Docker   | `ghcr.io/zquestz/nexus-trackerd:{version}`          |
 
 See [Client Installation](docs/client/01-getting-started.md), [Server Installation](docs/server/01-getting-started.md), and [Tracker Installation](docs/tracker/01-getting-started.md) for detailed instructions.
 
@@ -103,12 +103,12 @@ _Coming soon_
 
 ## Architecture
 
-| Crate           | Description                          |
-| --------------- | ------------------------------------ |
-| `nexus-common`  | Shared protocol and utilities        |
-| `nexus-server`  | Server daemon (`nexusd`)             |
-| `nexus-client`  | GUI client (`nexus`)                 |
-| `nexus-tracker` | Tracker daemon (`nexus-trackerd`)    |
+| Crate           | Description                       |
+| --------------- | --------------------------------- |
+| `nexus-common`  | Shared protocol and utilities     |
+| `nexus-server`  | Server daemon (`nexusd`)          |
+| `nexus-client`  | GUI client (`nexus`)              |
+| `nexus-tracker` | Tracker daemon (`nexus-trackerd`) |
 
 ## Build Requirements
 
