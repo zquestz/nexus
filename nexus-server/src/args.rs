@@ -85,7 +85,7 @@ pub struct Args {
     pub no_log_timestamps: bool,
 
     /// Enable UPnP port forwarding (automatic NAT traversal)
-    #[arg(long, default_value = "false")]
+    #[arg(long)]
     pub upnp: bool,
 
     /// Port for file transfers
@@ -93,7 +93,7 @@ pub struct Args {
     pub transfer_port: u16,
 
     /// Enable WebSocket support (ports 7502/7503 by default)
-    #[arg(long, default_value = "false")]
+    #[arg(long)]
     pub websocket: bool,
 
     /// Port for WebSocket BBS connections (requires --websocket)
