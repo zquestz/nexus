@@ -10,6 +10,7 @@ env:
   CMAKE_POLICY_VERSION_MINIMUM: "3.5"
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/nexusd
+  TRACKER_IMAGE_NAME: ${{ github.repository_owner }}/nexus-trackerd
 
 jobs:
   # Build Linux client packages (deb, rpm, appimage)
@@ -162,6 +163,73 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: linux-server-${{ matrix.arch }}
+          path: dist/*.tar.gz
+
+  # Build Linux tracker
+  build-linux-tracker:
+    name: Build Linux Tracker (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: linux-${{ matrix.arch }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            linux-${{ matrix.arch }}-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: linux-${{ matrix.arch }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            linux-${{ matrix.arch }}-cargo-index-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: linux-${{ matrix.arch }}-tracker-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            linux-${{ matrix.arch }}-tracker-cargo-build-v3-
+
+      - name: Build tracker
+        run: cargo build --release --package nexus-tracker
+
+      - name: Get tracker version from crate
+        id: tracker_version
+        run: |
+          VERSION=$(grep '^version' nexus-tracker/Cargo.toml | head -1 | sed -E 's/version = "(.+)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Package tracker
+        run: |
+          mkdir -p dist/nexus-trackerd
+          cp target/release/nexus-trackerd dist/nexus-trackerd/
+          cp README.md LICENSE dist/nexus-trackerd/
+          cp nexus-tracker/dist/nexus-trackerd.service dist/nexus-trackerd/
+          cd dist
+          tar -czvf nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-linux-${{ matrix.arch }}.tar.gz nexus-trackerd
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-tracker-${{ matrix.arch }}
           path: dist/*.tar.gz
 
   # Build macOS client (arm64) - native on arm runner
@@ -374,7 +442,7 @@ jobs:
 
   # Build macOS server (both architectures)
   build-macos-server:
-    name: Build macOS Server (universal)
+    name: Build macOS Server (both architectures)
     runs-on: macos-14
     timeout-minutes: 30
     steps:
@@ -441,6 +509,79 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: macos-server
+          path: dist/*
+
+  # Build macOS tracker (both architectures)
+  build-macos-tracker:
+    name: Build macOS Tracker (both architectures)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: macos-arm64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            macos-arm64-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: macos-arm64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            macos-arm64-cargo-index-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: macos-tracker-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            macos-tracker-cargo-build-v3-
+
+      - name: Build tracker (arm64)
+        run: cargo build --release --package nexus-tracker --target aarch64-apple-darwin
+
+      - name: Build tracker (x64)
+        run: cargo build --release --package nexus-tracker --target x86_64-apple-darwin
+
+      - name: Get tracker version from crate
+        id: tracker_version
+        run: |
+          VERSION=$(grep '^version' nexus-tracker/Cargo.toml | head -1 | sed -E 's/version = "(.+)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Package tracker (x64)
+        run: |
+          mkdir -p dist/nexus-trackerd
+          cp target/x86_64-apple-darwin/release/nexus-trackerd dist/nexus-trackerd/
+          cp README.md LICENSE dist/nexus-trackerd/
+          cd dist
+          tar -czvf nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-macos-x64.tar.gz nexus-trackerd
+          rm -rf nexus-trackerd
+
+      - name: Package tracker (arm64)
+        run: |
+          mkdir -p dist/nexus-trackerd
+          cp target/aarch64-apple-darwin/release/nexus-trackerd dist/nexus-trackerd/
+          cp README.md LICENSE dist/nexus-trackerd/
+          cd dist
+          tar -czvf nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-macos-arm64.tar.gz nexus-trackerd
+          rm -rf nexus-trackerd
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-tracker
           path: dist/*
 
   # Build Windows client
@@ -573,12 +714,72 @@ jobs:
           name: windows-server
           path: dist/*.zip
 
+  # Build Windows tracker
+  build-windows-tracker:
+    name: Build Windows Tracker
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: windows-x64-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            windows-x64-cargo-registry-
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: windows-x64-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            windows-x64-cargo-index-
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: windows-tracker-cargo-build-v3-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            windows-tracker-cargo-build-v3-
+
+      - name: Build tracker
+        run: cargo build --release --package nexus-tracker
+
+      - name: Get tracker version from crate
+        id: tracker_version
+        shell: bash
+        run: |
+          VERSION=$(grep '^version' nexus-tracker/Cargo.toml | head -1 | sed -E 's/version = "(.+)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Package tracker
+        shell: bash
+        run: |
+          mkdir -p dist/nexus-trackerd
+          cp target/release/nexus-trackerd.exe dist/nexus-trackerd/
+          cp README.md LICENSE dist/nexus-trackerd/
+          cd dist
+          7z a -tzip nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-windows-x64.zip nexus-trackerd
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-tracker
+          path: dist/*.zip
+
   # Create GitHub release with all artifacts
   release:
     name: Create Release
     runs-on: ubuntu-22.04
     timeout-minutes: 10
-    needs: [build-linux-client, build-linux-server, build-macos-client-universal, build-macos-server, build-windows-client, build-windows-server]
+    needs: [build-linux-client, build-linux-server, build-linux-tracker, build-macos-client-universal, build-macos-server, build-macos-tracker, build-windows-client, build-windows-server, build-windows-tracker]
     permissions:
       contents: write
     steps:
@@ -587,6 +788,12 @@ jobs:
       - name: Get version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Get tracker version from crate
+        id: tracker_version
+        run: |
+          VERSION=$(grep '^version' nexus-tracker/Cargo.toml | head -1 | sed -E 's/version = "(.+)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Download Linux client artifacts
         uses: actions/download-artifact@v4
@@ -600,6 +807,12 @@ jobs:
           path: artifacts
           pattern: linux-server-*
 
+      - name: Download Linux tracker artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: linux-tracker-*
+
       - name: Download macOS artifacts
         uses: actions/download-artifact@v4
         with:
@@ -611,6 +824,12 @@ jobs:
         with:
           path: artifacts
           pattern: macos-server
+
+      - name: Download macOS tracker artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: macos-tracker
 
       - name: Download Windows client artifacts
         uses: actions/download-artifact@v4
@@ -624,6 +843,12 @@ jobs:
           path: artifacts
           pattern: windows-server
 
+      - name: Download Windows tracker artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: windows-tracker
+
       - name: Collect release files
         run: |
           mkdir -p release
@@ -636,13 +861,19 @@ jobs:
           cp artifacts/linux-server-x64/* release/
           cp artifacts/linux-server-arm64/* release/
 
+          # Linux tracker
+          cp artifacts/linux-tracker-x64/* release/
+          cp artifacts/linux-tracker-arm64/* release/
+
           # macOS
           cp artifacts/macos-client/* release/
           cp artifacts/macos-server/* release/
+          cp artifacts/macos-tracker/* release/
 
           # Windows
           cp artifacts/windows-client/* release/
           cp artifacts/windows-server/* release/
+          cp artifacts/windows-tracker/* release/
 
           echo "Release artifacts:"
           ls -la release/
@@ -664,7 +895,11 @@ jobs:
             ## Docker
 
             ```bash
+            # Server
             docker pull ghcr.io/${{ github.repository_owner }}/nexusd:${{ steps.version.outputs.VERSION }}
+
+            # Tracker (versioned independently)
+            docker pull ghcr.io/${{ github.repository_owner }}/nexus-trackerd:${{ steps.tracker_version.outputs.VERSION }}
             ```
 
             ## Downloads
@@ -696,6 +931,16 @@ jobs:
             | macOS | `nexusd-${{ steps.version.outputs.VERSION }}-macos-x64.tar.gz` | `nexusd-${{ steps.version.outputs.VERSION }}-macos-arm64.tar.gz` |
             | Windows | `nexusd-${{ steps.version.outputs.VERSION }}-windows-x64.zip` | — |
             | Linux | `nexusd-${{ steps.version.outputs.VERSION }}-linux-x64.tar.gz` | `nexusd-${{ steps.version.outputs.VERSION }}-linux-arm64.tar.gz` |
+
+            ### Tracker (nexus-trackerd)
+
+            The tracker is versioned independently from the BBS server and client. The current tracker version is **${{ steps.tracker_version.outputs.VERSION }}**.
+
+            | Platform | x64 | ARM64 |
+            |----------|-----|-------|
+            | macOS | `nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-macos-x64.tar.gz` | `nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-macos-arm64.tar.gz` |
+            | Windows | `nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-windows-x64.zip` | — |
+            | Linux | `nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-linux-x64.tar.gz` | `nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-linux-arm64.tar.gz` |
 
             ### Verification
 
@@ -780,6 +1025,84 @@ jobs:
           cache-from: type=gha,scope=docker-arm64
           cache-to: type=gha,mode=max,scope=docker-arm64
 
+  # Build tracker Docker image (amd64) - native build
+  build-docker-tracker-amd64:
+    name: Build Tracker Docker Image (amd64)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.TRACKER_IMAGE_NAME }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tracker
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.TRACKER_IMAGE_NAME }}:amd64-${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-tracker-amd64
+          cache-to: type=gha,mode=max,scope=docker-tracker-amd64
+
+  # Build tracker Docker image (arm64) - native build
+  build-docker-tracker-arm64:
+    name: Build Tracker Docker Image (arm64)
+    runs-on: ubuntu-22.04-arm
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.TRACKER_IMAGE_NAME }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.tracker
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.TRACKER_IMAGE_NAME }}:arm64-${{ github.sha }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=docker-tracker-arm64
+          cache-to: type=gha,mode=max,scope=docker-tracker-arm64
+
   # Merge Docker manifests into multi-arch image
   docker-manifest:
     name: Create Docker Manifest
@@ -826,4 +1149,54 @@ jobs:
           # Note: ghcr.io doesn't support tag deletion via API
           # The arch-specific tags (amd64-SHA, arm64-SHA) will remain but are harmless
           echo "Multi-arch manifest created successfully"
+          echo "Arch-specific tags will be cleaned up by registry retention policy"
+
+  # Merge tracker Docker manifests into multi-arch image. The tracker is
+  # versioned independently from the BBS server, so its tags come from
+  # nexus-tracker/Cargo.toml rather than the release's git tag.
+  docker-manifest-tracker:
+    name: Create Tracker Docker Manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [build-docker-tracker-amd64, build-docker-tracker-arm64]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get tracker version from crate
+        id: tracker_version
+        run: |
+          VERSION=$(grep '^version' nexus-tracker/Cargo.toml | head -1 | sed -E 's/version = "(.+)"/\1/')
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "MAJOR_MINOR=$(echo $VERSION | cut -d. -f1-2)" >> $GITHUB_OUTPUT
+          echo "MAJOR=$(echo $VERSION | cut -d. -f1)" >> $GITHUB_OUTPUT
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.TRACKER_IMAGE_NAME }}"
+          VERSION="${{ steps.tracker_version.outputs.VERSION }}"
+          MAJOR_MINOR="${{ steps.tracker_version.outputs.MAJOR_MINOR }}"
+          MAJOR="${{ steps.tracker_version.outputs.MAJOR }}"
+
+          for TAG in "$VERSION" "$MAJOR_MINOR" "$MAJOR" "latest"; do
+            echo "Creating manifest for $IMAGE:$TAG"
+            docker buildx imagetools create -t "$IMAGE:$TAG" \
+              "$IMAGE:amd64-${{ github.sha }}" \
+              "$IMAGE:arm64-${{ github.sha }}"
+          done
+
+      - name: Clean up arch-specific tags
+        run: |
+          # Note: ghcr.io doesn't support tag deletion via API
+          # The arch-specific tags (amd64-SHA, arm64-SHA) will remain but are harmless
+          echo "Multi-arch tracker manifest created successfully"
           echo "Arch-specific tags will be cleaned up by registry retention policy"
