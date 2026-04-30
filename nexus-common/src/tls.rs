@@ -18,12 +18,22 @@ use std::io::BufReader;
 use std::path::Path;
 use std::sync::Arc;
 
+use time::{Duration, OffsetDateTime};
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::CertificateDer;
 use tracing::info;
 
 use crate::secure_file;
+
+/// Validity period (in days) for auto-generated self-signed certificates.
+///
+/// 10 years is the standard "long but not absurd" choice for self-signed
+/// daemon certs. Long enough that operators don't deal with TOFU
+/// re-acceptance churn during normal multi-year deployments; short
+/// enough that a leaked historical cert/key has bounded exposure
+/// (compared to rcgen's bare default, which is valid through year 4096).
+pub const CERT_VALIDITY_DAYS: i64 = 365 * 10;
 
 /// Status: about to generate a fresh self-signed certificate.
 pub const MSG_GENERATING_CERT: &str = "Generating self-signed TLS certificate...";
@@ -166,6 +176,13 @@ fn generate_self_signed(
     let key_pair = KeyPair::generate().map_err(|e| format!("{}{}", ERR_GENERATE_KEYPAIR, e))?;
     let mut params =
         CertificateParams::new(vec![]).map_err(|e| format!("{}{}", ERR_CREATE_CERT_PARAMS, e))?;
+    // Set validity explicitly. Rcgen's default is 1975-01-01 through
+    // 4096-01-01 (~2,121 years), which is a security smell on a TOFU
+    // model — a leaked historical key would never expire. Cap at
+    // [`CERT_VALIDITY_DAYS`] (10 years) instead.
+    let now = OffsetDateTime::now_utc();
+    params.not_before = now;
+    params.not_after = now + Duration::days(CERT_VALIDITY_DAYS);
     params
         .distinguished_name
         .push(rcgen::DnType::CommonName, common_name);

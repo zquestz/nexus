@@ -36,6 +36,7 @@ tokio-rustls = { version = "0.26", features = ["ring"], optional = true }
 rustls-pemfile = { version = "2.2", optional = true }
 rcgen = { version = "0.14", optional = true }
 pem = { version = "3.0", optional = true }
+time = { version = "0.3", optional = true }
 
 [features]
 # WebSocket byte-stream adapter (`nexus_common::websocket::WebSocketAdapter`).
@@ -71,6 +72,7 @@ tls = [
     "dep:rustls-pemfile",
     "dep:rcgen",
     "dep:pem",
+    "dep:time",
     "dep:tracing",
 ]
 
