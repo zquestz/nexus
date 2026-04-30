@@ -66,6 +66,19 @@ pub const DEFAULT_TRACKER_PORT: u16 = 7510;
 #[cfg(unix)]
 pub const DATA_DIR_MODE: u32 = 0o700;
 
+/// Prefix prepended to TLS handshake failures bubbling out of
+/// `TlsAcceptor::accept`. The shared connection-error logger in each
+/// daemon's `main.rs` checks for this substring to downgrade scanner /
+/// incompatible-client noise to debug level. Producers compose with
+/// `format!("{}{}", TLS_HANDSHAKE_FAILED_PREFIX, e)` — the trailing
+/// `": "` is part of the constant.
+pub const TLS_HANDSHAKE_FAILED_PREFIX: &str = "TLS handshake failed: ";
+
+/// Prefix prepended to WebSocket handshake failures bubbling out of
+/// `tokio_tungstenite::accept_async`. Used the same way as
+/// [`TLS_HANDSHAKE_FAILED_PREFIX`].
+pub const WS_HANDSHAKE_FAILED_PREFIX: &str = "WebSocket handshake failed: ";
+
 /// Backoff between `TcpListener::accept` retries after an `Err`.
 ///
 /// Caps the accept-loop iteration rate at ~10/s while the failure

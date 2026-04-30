@@ -38,10 +38,11 @@ use nexus_common::io::{
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 
+use nexus_common::TLS_HANDSHAKE_FAILED_PREFIX;
+
 use crate::constants::{
     DEFAULT_LOCALE, ERR_REGISTRY_MUTEX_POISONED, HANDSHAKE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED,
     LOG_HANDSHAKE_REQUIRED, LOG_REGISTER_DISCONNECTED, LOG_ROLE_VIOLATION, ROLE_ESTABLISH_TIMEOUT,
-    TLS_HANDSHAKE_FAILED_PREFIX,
 };
 use crate::errors::{
     err_tracker_frame_error, err_tracker_handshake_required, err_tracker_role_violation,
@@ -92,7 +93,7 @@ pub async fn handle_connection(
     let tls_stream = tls_acceptor
         .accept(stream)
         .await
-        .map_err(|e| io::Error::other(format!("{} {}", TLS_HANDSHAKE_FAILED_PREFIX, e)))?;
+        .map_err(|e| io::Error::other(format!("{}{}", TLS_HANDSHAKE_FAILED_PREFIX, e)))?;
 
     handle_connection_inner(tls_stream, peer_addr, fingerprint, state).await
 }

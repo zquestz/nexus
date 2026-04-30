@@ -76,10 +76,13 @@ pub async fn handle_connection(
     params: ConnectionParams,
 ) -> io::Result<()> {
     // Perform TLS handshake (mandatory)
-    let tls_stream = tls_acceptor
-        .accept(socket)
-        .await
-        .map_err(|e| io::Error::other(format!("TLS handshake failed: {}", e)))?;
+    let tls_stream = tls_acceptor.accept(socket).await.map_err(|e| {
+        io::Error::other(format!(
+            "{}{}",
+            nexus_common::TLS_HANDSHAKE_FAILED_PREFIX,
+            e
+        ))
+    })?;
 
     handle_connection_inner(tls_stream, params).await
 }

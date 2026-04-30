@@ -476,7 +476,7 @@ fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
     if msg.contains(constants::TLS_CLOSE_NOTIFY_MSG) {
         return;
     }
-    if msg.contains(constants::TLS_HANDSHAKE_FAILED_PREFIX) {
+    if msg.contains(nexus_common::TLS_HANDSHAKE_FAILED_PREFIX) {
         debug!(ip = %peer_addr, err = %error, "{}", constants::LOG_CONNECTION_ERROR_TLS);
         return;
     }

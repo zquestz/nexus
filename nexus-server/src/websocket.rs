@@ -11,6 +11,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
 
 use nexus_common::websocket::WebSocketAdapter;
+use nexus_common::{TLS_HANDSHAKE_FAILED_PREFIX, WS_HANDSHAKE_FAILED_PREFIX};
 
 use crate::connection::{ConnectionParams, handle_connection_inner};
 use crate::transfers::{TransferParams, handle_transfer_connection_inner};
@@ -28,12 +29,12 @@ pub async fn handle_websocket_connection(
     let tls_stream = tls_acceptor
         .accept(socket)
         .await
-        .map_err(|e| io::Error::other(format!("TLS handshake failed: {}", e)))?;
+        .map_err(|e| io::Error::other(format!("{}{}", TLS_HANDSHAKE_FAILED_PREFIX, e)))?;
 
     // Perform WebSocket handshake over TLS
     let ws_stream = tokio_tungstenite::accept_async(tls_stream)
         .await
-        .map_err(|e| io::Error::other(format!("WebSocket handshake failed: {}", e)))?;
+        .map_err(|e| io::Error::other(format!("{}{}", WS_HANDSHAKE_FAILED_PREFIX, e)))?;
 
     // Wrap in adapter and delegate to standard handler
     let adapter = WebSocketAdapter::new(ws_stream);
@@ -53,12 +54,12 @@ pub async fn handle_websocket_transfer_connection(
     let tls_stream = tls_acceptor
         .accept(socket)
         .await
-        .map_err(|e| io::Error::other(format!("TLS handshake failed: {}", e)))?;
+        .map_err(|e| io::Error::other(format!("{}{}", TLS_HANDSHAKE_FAILED_PREFIX, e)))?;
 
     // Perform WebSocket handshake over TLS
     let ws_stream = tokio_tungstenite::accept_async(tls_stream)
         .await
-        .map_err(|e| io::Error::other(format!("WebSocket handshake failed: {}", e)))?;
+        .map_err(|e| io::Error::other(format!("{}{}", WS_HANDSHAKE_FAILED_PREFIX, e)))?;
 
     // Wrap in adapter and delegate to standard transfer handler
     let adapter = WebSocketAdapter::new(ws_stream);

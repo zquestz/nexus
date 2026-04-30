@@ -16,9 +16,10 @@ use tokio_rustls::TlsAcceptor;
 use tracing::debug;
 
 use nexus_common::websocket::WebSocketAdapter;
+use nexus_common::{TLS_HANDSHAKE_FAILED_PREFIX, WS_HANDSHAKE_FAILED_PREFIX};
 
 use crate::connection::handle_connection_inner;
-use crate::constants::{LOG_CONNECTION_RATE_LIMITED, TLS_HANDSHAKE_FAILED_PREFIX};
+use crate::constants::LOG_CONNECTION_RATE_LIMITED;
 use crate::rate_limiter::RateCheck;
 use crate::state::TrackerState;
 
@@ -53,7 +54,7 @@ pub async fn handle_tracker_websocket_connection(
     let tls_stream = tls_acceptor
         .accept(socket)
         .await
-        .map_err(|e| io::Error::other(format!("{} {}", TLS_HANDSHAKE_FAILED_PREFIX, e)))?;
+        .map_err(|e| io::Error::other(format!("{}{}", TLS_HANDSHAKE_FAILED_PREFIX, e)))?;
 
     // WebSocket upgrade over TLS. Failures here are typically benign
     // (peer not actually speaking WebSocket); they bubble up as plain
@@ -61,7 +62,7 @@ pub async fn handle_tracker_websocket_connection(
     // level.
     let ws_stream = tokio_tungstenite::accept_async(tls_stream)
         .await
-        .map_err(|e| io::Error::other(format!("WebSocket handshake failed: {}", e)))?;
+        .map_err(|e| io::Error::other(format!("{}{}", WS_HANDSHAKE_FAILED_PREFIX, e)))?;
 
     let adapter = WebSocketAdapter::new(ws_stream);
     handle_connection_inner(adapter, peer_addr, fingerprint, state).await

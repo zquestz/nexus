@@ -286,11 +286,6 @@ pub const LOG_REGISTER_DISCONNECTED: &str =
 /// (clients disconnecting without proper TLS shutdown).
 pub const TLS_CLOSE_NOTIFY_MSG: &str = "peer closed connection without sending TLS close_notify";
 
-/// Prefix prepended to TLS handshake failures when bubbling them out of
-/// `handle_connection`. The shared `log_connection_error` filters on this
-/// to downgrade scanner / incompatible-client noise to debug level.
-pub const TLS_HANDSHAKE_FAILED_PREFIX: &str = "TLS handshake failed:";
-
 // =============================================================================
 // Signal handling
 // =============================================================================

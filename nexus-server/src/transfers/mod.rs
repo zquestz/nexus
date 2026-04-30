@@ -62,10 +62,9 @@ pub async fn handle_transfer_connection(
     params: TransferParams,
 ) -> io::Result<()> {
     // Perform TLS handshake (mandatory, same cert as main port)
-    let tls_stream = tls_acceptor
-        .accept(socket)
-        .await
-        .map_err(|e| io::Error::other(format!("TLS handshake failed: {e}")))?;
+    let tls_stream = tls_acceptor.accept(socket).await.map_err(|e| {
+        io::Error::other(format!("{}{e}", nexus_common::TLS_HANDSHAKE_FAILED_PREFIX))
+    })?;
 
     handle_transfer_connection_inner(tls_stream, params).await
 }

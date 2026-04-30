@@ -980,7 +980,7 @@ fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
     }
 
     // TLS handshake failures are debug-only (scanners, incompatible clients)
-    if error_msg.contains(TLS_HANDSHAKE_FAILED_PREFIX) {
+    if error_msg.contains(nexus_common::TLS_HANDSHAKE_FAILED_PREFIX) {
         debug!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR_TLS);
         return;
     }
