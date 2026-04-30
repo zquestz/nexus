@@ -415,7 +415,7 @@ async fn run_tcp_accepts(
             }
             Err(e) => {
                 warn!(err = %e, "{}", constants::LOG_ACCEPT_ERROR);
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                tokio::time::sleep(nexus_common::ACCEPT_ERROR_BACKOFF).await;
             }
         }
     }
@@ -456,7 +456,7 @@ async fn run_optional_ws_accepts(
             }
             Err(e) => {
                 warn!(err = %e, "{}", constants::LOG_ACCEPT_ERROR);
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                tokio::time::sleep(nexus_common::ACCEPT_ERROR_BACKOFF).await;
             }
         }
     }

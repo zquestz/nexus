@@ -442,7 +442,8 @@ async fn main() {
                         });
                     }
                     Err(e) => {
-                        error!(err = %e, "{}", LOG_ACCEPT_ERROR);
+                        warn!(err = %e, "{}", LOG_ACCEPT_ERROR);
+                        tokio::time::sleep(nexus_common::ACCEPT_ERROR_BACKOFF).await;
                     }
                 }
             }
@@ -514,7 +515,8 @@ async fn main() {
                         });
                     }
                     Err(e) => {
-                        error!(err = %e, "{}", LOG_ACCEPT_ERROR);
+                        warn!(err = %e, "{}", LOG_ACCEPT_ERROR);
+                        tokio::time::sleep(nexus_common::ACCEPT_ERROR_BACKOFF).await;
                     }
                 }
             }
@@ -590,7 +592,8 @@ async fn main() {
                         });
                     }
                     Err(e) => {
-                        error!(err = %e, "{}", LOG_ACCEPT_ERROR);
+                        warn!(err = %e, "{}", LOG_ACCEPT_ERROR);
+                        tokio::time::sleep(nexus_common::ACCEPT_ERROR_BACKOFF).await;
                     }
                 }
             }
@@ -662,7 +665,8 @@ async fn main() {
                         });
                     }
                     Err(e) => {
-                        error!(err = %e, "{}", LOG_ACCEPT_ERROR);
+                        warn!(err = %e, "{}", LOG_ACCEPT_ERROR);
+                        tokio::time::sleep(nexus_common::ACCEPT_ERROR_BACKOFF).await;
                     }
                 }
             }

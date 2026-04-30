@@ -66,6 +66,18 @@ pub const DEFAULT_TRACKER_PORT: u16 = 7510;
 #[cfg(unix)]
 pub const DATA_DIR_MODE: u32 = 0o700;
 
+/// Backoff between `TcpListener::accept` retries after an `Err`.
+///
+/// Caps the accept-loop iteration rate at ~10/s while the failure
+/// condition persists, which prevents a tight CPU loop on resource-
+/// exhaustion errors (`EMFILE`, `ENFILE`, `ENOMEM`/`ENOBUFS`) where
+/// the immediate retry would otherwise burn CPU and log bandwidth
+/// while *making the recovery slower* (high CPU starves the processes
+/// that need to release FDs / memory). The kernel's listen backlog
+/// queues new connections during the sleep, so this only adds latency
+/// in the error path, never in normal operation.
+pub const ACCEPT_ERROR_BACKOFF: Duration = Duration::from_millis(100);
+
 /// Default port for WebSocket tracker connections
 pub const DEFAULT_TRACKER_WEBSOCKET_PORT: u16 = 7511;
 
