@@ -39,8 +39,8 @@ use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 
 use crate::constants::{
-    DEFAULT_LOCALE, HANDSHAKE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED, LOG_HANDSHAKE_REQUIRED,
-    LOG_REGISTER_DISCONNECTED, LOG_ROLE_VIOLATION, ROLE_ESTABLISH_TIMEOUT,
+    DEFAULT_LOCALE, ERR_REGISTRY_MUTEX_POISONED, HANDSHAKE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED,
+    LOG_HANDSHAKE_REQUIRED, LOG_REGISTER_DISCONNECTED, LOG_ROLE_VIOLATION, ROLE_ESTABLISH_TIMEOUT,
     TLS_HANDSHAKE_FAILED_PREFIX,
 };
 use crate::errors::{
@@ -49,7 +49,7 @@ use crate::errors::{
 use crate::handlers;
 use crate::handlers::tracker_server_list::{ListParams, handle_tracker_server_list};
 use crate::handlers::tracker_server_register::{
-    RegisterOutcome, RegisterParams, handle_tracker_server_register,
+    InitialRegisterOutcome, RefreshOutcome, RegisterParams, handle_initial_register, handle_refresh,
 };
 use crate::rate_limiter::RateCheck;
 use crate::registry::ConnectionId;
@@ -229,10 +229,9 @@ where
                 user_count,
                 allows_guest,
             };
-            let outcome =
-                handle_tracker_server_register(params, None, state, writer, peer_addr).await?;
+            let outcome = handle_initial_register(params, state, writer, peer_addr).await?;
             match outcome {
-                RegisterOutcome::Registered(id) => {
+                InitialRegisterOutcome::Registered(id) => {
                     // The drop guard ensures the registry slot is
                     // freed when the refresh loop exits — clean
                     // disconnect, role violation, timeout, panic.
@@ -242,12 +241,7 @@ where
                     };
                     run_refresh_loop(reader, writer, id, state, peer_addr).await
                 }
-                RegisterOutcome::Refreshed => {
-                    // First register can't be a refresh — handler returns
-                    // Refreshed only when called with `existing_id = Some`.
-                    unreachable!("first register cannot return Refreshed");
-                }
-                RegisterOutcome::Rejected => Ok(()),
+                InitialRegisterOutcome::Rejected => Ok(()),
             }
         }
     }
@@ -345,12 +339,10 @@ where
                     user_count,
                     allows_guest,
                 };
-                let outcome =
-                    handle_tracker_server_register(params, Some(id), state, writer, peer_addr)
-                        .await?;
+                let outcome = handle_refresh(params, id, state, writer, peer_addr).await?;
                 match outcome {
-                    RegisterOutcome::Refreshed => continue,
-                    RegisterOutcome::Rejected => {
+                    RefreshOutcome::Refreshed => continue,
+                    RefreshOutcome::Rejected => {
                         info!(
                             ip = %peer_addr.ip(),
                             id = id,
@@ -359,9 +351,6 @@ where
                             LOG_REGISTER_DISCONNECTED
                         );
                         return Ok(());
-                    }
-                    RegisterOutcome::Registered(_) => {
-                        unreachable!("refresh path cannot return Registered");
                     }
                 }
             }
@@ -418,7 +407,7 @@ impl Drop for RegistrationGuard {
         self.state
             .registry
             .lock()
-            .expect("registry mutex poisoned")
+            .expect(ERR_REGISTRY_MUTEX_POISONED)
             .unregister(self.id);
     }
 }

@@ -13,8 +13,7 @@ const ERR_PROTOCOL_VERSION_INVALID: &str = "PROTOCOL_VERSION must be valid semve
 
 /// Panic message: [`crate::TRACKER_PROTOCOL_VERSION`] failed to parse
 /// as semver. Same reasoning as `ERR_PROTOCOL_VERSION_INVALID`.
-const ERR_TRACKER_PROTOCOL_VERSION_INVALID: &str =
-    "TRACKER_PROTOCOL_VERSION must be valid semver";
+const ERR_TRACKER_PROTOCOL_VERSION_INVALID: &str = "TRACKER_PROTOCOL_VERSION must be valid semver";
 
 /// Result of checking version compatibility
 #[derive(Debug, Clone, PartialEq, Eq)]

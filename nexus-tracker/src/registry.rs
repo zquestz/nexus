@@ -43,16 +43,17 @@ pub struct RegisteredEntry {
     pub last_refresh: Instant,
 }
 
-/// Registry-level error variants. The handler maps these to the
-/// protocol-level `error_kind` and a translated human-readable message.
+/// Capacity-rejection variants from [`Registry::register`]. The handler
+/// maps these to the protocol-level `error_kind` and a translated
+/// human-readable message. Notably absent: `NotFound`, which `register`
+/// can never produce; the unknown-id case for [`Registry::refresh`] is
+/// reported via its `bool` return rather than as an error variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RegistryError {
+pub enum RegisterError {
     /// Total tracker capacity (`--max-entries`) reached.
     Capacity,
     /// Per-source-IP cap (`--max-entries-per-ip`) reached.
     PerIpCapacity,
-    /// `refresh` called with an unknown `ConnectionId`.
-    NotFound,
 }
 
 #[derive(Debug)]
@@ -82,22 +83,22 @@ impl Registry {
     ///
     /// # Errors
     ///
-    /// - [`RegistryError::Capacity`] if the global cap is reached.
-    /// - [`RegistryError::PerIpCapacity`] if `peer_ip` is already at its
+    /// - [`RegisterError::Capacity`] if the global cap is reached.
+    /// - [`RegisterError::PerIpCapacity`] if `peer_ip` is already at its
     ///   per-IP cap.
     pub fn register(
         &mut self,
         entry: ServerEntry,
         peer_ip: IpAddr,
         now: Instant,
-    ) -> Result<ConnectionId, RegistryError> {
+    ) -> Result<ConnectionId, RegisterError> {
         if self.is_full() {
-            return Err(RegistryError::Capacity);
+            return Err(RegisterError::Capacity);
         }
         if self.max_per_ip != 0 {
             let count = self.counts_by_ip.get(&peer_ip).copied().unwrap_or(0);
             if count >= self.max_per_ip {
-                return Err(RegistryError::PerIpCapacity);
+                return Err(RegisterError::PerIpCapacity);
             }
         }
 
@@ -120,19 +121,20 @@ impl Registry {
 
     /// Replace an existing entry's data and reset its `last_refresh`.
     ///
-    /// # Errors
-    ///
-    /// Returns [`RegistryError::NotFound`] if `id` is not registered.
-    pub fn refresh(
-        &mut self,
-        id: ConnectionId,
-        entry: ServerEntry,
-        now: Instant,
-    ) -> Result<(), RegistryError> {
-        let registered = self.entries.get_mut(&id).ok_or(RegistryError::NotFound)?;
-        registered.entry = entry;
-        registered.last_refresh = now;
-        Ok(())
+    /// Returns `true` if the entry was updated, `false` if `id` is not
+    /// present (the entry was unregistered or stale-evicted out of
+    /// band). Callers typically hold a drop guard that keeps the id
+    /// alive for the connection's lifetime, so the `false` path is
+    /// rarely reached — but the registry doesn't enforce that
+    /// convention, so we report rather than panic.
+    pub fn refresh(&mut self, id: ConnectionId, entry: ServerEntry, now: Instant) -> bool {
+        if let Some(registered) = self.entries.get_mut(&id) {
+            registered.entry = entry;
+            registered.last_refresh = now;
+            true
+        } else {
+            false
+        }
     }
 
     /// Read-only peek at an entry's `last_refresh`. Returns `None` if
@@ -253,7 +255,7 @@ mod tests {
         r.register(make_entry("A"), ip(1), now).unwrap();
         r.register(make_entry("B"), ip(2), now).unwrap();
         let err = r.register(make_entry("C"), ip(3), now).unwrap_err();
-        assert_eq!(err, RegistryError::Capacity);
+        assert_eq!(err, RegisterError::Capacity);
     }
 
     #[test]
@@ -263,7 +265,7 @@ mod tests {
         r.register(make_entry("First"), ip(1), now).unwrap();
         // Second register from same IP exceeds the per-IP cap of 1.
         let err = r.register(make_entry("Second"), ip(1), now).unwrap_err();
-        assert_eq!(err, RegistryError::PerIpCapacity);
+        assert_eq!(err, RegisterError::PerIpCapacity);
     }
 
     #[test]
@@ -298,7 +300,7 @@ mod tests {
         }
         // But a sixth register from any of those IPs is rejected.
         let err = r.register(make_entry("Dup"), ip(0), now).unwrap_err();
-        assert_eq!(err, RegistryError::PerIpCapacity);
+        assert_eq!(err, RegisterError::PerIpCapacity);
     }
 
     #[test]
@@ -324,8 +326,7 @@ mod tests {
                 ..make_entry("S")
             },
             t1,
-        )
-        .unwrap();
+        );
 
         // Eviction with a 30s threshold AT t1 keeps the entry, because
         // last_refresh was reset to t1 and 0s have passed since.
@@ -339,10 +340,10 @@ mod tests {
     }
 
     #[test]
-    fn test_refresh_unknown_id_returns_not_found() {
+    fn test_refresh_unknown_id_returns_false() {
         let mut r = Registry::new(0, 0);
-        let err = r.refresh(999, make_entry("S"), Instant::now()).unwrap_err();
-        assert_eq!(err, RegistryError::NotFound);
+        let updated = r.refresh(999, make_entry("S"), Instant::now());
+        assert!(!updated, "refresh on unknown id should return false");
     }
 
     #[test]
@@ -368,7 +369,7 @@ mod tests {
         let id1 = r.register(make_entry("First"), ip(1), now).unwrap();
         // Attempt a second register that must be rejected.
         let err = r.register(make_entry("Second"), ip(1), now).unwrap_err();
-        assert_eq!(err, RegistryError::PerIpCapacity);
+        assert_eq!(err, RegisterError::PerIpCapacity);
         // After unregistering the first, the slot must be free —
         // i.e., the rejected register did NOT leak a +1 into the count.
         r.unregister(id1);
@@ -384,7 +385,7 @@ mod tests {
         // Same IP at cap.
         assert_eq!(
             r.register(make_entry("Second"), ip(1), now).unwrap_err(),
-            RegistryError::PerIpCapacity
+            RegisterError::PerIpCapacity
         );
         r.unregister(id);
         // After unregister the slot is free again.
@@ -514,7 +515,7 @@ mod tests {
 
         // refresh() updates last_refresh.
         let t1 = t0 + Duration::from_secs(10);
-        r.refresh(id, make_entry("X"), t1).unwrap();
+        r.refresh(id, make_entry("X"), t1);
         assert_eq!(r.last_refresh(id), Some(t1));
     }
 

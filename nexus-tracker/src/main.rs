@@ -201,9 +201,11 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     let rate_limiter_gc = spawn_rate_limiter_gc(Arc::clone(&state));
 
     // SIGHUP password-reload task (Unix only). On Windows, password
-    // changes require a daemon restart.
+    // changes require a daemon restart. Signal stream is installed
+    // synchronously here so a setup failure surfaces as a startup
+    // error to the operator instead of a runtime panic.
     #[cfg(unix)]
-    let sighup = spawn_sighup_handler(Arc::clone(&state), data_dir.to_path_buf());
+    let sighup = spawn_sighup_handler(Arc::clone(&state), data_dir.to_path_buf())?;
 
     let handles = DaemonHandles {
         rate_limiter_gc,
@@ -224,17 +226,21 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     Ok(())
 }
 
-/// Spawn a long-lived task that listens for SIGHUP and re-reads the
-/// password hash files on each receipt. Returns a `JoinHandle` so
-/// graceful shutdown can abort it.
+/// Install the SIGHUP listener synchronously, then spawn a long-lived
+/// task that recv()s on it and re-reads the password hash files on
+/// each receipt. Returns a `JoinHandle` so graceful shutdown can
+/// abort it. Returns an `Err` (with the operator-facing message) if
+/// the signal stream itself can't be installed — failure surfaces at
+/// startup rather than as a runtime panic on first SIGHUP.
 #[cfg(unix)]
 fn spawn_sighup_handler(
     state: Arc<TrackerState>,
     data_dir: PathBuf,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        use tokio::signal::unix::{SignalKind, signal};
-        let mut sighup = signal(SignalKind::hangup()).expect("SIGHUP handler installation failed");
+) -> Result<tokio::task::JoinHandle<()>, String> {
+    use tokio::signal::unix::{SignalKind, signal};
+    let mut sighup = signal(SignalKind::hangup())
+        .map_err(|e| format!("{}: {}", constants::ERR_SIGNAL_SIGHUP, e))?;
+    Ok(tokio::spawn(async move {
         loop {
             sighup.recv().await;
             info!("{}", constants::LOG_SIGHUP_RECEIVED);
@@ -243,7 +249,7 @@ fn spawn_sighup_handler(
             // semantics).
             state.reload_passwords(&data_dir);
         }
-    })
+    }))
 }
 
 /// Spawn the background rate-limiter GC task.

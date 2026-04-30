@@ -257,6 +257,10 @@ pub const ERR_I18N_ADD_RESOURCE: &str = "Failed to add resource to bundle";
 /// key was added to a call site without a corresponding `errors.ftl` entry).
 pub const ERR_I18N_MISSING_KEY_ENGLISH: &str = "Missing translation key in English";
 
+/// Panic message: `DEFAULT_LOCALE` failed to parse as a `LanguageIdentifier`.
+/// Programmer-error: the constant is `"en"` and is hand-edited to be valid.
+pub const ERR_DEFAULT_LOCALE_INVALID: &str = "DEFAULT_LOCALE is a valid locale";
+
 /// Log message: Fluent reported recoverable formatting errors while
 /// resolving a translation. Paired with `key = %key, errors = ?errors`.
 pub const LOG_TRANSLATION_ERRORS: &str = "Translation errors";
@@ -371,6 +375,21 @@ pub const ERR_SIGNAL_SIGINT: &str = "Failed to setup SIGINT handler";
 #[cfg(not(unix))]
 pub const ERR_SIGNAL_CTRLC: &str = "Failed to setup Ctrl+C handler";
 
+/// SIGHUP handler installation error on Unix (panics — required for
+/// password reload). Should never fire in practice; if it does the
+/// platform's signal subsystem itself is broken.
+#[cfg(unix)]
+pub const ERR_SIGNAL_SIGHUP: &str = "SIGHUP handler installation failed";
+
+// =============================================================================
+// Mutex poisoning panic messages (programmer-error invariants)
+// =============================================================================
+
+/// Panic message: the `Mutex<Registry>` on `TrackerState` is poisoned.
+/// A poisoned mutex means a previous holder panicked while mutating
+/// the registry; the in-memory state is unknown-shape and unrecoverable.
+pub const ERR_REGISTRY_MUTEX_POISONED: &str = "registry mutex poisoned";
+
 // =============================================================================
 // Rate limiting
 // =============================================================================
@@ -409,6 +428,14 @@ pub const REFRESH_FLOOR_INTERVAL: std::time::Duration = std::time::Duration::fro
 /// previous accepted refresh on the same entry. Paired with
 /// `ip = %peer_addr.ip(), id = %connection_id`.
 pub const LOG_REFRESH_TOO_SOON: &str = "TrackerServerRegister: refresh too soon";
+
+/// Log: a refresh targeted an `id` no longer present in the registry.
+/// In normal operation this can't happen — the connection task's drop
+/// guard keeps the id alive — so seeing this means an out-of-band
+/// eviction (or a future stale-eviction worker) cleaned the slot
+/// while the connection was still active. Paired with
+/// `ip = %peer_addr.ip(), id = %connection_id`.
+pub const LOG_REFRESH_GHOST_ID: &str = "TrackerServerRegister: refresh on unregistered id";
 
 // =============================================================================
 // UPnP (operator-facing)

@@ -7,16 +7,17 @@
 //! replacing the stored entry idempotently and resetting the entry's
 //! `last_refresh`.
 //!
-//! Responsibilities:
+//! The two paths are exposed as separate entry points so callers don't
+//! need to handle impossible variants:
 //!
-//! 1. Validate field lengths and fingerprint format (per spec).
-//! 2. If registration is gated, verify the password.
-//! 3. Resolve `address`: substitute the peer's IP when the field is
-//!    omitted / empty.
-//! 4. On first register: insert into the registry (capacity / per-IP
-//!    cap may reject). On refresh: replace the existing entry by id.
-//! 5. Send `TrackerServerRegisterResponse` carrying the operator-configured
-//!    `refresh_interval` on success.
+//! - [`handle_initial_register`] returns [`InitialRegisterOutcome`]
+//!   (`Registered(id)` or `Rejected`).
+//! - [`handle_refresh`] returns [`RefreshOutcome`] (`Refreshed` or
+//!   `Rejected`).
+//!
+//! Field-length validation, fingerprint format checks, the auth-failure
+//! rate-limit gate, and password verification are shared via the
+//! private [`validate_and_authenticate`] helper.
 
 use std::io;
 use std::net::SocketAddr;
@@ -38,8 +39,8 @@ use nexus_common::{
 
 use crate::auth::check_password;
 use crate::constants::{
-    DEFAULT_LOCALE, LOG_AUTH_RATE_LIMITED, LOG_REFRESH_TOO_SOON, LOG_REGISTER_NEW,
-    LOG_REGISTER_REFRESH, LOG_REGISTER_REJECTED,
+    DEFAULT_LOCALE, ERR_REGISTRY_MUTEX_POISONED, LOG_AUTH_RATE_LIMITED, LOG_REFRESH_GHOST_ID,
+    LOG_REFRESH_TOO_SOON, LOG_REGISTER_NEW, LOG_REGISTER_REFRESH, LOG_REGISTER_REJECTED,
 };
 use crate::errors::{
     err_tracker_address_invalid, err_tracker_address_too_long, err_tracker_capacity,
@@ -48,7 +49,7 @@ use crate::errors::{
     err_tracker_rate_limited, err_tracker_unauthorized, err_tracker_version_too_long,
 };
 use crate::rate_limiter::RateCheck;
-use crate::registry::{ConnectionId, RegistryError};
+use crate::registry::{ConnectionId, RegisterError};
 use crate::state::TrackerState;
 
 /// Decoded `TrackerServerRegister` request fields.
@@ -66,157 +67,309 @@ pub struct RegisterParams {
     pub allows_guest: bool,
 }
 
-/// Outcome of `handle_tracker_server_register`. The caller (connection task)
-/// uses this to decide whether to keep the connection alive for refreshes.
+/// Outcome of [`handle_initial_register`]. The caller (connection task)
+/// uses this to decide whether to enter the refresh loop or close the
+/// connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RegisterOutcome {
+pub enum InitialRegisterOutcome {
     /// Accepted as a fresh registration. The id is the new connection's
-    /// registry slot — caller must store it for refresh / cleanup.
+    /// registry slot — caller stores it for refresh / cleanup.
     Registered(ConnectionId),
+    /// Rejected with a typed failure response. Connection should close.
+    Rejected,
+}
+
+/// Outcome of [`handle_refresh`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefreshOutcome {
     /// Accepted as a refresh on the supplied id. Entry data is replaced
     /// and `last_refresh` reset.
     Refreshed,
     /// Rejected with a typed failure response. Connection should close.
-    /// The drop guard on the connection task unregisters any associated
-    /// registry entry. Refresh-floor violations land here too — a client
-    /// refreshing faster than half the protocol minimum is broken or
-    /// malicious, so we kick rather than tolerate.
+    /// Refresh-floor violations land here too — a client refreshing
+    /// faster than half the protocol minimum is broken or malicious,
+    /// so we kick rather than tolerate.
     Rejected,
 }
 
-/// Drive the `TrackerServerRegister` flow.
-///
-/// `existing_id` is `None` for the first register on a connection and
-/// `Some(id)` for every subsequent refresh on the same connection.
-///
-/// Always sends exactly one `TrackerServerRegisterResponse` to the wire.
-pub async fn handle_tracker_server_register<W>(
+/// Drive the initial-register flow (no `existing_id` — this is the
+/// first `TrackerServerRegister` on a fresh connection). Always sends
+/// exactly one `TrackerServerRegisterResponse` to the wire.
+pub async fn handle_initial_register<W>(
     params: RegisterParams,
-    existing_id: Option<ConnectionId>,
     state: &TrackerState,
     writer: &mut FrameWriter<W>,
     peer_addr: SocketAddr,
-) -> io::Result<RegisterOutcome>
+) -> io::Result<InitialRegisterOutcome>
 where
     W: AsyncWrite + Unpin,
 {
+    let Validated { entry, locale } =
+        match validate_and_authenticate(params, state, writer, peer_addr).await? {
+            ValidationOutcome::Valid(v) => v,
+            ValidationOutcome::Rejected => return Ok(InitialRegisterOutcome::Rejected),
+        };
+
+    let now = Instant::now();
+    let entry_name = entry.name.clone();
+    let result = state
+        .registry
+        .lock()
+        .expect(ERR_REGISTRY_MUTEX_POISONED)
+        .register(entry, peer_addr.ip(), now);
+
+    match result {
+        Ok(id) => {
+            info!(
+                ip = %peer_addr.ip(),
+                id = id,
+                name = %entry_name,
+                "{}",
+                LOG_REGISTER_NEW
+            );
+            send_success(writer, state.refresh_interval).await?;
+            Ok(InitialRegisterOutcome::Registered(id))
+        }
+        Err(RegisterError::Capacity) => {
+            reject(
+                writer,
+                ip(&peer_addr),
+                "capacity",
+                ERROR_KIND_CAPACITY,
+                err_tracker_capacity(&locale),
+            )
+            .await?;
+            Ok(InitialRegisterOutcome::Rejected)
+        }
+        Err(RegisterError::PerIpCapacity) => {
+            reject(
+                writer,
+                ip(&peer_addr),
+                "per_ip_capacity",
+                ERROR_KIND_CAPACITY,
+                err_tracker_per_ip_capacity(&locale),
+            )
+            .await?;
+            Ok(InitialRegisterOutcome::Rejected)
+        }
+    }
+}
+
+/// Drive the refresh flow on an established server connection. The
+/// `id` is the registry slot the connection registered itself in via
+/// [`handle_initial_register`]; the drop guard on the connection task
+/// keeps it alive until disconnect, so the [`Registry::refresh`]
+/// `false` (id-not-found) path is normally unreachable. The handler
+/// still treats it defensively — see [`LOG_REFRESH_GHOST_ID`] — so a
+/// future stale-eviction worker can't crash a live connection.
+///
+/// Always sends exactly one `TrackerServerRegisterResponse` to the wire.
+pub async fn handle_refresh<W>(
+    params: RegisterParams,
+    id: ConnectionId,
+    state: &TrackerState,
+    writer: &mut FrameWriter<W>,
+    peer_addr: SocketAddr,
+) -> io::Result<RefreshOutcome>
+where
+    W: AsyncWrite + Unpin,
+{
+    let now = Instant::now();
+
+    // Per-entry refresh floor. Checking *before* validation /
+    // password verification means a misbehaving server hammering
+    // refreshes can't pin CPU on Argon2 hashing. We don't update
+    // `last_refresh` on rejection — preserves the slide-protection
+    // property (rapid rejected refreshes can't keep an entry alive).
+    //
+    // The lock is released before any `.await` (held only across the
+    // `last_refresh` peek) so the future stays `Send`. A zero
+    // `refresh_floor` (set by tests) skips the check entirely.
+    if !state.refresh_floor.is_zero() {
+        let last_refresh = state
+            .registry
+            .lock()
+            .expect(ERR_REGISTRY_MUTEX_POISONED)
+            .last_refresh(id);
+        if let Some(last) = last_refresh
+            && now.duration_since(last) < state.refresh_floor
+        {
+            warn!(ip = %peer_addr.ip(), id = id, "{}", LOG_REFRESH_TOO_SOON);
+            reject(
+                writer,
+                ip(&peer_addr),
+                "refresh_too_soon",
+                ERROR_KIND_RATE_LIMITED,
+                err_tracker_rate_limited(&params.locale),
+            )
+            .await?;
+            return Ok(RefreshOutcome::Rejected);
+        }
+    }
+
+    let Validated { entry, locale: _ } =
+        match validate_and_authenticate(params, state, writer, peer_addr).await? {
+            ValidationOutcome::Valid(v) => v,
+            ValidationOutcome::Rejected => return Ok(RefreshOutcome::Rejected),
+        };
+
+    let user_count = entry.user_count;
+    let updated = state
+        .registry
+        .lock()
+        .expect(ERR_REGISTRY_MUTEX_POISONED)
+        .refresh(id, entry, now);
+    if !updated {
+        // Drop-guard convention says this entry should still be live —
+        // the handler holds a guard that only unregisters on
+        // connection close. If it's gone anyway, something
+        // out-of-band evicted it (future stale-eviction worker, or a
+        // bug). Close the connection gracefully rather than
+        // panicking; the drop guard's own unregister call is
+        // idempotent.
+        warn!(ip = %peer_addr.ip(), id = id, "{}", LOG_REFRESH_GHOST_ID);
+        return Ok(RefreshOutcome::Rejected);
+    }
+    debug!(id = id, user_count = user_count, "{}", LOG_REGISTER_REFRESH);
+    send_success(writer, state.refresh_interval).await?;
+    Ok(RefreshOutcome::Refreshed)
+}
+
+/// Successful output of the shared validation+authentication phase:
+/// the validated `ServerEntry` plus the request's `locale` (which
+/// downstream rejection paths in the call sites still need for
+/// translated error messages — capacity rejections after registry
+/// access).
+struct Validated {
+    entry: ServerEntry,
+    locale: String,
+}
+
+/// Result of the shared validation+authentication phase. On rejection,
+/// the failure response has already been written and logged; the
+/// caller need only return its own rejection outcome.
+enum ValidationOutcome {
+    Valid(Validated),
+    Rejected,
+}
+
+/// Run the shared length / fingerprint / password checks, send a typed
+/// failure response on any rejection, and return the validated
+/// [`ServerEntry`] (with `locale`) on success. Consumes `params` so
+/// the field strings move into the resulting `ServerEntry` instead of
+/// being cloned.
+async fn validate_and_authenticate<W>(
+    params: RegisterParams,
+    state: &TrackerState,
+    writer: &mut FrameWriter<W>,
+    peer_addr: SocketAddr,
+) -> io::Result<ValidationOutcome>
+where
+    W: AsyncWrite + Unpin,
+{
+    // Destructure upfront so individual fields move out without
+    // cloning. Length/format validators reference `&locale`,
+    // `&password`, etc.; the success path moves the strings into
+    // `ServerEntry`.
+    let RegisterParams {
+        password,
+        locale,
+        name,
+        description,
+        address,
+        port,
+        websocket_port,
+        version,
+        fingerprint,
+        user_count,
+        allows_guest,
+    } = params;
+
     // Length and format validation. Use the request's locale for
     // translation when it's within bounds; fall back to DEFAULT_LOCALE
     // when the locale field itself is suspect.
-    if params.locale.len() > MAX_LOCALE_LENGTH {
-        return reject(
+    if locale.len() > MAX_LOCALE_LENGTH {
+        reject(
             writer,
             ip(&peer_addr),
             "locale_too_long",
             ERROR_KIND_INVALID,
             err_tracker_locale_too_long(DEFAULT_LOCALE, MAX_LOCALE_LENGTH),
         )
-        .await;
+        .await?;
+        return Ok(ValidationOutcome::Rejected);
     }
-    if let Some(p) = &params.password
+    if let Some(p) = &password
         && p.len() > MAX_PASSWORD_LENGTH
     {
-        return reject(
+        reject(
             writer,
             ip(&peer_addr),
             "password_too_long",
             ERROR_KIND_INVALID,
-            err_tracker_password_too_long(&params.locale, MAX_PASSWORD_LENGTH),
+            err_tracker_password_too_long(&locale, MAX_PASSWORD_LENGTH),
         )
-        .await;
+        .await?;
+        return Ok(ValidationOutcome::Rejected);
     }
-    if params.name.len() > MAX_SERVER_NAME_LENGTH {
-        return reject(
+    if name.len() > MAX_SERVER_NAME_LENGTH {
+        reject(
             writer,
             ip(&peer_addr),
             "name_too_long",
             ERROR_KIND_INVALID,
-            err_tracker_name_too_long(&params.locale, MAX_SERVER_NAME_LENGTH),
+            err_tracker_name_too_long(&locale, MAX_SERVER_NAME_LENGTH),
         )
-        .await;
+        .await?;
+        return Ok(ValidationOutcome::Rejected);
     }
-    if let Some(d) = &params.description
+    if let Some(d) = &description
         && d.len() > MAX_SERVER_DESCRIPTION_LENGTH
     {
-        return reject(
+        reject(
             writer,
             ip(&peer_addr),
             "description_too_long",
             ERROR_KIND_INVALID,
-            err_tracker_description_too_long(&params.locale, MAX_SERVER_DESCRIPTION_LENGTH),
+            err_tracker_description_too_long(&locale, MAX_SERVER_DESCRIPTION_LENGTH),
         )
-        .await;
+        .await?;
+        return Ok(ValidationOutcome::Rejected);
     }
-    if let Some(a) = &params.address
+    if let Some(a) = &address
         && a.len() > MAX_PUBLIC_ADDRESS_LENGTH
     {
-        return reject(
+        reject(
             writer,
             ip(&peer_addr),
             "address_too_long",
             ERROR_KIND_INVALID,
-            err_tracker_address_too_long(&params.locale, MAX_PUBLIC_ADDRESS_LENGTH),
+            err_tracker_address_too_long(&locale, MAX_PUBLIC_ADDRESS_LENGTH),
         )
-        .await;
+        .await?;
+        return Ok(ValidationOutcome::Rejected);
     }
-    if params.version.len() > MAX_VERSION_LENGTH {
-        return reject(
+    if version.len() > MAX_VERSION_LENGTH {
+        reject(
             writer,
             ip(&peer_addr),
             "version_too_long",
             ERROR_KIND_INVALID,
-            err_tracker_version_too_long(&params.locale, MAX_VERSION_LENGTH),
+            err_tracker_version_too_long(&locale, MAX_VERSION_LENGTH),
         )
-        .await;
+        .await?;
+        return Ok(ValidationOutcome::Rejected);
     }
-    if !is_canonical_fingerprint(&params.fingerprint) {
-        return reject(
+    if !is_canonical_fingerprint(&fingerprint) {
+        reject(
             writer,
             ip(&peer_addr),
             "fingerprint_invalid",
             ERROR_KIND_INVALID,
-            err_tracker_fingerprint_invalid(&params.locale),
+            err_tracker_fingerprint_invalid(&locale),
         )
-        .await;
-    }
-
-    let now = Instant::now();
-
-    // Per-entry refresh floor. Only applies on the refresh path
-    // (`existing_id: Some`); the initial register's accept already
-    // burned a connection-rate token. Checking *before* Argon2
-    // verification means a misbehaving server hammering refreshes can't
-    // pin CPU on password hashing. We don't update `last_refresh` on
-    // rejection — preserves the slide-protection property (rapid
-    // rejected refreshes can't keep an entry alive).
-    //
-    // The lock is released before any `.await` (held only across the
-    // `last_refresh` peek) so the future stays `Send`. A zero
-    // `refresh_floor` (set by tests) skips the check entirely.
-    let last_refresh_at = if state.refresh_floor.is_zero() {
-        None
-    } else {
-        existing_id.and_then(|id| {
-            state
-                .registry
-                .lock()
-                .expect("registry mutex poisoned")
-                .last_refresh(id)
-        })
-    };
-    if let Some(last) = last_refresh_at
-        && now.duration_since(last) < state.refresh_floor
-    {
-        let id = existing_id.expect("set when last_refresh_at is Some");
-        warn!(ip = %peer_addr.ip(), id = id, "{}", LOG_REFRESH_TOO_SOON);
-        return reject(
-            writer,
-            ip(&peer_addr),
-            "refresh_too_soon",
-            ERROR_KIND_RATE_LIMITED,
-            err_tracker_rate_limited(&params.locale),
-        )
-        .await;
+        .await?;
+        return Ok(ValidationOutcome::Rejected);
     }
 
     // Password check (gated registration). Two-phase rate limiting:
@@ -232,124 +385,70 @@ where
     let gated = stored_hash.is_some();
     if gated && state.auth_failure_rate_limiter.check_only(peer_addr.ip()) == RateCheck::Limited {
         warn!(ip = %peer_addr.ip(), "{}", LOG_AUTH_RATE_LIMITED);
-        return reject(
+        reject(
             writer,
             ip(&peer_addr),
             "rate_limited",
             ERROR_KIND_RATE_LIMITED,
-            err_tracker_rate_limited(&params.locale),
+            err_tracker_rate_limited(&locale),
         )
-        .await;
+        .await?;
+        return Ok(ValidationOutcome::Rejected);
     }
-    if !check_password(params.password.as_deref(), stored_hash.as_deref()) {
+    if !check_password(password.as_deref(), stored_hash.as_deref()) {
         if gated {
             state
                 .auth_failure_rate_limiter
                 .record_failure(peer_addr.ip());
         }
-        return reject(
+        reject(
             writer,
             ip(&peer_addr),
             "unauthorized",
             ERROR_KIND_UNAUTHORIZED,
-            err_tracker_unauthorized(&params.locale),
+            err_tracker_unauthorized(&locale),
         )
-        .await;
+        .await?;
+        return Ok(ValidationOutcome::Rejected);
     }
 
     // Resolve `address` — substitute the peer's IP when the field is
     // omitted or empty. The string form of an IpAddr is the canonical
-    // form clients can plug into `nexus://`.
-    let resolved_address = match &params.address {
-        Some(a) if !a.is_empty() => a.clone(),
+    // form clients can plug into `nexus://`. Move out of `address`
+    // when it's non-empty so we don't clone.
+    let resolved_address = match address {
+        Some(a) if !a.is_empty() => a,
         _ => peer_addr.ip().to_string(),
     };
     // Address-validation hook: empty after resolution would mean we
     // somehow ended up with an unrepresentable peer IP (shouldn't
     // happen), but we guard anyway.
     if resolved_address.is_empty() {
-        return reject(
+        reject(
             writer,
             ip(&peer_addr),
             "address_invalid",
             ERROR_KIND_INVALID,
-            err_tracker_address_invalid(&params.locale),
+            err_tracker_address_invalid(&locale),
         )
-        .await;
+        .await?;
+        return Ok(ValidationOutcome::Rejected);
     }
 
-    // Build the entry.
-    let entry = ServerEntry {
-        name: params.name,
-        description: params.description,
-        address: resolved_address,
-        port: params.port,
-        websocket_port: params.websocket_port,
-        version: params.version,
-        fingerprint: params.fingerprint,
-        user_count: params.user_count,
-        allows_guest: params.allows_guest,
-    };
-    let locale = params.locale;
-
-    // Register or refresh.
-    let outcome = {
-        let mut registry = state.registry.lock().expect("registry mutex poisoned");
-        match existing_id {
-            None => match registry.register(entry.clone(), peer_addr.ip(), now) {
-                Ok(id) => Ok(RegisterOutcome::Registered(id)),
-                Err(RegistryError::Capacity) => Err((
-                    "capacity",
-                    ERROR_KIND_CAPACITY,
-                    err_tracker_capacity(&locale),
-                )),
-                Err(RegistryError::PerIpCapacity) => Err((
-                    "per_ip_capacity",
-                    ERROR_KIND_CAPACITY,
-                    err_tracker_per_ip_capacity(&locale),
-                )),
-                Err(RegistryError::NotFound) => unreachable!("register doesn't return NotFound"),
-            },
-            Some(id) => match registry.refresh(id, entry.clone(), now) {
-                Ok(()) => Ok(RegisterOutcome::Refreshed),
-                Err(RegistryError::NotFound) => unreachable!(
-                    "refresh on a connection-owned id should never NotFound; \
-                    eviction only fires for stale entries, and refreshes reset that timer"
-                ),
-                Err(_) => unreachable!("refresh doesn't enforce caps"),
-            },
-        }
-    };
-
-    match outcome {
-        Ok(RegisterOutcome::Registered(id)) => {
-            info!(
-                ip = %peer_addr.ip(),
-                id = id,
-                name = %entry.name,
-                "{}",
-                LOG_REGISTER_NEW
-            );
-            send_success(writer, state.refresh_interval).await?;
-            Ok(RegisterOutcome::Registered(id))
-        }
-        Ok(RegisterOutcome::Refreshed) => {
-            debug!(
-                id = existing_id.expect("set when refreshing"),
-                user_count = entry.user_count,
-                "{}",
-                LOG_REGISTER_REFRESH
-            );
-            send_success(writer, state.refresh_interval).await?;
-            Ok(RegisterOutcome::Refreshed)
-        }
-        Ok(RegisterOutcome::Rejected) => unreachable!("Ok arm doesn't carry Rejected"),
-        Err((reason, error_kind, error_msg)) => {
-            warn!(ip = %peer_addr.ip(), reason = %reason, "{}", LOG_REGISTER_REJECTED);
-            send_failure(writer, error_kind, error_msg).await?;
-            Ok(RegisterOutcome::Rejected)
-        }
-    }
+    Ok(ValidationOutcome::Valid(Validated {
+        entry: ServerEntry {
+            name,
+            description,
+            address: resolved_address,
+            port,
+            websocket_port,
+            version,
+            fingerprint,
+            user_count,
+            allows_guest,
+        },
+        locale,
+    }))
 }
 
 /// Validate that `fp` is the canonical SHA-256 fingerprint form: 32
@@ -407,74 +506,23 @@ where
     Ok(())
 }
 
-/// Helper for the validation paths above: log the rejection and send
-/// the failure response, returning `RegisterOutcome::Rejected`.
+/// Helper used by all rejection paths: log the rejection (with
+/// structured `reason`) and send the failure response.
 async fn reject<W>(
     writer: &mut FrameWriter<W>,
     peer_ip_str: String,
     reason: &str,
     error_kind: &str,
     error_msg: String,
-) -> io::Result<RegisterOutcome>
+) -> io::Result<()>
 where
     W: AsyncWrite + Unpin,
 {
     warn!(ip = %peer_ip_str, reason = %reason, "{}", LOG_REGISTER_REJECTED);
-    send_failure(writer, error_kind, error_msg).await?;
-    Ok(RegisterOutcome::Rejected)
+    send_failure(writer, error_kind, error_msg).await
 }
 
-fn ip(peer: &SocketAddr) -> String {
-    peer.ip().to_string()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_is_canonical_fingerprint_accepts_valid() {
-        // 32 uppercase hex pairs separated by colons = 95 chars.
-        let fp = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
-             AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
-        assert_eq!(fp.len(), 95);
-        assert!(is_canonical_fingerprint(fp));
-    }
-
-    #[test]
-    fn test_is_canonical_fingerprint_rejects_lowercase() {
-        // Lowercase hex is not canonical.
-        let fp = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99:\
-             aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99";
-        assert!(!is_canonical_fingerprint(fp));
-    }
-
-    #[test]
-    fn test_is_canonical_fingerprint_rejects_wrong_length() {
-        assert!(!is_canonical_fingerprint(""));
-        assert!(!is_canonical_fingerprint("AA"));
-        // 94 chars (one short).
-        let short = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
-                     AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:9";
-        assert_eq!(short.len(), 94);
-        assert!(!is_canonical_fingerprint(short));
-    }
-
-    #[test]
-    fn test_is_canonical_fingerprint_rejects_wrong_separator() {
-        // 95 chars but with `-` instead of `:`.
-        let fp = "AA-BB-CC-DD-EE-FF-00-11-22-33-44-55-66-77-88-99-\
-             AA-BB-CC-DD-EE-FF-00-11-22-33-44-55-66-77-88-99";
-        assert_eq!(fp.len(), 95);
-        assert!(!is_canonical_fingerprint(fp));
-    }
-
-    #[test]
-    fn test_is_canonical_fingerprint_rejects_non_hex() {
-        // Replace one hex char with `Z`.
-        let fp = "ZA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
-             AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
-        assert_eq!(fp.len(), 95);
-        assert!(!is_canonical_fingerprint(fp));
-    }
+/// Stringify the peer IP for log structured-field output.
+fn ip(addr: &SocketAddr) -> String {
+    addr.ip().to_string()
 }

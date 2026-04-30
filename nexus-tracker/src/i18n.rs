@@ -12,8 +12,9 @@ use tracing::warn;
 use unic_langid::LanguageIdentifier;
 
 use crate::constants::{
-    DEFAULT_LOCALE, ERR_I18N_ADD_RESOURCE, ERR_I18N_MISSING_KEY_ENGLISH, ERR_I18N_PARSE_FTL,
-    LOG_MISSING_TRANSLATION_KEY, LOG_TRANSLATION_ERRORS,
+    DEFAULT_LOCALE, ERR_DEFAULT_LOCALE_INVALID, ERR_I18N_ADD_RESOURCE,
+    ERR_I18N_MISSING_KEY_ENGLISH, ERR_I18N_PARSE_FTL, LOG_MISSING_TRANSLATION_KEY,
+    LOG_TRANSLATION_ERRORS,
 };
 
 /// Resolve a translation key in the given locale. Falls back to English
@@ -83,11 +84,9 @@ pub fn t_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String {
 /// bundle — `FluentBundle` contains non-`Send` types, and the tracker's
 /// translation rate is low enough that caching isn't worth the complexity.
 fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
-    let lang: LanguageIdentifier = locale.parse().unwrap_or_else(|_| {
-        DEFAULT_LOCALE
-            .parse()
-            .expect("DEFAULT_LOCALE is a valid locale")
-    });
+    let lang: LanguageIdentifier = locale
+        .parse()
+        .unwrap_or_else(|_| DEFAULT_LOCALE.parse().expect(ERR_DEFAULT_LOCALE_INVALID));
 
     let mut bundle = FluentBundle::new(vec![lang]);
 

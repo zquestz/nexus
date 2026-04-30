@@ -20,6 +20,23 @@ use crate::constants::{LOG_PASSWORD_RELOAD_FAILED, LOG_PASSWORD_RELOADED};
 use crate::rate_limiter::RateLimiter;
 use crate::registry::Registry;
 
+/// Panic message: the registration password hash `RwLock` is poisoned.
+/// Programmer-error: a poisoned lock means a prior holder panicked
+/// while reading or swapping the hash, leaving the in-memory state
+/// unknown.
+const ERR_REGISTRATION_HASH_LOCK_POISONED: &str = "registration password hash lock poisoned";
+
+/// Panic message: the listing password hash `RwLock` is poisoned. Same
+/// reasoning as `ERR_REGISTRATION_HASH_LOCK_POISONED`.
+const ERR_LISTING_HASH_LOCK_POISONED: &str = "listing password hash lock poisoned";
+
+/// Panic message used by `reload_one`, where the lock is selected
+/// dynamically (registration or listing). Distinct from the
+/// flow-specific constants above so the panic still tells the
+/// operator *which kind* failed via the `kind = %kind` log field that
+/// surrounds the panic site.
+const ERR_PASSWORD_HASH_LOCK_POISONED: &str = "password hash lock poisoned";
+
 /// Daemon-level state shared across connection tasks.
 ///
 /// Cross-task mutation goes through the `Mutex<Registry>` and the
@@ -103,7 +120,7 @@ impl TrackerState {
     pub fn registration_gated(&self) -> bool {
         self.registration_password_hash
             .read()
-            .expect("registration password hash lock poisoned")
+            .expect(ERR_REGISTRATION_HASH_LOCK_POISONED)
             .is_some()
     }
 
@@ -112,7 +129,7 @@ impl TrackerState {
     pub fn listing_gated(&self) -> bool {
         self.listing_password_hash
             .read()
-            .expect("listing password hash lock poisoned")
+            .expect(ERR_LISTING_HASH_LOCK_POISONED)
             .is_some()
     }
 
@@ -123,7 +140,7 @@ impl TrackerState {
     pub fn registration_password_snapshot(&self) -> Option<String> {
         self.registration_password_hash
             .read()
-            .expect("registration password hash lock poisoned")
+            .expect(ERR_REGISTRATION_HASH_LOCK_POISONED)
             .clone()
     }
 
@@ -133,7 +150,7 @@ impl TrackerState {
     pub fn listing_password_snapshot(&self) -> Option<String> {
         self.listing_password_hash
             .read()
-            .expect("listing password hash lock poisoned")
+            .expect(ERR_LISTING_HASH_LOCK_POISONED)
             .clone()
     }
 
@@ -159,7 +176,7 @@ impl TrackerState {
         match auth::load_password_hash(data_dir, kind) {
             Ok(new) => {
                 let gated = new.is_some();
-                *lock.write().expect("password hash lock poisoned") = new;
+                *lock.write().expect(ERR_PASSWORD_HASH_LOCK_POISONED) = new;
                 info!(kind = %kind, gated = gated, "{}", LOG_PASSWORD_RELOADED);
             }
             Err(e) => {

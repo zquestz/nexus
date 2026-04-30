@@ -29,7 +29,8 @@ use nexus_common::{ERROR_KIND_INVALID, ERROR_KIND_RATE_LIMITED, ERROR_KIND_UNAUT
 
 use crate::auth::check_password;
 use crate::constants::{
-    DEFAULT_LOCALE, LOG_AUTH_RATE_LIMITED, LOG_LIST_REJECTED, LOG_LIST_RESPONSE,
+    DEFAULT_LOCALE, ERR_REGISTRY_MUTEX_POISONED, LOG_AUTH_RATE_LIMITED, LOG_LIST_REJECTED,
+    LOG_LIST_RESPONSE,
 };
 use crate::errors::{
     err_tracker_locale_too_long, err_tracker_password_too_long, err_tracker_rate_limited,
@@ -116,7 +117,7 @@ where
     let servers = state
         .registry
         .lock()
-        .expect("registry mutex poisoned")
+        .expect(ERR_REGISTRY_MUTEX_POISONED)
         .list();
     info!(ip = %peer_addr.ip(), count = servers.len(), "{}", LOG_LIST_RESPONSE);
 

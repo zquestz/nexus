@@ -45,6 +45,11 @@ use std::net::IpAddr;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+/// Panic message: the per-IP bucket map's `Mutex` is poisoned. A
+/// poisoned mutex means a previous holder panicked while updating the
+/// rate-limit state; the bucket counts are unknown-shape.
+const ERR_RATE_LIMITER_MUTEX_POISONED: &str = "rate limiter mutex poisoned";
+
 /// Outcome of a rate-limit check.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RateCheck {
@@ -100,7 +105,7 @@ impl RateLimiter {
             return RateCheck::Allowed;
         }
         let now = Instant::now();
-        let mut buckets = self.buckets.lock().expect("rate limiter mutex poisoned");
+        let mut buckets = self.buckets.lock().expect(ERR_RATE_LIMITER_MUTEX_POISONED);
         let bucket = buckets.entry(ip).or_insert_with(|| Bucket {
             tokens: self.capacity,
             last_refill: now,
@@ -124,7 +129,7 @@ impl RateLimiter {
             return RateCheck::Allowed;
         }
         let now = Instant::now();
-        let mut buckets = self.buckets.lock().expect("rate limiter mutex poisoned");
+        let mut buckets = self.buckets.lock().expect(ERR_RATE_LIMITER_MUTEX_POISONED);
         let bucket = buckets.entry(ip).or_insert_with(|| Bucket {
             tokens: self.capacity,
             last_refill: now,
@@ -147,7 +152,7 @@ impl RateLimiter {
             return;
         }
         let now = Instant::now();
-        let mut buckets = self.buckets.lock().expect("rate limiter mutex poisoned");
+        let mut buckets = self.buckets.lock().expect(ERR_RATE_LIMITER_MUTEX_POISONED);
         let bucket = buckets.entry(ip).or_insert_with(|| Bucket {
             tokens: self.capacity,
             last_refill: now,
@@ -163,7 +168,7 @@ impl RateLimiter {
             return;
         }
         let now = Instant::now();
-        let mut buckets = self.buckets.lock().expect("rate limiter mutex poisoned");
+        let mut buckets = self.buckets.lock().expect(ERR_RATE_LIMITER_MUTEX_POISONED);
         buckets.retain(|_ip, b| {
             let idle = now.saturating_duration_since(b.last_refill) >= idle_ttl;
             // Keep when not at full capacity (still draining) OR when
@@ -186,7 +191,7 @@ impl RateLimiter {
     fn bucket_count(&self) -> usize {
         self.buckets
             .lock()
-            .expect("rate limiter mutex poisoned")
+            .expect(ERR_RATE_LIMITER_MUTEX_POISONED)
             .len()
     }
 }
