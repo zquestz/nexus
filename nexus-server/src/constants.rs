@@ -247,7 +247,7 @@ pub const CERT_FILENAME: &str = "server.crt";
 pub const KEY_FILENAME: &str = "server.key";
 
 /// TLS certificate common name
-pub const TLS_CERT_COMMON_NAME: &str = "Nexus BBS Server";
+pub const TLS_CERT_COMMON_NAME: &str = "Nexus BBS";
 
 /// TLS close notify error pattern
 pub const TLS_CLOSE_NOTIFY_MSG: &str = "peer closed connection without sending TLS close_notify";

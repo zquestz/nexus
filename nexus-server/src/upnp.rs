@@ -24,7 +24,7 @@ pub use nexus_common::upnp::{UpnpGateway as Gateway, spawn_lease_renewal_task};
 
 /// Description sent to the router alongside each port mapping. Routers
 /// typically surface this in their admin UI.
-const PROTOCOL_DESCRIPTION: &str = "Nexus BBS Server";
+const PROTOCOL_DESCRIPTION: &str = "Nexus BBS";
 
 /// Discover the LAN gateway and request port forwarding for the BBS
 /// server's port set.
