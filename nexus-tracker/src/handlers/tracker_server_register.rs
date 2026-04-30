@@ -1,9 +1,9 @@
-//! `TrackerRegister` handler.
+//! `TrackerServerRegister` handler.
 //!
-//! A server connection sends `TrackerRegister` to register itself or to
+//! A server connection sends `TrackerServerRegister` to register itself or to
 //! refresh an existing entry. The first register on a connection inserts
 //! a new entry and locks the connection's role to "server"; subsequent
-//! `TrackerRegister` messages on the same connection are refreshes,
+//! `TrackerServerRegister` messages on the same connection are refreshes,
 //! replacing the stored entry idempotently and resetting the entry's
 //! `last_refresh`.
 //!
@@ -15,7 +15,7 @@
 //!    omitted / empty.
 //! 4. On first register: insert into the registry (capacity / per-IP
 //!    cap may reject). On refresh: replace the existing entry by id.
-//! 5. Send `TrackerRegisterResponse` carrying the operator-configured
+//! 5. Send `TrackerServerRegisterResponse` carrying the operator-configured
 //!    `refresh_interval` on success.
 
 use std::io;
@@ -47,7 +47,7 @@ use crate::errors::{
 use crate::registry::{ConnectionId, RegistryError};
 use crate::state::TrackerState;
 
-/// Decoded `TrackerRegister` request fields.
+/// Decoded `TrackerServerRegister` request fields.
 pub struct RegisterParams {
     pub password: Option<String>,
     pub locale: String,
@@ -62,7 +62,7 @@ pub struct RegisterParams {
     pub allows_guest: bool,
 }
 
-/// Outcome of `handle_tracker_register`. The caller (connection task)
+/// Outcome of `handle_tracker_server_register`. The caller (connection task)
 /// uses this to decide whether to keep the connection alive for refreshes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegisterOutcome {
@@ -76,13 +76,13 @@ pub enum RegisterOutcome {
     Rejected,
 }
 
-/// Drive the `TrackerRegister` flow.
+/// Drive the `TrackerServerRegister` flow.
 ///
 /// `existing_id` is `None` for the first register on a connection and
 /// `Some(id)` for every subsequent refresh on the same connection.
 ///
-/// Always sends exactly one `TrackerRegisterResponse` to the wire.
-pub async fn handle_tracker_register<W>(
+/// Always sends exactly one `TrackerServerRegisterResponse` to the wire.
+pub async fn handle_tracker_server_register<W>(
     params: RegisterParams,
     existing_id: Option<ConnectionId>,
     state: &TrackerState,
@@ -304,12 +304,12 @@ pub fn is_canonical_fingerprint(fp: &str) -> bool {
     true
 }
 
-/// Send a successful `TrackerRegisterResponse`.
+/// Send a successful `TrackerServerRegisterResponse`.
 async fn send_success<W>(writer: &mut FrameWriter<W>, refresh_interval: u32) -> io::Result<()>
 where
     W: AsyncWrite + Unpin,
 {
-    let response = TrackerServerMessage::TrackerRegisterResponse {
+    let response = TrackerServerMessage::TrackerServerRegisterResponse {
         success: true,
         refresh_interval: Some(refresh_interval),
         error: None,
@@ -319,7 +319,7 @@ where
     Ok(())
 }
 
-/// Send a typed failure `TrackerRegisterResponse`.
+/// Send a typed failure `TrackerServerRegisterResponse`.
 async fn send_failure<W>(
     writer: &mut FrameWriter<W>,
     error_kind: &str,
@@ -328,7 +328,7 @@ async fn send_failure<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    let response = TrackerServerMessage::TrackerRegisterResponse {
+    let response = TrackerServerMessage::TrackerServerRegisterResponse {
         success: false,
         refresh_interval: None,
         error: Some(message),

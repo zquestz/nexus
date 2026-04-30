@@ -481,9 +481,9 @@ const TRANSFER_COMPLETE_SIZE: usize = json_type_base("TransferComplete")
 // Tracker messages (separate protocol)
 // -----------------------------------------------------------------------------
 
-/// TrackerRegister: full registration payload sent by servers to register or
+/// TrackerServerRegister: full registration payload sent by servers to register or
 /// refresh their entry in the tracker's listing.
-const TRACKER_REGISTER_SIZE: usize = json_type_base("TrackerRegister")
+const TRACKER_SERVER_REGISTER_SIZE: usize = json_type_base("TrackerServerRegister")
     + json_string_field("password", MAX_PASSWORD_LENGTH)
     + json_string_field("locale", MAX_LOCALE_LENGTH)
     + json_string_field("name", MAX_SERVER_NAME_LENGTH)
@@ -496,19 +496,20 @@ const TRACKER_REGISTER_SIZE: usize = json_type_base("TrackerRegister")
     + json_u32_field("user_count")
     + json_bool_field("allows_guest");
 
-/// TrackerList: client request for the current server listing.
-const TRACKER_LIST_SIZE: usize = json_type_base("TrackerList")
+/// TrackerServerList: client request for the current server listing.
+const TRACKER_SERVER_LIST_SIZE: usize = json_type_base("TrackerServerList")
     + json_string_field("password", MAX_PASSWORD_LENGTH)
     + json_string_field("locale", MAX_LOCALE_LENGTH);
 
-/// TrackerRegisterResponse: tracker's reply to TrackerRegister.
-const TRACKER_REGISTER_RESPONSE_SIZE: usize = json_type_base("TrackerRegisterResponse")
-    + json_bool_field("success")
-    + json_u32_field("refresh_interval")
-    + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_field("error_kind", MAX_ERROR_KIND_LENGTH);
+/// TrackerServerRegisterResponse: tracker's reply to TrackerServerRegister.
+const TRACKER_SERVER_REGISTER_RESPONSE_SIZE: usize =
+    json_type_base("TrackerServerRegisterResponse")
+        + json_bool_field("success")
+        + json_u32_field("refresh_interval")
+        + json_string_field("error", MAX_ERROR_LENGTH)
+        + json_string_field("error_kind", MAX_ERROR_KIND_LENGTH);
 
-// `TrackerListResponse` has no per-message-type payload limit — the tracker
+// `TrackerServerListResponse` has no per-message-type payload limit — the tracker
 // is the trusted originator and is expected to be able to return its full
 // registered set in a single response. Set to 0 (unlimited) below.
 
@@ -1452,13 +1453,19 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("FileHash", pad_limit(FILE_HASH_SIZE as u64));
 
     // Tracker messages (separate protocol)
-    m.insert("TrackerRegister", pad_limit(TRACKER_REGISTER_SIZE as u64));
-    m.insert("TrackerList", pad_limit(TRACKER_LIST_SIZE as u64));
     m.insert(
-        "TrackerRegisterResponse",
-        pad_limit(TRACKER_REGISTER_RESPONSE_SIZE as u64),
+        "TrackerServerRegister",
+        pad_limit(TRACKER_SERVER_REGISTER_SIZE as u64),
     );
-    m.insert("TrackerListResponse", 0); // unlimited (tracker-trusted, full server set in one response)
+    m.insert(
+        "TrackerServerList",
+        pad_limit(TRACKER_SERVER_LIST_SIZE as u64),
+    );
+    m.insert(
+        "TrackerServerRegisterResponse",
+        pad_limit(TRACKER_SERVER_REGISTER_RESPONSE_SIZE as u64),
+    );
+    m.insert("TrackerServerListResponse", 0); // unlimited (tracker-trusted, full server set in one response)
 
     m
 });
@@ -1935,8 +1942,8 @@ mod tests {
     // The `Error` message type name is shared with the BBS ServerMessage::Error
     // and is already counted in SERVER_MESSAGE_COUNT, so we only count the
     // 4 tracker-specific message types here.
-    const TRACKER_CLIENT_MESSAGE_COUNT: usize = 2; // TrackerRegister, TrackerList
-    const TRACKER_SERVER_MESSAGE_COUNT: usize = 2; // TrackerRegisterResponse, TrackerListResponse
+    const TRACKER_CLIENT_MESSAGE_COUNT: usize = 2; // TrackerServerRegister, TrackerServerList
+    const TRACKER_SERVER_MESSAGE_COUNT: usize = 2; // TrackerServerRegisterResponse, TrackerServerListResponse
 
     #[test]
     fn test_all_protocol_types_have_limits() {
@@ -3664,8 +3671,8 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_limit_tracker_register() {
-        let msg = TrackerClientMessage::TrackerRegister {
+    fn test_limit_tracker_server_register() {
+        let msg = TrackerClientMessage::TrackerServerRegister {
             password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
             locale: str_of_len(MAX_LOCALE_LENGTH),
             name: str_of_len(MAX_SERVER_NAME_LENGTH),
@@ -3679,52 +3686,52 @@ mod tests {
             allows_guest: false,
         };
         let size = json_size(&msg);
-        let limit = max_payload_for_type("TrackerRegister") as usize;
+        let limit = max_payload_for_type("TrackerServerRegister") as usize;
         assert!(
             size <= limit,
-            "TrackerRegister size {} exceeds limit {}",
+            "TrackerServerRegister size {} exceeds limit {}",
             size,
             limit
         );
     }
 
     #[test]
-    fn test_limit_tracker_list() {
-        let msg = TrackerClientMessage::TrackerList {
+    fn test_limit_tracker_server_list() {
+        let msg = TrackerClientMessage::TrackerServerList {
             password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
             locale: str_of_len(MAX_LOCALE_LENGTH),
         };
         let size = json_size(&msg);
-        let limit = max_payload_for_type("TrackerList") as usize;
+        let limit = max_payload_for_type("TrackerServerList") as usize;
         assert!(
             size <= limit,
-            "TrackerList size {} exceeds limit {}",
+            "TrackerServerList size {} exceeds limit {}",
             size,
             limit
         );
     }
 
     #[test]
-    fn test_limit_tracker_register_response() {
-        let msg = TrackerServerMessage::TrackerRegisterResponse {
+    fn test_limit_tracker_server_register_response() {
+        let msg = TrackerServerMessage::TrackerServerRegisterResponse {
             success: false,
             refresh_interval: Some(u32::MAX),
             error: Some(str_of_len(MAX_ERROR_LENGTH)),
             error_kind: Some(str_of_len(MAX_ERROR_KIND_LENGTH)),
         };
         let size = json_size(&msg);
-        let limit = max_payload_for_type("TrackerRegisterResponse") as usize;
+        let limit = max_payload_for_type("TrackerServerRegisterResponse") as usize;
         assert!(
             size <= limit,
-            "TrackerRegisterResponse size {} exceeds limit {}",
+            "TrackerServerRegisterResponse size {} exceeds limit {}",
             size,
             limit
         );
     }
 
     #[test]
-    fn test_limit_tracker_list_response_unlimited() {
-        // TrackerListResponse has no per-message-type limit (set to 0).
-        assert_eq!(max_payload_for_type("TrackerListResponse"), 0);
+    fn test_limit_tracker_server_list_response_unlimited() {
+        // TrackerServerListResponse has no per-message-type limit (set to 0).
+        assert_eq!(max_payload_for_type("TrackerServerListResponse"), 0);
     }
 }

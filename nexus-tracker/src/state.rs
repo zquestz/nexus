@@ -30,7 +30,7 @@ pub struct TrackerState {
     /// is open. Loaded once at startup from `<data-dir>/listing.hash`.
     pub listing_password_hash: Option<String>,
 
-    /// `refresh_interval` value advertised in `TrackerRegisterResponse`.
+    /// `refresh_interval` value advertised in `TrackerServerRegisterResponse`.
     /// Servers wait this many seconds between refreshes.
     pub refresh_interval: u32,
 }

@@ -5,11 +5,11 @@
 //! 1. TLS handshake.
 //! 2. Protocol handshake (BBS-shaped `Handshake` / `HandshakeResponse`).
 //! 3. Post-handshake dispatch on the first `TrackerClientMessage`:
-//!    - `TrackerRegister` → server connection. Enters the refresh loop;
-//!      subsequent `TrackerRegister` messages on the same connection
-//!      are refreshes. A `TrackerList` arrival on a server connection
+//!    - `TrackerServerRegister` → server connection. Enters the refresh loop;
+//!      subsequent `TrackerServerRegister` messages on the same connection
+//!      are refreshes. A `TrackerServerList` arrival on a server connection
 //!      is a role violation: surface `Error`, close.
-//!    - `TrackerList` → client connection. The handler sends one
+//!    - `TrackerServerList` → client connection. The handler sends one
 //!      response and we close.
 //! 4. Cleanup. Server connections are unregistered from the [`Registry`]
 //!    via a drop guard so cancellation, panics, and timeouts all clean
@@ -46,8 +46,10 @@ use crate::errors::{
     err_tracker_frame_error, err_tracker_handshake_required, err_tracker_role_violation,
 };
 use crate::handlers;
-use crate::handlers::tracker_list::{ListParams, handle_tracker_list};
-use crate::handlers::tracker_register::{RegisterOutcome, RegisterParams, handle_tracker_register};
+use crate::handlers::tracker_server_list::{ListParams, handle_tracker_server_list};
+use crate::handlers::tracker_server_register::{
+    RegisterOutcome, RegisterParams, handle_tracker_server_register,
+};
 use crate::registry::ConnectionId;
 use crate::state::TrackerState;
 
@@ -156,8 +158,8 @@ where
 
 /// Read the first post-handshake message and dispatch it to the
 /// matching handler. The connection's role is locked here:
-/// `TrackerRegister` → server connection (entering the refresh loop);
-/// `TrackerList` → client connection (handler runs and we close).
+/// `TrackerServerRegister` → server connection (entering the refresh loop);
+/// `TrackerServerList` → client connection (handler runs and we close).
 async fn dispatch_post_handshake<R, W>(
     reader: &mut FrameReader<R>,
     writer: &mut FrameWriter<W>,
@@ -184,11 +186,12 @@ where
     };
 
     match received.message {
-        TrackerClientMessage::TrackerList { password, locale } => {
-            handle_tracker_list(ListParams { password, locale }, state, writer, peer_addr).await?;
+        TrackerClientMessage::TrackerServerList { password, locale } => {
+            handle_tracker_server_list(ListParams { password, locale }, state, writer, peer_addr)
+                .await?;
             Ok(())
         }
-        TrackerClientMessage::TrackerRegister {
+        TrackerClientMessage::TrackerServerRegister {
             password,
             locale,
             name,
@@ -214,7 +217,8 @@ where
                 user_count,
                 allows_guest,
             };
-            let outcome = handle_tracker_register(params, None, state, writer, peer_addr).await?;
+            let outcome =
+                handle_tracker_server_register(params, None, state, writer, peer_addr).await?;
             match outcome {
                 RegisterOutcome::Registered(id) => {
                     // The drop guard ensures the registry slot is
@@ -237,7 +241,7 @@ where
     }
 }
 
-/// Loop reading further `TrackerRegister` (refresh) messages on a
+/// Loop reading further `TrackerServerRegister` (refresh) messages on a
 /// server connection until the peer disconnects, refresh times out,
 /// or sends a non-Register message (role violation).
 async fn run_refresh_loop<R, W>(
@@ -303,7 +307,7 @@ where
         };
 
         match received.message {
-            TrackerClientMessage::TrackerRegister {
+            TrackerClientMessage::TrackerServerRegister {
                 password,
                 locale,
                 name,
@@ -330,7 +334,8 @@ where
                     allows_guest,
                 };
                 let outcome =
-                    handle_tracker_register(params, Some(id), state, writer, peer_addr).await?;
+                    handle_tracker_server_register(params, Some(id), state, writer, peer_addr)
+                        .await?;
                 match outcome {
                     RegisterOutcome::Refreshed => continue,
                     RegisterOutcome::Rejected => {
@@ -348,9 +353,9 @@ where
                     }
                 }
             }
-            TrackerClientMessage::TrackerList { locale, .. } => {
+            TrackerClientMessage::TrackerServerList { locale, .. } => {
                 // Role violation: surface and close.
-                warn!(ip = %peer_addr.ip(), command = "TrackerList", "{}", LOG_ROLE_VIOLATION);
+                warn!(ip = %peer_addr.ip(), command = "TrackerServerList", "{}", LOG_ROLE_VIOLATION);
                 let translation_locale = if locale.is_empty() {
                     DEFAULT_LOCALE
                 } else {
@@ -358,7 +363,7 @@ where
                 };
                 send_tracker_error(
                     writer,
-                    Some("TrackerList".to_string()),
+                    Some("TrackerServerList".to_string()),
                     err_tracker_role_violation(translation_locale),
                 )
                 .await;

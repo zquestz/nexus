@@ -5,7 +5,7 @@
 //! responses. Covers:
 //!
 //! - Handshake (success, version mismatch, non-Handshake first message)
-//! - `TrackerRegister` + `TrackerList` roundtrip and disconnect-cleanup
+//! - `TrackerServerRegister` + `TrackerServerList` roundtrip and disconnect-cleanup
 //!
 //! The client uses a permissive cert verifier (accepts anything) since
 //! the tracker's cert is self-signed and the test doesn't yet need to
@@ -292,7 +292,7 @@ async fn test_non_handshake_first_message_yields_error() {
 }
 
 // =============================================================================
-// TrackerRegister + TrackerList roundtrip
+// TrackerServerRegister + TrackerServerList roundtrip
 // =============================================================================
 
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
@@ -375,9 +375,9 @@ async fn connect_and_handshake(server_addr: std::net::SocketAddr) -> (ClientRead
     (reader, writer)
 }
 
-/// Build a `TrackerRegister` for a server named `name`.
+/// Build a `TrackerServerRegister` for a server named `name`.
 fn make_register(name: &str, user_count: u32) -> TrackerClientMessage {
-    TrackerClientMessage::TrackerRegister {
+    TrackerClientMessage::TrackerServerRegister {
         password: None,
         locale: "en".to_string(),
         name: name.to_string(),
@@ -448,7 +448,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut s_writer, &make_register("Integration BBS", 7)).await;
     match read_tracker_server(&mut s_reader).await {
-        TrackerServerMessage::TrackerRegisterResponse {
+        TrackerServerMessage::TrackerServerRegisterResponse {
             success,
             refresh_interval,
             ..
@@ -456,7 +456,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
             assert!(success, "register should succeed on open tracker");
             assert_eq!(refresh_interval, Some(300));
         }
-        other => panic!("expected TrackerRegisterResponse, got {other:?}"),
+        other => panic!("expected TrackerServerRegisterResponse, got {other:?}"),
     }
 
     // Tracker is mutex-coordinated; once we've received the success
@@ -469,11 +469,11 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
         assert_eq!(listing[0].user_count, 7);
     }
 
-    // Phase 2: open a client connection and TrackerList.
+    // Phase 2: open a client connection and TrackerServerList.
     let (mut c_reader, mut c_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(
         &mut c_writer,
-        &TrackerClientMessage::TrackerList {
+        &TrackerClientMessage::TrackerServerList {
             password: None,
             locale: "en".to_string(),
         },
@@ -481,7 +481,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
     .await;
     let list_response = read_tracker_server(&mut c_reader).await;
     match list_response {
-        TrackerServerMessage::TrackerListResponse {
+        TrackerServerMessage::TrackerServerListResponse {
             success,
             servers,
             error,
@@ -494,7 +494,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
             assert_eq!(servers[0].name, "Integration BBS");
             assert_eq!(servers[0].user_count, 7);
         }
-        other => panic!("expected TrackerListResponse, got {other:?}"),
+        other => panic!("expected TrackerServerListResponse, got {other:?}"),
     }
     // Client connection closes after List (no further messages).
     drop(c_reader);
@@ -509,7 +509,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
     let (mut c2_reader, mut c2_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(
         &mut c2_writer,
-        &TrackerClientMessage::TrackerList {
+        &TrackerClientMessage::TrackerServerList {
             password: None,
             locale: "en".to_string(),
         },
@@ -517,7 +517,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
     .await;
     let list_response = read_tracker_server(&mut c2_reader).await;
     match list_response {
-        TrackerServerMessage::TrackerListResponse {
+        TrackerServerMessage::TrackerServerListResponse {
             success, servers, ..
         } => {
             assert!(success);
@@ -527,7 +527,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
                 "registry should be empty after server disconnect + cleanup"
             );
         }
-        other => panic!("expected TrackerListResponse, got {other:?}"),
+        other => panic!("expected TrackerServerListResponse, got {other:?}"),
     }
 }
 
@@ -570,10 +570,10 @@ async fn test_role_violation_on_server_connection_disconnects() {
     send_tracker_client(&mut s_writer, &make_register("Role Test BBS", 0)).await;
     let _ = read_tracker_server(&mut s_reader).await;
 
-    // Send a TrackerList on the server connection — role violation.
+    // Send a TrackerServerList on the server connection — role violation.
     send_tracker_client(
         &mut s_writer,
-        &TrackerClientMessage::TrackerList {
+        &TrackerClientMessage::TrackerServerList {
             password: None,
             locale: "en".to_string(),
         },
@@ -583,8 +583,8 @@ async fn test_role_violation_on_server_connection_disconnects() {
     match response {
         TrackerServerMessage::Error { command, .. } => {
             // The server-side dispatcher logs the offending command as
-            // `TrackerList` on the Error.
-            assert_eq!(command.as_deref(), Some("TrackerList"));
+            // `TrackerServerList` on the Error.
+            assert_eq!(command.as_deref(), Some("TrackerServerList"));
         }
         other => panic!("expected Error, got {other:?}"),
     }
@@ -623,7 +623,7 @@ async fn test_unauthorized_register_when_password_required() {
 
     let response = read_tracker_server(&mut s_reader).await;
     match response {
-        TrackerServerMessage::TrackerRegisterResponse {
+        TrackerServerMessage::TrackerServerRegisterResponse {
             success,
             error_kind,
             ..
@@ -631,7 +631,7 @@ async fn test_unauthorized_register_when_password_required() {
             assert!(!success);
             assert_eq!(error_kind.as_deref(), Some("unauthorized"));
         }
-        other => panic!("expected TrackerRegisterResponse, got {other:?}"),
+        other => panic!("expected TrackerServerRegisterResponse, got {other:?}"),
     }
 }
 
@@ -671,7 +671,7 @@ async fn test_stale_entry_evicted_when_server_stops_refreshing() {
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut s_writer, &make_register("Stale BBS", 0)).await;
     match read_tracker_server(&mut s_reader).await {
-        TrackerServerMessage::TrackerRegisterResponse { success: true, .. } => {}
+        TrackerServerMessage::TrackerServerRegisterResponse { success: true, .. } => {}
         other => panic!("expected successful register, got {other:?}"),
     }
 
@@ -699,7 +699,7 @@ async fn test_register_rejected_when_global_capacity_reached() {
     let (mut a_reader, mut a_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut a_writer, &make_register("First BBS", 0)).await;
     match read_tracker_server(&mut a_reader).await {
-        TrackerServerMessage::TrackerRegisterResponse { success: true, .. } => {}
+        TrackerServerMessage::TrackerServerRegisterResponse { success: true, .. } => {}
         other => panic!("expected first register to succeed, got {other:?}"),
     }
 
@@ -707,7 +707,7 @@ async fn test_register_rejected_when_global_capacity_reached() {
     let (mut b_reader, mut b_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut b_writer, &make_register("Second BBS", 0)).await;
     match read_tracker_server(&mut b_reader).await {
-        TrackerServerMessage::TrackerRegisterResponse {
+        TrackerServerMessage::TrackerServerRegisterResponse {
             success: false,
             error_kind,
             ..
@@ -747,14 +747,14 @@ async fn test_register_rejected_when_per_ip_cap_reached() {
     let (mut a_reader, mut a_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut a_writer, &make_register("A", 0)).await;
     match read_tracker_server(&mut a_reader).await {
-        TrackerServerMessage::TrackerRegisterResponse { success: true, .. } => {}
+        TrackerServerMessage::TrackerServerRegisterResponse { success: true, .. } => {}
         other => panic!("expected first register to succeed, got {other:?}"),
     }
 
     let (mut b_reader, mut b_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut b_writer, &make_register("B", 0)).await;
     match read_tracker_server(&mut b_reader).await {
-        TrackerServerMessage::TrackerRegisterResponse {
+        TrackerServerMessage::TrackerServerRegisterResponse {
             success: false,
             error_kind,
             ..
@@ -863,7 +863,7 @@ async fn test_websocket_handshake_register_list_roundtrip() {
     // Register over WS.
     send_tracker_client(&mut writer, &make_register("WS BBS", 9)).await;
     match read_tracker_server(&mut reader).await {
-        TrackerServerMessage::TrackerRegisterResponse {
+        TrackerServerMessage::TrackerServerRegisterResponse {
             success: true,
             refresh_interval,
             ..

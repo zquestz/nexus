@@ -119,8 +119,8 @@ pub fn verify_password(plain: &str, phc_hash: &str) -> Result<bool, String> {
         .is_ok())
 }
 
-/// Open / gated password check used by the `TrackerRegister` and
-/// `TrackerList` handlers.
+/// Open / gated password check used by the `TrackerServerRegister` and
+/// `TrackerServerList` handlers.
 ///
 /// Spec semantics:
 /// - `stored_hash = None` → flow is open; any password (or none) passes.

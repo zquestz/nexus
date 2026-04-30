@@ -445,8 +445,8 @@ pub struct ReceivedTrackerClientMessage {
 #[must_use]
 pub fn tracker_client_message_type(message: &TrackerClientMessage) -> &'static str {
     match message {
-        TrackerClientMessage::TrackerList { .. } => "TrackerList",
-        TrackerClientMessage::TrackerRegister { .. } => "TrackerRegister",
+        TrackerClientMessage::TrackerServerList { .. } => "TrackerServerList",
+        TrackerClientMessage::TrackerServerRegister { .. } => "TrackerServerRegister",
     }
 }
 
@@ -455,8 +455,10 @@ pub fn tracker_client_message_type(message: &TrackerClientMessage) -> &'static s
 pub fn tracker_server_message_type(message: &TrackerServerMessage) -> &'static str {
     match message {
         TrackerServerMessage::Error { .. } => "Error",
-        TrackerServerMessage::TrackerListResponse { .. } => "TrackerListResponse",
-        TrackerServerMessage::TrackerRegisterResponse { .. } => "TrackerRegisterResponse",
+        TrackerServerMessage::TrackerServerListResponse { .. } => "TrackerServerListResponse",
+        TrackerServerMessage::TrackerServerRegisterResponse { .. } => {
+            "TrackerServerRegisterResponse"
+        }
     }
 }
 

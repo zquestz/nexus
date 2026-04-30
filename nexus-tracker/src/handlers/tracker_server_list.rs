@@ -1,7 +1,7 @@
-//! `TrackerList` handler.
+//! `TrackerServerList` handler.
 //!
-//! A client connection sends one `TrackerList` request and the tracker
-//! replies with `TrackerListResponse` (success or typed failure) and
+//! A client connection sends one `TrackerServerList` request and the tracker
+//! replies with `TrackerServerListResponse` (success or typed failure) and
 //! closes the connection. There is no follow-up: client connections
 //! are short-lived by design.
 //!
@@ -34,15 +34,15 @@ use crate::errors::{
 };
 use crate::state::TrackerState;
 
-/// Decoded `TrackerList` request fields.
+/// Decoded `TrackerServerList` request fields.
 pub struct ListParams {
     pub password: Option<String>,
     pub locale: String,
 }
 
-/// Drive the `TrackerList` flow. Always sends exactly one
-/// `TrackerListResponse` to the wire.
-pub async fn handle_tracker_list<W>(
+/// Drive the `TrackerServerList` flow. Always sends exactly one
+/// `TrackerServerListResponse` to the wire.
+pub async fn handle_tracker_server_list<W>(
     params: ListParams,
     state: &TrackerState,
     writer: &mut FrameWriter<W>,
@@ -96,7 +96,7 @@ where
         .list();
     info!(ip = %peer_addr.ip(), count = servers.len(), "{}", LOG_LIST_RESPONSE);
 
-    let response = TrackerServerMessage::TrackerListResponse {
+    let response = TrackerServerMessage::TrackerServerListResponse {
         success: true,
         servers: Some(servers),
         error: None,
@@ -106,7 +106,7 @@ where
     Ok(())
 }
 
-/// Build and send a failure-shaped `TrackerListResponse`.
+/// Build and send a failure-shaped `TrackerServerListResponse`.
 async fn send_failure<W>(
     writer: &mut FrameWriter<W>,
     error_kind: &str,
@@ -115,7 +115,7 @@ async fn send_failure<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    let response = TrackerServerMessage::TrackerListResponse {
+    let response = TrackerServerMessage::TrackerServerListResponse {
         success: false,
         servers: None,
         error: Some(message),

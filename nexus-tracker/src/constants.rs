@@ -70,11 +70,11 @@ pub const ERR_SET_DATA_DIR_PERMS: &str = "Failed to set data directory permissio
 // =============================================================================
 
 /// Filename for the registration password hash within the data directory.
-/// Presence of this file gates `TrackerRegister`; absence means open registration.
+/// Presence of this file gates `TrackerServerRegister`; absence means open registration.
 pub const REGISTRATION_HASH_FILENAME: &str = "registration.hash";
 
 /// Filename for the listing password hash within the data directory.
-/// Presence of this file gates `TrackerList`; absence means open listing.
+/// Presence of this file gates `TrackerServerList`; absence means open listing.
 pub const LISTING_HASH_FILENAME: &str = "listing.hash";
 
 /// Permissions mode for password hash files on Unix (owner read/write only).
@@ -271,7 +271,7 @@ pub const ERR_BIND_FAILED: &str = "Failed to bind to ";
 pub const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Maximum time the tracker waits for the first role-establishing
-/// message (`TrackerRegister` or `TrackerList`) after a successful
+/// message (`TrackerServerRegister` or `TrackerServerList`) after a successful
 /// handshake. Spec §Timeouts: "Awaiting first role-establishing
 /// message after handshake — 30 seconds."
 pub const ROLE_ESTABLISH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
@@ -300,27 +300,27 @@ pub const LOG_HANDSHAKE_CLIENT_TOO_NEW: &str = "Handshake: client too new";
 // Post-handshake dispatch / role-locking
 /// Log: a server connection successfully registered a fresh entry.
 /// Paired with `ip = %peer_addr.ip(), id = %connection_id, name = %name`.
-pub const LOG_REGISTER_NEW: &str = "TrackerRegister: new entry";
+pub const LOG_REGISTER_NEW: &str = "TrackerServerRegister: new entry";
 
 /// Log: a server connection refreshed an existing entry.
 /// Paired with `id = %connection_id, user_count = %user_count`.
-pub const LOG_REGISTER_REFRESH: &str = "TrackerRegister: refresh";
+pub const LOG_REGISTER_REFRESH: &str = "TrackerServerRegister: refresh";
 
-/// Log: TrackerRegister rejected for an operator-actionable reason
+/// Log: TrackerServerRegister rejected for an operator-actionable reason
 /// (validation failure, capacity, unauthorized). Paired with
 /// `ip = %peer_addr.ip(), reason = %short_str`.
-pub const LOG_REGISTER_REJECTED: &str = "TrackerRegister: rejected";
+pub const LOG_REGISTER_REJECTED: &str = "TrackerServerRegister: rejected";
 
-/// Log: TrackerList received and a snapshot returned.
+/// Log: TrackerServerList received and a snapshot returned.
 /// Paired with `ip = %peer_addr.ip(), count = %returned_count`.
-pub const LOG_LIST_RESPONSE: &str = "TrackerList: response sent";
+pub const LOG_LIST_RESPONSE: &str = "TrackerServerList: response sent";
 
-/// Log: TrackerList rejected for an operator-actionable reason.
+/// Log: TrackerServerList rejected for an operator-actionable reason.
 /// Paired with `ip = %peer_addr.ip(), reason = %short_str`.
-pub const LOG_LIST_REJECTED: &str = "TrackerList: rejected";
+pub const LOG_LIST_REJECTED: &str = "TrackerServerList: rejected";
 
 /// Log: peer sent the wrong message type for its locked role
-/// (TrackerList on a server connection, or TrackerRegister on a
+/// (TrackerServerList on a server connection, or TrackerServerRegister on a
 /// client connection — but the latter is impossible since List
 /// connections close immediately). Paired with `ip = %peer_addr.ip()`.
 pub const LOG_ROLE_VIOLATION: &str = "Role violation";
@@ -328,7 +328,7 @@ pub const LOG_ROLE_VIOLATION: &str = "Role violation";
 /// Log: a registered server connection closed; its entry has been
 /// removed from the registry. Paired with `ip = %peer_addr.ip(), id = %id`.
 pub const LOG_REGISTER_DISCONNECTED: &str =
-    "TrackerRegister: connection closed; entry unregistered";
+    "TrackerServerRegister: connection closed; entry unregistered";
 
 /// Substring of the rustls "close_notify" warning we treat as benign
 /// (clients disconnecting without proper TLS shutdown).

@@ -111,12 +111,12 @@ producing a `nexus-trackerd` binary.
 Single commit to make the workspace ready for tracker code, with no
 tracker behavior yet.
 
-| File                        | Change                                                                                                                                                                                                          |
-| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `error_kind.rs`             | Add `Unauthorized`, `RateLimited`, `Capacity` variants + matching string constants. Update `as_str()`, `parse()`, all 4 test functions.                                                                         |
-| `lib.rs`                    | Add `TRACKER_PROTOCOL_VERSION = "0.1.0"` constant alongside `PROTOCOL_VERSION`.                                                                                                                                 |
-| `tracker_protocol.rs` (new) | `TrackerClientMessage` (`TrackerRegister`, `TrackerList`) and `TrackerServerMessage` (`TrackerRegisterResponse`, `TrackerListResponse`, `Error`) enums with full message structures matching the protocol spec. |
-| `framing/limits.rs`         | Per-message-type payload limits for the 4 typed tracker messages. `TrackerListResponse` set to 0 (unlimited) per spec; others sized via the existing helper functions.                                          |
+| File                        | Change                                                                                                                                                                                                                                  |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `error_kind.rs`             | Add `Unauthorized`, `RateLimited`, `Capacity` variants + matching string constants. Update `as_str()`, `parse()`, all 4 test functions.                                                                                                 |
+| `lib.rs`                    | Add `TRACKER_PROTOCOL_VERSION = "0.1.0"` constant alongside `PROTOCOL_VERSION`.                                                                                                                                                         |
+| `tracker_protocol.rs` (new) | `TrackerClientMessage` (`TrackerServerRegister`, `TrackerServerList`) and `TrackerServerMessage` (`TrackerServerRegisterResponse`, `TrackerServerListResponse`, `Error`) enums with full message structures matching the protocol spec. |
+| `framing/limits.rs`         | Per-message-type payload limits for the 4 typed tracker messages. `TrackerServerListResponse` set to 0 (unlimited) per spec; others sized via the existing helper functions.                                                            |
 
 **Phase 2: `nexus-tracker` crate (`cargo new nexus-tracker --bin`)**
 
@@ -129,7 +129,7 @@ nexus-tracker/
 │   ├── main.rs          # Entry point, signal handling, listener setup
 │   ├── args.rs          # CLI parsing (clap)
 │   ├── connection.rs    # Per-connection task, role locking
-│   ├── handlers/        # TrackerRegister, TrackerList, Error builders
+│   ├── handlers/        # TrackerServerRegister, TrackerServerList, Error builders
 │   ├── registry.rs      # In-memory entry storage (HashMap by connection id)
 │   ├── tls.rs           # Cert auto-gen / load (model on nexus-server)
 │   ├── auth.rs          # Argon2id password hash load + verify, SIGHUP reload
@@ -189,11 +189,11 @@ Platform-specific data-dir defaults (via `dirs::data_dir().join("nexus-trackerd"
 
 **Validations (clap value parsers):**
 
-| Flag                    | Range           | Notes                                                                                                                                                                                                                          |
-| ----------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--max-entries`         | `0..=1_000_000` | 0 = unlimited; default 10,000 catches typos and prevents unintentional unbounded growth                                                                                                                                        |
-| `--max-entries-per-ip`  | `0..=1000`      | 0 = unlimited; default 1 (one operator per source IP). Reuses `error_kind: capacity` on rejection. Operators on shared NAT'd networks can raise. See `docs/protocol/18-trackers.md` § Per-Source-IP Entry Cap.                  |
-| `--refresh-interval`    | `120..=600`     | Min: matches the protocol's 120s server-side floor. Max: matches the spec's "exceeding ~600 seconds risks NAT-induced disconnects" guidance.                                                                                   |
+| Flag                   | Range           | Notes                                                                                                                                                                                                          |
+| ---------------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--max-entries`        | `0..=1_000_000` | 0 = unlimited; default 10,000 catches typos and prevents unintentional unbounded growth                                                                                                                        |
+| `--max-entries-per-ip` | `0..=1000`      | 0 = unlimited; default 1 (one operator per source IP). Reuses `error_kind: capacity` on rejection. Operators on shared NAT'd networks can raise. See `docs/protocol/18-trackers.md` § Per-Source-IP Entry Cap. |
+| `--refresh-interval`   | `120..=600`     | Min: matches the protocol's 120s server-side floor. Max: matches the spec's "exceeding ~600 seconds risks NAT-induced disconnects" guidance.                                                                   |
 
 **Locales:**
 

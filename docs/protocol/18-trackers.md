@@ -79,7 +79,7 @@ Each flow is specified in its own section below.
 ## Server Registration
 
 The server connects to the tracker and keeps the connection open for the
-lifetime of the listing. It re-sends `TrackerRegister` on a fixed refresh
+lifetime of the listing. It re-sends `TrackerServerRegister` on a fixed refresh
 interval to keep its entry fresh and to update mutable fields (current user
 count). The refresh doubles as application-level keepalive: there is no
 separate Ping/Pong on the tracker port. When the server shuts down or the
@@ -89,7 +89,7 @@ connection drops for any reason, the tracker delists the entry.
 independent long-lived connections. Each connection is registered,
 refreshed, and torn down on its own; failure of one tracker has no effect
 on the others. The server is responsible for retry / backoff per-connection
-(see [Reconnect backoff](#trackerregisterresponse)).
+(see [Reconnect backoff](#trackerserverregisterresponse)).
 
 ```
 Server                                          Tracker
@@ -102,19 +102,19 @@ Server                                          Tracker
    │         HandshakeResponse { ..., fingerprint }│
    │ ◄─────────────────────────────────────────    │
    │                                               │
-   │  TrackerRegister { password?, ... }           │
+   │  TrackerServerRegister { password?, ... }     │
    │ ─────────────────────────────────────────►    │
    │                                               │
-   │         TrackerRegisterResponse {             │
+   │         TrackerServerRegisterResponse {       │
    │           success, refresh_interval }         │
    │ ◄─────────────────────────────────────────    │
    │                                               │
    │  ... ( refresh_interval elapses ) ...         │
    │                                               │
-   │  TrackerRegister { password?, ... }           │
+   │  TrackerServerRegister { password?, ... }     │
    │ ─────────────────────────────────────────►    │
    │                                               │
-   │         TrackerRegisterResponse {             │
+   │         TrackerServerRegisterResponse {       │
    │           success, refresh_interval }         │
    │ ◄─────────────────────────────────────────    │
    │                                               │
@@ -126,16 +126,16 @@ Server                                          Tracker
 
 ### Messages
 
-| Message                   | Direction        | Purpose                          |
-| ------------------------- | ---------------- | -------------------------------- |
-| `TrackerRegister`         | Server → Tracker | Initial registration and refresh |
-| `TrackerRegisterResponse` | Tracker → Server | Acknowledge registration         |
+| Message                         | Direction        | Purpose                          |
+| ------------------------------- | ---------------- | -------------------------------- |
+| `TrackerServerRegister`         | Server → Tracker | Initial registration and refresh |
+| `TrackerServerRegisterResponse` | Tracker → Server | Acknowledge registration         |
 
-The same `TrackerRegister` message is used for both initial registration and
+The same `TrackerServerRegister` message is used for both initial registration and
 each subsequent refresh; the tracker replaces the stored entry idempotently.
 There is no separate update message.
 
-### `TrackerRegister`
+### `TrackerServerRegister`
 
 Sent by the server to register or refresh its entry. The same structure is
 used for the initial registration and every refresh.
@@ -165,9 +165,9 @@ Nexus fingerprint format: 32 uppercase hex bytes separated by colons (95
 bytes total — `AA:BB:CC:...`). This matches the output of
 `format_certificate_fingerprint` in `nexus-common`, the single source of
 truth for fingerprint shape across the workspace. Trackers MUST validate
-this format on each `TrackerRegister` and reject non-canonical values
+this format on each `TrackerServerRegister` and reject non-canonical values
 (wrong length, lowercase hex, missing colons, non-hex characters) via
-`TrackerRegisterResponse { success: false, error }`. Strict validation
+`TrackerServerRegisterResponse { success: false, error }`. Strict validation
 guarantees clients see a single canonical form and can compare byte-equal
 without normalization.
 
@@ -179,7 +179,7 @@ Servers behind NAT or proxies that want a stable hostname should set
 
 **Address encoding.** When `address` is a hostname, it MAY be Unicode
 (IDN) or Punycode. Trackers store the address as-typed and return it
-unchanged in `TrackerListResponse`. Clients are responsible for IDN →
+unchanged in `TrackerServerListResponse`. Clients are responsible for IDN →
 Punycode conversion at connection time, matching the handling used for
 `ServerInfo.public_address` elsewhere in Nexus.
 
@@ -230,14 +230,14 @@ ranges of their declared types.
 }
 ```
 
-### `TrackerRegisterResponse`
+### `TrackerServerRegisterResponse`
 
-Sent by the tracker in reply to each `TrackerRegister`.
+Sent by the tracker in reply to each `TrackerServerRegister`.
 
 | Field              | Type    | Required   | Description                                                              |
 | ------------------ | ------- | ---------- | ------------------------------------------------------------------------ |
 | `success`          | boolean | Yes        | Whether the registration was accepted                                    |
-| `refresh_interval` | u32     | If success | Seconds the server should wait before sending the next `TrackerRegister` |
+| `refresh_interval` | u32     | If success | Seconds before sending the next `TrackerServerRegister`                  |
 | `error`            | string  | If failure | Human-readable explanation, localized per request `locale`               |
 | `error_kind`       | string  | If failure | Machine-readable error category (see [Errors](#errors))                  |
 
@@ -262,7 +262,7 @@ faster refreshes than that.
 connection after sending the response. The server should not retry on the
 same TLS session — if it wants to retry it must reconnect from scratch
 (handshake first). Common rejection reasons: missing or wrong password,
-malformed `TrackerRegister`, rate-limited, tracker at capacity.
+malformed `TrackerServerRegister`, rate-limited, tracker at capacity.
 
 **Reconnect backoff.** Servers SHOULD apply exponential backoff before
 reconnecting after a failure. A reasonable starting point: 5 seconds on
@@ -296,7 +296,7 @@ following occurs:
 
 - The TLS connection closes cleanly (server shutdown, restart).
 - The TLS connection drops uncleanly (network failure, peer reset).
-- The tracker has not received a `TrackerRegister` within its stale-entry
+- The tracker has not received a `TrackerServerRegister` within its stale-entry
   timeout (2× `refresh_interval` — e.g., 600 seconds at the recommended
   300s refresh).
 
@@ -305,8 +305,8 @@ connections that haven't been detected as broken at the TCP layer.
 
 ## Client Listing
 
-A client connects to the tracker, sends a single `TrackerList` request,
-receives the current set of registered servers in `TrackerListResponse`, and
+A client connects to the tracker, sends a single `TrackerServerList` request,
+receives the current set of registered servers in `TrackerServerListResponse`, and
 closes the connection. Listings are not subscriptions — clients re-query if
 they want fresh data.
 
@@ -321,10 +321,10 @@ Client                                          Tracker
    │         HandshakeResponse { ..., fingerprint }│
    │ ◄─────────────────────────────────────────    │
    │                                               │
-   │  TrackerList { password? }                    │
+   │  TrackerServerList { password? }              │
    │ ─────────────────────────────────────────►    │
    │                                               │
-   │         TrackerListResponse {                 │
+   │         TrackerServerListResponse {           │
    │           success, servers }                  │
    │ ◄─────────────────────────────────────────    │
    │                                               │
@@ -334,26 +334,26 @@ Client                                          Tracker
 
 ### Messages
 
-| Message               | Direction        | Purpose                         |
-| --------------------- | ---------------- | ------------------------------- |
-| `TrackerList`         | Client → Tracker | Request the current server list |
-| `TrackerListResponse` | Tracker → Client | Return the server list or error |
+| Message                     | Direction        | Purpose                         |
+| --------------------------- | ---------------- | ------------------------------- |
+| `TrackerServerList`         | Client → Tracker | Request the current server list |
+| `TrackerServerListResponse` | Tracker → Client | Return the server list or error |
 
-The tracker closes the connection after sending `TrackerListResponse`,
+The tracker closes the connection after sending `TrackerServerListResponse`,
 regardless of success or failure. There is no keepalive, refresh, or
 follow-up message defined for this flow.
 
-### `TrackerList`
+### `TrackerServerList`
 
 | Field      | Type   | Required | Description                                                            |
 | ---------- | ------ | -------- | ---------------------------------------------------------------------- |
 | `password` | string | If gated | Listing password (omit if the tracker is open)                         |
 | `locale`   | string | No       | BCP-47 language tag for translated text in responses (default: `"en"`) |
 
-`TrackerList` carries no filter, search, or pagination parameters in this
+`TrackerServerList` carries no filter, search, or pagination parameters in this
 version of the protocol. The tracker returns the full current set of
 registered servers; clients filter locally and may resort for views other
-than the default name ordering (see [`TrackerListResponse`](#trackerlistresponse)).
+than the default name ordering (see [`TrackerServerListResponse`](#trackerserverlistresponse)).
 
 **Example (open tracker):**
 
@@ -363,9 +363,9 @@ than the default name ordering (see [`TrackerListResponse`](#trackerlistresponse
 }
 ```
 
-### `TrackerListResponse`
+### `TrackerServerListResponse`
 
-Sent by the tracker in reply to `TrackerList`.
+Sent by the tracker in reply to `TrackerServerList`.
 
 | Field        | Type             | Required   | Description                                                |
 | ------------ | ---------------- | ---------- | ---------------------------------------------------------- |
@@ -377,7 +377,7 @@ Sent by the tracker in reply to `TrackerList`.
 **Empty list.** A tracker with zero registered servers responds with
 `success: true` and `servers: []`. An empty list is not a failure.
 
-**Listing size.** `TrackerListResponse` has no per-message-type payload
+**Listing size.** `TrackerServerListResponse` has no per-message-type payload
 limit. The tracker always returns the full set of registered servers in
 a single response.
 
@@ -388,12 +388,12 @@ order.
 
 **Failure handling.** When `success` is false, the tracker closes the
 connection after sending the response. Common rejection reasons: missing
-or wrong password, malformed `TrackerList`, rate-limited.
+or wrong password, malformed `TrackerServerList`, rate-limited.
 
 ### Server Entry
 
-Each element of `TrackerListResponse.servers` has the following structure.
-The fields mirror `TrackerRegister` with two differences: `password` is
+Each element of `TrackerServerListResponse.servers` has the following structure.
+The fields mirror `TrackerServerRegister` with two differences: `password` is
 never advertised, and `address` is always populated (the tracker resolves
 the connecting-IP fallback before listing).
 
@@ -405,15 +405,15 @@ the connecting-IP fallback before listing).
 | `port`           | u16    | Yes      | BBS TCP port                                                                     |
 | `websocket_port` | u16    | No       | BBS WebSocket port (if the server has `--websocket`)                             |
 | `version`        | string | Yes      | Server software version (e.g., `"0.8.1"`)                                        |
-| `fingerprint`    | string | Yes      | TLS cert fingerprint, canonical form (see [`TrackerRegister`](#trackerregister)) |
-| `user_count`     | u32    | Yes      | Distinct online users (see [`TrackerRegister`](#trackerregister))                |
+| `fingerprint`    | string | Yes      | TLS cert fingerprint, canonical form                                             |
+| `user_count`     | u32    | Yes      | Distinct online users (matches the user list)                                    |
 | `allows_guest`   | bool   | Yes      | Whether the guest account is enabled                                             |
 
 **Trust note.** The listed `fingerprint` is a display aid, not a trust
 assertion. Clients SHOULD perform their own TOFU fingerprint check on
 first connect to a server discovered via a tracker.
 
-**`TrackerListResponse` success example:**
+**`TrackerServerListResponse` success example:**
 
 ```json
 {
@@ -443,7 +443,7 @@ first connect to a server discovered via a tracker.
 }
 ```
 
-**`TrackerListResponse` failure example:**
+**`TrackerServerListResponse` failure example:**
 
 ```json
 {
@@ -459,8 +459,8 @@ Errors fall into two layers:
 
 1. **Typed flow responses.** Validation, authentication, and rate-limit
    failures that the tracker can attribute to a specific request are
-   returned via `TrackerRegisterResponse { success: false, error }` or
-   `TrackerListResponse { success: false, error }`.
+   returned via `TrackerServerRegisterResponse { success: false, error }` or
+   `TrackerServerListResponse { success: false, error }`.
 2. **The `Error` message.** Frame-level and role-level violations that
    don't map to a flow response — unknown message types, malformed frames,
    role mismatches — are reported via the generic `Error` message defined
@@ -482,8 +482,8 @@ the `locale` provided in the request. Clients receive pre-translated
 strings and can display them directly without further translation.
 
 When the tracker sends `Error` before the request's `locale` is known —
-for example, on a frame format violation that prevents `TrackerRegister`
-or `TrackerList` from being parsed — the message is rendered in the
+for example, on a frame format violation that prevents `TrackerServerRegister`
+or `TrackerServerList` from being parsed — the message is rendered in the
 implementation's default locale (`"en"` for the reference tracker).
 
 ### `Error`
@@ -504,7 +504,7 @@ was received; otherwise the tracker generates a fresh ID.
 ```json
 {
   "message": "Role violation: connection is in client mode",
-  "command": "TrackerRegister"
+  "command": "TrackerServerRegister"
 }
 ```
 
@@ -513,19 +513,19 @@ was received; otherwise the tracker generates a fresh ID.
 The first valid post-handshake message determines the connection's role
 and locks it in for the lifetime of the connection:
 
-- A connection whose first post-handshake message was `TrackerRegister` is
-  a **server connection**. Only subsequent `TrackerRegister` refreshes are
+- A connection whose first post-handshake message was `TrackerServerRegister` is
+  a **server connection**. Only subsequent `TrackerServerRegister` refreshes are
   valid on it.
-- A connection whose first post-handshake message was `TrackerList` is a
-  **client connection**. The tracker responds with `TrackerListResponse`
+- A connection whose first post-handshake message was `TrackerServerList` is a
+  **client connection**. The tracker responds with `TrackerServerListResponse`
   and closes the connection; no further messages are expected.
 
-Sending `TrackerList` on a server connection, or `TrackerRegister` on a
+Sending `TrackerServerList` on a server connection, or `TrackerServerRegister` on a
 client connection, is a role violation. The tracker responds with `Error`
 and disconnects.
 
-A first post-handshake message that is neither `TrackerRegister` nor
-`TrackerList` — for example, a BBS-port message — receives an `Error` and
+A first post-handshake message that is neither `TrackerServerRegister` nor
+`TrackerServerList` — for example, a BBS-port message — receives an `Error` and
 disconnect.
 
 ### Failure Conditions
@@ -576,7 +576,7 @@ nothing and can only be reached by people who already know its address.
 
 ### Public Listing Contents
 
-Every field in a `TrackerRegister` is visible to anyone with listing
+Every field in a `TrackerServerRegister` is visible to anyone with listing
 access. There is no per-entry visibility control and no encryption of
 individual entries; a listing password gates access to the whole list at
 once.
@@ -615,7 +615,7 @@ Trackers SHOULD rate-limit:
 
 - Failed authentication attempts per IP, to deter brute-force guessing.
 - Connection rate per IP, to bound resource usage.
-- `TrackerList` requests per IP, separately from connection rate, to
+- `TrackerServerList` requests per IP, separately from connection rate, to
   deter scraping.
 
 The protocol does not prescribe specific limits. Trackers are free to
@@ -641,7 +641,7 @@ entries cap=2 would produce. Operators on shared NAT'd networks
 register from the same egress IP can raise the cap explicitly.
 
 When the cap is hit, the tracker responds with a typed
-`TrackerRegisterResponse { success: false, error_kind: "capacity" }`.
+`TrackerServerRegisterResponse { success: false, error_kind: "capacity" }`.
 The same `error_kind` is used for both the global and per-IP caps;
 the human-readable `error` message is what distinguishes them.
 

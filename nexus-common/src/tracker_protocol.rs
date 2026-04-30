@@ -8,10 +8,10 @@
 //! but use this dedicated protocol for the post-handshake flows. Two flows
 //! are defined:
 //!
-//! - **Server registration**: long-lived connection sending `TrackerRegister`
+//! - **Server registration**: long-lived connection sending `TrackerServerRegister`
 //!   on a refresh interval, replaced idempotently each time.
-//! - **Client listing**: short-lived connection sending one `TrackerList` and
-//!   receiving one `TrackerListResponse`, then closing.
+//! - **Client listing**: short-lived connection sending one `TrackerServerList` and
+//!   receiving one `TrackerServerListResponse`, then closing.
 //!
 //! The first post-handshake message locks the connection's role for its
 //! lifetime; mixing message types is a protocol violation that triggers an
@@ -25,7 +25,7 @@ fn default_locale() -> String {
 
 /// A registered server in a tracker's listing.
 ///
-/// Returned to clients as elements of [`TrackerServerMessage::TrackerListResponse::servers`].
+/// Returned to clients as elements of [`TrackerServerMessage::TrackerServerListResponse::servers`].
 /// The tracker resolves the connecting-IP fallback before listing, so
 /// `address` is always populated even when the registering server omitted it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,15 +56,15 @@ pub struct ServerEntry {
 /// Tracker client request messages.
 ///
 /// The first one of these sent on a connection establishes the role:
-/// `TrackerRegister` → server connection, `TrackerList` → client connection.
+/// `TrackerServerRegister` → server connection, `TrackerServerList` → client connection.
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum TrackerClientMessage {
     /// Request the current list of registered servers.
     ///
     /// Sent by clients on a short-lived connection. The tracker responds
-    /// with [`TrackerServerMessage::TrackerListResponse`] and closes.
-    TrackerList {
+    /// with [`TrackerServerMessage::TrackerServerListResponse`] and closes.
+    TrackerServerList {
         /// Listing password (if the tracker is gated).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         password: Option<String>,
@@ -77,7 +77,7 @@ pub enum TrackerClientMessage {
     /// Sent by servers on a long-lived connection. The same structure is
     /// used for the initial registration and every subsequent refresh; the
     /// tracker replaces the stored entry idempotently.
-    TrackerRegister {
+    TrackerServerRegister {
         /// Registration password (if the tracker is gated).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         password: Option<String>,
@@ -127,12 +127,12 @@ pub enum TrackerServerMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         command: Option<String>,
     },
-    /// Response to [`TrackerClientMessage::TrackerList`].
+    /// Response to [`TrackerClientMessage::TrackerServerList`].
     ///
     /// On success, `servers` contains entries sorted alphabetically by
     /// `name` (case-insensitive ascending). On failure, `error` and
     /// `error_kind` are populated and the tracker closes the connection.
-    TrackerListResponse {
+    TrackerServerListResponse {
         /// Whether the listing request was accepted.
         success: bool,
         /// Array of registered servers (present on success).
@@ -147,16 +147,16 @@ pub enum TrackerServerMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         error_kind: Option<String>,
     },
-    /// Response to [`TrackerClientMessage::TrackerRegister`].
+    /// Response to [`TrackerClientMessage::TrackerServerRegister`].
     ///
     /// On success, `refresh_interval` instructs the server how long to
     /// wait before sending the next refresh. On failure, `error` and
     /// `error_kind` are populated and the tracker closes the connection.
-    TrackerRegisterResponse {
+    TrackerServerRegisterResponse {
         /// Whether the registration was accepted.
         success: bool,
         /// Seconds the server should wait before sending the next
-        /// `TrackerRegister` (present on success).
+        /// `TrackerServerRegister` (present on success).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         refresh_interval: Option<u32>,
         /// Human-readable explanation, localized per the request `locale`
@@ -175,12 +175,12 @@ pub enum TrackerServerMessage {
 impl std::fmt::Debug for TrackerClientMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TrackerClientMessage::TrackerList { password, locale } => f
-                .debug_struct("TrackerList")
+            TrackerClientMessage::TrackerServerList { password, locale } => f
+                .debug_struct("TrackerServerList")
                 .field("password", &password.as_ref().map(|_| "<REDACTED>"))
                 .field("locale", locale)
                 .finish(),
-            TrackerClientMessage::TrackerRegister {
+            TrackerClientMessage::TrackerServerRegister {
                 password,
                 locale,
                 name,
@@ -193,7 +193,7 @@ impl std::fmt::Debug for TrackerClientMessage {
                 user_count,
                 allows_guest,
             } => f
-                .debug_struct("TrackerRegister")
+                .debug_struct("TrackerServerRegister")
                 .field("password", &password.as_ref().map(|_| "<REDACTED>"))
                 .field("locale", locale)
                 .field("name", name)
@@ -215,8 +215,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tracker_register_serialization() {
-        let msg = TrackerClientMessage::TrackerRegister {
+    fn test_tracker_server_register_serialization() {
+        let msg = TrackerClientMessage::TrackerServerRegister {
             password: None,
             locale: "en".to_string(),
             name: "My BBS".to_string(),
@@ -230,42 +230,42 @@ mod tests {
             allows_guest: true,
         };
         let json = serde_json::to_string(&msg).expect("serialize");
-        assert!(json.contains(r#""type":"TrackerRegister""#));
+        assert!(json.contains(r#""type":"TrackerServerRegister""#));
         assert!(json.contains(r#""name":"My BBS""#));
         // Optional `password` is omitted when None
         assert!(!json.contains(r#""password""#));
     }
 
     #[test]
-    fn test_tracker_list_serialization() {
-        let msg = TrackerClientMessage::TrackerList {
+    fn test_tracker_server_list_serialization() {
+        let msg = TrackerClientMessage::TrackerServerList {
             password: Some("secret".to_string()),
             locale: "en".to_string(),
         };
         let json = serde_json::to_string(&msg).expect("serialize");
-        assert!(json.contains(r#""type":"TrackerList""#));
+        assert!(json.contains(r#""type":"TrackerServerList""#));
         assert!(json.contains(r#""password":"secret""#));
         assert!(json.contains(r#""locale":"en""#));
     }
 
     #[test]
-    fn test_tracker_register_response_success() {
-        let msg = TrackerServerMessage::TrackerRegisterResponse {
+    fn test_tracker_server_register_response_success() {
+        let msg = TrackerServerMessage::TrackerServerRegisterResponse {
             success: true,
             refresh_interval: Some(300),
             error: None,
             error_kind: None,
         };
         let json = serde_json::to_string(&msg).expect("serialize");
-        assert!(json.contains(r#""type":"TrackerRegisterResponse""#));
+        assert!(json.contains(r#""type":"TrackerServerRegisterResponse""#));
         assert!(json.contains(r#""success":true"#));
         assert!(json.contains(r#""refresh_interval":300"#));
         assert!(!json.contains(r#""error""#));
     }
 
     #[test]
-    fn test_tracker_register_response_failure() {
-        let msg = TrackerServerMessage::TrackerRegisterResponse {
+    fn test_tracker_server_register_response_failure() {
+        let msg = TrackerServerMessage::TrackerServerRegisterResponse {
             success: false,
             refresh_interval: None,
             error: Some("Invalid password".to_string()),
@@ -278,8 +278,8 @@ mod tests {
     }
 
     #[test]
-    fn test_tracker_list_response_empty() {
-        let msg = TrackerServerMessage::TrackerListResponse {
+    fn test_tracker_server_list_response_empty() {
+        let msg = TrackerServerMessage::TrackerServerListResponse {
             success: true,
             servers: Some(vec![]),
             error: None,
@@ -293,17 +293,17 @@ mod tests {
     fn test_tracker_error_serialization() {
         let msg = TrackerServerMessage::Error {
             message: "Role violation".to_string(),
-            command: Some("TrackerRegister".to_string()),
+            command: Some("TrackerServerRegister".to_string()),
         };
         let json = serde_json::to_string(&msg).expect("serialize");
         assert!(json.contains(r#""type":"Error""#));
         assert!(json.contains(r#""message":"Role violation""#));
-        assert!(json.contains(r#""command":"TrackerRegister""#));
+        assert!(json.contains(r#""command":"TrackerServerRegister""#));
     }
 
     #[test]
     fn test_password_redacted_in_debug() {
-        let msg = TrackerClientMessage::TrackerList {
+        let msg = TrackerClientMessage::TrackerServerList {
             password: Some("super-secret".to_string()),
             locale: "en".to_string(),
         };
@@ -315,14 +315,14 @@ mod tests {
     #[test]
     fn test_default_locale_on_deserialize() {
         // When `locale` is omitted, deserialization uses default "en".
-        let json = r#"{"type":"TrackerList"}"#;
+        let json = r#"{"type":"TrackerServerList"}"#;
         let msg: TrackerClientMessage = serde_json::from_str(json).expect("deserialize");
         match msg {
-            TrackerClientMessage::TrackerList { locale, password } => {
+            TrackerClientMessage::TrackerServerList { locale, password } => {
                 assert_eq!(locale, "en");
                 assert!(password.is_none());
             }
-            _ => panic!("expected TrackerList"),
+            _ => panic!("expected TrackerServerList"),
         }
     }
 
