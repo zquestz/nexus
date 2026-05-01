@@ -595,6 +595,15 @@ fn jitter(base: Duration) -> Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
+
+    use crate::db::testing::create_test_db;
+    use crate::db::{CreateTrackerParams, Database};
+    use crate::tracker::testing::{MockBehavior, MockTracker, RegisterPolicy};
+    use crate::users::UserManager;
+
+    const TEST_FINGERPRINT: &str = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
+        AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
 
     #[test]
     fn jitter_stays_within_25_percent_band() {
@@ -619,5 +628,254 @@ mod tests {
             backoff = (backoff * 2).min(BACKOFF_CAP);
         }
         assert_eq!(backoff, BACKOFF_CAP);
+    }
+
+    /// Build a `PublisherContext` over a fresh in-memory DB. Sets a
+    /// distinct `server_name` and `public_address` so payload tests can
+    /// verify the right values flow through.
+    async fn setup_context() -> (Arc<Database>, Arc<PublisherContext>) {
+        let pool = create_test_db().await;
+        let db = Arc::new(Database::new(pool));
+        db.config
+            .set_server_name("Test BBS")
+            .await
+            .expect("set server name");
+        db.config
+            .set_server_description("a test server")
+            .await
+            .expect("set description");
+        db.config
+            .set_public_address("bbs.example.com")
+            .await
+            .expect("set public address");
+        let user_manager = Arc::new(UserManager::new());
+        let context = Arc::new(PublisherContext {
+            db: db.clone(),
+            user_manager,
+            server_fingerprint: TEST_FINGERPRINT.to_string(),
+            server_port: 7500,
+            server_websocket_port: Some(7502),
+        });
+        (db, context)
+    }
+
+    /// Insert one tracker row pointing at the mock's address. Returns
+    /// the inserted record.
+    async fn seed_tracker(
+        db: &Database,
+        addr: std::net::SocketAddr,
+        fingerprint: Option<&str>,
+        password: Option<&str>,
+    ) -> TrackerRecord {
+        db.trackers
+            .create(CreateTrackerParams {
+                address: &addr.ip().to_string(),
+                port: addr.port(),
+                fingerprint,
+                password,
+                name: "Mock",
+                enabled: true,
+            })
+            .await
+            .expect("seed tracker row")
+    }
+
+    /// Poll the status until `pred` returns true, or until `timeout`
+    /// elapses. Returns the final snapshot when `pred` matched, else
+    /// `None`.
+    async fn wait_for_status(
+        status: &Arc<RwLock<TrackerStatus>>,
+        timeout: Duration,
+        pred: impl Fn(&TrackerStatus) -> bool,
+    ) -> Option<TrackerStatus> {
+        let start = Instant::now();
+        loop {
+            {
+                let snap = status.read().expect("status lock").clone();
+                if pred(&snap) {
+                    return Some(snap);
+                }
+            }
+            if start.elapsed() >= timeout {
+                return None;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn build_register_payload_includes_all_fields() {
+        let (_db, context) = setup_context().await;
+
+        let record = TrackerRecord {
+            id: 1,
+            address: "tracker.example.com".to_string(),
+            port: 7510,
+            fingerprint: Some(TEST_FINGERPRINT.to_string()),
+            password: Some("hunter2".to_string()),
+            name: "Test".to_string(),
+            enabled: true,
+            created_at: 0,
+            updated_at: 0,
+        };
+
+        let payload = build_register_payload(&record, &context)
+            .await
+            .expect("payload");
+
+        match payload {
+            TrackerClientMessage::TrackerServerRegister {
+                password,
+                name,
+                description,
+                address,
+                port,
+                websocket_port,
+                fingerprint,
+                user_count,
+                allows_guest,
+                ..
+            } => {
+                assert_eq!(password.as_deref(), Some("hunter2"));
+                assert_eq!(name, "Test BBS");
+                assert_eq!(description.as_deref(), Some("a test server"));
+                assert_eq!(address.as_deref(), Some("bbs.example.com"));
+                assert_eq!(port, 7500);
+                assert_eq!(websocket_port, Some(7502));
+                assert_eq!(fingerprint, TEST_FINGERPRINT);
+                assert_eq!(user_count, 0);
+                // The bootstrap migration creates the guest account
+                // with `enabled = false` by default.
+                assert!(!allows_guest);
+            }
+            other => panic!("expected TrackerServerRegister, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn happy_path_marks_connected() {
+        let mock = MockTracker::start(MockBehavior::default()).await;
+        let (db, context) = setup_context().await;
+        let record = seed_tracker(&db, mock.addr, None, None).await;
+
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let task = tokio::spawn(run(
+            record.clone(),
+            Arc::clone(&status),
+            Arc::clone(&context),
+        ));
+
+        let snap = wait_for_status(&status, Duration::from_secs(5), |s| s.connected)
+            .await
+            .expect("expected connected status within timeout");
+        assert!(snap.connected);
+        assert_eq!(snap.refresh_interval, Some(300));
+        assert!(snap.last_error.is_none());
+        assert!(snap.last_error_kind.is_none());
+
+        task.abort();
+        let _ = task.await;
+        mock.stop().await;
+    }
+
+    #[tokio::test]
+    async fn tofu_writes_pin_on_first_connect() {
+        let mock = MockTracker::start(MockBehavior::default()).await;
+        let mock_fp = mock.fingerprint.clone();
+        let (db, context) = setup_context().await;
+        // Seed with no pin → TOFU path.
+        let record = seed_tracker(&db, mock.addr, None, None).await;
+        assert!(record.fingerprint.is_none());
+
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let task = tokio::spawn(run(
+            record.clone(),
+            Arc::clone(&status),
+            Arc::clone(&context),
+        ));
+
+        wait_for_status(&status, Duration::from_secs(5), |s| s.connected)
+            .await
+            .expect("expected connected status within timeout");
+
+        // The DB row's fingerprint should now be the mock's actual cert FP.
+        let stored = db
+            .trackers
+            .get_by_id(record.id)
+            .await
+            .expect("get_by_id")
+            .expect("row present");
+        assert_eq!(stored.fingerprint.as_deref(), Some(mock_fp.as_str()));
+
+        task.abort();
+        let _ = task.await;
+        mock.stop().await;
+    }
+
+    #[tokio::test]
+    async fn fingerprint_mismatch_parks_pending() {
+        let mock = MockTracker::start(MockBehavior::default()).await;
+        let mock_fp = mock.fingerprint.clone();
+        let (db, context) = setup_context().await;
+
+        // Seed with a wrong pin so Stage 1 fails when the publisher
+        // compares it against the mock's actual TLS cert.
+        let wrong_pin = "11:22:33:44:55:66:77:88:99:00:AA:BB:CC:DD:EE:FF:\
+            11:22:33:44:55:66:77:88:99:00:AA:BB:CC:DD:EE:FF";
+        let record = seed_tracker(&db, mock.addr, Some(wrong_pin), None).await;
+
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let task = tokio::spawn(run(
+            record.clone(),
+            Arc::clone(&status),
+            Arc::clone(&context),
+        ));
+
+        let snap = wait_for_status(&status, Duration::from_secs(5), |s| {
+            s.last_error_kind.as_deref() == Some("fingerprint_mismatch")
+        })
+        .await
+        .expect("expected fingerprint_mismatch status within timeout");
+
+        assert_eq!(snap.pending_fingerprint.as_deref(), Some(mock_fp.as_str()));
+        assert!(!snap.connected);
+
+        // Stage 1 mismatch is unrecoverable → task exits.
+        let exited = tokio::time::timeout(Duration::from_secs(2), task).await;
+        assert!(exited.is_ok(), "task should exit on fingerprint_mismatch");
+
+        mock.stop().await;
+    }
+
+    #[tokio::test]
+    async fn unrecoverable_error_kind_exits_task() {
+        let mock = MockTracker::start(MockBehavior {
+            register_response: RegisterPolicy::Failure {
+                error_kind: "unauthorized".to_string(),
+                error: "wrong password".to_string(),
+            },
+            ..Default::default()
+        })
+        .await;
+        let (db, context) = setup_context().await;
+        let record = seed_tracker(&db, mock.addr, None, None).await;
+
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let task = tokio::spawn(run(
+            record.clone(),
+            Arc::clone(&status),
+            Arc::clone(&context),
+        ));
+
+        // Task should exit shortly after receiving the rejection — no
+        // backoff, no retry.
+        let exited = tokio::time::timeout(Duration::from_secs(5), task).await;
+        assert!(exited.is_ok(), "task should exit on unrecoverable kind");
+
+        let snap = status.read().expect("status lock").clone();
+        assert_eq!(snap.last_error_kind.as_deref(), Some("unauthorized"));
+        assert!(!snap.connected);
+
+        mock.stop().await;
     }
 }

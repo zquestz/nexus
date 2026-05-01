@@ -4764,6 +4764,7 @@ dependencies = [
  "iprange",
  "nexus-common",
  "rand 0.10.1",
+ "rcgen 0.14.7",
  "regex",
  "serde_json",
  "sha2 0.11.0",

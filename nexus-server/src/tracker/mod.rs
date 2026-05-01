@@ -13,6 +13,8 @@ mod context;
 mod manager;
 mod status;
 mod task;
+#[cfg(test)]
+mod testing;
 mod tls;
 
 pub use context::PublisherContext;
