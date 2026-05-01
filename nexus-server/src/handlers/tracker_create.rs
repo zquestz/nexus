@@ -215,6 +215,9 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use crate::handlers::tracker_delete::handle_tracker_delete;
+    use crate::handlers::tracker_list::handle_tracker_list;
+    use crate::handlers::tracker_update::{TrackerUpdateRequest, handle_tracker_update};
 
     fn valid_request() -> TrackerCreateRequest {
         TrackerCreateRequest {
@@ -532,6 +535,140 @@ mod tests {
                 );
             }
             other => panic!("Expected TrackerCreateResponse, got {other:?}"),
+        }
+    }
+
+    /// Walk a full tracker admin lifecycle through the protocol layer:
+    /// create → list → update (rename) → list → delete → list. Catches
+    /// regressions in the handler-to-manager wiring (e.g. a future
+    /// refactor that forgets to call `manager.spawn`/`replace`/`terminate`)
+    /// that the per-handler unit tests would miss.
+    #[tokio::test]
+    async fn lifecycle_create_list_update_delete() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[
+                db::Permission::TrackerCreate,
+                db::Permission::TrackerList,
+                db::Permission::TrackerEdit,
+                db::Permission::TrackerDelete,
+            ],
+            false,
+        )
+        .await;
+
+        // ---- Create ----
+        handle_tracker_create(
+            valid_request(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .expect("create call");
+        let id = match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerCreateResponse {
+                success: true,
+                id: Some(id),
+                ..
+            } => id,
+            other => panic!("expected create success, got {other:?}"),
+        };
+        // Manager spawned a task for the new row.
+        assert!(
+            test_ctx.tracker_manager.status_for(id).is_some(),
+            "manager should have spawned a task on create"
+        );
+
+        // ---- List shows 1 entry with original name ----
+        handle_tracker_list(Some(session_id), &mut test_ctx.handler_context())
+            .await
+            .expect("list call");
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerListResponse {
+                success: true,
+                trackers,
+                ..
+            } => {
+                assert_eq!(trackers.len(), 1);
+                assert_eq!(trackers[0].id, id);
+                assert_eq!(trackers[0].name, "Public");
+            }
+            other => panic!("expected list success, got {other:?}"),
+        }
+
+        // ---- Update (rename) ----
+        handle_tracker_update(
+            TrackerUpdateRequest {
+                id,
+                address: "tracker.example.com".to_string(),
+                port: 7510,
+                fingerprint: None,
+                password: None,
+                name: "Renamed".to_string(),
+                enabled: true,
+            },
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .expect("update call");
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerUpdateResponse { success: true, .. } => {}
+            other => panic!("expected update success, got {other:?}"),
+        }
+        // Manager replaced the task — still tracking this id.
+        assert!(
+            test_ctx.tracker_manager.status_for(id).is_some(),
+            "manager should still have a task after update"
+        );
+
+        // ---- List shows 1 entry with new name ----
+        handle_tracker_list(Some(session_id), &mut test_ctx.handler_context())
+            .await
+            .expect("list call after update");
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerListResponse {
+                success: true,
+                trackers,
+                ..
+            } => {
+                assert_eq!(trackers.len(), 1);
+                assert_eq!(trackers[0].id, id);
+                assert_eq!(trackers[0].name, "Renamed");
+            }
+            other => panic!("expected list success after update, got {other:?}"),
+        }
+
+        // ---- Delete ----
+        handle_tracker_delete(id, Some(session_id), &mut test_ctx.handler_context())
+            .await
+            .expect("delete call");
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerDeleteResponse { success: true, .. } => {}
+            other => panic!("expected delete success, got {other:?}"),
+        }
+        // Manager dropped the task.
+        assert!(
+            test_ctx.tracker_manager.status_for(id).is_none(),
+            "manager should have terminated the task on delete"
+        );
+
+        // ---- List shows empty ----
+        handle_tracker_list(Some(session_id), &mut test_ctx.handler_context())
+            .await
+            .expect("list call after delete");
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerListResponse {
+                success: true,
+                trackers,
+                ..
+            } => {
+                assert!(trackers.is_empty(), "list should be empty after delete");
+            }
+            other => panic!("expected empty list, got {other:?}"),
         }
     }
 }
