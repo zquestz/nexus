@@ -28,6 +28,7 @@ use crate::handlers::{
     self, HandlerContext, err_invalid_message_format, err_message_not_supported,
 };
 use crate::ip_rule_cache::IpRuleCache;
+use crate::tracker::TrackerManager;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
 use crate::voice::{VoiceRegistry, send_voice_leave_notifications};
@@ -46,6 +47,7 @@ pub struct ConnectionParams {
     pub channel_manager: ChannelManager,
     pub transfer_registry: Arc<TransferRegistry>,
     pub voice_registry: VoiceRegistry,
+    pub tracker_manager: Arc<TrackerManager>,
     pub fingerprint: &'static str,
     pub flood_config: Arc<FloodConfig>,
 }
@@ -105,6 +107,7 @@ where
         channel_manager,
         transfer_registry,
         voice_registry,
+        tracker_manager,
         fingerprint,
         flood_config,
     } = params;
@@ -162,6 +165,7 @@ where
                             channel_manager: &channel_manager,
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: &voice_registry,
+                            tracker_manager: &tracker_manager,
                             fingerprint,
                             flood_config: flood_config.clone(),
                         };
@@ -637,14 +641,53 @@ where
         ClientMessage::GroupDelete { id } => {
             handlers::handle_group_delete(id, conn_state.session_id, ctx).await?;
         }
-        // Tracker admin messages — handlers landing in a later chunk.
-        // For now, ignore to keep the workspace building. No client
-        // sends these messages yet.
-        ClientMessage::TrackerList
-        | ClientMessage::TrackerEdit { .. }
-        | ClientMessage::TrackerCreate { .. }
-        | ClientMessage::TrackerUpdate { .. }
-        | ClientMessage::TrackerDelete { .. } => {}
+        ClientMessage::TrackerList => {
+            handlers::handle_tracker_list(conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::TrackerEdit { id } => {
+            handlers::handle_tracker_edit(id, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::TrackerCreate {
+            address,
+            port,
+            fingerprint,
+            password,
+            name,
+            enabled,
+        } => {
+            let request = handlers::TrackerCreateRequest {
+                address,
+                port,
+                fingerprint,
+                password,
+                name,
+                enabled,
+            };
+            handlers::handle_tracker_create(request, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::TrackerUpdate {
+            id,
+            address,
+            port,
+            fingerprint,
+            password,
+            name,
+            enabled,
+        } => {
+            let request = handlers::TrackerUpdateRequest {
+                id,
+                address,
+                port,
+                fingerprint,
+                password,
+                name,
+                enabled,
+            };
+            handlers::handle_tracker_update(request, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::TrackerDelete { id } => {
+            handlers::handle_tracker_delete(id, conn_state.session_id, ctx).await?;
+        }
     }
 
     Ok(())

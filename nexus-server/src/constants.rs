@@ -318,6 +318,9 @@ pub const ERR_SET_DATA_DIR_PERMS: &str = "Failed to set data directory permissio
 /// Database initialization error
 pub const ERR_DATABASE_INIT: &str = "Failed to initialize database: ";
 
+/// Tracker publisher bootstrap error
+pub const ERR_TRACKER_BOOTSTRAP_FAILED: &str = "Failed to bootstrap tracker publisher: ";
+
 /// TLS initialization error
 pub const ERR_TLS_INIT: &str = "Failed to initialize TLS: ";
 
@@ -756,6 +759,26 @@ pub const LOG_GROUP_EDIT_DB_ERROR: &str = "GroupEdit: database error";
 pub const LOG_GROUP_LIST_NOT_LOGGED_IN: &str = "GroupList: not logged in";
 pub const LOG_GROUP_LIST_PERMISSION_DENIED: &str = "GroupList: permission denied";
 pub const LOG_GROUP_LIST_DB_ERROR: &str = "GroupList: database error";
+
+// --- Handler: Tracker ---
+pub const LOG_TRACKER_LIST_NOT_LOGGED_IN: &str = "TrackerList: not logged in";
+pub const LOG_TRACKER_LIST_PERMISSION_DENIED: &str = "TrackerList: permission denied";
+pub const LOG_TRACKER_LIST_DB_ERROR: &str = "TrackerList: database error";
+pub const LOG_TRACKER_EDIT_NOT_LOGGED_IN: &str = "TrackerEdit: not logged in";
+pub const LOG_TRACKER_EDIT_PERMISSION_DENIED: &str = "TrackerEdit: permission denied";
+pub const LOG_TRACKER_EDIT_DB_ERROR: &str = "TrackerEdit: database error";
+pub const LOG_TRACKER_CREATE_NOT_LOGGED_IN: &str = "TrackerCreate: not logged in";
+pub const LOG_TRACKER_CREATE_PERMISSION_DENIED: &str = "TrackerCreate: permission denied";
+pub const LOG_TRACKER_CREATE_DB_ERROR: &str = "TrackerCreate: database error";
+pub const LOG_TRACKER_CREATE_SUCCESS: &str = "TrackerCreate: success";
+pub const LOG_TRACKER_UPDATE_NOT_LOGGED_IN: &str = "TrackerUpdate: not logged in";
+pub const LOG_TRACKER_UPDATE_PERMISSION_DENIED: &str = "TrackerUpdate: permission denied";
+pub const LOG_TRACKER_UPDATE_DB_ERROR: &str = "TrackerUpdate: database error";
+pub const LOG_TRACKER_UPDATE_SUCCESS: &str = "TrackerUpdate: success";
+pub const LOG_TRACKER_DELETE_NOT_LOGGED_IN: &str = "TrackerDelete: not logged in";
+pub const LOG_TRACKER_DELETE_PERMISSION_DENIED: &str = "TrackerDelete: permission denied";
+pub const LOG_TRACKER_DELETE_DB_ERROR: &str = "TrackerDelete: database error";
+pub const LOG_TRACKER_DELETE_SUCCESS: &str = "TrackerDelete: success";
 
 // --- Handler: Chat ---
 pub const LOG_CHAT_SEND_NOT_LOGGED_IN: &str = "ChatSend: not logged in";

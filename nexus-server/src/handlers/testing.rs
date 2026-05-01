@@ -114,6 +114,7 @@ pub struct TestContext {
     pub channel_manager: ChannelManager,
     pub transfer_registry: Arc<TransferRegistry>,
     pub voice_registry: VoiceRegistry,
+    pub tracker_manager: crate::tracker::TrackerManager,
     pub flood_config: Arc<crate::flood::FloodConfig>,
     /// Keep temp dir alive for tests that use file areas
     #[allow(dead_code)]
@@ -140,6 +141,7 @@ impl TestContext {
             channel_manager: &self.channel_manager,
             transfer_registry: self.transfer_registry.clone(),
             voice_registry: &self.voice_registry,
+            tracker_manager: &self.tracker_manager,
             fingerprint: TEST_FINGERPRINT,
             flood_config: self.flood_config.clone(),
         }
@@ -215,6 +217,19 @@ pub async fn create_test_context() -> TestContext {
 
     // Create voice registry for tests
     let voice_registry = VoiceRegistry::new();
+
+    // Create tracker manager for tests. The publisher tasks won't
+    // actually run anything because no rows are seeded; admin handler
+    // tests that exercise the manager populate it via spawn() / replace().
+    let publisher_context = Arc::new(crate::tracker::PublisherContext {
+        db: Arc::new(db.clone()),
+        user_manager: Arc::new(user_manager.clone()),
+        server_fingerprint: TEST_FINGERPRINT.to_string(),
+        server_port: nexus_common::DEFAULT_PORT,
+        server_websocket_port: None,
+    });
+    let tracker_manager = crate::tracker::TrackerManager::new(publisher_context);
+
     let flood_config = Arc::new(crate::flood::FloodConfig::new(5, 20));
 
     TestContext {
@@ -233,6 +248,7 @@ pub async fn create_test_context() -> TestContext {
         channel_manager,
         transfer_registry,
         voice_registry,
+        tracker_manager,
         flood_config,
         temp_dir,
     }

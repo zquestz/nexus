@@ -6,12 +6,6 @@
 //! interval are runtime state and live in memory in the publisher task
 //! manager, not here.
 
-// The full `TrackerDb` API is dead code until the tracker handlers land
-// (chunk 4 of the publisher infrastructure). Until then, the methods
-// here have no callers in production code; tests inside this file
-// exercise them in isolation. Remove this allow when the handlers ship.
-#![allow(dead_code)]
-
 use chrono::Utc;
 use sqlx::sqlite::SqlitePool;
 

@@ -44,8 +44,6 @@ pub struct Database {
     pub trusts: TrustDb,
     pub channels: ChannelDb,
     pub groups: GroupDb,
-    /// Dead until chunk 4 (handlers wire it into request flow).
-    #[allow(dead_code)]
     pub trackers: TrackerDb,
 }
 
@@ -75,7 +73,6 @@ impl Database {
     /// # Errors
     ///
     /// Returns `sqlx::Error` if either underlying query fails.
-    #[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
     pub async fn tracker_registration_fields(
         &self,
     ) -> Result<TrackerRegistrationFields, sqlx::Error> {
@@ -93,7 +90,6 @@ impl Database {
 /// Fields the publisher task needs to populate `TrackerServerRegister`
 /// payloads. Bundled from [`ConfigDb::get_tracker_fields`] and
 /// [`UserDb::guest_enabled`] via [`Database::tracker_registration_fields`].
-#[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
 pub struct TrackerRegistrationFields {
     pub server_name: String,
     pub description: Option<String>,

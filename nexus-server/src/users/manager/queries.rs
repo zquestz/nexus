@@ -32,7 +32,6 @@ impl UserManager {
     /// Saturating cast to `u32` — `UserSession`s in memory cap well
     /// below 2³² in any realistic deployment.
     #[must_use]
-    #[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
     pub async fn user_count(&self) -> u32 {
         let users = self.users.read().await;
         let mut nicknames = std::collections::HashSet::new();

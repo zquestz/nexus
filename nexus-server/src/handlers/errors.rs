@@ -1266,14 +1266,8 @@ pub fn err_group_shared_mismatch(locale: &str) -> String {
 // ========================================================================
 // Tracker Errors
 // ========================================================================
-//
-// Used by the tracker admin handlers (chunk 4). Each helper is dead
-// code until the corresponding handler lands; #[allow(dead_code)] is
-// applied per-helper so the dead-code warning vanishes one-by-one as
-// handlers consume them.
 
 /// Get translated "tracker not found" error.
-#[allow(dead_code)] // dead until chunk 4 (tracker handlers consume it)
 pub fn err_tracker_not_found(locale: &str) -> String {
     t(locale, "err-tracker-not-found")
 }
@@ -1281,13 +1275,11 @@ pub fn err_tracker_not_found(locale: &str) -> String {
 /// Get translated "tracker name invalid" error (empty, control chars,
 /// or newlines — `validate_tracker_name` failure not covered by the
 /// length-specific helper).
-#[allow(dead_code)] // dead until chunk 4 (tracker handlers consume it)
 pub fn err_tracker_name_invalid(locale: &str) -> String {
     t(locale, "err-tracker-name-invalid")
 }
 
 /// Get translated "tracker name too long" error.
-#[allow(dead_code)] // dead until chunk 4 (tracker handlers consume it)
 pub fn err_tracker_name_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
@@ -1298,13 +1290,11 @@ pub fn err_tracker_name_too_long(locale: &str, max_length: usize) -> String {
 
 /// Get translated "tracker address invalid" error (any
 /// `validate_public_address` rejection other than length).
-#[allow(dead_code)] // dead until chunk 4 (tracker handlers consume it)
 pub fn err_tracker_address_invalid(locale: &str) -> String {
     t(locale, "err-tracker-address-invalid")
 }
 
 /// Get translated "tracker address too long" error.
-#[allow(dead_code)] // dead until chunk 4 (tracker handlers consume it)
 pub fn err_tracker_address_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
@@ -1315,20 +1305,17 @@ pub fn err_tracker_address_too_long(locale: &str, max_length: usize) -> String {
 
 /// Get translated "tracker port invalid" error (zero or otherwise
 /// out-of-range, though `u16` deserialization handles the latter).
-#[allow(dead_code)] // dead until chunk 4 (tracker handlers consume it)
 pub fn err_tracker_port_invalid(locale: &str) -> String {
     t(locale, "err-tracker-port-invalid")
 }
 
 /// Get translated "tracker fingerprint invalid" error (not in canonical
 /// 95-byte uppercase form).
-#[allow(dead_code)] // dead until chunk 4 (tracker handlers consume it)
 pub fn err_tracker_fingerprint_invalid(locale: &str) -> String {
     t(locale, "err-tracker-fingerprint-invalid")
 }
 
 /// Get translated "tracker password too long" error.
-#[allow(dead_code)] // dead until chunk 4 (tracker handlers consume it)
 pub fn err_tracker_password_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
@@ -1340,14 +1327,12 @@ pub fn err_tracker_password_too_long(locale: &str, max_length: usize) -> String 
 /// Get translated "another tracker is already configured at this
 /// address and port" error (UNIQUE-constraint violation on
 /// `(address, port)`).
-#[allow(dead_code)] // dead until chunk 4 (tracker handlers consume it)
 pub fn err_tracker_endpoint_duplicate(locale: &str) -> String {
     t(locale, "err-tracker-endpoint-duplicate")
 }
 
 /// Get translated "another tracker is already configured with this
 /// name" error (UNIQUE-constraint violation on `LOWER(name)`).
-#[allow(dead_code)] // dead until chunk 4 (tracker handlers consume it)
 pub fn err_tracker_name_duplicate(locale: &str) -> String {
     t(locale, "err-tracker-name-duplicate")
 }

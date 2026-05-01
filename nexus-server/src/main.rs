@@ -11,6 +11,7 @@ mod flood;
 mod handlers;
 mod i18n;
 mod ip_rule_cache;
+mod tracker;
 mod transfers;
 mod upnp;
 mod users;
@@ -250,6 +251,27 @@ async fn main() {
     // Create voice registry for tracking active voice sessions (ephemeral, in-memory only)
     let voice_registry = VoiceRegistry::new();
 
+    // Create the tracker publisher manager. The bootstrap call below
+    // loads enabled tracker rows from the DB and spawns one publisher
+    // task per row. Connection failures inside tasks just transition
+    // them to backoff/retry — they don't fail startup.
+    let tracker_publisher_context = Arc::new(tracker::PublisherContext {
+        db: Arc::new(database.clone()),
+        user_manager: Arc::new(user_manager.clone()),
+        server_fingerprint: fingerprint.to_string(),
+        server_port: cli.port,
+        server_websocket_port: if cli.websocket {
+            Some(cli.websocket_port)
+        } else {
+            None
+        },
+    });
+    let tracker_manager = Arc::new(tracker::TrackerManager::new(tracker_publisher_context));
+    if let Err(e) = tracker_manager.bootstrap().await {
+        error!(err = %e, "{}", ERR_TRACKER_BOOTSTRAP_FAILED);
+        std::process::exit(1);
+    }
+
     // Create channel manager for multi-channel chat (needed by voice server for broadcasts)
     let channel_manager = ChannelManager::new(database.channels.clone(), user_manager.clone());
 
@@ -354,6 +376,7 @@ async fn main() {
     // bundled here.
     let handles = DaemonHandles {
         log_purge: log_purge_task,
+        tracker: tracker_manager.clone(),
         upnp: upnp_handle,
     };
 
@@ -391,6 +414,7 @@ async fn main() {
                             channel_manager: channel_manager.clone(),
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: voice_registry.clone(),
+                            tracker_manager: tracker_manager.clone(),
                             fingerprint,
                             flood_config: flood_config.clone(),
                         };
@@ -551,6 +575,7 @@ async fn main() {
                             channel_manager: channel_manager.clone(),
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: voice_registry.clone(),
+                            tracker_manager: tracker_manager.clone(),
                             fingerprint,
                             flood_config: flood_config.clone(),
                         };
@@ -810,6 +835,10 @@ struct DaemonHandles {
     /// Daily log-retention purge task. `None` when file logging is
     /// disabled (level == None or retention == 0).
     log_purge: Option<tokio::task::JoinHandle<()>>,
+    /// Tracker publisher task supervisor. Shared with every accepted
+    /// connection (handlers call into it). On shutdown, aborts every
+    /// per-tracker task and awaits the joins.
+    tracker: Arc<tracker::TrackerManager>,
     /// UPnP gateway plus its lease-renewal task. `None` when `--upnp`
     /// is not set or setup failed. Listed last because shutdown's
     /// only async / fallible step is the port-mapping removal here.
@@ -824,6 +853,7 @@ impl DaemonHandles {
         if let Some(handle) = self.log_purge {
             handle.abort();
         }
+        self.tracker.shutdown().await;
         if let Some((gateway, renewal_task)) = self.upnp {
             renewal_task.abort();
             if let Err(e) = gateway.remove_port_mapping().await {

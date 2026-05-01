@@ -17,4 +17,4 @@ mod tls;
 
 pub use context::PublisherContext;
 pub use manager::TrackerManager;
-pub use status::{TrackerStatus, is_unrecoverable_error_kind};
+pub use status::TrackerStatus;

@@ -175,7 +175,6 @@ impl UserDb {
     /// # Errors
     ///
     /// Returns `sqlx::Error` if the database query fails.
-    #[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
     pub async fn guest_enabled(&self) -> Result<bool, sqlx::Error> {
         let row: Option<(bool,)> = sqlx::query_as(sql::SQL_GET_GUEST_ENABLED)
             .fetch_optional(&self.pool)

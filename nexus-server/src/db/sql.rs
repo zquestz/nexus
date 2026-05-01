@@ -41,8 +41,7 @@ pub const SQL_GET_ALL_CONFIG: &str = "SELECT key, value FROM config";
 ///
 /// **Note:** Single-query bundle (rather than three separate
 /// `SQL_GET_CONFIG` calls) — small efficiency win on the publisher's
-/// per-refresh hot path. Dead until chunk 4.
-#[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
+/// per-refresh hot path.
 pub const SQL_GET_TRACKER_CONFIG_FIELDS: &str = "SELECT key, value FROM config WHERE key IN ('server_name', 'server_description', 'public_address')";
 
 // ========================================================================
@@ -86,8 +85,7 @@ pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_has
 /// missing (catastrophic; bootstrap migration ensures it exists).
 ///
 /// **Note:** Used by the publisher task to populate
-/// `TrackerServerRegister.allows_guest`. Dead until chunk 4.
-#[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
+/// `TrackerServerRegister.allows_guest`.
 pub const SQL_GET_GUEST_ENABLED: &str = "SELECT enabled FROM users WHERE LOWER(username) = 'guest'";
 
 /// Select all users (for user management listing)
@@ -367,12 +365,6 @@ pub const SQL_DELETE_NEWS: &str = "DELETE FROM news WHERE id = ?";
 // ========================================================================
 // Tracker Query Operations
 // ========================================================================
-//
-// All six constants below are dead until the tracker handlers land
-// (chunk 4). They're consumed by `db::trackers::TrackerDb` which is
-// itself dead until handlers exist; per-constant `#[allow(dead_code)]`
-// markers below silence the warnings until then. Remove the markers
-// when the handlers ship.
 
 /// Select all tracker rows ordered by name (case-insensitive).
 ///
@@ -388,7 +380,6 @@ pub const SQL_DELETE_NEWS: &str = "DELETE FROM news WHERE id = ?";
 /// - The `LOWER(name)` order matches the case-insensitive uniqueness
 ///   on `name`; no tiebreaker is needed because two rows can't have
 ///   the same `LOWER(name)`.
-#[allow(dead_code)] // dead until chunk 4 (handlers); see header comment
 pub const SQL_SELECT_ALL_TRACKERS: &str = "
     SELECT id, address, port, fingerprint, password, name, enabled,
            created_at, updated_at
@@ -402,7 +393,6 @@ pub const SQL_SELECT_ALL_TRACKERS: &str = "
 ///
 /// **Returns:** `(id, address, port, fingerprint, password, name, enabled,
 /// created_at, updated_at)`
-#[allow(dead_code)] // dead until chunk 4 (handlers); see header comment
 pub const SQL_SELECT_TRACKER_BY_ID: &str = "
     SELECT id, address, port, fingerprint, password, name, enabled,
            created_at, updated_at
@@ -426,7 +416,6 @@ pub const SQL_SELECT_TRACKER_BY_ID: &str = "
 ///
 /// **Note:** Insert fails with a UNIQUE-constraint violation if
 /// another row with the same `(address, port)` exists.
-#[allow(dead_code)] // dead until chunk 4 (handlers); see header comment
 pub const SQL_INSERT_TRACKER: &str = "
     INSERT INTO trackers (address, port, fingerprint, password, name, enabled,
                           created_at, updated_at)
@@ -447,7 +436,6 @@ pub const SQL_INSERT_TRACKER: &str = "
 /// **Note:** `created_at` is preserved. Update fails with a UNIQUE-
 /// constraint violation if changing `(address, port)` collides with
 /// another row.
-#[allow(dead_code)] // dead until chunk 4 (handlers); see header comment
 pub const SQL_UPDATE_TRACKER: &str = "
     UPDATE trackers
     SET address = ?, port = ?, fingerprint = ?, password = ?, name = ?,
@@ -464,7 +452,6 @@ pub const SQL_UPDATE_TRACKER: &str = "
 /// 1. `fingerprint: &str` - Newly accepted canonical fingerprint
 /// 2. `updated_at: i64` - Unix epoch seconds
 /// 3. `id: i64`
-#[allow(dead_code)] // dead until chunk 4 (handlers); see header comment
 pub const SQL_UPDATE_TRACKER_FINGERPRINT: &str = "
     UPDATE trackers
     SET fingerprint = ?, updated_at = ?
@@ -474,7 +461,6 @@ pub const SQL_UPDATE_TRACKER_FINGERPRINT: &str = "
 ///
 /// **Parameters:**
 /// 1. `id: i64`
-#[allow(dead_code)] // dead until chunk 4 (handlers); see header comment
 pub const SQL_DELETE_TRACKER: &str = "DELETE FROM trackers WHERE id = ?";
 
 // ========================================================================

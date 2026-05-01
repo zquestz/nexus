@@ -37,6 +37,11 @@ mod news_show;
 mod news_update;
 mod server_info;
 mod server_info_update;
+mod tracker_create;
+mod tracker_delete;
+mod tracker_edit;
+mod tracker_list;
+mod tracker_update;
 mod trust_create;
 mod trust_delete;
 mod trust_list;
@@ -93,6 +98,11 @@ pub use news_show::handle_news_show;
 pub use news_update::handle_news_update;
 pub use server_info::{ServerInfoOptions, ServerInfoValues, build_server_info};
 pub use server_info_update::{ServerInfoUpdateRequest, handle_server_info_update};
+pub use tracker_create::{TrackerCreateRequest, handle_tracker_create};
+pub use tracker_delete::handle_tracker_delete;
+pub use tracker_edit::handle_tracker_edit;
+pub use tracker_list::handle_tracker_list;
+pub use tracker_update::{TrackerUpdateRequest, handle_tracker_update};
 pub use trust_create::handle_trust_create;
 pub use trust_delete::handle_trust_delete;
 pub use trust_list::handle_trust_list;
@@ -134,6 +144,7 @@ use crate::db::Database;
 use crate::files::FileIndex;
 use crate::flood::FloodConfig;
 use crate::ip_rule_cache::IpRuleCache;
+use crate::tracker::TrackerManager;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
 use crate::users::user::UserSession;
@@ -167,6 +178,8 @@ pub struct HandlerContext<'a, W> {
     pub transfer_registry: Arc<TransferRegistry>,
     /// Voice registry for managing active voice sessions
     pub voice_registry: &'a VoiceRegistry,
+    /// Tracker publisher manager (per-tracker publisher tasks)
+    pub tracker_manager: &'a TrackerManager,
     /// Server certificate fingerprint (SHA-256, colon-separated)
     pub fingerprint: &'static str,
     /// Shared flood protection config (burst and rate limits)
@@ -207,6 +220,39 @@ impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {
     ) -> io::Result<()> {
         self.send_error(message, command).await?;
         Err(io::Error::other(message))
+    }
+}
+
+/// Compose a `TrackerInfo` wire struct from a DB row + optional
+/// runtime status.
+///
+/// When `status` is `None` (disabled tracker, or no task running yet),
+/// runtime fields default to "not connected" — `connected: false` and
+/// every other runtime field `None`. This accurately reflects the
+/// truth: there's no live publisher task, so there's no connection
+/// state to report.
+#[must_use]
+pub fn compose_tracker_info(
+    record: crate::db::TrackerRecord,
+    status: Option<crate::tracker::TrackerStatus>,
+) -> nexus_common::protocol::TrackerInfo {
+    let s = status.unwrap_or_default();
+    nexus_common::protocol::TrackerInfo {
+        id: record.id,
+        address: record.address,
+        port: record.port,
+        fingerprint: record.fingerprint,
+        password: record.password,
+        name: record.name,
+        enabled: record.enabled,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+        connected: s.connected,
+        last_connected_at: s.last_connected_at,
+        last_error: s.last_error,
+        last_error_kind: s.last_error_kind,
+        pending_fingerprint: s.pending_fingerprint,
+        refresh_interval: s.refresh_interval,
     }
 }
 

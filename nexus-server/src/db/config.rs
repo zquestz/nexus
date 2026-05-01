@@ -39,7 +39,6 @@ use crate::db::sql;
 /// `description` and `public_address` are `Option<String>` because
 /// empty values are normalized to `None` here so the caller doesn't
 /// need to special-case empty strings.
-#[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
 pub struct TrackerConfigFields {
     pub server_name: String,
     pub description: Option<String>,
@@ -149,7 +148,6 @@ impl ConfigDb {
     /// # Errors
     ///
     /// Returns `sqlx::Error` if the database query fails.
-    #[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
     pub async fn get_tracker_fields(&self) -> Result<TrackerConfigFields, sqlx::Error> {
         let rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_GET_TRACKER_CONFIG_FIELDS)
             .fetch_all(&self.pool)
