@@ -32,7 +32,7 @@ use rand::RngExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::pki_types::ServerName;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use super::context::PublisherContext;
 use super::status::TrackerStatus;
@@ -52,7 +52,7 @@ use crate::constants::{
     LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED, LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME,
     LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE,
 };
-use crate::db::TrackerRecord;
+use crate::db::{TrackerRecord, is_transient_db_error};
 
 /// Base backoff between connection attempts on failure.
 ///
@@ -332,20 +332,33 @@ async fn attempt_connection_cycle(
     // the DB and update the local record so subsequent iterations of
     // this task see it.
     if record.fingerprint.is_none() {
-        if let Err(e) = context
+        match context
             .db
             .trackers
             .update_fingerprint(record.id, &tls_observed)
             .await
         {
-            warn!(
-                id = record.id,
-                name = %record.name,
-                err = %e,
-                "{}", LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED
-            );
-            set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED);
-            return CycleOutcome::Transient;
+            Ok(_) => {}
+            Err(e) if is_transient_db_error(&e) => {
+                warn!(
+                    id = record.id,
+                    name = %record.name,
+                    err = %e,
+                    "{}", LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED
+                );
+                set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED);
+                return CycleOutcome::Transient;
+            }
+            Err(e) => {
+                error!(
+                    id = record.id,
+                    name = %record.name,
+                    err = %e,
+                    "{}", LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED
+                );
+                set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED);
+                return CycleOutcome::Unrecoverable;
+            }
         }
         record.fingerprint = Some(tls_observed.clone());
         info!(

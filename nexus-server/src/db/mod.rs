@@ -26,6 +26,7 @@ pub use permissions::{Permission, Permissions};
 #[allow(unused_imports)]
 pub use trackers::{
     CreateTrackerParams, TrackerDb, TrackerDbError, TrackerRecord, UpdateTrackerParams,
+    is_transient_db_error,
 };
 pub use trusts::TrustDb;
 pub use users::{CreateUserParams, UpdateUserParams, UserDb};

@@ -19,6 +19,32 @@ use crate::db::sql;
 /// version changes in error formatting.
 const SQLITE_CONSTRAINT_UNIQUE: &str = "2067";
 
+/// SQLite primary result code `SQLITE_BUSY` — another writer holds
+/// the lock; the operation should be retried after a short delay.
+/// Always transient.
+const SQLITE_BUSY: &str = "5";
+
+/// SQLite primary result code `SQLITE_LOCKED` — the write was
+/// blocked by a different connection's pending transaction. Transient
+/// for the same reason as `SQLITE_BUSY`.
+const SQLITE_LOCKED: &str = "6";
+
+/// Whether `err` represents a transient (retryable) DB failure.
+///
+/// Used by callers that need to choose between "back off and retry"
+/// (lock contention, rare on SQLite with our single-pool setup) and
+/// "give up and surface to admin" (corruption, missing schema, disk
+/// I/O). Anything that isn't a recognized transient code is treated
+/// as structural.
+#[must_use]
+pub fn is_transient_db_error(err: &sqlx::Error) -> bool {
+    if let sqlx::Error::Database(db_err) = err {
+        matches!(db_err.code().as_deref(), Some(SQLITE_BUSY | SQLITE_LOCKED))
+    } else {
+        false
+    }
+}
+
 // SQLite reports UNIQUE constraint violations with two distinct
 // message shapes:
 //   * Plain column-list indexes (e.g. `(address, port)`) →
