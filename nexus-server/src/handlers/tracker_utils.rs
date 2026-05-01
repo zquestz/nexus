@@ -64,6 +64,7 @@ pub fn compose_tracker_info(
         updated_at: record.updated_at,
         connected: s.connected,
         last_connected_at: s.last_connected_at,
+        last_attempted_at: s.last_attempted_at,
         last_error,
         last_error_kind: s.last_error_kind,
         pending_fingerprint: s.pending_fingerprint,
@@ -180,6 +181,7 @@ mod tests {
         assert_eq!(info.updated_at, 200);
         assert!(!info.connected);
         assert!(info.last_connected_at.is_none());
+        assert!(info.last_attempted_at.is_none());
         assert!(info.last_error.is_none());
         assert!(info.last_error_kind.is_none());
         assert!(info.pending_fingerprint.is_none());
@@ -191,6 +193,7 @@ mod tests {
         let status = TrackerStatus {
             connected: true,
             last_connected_at: Some(1234),
+            last_attempted_at: Some(1234),
             last_error_kind: None,
             pending_fingerprint: None,
             refresh_interval: Some(300),
@@ -198,6 +201,7 @@ mod tests {
         let info = compose_tracker_info(record(), Some(status), "en");
         assert!(info.connected);
         assert_eq!(info.last_connected_at, Some(1234));
+        assert_eq!(info.last_attempted_at, Some(1234));
         assert_eq!(info.refresh_interval, Some(300));
         // No kind set → no localized message either.
         assert!(info.last_error.is_none());
@@ -209,6 +213,7 @@ mod tests {
         let status = TrackerStatus {
             connected: false,
             last_connected_at: None,
+            last_attempted_at: None,
             last_error_kind: Some(
                 nexus_common::ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH.to_string(),
             ),
@@ -237,6 +242,7 @@ mod tests {
         let status = TrackerStatus {
             connected: false,
             last_connected_at: None,
+            last_attempted_at: None,
             last_error_kind: Some("not_a_real_kind".to_string()),
             pending_fingerprint: None,
             refresh_interval: None,

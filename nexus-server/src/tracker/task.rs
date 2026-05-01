@@ -99,9 +99,12 @@ pub async fn run(
         // Reset connection-state fields at the start of each attempt;
         // preserve `pending_fingerprint` so admin-visible state from a
         // prior mismatch survives until the new attempt resolves it.
+        // Also stamp `last_attempted_at` so the admin UI can surface
+        // forward progress even when every recent attempt has failed.
         {
             let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
             s.connected = false;
+            s.last_attempted_at = Some(Utc::now().timestamp());
         }
 
         match attempt_connection_cycle(&mut record, &status, &context).await {

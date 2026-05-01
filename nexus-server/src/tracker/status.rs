@@ -28,6 +28,12 @@ pub struct TrackerStatus {
     /// Unix epoch seconds when the task last successfully registered.
     /// `None` if it's never connected since this task started.
     pub last_connected_at: Option<i64>,
+    /// Unix epoch seconds when the task last started a connection
+    /// attempt, regardless of outcome. Stamped at the top of each
+    /// cycle (before the TCP dial), so the admin UI can show that the
+    /// publisher is making forward progress even when every recent
+    /// attempt has failed. `None` until the first attempt.
+    pub last_attempted_at: Option<i64>,
     /// Most recent error kind in machine-readable form
     /// (e.g. `"tracker_fingerprint_mismatch"`, `"unauthorized"`).
     /// Translated to a human-readable message at handler compose time
@@ -50,6 +56,7 @@ mod tests {
         let s = TrackerStatus::default();
         assert!(!s.connected);
         assert!(s.last_connected_at.is_none());
+        assert!(s.last_attempted_at.is_none());
         assert!(s.last_error_kind.is_none());
         assert!(s.pending_fingerprint.is_none());
         assert!(s.refresh_interval.is_none());

@@ -1129,7 +1129,7 @@ const TRACKER_DELETE_SIZE: usize = json_type_base("TrackerDelete") + json_i64_fi
 
 /// One serialized TrackerInfo (config + runtime status). Bounds:
 /// - id (i64), port (u16), enabled (bool), connected (bool)
-/// - created_at, updated_at, last_connected_at (i64 each)
+/// - created_at, updated_at, last_connected_at, last_attempted_at (i64 each)
 /// - refresh_interval (u32)
 /// - address, name (bounded strings)
 /// - password, fingerprint, pending_fingerprint (bounded strings)
@@ -1146,6 +1146,7 @@ const TRACKER_INFO_SIZE: usize = json_type_base("TrackerInfo")
     + json_i64_field("updated_at")
     + json_bool_field("connected")
     + json_i64_field("last_connected_at")
+    + json_i64_field("last_attempted_at")
     + json_string_field("last_error", MAX_ERROR_LENGTH)
     + json_string_field("last_error_kind", MAX_ERROR_KIND_LENGTH)
     + json_string_field("pending_fingerprint", SHA256_FINGERPRINT_LENGTH)

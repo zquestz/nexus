@@ -1554,6 +1554,13 @@ pub struct TrackerInfo {
     /// `None` if it's never connected since this task started.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_connected_at: Option<i64>,
+    /// Unix epoch seconds when the publisher last started a connection
+    /// attempt, regardless of outcome. Stamped at the top of each
+    /// cycle so the admin UI can show that the publisher is making
+    /// forward progress even when every recent attempt has failed.
+    /// `None` until the first attempt.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_attempted_at: Option<i64>,
     /// Most recent error message, locale-translated. `None` if there's
     /// been no error or the last attempt succeeded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1596,6 +1603,7 @@ impl std::fmt::Debug for TrackerInfo {
             .field("updated_at", &self.updated_at)
             .field("connected", &self.connected)
             .field("last_connected_at", &self.last_connected_at)
+            .field("last_attempted_at", &self.last_attempted_at)
             .field("last_error", &self.last_error)
             .field("last_error_kind", &self.last_error_kind)
             .field("pending_fingerprint", &self.pending_fingerprint)
@@ -2055,6 +2063,7 @@ mod tests {
             updated_at: 0,
             connected: false,
             last_connected_at: None,
+            last_attempted_at: None,
             last_error: None,
             last_error_kind: None,
             pending_fingerprint: None,
