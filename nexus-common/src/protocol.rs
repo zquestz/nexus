@@ -977,7 +977,7 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
         /// New tracker's id (for the toast message)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<i64>,
         /// New tracker's name (for the toast message)
         #[serde(skip_serializing_if = "Option::is_none")]
