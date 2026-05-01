@@ -13,6 +13,7 @@ use crate::framing::{
     RawFrame,
 };
 use crate::protocol::{ClientMessage, ServerMessage};
+use crate::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 
 // =============================================================================
 // Error Conversion
@@ -441,8 +442,6 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
 // post-handshake message is a `TrackerClientMessage` / `TrackerServerMessage`.
 // These helpers mirror the BBS-protocol read/send/type helpers above.
 // =============================================================================
-
-use crate::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 
 /// Received tracker client message with its message ID.
 #[derive(Debug)]
