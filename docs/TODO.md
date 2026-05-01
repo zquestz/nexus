@@ -157,7 +157,7 @@ Five request/response pairs, **no broadcasts** (admin uses a refresh button like
 
 | Request | Response |
 |---|---|
-| `TrackerList` | `TrackerListResponse { success, error, trackers: Option<Vec<TrackerInfo>> }` |
+| `TrackerList` | `TrackerListResponse { success, error, trackers: Vec<TrackerInfo> }` |
 | `TrackerEdit { id }` | `TrackerEditResponse { success, error, tracker: Option<TrackerInfo> }` |
 | `TrackerCreate { address, port, fingerprint?, password?, name, enabled }` | `TrackerCreateResponse { success, error, id?, name? }` |
 | `TrackerUpdate { id, address, port, fingerprint?, password?, name, enabled }` | `TrackerUpdateResponse { success, error, id?, name? }` |

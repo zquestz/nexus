@@ -50,7 +50,7 @@ where
         let response = ServerMessage::TrackerListResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
-            trackers: None,
+            trackers: Vec::new(),
         };
         return ctx.send_message(&response).await;
     }
@@ -82,7 +82,7 @@ where
     let response = ServerMessage::TrackerListResponse {
         success: true,
         error: None,
-        trackers: Some(trackers),
+        trackers,
     };
     ctx.send_message(&response).await
 }
@@ -112,7 +112,7 @@ mod tests {
                 success, trackers, ..
             } => {
                 assert!(!success);
-                assert!(trackers.is_none());
+                assert!(trackers.is_empty());
             }
             other => panic!("Expected TrackerListResponse, got {other:?}"),
         }
@@ -130,7 +130,7 @@ mod tests {
                 success, trackers, ..
             } => {
                 assert!(success);
-                assert_eq!(trackers.unwrap().len(), 0);
+                assert_eq!(trackers.len(), 0);
             }
             other => panic!("Expected TrackerListResponse, got {other:?}"),
         }
@@ -183,7 +183,6 @@ mod tests {
                 success, trackers, ..
             } => {
                 assert!(success);
-                let trackers = trackers.unwrap();
                 assert_eq!(trackers.len(), 2);
                 assert_eq!(trackers[0].name, "Alpha");
                 assert_eq!(trackers[1].name, "zeta");

@@ -1006,9 +1006,10 @@ pub enum ServerMessage {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
-        /// All configured trackers with their runtime status.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        trackers: Option<Vec<TrackerInfo>>,
+        /// All configured trackers with their runtime status. Empty
+        /// on the error path; an empty list on success means no
+        /// trackers are configured yet.
+        trackers: Vec<TrackerInfo>,
     },
     /// Response to TrackerUpdate request
     TrackerUpdateResponse {
