@@ -3,21 +3,14 @@
 
 use std::io;
 
-use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::protocol::ServerMessage;
-use nexus_common::validators::{
-    MAX_PASSWORD_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH, MAX_TRACKER_NAME_LENGTH, PublicAddressError,
-    TrackerNameError, validate_public_address, validate_tracker_name,
-};
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use super::{
     HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
-    err_tracker_address_invalid, err_tracker_address_too_long, err_tracker_endpoint_duplicate,
-    err_tracker_fingerprint_invalid, err_tracker_name_duplicate, err_tracker_name_invalid,
-    err_tracker_name_too_long, err_tracker_not_found, err_tracker_password_too_long,
-    err_tracker_port_invalid,
+    err_tracker_endpoint_duplicate, err_tracker_name_duplicate, err_tracker_not_found,
+    validate_tracker_inputs,
 };
 use crate::constants::{
     LOG_TRACKER_UPDATE_DB_ERROR, LOG_TRACKER_UPDATE_NOT_LOGGED_IN,
@@ -95,15 +88,15 @@ where
     // Normalize empty-string password to None at the protocol boundary.
     let password = password.filter(|s| !s.is_empty());
 
-    if let Some(err) = validate_inputs(
-        ctx,
+    if let Err(error) = validate_tracker_inputs(
+        ctx.locale,
         &address,
         port,
         fingerprint.as_deref(),
         password.as_deref(),
         &name,
     ) {
-        return ctx.send_message(&err).await;
+        return ctx.send_message(&reject_update(error)).await;
     }
 
     let result = ctx
@@ -185,61 +178,6 @@ where
         name: Some(record.name),
     };
     ctx.send_message(&response).await
-}
-
-/// Validate per-field inputs. Returns `Some(response)` with the first
-/// failing message, or `None` if everything passes.
-fn validate_inputs<W>(
-    ctx: &HandlerContext<'_, W>,
-    address: &str,
-    port: u16,
-    fingerprint: Option<&str>,
-    password: Option<&str>,
-    name: &str,
-) -> Option<ServerMessage>
-where
-    W: AsyncWrite + Unpin,
-{
-    if let Err(e) = validate_public_address(address) {
-        let error = match e {
-            PublicAddressError::TooLong => {
-                err_tracker_address_too_long(ctx.locale, MAX_PUBLIC_ADDRESS_LENGTH)
-            }
-            _ => err_tracker_address_invalid(ctx.locale),
-        };
-        return Some(reject_update(error));
-    }
-
-    if port == 0 {
-        return Some(reject_update(err_tracker_port_invalid(ctx.locale)));
-    }
-
-    if let Some(fp) = fingerprint
-        && !is_canonical_fingerprint(fp)
-    {
-        return Some(reject_update(err_tracker_fingerprint_invalid(ctx.locale)));
-    }
-
-    if let Some(pw) = password
-        && pw.len() > MAX_PASSWORD_LENGTH
-    {
-        return Some(reject_update(err_tracker_password_too_long(
-            ctx.locale,
-            MAX_PASSWORD_LENGTH,
-        )));
-    }
-
-    if let Err(e) = validate_tracker_name(name) {
-        let error = match e {
-            TrackerNameError::TooLong => {
-                err_tracker_name_too_long(ctx.locale, MAX_TRACKER_NAME_LENGTH)
-            }
-            _ => err_tracker_name_invalid(ctx.locale),
-        };
-        return Some(reject_update(error));
-    }
-
-    None
 }
 
 fn reject_update(error: String) -> ServerMessage {

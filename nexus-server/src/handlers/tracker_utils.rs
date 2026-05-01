@@ -1,12 +1,22 @@
-//! `TrackerInfo` composition — DB row + runtime status → wire struct.
+//! Shared utilities used by multiple tracker admin handlers.
 //!
-//! Lives separately from the per-handler files because two handlers
-//! (`tracker_list`, `tracker_edit`) call it. Translation of the
-//! publisher's error-kind enum into the admin's locale also happens
-//! here, so the wire struct's `last_error` field is always
-//! pre-translated by the time it reaches the client.
+//! - [`compose_tracker_info`] — DB row + runtime status → wire struct,
+//!   used by `tracker_list` and `tracker_edit`.
+//! - `translate_tracker_error_kind` — internal helper that maps a
+//!   publisher error kind to a localized admin-UI message in the
+//!   requesting admin's locale, so `TrackerInfo.last_error` is
+//!   pre-translated by the time it reaches the client.
+//! - [`validate_tracker_inputs`] — single-source-of-truth field
+//!   validator used by both `TrackerCreate` and `TrackerUpdate` so the
+//!   address/port/fingerprint/password/name rules can't drift between
+//!   the two handlers.
 
+use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::protocol::TrackerInfo;
+use nexus_common::validators::{
+    MAX_PASSWORD_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH, MAX_TRACKER_NAME_LENGTH, PublicAddressError,
+    TrackerNameError, validate_public_address, validate_tracker_name,
+};
 use nexus_common::{
     ERROR_KIND_CAPACITY, ERROR_KIND_INVALID, ERROR_KIND_RATE_LIMITED,
     ERROR_KIND_TRACKER_CONNECTION_FAILED, ERROR_KIND_TRACKER_CONNECTION_LOST,
@@ -15,6 +25,11 @@ use nexus_common::{
     ERROR_KIND_TRACKER_TLS_FAILED, ERROR_KIND_UNAUTHORIZED,
 };
 
+use super::{
+    err_tracker_address_invalid, err_tracker_address_too_long, err_tracker_fingerprint_invalid,
+    err_tracker_name_invalid, err_tracker_name_too_long, err_tracker_password_too_long,
+    err_tracker_port_invalid,
+};
 use crate::db::TrackerRecord;
 use crate::tracker::TrackerStatus;
 
@@ -80,6 +95,57 @@ fn translate_tracker_error_kind(locale: &str, kind: &str) -> String {
         _ => "err-tracker-unknown",
     };
     crate::i18n::t(locale, i18n_key)
+}
+
+/// Validate the field set common to `TrackerCreate` and
+/// `TrackerUpdate`. Returns `Ok(())` if all rules pass, otherwise
+/// `Err(localized_message)` with a translated error string the handler
+/// can drop straight into its typed response's `error` field.
+///
+/// Stops at the first failure (callers only need one message per
+/// rejected request), in this order:
+///
+/// 1. `address` — `validate_public_address` rules
+/// 2. `port` — must be non-zero
+/// 3. `fingerprint` (if set) — must be canonical 95-byte uppercase form
+/// 4. `password` (if set) — bounded by `MAX_PASSWORD_LENGTH`
+/// 5. `name` — `validate_tracker_name` rules
+pub fn validate_tracker_inputs(
+    locale: &str,
+    address: &str,
+    port: u16,
+    fingerprint: Option<&str>,
+    password: Option<&str>,
+    name: &str,
+) -> Result<(), String> {
+    if let Err(e) = validate_public_address(address) {
+        return Err(match e {
+            PublicAddressError::TooLong => {
+                err_tracker_address_too_long(locale, MAX_PUBLIC_ADDRESS_LENGTH)
+            }
+            _ => err_tracker_address_invalid(locale),
+        });
+    }
+    if port == 0 {
+        return Err(err_tracker_port_invalid(locale));
+    }
+    if let Some(fp) = fingerprint
+        && !is_canonical_fingerprint(fp)
+    {
+        return Err(err_tracker_fingerprint_invalid(locale));
+    }
+    if let Some(pw) = password
+        && pw.len() > MAX_PASSWORD_LENGTH
+    {
+        return Err(err_tracker_password_too_long(locale, MAX_PASSWORD_LENGTH));
+    }
+    if let Err(e) = validate_tracker_name(name) {
+        return Err(match e {
+            TrackerNameError::TooLong => err_tracker_name_too_long(locale, MAX_TRACKER_NAME_LENGTH),
+            _ => err_tracker_name_invalid(locale),
+        });
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -182,5 +248,90 @@ mod tests {
         assert_eq!(info.last_error.as_deref(), Some(expected.as_str()));
         // Kind passed through verbatim for the client to match on.
         assert_eq!(info.last_error_kind.as_deref(), Some("not_a_real_kind"));
+    }
+
+    // ---- validate_tracker_inputs ----
+
+    const VALID_FINGERPRINT: &str = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
+         AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
+
+    #[test]
+    fn validate_accepts_minimal_valid_inputs() {
+        assert!(
+            validate_tracker_inputs("en", "tracker.example.com", 7510, None, None, "Public")
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn validate_accepts_all_optional_fields_set() {
+        assert!(
+            validate_tracker_inputs(
+                "en",
+                "tracker.example.com",
+                7510,
+                Some(VALID_FINGERPRINT),
+                Some("hunter2"),
+                "Public",
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn validate_rejects_bad_address() {
+        // Address with embedded port — `validate_public_address` rejects it.
+        let err =
+            validate_tracker_inputs("en", "tracker.example.com:7500", 7510, None, None, "Public")
+                .expect_err("should reject");
+        assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn validate_rejects_zero_port() {
+        let err = validate_tracker_inputs("en", "tracker.example.com", 0, None, None, "Public")
+            .expect_err("should reject");
+        assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn validate_rejects_non_canonical_fingerprint() {
+        let err = validate_tracker_inputs(
+            "en",
+            "tracker.example.com",
+            7510,
+            Some("not-a-fingerprint"),
+            None,
+            "Public",
+        )
+        .expect_err("should reject");
+        assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn validate_rejects_overlong_password() {
+        let pw = "x".repeat(MAX_PASSWORD_LENGTH + 1);
+        let err =
+            validate_tracker_inputs("en", "tracker.example.com", 7510, None, Some(&pw), "Public")
+                .expect_err("should reject");
+        assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn validate_rejects_blank_name() {
+        let err = validate_tracker_inputs("en", "tracker.example.com", 7510, None, None, "   ")
+            .expect_err("should reject");
+        assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn validate_returns_localized_error() {
+        // Same broken input in two locales should yield two different
+        // strings with the same root cause.
+        let en = validate_tracker_inputs("en", "tracker.example.com", 0, None, None, "Public")
+            .expect_err("en error");
+        let fr = validate_tracker_inputs("fr", "tracker.example.com", 0, None, None, "Public")
+            .expect_err("fr error");
+        assert_ne!(en, fr, "translation should differ between locales");
     }
 }
