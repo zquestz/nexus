@@ -164,6 +164,10 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `news_delete`: Delete any news post (without: only own posts)
 /// - `news_edit`: Edit any news post (without: only own posts)
 /// - `news_list`: View news posts
+/// - `tracker_create`: Add a tracker to the server's publisher list
+/// - `tracker_delete`: Remove a tracker from the server's publisher list
+/// - `tracker_edit`: Edit a tracker's configuration (also gates fetching detail for the edit form)
+/// - `tracker_list`: View the server's configured trackers and their runtime status
 /// - `trust_create`: Create/update trusted IPs
 /// - `trust_delete`: Remove trusted IPs
 /// - `trust_list`: View list of trusted IPs
@@ -211,6 +215,10 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "news_delete",
     "news_edit",
     "news_list",
+    "tracker_create",
+    "tracker_delete",
+    "tracker_edit",
+    "tracker_list",
     "trust_create",
     "trust_delete",
     "trust_list",
@@ -360,8 +368,8 @@ mod tests {
 
     #[test]
     fn test_all_permissions_count() {
-        // Verify we have the expected number of permissions (46)
-        assert_eq!(ALL_PERMISSIONS.len(), 46);
+        // Verify we have the expected number of permissions (50)
+        assert_eq!(ALL_PERMISSIONS.len(), 50);
     }
 
     #[test]

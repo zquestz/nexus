@@ -8,6 +8,7 @@ pub mod news;
 pub mod password;
 pub mod permissions;
 pub mod sql;
+pub mod trackers;
 pub mod trusts;
 pub mod users;
 
@@ -21,6 +22,9 @@ pub use groups::GroupDb;
 pub use news::NewsDb;
 pub use password::{hash_password, verify_password};
 pub use permissions::{Permission, Permissions};
+// Tracker re-exports are dead until chunk 4 (handlers consume them).
+#[allow(unused_imports)]
+pub use trackers::{CreateTrackerParams, TrackerDb, TrackerRecord, UpdateTrackerParams};
 pub use trusts::TrustDb;
 pub use users::{CreateUserParams, UpdateUserParams, UserDb};
 
@@ -40,6 +44,9 @@ pub struct Database {
     pub trusts: TrustDb,
     pub channels: ChannelDb,
     pub groups: GroupDb,
+    /// Dead until chunk 4 (handlers wire it into request flow).
+    #[allow(dead_code)]
+    pub trackers: TrackerDb,
 }
 
 impl Database {
@@ -52,7 +59,8 @@ impl Database {
             bans: BanDb::new(pool.clone()),
             trusts: TrustDb::new(pool.clone()),
             channels: ChannelDb::new(pool.clone()),
-            groups: GroupDb::new(pool),
+            groups: GroupDb::new(pool.clone()),
+            trackers: TrackerDb::new(pool),
         }
     }
 }

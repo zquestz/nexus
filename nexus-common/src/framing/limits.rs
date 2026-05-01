@@ -13,8 +13,9 @@ use crate::validators::{
     MAX_NEWS_BODY_LENGTH, MAX_NEWS_IMAGE_DATA_URI_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH,
     MAX_PERMISSION_LENGTH, MAX_PERSISTENT_CHANNELS_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH,
     MAX_SEARCH_QUERY_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH,
-    MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH, MAX_TARGET_LENGTH, MAX_TRUST_REASON_LENGTH,
-    MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH, SHA256_HEX_LENGTH, TRANSFER_ID_LENGTH,
+    MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH, MAX_TARGET_LENGTH, MAX_TRACKER_NAME_LENGTH,
+    MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH, SHA256_HEX_LENGTH,
+    TRANSFER_ID_LENGTH,
 };
 
 // =============================================================================
@@ -1091,6 +1092,105 @@ const GROUP_UPDATE_SIZE: usize = json_type_base("GroupUpdate")
 const GROUP_DELETE_SIZE: usize = json_type_base("GroupDelete") + json_i64_field("id");
 
 // -----------------------------------------------------------------------------
+// Tracker client messages
+// -----------------------------------------------------------------------------
+
+/// TrackerList: {"type":"TrackerList"}
+const TRACKER_LIST_SIZE: usize = json_type_base("TrackerList");
+
+/// TrackerEdit: {"type":"TrackerEdit","id":i64}
+const TRACKER_EDIT_SIZE: usize = json_type_base("TrackerEdit") + json_i64_field("id");
+
+/// TrackerCreate: {"type":"TrackerCreate","address":"...253...","port":u16,"fingerprint":"...95...","password":"...256...","name":"...256...","enabled":false}
+const TRACKER_CREATE_SIZE: usize = json_type_base("TrackerCreate")
+    + json_string_field("address", MAX_PUBLIC_ADDRESS_LENGTH)
+    + json_u16_field("port")
+    + json_string_field("fingerprint", SHA256_FINGERPRINT_LENGTH)
+    + json_string_field("password", MAX_PASSWORD_LENGTH)
+    + json_string_field("name", MAX_TRACKER_NAME_LENGTH)
+    + json_bool_field("enabled");
+
+/// TrackerUpdate: {"type":"TrackerUpdate","id":i64,"address":"...253...","port":u16,"fingerprint":"...95...","password":"...256...","name":"...256...","enabled":false}
+const TRACKER_UPDATE_SIZE: usize = json_type_base("TrackerUpdate")
+    + json_i64_field("id")
+    + json_string_field("address", MAX_PUBLIC_ADDRESS_LENGTH)
+    + json_u16_field("port")
+    + json_string_field("fingerprint", SHA256_FINGERPRINT_LENGTH)
+    + json_string_field("password", MAX_PASSWORD_LENGTH)
+    + json_string_field("name", MAX_TRACKER_NAME_LENGTH)
+    + json_bool_field("enabled");
+
+/// TrackerDelete: {"type":"TrackerDelete","id":i64}
+const TRACKER_DELETE_SIZE: usize = json_type_base("TrackerDelete") + json_i64_field("id");
+
+// -----------------------------------------------------------------------------
+// Tracker server messages
+// -----------------------------------------------------------------------------
+
+/// One serialized TrackerInfo (config + runtime status). Bounds:
+/// - id (i64), port (u16), enabled (bool), connected (bool)
+/// - created_at, updated_at, last_connected_at (i64 each)
+/// - refresh_interval (u32)
+/// - address, name (bounded strings)
+/// - password, fingerprint, pending_fingerprint (bounded strings)
+/// - last_error (bounded by MAX_ERROR_LENGTH), last_error_kind (bounded by MAX_ERROR_KIND_LENGTH)
+const TRACKER_INFO_SIZE: usize = json_type_base("TrackerInfo")
+    + json_i64_field("id")
+    + json_string_field("address", MAX_PUBLIC_ADDRESS_LENGTH)
+    + json_u16_field("port")
+    + json_string_field("fingerprint", SHA256_FINGERPRINT_LENGTH)
+    + json_string_field("password", MAX_PASSWORD_LENGTH)
+    + json_string_field("name", MAX_TRACKER_NAME_LENGTH)
+    + json_bool_field("enabled")
+    + json_i64_field("created_at")
+    + json_i64_field("updated_at")
+    + json_bool_field("connected")
+    + json_i64_field("last_connected_at")
+    + json_string_field("last_error", MAX_ERROR_LENGTH)
+    + json_string_field("last_error_kind", MAX_ERROR_KIND_LENGTH)
+    + json_string_field("pending_fingerprint", SHA256_FINGERPRINT_LENGTH)
+    + json_u32_field("refresh_interval");
+
+/// Practical maximum number of trackers a single server will have
+/// configured. 64 is well above any realistic deployment (most servers
+/// publish to 1–5 trackers); the `MAX_ENTRIES_PER_IP` cap on the
+/// tracker side and the operational pain of maintaining many
+/// publisher tasks both bound this in practice.
+const MAX_TRACKERS_PER_SERVER: usize = 64;
+
+/// TrackerListResponse: {"type":"TrackerListResponse","success":false,"error":"...2048...","trackers":[TrackerInfo, ...]}
+const TRACKER_LIST_RESPONSE_SIZE: usize = json_type_base("TrackerListResponse")
+    + json_bool_field("success")
+    + json_string_field("error", MAX_ERROR_LENGTH)
+    + json_string_field("trackers", MAX_TRACKERS_PER_SERVER * TRACKER_INFO_SIZE);
+
+/// TrackerEditResponse: {"type":"TrackerEditResponse","success":false,"error":"...2048...","tracker":TrackerInfo}
+const TRACKER_EDIT_RESPONSE_SIZE: usize = json_type_base("TrackerEditResponse")
+    + json_bool_field("success")
+    + json_string_field("error", MAX_ERROR_LENGTH)
+    + TRACKER_INFO_SIZE;
+
+/// TrackerCreateResponse: {"type":"TrackerCreateResponse","success":false,"error":"...2048...","id":i64,"name":"...256..."}
+const TRACKER_CREATE_RESPONSE_SIZE: usize = json_type_base("TrackerCreateResponse")
+    + json_bool_field("success")
+    + json_string_field("error", MAX_ERROR_LENGTH)
+    + json_i64_field("id")
+    + json_string_field("name", MAX_TRACKER_NAME_LENGTH);
+
+/// TrackerUpdateResponse: {"type":"TrackerUpdateResponse","success":false,"error":"...2048...","id":i64,"name":"...256..."}
+const TRACKER_UPDATE_RESPONSE_SIZE: usize = json_type_base("TrackerUpdateResponse")
+    + json_bool_field("success")
+    + json_string_field("error", MAX_ERROR_LENGTH)
+    + json_i64_field("id")
+    + json_string_field("name", MAX_TRACKER_NAME_LENGTH);
+
+/// TrackerDeleteResponse: {"type":"TrackerDeleteResponse","success":false,"error":"...2048...","name":"...256..."}
+const TRACKER_DELETE_RESPONSE_SIZE: usize = json_type_base("TrackerDeleteResponse")
+    + json_bool_field("success")
+    + json_string_field("error", MAX_ERROR_LENGTH)
+    + json_string_field("name", MAX_TRACKER_NAME_LENGTH);
+
+// -----------------------------------------------------------------------------
 // Group server messages
 // -----------------------------------------------------------------------------
 
@@ -1207,6 +1307,13 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("GroupEdit", pad_limit(GROUP_EDIT_SIZE as u64));
     m.insert("GroupUpdate", pad_limit(GROUP_UPDATE_SIZE as u64));
     m.insert("GroupDelete", pad_limit(GROUP_DELETE_SIZE as u64));
+
+    // Tracker client messages
+    m.insert("TrackerList", pad_limit(TRACKER_LIST_SIZE as u64));
+    m.insert("TrackerEdit", pad_limit(TRACKER_EDIT_SIZE as u64));
+    m.insert("TrackerCreate", pad_limit(TRACKER_CREATE_SIZE as u64));
+    m.insert("TrackerUpdate", pad_limit(TRACKER_UPDATE_SIZE as u64));
+    m.insert("TrackerDelete", pad_limit(TRACKER_DELETE_SIZE as u64));
 
     // News client messages (self-documenting via const calculations)
     m.insert("NewsList", pad_limit(NEWS_LIST_SIZE as u64));
@@ -1370,6 +1477,28 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert(
         "GroupDeleteResponse",
         pad_limit(GROUP_DELETE_RESPONSE_SIZE as u64),
+    );
+
+    // Tracker server messages
+    m.insert(
+        "TrackerListResponse",
+        pad_limit(TRACKER_LIST_RESPONSE_SIZE as u64),
+    );
+    m.insert(
+        "TrackerEditResponse",
+        pad_limit(TRACKER_EDIT_RESPONSE_SIZE as u64),
+    );
+    m.insert(
+        "TrackerCreateResponse",
+        pad_limit(TRACKER_CREATE_RESPONSE_SIZE as u64),
+    );
+    m.insert(
+        "TrackerUpdateResponse",
+        pad_limit(TRACKER_UPDATE_RESPONSE_SIZE as u64),
+    );
+    m.insert(
+        "TrackerDeleteResponse",
+        pad_limit(TRACKER_DELETE_RESPONSE_SIZE as u64),
     );
 
     // News server messages (self-documenting via const calculations)
@@ -1941,8 +2070,8 @@ mod tests {
     // Note: Some type names are shared between client and server enums
     // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing, FileHash),
     // so they're only counted once in the HashMap.
-    const CLIENT_MESSAGE_COUNT: usize = 58; // 6 News + 8 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 4 Chat channel + 1 ConnectionMonitor + 5 Group + 2 Voice client messages + 1 Ping
-    const SERVER_MESSAGE_COUNT: usize = 73; // 7 News + 9 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 6 Chat channel + 1 ConnectionMonitor + 5 Group + 4 Voice server messages + 1 Pong
+    const CLIENT_MESSAGE_COUNT: usize = 63; // 6 News + 8 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 4 Chat channel + 1 ConnectionMonitor + 5 Group + 5 Tracker + 2 Voice client messages + 1 Ping
+    const SERVER_MESSAGE_COUNT: usize = 78; // 7 News + 9 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 6 Chat channel + 1 ConnectionMonitor + 5 Group + 5 Tracker + 4 Voice server messages + 1 Pong
     const SHARED_MESSAGE_COUNT: usize = 6; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing, FileHash
 
     // Tracker protocol message counts (separate protocol from BBS).

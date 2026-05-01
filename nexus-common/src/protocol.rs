@@ -315,6 +315,51 @@ pub enum ClientMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         min_password_strength: Option<u8>,
     },
+    /// Add a tracker the server should publish registration entries to.
+    /// Requires `tracker_create` permission.
+    TrackerCreate {
+        /// Hostname or IP literal (validated as a public address).
+        address: String,
+        /// TCP port (typically 7510).
+        port: u16,
+        /// TOFU-pinned cert fingerprint in canonical form. `None` = unpinned;
+        /// the publisher task will TOFU-pin on first successful connect.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fingerprint: Option<String>,
+        /// Registration password. `None` or empty = open tracker.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        password: Option<String>,
+        /// Admin-supplied label (used as the primary identifier in the UI).
+        name: String,
+        /// Whether the publisher should actively maintain a connection.
+        enabled: bool,
+    },
+    /// Remove a tracker from the server's publisher list. Requires
+    /// `tracker_delete` permission.
+    TrackerDelete {
+        id: i64,
+    },
+    /// Fetch a single tracker's details for the edit form. Requires
+    /// `tracker_edit` permission.
+    TrackerEdit {
+        id: i64,
+    },
+    /// List all configured trackers and their runtime status. Requires
+    /// `tracker_list` permission.
+    TrackerList,
+    /// Replace a tracker's configuration. Requires `tracker_edit`
+    /// permission.
+    TrackerUpdate {
+        id: i64,
+        address: String,
+        port: u16,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        fingerprint: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        password: Option<String>,
+        name: String,
+        enabled: bool,
+    },
     /// Add an IP to the trusted list (bypasses ban checks)
     TrustCreate {
         /// Target: nickname, IP address, or CIDR range
@@ -926,6 +971,57 @@ pub enum ServerMessage {
     ServerInfoUpdated {
         server_info: ServerInfo,
     },
+    /// Response to TrackerCreate request
+    TrackerCreateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// New tracker's id (for the toast message)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+        /// New tracker's name (for the toast message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    /// Response to TrackerDelete request
+    TrackerDeleteResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Removed tracker's name (for the toast message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    /// Response to TrackerEdit request
+    TrackerEditResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// The full tracker info (config + runtime status), populated on success.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        tracker: Option<TrackerInfo>,
+    },
+    /// Response to TrackerList request
+    TrackerListResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// All configured trackers with their runtime status.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        trackers: Option<Vec<TrackerInfo>>,
+    },
+    /// Response to TrackerUpdate request
+    TrackerUpdateResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Updated tracker's id (for the toast message)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+        /// Updated tracker's name (for the toast message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
     /// Server signals transfer completion (transfer port only)
     TransferComplete {
         success: bool,
@@ -1406,6 +1502,74 @@ pub struct GroupInfo {
     pub permissions: Vec<String>,
 }
 
+/// Information about a tracker the server is configured to publish to.
+///
+/// Combines the durable DB row (id, address, port, fingerprint, password,
+/// name, enabled, created_at, updated_at) with the runtime status of the
+/// publisher task (connection state, last successful refresh, last error,
+/// pending fingerprint observations, tracker-supplied refresh interval).
+///
+/// For disabled trackers (no running publisher task), the runtime fields
+/// are at their default "not connected" values: `connected: false`, every
+/// other runtime field `None`. That accurately reflects "no task running."
+///
+/// Used in `TrackerListResponse`, `TrackerEditResponse`, etc.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrackerInfo {
+    // ---- Configuration (from DB row) ----
+    /// Unique tracker identifier (DB row id).
+    pub id: i64,
+    /// Hostname or IP literal.
+    pub address: String,
+    /// TCP port (typically 7510).
+    pub port: u16,
+    /// TOFU-pinned cert fingerprint in canonical form. `None` until the
+    /// publisher task has TOFU-pinned on first successful connect.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
+    /// Registration password. Echoed plaintext to admins (it's a shared
+    /// invite-code-style secret, not a personal credential — admins may
+    /// need to share it with collaborators registering with the same
+    /// tracker). `None` if the tracker is open.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
+    /// Admin-supplied label.
+    pub name: String,
+    /// Whether the publisher should actively maintain a connection.
+    pub enabled: bool,
+    /// Unix epoch seconds when the row was created.
+    pub created_at: i64,
+    /// Unix epoch seconds when the row was last updated.
+    pub updated_at: i64,
+
+    // ---- Runtime status (from publisher manager; ephemeral) ----
+    /// Whether the publisher task currently has a healthy registration
+    /// with the tracker.
+    pub connected: bool,
+    /// Unix epoch seconds when the publisher last successfully registered.
+    /// `None` if it's never connected since this task started.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_connected_at: Option<i64>,
+    /// Most recent error message, locale-translated. `None` if there's
+    /// been no error or the last attempt succeeded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+    /// Most recent error kind in machine-readable form (e.g.
+    /// "fingerprint_mismatch", "unauthorized", "rate_limited").
+    /// Distinguishable from `last_error` so the client can decide
+    /// whether to render a "needs your attention" UI.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_error_kind: Option<String>,
+    /// Fingerprint the publisher observed but the admin hasn't accepted
+    /// yet (after a Stage 1 mismatch). `None` in normal operation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_fingerprint: Option<String>,
+    /// Tracker-supplied refresh interval in seconds, populated once
+    /// the publisher has successfully registered.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_interval: Option<u32>,
+}
+
 impl std::fmt::Debug for ClientMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -1694,6 +1858,47 @@ impl std::fmt::Debug for ClientMessage {
                 }
                 s.finish()
             }
+            ClientMessage::TrackerCreate {
+                address,
+                port,
+                fingerprint,
+                name,
+                enabled,
+                ..
+            } => f
+                .debug_struct("TrackerCreate")
+                .field("address", address)
+                .field("port", port)
+                .field("fingerprint", fingerprint)
+                .field("password", &"<REDACTED>")
+                .field("name", name)
+                .field("enabled", enabled)
+                .finish(),
+            ClientMessage::TrackerDelete { id } => {
+                f.debug_struct("TrackerDelete").field("id", id).finish()
+            }
+            ClientMessage::TrackerEdit { id } => {
+                f.debug_struct("TrackerEdit").field("id", id).finish()
+            }
+            ClientMessage::TrackerList => f.debug_struct("TrackerList").finish(),
+            ClientMessage::TrackerUpdate {
+                id,
+                address,
+                port,
+                fingerprint,
+                name,
+                enabled,
+                ..
+            } => f
+                .debug_struct("TrackerUpdate")
+                .field("id", id)
+                .field("address", address)
+                .field("port", port)
+                .field("fingerprint", fingerprint)
+                .field("password", &"<REDACTED>")
+                .field("name", name)
+                .field("enabled", enabled)
+                .finish(),
             ClientMessage::TrustCreate {
                 target,
                 duration,

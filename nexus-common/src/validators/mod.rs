@@ -32,6 +32,7 @@ mod server_name;
 mod sha256;
 mod status;
 mod target;
+mod tracker_name;
 mod trust_reason;
 mod username;
 mod version;
@@ -85,6 +86,7 @@ pub use server_name::{MAX_SERVER_NAME_LENGTH, ServerNameError, validate_server_n
 pub use sha256::{SHA256_HEX_LENGTH, Sha256Error, validate_sha256};
 pub use status::{MAX_STATUS_LENGTH, StatusError, validate_status};
 pub use target::{MAX_TARGET_LENGTH, TargetError, validate_target};
+pub use tracker_name::{MAX_TRACKER_NAME_LENGTH, TrackerNameError, validate_tracker_name};
 pub use trust_reason::{MAX_TRUST_REASON_LENGTH, TrustReasonError, validate_trust_reason};
 pub use username::{MAX_USERNAME_LENGTH, UsernameError, validate_username};
 pub use version::{MAX_VERSION_LENGTH, VersionError, validate_version};

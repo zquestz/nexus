@@ -637,6 +637,14 @@ where
         ClientMessage::GroupDelete { id } => {
             handlers::handle_group_delete(id, conn_state.session_id, ctx).await?;
         }
+        // Tracker admin messages — handlers landing in a later chunk.
+        // For now, ignore to keep the workspace building. No client
+        // sends these messages yet.
+        ClientMessage::TrackerList
+        | ClientMessage::TrackerEdit { .. }
+        | ClientMessage::TrackerCreate { .. }
+        | ClientMessage::TrackerUpdate { .. }
+        | ClientMessage::TrackerDelete { .. } => {}
     }
 
     Ok(())

@@ -95,6 +95,14 @@ pub enum Permission {
     GroupDelete,
     /// Permission to edit account group name and permissions
     GroupEdit,
+    /// Permission to add a tracker to the server's publisher list
+    TrackerCreate,
+    /// Permission to remove a tracker from the server's publisher list
+    TrackerDelete,
+    /// Permission to edit a tracker's configuration (also gates fetching detail for the edit form)
+    TrackerEdit,
+    /// Permission to view the server's configured trackers and their runtime status
+    TrackerList,
     /// Permission to receive audio from others in voice chat
     VoiceListen,
     /// Permission to transmit audio in voice chat
@@ -157,6 +165,10 @@ impl Permission {
             "news_delete" => Some(Permission::NewsDelete),
             "news_edit" => Some(Permission::NewsEdit),
             "news_list" => Some(Permission::NewsList),
+            "tracker_create" => Some(Permission::TrackerCreate),
+            "tracker_delete" => Some(Permission::TrackerDelete),
+            "tracker_edit" => Some(Permission::TrackerEdit),
+            "tracker_list" => Some(Permission::TrackerList),
             "user_broadcast" => Some(Permission::UserBroadcast),
             "user_create" => Some(Permission::UserCreate),
             "user_delete" => Some(Permission::UserDelete),
@@ -305,6 +317,10 @@ mod tests {
         assert_eq!(Permission::GroupCreate.as_str(), "group_create");
         assert_eq!(Permission::GroupDelete.as_str(), "group_delete");
         assert_eq!(Permission::GroupEdit.as_str(), "group_edit");
+        assert_eq!(Permission::TrackerCreate.as_str(), "tracker_create");
+        assert_eq!(Permission::TrackerDelete.as_str(), "tracker_delete");
+        assert_eq!(Permission::TrackerEdit.as_str(), "tracker_edit");
+        assert_eq!(Permission::TrackerList.as_str(), "tracker_list");
         assert_eq!(Permission::TrustCreate.as_str(), "trust_create");
         assert_eq!(Permission::TrustDelete.as_str(), "trust_delete");
         assert_eq!(Permission::TrustList.as_str(), "trust_list");
@@ -405,6 +421,22 @@ mod tests {
             Some(Permission::FileRename)
         );
         assert_eq!(Permission::parse("file_root"), Some(Permission::FileRoot));
+        assert_eq!(
+            Permission::parse("tracker_create"),
+            Some(Permission::TrackerCreate)
+        );
+        assert_eq!(
+            Permission::parse("tracker_delete"),
+            Some(Permission::TrackerDelete)
+        );
+        assert_eq!(
+            Permission::parse("tracker_edit"),
+            Some(Permission::TrackerEdit)
+        );
+        assert_eq!(
+            Permission::parse("tracker_list"),
+            Some(Permission::TrackerList)
+        );
         assert_eq!(
             Permission::parse("trust_create"),
             Some(Permission::TrustCreate)
@@ -537,6 +569,10 @@ mod tests {
             Permission::NewsDelete,
             Permission::NewsEdit,
             Permission::NewsList,
+            Permission::TrackerCreate,
+            Permission::TrackerDelete,
+            Permission::TrackerEdit,
+            Permission::TrackerList,
             Permission::TrustCreate,
             Permission::TrustDelete,
             Permission::TrustList,

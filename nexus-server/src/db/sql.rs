@@ -336,6 +336,119 @@ pub const SQL_UPDATE_NEWS: &str = "
 pub const SQL_DELETE_NEWS: &str = "DELETE FROM news WHERE id = ?";
 
 // ========================================================================
+// Tracker Query Operations
+// ========================================================================
+//
+// All six constants below are dead until the tracker handlers land
+// (chunk 4). They're consumed by `db::trackers::TrackerDb` which is
+// itself dead until handlers exist; per-constant `#[allow(dead_code)]`
+// markers below silence the warnings until then. Remove the markers
+// when the handlers ship.
+
+/// Select all tracker rows ordered by name (case-insensitive).
+///
+/// **Parameters:** None
+///
+/// **Returns:** Multiple rows of `(id, address, port, fingerprint,
+/// password, name, enabled, created_at, updated_at)`.
+///
+/// **Notes:**
+/// - `port` is stored as INTEGER in SQLite but always fits in `u16`
+///   because protocol-layer validation rejects out-of-range ports
+///   before insert.
+/// - The `LOWER(name)` order matches the case-insensitive uniqueness
+///   on `name`; no tiebreaker is needed because two rows can't have
+///   the same `LOWER(name)`.
+#[allow(dead_code)] // dead until chunk 4 (handlers); see header comment
+pub const SQL_SELECT_ALL_TRACKERS: &str = "
+    SELECT id, address, port, fingerprint, password, name, enabled,
+           created_at, updated_at
+    FROM trackers
+    ORDER BY LOWER(name)";
+
+/// Select a single tracker by id.
+///
+/// **Parameters:**
+/// 1. `id: i64` - Tracker row id
+///
+/// **Returns:** `(id, address, port, fingerprint, password, name, enabled,
+/// created_at, updated_at)`
+#[allow(dead_code)] // dead until chunk 4 (handlers); see header comment
+pub const SQL_SELECT_TRACKER_BY_ID: &str = "
+    SELECT id, address, port, fingerprint, password, name, enabled,
+           created_at, updated_at
+    FROM trackers
+    WHERE id = ?";
+
+/// Insert a tracker row.
+///
+/// **Parameters:**
+/// 1. `address: &str` - Hostname or IP literal
+/// 2. `port: i64` - TCP port (typically 7510)
+/// 3. `fingerprint: Option<&str>` - TOFU pin; `None` on first connect
+/// 4. `password: Option<&str>` - Registration password (`None` if open)
+/// 5. `name: &str` - Admin label (required, non-empty)
+/// 6. `enabled: bool` - Active flag
+/// 7. `created_at: i64` - Unix epoch seconds
+/// 8. `updated_at: i64` - Unix epoch seconds (typically equals
+///    `created_at` on insert)
+///
+/// **Returns:** `last_insert_rowid()` — the new tracker row id.
+///
+/// **Note:** Insert fails with a UNIQUE-constraint violation if
+/// another row with the same `(address, port)` exists.
+#[allow(dead_code)] // dead until chunk 4 (handlers); see header comment
+pub const SQL_INSERT_TRACKER: &str = "
+    INSERT INTO trackers (address, port, fingerprint, password, name, enabled,
+                          created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+/// Replace a tracker row's mutable fields by id (full-row update).
+///
+/// **Parameters:**
+/// 1. `address: &str`
+/// 2. `port: i64`
+/// 3. `fingerprint: Option<&str>`
+/// 4. `password: Option<&str>`
+/// 5. `name: &str`
+/// 6. `enabled: bool`
+/// 7. `updated_at: i64`
+/// 8. `id: i64`
+///
+/// **Note:** `created_at` is preserved. Update fails with a UNIQUE-
+/// constraint violation if changing `(address, port)` collides with
+/// another row.
+#[allow(dead_code)] // dead until chunk 4 (handlers); see header comment
+pub const SQL_UPDATE_TRACKER: &str = "
+    UPDATE trackers
+    SET address = ?, port = ?, fingerprint = ?, password = ?, name = ?,
+        enabled = ?, updated_at = ?
+    WHERE id = ?";
+
+/// Narrow update: replace only the fingerprint and the `updated_at`
+/// timestamp. Used by the publisher task on TOFU first-connect (when
+/// the row's fingerprint was `NULL`) and on admin-accept after a
+/// fingerprint mismatch — both paths only need to update the pin
+/// without touching other fields.
+///
+/// **Parameters:**
+/// 1. `fingerprint: &str` - Newly accepted canonical fingerprint
+/// 2. `updated_at: i64` - Unix epoch seconds
+/// 3. `id: i64`
+#[allow(dead_code)] // dead until chunk 4 (handlers); see header comment
+pub const SQL_UPDATE_TRACKER_FINGERPRINT: &str = "
+    UPDATE trackers
+    SET fingerprint = ?, updated_at = ?
+    WHERE id = ?";
+
+/// Delete a tracker row by id.
+///
+/// **Parameters:**
+/// 1. `id: i64`
+#[allow(dead_code)] // dead until chunk 4 (handlers); see header comment
+pub const SQL_DELETE_TRACKER: &str = "DELETE FROM trackers WHERE id = ?";
+
+// ========================================================================
 // IP Ban Query Operations
 // ========================================================================
 
