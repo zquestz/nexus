@@ -258,6 +258,12 @@ On first run, the tracker generates:
 
 To use your own certificates, replace `tracker.crt` and `tracker.key` in the data directory before starting the tracker. The tracker uses the same certificate for both TCP and WebSocket ports.
 
+### Rotating Certificates
+
+The TLS certificate is loaded once at daemon startup. Replacing `tracker.crt` / `tracker.key` while the tracker is running has no effect — existing connections continue with the old cert, and new connections still negotiate against it. To pick up a new cert, restart the daemon (e.g., `systemctl restart nexus-trackerd` or `docker restart nexus-trackerd`). `SIGHUP` does _not_ reload TLS material; it only reloads password hashes.
+
+Restarting drops in-flight registrations; registrants reconnect on their normal refresh cycle.
+
 ### Certificate Fingerprint
 
 The tracker displays the certificate fingerprint on startup:

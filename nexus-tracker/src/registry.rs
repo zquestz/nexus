@@ -6,12 +6,11 @@
 //! cap (`--max-entries-per-ip`); for each, `0` is reserved for
 //! "unlimited".
 //!
-//! The registry is a dumb store. It accepts what the handler hands it,
-//! sorts listings alphabetically by `name` (case-insensitive,
-//! Unicode-aware), and evicts entries whose last refresh exceeds the
-//! caller-supplied threshold. Address resolution (substituting the
-//! peer's IP when `entry.address` is empty) and password validation
-//! live in the handler — not here.
+//! The registry is a dumb store. It accepts what the handler hands it
+//! and sorts listings alphabetically by `name` (case-insensitive,
+//! Unicode-aware). Address resolution (substituting the peer's IP when
+//! `entry.address` is empty) and password validation live in the
+//! handler — not here.
 //!
 //! ## Caller responsibilities
 //!
@@ -19,14 +18,17 @@
 //!   and holds no internal lock. The use site wraps it in
 //!   `Arc<Mutex<Registry>>` so connection tasks can register / refresh /
 //!   unregister and the listing handler can take a snapshot.
-//! - **Stale eviction:** the registry does not spawn its own timer.
-//!   The caller invokes [`Registry::evict_stale`] on a schedule
-//!   (typically a daily-or-faster background task in `main.rs`) and
-//!   logs the returned ids.
+//! - **Stale eviction:** the registry does not track staleness; that's
+//!   the connection task's job. Each connection in `connection.rs`
+//!   reads frames with a `2 × refresh_interval` idle timeout, and on
+//!   expiry the task drops, the drop guard fires, and the entry is
+//!   unregistered. By construction, every entry is backed by a live
+//!   connection, so a centralized stale-eviction worker would have
+//!   nothing to do.
 
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use nexus_common::tracker_protocol::ServerEntry;
 
@@ -35,7 +37,8 @@ pub type ConnectionId = u64;
 
 /// A registered server entry plus the metadata the registry needs to
 /// manage its lifecycle: `peer_ip` for cap accounting and logging, and
-/// `last_refresh` for stale eviction.
+/// `last_refresh` for the per-entry refresh-floor check (rejects
+/// refreshes that arrive faster than half the protocol minimum).
 #[derive(Clone, Debug)]
 pub struct RegisteredEntry {
     pub entry: ServerEntry,
@@ -162,24 +165,6 @@ impl Registry {
         out
     }
 
-    /// Remove entries whose `last_refresh` is older than `now - max_age`.
-    /// Returns the evicted ids so the caller can log them. Order among
-    /// the returned ids is unspecified (`HashMap` iteration order).
-    pub fn evict_stale(&mut self, now: Instant, max_age: Duration) -> Vec<ConnectionId> {
-        let stale_ids: Vec<ConnectionId> = self
-            .entries
-            .iter()
-            .filter(|(_, r)| now.duration_since(r.last_refresh) > max_age)
-            .map(|(id, _)| *id)
-            .collect();
-        for id in &stale_ids {
-            if let Some(removed) = self.entries.remove(id) {
-                self.decrement_ip_count(&removed.peer_ip);
-            }
-        }
-        stale_ids
-    }
-
     /// Number of registered entries.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -213,6 +198,7 @@ impl Registry {
 mod tests {
     use super::*;
     use std::net::Ipv4Addr;
+    use std::time::Duration;
 
     /// Build a `ServerEntry` for tests with sensible defaults; the only
     /// field tests typically vary is `name` (for sort tests) or
@@ -328,10 +314,8 @@ mod tests {
             t1,
         );
 
-        // Eviction with a 30s threshold AT t1 keeps the entry, because
-        // last_refresh was reset to t1 and 0s have passed since.
-        let evicted = r.evict_stale(t1, Duration::from_secs(30));
-        assert!(evicted.is_empty(), "fresh refresh shouldn't be evicted");
+        // last_refresh was reset to t1 (used by the refresh-floor check).
+        assert_eq!(r.last_refresh(id), Some(t1));
 
         // And the user_count update is reflected in the listing.
         let list = r.list();
@@ -426,51 +410,6 @@ mod tests {
     fn test_list_empty_returns_empty_vec() {
         let r = Registry::new(0, 0);
         assert!(r.list().is_empty());
-    }
-
-    #[test]
-    fn test_evict_stale_removes_old_entries() {
-        let mut r = Registry::new(0, 0);
-        let t0 = Instant::now();
-        let stale = r.register(make_entry("Old"), ip(1), t0).unwrap();
-        let fresh = r
-            .register(make_entry("New"), ip(2), t0 + Duration::from_secs(120))
-            .unwrap();
-
-        let now = t0 + Duration::from_secs(150);
-        let evicted = r.evict_stale(now, Duration::from_secs(60));
-
-        assert_eq!(evicted, vec![stale]);
-        // The fresh entry survives.
-        assert_eq!(r.len(), 1);
-        assert_eq!(r.list()[0].name, "New");
-        let _ = fresh;
-    }
-
-    #[test]
-    fn test_evict_stale_keeps_fresh_entries() {
-        let mut r = Registry::new(0, 0);
-        let t0 = Instant::now();
-        r.register(make_entry("S"), ip(1), t0).unwrap();
-        // Just under the threshold.
-        let now = t0 + Duration::from_secs(59);
-        let evicted = r.evict_stale(now, Duration::from_secs(60));
-        assert!(evicted.is_empty());
-        assert_eq!(r.len(), 1);
-    }
-
-    #[test]
-    fn test_evict_stale_decrements_per_ip_counts() {
-        let mut r = Registry::new(0, 1);
-        let t0 = Instant::now();
-        r.register(make_entry("S"), ip(1), t0).unwrap();
-
-        let now = t0 + Duration::from_secs(120);
-        r.evict_stale(now, Duration::from_secs(60));
-
-        // After eviction the IP's slot is free, so a new register works.
-        r.register(make_entry("After"), ip(1), now)
-            .expect("slot should be free after stale eviction");
     }
 
     #[test]

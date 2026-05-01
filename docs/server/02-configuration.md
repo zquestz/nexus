@@ -8,22 +8,22 @@ This guide covers all command-line options for the Nexus BBS server.
 nexusd [OPTIONS]
 ```
 
-| Option                             | Short | Default            | Description                                                |
-| ---------------------------------- | ----- | ------------------ | ---------------------------------------------------------- |
-| `--bind <IP>`                      | `-b`  | `0.0.0.0`          | IP address to bind to                                      |
-| `--port <PORT>`                    | `-p`  | `7500`             | Main BBS port                                              |
-| `--transfer-port <PORT>`           | `-t`  | `7501`             | File transfer port                                         |
-| `--data-dir <PATH>`                | `-d`  | (platform default) | Server data directory (database, certs, logs, file index)  |
-| `--file-root <PATH>`               | `-f`  | `<data-dir>/files/` | File area root directory                                  |
-| `--log-level <LEVEL>`              |       | `info`             | Log level (none, error, warn, info, debug)                 |
-| `--log-retention <DURATION>`       |       | `30d`              | Log file retention (e.g. "30d", "7d", "0" for stderr only) |
-| `--no-log-timestamps`              |       | `false`            | Disable timestamps in stderr output                        |
-| `--upnp`                           |       | `false`            | Enable UPnP port forwarding                                |
-| `--websocket`                      |       | `false`            | Enable WebSocket support                                   |
-| `--websocket-port <PORT>`          |       | `7502`             | WebSocket BBS port (requires `--websocket`)                |
-| `--transfer-websocket-port <PORT>` |       | `7503`             | WebSocket transfer port (requires `--websocket`)           |
-| `--help`                           | `-h`  |                    | Show help message                                          |
-| `--version`                        | `-V`  |                    | Show version                                               |
+| Option                             | Short | Default             | Description                                                |
+| ---------------------------------- | ----- | ------------------- | ---------------------------------------------------------- |
+| `--bind <IP>`                      | `-b`  | `0.0.0.0`           | IP address to bind to                                      |
+| `--port <PORT>`                    | `-p`  | `7500`              | Main BBS port                                              |
+| `--transfer-port <PORT>`           | `-t`  | `7501`              | File transfer port                                         |
+| `--data-dir <PATH>`                | `-d`  | (platform default)  | Server data directory (database, certs, logs, file index)  |
+| `--file-root <PATH>`               | `-f`  | `<data-dir>/files/` | File area root directory                                   |
+| `--log-level <LEVEL>`              |       | `info`              | Log level (none, error, warn, info, debug)                 |
+| `--log-retention <DURATION>`       |       | `30d`               | Log file retention (e.g. "30d", "7d", "0" for stderr only) |
+| `--no-log-timestamps`              |       | `false`             | Disable timestamps in stderr output                        |
+| `--upnp`                           |       | `false`             | Enable UPnP port forwarding                                |
+| `--websocket`                      |       | `false`             | Enable WebSocket support                                   |
+| `--websocket-port <PORT>`          |       | `7502`              | WebSocket BBS port (requires `--websocket`)                |
+| `--transfer-websocket-port <PORT>` |       | `7503`              | WebSocket transfer port (requires `--websocket`)           |
+| `--help`                           | `-h`  |                     | Show help message                                          |
+| `--version`                        | `-V`  |                     | Show version                                               |
 
 ## Network Binding
 
@@ -231,6 +231,16 @@ On first run, the server generates:
 ### Custom Certificates
 
 To use your own certificates, replace `server.crt` and `server.key` in the data directory before starting the server. The server uses the same certificate for both ports.
+
+### Rotating Certificates
+
+The TLS certificate is loaded once at server startup. Replacing `server.crt` / `server.key` while the server is running has no effect — existing connections continue with the old cert, and new connections still negotiate against it. To pick up a new cert, restart the server.
+
+Restarting drops all connected users. After restart, clients reconnect under the new fingerprint and the TOFU mismatch dialog fires before login (the cert-rotation flow). Plan rotations:
+
+- Communicate the new fingerprint to users out-of-band before rotating so they can recognize the legitimate change vs. an interception attempt.
+- Rotate during a low-traffic window.
+- If you advertise the server via a tracker, the entry's stored fingerprint stays stale until your next refresh after the restart.
 
 ### Certificate Fingerprint
 
