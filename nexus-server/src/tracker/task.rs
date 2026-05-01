@@ -596,6 +596,8 @@ async fn build_register_payload(
     record: &TrackerRecord,
     context: &Arc<PublisherContext>,
 ) -> Result<TrackerClientMessage, String> {
+    // DO NOT CACHE this read — it is the propagation path for
+    // `ServerInfoUpdate`. See `Database::tracker_registration_fields`.
     let fields = context
         .db
         .tracker_registration_fields()

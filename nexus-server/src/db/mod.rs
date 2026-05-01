@@ -73,6 +73,17 @@ impl Database {
     /// [`UserDb::guest_enabled`] (sourced from the `users` table). Two
     /// queries internally; one method to call from the publisher.
     ///
+    /// # Propagation contract
+    ///
+    /// This per-refresh DB read is the **only** path by which an
+    /// admin's `ServerInfoUpdate` (changes to `server_name`,
+    /// `description`, `public_address`, or guest-enabled state)
+    /// reaches a tracker entry. The publisher must NOT cache the
+    /// result anywhere — caller-side, in `PublisherContext`, or in
+    /// the manager — or admin updates will silently fail to propagate
+    /// until the publisher task is restarted. See
+    /// `handlers/server_info_update.rs` for the write half.
+    ///
     /// # Errors
     ///
     /// Returns `sqlx::Error` if either underlying query fails.
