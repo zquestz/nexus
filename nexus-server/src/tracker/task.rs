@@ -55,7 +55,16 @@ use crate::constants::{
 use crate::db::TrackerRecord;
 
 /// Base backoff between connection attempts on failure.
+///
+/// In tests this collapses to 100ms so retry-then-success scenarios
+/// run in well under the test's outer timeout, and existing tests
+/// don't risk overlap between the publisher's backoff deadline and
+/// the test's `wait_for_status` deadline. Production behavior is
+/// unaffected.
+#[cfg(not(test))]
 const BACKOFF_BASE: Duration = Duration::from_secs(5);
+#[cfg(test)]
+const BACKOFF_BASE: Duration = Duration::from_millis(100);
 /// Cap on backoff growth — even after many consecutive failures, we
 /// retry at this cadence.
 const BACKOFF_CAP: Duration = Duration::from_secs(300);
@@ -640,7 +649,8 @@ fn jitter(base: Duration) -> Duration {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Instant;
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
 
     use crate::db::testing::create_test_db;
     use crate::db::{CreateTrackerParams, Database};
@@ -726,26 +736,32 @@ mod tests {
     }
 
     /// Poll the status until `pred` returns true, or until `timeout`
-    /// elapses. Returns the final snapshot when `pred` matched, else
-    /// `None`.
+    /// of *tokio time* elapses. Returns the final snapshot when `pred`
+    /// matched, else `None`.
+    ///
+    /// Uses `tokio::time::timeout` (not `std::time::Instant`) so the
+    /// deadline respects `#[tokio::test(start_paused = true)]`. Under
+    /// paused time, both the inner 25ms poll-sleep and the outer
+    /// timeout advance the virtual clock together, so backoff-driven
+    /// scenarios run in milliseconds of wallclock.
     async fn wait_for_status(
         status: &Arc<RwLock<TrackerStatus>>,
         timeout: Duration,
         pred: impl Fn(&TrackerStatus) -> bool,
     ) -> Option<TrackerStatus> {
-        let start = Instant::now();
-        loop {
-            {
-                let snap = status.read().expect("status lock").clone();
-                if pred(&snap) {
-                    return Some(snap);
+        tokio::time::timeout(timeout, async {
+            loop {
+                {
+                    let snap = status.read().expect("status lock").clone();
+                    if pred(&snap) {
+                        return snap;
+                    }
                 }
+                tokio::time::sleep(Duration::from_millis(25)).await;
             }
-            if start.elapsed() >= timeout {
-                return None;
-            }
-            tokio::time::sleep(Duration::from_millis(25)).await;
-        }
+        })
+        .await
+        .ok()
     }
 
     #[tokio::test]
@@ -984,6 +1000,47 @@ mod tests {
         );
         assert!(!snap.connected);
 
+        mock.stop().await;
+    }
+
+    #[tokio::test]
+    async fn rate_limited_then_succeeds() {
+        // First connection: tracker rejects with `rate_limited` (a
+        // transient kind). Publisher should backoff (~5s, jittered)
+        // and reconnect. Second connection: tracker accepts. Status
+        // should land at connected = true.
+        let mut queue = VecDeque::new();
+        queue.push_back(RegisterPolicy::Failure {
+            error_kind: nexus_common::ERROR_KIND_RATE_LIMITED.to_string(),
+            error: "slow down".to_string(),
+        });
+        let mock = MockTracker::start(MockBehavior {
+            queued_responses: Arc::new(Mutex::new(queue)),
+            ..Default::default()
+        })
+        .await;
+        let (db, context) = setup_context().await;
+        let record = seed_tracker(&db, mock.addr, None, None).await;
+
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let task = tokio::spawn(run(
+            record.clone(),
+            Arc::clone(&status),
+            Arc::clone(&context),
+        ));
+
+        // Test-mode `BACKOFF_BASE` is 100ms (cfg(test) override), so
+        // the retry happens well within the standard 5s timeout —
+        // backoff + reconnect + handshake all complete in <1s on
+        // loopback, leaving generous headroom for slow CI.
+        let snap = wait_for_status(&status, Duration::from_secs(5), |s| s.connected)
+            .await
+            .expect("expected eventual connected status after retry");
+        assert!(snap.connected);
+        assert!(snap.last_error_kind.is_none());
+
+        task.abort();
+        let _ = task.await;
         mock.stop().await;
     }
 }

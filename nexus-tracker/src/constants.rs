@@ -213,7 +213,7 @@ pub const MSG_LISTENING: &str = "Tracker port: ";
 pub const MSG_WS_LISTENING: &str = "WebSocket tracker port: ";
 
 /// Operator-facing message printed on graceful shutdown.
-pub const MSG_SHUTDOWN_RECEIVED: &str = "\nShutdown signal received";
+pub const MSG_SHUTDOWN_RECEIVED: &str = "Shutdown signal received";
 
 /// Listener bind failure prefix (caller appends `addr` and underlying error).
 pub const ERR_BIND_FAILED: &str = "Failed to bind to ";

@@ -6,8 +6,9 @@
 //! one `TrackerServerRegister` cycle. Behavior (the self-reported
 //! fingerprint, the register response) is configurable per test.
 
+use std::collections::VecDeque;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use nexus_common::TRACKER_PROTOCOL_VERSION;
 use nexus_common::framing::{FrameReader, FrameWriter};
@@ -33,8 +34,16 @@ pub struct MockBehavior {
     /// `Some(other)` simulates an interception scenario where the TLS
     /// peer disagrees with what the tracker self-reports.
     pub reported_fingerprint: Option<String>,
-    /// How to respond to the `TrackerServerRegister` frame.
+    /// Default response to the `TrackerServerRegister` frame, used for
+    /// every connection unless `queued_responses` has an entry.
     pub register_response: RegisterPolicy,
+    /// Per-connection response queue. Each new TLS connection pops one
+    /// from the front; once empty, falls back to `register_response`.
+    /// Use this to simulate a transient-then-success sequence where
+    /// the first connect rejects with `rate_limited` and the next
+    /// accepts. Wrapped in `Arc<Mutex>` so all connection-handler
+    /// clones share the same queue.
+    pub queued_responses: Arc<Mutex<VecDeque<RegisterPolicy>>>,
 }
 
 #[derive(Clone)]
@@ -52,6 +61,7 @@ impl Default for MockBehavior {
             register_response: RegisterPolicy::Success {
                 refresh_interval: 300,
             },
+            queued_responses: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 }
@@ -170,7 +180,14 @@ async fn handle_connection(
     let _register = read_tracker_client_message_with_full_timeout(&mut reader, None, None)
         .await
         .map_err(|e| std::io::Error::other(e.to_string()))?;
-    let response = match behavior.register_response {
+    // Queued response wins; otherwise default to `register_response`.
+    let policy = behavior
+        .queued_responses
+        .lock()
+        .expect("mock queue lock poisoned")
+        .pop_front()
+        .unwrap_or_else(|| behavior.register_response.clone());
+    let response = match policy {
         RegisterPolicy::Success { refresh_interval } => {
             TrackerServerMessage::TrackerServerRegisterResponse {
                 success: true,

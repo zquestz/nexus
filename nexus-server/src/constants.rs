@@ -287,7 +287,7 @@ pub const MSG_LOG_LEVEL: &str = "Log level: ";
 pub const MSG_LOG_DIR: &str = "Log directory: ";
 
 /// Shutdown signal received message
-pub const MSG_SHUTDOWN_RECEIVED: &str = "\nShutdown signal received";
+pub const MSG_SHUTDOWN_RECEIVED: &str = "Shutdown signal received";
 
 // =============================================================================
 // Server Error Messages (operator-facing)
