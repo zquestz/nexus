@@ -95,9 +95,9 @@ pub enum Permission {
     GroupDelete,
     /// Permission to edit account group name and permissions
     GroupEdit,
-    /// Permission to add a tracker to the server's publisher list
+    /// Permission to add a tracker to the server's tracker list
     TrackerCreate,
-    /// Permission to remove a tracker from the server's publisher list
+    /// Permission to remove a tracker from the server's tracker list
     TrackerDelete,
     /// Permission to edit a tracker's configuration (also gates fetching detail for the edit form)
     TrackerEdit,

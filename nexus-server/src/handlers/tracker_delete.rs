@@ -1,5 +1,5 @@
 //! TrackerDelete message handler — removes a tracker from the
-//! server's publisher list and aborts its task.
+//! server's tracker list and aborts its task.
 
 use std::io;
 
@@ -18,7 +18,7 @@ use crate::constants::{
 use crate::db::Permission;
 
 /// Handle a `TrackerDelete { id }` request. Requires the
-/// `tracker_delete` permission. Removes the row, aborts the publisher
+/// `tracker_delete` permission. Removes the row, aborts the tracker
 /// task, and reports the deleted name back to the client for the
 /// confirmation toast.
 pub async fn handle_tracker_delete<W>(
@@ -121,7 +121,7 @@ where
         "{}", LOG_TRACKER_DELETE_SUCCESS
     );
 
-    // Abort the publisher task (idempotent; no-op if disabled or never spawned).
+    // Abort the tracker task (idempotent; no-op if disabled or never spawned).
     ctx.tracker_manager.terminate(id);
 
     let response = ServerMessage::TrackerDeleteResponse {

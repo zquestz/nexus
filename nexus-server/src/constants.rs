@@ -318,8 +318,8 @@ pub const ERR_SET_DATA_DIR_PERMS: &str = "Failed to set data directory permissio
 /// Database initialization error
 pub const ERR_DATABASE_INIT: &str = "Failed to initialize database: ";
 
-/// Tracker publisher bootstrap error
-pub const ERR_TRACKER_BOOTSTRAP_FAILED: &str = "Failed to bootstrap tracker publisher: ";
+/// Tracker bootstrap error
+pub const ERR_TRACKER_BOOTSTRAP_FAILED: &str = "Failed to bootstrap tracker manager: ";
 
 /// TLS initialization error
 pub const ERR_TLS_INIT: &str = "Failed to initialize TLS: ";
@@ -836,7 +836,7 @@ pub const LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE: &str =
 pub const LOG_TRACKER_REGISTRATION_INVALID_ERROR_KIND: &str =
     "Tracker sent malformed error_kind, treating as protocol error";
 
-// Panic messages for the tracker publisher's sync-lock acquisitions.
+// Panic messages for the tracker manager's sync-lock acquisitions.
 // These only ever surface if a lock is actually poisoned (a panic
 // inside a critical section), which we never expect in normal
 // operation — but per the project rule "no raw error strings" the

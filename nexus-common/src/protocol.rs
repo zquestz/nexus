@@ -323,7 +323,7 @@ pub enum ClientMessage {
         /// TCP port (typically 7510).
         port: u16,
         /// TOFU-pinned cert fingerprint in canonical form. `None` = unpinned;
-        /// the publisher task will TOFU-pin on first successful connect.
+        /// the tracker task will TOFU-pin on first successful connect.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         fingerprint: Option<String>,
         /// Registration password. `None` or empty = open tracker.
@@ -331,10 +331,10 @@ pub enum ClientMessage {
         password: Option<String>,
         /// Admin-supplied label (used as the primary identifier in the UI).
         name: String,
-        /// Whether the publisher should actively maintain a connection.
+        /// Whether the tracker task should actively maintain a connection.
         enabled: bool,
     },
-    /// Remove a tracker from the server's publisher list. Requires
+    /// Remove a tracker from the server's tracker list. Requires
     /// `tracker_delete` permission.
     TrackerDelete {
         id: i64,
@@ -1507,10 +1507,10 @@ pub struct GroupInfo {
 ///
 /// Combines the durable DB row (id, address, port, fingerprint, password,
 /// name, enabled, created_at, updated_at) with the runtime status of the
-/// publisher task (connection state, last successful refresh, last error,
+/// tracker task (connection state, last successful refresh, last error,
 /// pending fingerprint observations, tracker-supplied refresh interval).
 ///
-/// For disabled trackers (no running publisher task), the runtime fields
+/// For disabled trackers (no running tracker task), the runtime fields
 /// are at their default "not connected" values: `connected: false`, every
 /// other runtime field `None`. That accurately reflects "no task running."
 ///
@@ -1529,7 +1529,7 @@ pub struct TrackerInfo {
     /// TCP port (typically 7510).
     pub port: u16,
     /// TOFU-pinned cert fingerprint in canonical form. `None` until the
-    /// publisher task has TOFU-pinned on first successful connect.
+    /// tracker task has TOFU-pinned on first successful connect.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fingerprint: Option<String>,
     /// Registration password. Echoed plaintext to admins (it's a shared
@@ -1540,24 +1540,24 @@ pub struct TrackerInfo {
     pub password: Option<String>,
     /// Admin-supplied label.
     pub name: String,
-    /// Whether the publisher should actively maintain a connection.
+    /// Whether the tracker task should actively maintain a connection.
     pub enabled: bool,
     /// Unix epoch seconds when the row was created.
     pub created_at: i64,
     /// Unix epoch seconds when the row was last updated.
     pub updated_at: i64,
 
-    // ---- Runtime status (from publisher manager; ephemeral) ----
-    /// Whether the publisher task currently has a healthy registration
+    // ---- Runtime status (from tracker manager; ephemeral) ----
+    /// Whether the tracker task currently has a healthy registration
     /// with the tracker.
     pub connected: bool,
-    /// Unix epoch seconds when the publisher last successfully registered.
+    /// Unix epoch seconds when the tracker task last successfully registered.
     /// `None` if it's never connected since this task started.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_connected_at: Option<i64>,
-    /// Unix epoch seconds when the publisher last started a connection
+    /// Unix epoch seconds when the tracker task last started a connection
     /// attempt, regardless of outcome. Stamped at the top of each
-    /// cycle so the admin UI can show that the publisher is making
+    /// cycle so the admin UI can show that the tracker task is making
     /// forward progress even when every recent attempt has failed.
     /// `None` until the first attempt.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1572,12 +1572,12 @@ pub struct TrackerInfo {
     /// whether to render a "needs your attention" UI.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_error_kind: Option<String>,
-    /// Fingerprint the publisher observed but the admin hasn't accepted
+    /// Fingerprint the tracker task observed but the admin hasn't accepted
     /// yet (after a Stage 1 mismatch). `None` in normal operation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_fingerprint: Option<String>,
     /// Tracker-supplied refresh interval in seconds, populated once
-    /// the publisher has successfully registered.
+    /// the tracker task has successfully registered.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refresh_interval: Option<u32>,
 }

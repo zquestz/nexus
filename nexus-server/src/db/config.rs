@@ -31,10 +31,10 @@ use crate::constants::{
 };
 use crate::db::sql;
 
-/// Configuration fields the publisher task needs to build
+/// Configuration fields the tracker task needs to build
 /// `TrackerServerRegister` payloads. Subset of [`ServerConfig`] —
 /// fetched via a dedicated single-query method to avoid pulling
-/// unrelated config rows on the publisher's per-refresh hot path.
+/// unrelated config rows on the tracker task's per-refresh hot path.
 ///
 /// `description` and `public_address` are `Option<String>` because
 /// empty values are normalized to `None` here so the caller doesn't
@@ -134,11 +134,11 @@ impl ConfigDb {
         }
     }
 
-    /// Fetch the three config fields the publisher task needs for
+    /// Fetch the three config fields the tracker task needs for
     /// `TrackerServerRegister` payloads: server name, description,
     /// public address. Single query against the `config` table
     /// (rather than three separate `SQL_GET_CONFIG` calls); this is
-    /// the publisher's per-refresh hot path and we want to keep it
+    /// the tracker task's per-refresh hot path and we want to keep it
     /// efficient as the config table grows over time.
     ///
     /// Empty `description` and `public_address` values are normalized

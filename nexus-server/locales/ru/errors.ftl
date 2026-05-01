@@ -284,7 +284,7 @@ err-tracker-endpoint-duplicate = Другой трекер уже настрое
 err-tracker-name-duplicate = Другой трекер уже настроен с этим именем
 err-tracker-too-many = Достигнут лимит трекеров (макс. { $max })
 
-# Tracker publisher status messages
+# Tracker registration status messages
 err-tracker-connection-failed = Не удалось подключиться к трекеру
 err-tracker-tls-failed = Не удалось выполнить TLS-рукопожатие с трекером
 err-tracker-handshake-failed = Не удалось выполнить рукопожатие с трекером

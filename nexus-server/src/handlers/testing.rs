@@ -218,17 +218,17 @@ pub async fn create_test_context() -> TestContext {
     // Create voice registry for tests
     let voice_registry = VoiceRegistry::new();
 
-    // Create tracker manager for tests. The publisher tasks won't
+    // Create tracker manager for tests. The tracker tasks won't
     // actually run anything because no rows are seeded; admin handler
     // tests that exercise the manager populate it via spawn() / replace().
-    let publisher_context = Arc::new(crate::tracker::PublisherContext {
+    let tracker_context = Arc::new(crate::tracker::TrackerContext {
         db: Arc::new(db.clone()),
         user_manager: Arc::new(user_manager.clone()),
         server_fingerprint: TEST_FINGERPRINT.to_string(),
         server_port: nexus_common::DEFAULT_PORT,
         server_websocket_port: None,
     });
-    let tracker_manager = crate::tracker::TrackerManager::new(publisher_context);
+    let tracker_manager = crate::tracker::TrackerManager::new(tracker_context);
 
     let flood_config = Arc::new(crate::flood::FloodConfig::new(5, 20));
 

@@ -167,7 +167,7 @@ impl UserDb {
 
     /// Whether the guest account is currently enabled.
     ///
-    /// Used by the publisher task to populate
+    /// Used by the tracker task to populate
     /// `TrackerServerRegister.allows_guest`. Returns `false` if the
     /// guest account row is missing (catastrophic; bootstrap migration
     /// ensures it exists).

@@ -284,7 +284,7 @@ err-tracker-endpoint-duplicate = Un altro tracker è già configurato a questo i
 err-tracker-name-duplicate = Un altro tracker è già configurato con questo nome
 err-tracker-too-many = Limite tracker raggiunto (max { $max })
 
-# Tracker publisher status messages
+# Tracker registration status messages
 err-tracker-connection-failed = Impossibile connettersi al tracker
 err-tracker-tls-failed = Handshake TLS con il tracker fallito
 err-tracker-handshake-failed = Handshake del tracker fallito

@@ -284,7 +284,7 @@ err-tracker-endpoint-duplicate = 此位址和連接埠已設定了另一個追�
 err-tracker-name-duplicate = 已設定了另一個使用此名稱的追蹤器
 err-tracker-too-many = 已達追蹤器上限 (最多 { $max } 個)
 
-# Tracker publisher status messages
+# Tracker registration status messages
 err-tracker-connection-failed = 無法連線到追蹤器
 err-tracker-tls-failed = 與追蹤器的 TLS 交握失敗
 err-tracker-handshake-failed = 追蹤器交握失敗

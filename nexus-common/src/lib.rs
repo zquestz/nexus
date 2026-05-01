@@ -168,8 +168,8 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `news_delete`: Delete any news post (without: only own posts)
 /// - `news_edit`: Edit any news post (without: only own posts)
 /// - `news_list`: View news posts
-/// - `tracker_create`: Add a tracker to the server's publisher list
-/// - `tracker_delete`: Remove a tracker from the server's publisher list
+/// - `tracker_create`: Add a tracker to the server's tracker list
+/// - `tracker_delete`: Remove a tracker from the server's tracker list
 /// - `tracker_edit`: Edit a tracker's configuration (also gates fetching detail for the edit form)
 /// - `tracker_list`: View the server's configured trackers and their runtime status
 /// - `trust_create`: Create/update trusted IPs

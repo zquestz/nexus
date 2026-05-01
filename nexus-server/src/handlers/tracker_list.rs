@@ -186,7 +186,7 @@ mod tests {
                 assert_eq!(trackers.len(), 2);
                 assert_eq!(trackers[0].name, "Alpha");
                 assert_eq!(trackers[1].name, "zeta");
-                // No publisher task spawned in tests → all runtime fields default.
+                // No tracker task spawned in tests → all runtime fields default.
                 assert!(!trackers[0].connected);
                 assert!(trackers[0].last_connected_at.is_none());
             }

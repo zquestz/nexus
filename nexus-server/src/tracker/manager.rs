@@ -1,6 +1,6 @@
 //! Per-tracker task manager.
 //!
-//! Holds one `TrackerHandle` per active publisher task, indexed by the
+//! Holds one `TrackerHandle` per active tracker task, indexed by the
 //! tracker row's `id`. Admin handlers call into the manager to spawn /
 //! replace / terminate tasks; the manager exposes runtime status via
 //! shared `Arc<RwLock<TrackerStatus>>` handles for compose-into-
@@ -22,7 +22,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use tokio::task::JoinHandle;
 use tracing::{debug, info, warn};
 
-use super::context::PublisherContext;
+use super::context::TrackerContext;
 use super::status::TrackerStatus;
 use super::task;
 use crate::constants::{
@@ -32,7 +32,7 @@ use crate::constants::{
 };
 use crate::db::TrackerRecord;
 
-/// Live handle to one publisher task. Held in the manager's HashMap
+/// Live handle to one tracker task. Held in the manager's HashMap
 /// keyed by tracker `id`.
 struct TrackerHandle {
     /// Cancellation handle. Aborting drops the task at its next await
@@ -68,14 +68,14 @@ struct TrackerHandle {
 /// [`shutdown`]: TrackerManager::shutdown
 pub struct TrackerManager {
     inner: Mutex<HashMap<i64, TrackerHandle>>,
-    context: Arc<PublisherContext>,
+    context: Arc<TrackerContext>,
 }
 
 impl TrackerManager {
     /// Construct a fresh manager with no tasks running. Call
     /// [`Self::bootstrap`] to load existing enabled rows from the DB.
     #[must_use]
-    pub fn new(context: Arc<PublisherContext>) -> Self {
+    pub fn new(context: Arc<TrackerContext>) -> Self {
         Self {
             inner: Mutex::new(HashMap::new()),
             context,
@@ -83,7 +83,7 @@ impl TrackerManager {
     }
 
     /// Load all enabled tracker rows from the DB and spawn one
-    /// publisher task per row. Called once at server startup.
+    /// tracker task per row. Called once at server startup.
     ///
     /// # Errors
     ///
@@ -99,7 +99,7 @@ impl TrackerManager {
         Ok(())
     }
 
-    /// Spawn a publisher task for a freshly-created tracker. Called
+    /// Spawn a tracker task for a freshly-created tracker. Called
     /// by the `TrackerCreate` handler after the DB insert succeeds.
     /// No-op if the record is disabled.
     pub fn spawn(&self, record: TrackerRecord) {
@@ -141,7 +141,7 @@ impl TrackerManager {
         }
     }
 
-    /// Abort the publisher task for this tracker and remove its
+    /// Abort the tracker task for this tracker and remove its
     /// handle from the map. Idempotent — calling on an unknown id is
     /// a no-op.
     pub fn terminate(&self, id: i64) {
@@ -271,15 +271,15 @@ mod tests {
     use crate::db::{CreateTrackerParams, Database};
     use crate::users::UserManager;
 
-    /// Build a minimal `PublisherContext` for manager tests. The
-    /// publisher task itself will fail to connect (no tracker is
+    /// Build a minimal `TrackerContext` for manager tests. The
+    /// tracker task itself will fail to connect (no tracker is
     /// running) but the manager-level assertions don't depend on
     /// task progress — they just verify the HashMap shape.
-    async fn test_context() -> Arc<PublisherContext> {
+    async fn test_context() -> Arc<TrackerContext> {
         let pool = create_test_db().await;
         let db = Arc::new(Database::new(pool));
         let user_manager = Arc::new(UserManager::new());
-        Arc::new(PublisherContext {
+        Arc::new(TrackerContext {
             db,
             user_manager,
             server_fingerprint: "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\

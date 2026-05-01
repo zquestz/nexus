@@ -251,11 +251,11 @@ async fn main() {
     // Create voice registry for tracking active voice sessions (ephemeral, in-memory only)
     let voice_registry = VoiceRegistry::new();
 
-    // Create the tracker publisher manager. The bootstrap call below
-    // loads enabled tracker rows from the DB and spawns one publisher
+    // Create the tracker registration manager. The bootstrap call below
+    // loads enabled tracker rows from the DB and spawns one tracker
     // task per row. Connection failures inside tasks just transition
     // them to backoff/retry — they don't fail startup.
-    let tracker_publisher_context = Arc::new(tracker::PublisherContext {
+    let tracker_context = Arc::new(tracker::TrackerContext {
         db: Arc::new(database.clone()),
         user_manager: Arc::new(user_manager.clone()),
         server_fingerprint: fingerprint.to_string(),
@@ -266,7 +266,7 @@ async fn main() {
             None
         },
     });
-    let tracker_manager = Arc::new(tracker::TrackerManager::new(tracker_publisher_context));
+    let tracker_manager = Arc::new(tracker::TrackerManager::new(tracker_context));
     if let Err(e) = tracker_manager.bootstrap().await {
         error!(err = %e, "{}", ERR_TRACKER_BOOTSTRAP_FAILED);
         std::process::exit(1);
@@ -835,7 +835,7 @@ struct DaemonHandles {
     /// Daily log-retention purge task. `None` when file logging is
     /// disabled (level == None or retention == 0).
     log_purge: Option<tokio::task::JoinHandle<()>>,
-    /// Tracker publisher task supervisor. Shared with every accepted
+    /// Tracker task supervisor. Shared with every accepted
     /// connection (handlers call into it). On shutdown, aborts every
     /// per-tracker task and awaits the joins.
     tracker: Arc<tracker::TrackerManager>,

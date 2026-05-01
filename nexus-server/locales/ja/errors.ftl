@@ -284,7 +284,7 @@ err-tracker-endpoint-duplicate = このアドレスとポートには別のト�
 err-tracker-name-duplicate = この名前の別のトラッカーが既に設定されています
 err-tracker-too-many = トラッカー上限に達しました (最大 { $max })
 
-# Tracker publisher status messages
+# Tracker registration status messages
 err-tracker-connection-failed = トラッカーに接続できませんでした
 err-tracker-tls-failed = トラッカーとのTLSハンドシェイクに失敗しました
 err-tracker-handshake-failed = トラッカーのハンドシェイクに失敗しました

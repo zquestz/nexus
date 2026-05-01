@@ -1,5 +1,5 @@
 //! TrackerCreate message handler — adds a new tracker to the
-//! server's publisher list.
+//! server's tracker list.
 
 use std::io;
 
@@ -35,7 +35,7 @@ pub struct TrackerCreateRequest {
 
 /// Handle a `TrackerCreate { ... }` request. Requires the
 /// `tracker_create` permission. Validates inputs, inserts the row,
-/// and spawns a publisher task for it (or skips spawn if disabled).
+/// and spawns a tracker task for it (or skips spawn if disabled).
 pub async fn handle_tracker_create<W>(
     request: TrackerCreateRequest,
     session_id: Option<u32>,
@@ -189,7 +189,7 @@ where
         "{}", LOG_TRACKER_CREATE_SUCCESS
     );
 
-    // Spawn a publisher task for the new row. No-op if disabled.
+    // Spawn a tracker task for the new row. No-op if disabled.
     ctx.tracker_manager.spawn(record.clone());
 
     let response = ServerMessage::TrackerCreateResponse {

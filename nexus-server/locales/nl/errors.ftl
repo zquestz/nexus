@@ -284,7 +284,7 @@ err-tracker-endpoint-duplicate = Er is al een andere tracker geconfigureerd op d
 err-tracker-name-duplicate = Er is al een andere tracker geconfigureerd met deze naam
 err-tracker-too-many = Trackerlimiet bereikt (max { $max })
 
-# Tracker publisher status messages
+# Tracker registration status messages
 err-tracker-connection-failed = Kan geen verbinding maken met tracker
 err-tracker-tls-failed = TLS-handshake met tracker mislukt
 err-tracker-handshake-failed = Tracker-handshake mislukt

@@ -46,31 +46,31 @@ pub const ERROR_KIND_RATE_LIMITED: &str = "rate_limited";
 /// Error kind string: service is at capacity
 pub const ERROR_KIND_CAPACITY: &str = "capacity";
 
-// ---- Tracker publisher kinds ----
+// ---- Tracker registration kinds ----
 //
 // These describe internal states of a BBS server's per-tracker
-// publisher task. They never appear in tracker protocol responses
+// registration task. They never appear in tracker protocol responses
 // (the tracker uses the generic kinds above for those); they're set
-// by the publisher itself and surfaced to the BBS admin via
+// by the tracker task itself and surfaced to the BBS admin via
 // `TrackerInfo.last_error_kind`. The matching i18n keys live in the
 // BBS server's `errors.ftl` as `err-tracker-{kind}` and are looked
 // up at compose-time using the requesting admin's locale.
 
-/// Publisher couldn't open the TCP connection to the tracker.
+/// Tracker task couldn't open the TCP connection to the tracker.
 pub const ERROR_KIND_TRACKER_CONNECTION_FAILED: &str = "tracker_connection_failed";
 
-/// Publisher's TLS handshake with the tracker failed.
+/// Tracker task's TLS handshake with the tracker failed.
 pub const ERROR_KIND_TRACKER_TLS_FAILED: &str = "tracker_tls_failed";
 
-/// Publisher's BBS-style handshake with the tracker failed (the
+/// Tracker task's BBS-style handshake with the tracker failed (the
 /// `Handshake` send/receive cycle, distinct from the TCP+TLS phase).
 pub const ERROR_KIND_TRACKER_HANDSHAKE_FAILED: &str = "tracker_handshake_failed";
 
-/// Publisher's connection to the tracker was lost mid-session
+/// Tracker task's connection to the tracker was lost mid-session
 /// (peer closed, read error, register-response timeout, etc.).
 pub const ERROR_KIND_TRACKER_CONNECTION_LOST: &str = "tracker_connection_lost";
 
-/// Publisher hit a database error while updating local tracker state
+/// Tracker task hit a database error while updating local tracker state
 /// (e.g. TOFU-pinning the fingerprint).
 pub const ERROR_KIND_TRACKER_DB_FAILED: &str = "tracker_db_failed";
 
@@ -97,7 +97,7 @@ pub const ERROR_KIND_TRACKER_PROTOCOL_ERROR: &str = "tracker_protocol_error";
 ///
 /// Used at trust boundaries — primarily where a remote peer's
 /// `error_kind` would otherwise flow verbatim into a status field
-/// that is itself wire-visible (e.g. the BBS publisher storing a
+/// that is itself wire-visible (e.g. the BBS tracker task storing a
 /// tracker-supplied kind in `TrackerInfo.last_error_kind`). Junk
 /// kinds (control chars, embedded JSON, multi-line garbage) are
 /// rejected so they can't be smuggled into our wire surface.
@@ -118,11 +118,11 @@ pub fn is_valid_error_kind(s: &str) -> bool {
     bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
 }
 
-/// Whether an `error_kind` from the tracker (or our publisher's
-/// internal categorization) is unrecoverable — i.e. the publisher
+/// Whether an `error_kind` from the tracker (or our tracker task's
+/// internal categorization) is unrecoverable — i.e. the tracker task
 /// can't recover without external intervention (admin updating the
 /// row, accepting a fingerprint, or the server restarting). Used by
-/// both the publisher itself (to decide whether to exit vs. retry)
+/// both the tracker task itself (to decide whether to exit vs. retry)
 /// and the client UI (to render "needs your attention").
 #[must_use]
 pub fn is_unrecoverable_error_kind(kind: &str) -> bool {

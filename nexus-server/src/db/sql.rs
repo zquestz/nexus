@@ -29,7 +29,7 @@ pub const SQL_SET_CONFIG: &str = "UPDATE config SET value = ? WHERE key = ?";
 /// **Returns:** `(key: String, value: String)` for each row
 pub const SQL_GET_ALL_CONFIG: &str = "SELECT key, value FROM config";
 
-/// Get the three config fields needed by the publisher task to build
+/// Get the three config fields needed by the tracker task to build
 /// `TrackerServerRegister` payloads.
 ///
 /// **Parameters:** None
@@ -40,7 +40,7 @@ pub const SQL_GET_ALL_CONFIG: &str = "SELECT key, value FROM config";
 /// remaining keys to defaults / `None`.
 ///
 /// **Note:** Single-query bundle (rather than three separate
-/// `SQL_GET_CONFIG` calls) — small efficiency win on the publisher's
+/// `SQL_GET_CONFIG` calls) — small efficiency win on the tracker task's
 /// per-refresh hot path.
 pub const SQL_GET_TRACKER_CONFIG_FIELDS: &str = "SELECT key, value FROM config WHERE key IN ('server_name', 'server_description', 'public_address')";
 
@@ -84,7 +84,7 @@ pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_has
 /// matching the guest account, or no row if the guest account is
 /// missing (catastrophic; bootstrap migration ensures it exists).
 ///
-/// **Note:** Used by the publisher task to populate
+/// **Note:** Used by the tracker task to populate
 /// `TrackerServerRegister.allows_guest`.
 pub const SQL_GET_GUEST_ENABLED: &str = "SELECT enabled FROM users WHERE LOWER(username) = 'guest'";
 
@@ -443,7 +443,7 @@ pub const SQL_UPDATE_TRACKER: &str = "
     WHERE id = ?";
 
 /// Narrow update: replace only the fingerprint and the `updated_at`
-/// timestamp. Used by the publisher task on TOFU first-connect (when
+/// timestamp. Used by the tracker task on TOFU first-connect (when
 /// the row's fingerprint was `NULL`) and on admin-accept after a
 /// fingerprint mismatch — both paths only need to update the pin
 /// without touching other fields.

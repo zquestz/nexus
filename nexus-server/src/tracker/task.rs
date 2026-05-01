@@ -1,4 +1,4 @@
-//! Per-tracker publisher task: maintains one long-lived TLS connection
+//! Per-tracker registration task: maintains one long-lived TLS connection
 //! to a tracker and refreshes the registration on the tracker-supplied
 //! interval.
 //!
@@ -7,7 +7,7 @@
 //! safe at every await point — drop semantics on the TLS stream and
 //! the status `Arc<RwLock<TrackerStatus>>` handle cleanup.
 //!
-//! See `docs/TODO.md` § "Server-Side Publisher Implementation Plan"
+//! See `docs/TODO.md` § "Server-Side Tracker Registration Implementation Plan"
 //! for the design rationale.
 
 use std::borrow::Cow;
@@ -36,7 +36,7 @@ use tokio::net::TcpStream;
 use tokio_rustls::rustls::pki_types::ServerName;
 use tracing::{debug, error, info, warn};
 
-use super::context::PublisherContext;
+use super::context::TrackerContext;
 use super::status::TrackerStatus;
 use super::tls::TLS_CONNECTOR;
 use crate::constants::{
@@ -62,7 +62,7 @@ use crate::db::{TrackerRecord, is_transient_db_error};
 ///
 /// In tests this collapses to 100ms so retry-then-success scenarios
 /// run in well under the test's outer timeout, and existing tests
-/// don't risk overlap between the publisher's backoff deadline and
+/// don't risk overlap between the tracker task's backoff deadline and
 /// the test's `wait_for_status` deadline. Production behavior is
 /// unaffected.
 #[cfg(not(test))]
@@ -81,7 +81,7 @@ const BACKOFF_JITTER_PCT: f64 = 0.25;
 /// of hanging until the outer 60s frame-completion timeout.
 const TRACKER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Run the publisher task for one tracker. Loops forever (with
+/// Run the tracker task for one tracker. Loops forever (with
 /// backoff) until cancelled by the manager, or exits early on an
 /// unrecoverable error. The manager's `JoinHandle` carries the exit.
 ///
@@ -95,7 +95,7 @@ const TRACKER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 pub async fn run(
     mut record: TrackerRecord,
     status: Arc<RwLock<TrackerStatus>>,
-    context: Arc<PublisherContext>,
+    context: Arc<TrackerContext>,
 ) {
     let mut backoff = BACKOFF_BASE;
 
@@ -156,7 +156,7 @@ enum CycleOutcome {
 async fn attempt_connection_cycle(
     record: &mut TrackerRecord,
     status: &Arc<RwLock<TrackerStatus>>,
-    context: &Arc<PublisherContext>,
+    context: &Arc<TrackerContext>,
 ) -> CycleOutcome {
     // Phase 0: resolve the admin-supplied address into the form both
     // the system resolver and rustls's `ServerName::try_from` expect
@@ -424,7 +424,7 @@ async fn attempt_connection_cycle(
 async fn refresh_loop<R, W>(
     record: &TrackerRecord,
     status: &Arc<RwLock<TrackerStatus>>,
-    context: &Arc<PublisherContext>,
+    context: &Arc<TrackerContext>,
     reader: &mut FrameReader<R>,
     writer: &mut FrameWriter<W>,
 ) -> CycleOutcome
@@ -648,7 +648,7 @@ where
 /// guest enabled) plus the live user_count from `UserManager`.
 async fn build_register_payload(
     record: &TrackerRecord,
-    context: &Arc<PublisherContext>,
+    context: &Arc<TrackerContext>,
 ) -> Result<TrackerClientMessage, String> {
     // DO NOT CACHE this read — it is the propagation path for
     // `ServerInfoUpdate`. See `Database::tracker_registration_fields`.
@@ -811,10 +811,10 @@ mod tests {
         assert_eq!(backoff, BACKOFF_CAP);
     }
 
-    /// Build a `PublisherContext` over a fresh in-memory DB. Sets a
+    /// Build a `TrackerContext` over a fresh in-memory DB. Sets a
     /// distinct `server_name` and `public_address` so payload tests can
     /// verify the right values flow through.
-    async fn setup_context() -> (Arc<Database>, Arc<PublisherContext>) {
+    async fn setup_context() -> (Arc<Database>, Arc<TrackerContext>) {
         let pool = create_test_db().await;
         let db = Arc::new(Database::new(pool));
         db.config
@@ -830,7 +830,7 @@ mod tests {
             .await
             .expect("set public address");
         let user_manager = Arc::new(UserManager::new());
-        let context = Arc::new(PublisherContext {
+        let context = Arc::new(TrackerContext {
             db: db.clone(),
             user_manager,
             server_fingerprint: TEST_FINGERPRINT.to_string(),
@@ -1004,7 +1004,7 @@ mod tests {
         let mock_fp = mock.fingerprint.clone();
         let (db, context) = setup_context().await;
 
-        // Seed with a wrong pin so Stage 1 fails when the publisher
+        // Seed with a wrong pin so Stage 1 fails when the tracker task
         // compares it against the mock's actual TLS cert.
         let wrong_pin = "11:22:33:44:55:66:77:88:99:00:AA:BB:CC:DD:EE:FF:\
             11:22:33:44:55:66:77:88:99:00:AA:BB:CC:DD:EE:FF";
@@ -1133,7 +1133,7 @@ mod tests {
     async fn malformed_error_kind_is_substituted_and_unrecoverable() {
         // A hostile / buggy tracker ships an `error_kind` that fails
         // wire-format validation (uppercase + control chars + newline).
-        // The publisher must:
+        // The tracker task must:
         //   1. NOT store the raw value in `last_error_kind` (which is
         //      a wire-visible field).
         //   2. Substitute `tracker_protocol_error` so the admin UI
@@ -1176,7 +1176,7 @@ mod tests {
     #[tokio::test]
     async fn rate_limited_then_succeeds() {
         // First connection: tracker rejects with `rate_limited` (a
-        // transient kind). Publisher should backoff (~5s, jittered)
+        // transient kind). Tracker task should backoff (~5s, jittered)
         // and reconnect. Second connection: tracker accepts. Status
         // should land at connected = true.
         let mut queue = VecDeque::new();

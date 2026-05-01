@@ -1,8 +1,8 @@
-//! Per-tracker runtime status tracked by the publisher manager.
+//! Per-tracker runtime status tracked by the tracker manager.
 
 use std::borrow::Cow;
 
-/// Runtime state of a single publisher task.
+/// Runtime state of a single tracker task.
 ///
 /// Updated by the task as it progresses through connect → handshake →
 /// register → refresh, and read by admin handlers via
@@ -12,10 +12,10 @@ use std::borrow::Cow;
 /// The data here is ephemeral — not persisted to the DB. After a
 /// server restart, each task reconnects and recomputes its status.
 ///
-/// **Why no human-readable error field:** the publisher runs without
+/// **Why no human-readable error field:** the tracker task runs without
 /// a request locale; the admin who reads the status may be in any of
 /// 13 locales. Storing pre-formatted English here would force every
-/// admin to read English. Instead the publisher sets only
+/// admin to read English. Instead the tracker task sets only
 /// [`Self::last_error_kind`] — a stable identifier from
 /// `nexus_common::error_kind` — and the handler that composes
 /// `TrackerInfo` translates it to the requesting admin's locale at
@@ -33,7 +33,7 @@ pub struct TrackerStatus {
     /// Unix epoch seconds when the task last started a connection
     /// attempt, regardless of outcome. Stamped at the top of each
     /// cycle (before the TCP dial), so the admin UI can show that the
-    /// publisher is making forward progress even when every recent
+    /// tracker task is making forward progress even when every recent
     /// attempt has failed. `None` until the first attempt.
     pub last_attempted_at: Option<i64>,
     /// Most recent error kind in machine-readable form
@@ -41,7 +41,7 @@ pub struct TrackerStatus {
     /// Translated to a human-readable message at handler compose time
     /// using the requesting admin's locale.
     ///
-    /// Stored as `Cow` so the publisher's static-constant call sites
+    /// Stored as `Cow` so the tracker task's static-constant call sites
     /// (`set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST)`)
     /// stay allocation-free, while the rare tracker-supplied path
     /// owns its `String` via `Cow::Owned`.

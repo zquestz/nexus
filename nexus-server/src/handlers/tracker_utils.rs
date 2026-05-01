@@ -3,7 +3,7 @@
 //! - [`compose_tracker_info`] — DB row + runtime status → wire struct,
 //!   used by `tracker_list` and `tracker_edit`.
 //! - `translate_tracker_error_kind` — internal helper that maps a
-//!   publisher error kind to a localized admin-UI message in the
+//!   tracker task error kind to a localized admin-UI message in the
 //!   requesting admin's locale, so `TrackerInfo.last_error` is
 //!   pre-translated by the time it reaches the client.
 //! - [`validate_tracker_inputs`] — single-source-of-truth field
@@ -34,13 +34,13 @@ use crate::db::TrackerRecord;
 use crate::tracker::TrackerStatus;
 
 /// Compose a `TrackerInfo` wire struct from a DB row + optional
-/// runtime status, translating the publisher's `last_error_kind` into
+/// runtime status, translating the tracker task's `last_error_kind` into
 /// the requesting admin's locale.
 ///
 /// When `status` is `None` (disabled tracker, or no task running yet),
 /// runtime fields default to "not connected" — `connected: false` and
 /// every other runtime field `None`. That accurately reflects the
-/// truth: no live publisher task, no connection state to report.
+/// truth: no live tracker task, no connection state to report.
 #[must_use]
 pub fn compose_tracker_info(
     record: TrackerRecord,
@@ -72,7 +72,7 @@ pub fn compose_tracker_info(
     }
 }
 
-/// Translate a publisher error kind to a localized human-readable
+/// Translate a tracker task error kind to a localized human-readable
 /// message using the requesting admin's locale.
 ///
 /// The kind itself is a stable identifier (from

@@ -1,7 +1,7 @@
-//! Mock tracker for publisher-task lifecycle tests.
+//! Mock tracker for tracker-task lifecycle tests.
 //!
 //! Spawns a TLS listener on a random localhost port that speaks just
-//! enough of the tracker protocol to exercise the publisher's state
+//! enough of the tracker protocol to exercise the tracker task's state
 //! machine: TLS handshake, BBS-style `Handshake`/`HandshakeResponse`,
 //! one `TrackerServerRegister` cycle. Behavior (the self-reported
 //! fingerprint, the register response) is configurable per test.
@@ -207,8 +207,8 @@ async fn handle_connection(
     };
     send_tracker_server_message(&mut writer, &response).await?;
 
-    // Hold the connection open until the publisher (or the mock's
-    // shutdown drop) closes it. The publisher's refresh interval is
+    // Hold the connection open until the tracker task (or the mock's
+    // shutdown drop) closes it. The tracker task's refresh interval is
     // far longer than any test duration, so we just block reading.
     loop {
         match read_tracker_client_message_with_full_timeout(&mut reader, None, None).await {

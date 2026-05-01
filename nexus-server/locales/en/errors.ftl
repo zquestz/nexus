@@ -283,7 +283,7 @@ err-tracker-endpoint-duplicate = Another tracker is already configured at this a
 err-tracker-name-duplicate = Another tracker is already configured with this name
 err-tracker-too-many = Tracker limit reached (max { $max })
 
-# Tracker publisher status messages — shown in the admin UI as the
+# Tracker registration status messages — shown in the admin UI as the
 # `last_error` field of TrackerInfo. Translated server-side using the
 # requesting admin's locale; keyed off `last_error_kind`.
 err-tracker-connection-failed = Could not connect to tracker

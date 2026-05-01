@@ -1,6 +1,6 @@
-//! TLS client connector for outbound publisher connections.
+//! TLS client connector for outbound tracker registration connections.
 //!
-//! The publisher task connects to trackers over TLS, but doesn't rely
+//! The tracker task connects to trackers over TLS, but doesn't rely
 //! on certificate-authority validation — trackers run with self-signed
 //! certs, and the BBS-side TOFU pinning machinery validates the cert
 //! manually after the handshake. So we configure a `rustls`
@@ -21,7 +21,7 @@ use tokio_rustls::rustls::client::danger::{
 use tokio_rustls::rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use tokio_rustls::rustls::{DigitallySignedStruct, Error as RustlsError, SignatureScheme};
 
-/// Process-wide TLS connector for outbound publisher connections.
+/// Process-wide TLS connector for outbound tracker registration connections.
 ///
 /// Lazy-initialized on first use; the rustls `ClientConfig` is shared
 /// across all connection attempts (cheap to share — just shape state,
@@ -38,7 +38,7 @@ pub static TLS_CONNECTOR: LazyLock<TlsConnector> = LazyLock::new(|| {
     TlsConnector::from(Arc::new(config))
 });
 
-/// Permissive cert verifier — accepts any cert. The publisher task
+/// Permissive cert verifier — accepts any cert. The tracker task
 /// validates the observed fingerprint against the row's pinned value
 /// (Stage 1) and the server-reported fingerprint in HandshakeResponse
 /// (Stage 2); no CA path is involved.

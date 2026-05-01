@@ -180,7 +180,7 @@ pub struct HandlerContext<'a, W> {
     pub transfer_registry: Arc<TransferRegistry>,
     /// Voice registry for managing active voice sessions
     pub voice_registry: &'a VoiceRegistry,
-    /// Tracker publisher manager (per-tracker publisher tasks)
+    /// Tracker manager (per-tracker registration tasks)
     pub tracker_manager: &'a TrackerManager,
     /// Server certificate fingerprint (SHA-256, colon-separated)
     pub fingerprint: &'static str,

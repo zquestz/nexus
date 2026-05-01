@@ -1,5 +1,5 @@
 //! TrackerUpdate message handler — replaces a tracker's configuration
-//! row and re-spawns its publisher task.
+//! row and re-spawns its tracker task.
 
 use std::io;
 

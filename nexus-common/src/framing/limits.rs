@@ -1156,7 +1156,7 @@ const TRACKER_INFO_SIZE: usize = json_type_base("TrackerInfo")
 /// configured. 64 is well above any realistic deployment (most servers
 /// publish to 1–5 trackers); the `MAX_ENTRIES_PER_IP` cap on the
 /// tracker side and the operational pain of maintaining many
-/// publisher tasks both bound this in practice.
+/// tracker tasks both bound this in practice.
 pub const MAX_TRACKERS_PER_SERVER: usize = 64;
 
 /// TrackerListResponse: {"type":"TrackerListResponse","success":false,"error":"...2048...","trackers":[TrackerInfo, ...]}

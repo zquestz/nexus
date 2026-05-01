@@ -284,7 +284,7 @@ err-tracker-endpoint-duplicate = 이 주소와 포트에 이미 다른 트래커
 err-tracker-name-duplicate = 이 이름의 다른 트래커가 이미 구성되어 있습니다
 err-tracker-too-many = 트래커 한도 도달 (최대 { $max })
 
-# Tracker publisher status messages
+# Tracker registration status messages
 err-tracker-connection-failed = 트래커에 연결할 수 없습니다
 err-tracker-tls-failed = 트래커와의 TLS 핸드셰이크가 실패했습니다
 err-tracker-handshake-failed = 트래커 핸드셰이크가 실패했습니다

@@ -113,13 +113,13 @@ Discovery service for Nexus servers. Protocol design is complete; see
 
 | Item                              | Notes                                                                                                                                                                                                                                                                                              |
 | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Server-side publisher integration | Per-tracker publisher tasks in `nexus-server`; admin-configured via protocol; persisted in `trackers` DB table. **Design captured in [Server-Side Publisher Implementation Plan](#server-side-publisher-implementation-plan) below.**                                                              |
+| Server-side tracker registration  | Per-tracker registration tasks in `nexus-server`; admin-configured via protocol; persisted in `trackers` DB table. **Design captured in [Server-Side Tracker Registration Implementation Plan](#server-side-tracker-registration-implementation-plan) below.**                                     |
 | Client-side admin UI              | Tracker management panel in `nexus-client` admin section; calls the tracker admin protocol messages.                                                                                                                                                                                               |
 | Client-side browser integration   | `nexus-client` queries one or more trackers and surfaces the listing in the bookmarks / server-list UI                                                                                                                                                                                             |
 
-#### Server-Side Publisher Implementation Plan
+#### Server-Side Tracker Registration Implementation Plan
 
-Track 1 of the Trackers integration. Adds a per-tracker publisher
+Track 1 of the Trackers integration. Adds a per-tracker registration
 task system to `nexus-server` that maintains long-lived TLS
 connections to admin-configured trackers and refreshes the registration
 on the tracker-supplied interval.
@@ -128,16 +128,16 @@ on the tracker-supplied interval.
 
 Migration `20260501002917_create_trackers.sql` ✅ landed.
 
-`trackers` table: `id, address, port, fingerprint?, password?, name, enabled, created_at, updated_at` with `UNIQUE(address, port)` and `UNIQUE(LOWER(name))` indexes. Configuration only — runtime status (connection state, errors, pending fingerprints) lives in memory in the publisher manager, not in the DB.
+`trackers` table: `id, address, port, fingerprint?, password?, name, enabled, created_at, updated_at` with `UNIQUE(address, port)` and `UNIQUE(LOWER(name))` indexes. Configuration only — runtime status (connection state, errors, pending fingerprints) lives in memory in the tracker manager, not in the DB.
 
 ##### DB layer (`nexus-server/src/db/trackers.rs`)
 
 ✅ Staged but uncommitted (waiting to land alongside handlers to avoid dead-code warnings). Includes `TrackerRecord`, `CreateTrackerParams`, `UpdateTrackerParams`, `TrackerDb` with CRUD methods + narrow `update_fingerprint` for TOFU-write path.
 
-Plus a method on `Database` for the publisher's per-refresh field bundle:
+Plus a method on `Database` for the tracker task's per-refresh field bundle:
 - `ConfigDb::get_tracker_fields()` — single query for `(server_name, description, public_address)` from `config` table.
 - `UserDb::guest_enabled()` — single query for the guest account's `enabled` field.
-- `Database::tracker_registration_fields()` — composes both into a `TrackerRegistrationFields` struct for the publisher to consume.
+- `Database::tracker_registration_fields()` — composes both into a `TrackerRegistrationFields` struct for the tracker task to consume.
 
 ##### Permissions (`nexus-common::ALL_PERMISSIONS`)
 
@@ -179,13 +179,13 @@ Reused: `validate_public_address` (boolean), `MAX_PASSWORD_LENGTH`, `nexus_commo
 
 Client-side trims the `name` (and `address`) before submitting; server validates as-received.
 
-##### Publisher task (`nexus-server/src/tracker/`)
+##### Tracker task (`nexus-server/src/tracker/`)
 
 Parallel to `nexus-server/src/voice/`, `transfers/`, etc.
 
 **`TrackerManager`** holds `Arc<Mutex<HashMap<i64, TrackerHandle>>>`. Each handle wraps a `tokio::task::JoinHandle` plus an `Arc<RwLock<TrackerStatus>>` for runtime state. API: `new`, `bootstrap`, `spawn`, `replace`, `terminate`, `status_for`, `status_all`, `shutdown`. Lock not held across `await` (so `std::sync::Mutex`).
 
-**`PublisherContext`** (shared across all per-tracker tasks): `Arc<Database>`, `Arc<UserManager>`, server fingerprint, server port, optional websocket port. Server version is `CARGO_PKG_VERSION`.
+**`TrackerContext`** (shared across all per-tracker tasks): `Arc<Database>`, `Arc<UserManager>`, server fingerprint, server port, optional websocket port. Server version is `CARGO_PKG_VERSION`.
 
 **Per-task lifecycle:** outer loop runs connect → fingerprint check (two-stage: TLS-observed vs pin, then TLS-observed vs server-reported in HandshakeResponse) → tracker handshake → refresh loop. Inner refresh loop uses `tokio::select!` between sleep and reader, so connection drops mid-sleep are detected promptly. Read response with 30s timeout per refresh. **TOFU pin only committed after both fingerprint stages pass.**
 
@@ -200,7 +200,7 @@ The `last_error_kind` field encodes whether the error is unrecoverable; a shared
 **Per-refresh `TrackerServerRegister` payload sourcing:**
 - `password`, `address` → tracker row fields.
 - `name`, `description`, `allows_guest` → `Database::tracker_registration_fields()`.
-- `port`, `websocket_port`, `fingerprint` → `PublisherContext` (CLI args + startup-computed cert fingerprint).
+- `port`, `websocket_port`, `fingerprint` → `TrackerContext` (CLI args + startup-computed cert fingerprint).
 - `version` → `CARGO_PKG_VERSION`.
 - `user_count` → `UserManager` (count of distinct online nicknames per protocol spec).
 - `locale` → `"en"` hardcoded.
@@ -226,7 +226,7 @@ Empty-string password normalizes to `None` at the handler boundary. Address stor
 
 - `HandlerContext` gets `&TrackerManager`.
 - `connection.rs` dispatch loop adds five new arms.
-- `main.rs` constructs `PublisherContext`, `TrackerManager`, calls `bootstrap`, threads the manager into accept loops, adds it to `DaemonHandles` for shutdown.
+- `main.rs` constructs `TrackerContext`, `TrackerManager`, calls `bootstrap`, threads the manager into accept loops, adds it to `DaemonHandles` for shutdown.
 - Frame-size limits in `nexus-common::framing::limits` add five entries with calculated bounds based on field caps.
 
 ##### i18n

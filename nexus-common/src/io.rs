@@ -498,7 +498,7 @@ where
 
 /// Send a `TrackerClientMessage` to the tracker with a fresh message ID.
 ///
-/// Used by the publisher task in `nexus-server` (the BBS server acting
+/// Used by the tracker task in `nexus-server` (the BBS server acting
 /// as a tracker client) and by client-side code that queries trackers
 /// for server listings.
 pub async fn send_tracker_client_message<W>(
@@ -573,7 +573,7 @@ fn parse_tracker_client_frame(frame: RawFrame) -> io::Result<ReceivedTrackerClie
 /// `frame_timeout` overrides the default frame-completion timeout (60s).
 /// Returns `Ok(None)` if the connection was cleanly closed.
 ///
-/// Used by the publisher task in `nexus-server` to read tracker
+/// Used by the tracker task in `nexus-server` to read tracker
 /// responses, and by client-side code that queries trackers.
 pub async fn read_tracker_server_message_with_full_timeout<R>(
     reader: &mut FrameReader<R>,

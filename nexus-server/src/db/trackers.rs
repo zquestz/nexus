@@ -1,9 +1,9 @@
 //! Tracker database operations.
 //!
 //! Wraps the `trackers` table — durable configuration for trackers the
-//! server's publisher task should register with. Connection status,
+//! server's tracker tasks should register with. Connection status,
 //! last-error, pending-fingerprint, and tracker-supplied refresh
-//! interval are runtime state and live in memory in the publisher task
+//! interval are runtime state and live in memory in the tracker task
 //! manager, not here.
 
 use chrono::Utc;
@@ -129,7 +129,7 @@ pub struct TrackerRecord {
     pub address: String,
     pub port: u16,
     /// TOFU-pinned cert fingerprint in canonical form. `None` until
-    /// the publisher task accepts a fingerprint on first connect (or
+    /// the tracker task accepts a fingerprint on first connect (or
     /// the admin accepts a pending fingerprint after rotation).
     pub fingerprint: Option<String>,
     /// Registration password. `None` when the tracker is open.
@@ -288,7 +288,7 @@ impl TrackerDb {
     }
 
     /// Narrow update: replace only the pinned fingerprint. Used by
-    /// the publisher task on TOFU first-connect (writing the observed
+    /// the tracker task on TOFU first-connect (writing the observed
     /// fingerprint when the row's pin was `NULL`) and on admin-accept
     /// after a mismatch (writing the previously-pending observation).
     ///

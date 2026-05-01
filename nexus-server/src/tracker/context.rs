@@ -1,4 +1,4 @@
-//! Shared context for per-tracker publisher tasks.
+//! Shared context for per-tracker registration tasks.
 //!
 //! Every spawned task needs read access to the database, the user
 //! manager (for live `user_count`), and a few startup-computed values
@@ -12,11 +12,11 @@ use std::sync::Arc;
 use crate::db::Database;
 use crate::users::UserManager;
 
-/// Shared infrastructure handed to every per-tracker publisher task.
+/// Shared infrastructure handed to every per-tracker registration task.
 ///
 /// Cheap to clone (everything inside is `Arc` or `Copy`).
 #[derive(Clone)]
-pub struct PublisherContext {
+pub struct TrackerContext {
     /// Database access — used to fetch per-refresh `ServerInfo` /
     /// guest-enabled fields and to TOFU-write the observed fingerprint
     /// on first connect.
