@@ -180,7 +180,7 @@ fn server_info_display_view(data: &ServerInfoData<'_>, theme: &Theme) -> Element
             if let Some(max_conn) = data.max_connections_per_ip {
                 content_items.push(
                     row![
-                        shaped_text(t("label-connections-short")).size(TEXT_SIZE),
+                        shaped_text(t("label-max-connections-per-ip")).size(TEXT_SIZE),
                         Space::new().width(ELEMENT_SPACING),
                         shaped_text_wrapped(max_conn.to_string()).size(TEXT_SIZE),
                     ]
@@ -190,7 +190,7 @@ fn server_info_display_view(data: &ServerInfoData<'_>, theme: &Theme) -> Element
             if let Some(max_xfer) = data.max_transfers_per_ip {
                 content_items.push(
                     row![
-                        shaped_text(t("label-transfers-short")).size(TEXT_SIZE),
+                        shaped_text(t("label-max-transfers-per-ip")).size(TEXT_SIZE),
                         Space::new().width(ELEMENT_SPACING),
                         shaped_text_wrapped(max_xfer.to_string()).size(TEXT_SIZE),
                     ]
@@ -527,7 +527,7 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
     );
 
     // Connections and Transfers side-by-side
-    let conn_label = shaped_text(t("label-connections-short")).size(TEXT_SIZE);
+    let conn_label = shaped_text(t("label-max-connections-per-ip")).size(TEXT_SIZE);
     let max_conn_value = edit_state.max_connections_per_ip.unwrap_or(1);
     let max_conn_input: Element<'static, Message> = NumberInput::new(
         &max_conn_value,
@@ -538,7 +538,7 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
     .padding(INPUT_PADDING)
     .into();
 
-    let xfer_label = shaped_text(t("label-transfers-short")).size(TEXT_SIZE);
+    let xfer_label = shaped_text(t("label-max-transfers-per-ip")).size(TEXT_SIZE);
     let max_xfer_value = edit_state.max_transfers_per_ip.unwrap_or(1);
     let max_xfer_input: Element<'static, Message> = NumberInput::new(
         &max_xfer_value,
