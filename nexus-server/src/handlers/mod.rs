@@ -40,6 +40,7 @@ mod server_info_update;
 mod tracker_create;
 mod tracker_delete;
 mod tracker_edit;
+mod tracker_info;
 mod tracker_list;
 mod tracker_update;
 mod trust_create;
@@ -101,6 +102,7 @@ pub use server_info_update::{ServerInfoUpdateRequest, handle_server_info_update}
 pub use tracker_create::{TrackerCreateRequest, handle_tracker_create};
 pub use tracker_delete::handle_tracker_delete;
 pub use tracker_edit::handle_tracker_edit;
+pub use tracker_info::compose_tracker_info;
 pub use tracker_list::handle_tracker_list;
 pub use tracker_update::{TrackerUpdateRequest, handle_tracker_update};
 pub use trust_create::handle_trust_create;
@@ -221,77 +223,6 @@ impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {
         self.send_error(message, command).await?;
         Err(io::Error::other(message))
     }
-}
-
-/// Compose a `TrackerInfo` wire struct from a DB row + optional
-/// runtime status.
-///
-/// When `status` is `None` (disabled tracker, or no task running yet),
-/// runtime fields default to "not connected" — `connected: false` and
-/// every other runtime field `None`. This accurately reflects the
-/// truth: there's no live publisher task, so there's no connection
-/// state to report.
-#[must_use]
-pub fn compose_tracker_info(
-    record: crate::db::TrackerRecord,
-    status: Option<crate::tracker::TrackerStatus>,
-    locale: &str,
-) -> nexus_common::protocol::TrackerInfo {
-    let s = status.unwrap_or_default();
-    let last_error = s
-        .last_error_kind
-        .as_ref()
-        .map(|kind| translate_tracker_error_kind(locale, kind));
-    nexus_common::protocol::TrackerInfo {
-        id: record.id,
-        address: record.address,
-        port: record.port,
-        fingerprint: record.fingerprint,
-        password: record.password,
-        name: record.name,
-        enabled: record.enabled,
-        created_at: record.created_at,
-        updated_at: record.updated_at,
-        connected: s.connected,
-        last_connected_at: s.last_connected_at,
-        last_error,
-        last_error_kind: s.last_error_kind,
-        pending_fingerprint: s.pending_fingerprint,
-        refresh_interval: s.refresh_interval,
-    }
-}
-
-/// Translate a publisher error kind to a localized human-readable
-/// message using the requesting admin's locale.
-///
-/// The kind itself is a stable identifier (from
-/// `nexus_common::error_kind`). Known kinds map to a fixed i18n key;
-/// anything else falls back to the generic `err-tracker-unknown`
-/// (e.g. a future tracker version that returns an `error_kind` string
-/// we haven't taught the BBS to translate yet).
-fn translate_tracker_error_kind(locale: &str, kind: &str) -> String {
-    use nexus_common::{
-        ERROR_KIND_CAPACITY, ERROR_KIND_INVALID, ERROR_KIND_RATE_LIMITED,
-        ERROR_KIND_TRACKER_CONNECTION_FAILED, ERROR_KIND_TRACKER_CONNECTION_LOST,
-        ERROR_KIND_TRACKER_DB_FAILED, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
-        ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH, ERROR_KIND_TRACKER_HANDSHAKE_FAILED,
-        ERROR_KIND_TRACKER_TLS_FAILED, ERROR_KIND_UNAUTHORIZED,
-    };
-    let i18n_key = match kind {
-        ERROR_KIND_TRACKER_CONNECTION_FAILED => "err-tracker-connection-failed",
-        ERROR_KIND_TRACKER_TLS_FAILED => "err-tracker-tls-failed",
-        ERROR_KIND_TRACKER_HANDSHAKE_FAILED => "err-tracker-handshake-failed",
-        ERROR_KIND_TRACKER_CONNECTION_LOST => "err-tracker-connection-lost",
-        ERROR_KIND_TRACKER_DB_FAILED => "err-tracker-db-failed",
-        ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH => "err-tracker-fingerprint-mismatch",
-        ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED => "err-tracker-fingerprint-intercepted",
-        ERROR_KIND_UNAUTHORIZED => "err-tracker-unauthorized",
-        ERROR_KIND_RATE_LIMITED => "err-tracker-rate-limited",
-        ERROR_KIND_CAPACITY => "err-tracker-capacity",
-        ERROR_KIND_INVALID => "err-tracker-invalid",
-        _ => "err-tracker-unknown",
-    };
-    crate::i18n::t(locale, i18n_key)
 }
 
 /// Get current Unix timestamp in seconds

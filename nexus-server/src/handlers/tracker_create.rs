@@ -550,8 +550,6 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_when_at_limit() {
-        use nexus_common::framing::MAX_TRACKERS_PER_SERVER;
-
         let mut test_ctx = create_test_context().await;
         let session_id = login_user(
             &mut test_ctx,
