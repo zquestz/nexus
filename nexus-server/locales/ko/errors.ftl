@@ -283,6 +283,20 @@ err-tracker-password-too-long = 트래커 비밀번호가 너무 깁니다 (최�
 err-tracker-endpoint-duplicate = 이 주소와 포트에 이미 다른 트래커가 구성되어 있습니다
 err-tracker-name-duplicate = 이 이름의 다른 트래커가 이미 구성되어 있습니다
 
+# Tracker publisher status messages
+err-tracker-connection-failed = 트래커에 연결할 수 없습니다
+err-tracker-tls-failed = 트래커와의 TLS 핸드셰이크가 실패했습니다
+err-tracker-handshake-failed = 트래커 핸드셰이크가 실패했습니다
+err-tracker-connection-lost = 트래커 연결이 끊어졌습니다
+err-tracker-db-failed = 트래커 상태 업데이트 중 데이터베이스 오류
+err-tracker-fingerprint-mismatch = 트래커 인증서가 저장된 지문과 일치하지 않습니다
+err-tracker-fingerprint-intercepted = 트래커가 자가 보고한 지문이 TLS 인증서와 일치하지 않습니다
+err-tracker-unauthorized = 트래커가 등록을 거부했습니다
+err-tracker-rate-limited = 트래커에 의해 속도 제한됨
+err-tracker-capacity = 트래커가 용량에 도달했습니다
+err-tracker-invalid = 트래커가 등록을 유효하지 않은 것으로 거부했습니다
+err-tracker-unknown = 트래커가 알 수 없는 오류를 보고했습니다
+
 # Flood Protection Errors
 err-flood-warning = 메시지가 제한되었습니다 (경고 { $violation }/{ $max_violations }). { $seconds }초 후에 다시 보낼 수 있습니다. 계속하면 연결이 끊어집니다.
 err-flood-disconnect = 연결 끊김: 채팅 속도 제한 초과.

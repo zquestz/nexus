@@ -23,7 +23,7 @@ use crate::constants::{
     LOG_TRACKER_UPDATE_DB_ERROR, LOG_TRACKER_UPDATE_NOT_LOGGED_IN,
     LOG_TRACKER_UPDATE_PERMISSION_DENIED, LOG_TRACKER_UPDATE_SUCCESS,
 };
-use crate::db::{Permission, UpdateTrackerParams};
+use crate::db::{Permission, TrackerDbError, UpdateTrackerParams};
 
 /// Fields for `handle_tracker_update`, mirroring the
 /// `ClientMessage::TrackerUpdate` variant. Bundled into a struct so
@@ -133,33 +133,29 @@ where
             };
             return ctx.send_message(&response).await;
         }
-        Err(e) => {
-            // UNIQUE-constraint violations: another row already owns
-            // the (address, port) endpoint or the case-insensitive
-            // name. Distinguish from generic DB errors.
-            let msg = e.to_string().to_lowercase();
-            if msg.contains("idx_trackers_endpoint") || msg.contains("trackers.address") {
-                let response = ServerMessage::TrackerUpdateResponse {
-                    success: false,
-                    error: Some(err_tracker_endpoint_duplicate(ctx.locale)),
-                    id: None,
-                    name: None,
-                };
-                return ctx.send_message(&response).await;
-            }
-            if msg.contains("idx_trackers_name_lower") || msg.contains("trackers.name") {
-                let response = ServerMessage::TrackerUpdateResponse {
-                    success: false,
-                    error: Some(err_tracker_name_duplicate(ctx.locale)),
-                    id: None,
-                    name: None,
-                };
-                return ctx.send_message(&response).await;
-            }
+        Err(TrackerDbError::EndpointDuplicate) => {
+            let response = ServerMessage::TrackerUpdateResponse {
+                success: false,
+                error: Some(err_tracker_endpoint_duplicate(ctx.locale)),
+                id: None,
+                name: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+        Err(TrackerDbError::NameDuplicate) => {
+            let response = ServerMessage::TrackerUpdateResponse {
+                success: false,
+                error: Some(err_tracker_name_duplicate(ctx.locale)),
+                id: None,
+                name: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+        Err(TrackerDbError::Other(e)) => {
             error!(
                 user = %requesting_user.username,
                 ip = %ctx.peer_addr,
-                tracker_id = id,
+                id = id,
                 err = %e,
                 "{}", LOG_TRACKER_UPDATE_DB_ERROR
             );
@@ -172,7 +168,7 @@ where
     info!(
         user = %requesting_user.username,
         ip = %ctx.peer_addr,
-        tracker_id = record.id,
+        id = record.id,
         name = %record.name,
         enabled = record.enabled,
         "{}", LOG_TRACKER_UPDATE_SUCCESS

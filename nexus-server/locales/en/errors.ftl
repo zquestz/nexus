@@ -282,6 +282,22 @@ err-tracker-password-too-long = Tracker password is too long (max { $max_length 
 err-tracker-endpoint-duplicate = Another tracker is already configured at this address and port
 err-tracker-name-duplicate = Another tracker is already configured with this name
 
+# Tracker publisher status messages — shown in the admin UI as the
+# `last_error` field of TrackerInfo. Translated server-side using the
+# requesting admin's locale; keyed off `last_error_kind`.
+err-tracker-connection-failed = Could not connect to tracker
+err-tracker-tls-failed = TLS handshake with tracker failed
+err-tracker-handshake-failed = Tracker handshake failed
+err-tracker-connection-lost = Connection to tracker lost
+err-tracker-db-failed = Database error while updating tracker state
+err-tracker-fingerprint-mismatch = Tracker certificate does not match the pinned fingerprint
+err-tracker-fingerprint-intercepted = Tracker self-reported fingerprint does not match its TLS certificate
+err-tracker-unauthorized = Tracker rejected registration
+err-tracker-rate-limited = Rate limited by tracker
+err-tracker-capacity = Tracker is at capacity
+err-tracker-invalid = Tracker rejected the registration as invalid
+err-tracker-unknown = Tracker reported an unknown error
+
 # Flood Protection Errors
 err-flood-warning = Message rate limited (warning { $violation } of { $max_violations }). You can send another message in { $seconds } { $seconds ->
     [one] second

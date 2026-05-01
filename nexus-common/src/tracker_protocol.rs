@@ -42,7 +42,7 @@ pub struct ServerEntry {
     /// BBS WebSocket port (when the server has WebSocket enabled).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub websocket_port: Option<u16>,
-    /// Server software version (e.g., `"0.8.1"`).
+    /// Server software version (e.g., `"0.8.2"`).
     pub version: String,
     /// TLS certificate fingerprint, canonical form (32 uppercase hex bytes
     /// separated by colons, 95 bytes total).
@@ -98,7 +98,7 @@ pub enum TrackerClientMessage {
         /// BBS WebSocket port (when the server has WebSocket enabled).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         websocket_port: Option<u16>,
-        /// Server software version (e.g., `"0.8.1"`).
+        /// Server software version (e.g., `"0.8.2"`).
         version: String,
         /// TLS certificate fingerprint, canonical form (32 uppercase hex
         /// bytes separated by colons, 95 bytes total). The tracker MUST
@@ -224,7 +224,7 @@ mod tests {
             address: Some("bbs.example.com".to_string()),
             port: 7500,
             websocket_port: Some(7502),
-            version: "0.8.1".to_string(),
+            version: "0.8.2".to_string(),
             fingerprint: "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99".to_string(),
             user_count: 12,
             allows_guest: true,
@@ -334,7 +334,7 @@ mod tests {
             address: "192.0.2.1".to_string(),
             port: 7500,
             websocket_port: None,
-            version: "0.8.1".to_string(),
+            version: "0.8.2".to_string(),
             fingerprint: "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99".to_string(),
             user_count: 0,
             allows_guest: false,

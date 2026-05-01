@@ -283,6 +283,20 @@ err-tracker-password-too-long = La password del tracker è troppo lunga (max { $
 err-tracker-endpoint-duplicate = Un altro tracker è già configurato a questo indirizzo e porta
 err-tracker-name-duplicate = Un altro tracker è già configurato con questo nome
 
+# Tracker publisher status messages
+err-tracker-connection-failed = Impossibile connettersi al tracker
+err-tracker-tls-failed = Handshake TLS con il tracker fallito
+err-tracker-handshake-failed = Handshake del tracker fallito
+err-tracker-connection-lost = Connessione al tracker persa
+err-tracker-db-failed = Errore database durante l'aggiornamento dello stato del tracker
+err-tracker-fingerprint-mismatch = Il certificato del tracker non corrisponde all'impronta digitale memorizzata
+err-tracker-fingerprint-intercepted = L'impronta auto-segnalata del tracker non corrisponde al suo certificato TLS
+err-tracker-unauthorized = Il tracker ha rifiutato la registrazione
+err-tracker-rate-limited = Limitato dal tracker
+err-tracker-capacity = Il tracker è alla capacità massima
+err-tracker-invalid = Il tracker ha rifiutato la registrazione come non valida
+err-tracker-unknown = Il tracker ha segnalato un errore sconosciuto
+
 # Flood Protection Errors
 err-flood-warning = Messaggio limitato (avviso { $violation } di { $max_violations }). Puoi inviare un altro messaggio tra { $seconds } { $seconds ->
     [one] secondo

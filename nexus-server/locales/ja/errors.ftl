@@ -283,6 +283,20 @@ err-tracker-password-too-long = トラッカーパスワードが長すぎます
 err-tracker-endpoint-duplicate = このアドレスとポートには別のトラッカーが既に設定されています
 err-tracker-name-duplicate = この名前の別のトラッカーが既に設定されています
 
+# Tracker publisher status messages
+err-tracker-connection-failed = トラッカーに接続できませんでした
+err-tracker-tls-failed = トラッカーとのTLSハンドシェイクに失敗しました
+err-tracker-handshake-failed = トラッカーのハンドシェイクに失敗しました
+err-tracker-connection-lost = トラッカーとの接続が失われました
+err-tracker-db-failed = トラッカー状態の更新中にデータベースエラーが発生しました
+err-tracker-fingerprint-mismatch = トラッカーの証明書が保存されているフィンガープリントと一致しません
+err-tracker-fingerprint-intercepted = トラッカーが自己申告したフィンガープリントがそのTLS証明書と一致しません
+err-tracker-unauthorized = トラッカーが登録を拒否しました
+err-tracker-rate-limited = トラッカーによりレート制限されました
+err-tracker-capacity = トラッカーが容量に達しました
+err-tracker-invalid = トラッカーが登録を無効として拒否しました
+err-tracker-unknown = トラッカーが不明なエラーを報告しました
+
 # Flood Protection Errors
 err-flood-warning = メッセージが制限されました（警告 { $violation }/{ $max_violations }）。{ $seconds }秒後に再度送信できます。続けると切断されます。
 err-flood-disconnect = 切断されました：チャットの速度制限を超えました。

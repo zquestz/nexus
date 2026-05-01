@@ -283,6 +283,20 @@ err-tracker-password-too-long = Trackerwachtwoord is te lang (max { $max_length 
 err-tracker-endpoint-duplicate = Er is al een andere tracker geconfigureerd op dit adres en poort
 err-tracker-name-duplicate = Er is al een andere tracker geconfigureerd met deze naam
 
+# Tracker publisher status messages
+err-tracker-connection-failed = Kan geen verbinding maken met tracker
+err-tracker-tls-failed = TLS-handshake met tracker mislukt
+err-tracker-handshake-failed = Tracker-handshake mislukt
+err-tracker-connection-lost = Verbinding met tracker verloren
+err-tracker-db-failed = Databasefout bij het bijwerken van trackerstatus
+err-tracker-fingerprint-mismatch = Tracker-certificaat komt niet overeen met de opgeslagen vingerafdruk
+err-tracker-fingerprint-intercepted = De zelf-gerapporteerde vingerafdruk van de tracker komt niet overeen met zijn TLS-certificaat
+err-tracker-unauthorized = Tracker heeft registratie geweigerd
+err-tracker-rate-limited = Snelheidsbeperkt door tracker
+err-tracker-capacity = Tracker heeft zijn capaciteit bereikt
+err-tracker-invalid = Tracker heeft registratie als ongeldig geweigerd
+err-tracker-unknown = Tracker meldde een onbekende fout
+
 # Flood Protection Errors
 err-flood-warning = Bericht beperkt (waarschuwing { $violation } van { $max_violations }). Je kunt over { $seconds } { $seconds ->
     [one] seconde

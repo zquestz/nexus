@@ -22,7 +22,7 @@ use crate::constants::{
     LOG_TRACKER_CREATE_DB_ERROR, LOG_TRACKER_CREATE_NOT_LOGGED_IN,
     LOG_TRACKER_CREATE_PERMISSION_DENIED, LOG_TRACKER_CREATE_SUCCESS,
 };
-use crate::db::{CreateTrackerParams, Permission};
+use crate::db::{CreateTrackerParams, Permission, TrackerDbError};
 
 /// Fields for `handle_tracker_create`, mirroring the
 /// `ClientMessage::TrackerCreate` variant. Bundled into a struct so
@@ -119,28 +119,25 @@ where
 
     let record = match result {
         Ok(r) => r,
-        Err(e) => {
-            // Distinguish UNIQUE-constraint violations (idx_trackers_endpoint
-            // and idx_trackers_name_lower) from other DB errors.
-            let msg = e.to_string().to_lowercase();
-            if msg.contains("idx_trackers_endpoint") || msg.contains("trackers.address") {
-                let response = ServerMessage::TrackerCreateResponse {
-                    success: false,
-                    error: Some(err_tracker_endpoint_duplicate(ctx.locale)),
-                    id: None,
-                    name: None,
-                };
-                return ctx.send_message(&response).await;
-            }
-            if msg.contains("idx_trackers_name_lower") || msg.contains("trackers.name") {
-                let response = ServerMessage::TrackerCreateResponse {
-                    success: false,
-                    error: Some(err_tracker_name_duplicate(ctx.locale)),
-                    id: None,
-                    name: None,
-                };
-                return ctx.send_message(&response).await;
-            }
+        Err(TrackerDbError::EndpointDuplicate) => {
+            let response = ServerMessage::TrackerCreateResponse {
+                success: false,
+                error: Some(err_tracker_endpoint_duplicate(ctx.locale)),
+                id: None,
+                name: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+        Err(TrackerDbError::NameDuplicate) => {
+            let response = ServerMessage::TrackerCreateResponse {
+                success: false,
+                error: Some(err_tracker_name_duplicate(ctx.locale)),
+                id: None,
+                name: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+        Err(TrackerDbError::Other(e)) => {
             error!(
                 user = %requesting_user.username,
                 ip = %ctx.peer_addr,
@@ -156,7 +153,7 @@ where
     info!(
         user = %requesting_user.username,
         ip = %ctx.peer_addr,
-        tracker_id = record.id,
+        id = record.id,
         name = %record.name,
         "{}", LOG_TRACKER_CREATE_SUCCESS
     );

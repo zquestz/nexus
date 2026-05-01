@@ -75,7 +75,7 @@ where
         .into_iter()
         .map(|row| {
             let id = row.id;
-            compose_tracker_info(row, statuses.get(&id).cloned())
+            compose_tracker_info(row, statuses.get(&id).cloned(), ctx.locale)
         })
         .collect();
 

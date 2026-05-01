@@ -780,6 +780,62 @@ pub const LOG_TRACKER_DELETE_PERMISSION_DENIED: &str = "TrackerDelete: permissio
 pub const LOG_TRACKER_DELETE_DB_ERROR: &str = "TrackerDelete: database error";
 pub const LOG_TRACKER_DELETE_SUCCESS: &str = "TrackerDelete: success";
 
+// --- Tracker Registration ---
+// Manager
+pub const LOG_TRACKER_REGISTRATION_SPAWNED: &str = "Tracker registration started";
+pub const LOG_TRACKER_REGISTRATION_SPAWN_SKIPPED: &str = "Tracker disabled, skipping registration";
+pub const LOG_TRACKER_REGISTRATION_TASK_ABORTED: &str = "Tracker registration stopped";
+pub const LOG_TRACKER_REGISTRATION_HANDLE_REPLACED: &str =
+    "Tracker registration replaced without explicit stop";
+// Task lifecycle
+pub const LOG_TRACKER_REGISTRATION_EXITING: &str =
+    "Tracker registration stopped: unrecoverable error";
+pub const LOG_TRACKER_REGISTRATION_BACKOFF: &str = "Tracker registration backoff before retry";
+// Connection setup
+pub const LOG_TRACKER_REGISTRATION_INVALID_HOST: &str =
+    "Tracker address could not be resolved as a hostname or IP literal";
+pub const LOG_TRACKER_REGISTRATION_TCP_FAILED: &str = "Tracker TCP connect failed";
+pub const LOG_TRACKER_REGISTRATION_TLS_FAILED: &str = "Tracker TLS handshake failed";
+pub const LOG_TRACKER_REGISTRATION_NO_PEER_CERTS: &str = "Tracker peer presented no certificates";
+// Fingerprint stages
+pub const LOG_TRACKER_REGISTRATION_STAGE1_MISMATCH: &str = "Tracker fingerprint mismatch";
+pub const LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH: &str =
+    "Tracker self-reported fingerprint disagrees with TLS certificate";
+pub const LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED: &str = "Tracker fingerprint write failed";
+pub const LOG_TRACKER_REGISTRATION_TOFU_PINNED: &str = "Tracker fingerprint pinned";
+// BBS handshake
+pub const LOG_TRACKER_REGISTRATION_SEND_HANDSHAKE_FAILED: &str = "Tracker send failed: Handshake";
+pub const LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR: &str =
+    "Tracker read error: HandshakeResponse";
+// Idle / mid-loop
+pub const LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME: &str =
+    "Tracker sent unexpected mid-idle frame, reconnecting";
+pub const LOG_TRACKER_REGISTRATION_CLOSED_MID_IDLE: &str = "Tracker closed connection mid-idle";
+pub const LOG_TRACKER_REGISTRATION_READ_ERROR_MID_IDLE: &str = "Tracker read error mid-idle";
+// Register / refresh
+pub const LOG_TRACKER_REGISTRATION_BUILD_PAYLOAD_FAILED: &str =
+    "Tracker payload build failed: TrackerServerRegister";
+pub const LOG_TRACKER_REGISTRATION_SEND_REGISTER_FAILED: &str =
+    "Tracker send failed: TrackerServerRegister";
+pub const LOG_TRACKER_REGISTRATION_CLOSED_AWAITING_RESPONSE: &str =
+    "Tracker closed connection awaiting register response";
+pub const LOG_TRACKER_REGISTRATION_RESPONSE_READ_ERROR: &str =
+    "Tracker read error: TrackerServerRegisterResponse";
+pub const LOG_TRACKER_REGISTRATION_RESPONSE_TIMEOUT: &str =
+    "Tracker timeout: TrackerServerRegisterResponse";
+pub const LOG_TRACKER_REGISTRATION_REFRESHED: &str = "Tracker refreshed";
+pub const LOG_TRACKER_REGISTRATION_REGISTER_REJECTED: &str = "Tracker rejected register";
+pub const LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE: &str =
+    "Tracker sent unexpected response to TrackerServerRegister";
+
+// Panic messages for the tracker publisher's sync-lock acquisitions.
+// These only ever surface if a lock is actually poisoned (a panic
+// inside a critical section), which we never expect in normal
+// operation — but per the project rule "no raw error strings" the
+// strings live as named constants.
+pub const EXPECT_TRACKER_STATUS_LOCK_POISONED: &str = "tracker status lock poisoned";
+pub const EXPECT_TRACKER_MANAGER_LOCK_POISONED: &str = "tracker manager lock poisoned";
+
 // --- Handler: Chat ---
 pub const LOG_CHAT_SEND_NOT_LOGGED_IN: &str = "ChatSend: not logged in";
 pub const LOG_CHAT_SEND_PERMISSION_DENIED: &str = "ChatSend: permission denied";

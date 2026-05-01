@@ -63,7 +63,7 @@ where
             error!(
                 user = %requesting_user.username,
                 ip = %ctx.peer_addr,
-                tracker_id = id,
+                id = id,
                 err = %e,
                 "{}", LOG_TRACKER_EDIT_DB_ERROR
             );
@@ -87,7 +87,7 @@ where
             let response = ServerMessage::TrackerEditResponse {
                 success: true,
                 error: None,
-                tracker: Some(compose_tracker_info(record, status)),
+                tracker: Some(compose_tracker_info(record, status, ctx.locale)),
             };
             ctx.send_message(&response).await
         }

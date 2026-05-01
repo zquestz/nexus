@@ -283,6 +283,20 @@ err-tracker-password-too-long = 追踪器密码过长 (最多 { $max_length } �
 err-tracker-endpoint-duplicate = 此地址和端口已配置了另一个追踪器
 err-tracker-name-duplicate = 已配置了另一个使用此名称的追踪器
 
+# Tracker publisher status messages
+err-tracker-connection-failed = 无法连接到追踪器
+err-tracker-tls-failed = 与追踪器的 TLS 握手失败
+err-tracker-handshake-failed = 追踪器握手失败
+err-tracker-connection-lost = 与追踪器的连接丢失
+err-tracker-db-failed = 更新追踪器状态时出现数据库错误
+err-tracker-fingerprint-mismatch = 追踪器证书与已存储的指纹不匹配
+err-tracker-fingerprint-intercepted = 追踪器自报的指纹与其 TLS 证书不匹配
+err-tracker-unauthorized = 追踪器拒绝了注册
+err-tracker-rate-limited = 被追踪器限速
+err-tracker-capacity = 追踪器已达到容量上限
+err-tracker-invalid = 追踪器以无效为由拒绝了注册
+err-tracker-unknown = 追踪器报告了未知错误
+
 # Flood Protection Errors
 err-flood-warning = 消息受到限制（警告 { $violation }/{ $max_violations }）。您可以在{ $seconds }秒后再次发送消息。继续发送将导致断开连接。
 err-flood-disconnect = 已断开连接：超出聊天速率限制。

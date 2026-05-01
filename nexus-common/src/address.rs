@@ -225,6 +225,40 @@ pub fn normalize_ip_literal(address: &str) -> &str {
     trimmed.split('%').next().unwrap_or(trimmed)
 }
 
+/// Resolve an as-typed user/admin-supplied address into a form
+/// suitable for `tokio::net::lookup_host` and rustls's
+/// `ServerName::try_from`. Implements the project's "store as-typed,
+/// normalize at connection time" rule for IDN handling:
+///
+/// 1. Strip URL-style IPv6 brackets (`[::1]` → `::1`).
+/// 2. If the bare form parses as an IPv4 or IPv6 address, return it
+///    unchanged — both resolvers and rustls accept IP literals.
+/// 3. If the bare form contains a `%` (IPv6 zone identifier like
+///    `fe80::1%eth0`), return it unchanged. The zone ID is meaningful
+///    to the resolver but not to IDNA.
+/// 4. Otherwise treat as a hostname and convert Unicode labels to
+///    Punycode via `idna::domain_to_ascii`.
+///
+/// # Errors
+///
+/// Returns `idna::Errors` if step 4 fails (the input was a non-IP,
+/// non-zoned string that wasn't a parseable hostname even under IDNA's
+/// permissive rules — e.g. it contained a space or other invalid label
+/// character).
+pub fn resolve_host_for_connection(address: &str) -> Result<String, idna::Errors> {
+    let bare = address
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(address);
+    if bare.parse::<Ipv4Addr>().is_ok() || bare.parse::<Ipv6Addr>().is_ok() {
+        return Ok(bare.to_string());
+    }
+    if bare.contains('%') {
+        return Ok(bare.to_string());
+    }
+    idna::domain_to_ascii(bare)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -531,6 +565,64 @@ mod tests {
         // Hostnames pass through unchanged so the caller can fall
         // through to a DNS lookup.
         assert_eq!(normalize_ip_literal("example.com"), "example.com");
+    }
+
+    // ----- resolve_host_for_connection -----
+
+    #[test]
+    fn resolve_passes_ipv4_through() {
+        assert_eq!(
+            resolve_host_for_connection("192.168.1.1").expect("v4"),
+            "192.168.1.1"
+        );
+    }
+
+    #[test]
+    fn resolve_passes_ipv6_through() {
+        assert_eq!(resolve_host_for_connection("::1").expect("v6"), "::1");
+        assert_eq!(
+            resolve_host_for_connection("2001:db8::1").expect("v6"),
+            "2001:db8::1"
+        );
+    }
+
+    #[test]
+    fn resolve_strips_ipv6_brackets() {
+        assert_eq!(
+            resolve_host_for_connection("[::1]").expect("bracketed v6"),
+            "::1"
+        );
+        assert_eq!(
+            resolve_host_for_connection("[2001:db8::1]").expect("bracketed v6"),
+            "2001:db8::1"
+        );
+    }
+
+    #[test]
+    fn resolve_preserves_ipv6_zone_id() {
+        assert_eq!(
+            resolve_host_for_connection("fe80::1%eth0").expect("zoned v6"),
+            "fe80::1%eth0"
+        );
+        assert_eq!(
+            resolve_host_for_connection("[fe80::1%eth0]").expect("bracketed zoned v6"),
+            "fe80::1%eth0"
+        );
+    }
+
+    #[test]
+    fn resolve_passes_ascii_hostname_through() {
+        assert_eq!(
+            resolve_host_for_connection("tracker.example.com").expect("hostname"),
+            "tracker.example.com"
+        );
+    }
+
+    #[test]
+    fn resolve_punycodes_unicode_hostname() {
+        // bücher.example → xn--bcher-kva.example
+        let got = resolve_host_for_connection("bücher.example").expect("idn");
+        assert_eq!(got, "xn--bcher-kva.example");
     }
 
     #[test]

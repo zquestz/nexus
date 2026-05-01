@@ -75,7 +75,7 @@ where
             error!(
                 user = %requesting_user.username,
                 ip = %ctx.peer_addr,
-                tracker_id = id,
+                id = id,
                 err = %e,
                 "{}", LOG_TRACKER_DELETE_DB_ERROR
             );
@@ -102,7 +102,8 @@ where
             error!(
                 user = %requesting_user.username,
                 ip = %ctx.peer_addr,
-                tracker_id = id,
+                id = id,
+                name = %existing.name,
                 err = %e,
                 "{}", LOG_TRACKER_DELETE_DB_ERROR
             );
@@ -115,7 +116,7 @@ where
     info!(
         user = %requesting_user.username,
         ip = %ctx.peer_addr,
-        tracker_id = id,
+        id = id,
         name = %existing.name,
         "{}", LOG_TRACKER_DELETE_SUCCESS
     );

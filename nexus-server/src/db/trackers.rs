@@ -11,6 +11,85 @@ use sqlx::sqlite::SqlitePool;
 
 use crate::db::sql;
 
+/// SQLite extended result code for `SQLITE_CONSTRAINT_UNIQUE`.
+///
+/// sqlx surfaces this via `DatabaseError::code()` as the string
+/// `"2067"`. We compare against this rather than substring-matching
+/// on the error message so the check is robust to sqlx / sqlite
+/// version changes in error formatting.
+const SQLITE_CONSTRAINT_UNIQUE: &str = "2067";
+
+// SQLite reports UNIQUE constraint violations with two distinct
+// message shapes:
+//   * Plain column-list indexes (e.g. `(address, port)`) →
+//     `"UNIQUE constraint failed: trackers.address, trackers.port"`
+//   * Expression-based indexes (e.g. `LOWER(name)`) →
+//     `"UNIQUE constraint failed: index 'idx_trackers_name_lower'"`
+// We probe for the first qualified column reference of the endpoint
+// pair, and for the expression-based index by name.
+const ENDPOINT_FAILURE_MARKER: &str = "trackers.address";
+const NAME_LOWER_FAILURE_MARKER: &str = "idx_trackers_name_lower";
+
+/// Errors specific to the tracker DB layer.
+///
+/// `create` and `update` translate sqlx's generic
+/// `sqlx::Error::Database(...)` variants into typed states the handler
+/// layer can match on directly, so handlers don't have to inspect
+/// error message strings. Anything that isn't a recognized UNIQUE
+/// violation falls through to `Other(sqlx::Error)`.
+#[derive(Debug)]
+pub enum TrackerDbError {
+    /// Another row already owns the `(address, port)` endpoint.
+    EndpointDuplicate,
+    /// Another row already uses this name (case-insensitive collision
+    /// on `LOWER(name)`).
+    NameDuplicate,
+    /// Any other DB error — pool exhaustion, schema corruption,
+    /// unrecognized constraint, etc. The handler logs it and sends a
+    /// generic translated database-error response.
+    Other(sqlx::Error),
+}
+
+impl std::fmt::Display for TrackerDbError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EndpointDuplicate => {
+                f.write_str("another tracker is already configured at this address and port")
+            }
+            Self::NameDuplicate => {
+                f.write_str("another tracker is already configured with this name")
+            }
+            Self::Other(e) => write!(f, "tracker database error: {e}"),
+        }
+    }
+}
+
+impl std::error::Error for TrackerDbError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Other(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
+impl From<sqlx::Error> for TrackerDbError {
+    fn from(err: sqlx::Error) -> Self {
+        if let sqlx::Error::Database(ref db_err) = err
+            && db_err.code().as_deref() == Some(SQLITE_CONSTRAINT_UNIQUE)
+        {
+            let msg = db_err.message();
+            if msg.contains(ENDPOINT_FAILURE_MARKER) {
+                return Self::EndpointDuplicate;
+            }
+            if msg.contains(NAME_LOWER_FAILURE_MARKER) {
+                return Self::NameDuplicate;
+            }
+        }
+        Self::Other(err)
+    }
+}
+
 /// A tracker configuration row.
 ///
 /// `port` is stored as INTEGER in SQLite but mapped to `u16` in Rust
@@ -127,14 +206,15 @@ impl TrackerDb {
 
     /// Insert a new tracker row. Returns the created record.
     ///
-    /// Fails with `sqlx::Error::Database` (UNIQUE-constraint violation)
-    /// if another row with the same `(address, port)` already exists.
-    /// The handler layer translates that into the typed protocol
-    /// response.
+    /// On UNIQUE-constraint violation, returns
+    /// [`TrackerDbError::EndpointDuplicate`] (same `(address, port)`)
+    /// or [`TrackerDbError::NameDuplicate`] (same case-insensitive
+    /// name). Other failures bubble up as
+    /// [`TrackerDbError::Other`].
     pub async fn create(
         &self,
         params: CreateTrackerParams<'_>,
-    ) -> Result<TrackerRecord, sqlx::Error> {
+    ) -> Result<TrackerRecord, TrackerDbError> {
         let now = Utc::now().timestamp();
         let result = sqlx::query(sql::SQL_INSERT_TRACKER)
             .bind(params.address)
@@ -148,20 +228,21 @@ impl TrackerDb {
             .execute(&self.pool)
             .await?;
         let id = result.last_insert_rowid();
-        self.get_by_id(id).await?.ok_or(sqlx::Error::RowNotFound)
+        Ok(self.get_by_id(id).await?.ok_or(sqlx::Error::RowNotFound)?)
     }
 
     /// Replace a tracker row's mutable fields by id. Returns the
     /// updated record, or `None` if the id wasn't found.
     ///
-    /// Fails with `sqlx::Error::Database` (UNIQUE-constraint violation)
-    /// if changing `(address, port)` collides with another existing
-    /// row.
+    /// On UNIQUE-constraint violation, returns
+    /// [`TrackerDbError::EndpointDuplicate`] or
+    /// [`TrackerDbError::NameDuplicate`] depending on which constraint
+    /// fired. Other failures bubble up as [`TrackerDbError::Other`].
     pub async fn update(
         &self,
         id: i64,
         params: UpdateTrackerParams<'_>,
-    ) -> Result<Option<TrackerRecord>, sqlx::Error> {
+    ) -> Result<Option<TrackerRecord>, TrackerDbError> {
         let now = Utc::now().timestamp();
         let result = sqlx::query(sql::SQL_UPDATE_TRACKER)
             .bind(params.address)
@@ -177,7 +258,7 @@ impl TrackerDb {
         if result.rows_affected() == 0 {
             return Ok(None);
         }
-        self.get_by_id(id).await
+        Ok(self.get_by_id(id).await?)
     }
 
     /// Narrow update: replace only the pinned fingerprint. Used by
@@ -286,12 +367,9 @@ mod tests {
             .create(create_params("tracker.example.com", "Second"))
             .await
             .expect_err("duplicate (address, port) must fail");
-        // The unique index produces a database-level constraint error;
-        // any sqlx::Error variant from a constraint violation is fine.
-        let msg = err.to_string().to_lowercase();
         assert!(
-            msg.contains("unique") || msg.contains("constraint"),
-            "expected UNIQUE-constraint error, got: {err}"
+            matches!(err, TrackerDbError::EndpointDuplicate),
+            "expected EndpointDuplicate, got: {err:?}"
         );
     }
 
@@ -353,10 +431,9 @@ mod tests {
             .create(create_params("b.example.com", "public tracker"))
             .await
             .expect_err("duplicate name (case-insensitive) must fail");
-        let msg = err.to_string().to_lowercase();
         assert!(
-            msg.contains("unique") || msg.contains("constraint"),
-            "expected UNIQUE-constraint error, got: {err}"
+            matches!(err, TrackerDbError::NameDuplicate),
+            "expected NameDuplicate, got: {err:?}"
         );
     }
 

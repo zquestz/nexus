@@ -210,7 +210,7 @@ mod tests {
             address: "bbs.example.com".to_string(),
             port: 7500,
             websocket_port: None,
-            version: "0.8.1".to_string(),
+            version: "0.8.2".to_string(),
             fingerprint: "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
                  AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
                 .to_string(),

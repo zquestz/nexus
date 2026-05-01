@@ -46,6 +46,64 @@ pub const ERROR_KIND_RATE_LIMITED: &str = "rate_limited";
 /// Error kind string: service is at capacity
 pub const ERROR_KIND_CAPACITY: &str = "capacity";
 
+// ---- Tracker publisher kinds ----
+//
+// These describe internal states of a BBS server's per-tracker
+// publisher task. They never appear in tracker protocol responses
+// (the tracker uses the generic kinds above for those); they're set
+// by the publisher itself and surfaced to the BBS admin via
+// `TrackerInfo.last_error_kind`. The matching i18n keys live in the
+// BBS server's `errors.ftl` as `err-tracker-{kind}` and are looked
+// up at compose-time using the requesting admin's locale.
+
+/// Publisher couldn't open the TCP connection to the tracker.
+pub const ERROR_KIND_TRACKER_CONNECTION_FAILED: &str = "tracker_connection_failed";
+
+/// Publisher's TLS handshake with the tracker failed.
+pub const ERROR_KIND_TRACKER_TLS_FAILED: &str = "tracker_tls_failed";
+
+/// Publisher's BBS-style handshake with the tracker failed (the
+/// `Handshake` send/receive cycle, distinct from the TCP+TLS phase).
+pub const ERROR_KIND_TRACKER_HANDSHAKE_FAILED: &str = "tracker_handshake_failed";
+
+/// Publisher's connection to the tracker was lost mid-session
+/// (peer closed, read error, register-response timeout, etc.).
+pub const ERROR_KIND_TRACKER_CONNECTION_LOST: &str = "tracker_connection_lost";
+
+/// Publisher hit a database error while updating local tracker state
+/// (e.g. TOFU-pinning the fingerprint).
+pub const ERROR_KIND_TRACKER_DB_FAILED: &str = "tracker_db_failed";
+
+/// Stage 1 fingerprint mismatch: tracker's TLS cert disagrees with
+/// the row's pinned fingerprint. Unrecoverable; admin must accept
+/// the new fingerprint.
+pub const ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH: &str = "tracker_fingerprint_mismatch";
+
+/// Stage 2 fingerprint mismatch: tracker's TLS-observed cert disagrees
+/// with what the tracker self-reports in `HandshakeResponse`.
+/// Unrecoverable; suggests active interception.
+pub const ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED: &str = "tracker_fingerprint_intercepted";
+
+/// Whether an `error_kind` from the tracker (or our publisher's
+/// internal categorization) is unrecoverable — i.e. the publisher
+/// can't recover without external intervention (admin updating the
+/// row, accepting a fingerprint, or the server restarting). Used by
+/// both the publisher itself (to decide whether to exit vs. retry)
+/// and the client UI (to render "needs your attention").
+#[must_use]
+pub fn is_unrecoverable_error_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        // Stage 1 / Stage 2 fingerprint failures.
+        ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH
+        | ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED
+        // Wrong / missing registration password.
+        | ERROR_KIND_UNAUTHORIZED
+        // Field validation rejection (malformed address etc.).
+        | ERROR_KIND_INVALID
+    )
+}
+
 // =============================================================================
 // Enum
 // =============================================================================
@@ -260,6 +318,36 @@ mod tests {
         ] {
             assert_eq!(ErrorKind::parse(kind.as_str()), Some(kind));
         }
+    }
+
+    #[test]
+    fn test_unrecoverable_tracker_error_kinds() {
+        assert!(is_unrecoverable_error_kind(
+            ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH
+        ));
+        assert!(is_unrecoverable_error_kind(
+            ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED
+        ));
+        assert!(is_unrecoverable_error_kind(ERROR_KIND_UNAUTHORIZED));
+        assert!(is_unrecoverable_error_kind(ERROR_KIND_INVALID));
+    }
+
+    #[test]
+    fn test_recoverable_tracker_error_kinds() {
+        assert!(!is_unrecoverable_error_kind(ERROR_KIND_RATE_LIMITED));
+        assert!(!is_unrecoverable_error_kind(ERROR_KIND_CAPACITY));
+        assert!(!is_unrecoverable_error_kind(
+            ERROR_KIND_TRACKER_CONNECTION_FAILED
+        ));
+        assert!(!is_unrecoverable_error_kind(ERROR_KIND_TRACKER_TLS_FAILED));
+        assert!(!is_unrecoverable_error_kind(
+            ERROR_KIND_TRACKER_HANDSHAKE_FAILED
+        ));
+        assert!(!is_unrecoverable_error_kind(
+            ERROR_KIND_TRACKER_CONNECTION_LOST
+        ));
+        assert!(!is_unrecoverable_error_kind(ERROR_KIND_TRACKER_DB_FAILED));
+        assert!(!is_unrecoverable_error_kind(""));
     }
 
     #[test]

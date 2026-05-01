@@ -24,7 +24,9 @@ pub use password::{hash_password, verify_password};
 pub use permissions::{Permission, Permissions};
 // Tracker re-exports are dead until chunk 4 (handlers consume them).
 #[allow(unused_imports)]
-pub use trackers::{CreateTrackerParams, TrackerDb, TrackerRecord, UpdateTrackerParams};
+pub use trackers::{
+    CreateTrackerParams, TrackerDb, TrackerDbError, TrackerRecord, UpdateTrackerParams,
+};
 pub use trusts::TrustDb;
 pub use users::{CreateUserParams, UpdateUserParams, UserDb};
 

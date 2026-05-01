@@ -1514,7 +1514,11 @@ pub struct GroupInfo {
 /// other runtime field `None`. That accurately reflects "no task running."
 ///
 /// Used in `TrackerListResponse`, `TrackerEditResponse`, etc.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// Note: derives `Clone`, `Serialize`, `Deserialize` but NOT `Debug` —
+/// the manual `Debug` impl below redacts the registration password so
+/// it never leaks into operator logs.
+#[derive(Clone, Serialize, Deserialize)]
 pub struct TrackerInfo {
     // ---- Configuration (from DB row) ----
     /// Unique tracker identifier (DB row id).
@@ -1568,6 +1572,36 @@ pub struct TrackerInfo {
     /// the publisher has successfully registered.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refresh_interval: Option<u32>,
+}
+
+impl std::fmt::Debug for TrackerInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Redact the registration password — it's a shared secret that
+        // never belongs in operator logs. `None` is shown verbatim so
+        // a reader can distinguish "open tracker" from "password set
+        // but redacted".
+        let password: &dyn std::fmt::Debug = match &self.password {
+            Some(_) => &"<REDACTED>",
+            None => &Option::<String>::None,
+        };
+        f.debug_struct("TrackerInfo")
+            .field("id", &self.id)
+            .field("address", &self.address)
+            .field("port", &self.port)
+            .field("fingerprint", &self.fingerprint)
+            .field("password", password)
+            .field("name", &self.name)
+            .field("enabled", &self.enabled)
+            .field("created_at", &self.created_at)
+            .field("updated_at", &self.updated_at)
+            .field("connected", &self.connected)
+            .field("last_connected_at", &self.last_connected_at)
+            .field("last_error", &self.last_error)
+            .field("last_error_kind", &self.last_error_kind)
+            .field("pending_fingerprint", &self.pending_fingerprint)
+            .field("refresh_interval", &self.refresh_interval)
+            .finish()
+    }
 }
 
 impl std::fmt::Debug for ClientMessage {
@@ -2007,6 +2041,71 @@ impl std::fmt::Debug for ClientMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn make_tracker_info(password: Option<String>) -> TrackerInfo {
+        TrackerInfo {
+            id: 1,
+            address: "tracker.example.com".to_string(),
+            port: 7510,
+            fingerprint: None,
+            password,
+            name: "Public".to_string(),
+            enabled: true,
+            created_at: 0,
+            updated_at: 0,
+            connected: false,
+            last_connected_at: None,
+            last_error: None,
+            last_error_kind: None,
+            pending_fingerprint: None,
+            refresh_interval: None,
+        }
+    }
+
+    #[test]
+    fn tracker_info_debug_redacts_password() {
+        let info = make_tracker_info(Some("supersecret".to_string()));
+        let dbg = format!("{info:?}");
+        assert!(
+            !dbg.contains("supersecret"),
+            "raw password leaked into Debug output: {dbg}"
+        );
+        assert!(
+            dbg.contains("<REDACTED>"),
+            "expected redaction marker, got: {dbg}"
+        );
+    }
+
+    #[test]
+    fn tracker_info_debug_shows_none_password_verbatim() {
+        let info = make_tracker_info(None);
+        let dbg = format!("{info:?}");
+        assert!(
+            !dbg.contains("<REDACTED>"),
+            "should not redact when no password is set: {dbg}"
+        );
+        assert!(
+            dbg.contains("password: None"),
+            "expected `password: None`, got: {dbg}"
+        );
+    }
+
+    #[test]
+    fn server_message_with_tracker_info_redacts_password() {
+        // ServerMessage's derive(Debug) recurses into TrackerInfo's
+        // manual impl, so password redaction holds end-to-end.
+        let msg = ServerMessage::TrackerEditResponse {
+            success: true,
+            error: None,
+            tracker: Some(make_tracker_info(Some("supersecret".to_string()))),
+        };
+        let dbg = format!("{msg:?}");
+        assert!(
+            !dbg.contains("supersecret"),
+            "password leaked through ServerMessage::Debug: {dbg}"
+        );
+        assert!(dbg.contains("<REDACTED>"));
+    }
 
     #[test]
     fn test_serialize_login() {

@@ -25,6 +25,11 @@ use tracing::{debug, info, warn};
 use super::context::PublisherContext;
 use super::status::TrackerStatus;
 use super::task;
+use crate::constants::{
+    EXPECT_TRACKER_MANAGER_LOCK_POISONED, EXPECT_TRACKER_STATUS_LOCK_POISONED,
+    LOG_TRACKER_REGISTRATION_HANDLE_REPLACED, LOG_TRACKER_REGISTRATION_SPAWN_SKIPPED,
+    LOG_TRACKER_REGISTRATION_SPAWNED, LOG_TRACKER_REGISTRATION_TASK_ABORTED,
+};
 use crate::db::TrackerRecord;
 
 /// Live handle to one publisher task. Held in the manager's HashMap
@@ -39,6 +44,9 @@ struct TrackerHandle {
     /// Shared with the task itself. The task is the sole writer; the
     /// manager / handlers read for `TrackerInfo` composition.
     status: Arc<RwLock<TrackerStatus>>,
+    /// Snapshot of the tracker's display name at spawn time, for logs
+    /// in `terminate` / `replace` where the full record isn't in scope.
+    name: String,
 }
 
 /// Per-tracker task supervisor.
@@ -88,7 +96,6 @@ impl TrackerManager {
         for record in enabled {
             self.spawn_internal(record);
         }
-        info!("tracker publisher: bootstrap complete");
         Ok(())
     }
 
@@ -98,8 +105,9 @@ impl TrackerManager {
     pub fn spawn(&self, record: TrackerRecord) {
         if !record.enabled {
             debug!(
-                tracker_id = record.id,
-                "tracker publisher: skipping spawn for disabled record"
+                id = record.id,
+                name = %record.name,
+                "{}", LOG_TRACKER_REGISTRATION_SPAWN_SKIPPED
             );
             return;
         }
@@ -124,10 +132,17 @@ impl TrackerManager {
     /// handle from the map. Idempotent — calling on an unknown id is
     /// a no-op.
     pub fn terminate(&self, id: i64) {
-        let mut map = self.inner.lock().expect("tracker manager lock poisoned");
+        let mut map = self
+            .inner
+            .lock()
+            .expect(EXPECT_TRACKER_MANAGER_LOCK_POISONED);
         if let Some(handle) = map.remove(&id) {
             handle.join.abort();
-            debug!(tracker_id = id, "tracker publisher: aborted task");
+            debug!(
+                id = id,
+                name = %handle.name,
+                "{}", LOG_TRACKER_REGISTRATION_TASK_ABORTED
+            );
         }
     }
 
@@ -135,19 +150,33 @@ impl TrackerManager {
     /// task is running for this id (disabled tracker, or no row).
     #[must_use]
     pub fn status_for(&self, id: i64) -> Option<TrackerStatus> {
-        let map = self.inner.lock().expect("tracker manager lock poisoned");
-        map.get(&id)
-            .map(|h| h.status.read().expect("status lock poisoned").clone())
+        let map = self
+            .inner
+            .lock()
+            .expect(EXPECT_TRACKER_MANAGER_LOCK_POISONED);
+        map.get(&id).map(|h| {
+            h.status
+                .read()
+                .expect(EXPECT_TRACKER_STATUS_LOCK_POISONED)
+                .clone()
+        })
     }
 
     /// Snapshot of runtime status for every running task. Used by the
     /// `TrackerList` admin handler to compose `TrackerInfo` rows.
     #[must_use]
     pub fn status_all(&self) -> HashMap<i64, TrackerStatus> {
-        let map = self.inner.lock().expect("tracker manager lock poisoned");
+        let map = self
+            .inner
+            .lock()
+            .expect(EXPECT_TRACKER_MANAGER_LOCK_POISONED);
         map.iter()
             .map(|(id, h)| {
-                let status = h.status.read().expect("status lock poisoned").clone();
+                let status = h
+                    .status
+                    .read()
+                    .expect(EXPECT_TRACKER_STATUS_LOCK_POISONED)
+                    .clone();
                 (*id, status)
             })
             .collect()
@@ -164,7 +193,10 @@ impl TrackerManager {
     /// race), drop the lock, then await each handle.
     pub async fn shutdown(&self) {
         let joins: Vec<JoinHandle<()>> = {
-            let mut map = self.inner.lock().expect("tracker manager lock poisoned");
+            let mut map = self
+                .inner
+                .lock()
+                .expect(EXPECT_TRACKER_MANAGER_LOCK_POISONED);
             map.drain().map(|(_, h)| h.join).collect()
         };
         for j in &joins {
@@ -174,7 +206,6 @@ impl TrackerManager {
             // `Err(JoinError::Cancelled)` is the expected outcome.
             let _ = j.await;
         }
-        info!("tracker publisher: all tasks shut down");
     }
 
     /// Internal spawn helper. Consumes `record` and inserts a new
@@ -183,28 +214,36 @@ impl TrackerManager {
     /// one is aborted.
     fn spawn_internal(&self, record: TrackerRecord) {
         let id = record.id;
+        let name = record.name.clone();
         let status = Arc::new(RwLock::new(TrackerStatus::default()));
         let task_status = Arc::clone(&status);
         let task_context = Arc::clone(&self.context);
+
+        info!(id = id, name = %name, "{}", LOG_TRACKER_REGISTRATION_SPAWNED);
 
         let join = tokio::spawn(async move {
             task::run(record, task_status, task_context).await;
         });
 
-        let mut map = self.inner.lock().expect("tracker manager lock poisoned");
+        let mut map = self
+            .inner
+            .lock()
+            .expect(EXPECT_TRACKER_MANAGER_LOCK_POISONED);
         if let Some(old) = map.insert(
             id,
             TrackerHandle {
                 join,
                 status: Arc::clone(&status),
+                name: name.clone(),
             },
         ) {
             // Defensive: shouldn't happen given the documented call
             // pattern (callers call `terminate` first), but if it
             // does, the old task gets aborted to avoid a leak.
             warn!(
-                tracker_id = id,
-                "tracker publisher: replaced existing handle without explicit terminate"
+                id = id,
+                name = %old.name,
+                "{}", LOG_TRACKER_REGISTRATION_HANDLE_REPLACED
             );
             old.join.abort();
         }

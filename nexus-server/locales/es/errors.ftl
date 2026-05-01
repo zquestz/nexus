@@ -284,6 +284,20 @@ err-tracker-password-too-long = La contraseña del rastreador es demasiado larga
 err-tracker-endpoint-duplicate = Ya hay otro rastreador configurado en esta dirección y puerto
 err-tracker-name-duplicate = Ya hay otro rastreador configurado con este nombre
 
+# Tracker publisher status messages
+err-tracker-connection-failed = No se pudo conectar al rastreador
+err-tracker-tls-failed = El handshake TLS con el rastreador falló
+err-tracker-handshake-failed = El handshake del rastreador falló
+err-tracker-connection-lost = Conexión con el rastreador perdida
+err-tracker-db-failed = Error de base de datos al actualizar el estado del rastreador
+err-tracker-fingerprint-mismatch = El certificado del rastreador no coincide con la huella digital almacenada
+err-tracker-fingerprint-intercepted = La huella digital autorreportada del rastreador no coincide con su certificado TLS
+err-tracker-unauthorized = El rastreador rechazó el registro
+err-tracker-rate-limited = Limitado por velocidad por el rastreador
+err-tracker-capacity = El rastreador está a capacidad máxima
+err-tracker-invalid = El rastreador rechazó el registro como inválido
+err-tracker-unknown = El rastreador reportó un error desconocido
+
 # Flood Protection Errors
 err-flood-warning = Mensaje limitado por velocidad (advertencia { $violation } de { $max_violations }). Puedes enviar otro mensaje en { $seconds } { $seconds ->
     [one] segundo

@@ -283,6 +283,20 @@ err-tracker-password-too-long = Пароль трекера слишком дл�
 err-tracker-endpoint-duplicate = Другой трекер уже настроен по этому адресу и порту
 err-tracker-name-duplicate = Другой трекер уже настроен с этим именем
 
+# Tracker publisher status messages
+err-tracker-connection-failed = Не удалось подключиться к трекеру
+err-tracker-tls-failed = Не удалось выполнить TLS-рукопожатие с трекером
+err-tracker-handshake-failed = Не удалось выполнить рукопожатие с трекером
+err-tracker-connection-lost = Соединение с трекером потеряно
+err-tracker-db-failed = Ошибка базы данных при обновлении состояния трекера
+err-tracker-fingerprint-mismatch = Сертификат трекера не соответствует сохраненному отпечатку
+err-tracker-fingerprint-intercepted = Самосообщенный отпечаток трекера не соответствует его TLS-сертификату
+err-tracker-unauthorized = Трекер отклонил регистрацию
+err-tracker-rate-limited = Ограничено по скорости трекером
+err-tracker-capacity = Трекер достиг максимальной вместимости
+err-tracker-invalid = Трекер отклонил регистрацию как недействительную
+err-tracker-unknown = Трекер сообщил о неизвестной ошибке
+
 # Flood Protection Errors
 err-flood-warning = Сообщение ограничено (предупреждение { $violation } из { $max_violations }). Вы сможете отправить следующее сообщение через { $seconds } { $seconds ->
     [one] секунду

@@ -15,7 +15,6 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use chrono::Utc;
-use nexus_common::TRACKER_PROTOCOL_VERSION;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{
     read_server_message, read_tracker_server_message_with_full_timeout, send_client_message,
@@ -23,6 +22,12 @@ use nexus_common::io::{
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
+use nexus_common::{
+    ERROR_KIND_INVALID, ERROR_KIND_TRACKER_CONNECTION_FAILED, ERROR_KIND_TRACKER_CONNECTION_LOST,
+    ERROR_KIND_TRACKER_DB_FAILED, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
+    ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH, ERROR_KIND_TRACKER_HANDSHAKE_FAILED,
+    ERROR_KIND_TRACKER_TLS_FAILED, TRACKER_PROTOCOL_VERSION, is_unrecoverable_error_kind,
+};
 use rand::RngExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -30,8 +35,23 @@ use tokio_rustls::rustls::pki_types::ServerName;
 use tracing::{debug, info, warn};
 
 use super::context::PublisherContext;
-use super::status::{TrackerStatus, is_unrecoverable_error_kind};
+use super::status::TrackerStatus;
 use super::tls::TLS_CONNECTOR;
+use crate::constants::{
+    EXPECT_TRACKER_STATUS_LOCK_POISONED, LOG_TRACKER_REGISTRATION_BACKOFF,
+    LOG_TRACKER_REGISTRATION_BUILD_PAYLOAD_FAILED,
+    LOG_TRACKER_REGISTRATION_CLOSED_AWAITING_RESPONSE, LOG_TRACKER_REGISTRATION_CLOSED_MID_IDLE,
+    LOG_TRACKER_REGISTRATION_EXITING, LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR,
+    LOG_TRACKER_REGISTRATION_INVALID_HOST, LOG_TRACKER_REGISTRATION_NO_PEER_CERTS,
+    LOG_TRACKER_REGISTRATION_READ_ERROR_MID_IDLE, LOG_TRACKER_REGISTRATION_REFRESHED,
+    LOG_TRACKER_REGISTRATION_REGISTER_REJECTED, LOG_TRACKER_REGISTRATION_RESPONSE_READ_ERROR,
+    LOG_TRACKER_REGISTRATION_RESPONSE_TIMEOUT, LOG_TRACKER_REGISTRATION_SEND_HANDSHAKE_FAILED,
+    LOG_TRACKER_REGISTRATION_SEND_REGISTER_FAILED, LOG_TRACKER_REGISTRATION_STAGE1_MISMATCH,
+    LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH, LOG_TRACKER_REGISTRATION_TCP_FAILED,
+    LOG_TRACKER_REGISTRATION_TLS_FAILED, LOG_TRACKER_REGISTRATION_TOFU_PINNED,
+    LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED, LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME,
+    LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE,
+};
 use crate::db::TrackerRecord;
 
 /// Base backoff between connection attempts on failure.
@@ -46,12 +66,6 @@ const BACKOFF_JITTER_PCT: f64 = 0.25;
 /// normal latency; tight enough to recover from a wedged connection
 /// instead of hanging until the outer 60s frame-completion timeout.
 const REGISTER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Sentinel ServerName for the rustls handshake. We disable SNI in the
-/// connector and TOFU-pin the cert ourselves, so the name doesn't
-/// affect anything wire-visible — but rustls needs a syntactically-valid
-/// name to construct the handshake.
-const TLS_SERVER_NAME: &str = "tracker";
 
 /// Run the publisher task for one tracker. Loops forever (with
 /// backoff) until cancelled by the manager, or exits early on an
@@ -76,7 +90,7 @@ pub async fn run(
         // preserve `pending_fingerprint` so admin-visible state from a
         // prior mismatch survives until the new attempt resolves it.
         {
-            let mut s = status.write().expect("status lock poisoned");
+            let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
             s.connected = false;
         }
 
@@ -89,8 +103,9 @@ pub async fn run(
                 // intervention (TrackerUpdate or server restart) is the
                 // recovery path.
                 info!(
-                    tracker_id = record.id,
-                    "publisher: exiting task due to unrecoverable error"
+                    id = record.id,
+                    name = %record.name,
+                    "{}", LOG_TRACKER_REGISTRATION_EXITING
                 );
                 return;
             }
@@ -99,9 +114,10 @@ pub async fn run(
         // Backoff: jittered exponential, capped.
         let jittered = jitter(backoff);
         debug!(
-            tracker_id = record.id,
+            id = record.id,
+            name = %record.name,
             backoff_ms = jittered.as_millis() as u64,
-            "publisher: backoff before retry"
+            "{}", LOG_TRACKER_REGISTRATION_BACKOFF
         );
         tokio::time::sleep(jittered).await;
         backoff = (backoff * 2).min(BACKOFF_CAP);
@@ -125,43 +141,71 @@ async fn attempt_connection_cycle(
     status: &Arc<RwLock<TrackerStatus>>,
     context: &Arc<PublisherContext>,
 ) -> CycleOutcome {
-    // Phase 1: TCP connect.
-    let tcp = match TcpStream::connect((record.address.as_str(), record.port)).await {
-        Ok(s) => s,
+    // Phase 0: resolve the admin-supplied address into the form both
+    // the system resolver and rustls's `ServerName::try_from` expect
+    // — strips IPv6 URL brackets, passes IP literals through, and
+    // Punycode-encodes Unicode hostnames. The validator at
+    // `TrackerCreate`/`TrackerUpdate` already accepts the same set
+    // (via `domain_to_ascii_strict`), so a failure here is rare and
+    // operator-actionable: the row needs editing.
+    let resolved_host = match nexus_common::address::resolve_host_for_connection(&record.address) {
+        Ok(h) => h,
         Err(e) => {
             warn!(
-                tracker_id = record.id,
+                id = record.id,
+                name = %record.name,
+                address = %record.address,
                 err = %e,
-                "publisher: TCP connect failed"
+                "{}", LOG_TRACKER_REGISTRATION_INVALID_HOST
             );
-            set_status_error(status, "connection_failed", e.to_string());
+            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
             return CycleOutcome::Transient;
         }
     };
 
-    // Phase 2: TLS handshake.
-    let server_name = match ServerName::try_from(TLS_SERVER_NAME) {
-        Ok(n) => n,
-        Err(_) => {
-            // Unreachable — TLS_SERVER_NAME is a static valid name.
-            // Treat as unrecoverable to avoid an infinite loop.
-            set_status_error(
-                status,
-                "tls_failed",
-                "internal: invalid sentinel ServerName".to_string(),
+    // Phase 1: TCP connect.
+    let tcp = match TcpStream::connect((resolved_host.as_str(), record.port)).await {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(
+                id = record.id,
+                name = %record.name,
+                err = %e,
+                "{}", LOG_TRACKER_REGISTRATION_TCP_FAILED
             );
-            return CycleOutcome::Unrecoverable;
+            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
+            return CycleOutcome::Transient;
+        }
+    };
+
+    // Phase 2: TLS handshake. The resolved host doubles as the
+    // `ServerName` rustls demands; SNI is off and we TOFU-pin the
+    // cert post-handshake, so the value is otherwise unobservable on
+    // the wire and uncompared against the cert.
+    let server_name = match ServerName::try_from(resolved_host.clone()) {
+        Ok(n) => n,
+        Err(e) => {
+            warn!(
+                id = record.id,
+                name = %record.name,
+                address = %record.address,
+                err = %e,
+                "{}", LOG_TRACKER_REGISTRATION_INVALID_HOST
+            );
+            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
+            return CycleOutcome::Transient;
         }
     };
     let tls = match TLS_CONNECTOR.connect(server_name, tcp).await {
         Ok(s) => s,
         Err(e) => {
             warn!(
-                tracker_id = record.id,
+                id = record.id,
+                name = %record.name,
                 err = %e,
-                "publisher: TLS handshake failed"
+                "{}", LOG_TRACKER_REGISTRATION_TLS_FAILED
             );
-            set_status_error(status, "tls_failed", e.to_string());
+            set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED);
             return CycleOutcome::Transient;
         }
     };
@@ -171,14 +215,11 @@ async fn attempt_connection_cycle(
         Some(fp) => fp,
         None => {
             warn!(
-                tracker_id = record.id,
-                "publisher: peer presented no certificates"
+                id = record.id,
+                name = %record.name,
+                "{}", LOG_TRACKER_REGISTRATION_NO_PEER_CERTS
             );
-            set_status_error(
-                status,
-                "tls_failed",
-                "peer presented no certificates".to_string(),
-            );
+            set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED);
             return CycleOutcome::Transient;
         }
     };
@@ -188,15 +229,15 @@ async fn attempt_connection_cycle(
         && pinned != &tls_observed
     {
         warn!(
-            tracker_id = record.id,
+            id = record.id,
+            name = %record.name,
             pinned = %pinned,
             observed = %tls_observed,
-            "publisher: Stage 1 fingerprint mismatch"
+            "{}", LOG_TRACKER_REGISTRATION_STAGE1_MISMATCH
         );
         set_status_with_pending_fingerprint(
             status,
-            "fingerprint_mismatch",
-            "tracker certificate does not match the pinned fingerprint".to_string(),
+            ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH,
             tls_observed.clone(),
         );
         return CycleOutcome::Unrecoverable;
@@ -218,11 +259,12 @@ async fn attempt_connection_cycle(
     .await
     {
         warn!(
-            tracker_id = record.id,
+            id = record.id,
+            name = %record.name,
             err = %e,
-            "publisher: failed to send Handshake"
+            "{}", LOG_TRACKER_REGISTRATION_SEND_HANDSHAKE_FAILED
         );
-        set_status_error(status, "handshake_failed", e.to_string());
+        set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
         return CycleOutcome::Transient;
     }
 
@@ -230,11 +272,12 @@ async fn attempt_connection_cycle(
         Ok(fp) => fp,
         Err(e) => {
             warn!(
-                tracker_id = record.id,
+                id = record.id,
+                name = %record.name,
                 err = %e,
-                "publisher: HandshakeResponse error"
+                "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR
             );
-            set_status_error(status, "handshake_failed", e);
+            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
             return CycleOutcome::Transient;
         }
     };
@@ -242,15 +285,15 @@ async fn attempt_connection_cycle(
     // Phase 6: Stage 2 — TLS-observed vs server-reported.
     if server_reported != tls_observed {
         warn!(
-            tracker_id = record.id,
+            id = record.id,
+            name = %record.name,
             tls_observed = %tls_observed,
             server_reported = %server_reported,
-            "publisher: Stage 2 fingerprint mismatch (interception suspicion)"
+            "{}", LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH
         );
         set_status_with_pending_fingerprint(
             status,
-            "fingerprint_intercepted",
-            "tracker self-reported fingerprint does not match its TLS certificate".to_string(),
+            ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
             tls_observed.clone(),
         );
         return CycleOutcome::Unrecoverable;
@@ -268,18 +311,20 @@ async fn attempt_connection_cycle(
             .await
         {
             warn!(
-                tracker_id = record.id,
+                id = record.id,
+                name = %record.name,
                 err = %e,
-                "publisher: failed to TOFU-write fingerprint"
+                "{}", LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED
             );
-            set_status_error(status, "db_failed", e.to_string());
+            set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED);
             return CycleOutcome::Transient;
         }
         record.fingerprint = Some(tls_observed.clone());
         info!(
-            tracker_id = record.id,
+            id = record.id,
+            name = %record.name,
             fingerprint = %tls_observed,
-            "publisher: TOFU-pinned fingerprint"
+            "{}", LOG_TRACKER_REGISTRATION_TOFU_PINNED
         );
     }
 
@@ -287,7 +332,7 @@ async fn attempt_connection_cycle(
     // admin-accept-then-reconnect path, where a previous task left a
     // pending observation in status before being respawned).
     {
-        let mut s = status.write().expect("status lock poisoned");
+        let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
         s.pending_fingerprint = None;
     }
 
@@ -325,36 +370,31 @@ where
                         // Unexpected mid-idle frame; treat as connection
                         // anomaly and reconnect.
                         warn!(
-                            tracker_id = record.id,
-                            "publisher: unexpected mid-idle frame; reconnecting"
+                            id = record.id,
+                            name = %record.name,
+                            "{}", LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME
                         );
-                        set_status_error(
-                            status,
-                            "connection_lost",
-                            "unexpected frame from tracker mid-idle".to_string(),
-                        );
+                        set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
                         return CycleOutcome::Transient;
                     }
                     Ok(None) => {
                         // Clean close from the peer.
                         debug!(
-                            tracker_id = record.id,
-                            "publisher: tracker closed connection mid-idle"
+                            id = record.id,
+                            name = %record.name,
+                            "{}", LOG_TRACKER_REGISTRATION_CLOSED_MID_IDLE
                         );
-                        set_status_error(
-                            status,
-                            "connection_lost",
-                            "tracker closed connection".to_string(),
-                        );
+                        set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
                         return CycleOutcome::Transient;
                     }
                     Err(e) => {
                         warn!(
-                            tracker_id = record.id,
+                            id = record.id,
+                            name = %record.name,
                             err = %e,
-                            "publisher: read error mid-idle"
+                            "{}", LOG_TRACKER_REGISTRATION_READ_ERROR_MID_IDLE
                         );
-                        set_status_error(status, "connection_lost", e.to_string());
+                        set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
                         return CycleOutcome::Transient;
                     }
                 }
@@ -366,22 +406,24 @@ where
             Ok(p) => p,
             Err(e) => {
                 warn!(
-                    tracker_id = record.id,
+                    id = record.id,
+                    name = %record.name,
                     err = %e,
-                    "publisher: failed to build register payload"
+                    "{}", LOG_TRACKER_REGISTRATION_BUILD_PAYLOAD_FAILED
                 );
-                set_status_error(status, "db_failed", e);
+                set_status_error(status, ERROR_KIND_TRACKER_DB_FAILED);
                 return CycleOutcome::Transient;
             }
         };
 
         if let Err(e) = send_tracker_client_message(writer, &payload).await {
             warn!(
-                tracker_id = record.id,
+                id = record.id,
+                name = %record.name,
                 err = %e,
-                "publisher: failed to send TrackerServerRegister"
+                "{}", LOG_TRACKER_REGISTRATION_SEND_REGISTER_FAILED
             );
-            set_status_error(status, "connection_lost", e.to_string());
+            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
             return CycleOutcome::Transient;
         }
 
@@ -395,35 +437,30 @@ where
             Ok(Ok(Some(r))) => r.message,
             Ok(Ok(None)) => {
                 warn!(
-                    tracker_id = record.id,
-                    "publisher: tracker closed connection awaiting register response"
+                    id = record.id,
+                    name = %record.name,
+                    "{}", LOG_TRACKER_REGISTRATION_CLOSED_AWAITING_RESPONSE
                 );
-                set_status_error(
-                    status,
-                    "connection_lost",
-                    "tracker closed connection".to_string(),
-                );
+                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
                 return CycleOutcome::Transient;
             }
             Ok(Err(e)) => {
                 warn!(
-                    tracker_id = record.id,
+                    id = record.id,
+                    name = %record.name,
                     err = %e,
-                    "publisher: error reading register response"
+                    "{}", LOG_TRACKER_REGISTRATION_RESPONSE_READ_ERROR
                 );
-                set_status_error(status, "connection_lost", e.to_string());
+                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
                 return CycleOutcome::Transient;
             }
             Err(_elapsed) => {
                 warn!(
-                    tracker_id = record.id,
-                    "publisher: timeout awaiting register response"
+                    id = record.id,
+                    name = %record.name,
+                    "{}", LOG_TRACKER_REGISTRATION_RESPONSE_TIMEOUT
                 );
-                set_status_error(
-                    status,
-                    "connection_lost",
-                    "timeout awaiting register response".to_string(),
-                );
+                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
                 return CycleOutcome::Transient;
             }
         };
@@ -436,17 +473,17 @@ where
             } => {
                 let interval = refresh_interval.unwrap_or(300);
                 {
-                    let mut s = status.write().expect("status lock poisoned");
+                    let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
                     s.connected = true;
                     s.last_connected_at = Some(Utc::now().timestamp());
-                    s.last_error = None;
                     s.last_error_kind = None;
                     s.refresh_interval = Some(interval);
                 }
                 debug!(
-                    tracker_id = record.id,
+                    id = record.id,
+                    name = %record.name,
                     refresh_interval = interval,
-                    "publisher: refreshed"
+                    "{}", LOG_TRACKER_REGISTRATION_REFRESHED
                 );
                 sleep_for = Duration::from_secs(u64::from(interval));
             }
@@ -456,15 +493,22 @@ where
                 error_kind,
                 ..
             } => {
-                let kind = error_kind.unwrap_or_else(|| "invalid".to_string());
-                let msg = error.unwrap_or_else(|| kind.clone());
+                let kind = error_kind.unwrap_or_else(|| ERROR_KIND_INVALID.to_string());
+                // Tracker-supplied `error` text (already localized by
+                // the tracker to whatever locale we sent in the
+                // register; we hard-code `"en"`) is logged for the
+                // operator only — it never reaches the admin's UI,
+                // which renders the kind via the BBS server's own
+                // i18n bundle in the admin's locale.
+                let detail = error.unwrap_or_default();
                 warn!(
-                    tracker_id = record.id,
+                    id = record.id,
+                    name = %record.name,
                     error_kind = %kind,
-                    err = %msg,
-                    "publisher: tracker rejected register"
+                    err = %detail,
+                    "{}", LOG_TRACKER_REGISTRATION_REGISTER_REJECTED
                 );
-                set_status_error(status, &kind, msg);
+                set_status_error(status, &kind);
                 return if is_unrecoverable_error_kind(&kind) {
                     CycleOutcome::Unrecoverable
                 } else {
@@ -476,15 +520,12 @@ where
             // version skew or daemon bug.
             other => {
                 warn!(
-                    tracker_id = record.id,
+                    id = record.id,
+                    name = %record.name,
                     response = ?other,
-                    "publisher: unexpected response to TrackerServerRegister"
+                    "{}", LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE
                 );
-                set_status_error(
-                    status,
-                    "handshake_failed",
-                    "tracker returned unexpected response type".to_string(),
-                );
+                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
                 return CycleOutcome::Transient;
             }
         }
@@ -520,8 +561,9 @@ async fn build_register_payload(
 }
 
 /// Read the tracker's `HandshakeResponse` and return its
-/// server-reported fingerprint. Errors carry a string suitable for the
-/// `last_error` status field.
+/// server-reported fingerprint. The `Err(String)` carries operator-log
+/// context (the underlying `io::Error` or framing error display);
+/// admin-facing status uses only the kind, never this string.
 async fn read_handshake_response<R>(reader: &mut FrameReader<R>) -> Result<String, String>
 where
     R: AsyncReadExt + Unpin,
@@ -559,25 +601,28 @@ fn observed_fingerprint(stream: &tokio_rustls::client::TlsStream<TcpStream>) -> 
 }
 
 // ---- Status update helpers ----
+//
+// These set only the machine-readable `last_error_kind`. The
+// human-readable message shown in admin UIs is translated at
+// handler compose-time using the requesting admin's locale; the
+// raw underlying error (if any) flows to operator logs separately
+// via `warn!(err = %e, …)` at the call site.
 
-fn set_status_error(status: &Arc<RwLock<TrackerStatus>>, kind: &str, message: String) {
-    let mut s = status.write().expect("status lock poisoned");
+fn set_status_error(status: &Arc<RwLock<TrackerStatus>>, kind: &str) {
+    let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
     s.connected = false;
     s.last_error_kind = Some(kind.to_string());
-    s.last_error = Some(message);
     s.refresh_interval = None;
 }
 
 fn set_status_with_pending_fingerprint(
     status: &Arc<RwLock<TrackerStatus>>,
     kind: &str,
-    message: String,
     pending: String,
 ) {
-    let mut s = status.write().expect("status lock poisoned");
+    let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
     s.connected = false;
     s.last_error_kind = Some(kind.to_string());
-    s.last_error = Some(message);
     s.pending_fingerprint = Some(pending);
     s.refresh_interval = None;
 }
@@ -770,7 +815,6 @@ mod tests {
             .expect("expected connected status within timeout");
         assert!(snap.connected);
         assert_eq!(snap.refresh_interval, Some(300));
-        assert!(snap.last_error.is_none());
         assert!(snap.last_error_kind.is_none());
 
         task.abort();
@@ -832,7 +876,7 @@ mod tests {
         ));
 
         let snap = wait_for_status(&status, Duration::from_secs(5), |s| {
-            s.last_error_kind.as_deref() == Some("fingerprint_mismatch")
+            s.last_error_kind.as_deref() == Some(ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH)
         })
         .await
         .expect("expected fingerprint_mismatch status within timeout");
@@ -843,6 +887,67 @@ mod tests {
         // Stage 1 mismatch is unrecoverable → task exits.
         let exited = tokio::time::timeout(Duration::from_secs(2), task).await;
         assert!(exited.is_ok(), "task should exit on fingerprint_mismatch");
+
+        mock.stop().await;
+    }
+
+    #[tokio::test]
+    async fn fingerprint_intercepted_parks_pending_and_exits() {
+        // Stage 2: TLS-observed cert disagrees with what the tracker
+        // self-reports in HandshakeResponse. Under interception this is
+        // the only signal — the attacker may hold a cert the client
+        // would otherwise accept, but they can't forge the real
+        // tracker's self-report.
+        let lying_fingerprint = "11:22:33:44:55:66:77:88:99:00:AA:BB:CC:DD:EE:FF:\
+            11:22:33:44:55:66:77:88:99:00:AA:BB:CC:DD:EE:FF";
+        let mock = MockTracker::start(MockBehavior {
+            reported_fingerprint: Some(lying_fingerprint.to_string()),
+            ..Default::default()
+        })
+        .await;
+        let mock_fp = mock.fingerprint.clone();
+        let (db, context) = setup_context().await;
+        // No pin → Stage 1 skipped; we reach the handshake and Stage 2
+        // is what fires.
+        let record = seed_tracker(&db, mock.addr, None, None).await;
+
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let task = tokio::spawn(run(
+            record.clone(),
+            Arc::clone(&status),
+            Arc::clone(&context),
+        ));
+
+        let snap = wait_for_status(&status, Duration::from_secs(5), |s| {
+            s.last_error_kind.as_deref() == Some(ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED)
+        })
+        .await
+        .expect("expected fingerprint_intercepted status within timeout");
+
+        // Pending fingerprint records the *TLS-observed* cert (not the
+        // self-reported lie) so the admin can compare.
+        assert_eq!(snap.pending_fingerprint.as_deref(), Some(mock_fp.as_str()));
+        assert!(!snap.connected);
+
+        // Stage 2 mismatch is unrecoverable → task exits.
+        let exited = tokio::time::timeout(Duration::from_secs(2), task).await;
+        assert!(
+            exited.is_ok(),
+            "task should exit on fingerprint_intercepted"
+        );
+
+        // The DB row's fingerprint must NOT have been TOFU-pinned, since
+        // Stage 2 failed before the pin commit.
+        let stored = db
+            .trackers
+            .get_by_id(record.id)
+            .await
+            .expect("get_by_id")
+            .expect("row present");
+        assert!(
+            stored.fingerprint.is_none(),
+            "TOFU pin must not be written when Stage 2 fails"
+        );
 
         mock.stop().await;
     }
@@ -873,7 +978,10 @@ mod tests {
         assert!(exited.is_ok(), "task should exit on unrecoverable kind");
 
         let snap = status.read().expect("status lock").clone();
-        assert_eq!(snap.last_error_kind.as_deref(), Some("unauthorized"));
+        assert_eq!(
+            snap.last_error_kind.as_deref(),
+            Some(nexus_common::ERROR_KIND_UNAUTHORIZED)
+        );
         assert!(!snap.connected);
 
         mock.stop().await;

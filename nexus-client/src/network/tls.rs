@@ -1,6 +1,6 @@
 //! TLS configuration and connection establishment
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, ToSocketAddrs};
+use std::net::{IpAddr, ToSocketAddrs};
 use std::sync::Arc;
 
 use nexus_common::address;
@@ -168,29 +168,16 @@ pub(crate) fn should_bypass_proxy(address: &str) -> bool {
         .is_ok_and(address::is_proxy_bypassable)
 }
 
-/// Encode a hostname for DNS resolution.
+/// Encode a hostname for DNS resolution, translating IDNA failures
+/// into a localized error message.
 ///
-/// IP literals (v4 and v6, including bracketed and zone-scoped forms) are
-/// returned in the bare form the system resolver expects. Unicode IDN
-/// hostnames are converted to their ASCII/Punycode form since the system
-/// resolver and SOCKS5 both require ASCII.
+/// Thin wrapper around `nexus_common::address::resolve_host_for_connection`
+/// — that helper does the actual normalization (bracket strip, IP
+/// passthrough, zone-ID preservation, Punycode for Unicode); this
+/// version maps its `idna::Errors` into the translated client-facing
+/// "invalid address" string.
 fn resolve_host_for_connection(address: &str) -> Result<String, String> {
-    // Strip any URI-style brackets a caller might have stored. IPv6 literals
-    // travel without brackets at this layer — `to_socket_addrs` and SOCKS5
-    // both want the bare form.
-    let bare = address
-        .strip_prefix('[')
-        .and_then(|s| s.strip_suffix(']'))
-        .unwrap_or(address);
-
-    if bare.parse::<Ipv4Addr>().is_ok() || bare.parse::<Ipv6Addr>().is_ok() {
-        return Ok(bare.to_string());
-    }
-    // Preserve IPv6 zone identifiers (e.g. `fe80::1%eth0`) without IDNA mangling.
-    if bare.contains('%') {
-        return Ok(bare.to_string());
-    }
-    idna::domain_to_ascii(bare).map_err(|e| {
+    nexus_common::address::resolve_host_for_connection(address).map_err(|e| {
         t_args(
             "err-invalid-address",
             &[("address", address), ("error", &e.to_string())],
