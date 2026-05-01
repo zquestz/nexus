@@ -808,6 +808,11 @@ pub const LOG_TRACKER_REGISTRATION_TOFU_PINNED: &str = "Tracker fingerprint pinn
 pub const LOG_TRACKER_REGISTRATION_SEND_HANDSHAKE_FAILED: &str = "Tracker send failed: Handshake";
 pub const LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR: &str =
     "Tracker read error: HandshakeResponse";
+pub const LOG_TRACKER_REGISTRATION_HANDSHAKE_CLOSED: &str =
+    "Tracker closed connection during Handshake";
+pub const LOG_TRACKER_REGISTRATION_HANDSHAKE_REJECTED: &str = "Tracker rejected Handshake";
+pub const LOG_TRACKER_REGISTRATION_HANDSHAKE_UNEXPECTED: &str =
+    "Tracker sent unexpected response to Handshake";
 // Idle / mid-loop
 pub const LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME: &str =
     "Tracker sent unexpected mid-idle frame, reconnecting";

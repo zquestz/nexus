@@ -43,16 +43,18 @@ use crate::constants::{
     EXPECT_TRACKER_STATUS_LOCK_POISONED, LOG_TRACKER_REGISTRATION_BACKOFF,
     LOG_TRACKER_REGISTRATION_BUILD_PAYLOAD_FAILED,
     LOG_TRACKER_REGISTRATION_CLOSED_AWAITING_RESPONSE, LOG_TRACKER_REGISTRATION_CLOSED_MID_IDLE,
-    LOG_TRACKER_REGISTRATION_EXITING, LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR,
-    LOG_TRACKER_REGISTRATION_INVALID_ERROR_KIND, LOG_TRACKER_REGISTRATION_INVALID_HOST,
-    LOG_TRACKER_REGISTRATION_NO_PEER_CERTS, LOG_TRACKER_REGISTRATION_READ_ERROR_MID_IDLE,
-    LOG_TRACKER_REGISTRATION_REFRESHED, LOG_TRACKER_REGISTRATION_REGISTER_REJECTED,
-    LOG_TRACKER_REGISTRATION_RESPONSE_READ_ERROR, LOG_TRACKER_REGISTRATION_RESPONSE_TIMEOUT,
-    LOG_TRACKER_REGISTRATION_SEND_HANDSHAKE_FAILED, LOG_TRACKER_REGISTRATION_SEND_REGISTER_FAILED,
-    LOG_TRACKER_REGISTRATION_STAGE1_MISMATCH, LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH,
-    LOG_TRACKER_REGISTRATION_TCP_FAILED, LOG_TRACKER_REGISTRATION_TLS_FAILED,
-    LOG_TRACKER_REGISTRATION_TOFU_PINNED, LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED,
-    LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME, LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE,
+    LOG_TRACKER_REGISTRATION_EXITING, LOG_TRACKER_REGISTRATION_HANDSHAKE_CLOSED,
+    LOG_TRACKER_REGISTRATION_HANDSHAKE_REJECTED, LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR,
+    LOG_TRACKER_REGISTRATION_HANDSHAKE_UNEXPECTED, LOG_TRACKER_REGISTRATION_INVALID_ERROR_KIND,
+    LOG_TRACKER_REGISTRATION_INVALID_HOST, LOG_TRACKER_REGISTRATION_NO_PEER_CERTS,
+    LOG_TRACKER_REGISTRATION_READ_ERROR_MID_IDLE, LOG_TRACKER_REGISTRATION_REFRESHED,
+    LOG_TRACKER_REGISTRATION_REGISTER_REJECTED, LOG_TRACKER_REGISTRATION_RESPONSE_READ_ERROR,
+    LOG_TRACKER_REGISTRATION_RESPONSE_TIMEOUT, LOG_TRACKER_REGISTRATION_SEND_HANDSHAKE_FAILED,
+    LOG_TRACKER_REGISTRATION_SEND_REGISTER_FAILED, LOG_TRACKER_REGISTRATION_STAGE1_MISMATCH,
+    LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH, LOG_TRACKER_REGISTRATION_TCP_FAILED,
+    LOG_TRACKER_REGISTRATION_TLS_FAILED, LOG_TRACKER_REGISTRATION_TOFU_PINNED,
+    LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED, LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME,
+    LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE,
 };
 use crate::db::{TrackerRecord, is_transient_db_error};
 
@@ -294,12 +296,41 @@ async fn attempt_connection_cycle(
     .await
     {
         Ok(Ok(fp)) => fp,
-        Ok(Err(e)) => {
+        Ok(Err(HandshakeReadError::Io(e))) => {
             warn!(
                 id = record.id,
                 name = %record.name,
                 err = %e,
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR
+            );
+            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
+            return CycleOutcome::Transient;
+        }
+        Ok(Err(HandshakeReadError::Closed)) => {
+            warn!(
+                id = record.id,
+                name = %record.name,
+                "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_CLOSED
+            );
+            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
+            return CycleOutcome::Transient;
+        }
+        Ok(Err(HandshakeReadError::Rejected { error })) => {
+            warn!(
+                id = record.id,
+                name = %record.name,
+                err = %error.unwrap_or_default(),
+                "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_REJECTED
+            );
+            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
+            return CycleOutcome::Transient;
+        }
+        Ok(Err(HandshakeReadError::Unexpected { received })) => {
+            warn!(
+                id = record.id,
+                name = %record.name,
+                received = received,
+                "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_UNEXPECTED
             );
             set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
             return CycleOutcome::Transient;
@@ -642,18 +673,40 @@ async fn build_register_payload(
     })
 }
 
+/// Failure modes for [`read_handshake_response`]. Each variant carries
+/// only operator-log context — never raw `Debug` of arbitrary tracker
+/// payloads, which would let a malicious tracker amplify into the log
+/// stream. The caller maps each variant to a fixed log constant +
+/// the same admin-facing kind (`tracker_handshake_failed`).
+enum HandshakeReadError {
+    /// Frame/IO read failed. Carries the underlying error display.
+    Io(String),
+    /// Tracker closed the connection cleanly without sending a
+    /// `HandshakeResponse`.
+    Closed,
+    /// Tracker replied `HandshakeResponse { success: false }`. The
+    /// optional `error` is the tracker-supplied (length-bounded by
+    /// frame limits, English-localized by the tracker) text.
+    Rejected { error: Option<String> },
+    /// Tracker sent a different message type than `HandshakeResponse`.
+    /// Carries only the bounded message-type name — never the payload.
+    Unexpected { received: &'static str },
+}
+
 /// Read the tracker's `HandshakeResponse` and return its
-/// server-reported fingerprint. The `Err(String)` carries operator-log
-/// context (the underlying `io::Error` or framing error display);
-/// admin-facing status uses only the kind, never this string.
-async fn read_handshake_response<R>(reader: &mut FrameReader<R>) -> Result<String, String>
+/// server-reported fingerprint. Errors are typed; the caller picks the
+/// log constant per variant so operator logs use fixed strings rather
+/// than `format!`-built English with unbounded `Debug` content.
+async fn read_handshake_response<R>(
+    reader: &mut FrameReader<R>,
+) -> Result<String, HandshakeReadError>
 where
     R: AsyncReadExt + Unpin,
 {
     let received = read_server_message(reader)
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "tracker closed connection during handshake".to_string())?;
+        .map_err(|e| HandshakeReadError::Io(e.to_string()))?
+        .ok_or(HandshakeReadError::Closed)?;
 
     match received.message {
         ServerMessage::HandshakeResponse {
@@ -665,10 +718,10 @@ where
             success: false,
             error,
             ..
-        } => Err(error.unwrap_or_else(|| "tracker rejected handshake".to_string())),
-        other => Err(format!(
-            "tracker returned unexpected response to Handshake: {other:?}"
-        )),
+        } => Err(HandshakeReadError::Rejected { error }),
+        other => Err(HandshakeReadError::Unexpected {
+            received: nexus_common::io::server_message_type(&other),
+        }),
     }
 }
 
