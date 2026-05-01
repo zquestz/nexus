@@ -271,6 +271,18 @@ err-group-not-empty-modify = Não é possível modificar o estado partilhado enq
 err-group-no-fields = Nenhum campo para atualizar
 err-group-shared-mismatch = O tipo de conta não corresponde ao tipo de grupo (contas partilhadas requerem grupos partilhados)
 
+# Tracker Errors
+err-tracker-not-found = Rastreador não encontrado
+err-tracker-name-invalid = O nome do rastreador contém caracteres inválidos
+err-tracker-name-too-long = O nome do rastreador é demasiado longo (máx { $max_length } bytes)
+err-tracker-address-invalid = Endereço de rastreador inválido
+err-tracker-address-too-long = O endereço do rastreador é demasiado longo (máx { $max_length } bytes)
+err-tracker-port-invalid = Porta de rastreador inválida
+err-tracker-fingerprint-invalid = Formato de impressão digital de rastreador inválido
+err-tracker-password-too-long = A palavra-passe do rastreador é demasiado longa (máx { $max_length } bytes)
+err-tracker-endpoint-duplicate = Já existe outro rastreador configurado neste endereço e porta
+err-tracker-name-duplicate = Já existe outro rastreador configurado com este nome
+
 # Flood Protection Errors
 err-flood-warning = Mensagem limitada (aviso { $violation } de { $max_violations }). Pode enviar outra mensagem em { $seconds } { $seconds ->
     [one] segundo

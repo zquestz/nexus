@@ -271,6 +271,18 @@ err-group-not-empty-modify = 사용자가 할당되어 있는 동안에는 공�
 err-group-no-fields = 업데이트할 필드가 없습니다
 err-group-shared-mismatch = 계정 유형이 그룹 유형과 일치하지 않습니다 (공유 계정은 공유 그룹이 필요합니다)
 
+# Tracker Errors
+err-tracker-not-found = 트래커를 찾을 수 없습니다
+err-tracker-name-invalid = 트래커 이름에 잘못된 문자가 포함되어 있습니다
+err-tracker-name-too-long = 트래커 이름이 너무 깁니다 (최대 { $max_length } 바이트)
+err-tracker-address-invalid = 잘못된 트래커 주소입니다
+err-tracker-address-too-long = 트래커 주소가 너무 깁니다 (최대 { $max_length } 바이트)
+err-tracker-port-invalid = 잘못된 트래커 포트입니다
+err-tracker-fingerprint-invalid = 잘못된 트래커 지문 형식입니다
+err-tracker-password-too-long = 트래커 비밀번호가 너무 깁니다 (최대 { $max_length } 바이트)
+err-tracker-endpoint-duplicate = 이 주소와 포트에 이미 다른 트래커가 구성되어 있습니다
+err-tracker-name-duplicate = 이 이름의 다른 트래커가 이미 구성되어 있습니다
+
 # Flood Protection Errors
 err-flood-warning = 메시지가 제한되었습니다 (경고 { $violation }/{ $max_violations }). { $seconds }초 후에 다시 보낼 수 있습니다. 계속하면 연결이 끊어집니다.
 err-flood-disconnect = 연결 끊김: 채팅 속도 제한 초과.

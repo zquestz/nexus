@@ -271,6 +271,18 @@ err-group-not-empty-modify = Kan gedeelde status niet wijzigen zolang er gebruik
 err-group-no-fields = Geen velden om bij te werken
 err-group-shared-mismatch = Accounttype komt niet overeen met groepstype (gedeelde accounts vereisen gedeelde groepen)
 
+# Tracker Errors
+err-tracker-not-found = Tracker niet gevonden
+err-tracker-name-invalid = Trackernaam bevat ongeldige tekens
+err-tracker-name-too-long = Trackernaam is te lang (max { $max_length } bytes)
+err-tracker-address-invalid = Ongeldig trackeradres
+err-tracker-address-too-long = Trackeradres is te lang (max { $max_length } bytes)
+err-tracker-port-invalid = Ongeldige trackerpoort
+err-tracker-fingerprint-invalid = Ongeldig formaat voor trackervingerafdruk
+err-tracker-password-too-long = Trackerwachtwoord is te lang (max { $max_length } bytes)
+err-tracker-endpoint-duplicate = Er is al een andere tracker geconfigureerd op dit adres en poort
+err-tracker-name-duplicate = Er is al een andere tracker geconfigureerd met deze naam
+
 # Flood Protection Errors
 err-flood-warning = Bericht beperkt (waarschuwing { $violation } van { $max_violations }). Je kunt over { $seconds } { $seconds ->
     [one] seconde

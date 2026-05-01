@@ -271,6 +271,18 @@ err-group-not-empty-modify = ユーザーが割り当てられている間は共
 err-group-no-fields = 更新するフィールドがありません
 err-group-shared-mismatch = アカウントタイプがグループタイプと一致しません（共有アカウントには共有グループが必要です）
 
+# Tracker Errors
+err-tracker-not-found = トラッカーが見つかりません
+err-tracker-name-invalid = トラッカー名に無効な文字が含まれています
+err-tracker-name-too-long = トラッカー名が長すぎます (最大 { $max_length } バイト)
+err-tracker-address-invalid = 無効なトラッカーアドレスです
+err-tracker-address-too-long = トラッカーアドレスが長すぎます (最大 { $max_length } バイト)
+err-tracker-port-invalid = 無効なトラッカーポートです
+err-tracker-fingerprint-invalid = 無効なトラッカーフィンガープリント形式です
+err-tracker-password-too-long = トラッカーパスワードが長すぎます (最大 { $max_length } バイト)
+err-tracker-endpoint-duplicate = このアドレスとポートには別のトラッカーが既に設定されています
+err-tracker-name-duplicate = この名前の別のトラッカーが既に設定されています
+
 # Flood Protection Errors
 err-flood-warning = メッセージが制限されました（警告 { $violation }/{ $max_violations }）。{ $seconds }秒後に再度送信できます。続けると切断されます。
 err-flood-disconnect = 切断されました：チャットの速度制限を超えました。

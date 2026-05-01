@@ -271,6 +271,18 @@ err-group-not-empty-modify = 群组中仍有用户，无法修改共享状态
 err-group-no-fields = 没有要更新的字段
 err-group-shared-mismatch = 账户类型与群组类型不匹配（共享账户需要共享群组）
 
+# Tracker Errors
+err-tracker-not-found = 找不到追踪器
+err-tracker-name-invalid = 追踪器名称包含无效字符
+err-tracker-name-too-long = 追踪器名称过长 (最多 { $max_length } 字节)
+err-tracker-address-invalid = 追踪器地址无效
+err-tracker-address-too-long = 追踪器地址过长 (最多 { $max_length } 字节)
+err-tracker-port-invalid = 追踪器端口无效
+err-tracker-fingerprint-invalid = 追踪器指纹格式无效
+err-tracker-password-too-long = 追踪器密码过长 (最多 { $max_length } 字节)
+err-tracker-endpoint-duplicate = 此地址和端口已配置了另一个追踪器
+err-tracker-name-duplicate = 已配置了另一个使用此名称的追踪器
+
 # Flood Protection Errors
 err-flood-warning = 消息受到限制（警告 { $violation }/{ $max_violations }）。您可以在{ $seconds }秒后再次发送消息。继续发送将导致断开连接。
 err-flood-disconnect = 已断开连接：超出聊天速率限制。

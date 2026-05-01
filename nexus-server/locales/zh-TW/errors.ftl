@@ -271,6 +271,18 @@ err-group-not-empty-modify = 群組中仍有使用者，無法修改共享狀態
 err-group-no-fields = 沒有要更新的欄位
 err-group-shared-mismatch = 帳戶類型與群組類型不相符（共享帳戶需要共享群組）
 
+# Tracker Errors
+err-tracker-not-found = 找不到追蹤器
+err-tracker-name-invalid = 追蹤器名稱包含無效字元
+err-tracker-name-too-long = 追蹤器名稱過長 (最多 { $max_length } 位元組)
+err-tracker-address-invalid = 追蹤器位址無效
+err-tracker-address-too-long = 追蹤器位址過長 (最多 { $max_length } 位元組)
+err-tracker-port-invalid = 追蹤器連接埠無效
+err-tracker-fingerprint-invalid = 追蹤器指紋格式無效
+err-tracker-password-too-long = 追蹤器密碼過長 (最多 { $max_length } 位元組)
+err-tracker-endpoint-duplicate = 此位址和連接埠已設定了另一個追蹤器
+err-tracker-name-duplicate = 已設定了另一個使用此名稱的追蹤器
+
 # Flood Protection Errors
 err-flood-warning = 訊息受到限制（警告 { $violation }/{ $max_violations }）。您可以在{ $seconds }秒後再次傳送訊息。繼續傳送將導致斷開連線。
 err-flood-disconnect = 已斷開連線：超出聊天速率限制。

@@ -271,6 +271,18 @@ err-group-not-empty-modify = Impossibile modificare lo stato condiviso mentre ci
 err-group-no-fields = Nessun campo da aggiornare
 err-group-shared-mismatch = Il tipo di account non corrisponde al tipo di gruppo (gli account condivisi richiedono gruppi condivisi)
 
+# Tracker Errors
+err-tracker-not-found = Tracker non trovato
+err-tracker-name-invalid = Il nome del tracker contiene caratteri non validi
+err-tracker-name-too-long = Il nome del tracker è troppo lungo (max { $max_length } byte)
+err-tracker-address-invalid = Indirizzo del tracker non valido
+err-tracker-address-too-long = L'indirizzo del tracker è troppo lungo (max { $max_length } byte)
+err-tracker-port-invalid = Porta del tracker non valida
+err-tracker-fingerprint-invalid = Formato impronta digitale del tracker non valido
+err-tracker-password-too-long = La password del tracker è troppo lunga (max { $max_length } byte)
+err-tracker-endpoint-duplicate = Un altro tracker è già configurato a questo indirizzo e porta
+err-tracker-name-duplicate = Un altro tracker è già configurato con questo nome
+
 # Flood Protection Errors
 err-flood-warning = Messaggio limitato (avviso { $violation } di { $max_violations }). Puoi inviare un altro messaggio tra { $seconds } { $seconds ->
     [one] secondo

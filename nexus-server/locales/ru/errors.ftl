@@ -271,6 +271,18 @@ err-group-not-empty-modify = Невозможно изменить общий с
 err-group-no-fields = Нет полей для обновления
 err-group-shared-mismatch = Тип учетной записи не соответствует типу группы (общие учетные записи требуют общих групп)
 
+# Tracker Errors
+err-tracker-not-found = Трекер не найден
+err-tracker-name-invalid = Имя трекера содержит недопустимые символы
+err-tracker-name-too-long = Имя трекера слишком длинное (макс. { $max_length } байт)
+err-tracker-address-invalid = Недопустимый адрес трекера
+err-tracker-address-too-long = Адрес трекера слишком длинный (макс. { $max_length } байт)
+err-tracker-port-invalid = Недопустимый порт трекера
+err-tracker-fingerprint-invalid = Недопустимый формат отпечатка трекера
+err-tracker-password-too-long = Пароль трекера слишком длинный (макс. { $max_length } байт)
+err-tracker-endpoint-duplicate = Другой трекер уже настроен по этому адресу и порту
+err-tracker-name-duplicate = Другой трекер уже настроен с этим именем
+
 # Flood Protection Errors
 err-flood-warning = Сообщение ограничено (предупреждение { $violation } из { $max_violations }). Вы сможете отправить следующее сообщение через { $seconds } { $seconds ->
     [one] секунду

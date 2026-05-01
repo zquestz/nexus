@@ -271,6 +271,18 @@ err-group-not-empty-modify = Der gemeinsame Status kann nicht geändert werden, 
 err-group-no-fields = Keine Felder zum Aktualisieren
 err-group-shared-mismatch = Kontotyp stimmt nicht mit dem Gruppentyp überein (gemeinsame Konten erfordern gemeinsame Gruppen)
 
+# Tracker Errors
+err-tracker-not-found = Tracker nicht gefunden
+err-tracker-name-invalid = Tracker-Name enthält ungültige Zeichen
+err-tracker-name-too-long = Tracker-Name ist zu lang (max { $max_length } Bytes)
+err-tracker-address-invalid = Ungültige Tracker-Adresse
+err-tracker-address-too-long = Tracker-Adresse ist zu lang (max { $max_length } Bytes)
+err-tracker-port-invalid = Ungültiger Tracker-Port
+err-tracker-fingerprint-invalid = Ungültiges Tracker-Fingerabdruck-Format
+err-tracker-password-too-long = Tracker-Passwort ist zu lang (max { $max_length } Bytes)
+err-tracker-endpoint-duplicate = Ein anderer Tracker ist bereits an dieser Adresse und diesem Port konfiguriert
+err-tracker-name-duplicate = Ein anderer Tracker ist bereits mit diesem Namen konfiguriert
+
 # Flood Protection Errors
 err-flood-warning = Nachricht ratenbegrenzt (Warnung { $violation } von { $max_violations }). Du kannst in { $seconds } { $seconds ->
     [one] Sekunde
