@@ -280,8 +280,8 @@ mod tests {
     /// task progress — they just verify the HashMap shape.
     async fn test_context() -> Arc<TrackerContext> {
         let pool = create_test_db().await;
-        let db = Arc::new(Database::new(pool));
-        let user_manager = Arc::new(UserManager::new());
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
         Arc::new(TrackerContext {
             db,
             user_manager,

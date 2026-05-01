@@ -222,8 +222,8 @@ pub async fn create_test_context() -> TestContext {
     // actually run anything because no rows are seeded; admin handler
     // tests that exercise the manager populate it via spawn() / replace().
     let tracker_context = Arc::new(crate::tracker::TrackerContext {
-        db: Arc::new(db.clone()),
-        user_manager: Arc::new(user_manager.clone()),
+        db: db.clone(),
+        user_manager: user_manager.clone(),
         server_fingerprint: TEST_FINGERPRINT.to_string(),
         server_port: nexus_common::DEFAULT_PORT,
         server_websocket_port: None,

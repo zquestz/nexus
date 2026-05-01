@@ -256,8 +256,8 @@ async fn main() {
     // task per row. Connection failures inside tasks just transition
     // them to backoff/retry — they don't fail startup.
     let tracker_context = Arc::new(tracker::TrackerContext {
-        db: Arc::new(database.clone()),
-        user_manager: Arc::new(user_manager.clone()),
+        db: database.clone(),
+        user_manager: user_manager.clone(),
         server_fingerprint: fingerprint.to_string(),
         server_port: cli.port,
         server_websocket_port: if cli.websocket {

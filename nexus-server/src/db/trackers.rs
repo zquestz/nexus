@@ -123,7 +123,7 @@ impl From<sqlx::Error> for TrackerDbError {
 /// before insert. A stored value outside `u16` range would indicate
 /// database corruption (manual edit, broken migration); the row
 /// mapping panics with a descriptive message in that case.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct TrackerRecord {
     pub id: i64,
     pub address: String,
@@ -140,6 +140,30 @@ pub struct TrackerRecord {
     pub created_at: i64,
     /// Unix epoch seconds.
     pub updated_at: i64,
+}
+
+impl std::fmt::Debug for TrackerRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Redact the registration password — defense in depth so a
+        // future `?record` log line can't accidentally leak it. `None`
+        // is shown verbatim so a reader can distinguish "open tracker"
+        // from "password set but redacted".
+        let password: &dyn std::fmt::Debug = match &self.password {
+            Some(_) => &"<REDACTED>",
+            None => &Option::<String>::None,
+        };
+        f.debug_struct("TrackerRecord")
+            .field("id", &self.id)
+            .field("address", &self.address)
+            .field("port", &self.port)
+            .field("fingerprint", &self.fingerprint)
+            .field("password", password)
+            .field("name", &self.name)
+            .field("enabled", &self.enabled)
+            .field("created_at", &self.created_at)
+            .field("updated_at", &self.updated_at)
+            .finish()
+    }
 }
 
 /// Row tuple matching `(id, address, port, fingerprint, password,
@@ -347,6 +371,48 @@ mod tests {
             name,
             enabled: true,
         }
+    }
+
+    fn make_record(password: Option<&str>) -> TrackerRecord {
+        TrackerRecord {
+            id: 1,
+            address: "tracker.example.com".to_string(),
+            port: 7510,
+            fingerprint: None,
+            password: password.map(str::to_string),
+            name: "Public".to_string(),
+            enabled: true,
+            created_at: 0,
+            updated_at: 0,
+        }
+    }
+
+    #[test]
+    fn debug_redacts_password() {
+        let record = make_record(Some("supersecret"));
+        let dbg = format!("{record:?}");
+        assert!(
+            !dbg.contains("supersecret"),
+            "raw password leaked into Debug output: {dbg}"
+        );
+        assert!(
+            dbg.contains("<REDACTED>"),
+            "expected redaction marker, got: {dbg}"
+        );
+    }
+
+    #[test]
+    fn debug_shows_none_password_verbatim() {
+        let record = make_record(None);
+        let dbg = format!("{record:?}");
+        assert!(
+            !dbg.contains("<REDACTED>"),
+            "should not redact when no password is set: {dbg}"
+        );
+        assert!(
+            dbg.contains("password: None"),
+            "expected `password: None`, got: {dbg}"
+        );
     }
 
     #[tokio::test]

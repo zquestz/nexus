@@ -76,13 +76,9 @@ where
             ip = %ctx.peer_addr,
             "{}", LOG_TRACKER_UPDATE_PERMISSION_DENIED
         );
-        let response = ServerMessage::TrackerUpdateResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            id: None,
-            name: None,
-        };
-        return ctx.send_message(&response).await;
+        return ctx
+            .send_message(&reject_update(err_permission_denied(ctx.locale)))
+            .await;
     }
 
     // Normalize empty-string password to None at the protocol boundary.
@@ -118,31 +114,19 @@ where
     let record = match result {
         Ok(Some(r)) => r,
         Ok(None) => {
-            let response = ServerMessage::TrackerUpdateResponse {
-                success: false,
-                error: Some(err_tracker_not_found(ctx.locale)),
-                id: None,
-                name: None,
-            };
-            return ctx.send_message(&response).await;
+            return ctx
+                .send_message(&reject_update(err_tracker_not_found(ctx.locale)))
+                .await;
         }
         Err(TrackerDbError::EndpointDuplicate) => {
-            let response = ServerMessage::TrackerUpdateResponse {
-                success: false,
-                error: Some(err_tracker_endpoint_duplicate(ctx.locale)),
-                id: None,
-                name: None,
-            };
-            return ctx.send_message(&response).await;
+            return ctx
+                .send_message(&reject_update(err_tracker_endpoint_duplicate(ctx.locale)))
+                .await;
         }
         Err(TrackerDbError::NameDuplicate) => {
-            let response = ServerMessage::TrackerUpdateResponse {
-                success: false,
-                error: Some(err_tracker_name_duplicate(ctx.locale)),
-                id: None,
-                name: None,
-            };
-            return ctx.send_message(&response).await;
+            return ctx
+                .send_message(&reject_update(err_tracker_name_duplicate(ctx.locale)))
+                .await;
         }
         Err(TrackerDbError::Other(e)) => {
             error!(

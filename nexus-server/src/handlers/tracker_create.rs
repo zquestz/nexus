@@ -75,13 +75,9 @@ where
             ip = %ctx.peer_addr,
             "{}", LOG_TRACKER_CREATE_PERMISSION_DENIED
         );
-        let response = ServerMessage::TrackerCreateResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            id: None,
-            name: None,
-        };
-        return ctx.send_message(&response).await;
+        return ctx
+            .send_message(&reject_create(err_permission_denied(ctx.locale)))
+            .await;
     }
 
     // Normalize empty-string password to None at the protocol boundary.
@@ -112,13 +108,12 @@ where
                 max = MAX_TRACKERS_PER_SERVER,
                 "{}", LOG_TRACKER_CREATE_LIMIT_REACHED
             );
-            let response = ServerMessage::TrackerCreateResponse {
-                success: false,
-                error: Some(err_tracker_too_many(ctx.locale, MAX_TRACKERS_PER_SERVER)),
-                id: None,
-                name: None,
-            };
-            return ctx.send_message(&response).await;
+            return ctx
+                .send_message(&reject_create(err_tracker_too_many(
+                    ctx.locale,
+                    MAX_TRACKERS_PER_SERVER,
+                )))
+                .await;
         }
         Ok(_) => {}
         Err(e) => {
@@ -151,22 +146,14 @@ where
     let record = match result {
         Ok(r) => r,
         Err(TrackerDbError::EndpointDuplicate) => {
-            let response = ServerMessage::TrackerCreateResponse {
-                success: false,
-                error: Some(err_tracker_endpoint_duplicate(ctx.locale)),
-                id: None,
-                name: None,
-            };
-            return ctx.send_message(&response).await;
+            return ctx
+                .send_message(&reject_create(err_tracker_endpoint_duplicate(ctx.locale)))
+                .await;
         }
         Err(TrackerDbError::NameDuplicate) => {
-            let response = ServerMessage::TrackerCreateResponse {
-                success: false,
-                error: Some(err_tracker_name_duplicate(ctx.locale)),
-                id: None,
-                name: None,
-            };
-            return ctx.send_message(&response).await;
+            return ctx
+                .send_message(&reject_create(err_tracker_name_duplicate(ctx.locale)))
+                .await;
         }
         Err(TrackerDbError::Other(e)) => {
             error!(

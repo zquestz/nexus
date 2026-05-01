@@ -24,11 +24,12 @@ use nexus_common::io::{
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 use nexus_common::{
-    ERROR_KIND_TRACKER_CONNECTION_FAILED, ERROR_KIND_TRACKER_CONNECTION_LOST,
-    ERROR_KIND_TRACKER_DB_FAILED, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
-    ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH, ERROR_KIND_TRACKER_HANDSHAKE_FAILED,
-    ERROR_KIND_TRACKER_PROTOCOL_ERROR, ERROR_KIND_TRACKER_TLS_FAILED, TRACKER_PROTOCOL_VERSION,
-    is_unrecoverable_error_kind, is_valid_error_kind,
+    ERROR_KIND_TRACKER_ADDRESS_INVALID, ERROR_KIND_TRACKER_CONNECTION_FAILED,
+    ERROR_KIND_TRACKER_CONNECTION_LOST, ERROR_KIND_TRACKER_DB_FAILED,
+    ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED, ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH,
+    ERROR_KIND_TRACKER_HANDSHAKE_FAILED, ERROR_KIND_TRACKER_PROTOCOL_ERROR,
+    ERROR_KIND_TRACKER_TLS_FAILED, TRACKER_PROTOCOL_VERSION, is_unrecoverable_error_kind,
+    is_valid_error_kind,
 };
 use rand::RngExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -163,8 +164,9 @@ async fn attempt_connection_cycle(
     // — strips IPv6 URL brackets, passes IP literals through, and
     // Punycode-encodes Unicode hostnames. The validator at
     // `TrackerCreate`/`TrackerUpdate` already accepts the same set
-    // (via `domain_to_ascii_strict`), so a failure here is rare and
-    // operator-actionable: the row needs editing.
+    // (via `domain_to_ascii_strict`), so a failure here means the row
+    // is structurally broken — admin must edit. Treat as Unrecoverable
+    // so the publisher exits instead of tight-looping on a busted row.
     let resolved_host = match nexus_common::address::resolve_host_for_connection(&record.address) {
         Ok(h) => h,
         Err(e) => {
@@ -175,8 +177,8 @@ async fn attempt_connection_cycle(
                 err = %e,
                 "{}", LOG_TRACKER_REGISTRATION_INVALID_HOST
             );
-            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
-            return CycleOutcome::Transient;
+            set_status_error(status, ERROR_KIND_TRACKER_ADDRESS_INVALID);
+            return CycleOutcome::Unrecoverable;
         }
     };
 
@@ -209,8 +211,8 @@ async fn attempt_connection_cycle(
                 err = %e,
                 "{}", LOG_TRACKER_REGISTRATION_INVALID_HOST
             );
-            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
-            return CycleOutcome::Transient;
+            set_status_error(status, ERROR_KIND_TRACKER_ADDRESS_INVALID);
+            return CycleOutcome::Unrecoverable;
         }
     };
     let tls = match TLS_CONNECTOR.connect(server_name, tcp).await {
@@ -735,7 +737,9 @@ fn observed_fingerprint(stream: &tokio_rustls::client::TlsStream<TcpStream>) -> 
     ))
 }
 
-// ---- Status update helpers ----
+// =============================================================================
+// Status update helpers
+// =============================================================================
 //
 // These set only the machine-readable `last_error_kind`. The
 // human-readable message shown in admin UIs is translated at
@@ -762,7 +766,9 @@ fn set_status_with_pending_fingerprint(
     s.refresh_interval = None;
 }
 
-// ---- Backoff helpers ----
+// =============================================================================
+// Backoff helpers
+// =============================================================================
 
 /// Apply ±25% jitter to a backoff duration.
 fn jitter(base: Duration) -> Duration {
@@ -814,9 +820,9 @@ mod tests {
     /// Build a `TrackerContext` over a fresh in-memory DB. Sets a
     /// distinct `server_name` and `public_address` so payload tests can
     /// verify the right values flow through.
-    async fn setup_context() -> (Arc<Database>, Arc<TrackerContext>) {
+    async fn setup_context() -> (Database, Arc<TrackerContext>) {
         let pool = create_test_db().await;
-        let db = Arc::new(Database::new(pool));
+        let db = Database::new(pool);
         db.config
             .set_server_name("Test BBS")
             .await
@@ -829,7 +835,7 @@ mod tests {
             .set_public_address("bbs.example.com")
             .await
             .expect("set public address");
-        let user_manager = Arc::new(UserManager::new());
+        let user_manager = UserManager::new();
         let context = Arc::new(TrackerContext {
             db: db.clone(),
             user_manager,

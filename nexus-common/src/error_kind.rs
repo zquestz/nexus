@@ -91,6 +91,13 @@ pub const ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED: &str = "tracker_fingerprin
 /// the tracker is broken or malicious.
 pub const ERROR_KIND_TRACKER_PROTOCOL_ERROR: &str = "tracker_protocol_error";
 
+/// Tracker row's `address` field can't be resolved into a form the
+/// system resolver / rustls accept (IDNA failure or empty string).
+/// The validator at `TrackerCreate`/`TrackerUpdate` should have
+/// already rejected this, so reaching this kind means the row is
+/// structurally broken — admin must edit it. Unrecoverable.
+pub const ERROR_KIND_TRACKER_ADDRESS_INVALID: &str = "tracker_address_invalid";
+
 /// Whether `s` is a well-formed `error_kind` per the wire-format
 /// rule that all canonical kinds follow: ASCII snake_case starting
 /// with a lowercase letter, bounded by [`MAX_ERROR_KIND_LENGTH`].
@@ -138,6 +145,8 @@ pub fn is_unrecoverable_error_kind(kind: &str) -> bool {
         // Tracker shipped a malformed kind — the daemon is broken
         // or hostile; retrying isn't going to help.
         | ERROR_KIND_TRACKER_PROTOCOL_ERROR
+        // The tracker row's address can't be resolved; admin must edit.
+        | ERROR_KIND_TRACKER_ADDRESS_INVALID
     )
 }
 
@@ -370,6 +379,9 @@ mod tests {
         assert!(is_unrecoverable_error_kind(
             ERROR_KIND_TRACKER_PROTOCOL_ERROR
         ));
+        assert!(is_unrecoverable_error_kind(
+            ERROR_KIND_TRACKER_ADDRESS_INVALID
+        ));
     }
 
     #[test]
@@ -396,6 +408,7 @@ mod tests {
             ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH,
             ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
             ERROR_KIND_TRACKER_PROTOCOL_ERROR,
+            ERROR_KIND_TRACKER_ADDRESS_INVALID,
         ] {
             assert!(is_valid_error_kind(kind), "rejected canonical {kind:?}");
         }
