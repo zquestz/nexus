@@ -38,7 +38,9 @@ mod writer;
 // Re-export public types
 pub use error::FrameError;
 pub use frame::RawFrame;
-pub use limits::{is_known_message_type, known_message_types, max_payload_for_type};
+pub use limits::{
+    MAX_TRACKERS_PER_SERVER, is_known_message_type, known_message_types, max_payload_for_type,
+};
 pub use message_id::MessageId;
 pub use reader::{
     DEFAULT_FRAME_TIMEOUT, DEFAULT_IDLE_TIMEOUT, DEFAULT_PROGRESS_TIMEOUT, FrameHeader, FrameReader,

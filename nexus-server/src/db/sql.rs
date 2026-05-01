@@ -463,6 +463,17 @@ pub const SQL_UPDATE_TRACKER_FINGERPRINT: &str = "
 /// 1. `id: i64`
 pub const SQL_DELETE_TRACKER: &str = "DELETE FROM trackers WHERE id = ?";
 
+/// Total tracker row count (enabled + disabled).
+///
+/// **Parameters:** None
+///
+/// **Returns:** `(count: i64)`
+///
+/// **Note:** Used by `TrackerCreate` to enforce
+/// [`MAX_TRACKERS_PER_SERVER`](nexus_common::framing::MAX_TRACKERS_PER_SERVER)
+/// before insert.
+pub const SQL_COUNT_TRACKERS: &str = "SELECT COUNT(*) FROM trackers";
+
 // ========================================================================
 // IP Ban Query Operations
 // ========================================================================

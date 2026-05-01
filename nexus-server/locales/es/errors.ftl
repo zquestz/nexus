@@ -283,6 +283,7 @@ err-tracker-fingerprint-invalid = Formato de huella digital del rastreador no v�
 err-tracker-password-too-long = La contraseña del rastreador es demasiado larga (máx { $max_length } bytes)
 err-tracker-endpoint-duplicate = Ya hay otro rastreador configurado en esta dirección y puerto
 err-tracker-name-duplicate = Ya hay otro rastreador configurado con este nombre
+err-tracker-too-many = Límite de rastreadores alcanzado (máx. { $max })
 
 # Tracker publisher status messages
 err-tracker-connection-failed = No se pudo conectar al rastreador

@@ -1336,3 +1336,10 @@ pub fn err_tracker_endpoint_duplicate(locale: &str) -> String {
 pub fn err_tracker_name_duplicate(locale: &str) -> String {
     t(locale, "err-tracker-name-duplicate")
 }
+
+/// Get translated "too many trackers" error (configured row count is
+/// already at the cap defined by
+/// `nexus_common::framing::MAX_TRACKERS_PER_SERVER`).
+pub fn err_tracker_too_many(locale: &str, max: usize) -> String {
+    t_args(locale, "err-tracker-too-many", &[("max", &max.to_string())])
+}

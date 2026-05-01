@@ -282,6 +282,7 @@ err-tracker-fingerprint-invalid = 無効なトラッカーフィンガープリ�
 err-tracker-password-too-long = トラッカーパスワードが長すぎます (最大 { $max_length } バイト)
 err-tracker-endpoint-duplicate = このアドレスとポートには別のトラッカーが既に設定されています
 err-tracker-name-duplicate = この名前の別のトラッカーが既に設定されています
+err-tracker-too-many = トラッカー上限に達しました (最大 { $max })
 
 # Tracker publisher status messages
 err-tracker-connection-failed = トラッカーに接続できませんでした

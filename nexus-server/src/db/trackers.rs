@@ -282,6 +282,17 @@ impl TrackerDb {
         Ok(result.rows_affected() > 0)
     }
 
+    /// Total number of tracker rows (enabled + disabled). Used by
+    /// `TrackerCreate` to enforce
+    /// [`MAX_TRACKERS_PER_SERVER`](nexus_common::framing::MAX_TRACKERS_PER_SERVER)
+    /// without paying for a full row scan.
+    pub async fn count(&self) -> Result<usize, sqlx::Error> {
+        let (n,): (i64,) = sqlx::query_as(sql::SQL_COUNT_TRACKERS)
+            .fetch_one(&self.pool)
+            .await?;
+        Ok(usize::try_from(n).unwrap_or(usize::MAX))
+    }
+
     /// Delete a tracker row by id. Returns `true` if the row existed.
     pub async fn delete(&self, id: i64) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(sql::SQL_DELETE_TRACKER)

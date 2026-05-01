@@ -12,15 +12,19 @@ use nexus_common::validators::{
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
+use nexus_common::framing::MAX_TRACKERS_PER_SERVER;
+
 use super::{
     HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
     err_tracker_address_invalid, err_tracker_address_too_long, err_tracker_endpoint_duplicate,
     err_tracker_fingerprint_invalid, err_tracker_name_duplicate, err_tracker_name_invalid,
     err_tracker_name_too_long, err_tracker_password_too_long, err_tracker_port_invalid,
+    err_tracker_too_many,
 };
 use crate::constants::{
-    LOG_TRACKER_CREATE_DB_ERROR, LOG_TRACKER_CREATE_NOT_LOGGED_IN,
-    LOG_TRACKER_CREATE_PERMISSION_DENIED, LOG_TRACKER_CREATE_SUCCESS,
+    LOG_TRACKER_CREATE_DB_ERROR, LOG_TRACKER_CREATE_LIMIT_REACHED,
+    LOG_TRACKER_CREATE_NOT_LOGGED_IN, LOG_TRACKER_CREATE_PERMISSION_DENIED,
+    LOG_TRACKER_CREATE_SUCCESS,
 };
 use crate::db::{CreateTrackerParams, Permission, TrackerDbError};
 
@@ -101,6 +105,41 @@ where
         &name,
     ) {
         return ctx.send_message(&err).await;
+    }
+
+    // Cap on configured rows. Sized to match the
+    // `TrackerListResponse` frame budget so the admin UI can always
+    // serialize the full list — without this guard, an admin who
+    // adds the 65th tracker breaks their own management view.
+    match ctx.db.trackers.count().await {
+        Ok(n) if n >= MAX_TRACKERS_PER_SERVER => {
+            warn!(
+                user = %requesting_user.username,
+                ip = %ctx.peer_addr,
+                count = n,
+                max = MAX_TRACKERS_PER_SERVER,
+                "{}", LOG_TRACKER_CREATE_LIMIT_REACHED
+            );
+            let response = ServerMessage::TrackerCreateResponse {
+                success: false,
+                error: Some(err_tracker_too_many(ctx.locale, MAX_TRACKERS_PER_SERVER)),
+                id: None,
+                name: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+        Ok(_) => {}
+        Err(e) => {
+            error!(
+                user = %requesting_user.username,
+                ip = %ctx.peer_addr,
+                err = %e,
+                "{}", LOG_TRACKER_CREATE_DB_ERROR
+            );
+            return ctx
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("TrackerCreate"))
+                .await;
+        }
     }
 
     // Insert into the DB.
@@ -504,6 +543,58 @@ mod tests {
             ServerMessage::TrackerCreateResponse { success, error, .. } => {
                 assert!(!success);
                 assert!(error.is_some());
+            }
+            other => panic!("Expected TrackerCreateResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_when_at_limit() {
+        use nexus_common::framing::MAX_TRACKERS_PER_SERVER;
+
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::TrackerCreate],
+            false,
+        )
+        .await;
+
+        // Bulk-seed up to the cap directly via the DB to keep the test
+        // fast (the handler path would also work but is per-call slower).
+        for i in 0..MAX_TRACKERS_PER_SERVER {
+            test_ctx
+                .db
+                .trackers
+                .create(crate::db::CreateTrackerParams {
+                    address: &format!("tracker-{i}.example.com"),
+                    port: 7510,
+                    fingerprint: None,
+                    password: None,
+                    name: &format!("seed-{i}"),
+                    enabled: true,
+                })
+                .await
+                .expect("seed row");
+        }
+
+        let result = handle_tracker_create(
+            valid_request(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerCreateResponse { success, error, .. } => {
+                assert!(!success);
+                let error = error.expect("error string");
+                assert!(
+                    error.contains(&MAX_TRACKERS_PER_SERVER.to_string()),
+                    "error should mention the cap: {error}"
+                );
             }
             other => panic!("Expected TrackerCreateResponse, got {other:?}"),
         }

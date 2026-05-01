@@ -282,6 +282,7 @@ err-tracker-fingerprint-invalid = 追踪器指纹格式无效
 err-tracker-password-too-long = 追踪器密码过长 (最多 { $max_length } 字节)
 err-tracker-endpoint-duplicate = 此地址和端口已配置了另一个追踪器
 err-tracker-name-duplicate = 已配置了另一个使用此名称的追踪器
+err-tracker-too-many = 已达到追踪器上限 (最多 { $max } 个)
 
 # Tracker publisher status messages
 err-tracker-connection-failed = 无法连接到追踪器

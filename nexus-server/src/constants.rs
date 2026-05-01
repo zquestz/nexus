@@ -770,6 +770,7 @@ pub const LOG_TRACKER_EDIT_DB_ERROR: &str = "TrackerEdit: database error";
 pub const LOG_TRACKER_CREATE_NOT_LOGGED_IN: &str = "TrackerCreate: not logged in";
 pub const LOG_TRACKER_CREATE_PERMISSION_DENIED: &str = "TrackerCreate: permission denied";
 pub const LOG_TRACKER_CREATE_DB_ERROR: &str = "TrackerCreate: database error";
+pub const LOG_TRACKER_CREATE_LIMIT_REACHED: &str = "TrackerCreate: tracker limit reached";
 pub const LOG_TRACKER_CREATE_SUCCESS: &str = "TrackerCreate: success";
 pub const LOG_TRACKER_UPDATE_NOT_LOGGED_IN: &str = "TrackerUpdate: not logged in";
 pub const LOG_TRACKER_UPDATE_PERMISSION_DENIED: &str = "TrackerUpdate: permission denied";

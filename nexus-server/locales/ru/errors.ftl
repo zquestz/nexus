@@ -282,6 +282,7 @@ err-tracker-fingerprint-invalid = Недопустимый формат отпе
 err-tracker-password-too-long = Пароль трекера слишком длинный (макс. { $max_length } байт)
 err-tracker-endpoint-duplicate = Другой трекер уже настроен по этому адресу и порту
 err-tracker-name-duplicate = Другой трекер уже настроен с этим именем
+err-tracker-too-many = Достигнут лимит трекеров (макс. { $max })
 
 # Tracker publisher status messages
 err-tracker-connection-failed = Не удалось подключиться к трекеру

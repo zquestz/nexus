@@ -282,6 +282,7 @@ err-tracker-fingerprint-invalid = 잘못된 트래커 지문 형식입니다
 err-tracker-password-too-long = 트래커 비밀번호가 너무 깁니다 (최대 { $max_length } 바이트)
 err-tracker-endpoint-duplicate = 이 주소와 포트에 이미 다른 트래커가 구성되어 있습니다
 err-tracker-name-duplicate = 이 이름의 다른 트래커가 이미 구성되어 있습니다
+err-tracker-too-many = 트래커 한도 도달 (최대 { $max })
 
 # Tracker publisher status messages
 err-tracker-connection-failed = 트래커에 연결할 수 없습니다

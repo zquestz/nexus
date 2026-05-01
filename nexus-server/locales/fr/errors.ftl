@@ -282,6 +282,7 @@ err-tracker-fingerprint-invalid = Format d'empreinte de tracker invalide
 err-tracker-password-too-long = Le mot de passe du tracker est trop long (max { $max_length } octets)
 err-tracker-endpoint-duplicate = Un autre tracker est déjà configuré à cette adresse et ce port
 err-tracker-name-duplicate = Un autre tracker est déjà configuré avec ce nom
+err-tracker-too-many = Limite de trackers atteinte (max { $max })
 
 # Tracker publisher status messages
 err-tracker-connection-failed = Impossible de se connecter au tracker
