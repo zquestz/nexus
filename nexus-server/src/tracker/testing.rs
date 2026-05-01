@@ -44,6 +44,11 @@ pub struct MockBehavior {
     /// accepts. Wrapped in `Arc<Mutex>` so all connection-handler
     /// clones share the same queue.
     pub queued_responses: Arc<Mutex<VecDeque<RegisterPolicy>>>,
+    /// When `true`, the mock accepts TLS but never sends a
+    /// `HandshakeResponse` — parks the publisher in the
+    /// handshake-response read await. Used by the shutdown-mid-handshake
+    /// test to verify abort propagates through the deepest cycle await.
+    pub wedge_after_tls: bool,
 }
 
 #[derive(Clone)]
@@ -62,6 +67,7 @@ impl Default for MockBehavior {
                 refresh_interval: 300,
             },
             queued_responses: Arc::new(Mutex::new(VecDeque::new())),
+            wedge_after_tls: false,
         }
     }
 }
@@ -154,6 +160,11 @@ async fn handle_connection(
     real_fingerprint: String,
 ) -> std::io::Result<()> {
     let tls = acceptor.accept(tcp).await?;
+    if behavior.wedge_after_tls {
+        // Park forever; never send HandshakeResponse. The TLS stream
+        // and read/write halves drop on abort.
+        std::future::pending::<()>().await;
+    }
     let (read_half, write_half) = tokio::io::split(tls);
     let mut reader = FrameReader::new(tokio::io::BufReader::new(read_half));
     let mut writer = FrameWriter::new(write_half);

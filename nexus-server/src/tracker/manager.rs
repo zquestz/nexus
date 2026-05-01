@@ -266,6 +266,9 @@ impl TrackerManager {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use super::super::testing::{MockBehavior, MockTracker};
     use super::*;
     use crate::db::testing::create_test_db;
     use crate::db::{CreateTrackerParams, Database};
@@ -464,6 +467,62 @@ mod tests {
 
         manager.shutdown().await;
         assert!(manager.status_all().is_empty());
+    }
+
+    #[tokio::test]
+    async fn shutdown_aborts_mid_handshake() {
+        // Wedged tracker: accepts TLS, never sends HandshakeResponse.
+        // The publisher's H-1 timeout would otherwise hold this for 30s
+        // on its own — abort must propagate through that await sooner.
+        let mock = MockTracker::start(MockBehavior {
+            wedge_after_tls: true,
+            ..Default::default()
+        })
+        .await;
+        let context = test_context().await;
+        let manager = TrackerManager::new(Arc::clone(&context));
+        let address = mock.addr.ip().to_string();
+        let record = context
+            .db
+            .trackers
+            .create(CreateTrackerParams {
+                address: &address,
+                port: mock.addr.port(),
+                fingerprint: None,
+                password: None,
+                name: "Wedge",
+                enabled: true,
+            })
+            .await
+            .expect("create");
+        manager.spawn(record);
+
+        // Wait until the task has begun a cycle (i.e. is parked in the
+        // handshake-await wedge). last_attempted_at is set at the top
+        // of every cycle, so any non-None value means we're past idle.
+        let started = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                if manager
+                    .status_all()
+                    .values()
+                    .any(|s| s.last_attempted_at.is_some())
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await;
+        assert!(started.is_ok(), "task should have started a cycle");
+
+        // Shutdown must return promptly via abort, not block on the
+        // publisher's 30s response timeout.
+        tokio::time::timeout(Duration::from_secs(5), manager.shutdown())
+            .await
+            .expect("shutdown should complete despite parked task");
+        assert!(manager.status_all().is_empty());
+
+        mock.stop().await;
     }
 
     #[tokio::test]
