@@ -31,6 +31,21 @@ use crate::constants::{
 };
 use crate::db::sql;
 
+/// Configuration fields the publisher task needs to build
+/// `TrackerServerRegister` payloads. Subset of [`ServerConfig`] —
+/// fetched via a dedicated single-query method to avoid pulling
+/// unrelated config rows on the publisher's per-refresh hot path.
+///
+/// `description` and `public_address` are `Option<String>` because
+/// empty values are normalized to `None` here so the caller doesn't
+/// need to special-case empty strings.
+#[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
+pub struct TrackerConfigFields {
+    pub server_name: String,
+    pub description: Option<String>,
+    pub public_address: Option<String>,
+}
+
 /// All server configuration values, fetched in a single query.
 ///
 /// Used by handlers that need multiple config values (e.g., building `ServerInfo`).
@@ -118,6 +133,41 @@ impl ConfigDb {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(DEFAULT_CHAT_RATE_LIMIT),
         }
+    }
+
+    /// Fetch the three config fields the publisher task needs for
+    /// `TrackerServerRegister` payloads: server name, description,
+    /// public address. Single query against the `config` table
+    /// (rather than three separate `SQL_GET_CONFIG` calls); this is
+    /// the publisher's per-refresh hot path and we want to keep it
+    /// efficient as the config table grows over time.
+    ///
+    /// Empty `description` and `public_address` values are normalized
+    /// to `None` here so the protocol-level message construction
+    /// doesn't need to special-case empty strings.
+    ///
+    /// # Errors
+    ///
+    /// Returns `sqlx::Error` if the database query fails.
+    #[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
+    pub async fn get_tracker_fields(&self) -> Result<TrackerConfigFields, sqlx::Error> {
+        let rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_GET_TRACKER_CONFIG_FIELDS)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut map: HashMap<String, String> = rows.into_iter().collect();
+
+        Ok(TrackerConfigFields {
+            server_name: map
+                .remove(CONFIG_KEY_SERVER_NAME)
+                .unwrap_or_else(|| DEFAULT_SERVER_NAME.to_string()),
+            description: map
+                .remove(CONFIG_KEY_SERVER_DESCRIPTION)
+                .filter(|s| !s.is_empty()),
+            public_address: map
+                .remove(CONFIG_KEY_PUBLIC_ADDRESS)
+                .filter(|s| !s.is_empty()),
+        })
     }
 
     /// Get the maximum connections allowed per IP address

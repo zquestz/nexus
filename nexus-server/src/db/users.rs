@@ -165,6 +165,24 @@ impl UserDb {
         Ok(count > 0)
     }
 
+    /// Whether the guest account is currently enabled.
+    ///
+    /// Used by the publisher task to populate
+    /// `TrackerServerRegister.allows_guest`. Returns `false` if the
+    /// guest account row is missing (catastrophic; bootstrap migration
+    /// ensures it exists).
+    ///
+    /// # Errors
+    ///
+    /// Returns `sqlx::Error` if the database query fails.
+    #[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
+    pub async fn guest_enabled(&self) -> Result<bool, sqlx::Error> {
+        let row: Option<(bool,)> = sqlx::query_as(sql::SQL_GET_GUEST_ENABLED)
+            .fetch_optional(&self.pool)
+            .await?;
+        Ok(row.map(|(enabled,)| enabled).unwrap_or(false))
+    }
+
     /// Get all users from the database (sorted alphabetically by username)
     ///
     /// Used by the `/list all` command for user management.

@@ -270,6 +270,18 @@ err-group-not-empty-modify = Cannot modify shared status while users are assigne
 err-group-no-fields = No fields to update
 err-group-shared-mismatch = Account type does not match group type (shared accounts require shared groups)
 
+# Tracker Errors
+err-tracker-not-found = Tracker not found
+err-tracker-name-invalid = Tracker name contains invalid characters
+err-tracker-name-too-long = Tracker name is too long (max { $max_length } bytes)
+err-tracker-address-invalid = Invalid tracker address
+err-tracker-address-too-long = Tracker address is too long (max { $max_length } bytes)
+err-tracker-port-invalid = Invalid tracker port
+err-tracker-fingerprint-invalid = Invalid tracker fingerprint format
+err-tracker-password-too-long = Tracker password is too long (max { $max_length } bytes)
+err-tracker-endpoint-duplicate = Another tracker is already configured at this address and port
+err-tracker-name-duplicate = Another tracker is already configured with this name
+
 # Flood Protection Errors
 err-flood-warning = Message rate limited (warning { $violation } of { $max_violations }). You can send another message in { $seconds } { $seconds ->
     [one] second

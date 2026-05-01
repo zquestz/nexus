@@ -29,6 +29,22 @@ pub const SQL_SET_CONFIG: &str = "UPDATE config SET value = ? WHERE key = ?";
 /// **Returns:** `(key: String, value: String)` for each row
 pub const SQL_GET_ALL_CONFIG: &str = "SELECT key, value FROM config";
 
+/// Get the three config fields needed by the publisher task to build
+/// `TrackerServerRegister` payloads.
+///
+/// **Parameters:** None
+///
+/// **Returns:** `(key: String, value: String)` for each row that exists,
+/// for the keys `server_name`, `server_description`, and `public_address`.
+/// Missing keys are simply absent from the result set; the caller maps
+/// remaining keys to defaults / `None`.
+///
+/// **Note:** Single-query bundle (rather than three separate
+/// `SQL_GET_CONFIG` calls) — small efficiency win on the publisher's
+/// per-refresh hot path. Dead until chunk 4.
+#[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
+pub const SQL_GET_TRACKER_CONFIG_FIELDS: &str = "SELECT key, value FROM config WHERE key IN ('server_name', 'server_description', 'public_address')";
+
 // ========================================================================
 // User Query Operations
 // ========================================================================
@@ -60,6 +76,19 @@ pub const SQL_COUNT_NON_GUEST_USERS: &str =
 /// **Note:** Uses `LOWER()` for case-insensitive matching while preserving
 /// the original case in the returned username.
 pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id FROM users WHERE LOWER(username) = LOWER(?)";
+
+/// Get the guest account's `enabled` flag.
+///
+/// **Parameters:** None
+///
+/// **Returns:** `(enabled: bool)` — single row from the `users` table
+/// matching the guest account, or no row if the guest account is
+/// missing (catastrophic; bootstrap migration ensures it exists).
+///
+/// **Note:** Used by the publisher task to populate
+/// `TrackerServerRegister.allows_guest`. Dead until chunk 4.
+#[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
+pub const SQL_GET_GUEST_ENABLED: &str = "SELECT enabled FROM users WHERE LOWER(username) = 'guest'";
 
 /// Select all users (for user management listing)
 ///

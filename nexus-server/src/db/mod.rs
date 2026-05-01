@@ -63,6 +63,42 @@ impl Database {
             trackers: TrackerDb::new(pool),
         }
     }
+
+    /// Bundle the per-table fields the publisher task needs to build
+    /// `TrackerServerRegister` payloads on each refresh.
+    ///
+    /// Composes [`ConfigDb::get_tracker_fields`] (server name, description,
+    /// public address — sourced from the `config` table) with
+    /// [`UserDb::guest_enabled`] (sourced from the `users` table). Two
+    /// queries internally; one method to call from the publisher.
+    ///
+    /// # Errors
+    ///
+    /// Returns `sqlx::Error` if either underlying query fails.
+    #[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
+    pub async fn tracker_registration_fields(
+        &self,
+    ) -> Result<TrackerRegistrationFields, sqlx::Error> {
+        let config = self.config.get_tracker_fields().await?;
+        let allows_guest = self.users.guest_enabled().await?;
+        Ok(TrackerRegistrationFields {
+            server_name: config.server_name,
+            description: config.description,
+            public_address: config.public_address,
+            allows_guest,
+        })
+    }
+}
+
+/// Fields the publisher task needs to populate `TrackerServerRegister`
+/// payloads. Bundled from [`ConfigDb::get_tracker_fields`] and
+/// [`UserDb::guest_enabled`] via [`Database::tracker_registration_fields`].
+#[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
+pub struct TrackerRegistrationFields {
+    pub server_name: String,
+    pub description: Option<String>,
+    pub public_address: Option<String>,
+    pub allows_guest: bool,
 }
 
 /// Get the database file path under the given server data directory
