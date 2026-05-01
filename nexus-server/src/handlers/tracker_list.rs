@@ -70,12 +70,12 @@ where
         }
     };
 
-    let statuses = ctx.tracker_manager.status_all();
+    let mut statuses = ctx.tracker_manager.status_all();
     let trackers: Vec<_> = rows
         .into_iter()
         .map(|row| {
             let id = row.id;
-            compose_tracker_info(row, statuses.get(&id).cloned(), ctx.locale)
+            compose_tracker_info(row, statuses.remove(&id), ctx.locale)
         })
         .collect();
 
