@@ -22,7 +22,7 @@ use nexus_common::{
     ERROR_KIND_TRACKER_CONNECTION_FAILED, ERROR_KIND_TRACKER_CONNECTION_LOST,
     ERROR_KIND_TRACKER_DB_FAILED, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
     ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH, ERROR_KIND_TRACKER_HANDSHAKE_FAILED,
-    ERROR_KIND_TRACKER_TLS_FAILED, ERROR_KIND_UNAUTHORIZED,
+    ERROR_KIND_TRACKER_PROTOCOL_ERROR, ERROR_KIND_TRACKER_TLS_FAILED, ERROR_KIND_UNAUTHORIZED,
 };
 
 use super::{
@@ -50,7 +50,7 @@ pub fn compose_tracker_info(
     let s = status.unwrap_or_default();
     let last_error = s
         .last_error_kind
-        .as_ref()
+        .as_deref()
         .map(|kind| translate_tracker_error_kind(locale, kind));
     TrackerInfo {
         id: record.id,
@@ -66,7 +66,7 @@ pub fn compose_tracker_info(
         last_connected_at: s.last_connected_at,
         last_attempted_at: s.last_attempted_at,
         last_error,
-        last_error_kind: s.last_error_kind,
+        last_error_kind: s.last_error_kind.map(std::borrow::Cow::into_owned),
         pending_fingerprint: s.pending_fingerprint,
         refresh_interval: s.refresh_interval,
     }
@@ -89,6 +89,7 @@ fn translate_tracker_error_kind(locale: &str, kind: &str) -> String {
         ERROR_KIND_TRACKER_DB_FAILED => "err-tracker-db-failed",
         ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH => "err-tracker-fingerprint-mismatch",
         ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED => "err-tracker-fingerprint-intercepted",
+        ERROR_KIND_TRACKER_PROTOCOL_ERROR => "err-tracker-protocol-error",
         ERROR_KIND_UNAUTHORIZED => "err-tracker-unauthorized",
         ERROR_KIND_RATE_LIMITED => "err-tracker-rate-limited",
         ERROR_KIND_CAPACITY => "err-tracker-capacity",
@@ -214,9 +215,7 @@ mod tests {
             connected: false,
             last_connected_at: None,
             last_attempted_at: None,
-            last_error_kind: Some(
-                nexus_common::ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH.to_string(),
-            ),
+            last_error_kind: Some(nexus_common::ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH.into()),
             pending_fingerprint: Some("CC:DD".to_string()),
             refresh_interval: None,
         };
@@ -243,7 +242,7 @@ mod tests {
             connected: false,
             last_connected_at: None,
             last_attempted_at: None,
-            last_error_kind: Some("not_a_real_kind".to_string()),
+            last_error_kind: Some("not_a_real_kind".into()),
             pending_fingerprint: None,
             refresh_interval: None,
         };

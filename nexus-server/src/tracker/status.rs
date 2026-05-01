@@ -1,5 +1,7 @@
 //! Per-tracker runtime status tracked by the publisher manager.
 
+use std::borrow::Cow;
+
 /// Runtime state of a single publisher task.
 ///
 /// Updated by the task as it progresses through connect → handshake →
@@ -38,7 +40,12 @@ pub struct TrackerStatus {
     /// (e.g. `"tracker_fingerprint_mismatch"`, `"unauthorized"`).
     /// Translated to a human-readable message at handler compose time
     /// using the requesting admin's locale.
-    pub last_error_kind: Option<String>,
+    ///
+    /// Stored as `Cow` so the publisher's static-constant call sites
+    /// (`set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST)`)
+    /// stay allocation-free, while the rare tracker-supplied path
+    /// owns its `String` via `Cow::Owned`.
+    pub last_error_kind: Option<Cow<'static, str>>,
     /// Fingerprint the task observed but the admin hasn't accepted
     /// yet (after a Stage 1 mismatch). `None` in normal operation.
     pub pending_fingerprint: Option<String>,

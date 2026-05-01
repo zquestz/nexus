@@ -296,6 +296,7 @@ err-tracker-unauthorized = Il tracker ha rifiutato la registrazione
 err-tracker-rate-limited = Limitato dal tracker
 err-tracker-capacity = Il tracker è alla capacità massima
 err-tracker-invalid = Il tracker ha rifiutato la registrazione come non valida
+err-tracker-protocol-error = Il tracker ha inviato una risposta di errore malformata
 err-tracker-unknown = Il tracker ha segnalato un errore sconosciuto
 
 # Flood Protection Errors

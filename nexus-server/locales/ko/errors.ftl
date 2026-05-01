@@ -296,6 +296,7 @@ err-tracker-unauthorized = 트래커가 등록을 거부했습니다
 err-tracker-rate-limited = 트래커에 의해 속도 제한됨
 err-tracker-capacity = 트래커가 용량에 도달했습니다
 err-tracker-invalid = 트래커가 등록을 유효하지 않은 것으로 거부했습니다
+err-tracker-protocol-error = 트래커가 잘못된 형식의 오류 응답을 보냈습니다
 err-tracker-unknown = 트래커가 알 수 없는 오류를 보고했습니다
 
 # Flood Protection Errors

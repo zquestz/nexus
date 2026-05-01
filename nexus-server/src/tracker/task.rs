@@ -10,6 +10,7 @@
 //! See `docs/TODO.md` § "Server-Side Publisher Implementation Plan"
 //! for the design rationale.
 
+use std::borrow::Cow;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Duration;
@@ -26,7 +27,8 @@ use nexus_common::{
     ERROR_KIND_TRACKER_CONNECTION_FAILED, ERROR_KIND_TRACKER_CONNECTION_LOST,
     ERROR_KIND_TRACKER_DB_FAILED, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
     ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH, ERROR_KIND_TRACKER_HANDSHAKE_FAILED,
-    ERROR_KIND_TRACKER_TLS_FAILED, TRACKER_PROTOCOL_VERSION, is_unrecoverable_error_kind,
+    ERROR_KIND_TRACKER_PROTOCOL_ERROR, ERROR_KIND_TRACKER_TLS_FAILED, TRACKER_PROTOCOL_VERSION,
+    is_unrecoverable_error_kind, is_valid_error_kind,
 };
 use rand::RngExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -42,15 +44,15 @@ use crate::constants::{
     LOG_TRACKER_REGISTRATION_BUILD_PAYLOAD_FAILED,
     LOG_TRACKER_REGISTRATION_CLOSED_AWAITING_RESPONSE, LOG_TRACKER_REGISTRATION_CLOSED_MID_IDLE,
     LOG_TRACKER_REGISTRATION_EXITING, LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR,
-    LOG_TRACKER_REGISTRATION_INVALID_HOST, LOG_TRACKER_REGISTRATION_NO_PEER_CERTS,
-    LOG_TRACKER_REGISTRATION_READ_ERROR_MID_IDLE, LOG_TRACKER_REGISTRATION_REFRESHED,
-    LOG_TRACKER_REGISTRATION_REGISTER_REJECTED, LOG_TRACKER_REGISTRATION_RESPONSE_READ_ERROR,
-    LOG_TRACKER_REGISTRATION_RESPONSE_TIMEOUT, LOG_TRACKER_REGISTRATION_SEND_HANDSHAKE_FAILED,
-    LOG_TRACKER_REGISTRATION_SEND_REGISTER_FAILED, LOG_TRACKER_REGISTRATION_STAGE1_MISMATCH,
-    LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH, LOG_TRACKER_REGISTRATION_TCP_FAILED,
-    LOG_TRACKER_REGISTRATION_TLS_FAILED, LOG_TRACKER_REGISTRATION_TOFU_PINNED,
-    LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED, LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME,
-    LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE,
+    LOG_TRACKER_REGISTRATION_INVALID_ERROR_KIND, LOG_TRACKER_REGISTRATION_INVALID_HOST,
+    LOG_TRACKER_REGISTRATION_NO_PEER_CERTS, LOG_TRACKER_REGISTRATION_READ_ERROR_MID_IDLE,
+    LOG_TRACKER_REGISTRATION_REFRESHED, LOG_TRACKER_REGISTRATION_REGISTER_REJECTED,
+    LOG_TRACKER_REGISTRATION_RESPONSE_READ_ERROR, LOG_TRACKER_REGISTRATION_RESPONSE_TIMEOUT,
+    LOG_TRACKER_REGISTRATION_SEND_HANDSHAKE_FAILED, LOG_TRACKER_REGISTRATION_SEND_REGISTER_FAILED,
+    LOG_TRACKER_REGISTRATION_STAGE1_MISMATCH, LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH,
+    LOG_TRACKER_REGISTRATION_TCP_FAILED, LOG_TRACKER_REGISTRATION_TLS_FAILED,
+    LOG_TRACKER_REGISTRATION_TOFU_PINNED, LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED,
+    LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME, LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE,
 };
 use crate::db::{TrackerRecord, is_transient_db_error};
 
@@ -537,13 +539,34 @@ where
                 error_kind,
                 ..
             } => {
+                // Wire-format gate: a tracker-supplied `error_kind`
+                // must be ASCII snake_case bounded by
+                // `MAX_ERROR_KIND_LENGTH`. Anything else (control
+                // chars, embedded JSON, oversized blob) is a protocol
+                // violation — substitute our own
+                // `tracker_protocol_error` kind so junk never lands
+                // in the wire-visible `TrackerInfo.last_error_kind`,
+                // and exit Unrecoverable since a tracker that can't
+                // emit valid error kinds isn't going to start.
+                if let Some(raw) = error_kind.as_deref()
+                    && !is_valid_error_kind(raw)
+                {
+                    warn!(
+                        id = record.id,
+                        name = %record.name,
+                        rejected_kind = %raw,
+                        "{}", LOG_TRACKER_REGISTRATION_INVALID_ERROR_KIND
+                    );
+                    set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR);
+                    return CycleOutcome::Unrecoverable;
+                }
                 // Outcome decision happens against the *raw* tracker
                 // input: only an explicit, recognized unrecoverable
-                // kind kills the task. A missing or unknown kind is a
-                // protocol violation by the tracker (or a forward-
-                // compat kind we don't know yet) — treat as transient
-                // so a misbehaving tracker can't permanently take us
-                // out without admin intervention.
+                // kind kills the task. A missing or format-valid-but-
+                // unknown kind (e.g. forward-compat from a newer
+                // tracker) is treated as transient so a misbehaving
+                // tracker can't permanently take us out without admin
+                // intervention.
                 let outcome = match error_kind.as_deref() {
                     Some(k) if is_unrecoverable_error_kind(k) => CycleOutcome::Unrecoverable,
                     _ => CycleOutcome::Transient,
@@ -569,7 +592,7 @@ where
                     err = %detail,
                     "{}", LOG_TRACKER_REGISTRATION_REGISTER_REJECTED
                 );
-                set_status_error(status, &kind);
+                set_status_error(status, kind);
                 return outcome;
             }
             // Any other variant on the register port is a protocol
@@ -667,21 +690,21 @@ fn observed_fingerprint(stream: &tokio_rustls::client::TlsStream<TcpStream>) -> 
 // raw underlying error (if any) flows to operator logs separately
 // via `warn!(err = %e, …)` at the call site.
 
-fn set_status_error(status: &Arc<RwLock<TrackerStatus>>, kind: &str) {
+fn set_status_error(status: &Arc<RwLock<TrackerStatus>>, kind: impl Into<Cow<'static, str>>) {
     let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
     s.connected = false;
-    s.last_error_kind = Some(kind.to_string());
+    s.last_error_kind = Some(kind.into());
     s.refresh_interval = None;
 }
 
 fn set_status_with_pending_fingerprint(
     status: &Arc<RwLock<TrackerStatus>>,
-    kind: &str,
+    kind: impl Into<Cow<'static, str>>,
     pending: String,
 ) {
     let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
     s.connected = false;
-    s.last_error_kind = Some(kind.to_string());
+    s.last_error_kind = Some(kind.into());
     s.pending_fingerprint = Some(pending);
     s.refresh_interval = None;
 }
@@ -1047,6 +1070,50 @@ mod tests {
         assert_eq!(
             snap.last_error_kind.as_deref(),
             Some(nexus_common::ERROR_KIND_UNAUTHORIZED)
+        );
+        assert!(!snap.connected);
+
+        mock.stop().await;
+    }
+
+    #[tokio::test]
+    async fn malformed_error_kind_is_substituted_and_unrecoverable() {
+        // A hostile / buggy tracker ships an `error_kind` that fails
+        // wire-format validation (uppercase + control chars + newline).
+        // The publisher must:
+        //   1. NOT store the raw value in `last_error_kind` (which is
+        //      a wire-visible field).
+        //   2. Substitute `tracker_protocol_error` so the admin UI
+        //      gets a clean kind to translate.
+        //   3. Exit the task — a tracker that ships malformed kinds
+        //      isn't going to start working.
+        let raw_kind = "BAD\nKIND\0<script>";
+        let mock = MockTracker::start(MockBehavior {
+            register_response: RegisterPolicy::Failure {
+                error_kind: raw_kind.to_string(),
+                error: "broken tracker".to_string(),
+            },
+            ..Default::default()
+        })
+        .await;
+        let (db, context) = setup_context().await;
+        let record = seed_tracker(&db, mock.addr, None, None).await;
+
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let task = tokio::spawn(run(
+            record.clone(),
+            Arc::clone(&status),
+            Arc::clone(&context),
+        ));
+
+        let exited = tokio::time::timeout(Duration::from_secs(5), task).await;
+        assert!(exited.is_ok(), "task should exit on malformed kind");
+
+        let snap = status.read().expect("status lock").clone();
+        assert_eq!(
+            snap.last_error_kind.as_deref(),
+            Some(nexus_common::ERROR_KIND_TRACKER_PROTOCOL_ERROR),
+            "raw kind must be replaced with the protocol-error sentinel"
         );
         assert!(!snap.connected);
 

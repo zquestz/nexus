@@ -84,6 +84,40 @@ pub const ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH: &str = "tracker_fingerprint_m
 /// Unrecoverable; suggests active interception.
 pub const ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED: &str = "tracker_fingerprint_intercepted";
 
+/// Tracker sent an `error_kind` that violates the wire format
+/// (non-snake_case, control chars, oversized, etc.). Distinct from
+/// `protocol_error` so admin UI can attribute the violation to the
+/// tracker rather than to a generic protocol mismatch. Unrecoverable;
+/// the tracker is broken or malicious.
+pub const ERROR_KIND_TRACKER_PROTOCOL_ERROR: &str = "tracker_protocol_error";
+
+/// Whether `s` is a well-formed `error_kind` per the wire-format
+/// rule that all canonical kinds follow: ASCII snake_case starting
+/// with a lowercase letter, bounded by [`MAX_ERROR_KIND_LENGTH`].
+///
+/// Used at trust boundaries — primarily where a remote peer's
+/// `error_kind` would otherwise flow verbatim into a status field
+/// that is itself wire-visible (e.g. the BBS publisher storing a
+/// tracker-supplied kind in `TrackerInfo.last_error_kind`). Junk
+/// kinds (control chars, embedded JSON, multi-line garbage) are
+/// rejected so they can't be smuggled into our wire surface.
+///
+/// [`MAX_ERROR_KIND_LENGTH`]: crate::validators::MAX_ERROR_KIND_LENGTH
+#[must_use]
+pub fn is_valid_error_kind(s: &str) -> bool {
+    if s.is_empty() || s.len() > crate::validators::MAX_ERROR_KIND_LENGTH {
+        return false;
+    }
+    let mut bytes = s.bytes();
+    let Some(first) = bytes.next() else {
+        return false;
+    };
+    if !first.is_ascii_lowercase() {
+        return false;
+    }
+    bytes.all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_')
+}
+
 /// Whether an `error_kind` from the tracker (or our publisher's
 /// internal categorization) is unrecoverable — i.e. the publisher
 /// can't recover without external intervention (admin updating the
@@ -101,6 +135,9 @@ pub fn is_unrecoverable_error_kind(kind: &str) -> bool {
         | ERROR_KIND_UNAUTHORIZED
         // Field validation rejection (malformed address etc.).
         | ERROR_KIND_INVALID
+        // Tracker shipped a malformed kind — the daemon is broken
+        // or hostile; retrying isn't going to help.
+        | ERROR_KIND_TRACKER_PROTOCOL_ERROR
     )
 }
 
@@ -330,6 +367,63 @@ mod tests {
         ));
         assert!(is_unrecoverable_error_kind(ERROR_KIND_UNAUTHORIZED));
         assert!(is_unrecoverable_error_kind(ERROR_KIND_INVALID));
+        assert!(is_unrecoverable_error_kind(
+            ERROR_KIND_TRACKER_PROTOCOL_ERROR
+        ));
+    }
+
+    #[test]
+    fn is_valid_error_kind_accepts_canonical_kinds() {
+        // Every kind we ourselves emit must pass the wire-format check.
+        for kind in [
+            ERROR_KIND_EXISTS,
+            ERROR_KIND_NOT_FOUND,
+            ERROR_KIND_PERMISSION,
+            ERROR_KIND_INVALID_PATH,
+            ERROR_KIND_INVALID,
+            ERROR_KIND_IO_ERROR,
+            ERROR_KIND_PROTOCOL_ERROR,
+            ERROR_KIND_HASH_MISMATCH,
+            ERROR_KIND_CONFLICT,
+            ERROR_KIND_UNAUTHORIZED,
+            ERROR_KIND_RATE_LIMITED,
+            ERROR_KIND_CAPACITY,
+            ERROR_KIND_TRACKER_CONNECTION_FAILED,
+            ERROR_KIND_TRACKER_TLS_FAILED,
+            ERROR_KIND_TRACKER_HANDSHAKE_FAILED,
+            ERROR_KIND_TRACKER_CONNECTION_LOST,
+            ERROR_KIND_TRACKER_DB_FAILED,
+            ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH,
+            ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
+            ERROR_KIND_TRACKER_PROTOCOL_ERROR,
+        ] {
+            assert!(is_valid_error_kind(kind), "rejected canonical {kind:?}");
+        }
+    }
+
+    #[test]
+    fn is_valid_error_kind_rejects_junk() {
+        // Empty.
+        assert!(!is_valid_error_kind(""));
+        // Leading non-letter.
+        assert!(!is_valid_error_kind("_leading_underscore"));
+        assert!(!is_valid_error_kind("9starts_with_digit"));
+        // Uppercase / mixed case.
+        assert!(!is_valid_error_kind("Uppercase"));
+        assert!(!is_valid_error_kind("camelCase"));
+        // Hyphens / dots / spaces.
+        assert!(!is_valid_error_kind("kebab-case"));
+        assert!(!is_valid_error_kind("dot.notation"));
+        assert!(!is_valid_error_kind("with space"));
+        // Control / multibyte / injection attempts.
+        assert!(!is_valid_error_kind("line\nbreak"));
+        assert!(!is_valid_error_kind("nul\0byte"));
+        assert!(!is_valid_error_kind("héllo"));
+        assert!(!is_valid_error_kind("<script>"));
+        // Too long (33 chars).
+        assert!(!is_valid_error_kind(&"a".repeat(33)));
+        // Exactly at the bound is OK.
+        assert!(is_valid_error_kind(&"a".repeat(32)));
     }
 
     #[test]

@@ -296,6 +296,7 @@ err-tracker-unauthorized = 追蹤器拒絕了註冊
 err-tracker-rate-limited = 被追蹤器限速
 err-tracker-capacity = 追蹤器已達容量上限
 err-tracker-invalid = 追蹤器以無效為由拒絕了註冊
+err-tracker-protocol-error = 追蹤器傳送了格式錯誤的錯誤回應
 err-tracker-unknown = 追蹤器回報了未知的錯誤
 
 # Flood Protection Errors

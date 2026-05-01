@@ -828,6 +828,8 @@ pub const LOG_TRACKER_REGISTRATION_REFRESHED: &str = "Tracker refreshed";
 pub const LOG_TRACKER_REGISTRATION_REGISTER_REJECTED: &str = "Tracker rejected register";
 pub const LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE: &str =
     "Tracker sent unexpected response to TrackerServerRegister";
+pub const LOG_TRACKER_REGISTRATION_INVALID_ERROR_KIND: &str =
+    "Tracker sent malformed error_kind, treating as protocol error";
 
 // Panic messages for the tracker publisher's sync-lock acquisitions.
 // These only ever surface if a lock is actually poisoned (a panic

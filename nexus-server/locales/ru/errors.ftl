@@ -296,6 +296,7 @@ err-tracker-unauthorized = Трекер отклонил регистрацию
 err-tracker-rate-limited = Ограничено по скорости трекером
 err-tracker-capacity = Трекер достиг максимальной вместимости
 err-tracker-invalid = Трекер отклонил регистрацию как недействительную
+err-tracker-protocol-error = Трекер отправил искажённый ответ об ошибке
 err-tracker-unknown = Трекер сообщил о неизвестной ошибке
 
 # Flood Protection Errors

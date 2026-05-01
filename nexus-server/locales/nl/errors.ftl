@@ -296,6 +296,7 @@ err-tracker-unauthorized = Tracker heeft registratie geweigerd
 err-tracker-rate-limited = Snelheidsbeperkt door tracker
 err-tracker-capacity = Tracker heeft zijn capaciteit bereikt
 err-tracker-invalid = Tracker heeft registratie als ongeldig geweigerd
+err-tracker-protocol-error = Tracker stuurde een misvormde foutreactie
 err-tracker-unknown = Tracker meldde een onbekende fout
 
 # Flood Protection Errors

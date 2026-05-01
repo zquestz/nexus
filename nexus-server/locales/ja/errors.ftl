@@ -296,6 +296,7 @@ err-tracker-unauthorized = トラッカーが登録を拒否しました
 err-tracker-rate-limited = トラッカーによりレート制限されました
 err-tracker-capacity = トラッカーが容量に達しました
 err-tracker-invalid = トラッカーが登録を無効として拒否しました
+err-tracker-protocol-error = トラッカーが不正な形式のエラー応答を送信しました
 err-tracker-unknown = トラッカーが不明なエラーを報告しました
 
 # Flood Protection Errors
