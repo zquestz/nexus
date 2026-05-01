@@ -23,7 +23,7 @@ use nexus_common::io::{
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 use nexus_common::{
-    ERROR_KIND_INVALID, ERROR_KIND_TRACKER_CONNECTION_FAILED, ERROR_KIND_TRACKER_CONNECTION_LOST,
+    ERROR_KIND_TRACKER_CONNECTION_FAILED, ERROR_KIND_TRACKER_CONNECTION_LOST,
     ERROR_KIND_TRACKER_DB_FAILED, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
     ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH, ERROR_KIND_TRACKER_HANDSHAKE_FAILED,
     ERROR_KIND_TRACKER_TLS_FAILED, TRACKER_PROTOCOL_VERSION, is_unrecoverable_error_kind,
@@ -71,10 +71,11 @@ const BACKOFF_CAP: Duration = Duration::from_secs(300);
 /// Per-attempt jitter spread (±25%).
 const BACKOFF_JITTER_PCT: f64 = 0.25;
 
-/// Read timeout for tracker register responses. Generous enough for
-/// normal latency; tight enough to recover from a wedged connection
-/// instead of hanging until the outer 60s frame-completion timeout.
-const REGISTER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Read timeout for tracker responses (both `HandshakeResponse` and
+/// `TrackerServerRegisterResponse`). Generous enough for normal
+/// latency; tight enough to recover from a wedged connection instead
+/// of hanging until the outer 60s frame-completion timeout.
+const TRACKER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Run the publisher task for one tracker. Loops forever (with
 /// backoff) until cancelled by the manager, or exits early on an
@@ -277,13 +278,31 @@ async fn attempt_connection_cycle(
         return CycleOutcome::Transient;
     }
 
-    let server_reported = match read_handshake_response(&mut reader).await {
-        Ok(fp) => fp,
-        Err(e) => {
+    // A wedged tracker that completes TLS but never sends the
+    // `HandshakeResponse` would otherwise park us in `await` forever
+    // — wrap the read in the same per-call deadline used for the
+    // register response.
+    let server_reported = match tokio::time::timeout(
+        TRACKER_RESPONSE_TIMEOUT,
+        read_handshake_response(&mut reader),
+    )
+    .await
+    {
+        Ok(Ok(fp)) => fp,
+        Ok(Err(e)) => {
             warn!(
                 id = record.id,
                 name = %record.name,
                 err = %e,
+                "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR
+            );
+            set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
+            return CycleOutcome::Transient;
+        }
+        Err(_elapsed) => {
+            warn!(
+                id = record.id,
+                name = %record.name,
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR
             );
             set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
@@ -438,7 +457,7 @@ where
 
         // Read the response with a tight per-refresh timeout.
         let response = match tokio::time::timeout(
-            REGISTER_RESPONSE_TIMEOUT,
+            TRACKER_RESPONSE_TIMEOUT,
             read_tracker_server_message_with_full_timeout(reader, None, None),
         )
         .await
@@ -502,7 +521,24 @@ where
                 error_kind,
                 ..
             } => {
-                let kind = error_kind.unwrap_or_else(|| ERROR_KIND_INVALID.to_string());
+                // Outcome decision happens against the *raw* tracker
+                // input: only an explicit, recognized unrecoverable
+                // kind kills the task. A missing or unknown kind is a
+                // protocol violation by the tracker (or a forward-
+                // compat kind we don't know yet) — treat as transient
+                // so a misbehaving tracker can't permanently take us
+                // out without admin intervention.
+                let outcome = match error_kind.as_deref() {
+                    Some(k) if is_unrecoverable_error_kind(k) => CycleOutcome::Unrecoverable,
+                    _ => CycleOutcome::Transient,
+                };
+                // Default for `last_error_kind` when the tracker
+                // omitted one: surface "connection lost" to the admin
+                // (semantically the wire ate the response) rather
+                // than "invalid", which would falsely imply the
+                // tracker validated and rejected our payload.
+                let kind =
+                    error_kind.unwrap_or_else(|| ERROR_KIND_TRACKER_CONNECTION_LOST.to_string());
                 // Tracker-supplied `error` text (already localized by
                 // the tracker to whatever locale we sent in the
                 // register; we hard-code `"en"`) is logged for the
@@ -518,11 +554,7 @@ where
                     "{}", LOG_TRACKER_REGISTRATION_REGISTER_REJECTED
                 );
                 set_status_error(status, &kind);
-                return if is_unrecoverable_error_kind(&kind) {
-                    CycleOutcome::Unrecoverable
-                } else {
-                    CycleOutcome::Transient
-                };
+                return outcome;
             }
             // Any other variant on the register port is a protocol
             // violation by the tracker. Treat as transient — likely

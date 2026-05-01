@@ -11,10 +11,13 @@ pub const MAX_ERROR_LENGTH: usize = 2048;
 /// Maximum length for machine-readable error kind codes (bytes)
 ///
 /// These are short, snake_case identifiers used for programmatic error handling.
-/// Examples: "not_found", "permission", "hash_mismatch", "protocol_error"
+/// Examples: "not_found", "permission", "hash_mismatch", "protocol_error",
+/// "tracker_fingerprint_intercepted".
 ///
-/// Current longest value is "protocol_error" (14 chars), so 16 provides margin.
-pub const MAX_ERROR_KIND_LENGTH: usize = 16;
+/// Current longest value is "tracker_fingerprint_intercepted" (31 chars), so
+/// 32 sits exactly at that bound. Bumping if a longer kind is added is fine —
+/// frame-size budgets recompute at compile time off this constant.
+pub const MAX_ERROR_KIND_LENGTH: usize = 32;
 
 /// Maximum length for command field in Error messages (bytes)
 ///
