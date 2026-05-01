@@ -117,14 +117,27 @@ impl TrackerManager {
     /// Abort the existing task (if any) and spawn a fresh one if the
     /// new record is enabled. Called by the `TrackerUpdate` handler
     /// after the DB update succeeds.
+    ///
+    /// The abort and the optional respawn happen under a single map
+    /// lock so a concurrent `spawn` / `replace` / `terminate` for the
+    /// same id cannot interleave between the two halves.
     pub fn replace(&self, record: TrackerRecord) {
-        // Always terminate the old task first, regardless of whether
-        // the new record is enabled. No-op if no old task existed.
-        self.terminate(record.id);
+        let mut map = self
+            .inner
+            .lock()
+            .expect(EXPECT_TRACKER_MANAGER_LOCK_POISONED);
+        if let Some(old) = map.remove(&record.id) {
+            old.join.abort();
+            debug!(
+                id = record.id,
+                name = %old.name,
+                "{}", LOG_TRACKER_REGISTRATION_TASK_ABORTED
+            );
+        }
         // Spawn fresh only if still enabled. Disabled record means the
         // admin paused this tracker; leave the slot empty.
         if record.enabled {
-            self.spawn_internal(record);
+            self.spawn_locked(&mut map, record);
         }
     }
 
@@ -208,11 +221,23 @@ impl TrackerManager {
         }
     }
 
-    /// Internal spawn helper. Consumes `record` and inserts a new
-    /// handle into the map. If a handle already existed for this id
-    /// (which shouldn't happen — callers terminate first), the old
-    /// one is aborted.
+    /// Internal spawn helper that acquires the map lock itself. Used
+    /// by [`Self::spawn`] and [`Self::bootstrap`] where the caller
+    /// doesn't already hold the lock.
     fn spawn_internal(&self, record: TrackerRecord) {
+        let mut map = self
+            .inner
+            .lock()
+            .expect(EXPECT_TRACKER_MANAGER_LOCK_POISONED);
+        self.spawn_locked(&mut map, record);
+    }
+
+    /// Spawn-and-insert under an already-held map lock. Used by
+    /// [`Self::replace`] to perform abort + respawn atomically.
+    /// If a handle already existed for this id (which shouldn't
+    /// happen — callers either terminate first or hold the lock
+    /// across a remove), the old one is aborted defensively.
+    fn spawn_locked(&self, map: &mut HashMap<i64, TrackerHandle>, record: TrackerRecord) {
         let id = record.id;
         let name = record.name.clone();
         let status = Arc::new(RwLock::new(TrackerStatus::default()));
@@ -225,21 +250,10 @@ impl TrackerManager {
             task::run(record, task_status, task_context).await;
         });
 
-        let mut map = self
-            .inner
-            .lock()
-            .expect(EXPECT_TRACKER_MANAGER_LOCK_POISONED);
-        if let Some(old) = map.insert(
-            id,
-            TrackerHandle {
-                join,
-                status: Arc::clone(&status),
-                name: name.clone(),
-            },
-        ) {
+        if let Some(old) = map.insert(id, TrackerHandle { join, status, name }) {
             // Defensive: shouldn't happen given the documented call
-            // pattern (callers call `terminate` first), but if it
-            // does, the old task gets aborted to avoid a leak.
+            // pattern, but if it does, the old task gets aborted to
+            // avoid a leak.
             warn!(
                 id = id,
                 name = %old.name,
