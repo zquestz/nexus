@@ -451,6 +451,13 @@ pub struct ReceivedTrackerClientMessage {
     pub message: TrackerClientMessage,
 }
 
+/// Received tracker server message with its message ID.
+#[derive(Debug)]
+pub struct ReceivedTrackerServerMessage {
+    pub message_id: MessageId,
+    pub message: TrackerServerMessage,
+}
+
 /// Get the type name for a tracker client message (matches enum variant).
 #[must_use]
 pub fn tracker_client_message_type(message: &TrackerClientMessage) -> &'static str {
@@ -482,6 +489,27 @@ where
 {
     let message_id = MessageId::new();
     let message_type = tracker_server_message_type(message);
+    let payload =
+        serde_json::to_vec(message).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let frame = RawFrame::new(message_id, message_type.to_string(), payload);
+    writer.write_frame(&frame).await.map_err(io::Error::from)?;
+    Ok(message_id)
+}
+
+/// Send a `TrackerClientMessage` to the tracker with a fresh message ID.
+///
+/// Used by the publisher task in `nexus-server` (the BBS server acting
+/// as a tracker client) and by client-side code that queries trackers
+/// for server listings.
+pub async fn send_tracker_client_message<W>(
+    writer: &mut FrameWriter<W>,
+    message: &TrackerClientMessage,
+) -> io::Result<MessageId>
+where
+    W: AsyncWriteExt + Unpin,
+{
+    let message_id = MessageId::new();
+    let message_type = tracker_client_message_type(message);
     let payload =
         serde_json::to_vec(message).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     let frame = RawFrame::new(message_id, message_type.to_string(), payload);
@@ -534,6 +562,59 @@ fn parse_tracker_client_frame(frame: RawFrame) -> io::Result<ReceivedTrackerClie
     }
 
     Ok(ReceivedTrackerClientMessage {
+        message_id: frame.message_id,
+        message,
+    })
+}
+
+/// Read a `TrackerServerMessage` with idle + frame timeouts.
+///
+/// `idle_timeout` overrides the default wait-for-first-byte (30s);
+/// `frame_timeout` overrides the default frame-completion timeout (60s).
+/// Returns `Ok(None)` if the connection was cleanly closed.
+///
+/// Used by the publisher task in `nexus-server` to read tracker
+/// responses, and by client-side code that queries trackers.
+pub async fn read_tracker_server_message_with_full_timeout<R>(
+    reader: &mut FrameReader<R>,
+    idle_timeout: Option<Duration>,
+    frame_timeout: Option<Duration>,
+) -> Result<Option<ReceivedTrackerServerMessage>, FrameError>
+where
+    R: AsyncReadExt + Unpin,
+{
+    let idle = idle_timeout.unwrap_or(DEFAULT_IDLE_TIMEOUT);
+    let frame_time = frame_timeout.unwrap_or(DEFAULT_FRAME_TIMEOUT);
+
+    let Some(frame) = reader
+        .read_frame_with_full_timeout(idle, frame_time)
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    parse_tracker_server_frame(frame)
+        .map(Some)
+        .map_err(|e| FrameError::InvalidJson(e.to_string()))
+}
+
+/// Parse a raw frame into a `ReceivedTrackerServerMessage`.
+fn parse_tracker_server_frame(frame: RawFrame) -> io::Result<ReceivedTrackerServerMessage> {
+    let message: TrackerServerMessage = serde_json::from_slice(&frame.payload)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("invalid JSON: {e}")))?;
+
+    let expected_type = tracker_server_message_type(&message);
+    if frame.message_type != expected_type {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "frame type mismatch: frame says '{}' but JSON is '{}'",
+                frame.message_type, expected_type
+            ),
+        ));
+    }
+
+    Ok(ReceivedTrackerServerMessage {
         message_id: frame.message_id,
         message,
     })

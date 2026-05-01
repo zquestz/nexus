@@ -11,6 +11,7 @@ pub mod flood;
 pub mod handlers;
 pub mod i18n;
 pub mod ip_rule_cache;
+pub mod tracker;
 pub mod transfers;
 pub mod upnp;
 pub mod users;

@@ -20,6 +20,28 @@ impl UserManager {
         users.values().cloned().collect()
     }
 
+    /// Count of distinct online users for the protocol-level
+    /// `user_count` field (`UserList` and tracker registration both
+    /// use this semantic).
+    ///
+    /// Per the protocol spec: regular accounts with multiple sessions
+    /// collapse to one (single nickname); shared / guest sessions
+    /// count individually (each has its own nickname); pre-login
+    /// connections are excluded (they aren't in `UserManager`).
+    ///
+    /// Saturating cast to `u32` — `UserSession`s in memory cap well
+    /// below 2³² in any realistic deployment.
+    #[must_use]
+    #[allow(dead_code)] // dead until chunk 4 (publisher task consumes it)
+    pub async fn user_count(&self) -> u32 {
+        let users = self.users.read().await;
+        let mut nicknames = std::collections::HashSet::new();
+        for u in users.values() {
+            nicknames.insert(u.nickname.to_lowercase());
+        }
+        u32::try_from(nicknames.len()).unwrap_or(u32::MAX)
+    }
+
     /// Get a user by session ID
     pub async fn get_user_by_session_id(&self, session_id: u32) -> Option<UserSession> {
         let users = self.users.read().await;
