@@ -23,34 +23,33 @@ fn absolute_data_dir(s: &str) -> Result<PathBuf, String> {
 }
 
 /// Get default data directory help text for the current platform.
-fn default_data_dir_help() -> String {
+fn default_data_dir_help() -> &'static str {
     #[cfg(target_os = "linux")]
-    return "Data directory (default: ~/.local/share/nexusd/)".to_string();
+    return "Data directory (default: ~/.local/share/nexusd/)";
 
     #[cfg(target_os = "macos")]
-    return "Data directory (default: ~/Library/Application Support/nexusd/)".to_string();
+    return "Data directory (default: ~/Library/Application Support/nexusd/)";
 
     #[cfg(target_os = "windows")]
-    return "Data directory (default: %APPDATA%\\nexusd\\)".to_string();
+    return "Data directory (default: %APPDATA%\\nexusd\\)";
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    return "Data directory (overrides platform default)".to_string();
+    return "Data directory (overrides platform default)";
 }
 
 /// Get default file root help text for the current platform.
-fn default_file_root_help() -> String {
+fn default_file_root_help() -> &'static str {
     #[cfg(target_os = "linux")]
-    return "File area root directory (default: ~/.local/share/nexusd/files/)".to_string();
+    return "File area root directory (default: ~/.local/share/nexusd/files/)";
 
     #[cfg(target_os = "macos")]
-    return "File area root directory (default: ~/Library/Application Support/nexusd/files/)"
-        .to_string();
+    return "File area root directory (default: ~/Library/Application Support/nexusd/files/)";
 
     #[cfg(target_os = "windows")]
-    return "File area root directory (default: %APPDATA%\\nexusd\\files\\)".to_string();
+    return "File area root directory (default: %APPDATA%\\nexusd\\files\\)";
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    return "File area root directory (overrides platform default)".to_string();
+    return "File area root directory (overrides platform default)";
 }
 
 /// Nexus BBS Server

@@ -44,8 +44,9 @@ use crate::constants::{
     EXPECT_TRACKER_STATUS_LOCK_POISONED, LOG_TRACKER_REGISTRATION_BACKOFF,
     LOG_TRACKER_REGISTRATION_BUILD_PAYLOAD_FAILED,
     LOG_TRACKER_REGISTRATION_CLOSED_AWAITING_RESPONSE, LOG_TRACKER_REGISTRATION_CLOSED_MID_IDLE,
-    LOG_TRACKER_REGISTRATION_EXITING, LOG_TRACKER_REGISTRATION_HANDSHAKE_CLOSED,
-    LOG_TRACKER_REGISTRATION_HANDSHAKE_REJECTED, LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR,
+    LOG_TRACKER_REGISTRATION_CONNECTED, LOG_TRACKER_REGISTRATION_EXITING,
+    LOG_TRACKER_REGISTRATION_HANDSHAKE_CLOSED, LOG_TRACKER_REGISTRATION_HANDSHAKE_REJECTED,
+    LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR,
     LOG_TRACKER_REGISTRATION_HANDSHAKE_UNEXPECTED, LOG_TRACKER_REGISTRATION_INVALID_ERROR_KIND,
     LOG_TRACKER_REGISTRATION_INVALID_HOST, LOG_TRACKER_REGISTRATION_NO_PEER_CERTS,
     LOG_TRACKER_REGISTRATION_READ_ERROR_MID_IDLE, LOG_TRACKER_REGISTRATION_REFRESHED,
@@ -610,6 +611,10 @@ where
                 let interval = refresh_interval
                     .unwrap_or(300)
                     .max(MIN_REFRESH_INTERVAL_SECS);
+                let was_connected = status
+                    .read()
+                    .expect(EXPECT_TRACKER_STATUS_LOCK_POISONED)
+                    .connected;
                 {
                     let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
                     s.connected = true;
@@ -617,12 +622,26 @@ where
                     s.last_error_kind = None;
                     s.refresh_interval = Some(interval);
                 }
-                debug!(
-                    id = record.id,
-                    name = %record.name,
-                    refresh_interval = interval,
-                    "{}", LOG_TRACKER_REGISTRATION_REFRESHED
-                );
+                // First successful refresh after task start (or after a
+                // reconnect post-error) gets info-level so an operator
+                // running at info sees per-tracker confirmation. Steady-
+                // state refreshes stay at debug — at scale they would
+                // otherwise dominate the log volume.
+                if was_connected {
+                    debug!(
+                        id = record.id,
+                        name = %record.name,
+                        refresh_interval = interval,
+                        "{}", LOG_TRACKER_REGISTRATION_REFRESHED
+                    );
+                } else {
+                    info!(
+                        id = record.id,
+                        name = %record.name,
+                        refresh_interval = interval,
+                        "{}", LOG_TRACKER_REGISTRATION_CONNECTED
+                    );
+                }
                 sleep_for = Duration::from_secs(u64::from(interval));
             }
             TrackerServerMessage::TrackerServerRegisterResponse {

@@ -845,7 +845,7 @@ pub const LOG_TRACKER_DELETE_SUCCESS: &str = "TrackerDelete: success";
 
 // --- Tracker Registration ---
 // Manager
-pub const LOG_TRACKER_REGISTRATION_SPAWNED: &str = "Tracker registration started";
+pub const LOG_TRACKER_REGISTRATION_BOOTSTRAP_DONE: &str = "Tracker bootstrap complete";
 pub const LOG_TRACKER_REGISTRATION_SPAWN_SKIPPED: &str = "Tracker disabled, skipping registration";
 pub const LOG_TRACKER_REGISTRATION_TASK_ABORTED: &str = "Tracker registration stopped";
 pub const LOG_TRACKER_REGISTRATION_HANDLE_REPLACED: &str =
@@ -900,6 +900,7 @@ pub const LOG_TRACKER_REGISTRATION_RESPONSE_READ_ERROR: &str =
 pub const LOG_TRACKER_REGISTRATION_RESPONSE_TIMEOUT: &str =
     "Tracker timeout: TrackerServerRegisterResponse";
 pub const LOG_TRACKER_REGISTRATION_REFRESHED: &str = "Tracker refreshed";
+pub const LOG_TRACKER_REGISTRATION_CONNECTED: &str = "Tracker connected";
 pub const LOG_TRACKER_REGISTRATION_REGISTER_REJECTED: &str = "Tracker rejected register";
 pub const LOG_TRACKER_REGISTRATION_INVALID_ERROR_KIND: &str =
     "Tracker sent malformed error_kind, treating as protocol error";

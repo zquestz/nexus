@@ -23,18 +23,18 @@ fn absolute_data_dir(s: &str) -> Result<PathBuf, String> {
 }
 
 /// Get default data directory help text for the current platform.
-fn default_data_dir_help() -> String {
+fn default_data_dir_help() -> &'static str {
     #[cfg(target_os = "linux")]
-    return "Data directory (default: ~/.local/share/nexus-trackerd/)".to_string();
+    return "Data directory (default: ~/.local/share/nexus-trackerd/)";
 
     #[cfg(target_os = "macos")]
-    return "Data directory (default: ~/Library/Application Support/nexus-trackerd/)".to_string();
+    return "Data directory (default: ~/Library/Application Support/nexus-trackerd/)";
 
     #[cfg(target_os = "windows")]
-    return "Data directory (default: %APPDATA%\\nexus-trackerd\\)".to_string();
+    return "Data directory (default: %APPDATA%\\nexus-trackerd\\)";
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
-    return "Data directory (overrides platform default)".to_string();
+    return "Data directory (overrides platform default)";
 }
 
 /// Which password to operate on with `set-password` / `clear-password`.

@@ -24,7 +24,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncRead, AsyncWrite, BufReader};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, info, warn};
@@ -430,7 +430,7 @@ async fn send_handshake_error<W>(
     command: Option<String>,
     message: String,
 ) where
-    W: AsyncWriteExt + Unpin,
+    W: AsyncWrite + Unpin,
 {
     let response = ServerMessage::Error { message, command };
     let _ = send_server_message(writer, &response).await;
@@ -443,7 +443,7 @@ async fn send_tracker_error<W>(
     command: Option<String>,
     message: String,
 ) where
-    W: AsyncWriteExt + Unpin,
+    W: AsyncWrite + Unpin,
 {
     let response = TrackerServerMessage::Error { message, command };
     let _ = send_tracker_server_message(writer, &response).await;

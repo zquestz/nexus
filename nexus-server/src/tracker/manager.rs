@@ -27,8 +27,8 @@ use super::status::TrackerStatus;
 use super::task;
 use crate::constants::{
     EXPECT_TRACKER_MANAGER_LOCK_POISONED, EXPECT_TRACKER_STATUS_LOCK_POISONED,
-    LOG_TRACKER_REGISTRATION_HANDLE_REPLACED, LOG_TRACKER_REGISTRATION_SPAWN_SKIPPED,
-    LOG_TRACKER_REGISTRATION_SPAWNED, LOG_TRACKER_REGISTRATION_TASK_ABORTED,
+    LOG_TRACKER_REGISTRATION_BOOTSTRAP_DONE, LOG_TRACKER_REGISTRATION_HANDLE_REPLACED,
+    LOG_TRACKER_REGISTRATION_SPAWN_SKIPPED, LOG_TRACKER_REGISTRATION_TASK_ABORTED,
 };
 use crate::db::TrackerRecord;
 
@@ -92,10 +92,20 @@ impl TrackerManager {
     /// that fails to connect just transitions to backoff/retry.
     pub async fn bootstrap(&self) -> Result<(), sqlx::Error> {
         let rows = self.context.db.trackers.list_all().await?;
-        let enabled = rows.into_iter().filter(|r| r.enabled);
-        for record in enabled {
-            self.spawn_internal(record);
+        let total = rows.len();
+        let mut spawned = 0usize;
+        for record in rows {
+            if record.enabled {
+                self.spawn_internal(record);
+                spawned += 1;
+            }
         }
+        info!(
+            spawned = spawned,
+            skipped = total - spawned,
+            "{}",
+            LOG_TRACKER_REGISTRATION_BOOTSTRAP_DONE
+        );
         Ok(())
     }
 
@@ -243,8 +253,6 @@ impl TrackerManager {
         let status = Arc::new(RwLock::new(TrackerStatus::default()));
         let task_status = Arc::clone(&status);
         let task_context = Arc::clone(&self.context);
-
-        info!(id = id, name = %name, "{}", LOG_TRACKER_REGISTRATION_SPAWNED);
 
         let join = tokio::spawn(async move {
             task::run(record, task_status, task_context).await;
