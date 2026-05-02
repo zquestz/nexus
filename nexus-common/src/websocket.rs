@@ -34,6 +34,20 @@ use tokio_tungstenite::tungstenite::protocol::Message;
 /// TCP streaming behavior.
 pub const MAX_WS_MESSAGE_SIZE: usize = 1024 * 1024;
 
+/// Error message for an empty WebSocket Binary frame.
+///
+/// Our protocol embeds framed JSON inside every Binary frame, so an
+/// empty Binary carries no payload and is never produced by a
+/// legitimate client. WS-level keepalives use the dedicated Ping/Pong
+/// opcodes (handled automatically by `tokio-tungstenite`) — empty
+/// Binary is not a keepalive variant. Treating it as a protocol
+/// violation gives developers writing WS clients a clear diagnostic
+/// instead of an opaque "connection dropped" (which is what would
+/// happen if we surfaced zero bytes filled — `AsyncRead` consumers
+/// interpret that as EOF).
+pub const ERR_WS_EMPTY_BINARY_FRAME: &str =
+    "WebSocket empty Binary frame is not a valid protocol message";
+
 /// Adapter that makes a WebSocket stream behave like an `AsyncRead +
 /// AsyncWrite` byte stream.
 ///
@@ -99,6 +113,9 @@ where
         match inner.poll_next(cx) {
             Poll::Ready(Some(Ok(msg))) => match msg {
                 Message::Binary(data) => {
+                    if data.is_empty() {
+                        return Poll::Ready(Err(io::Error::other(ERR_WS_EMPTY_BINARY_FRAME)));
+                    }
                     if data.len() > MAX_WS_MESSAGE_SIZE {
                         return Poll::Ready(Err(io::Error::other(format!(
                             "WebSocket message too large: {} bytes (max {})",
@@ -478,15 +495,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_empty_binary_message() {
+    async fn test_empty_binary_message_is_protocol_error() {
+        // Empty Binary frames have no payload — our protocol can't
+        // produce one, so we treat it as a protocol violation rather
+        // than a no-op (which would look like EOF to AsyncRead
+        // consumers and silently drop the connection).
         let mock = MockWebSocket::new(vec![Message::Binary(vec![].into())]);
         let mut adapter = WebSocketAdapter::new(mock);
 
         let mut buf = [0u8; 10];
-        let n = adapter.read(&mut buf).await.unwrap();
-
-        // Empty message: 0 bytes read, but not EOF.
-        assert_eq!(n, 0);
+        let err = adapter
+            .read(&mut buf)
+            .await
+            .expect_err("empty Binary frame must surface as an I/O error");
+        assert!(
+            err.to_string().contains(ERR_WS_EMPTY_BINARY_FRAME),
+            "unexpected error: {err}"
+        );
     }
 
     #[tokio::test]
