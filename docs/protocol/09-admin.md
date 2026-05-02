@@ -1110,13 +1110,13 @@ A registration cycle progresses through:
 
 Stable machine-readable identifiers in `TrackerInfo.last_error_kind`.
 The matching `TrackerInfo.last_error` is pre-translated to the admin's
-locale. Kinds are split by *who set them* — the BBS-side registration
+locale. Kinds are split by _who set them_ — the BBS-side registration
 task itself, or the tracker daemon echoing back via
 `TrackerServerRegisterResponse.error_kind`.
 
 #### BBS-internal kinds
 
-Set by the registration task's own state machine when *our* code
+Set by the registration task's own state machine when _our_ code
 detects a problem (network failure, fingerprint mismatch, malformed
 tracker response). The tracker daemon never produces these.
 
@@ -1140,12 +1140,12 @@ validates the wire format (snake_case, length-bounded) before
 storing; malformed kinds are replaced with `tracker_protocol_error`
 above.
 
-| Kind           | Recoverable | Meaning                                              |
-| -------------- | :---------: | ---------------------------------------------------- |
-| `unauthorized` |     No      | Tracker rejected the registration password           |
-| `rate_limited` |     Yes     | Tracker rate-limited us                              |
-| `capacity`     |     Yes     | Tracker is full                                      |
-| `invalid`      |     No      | Tracker rejected the registration as malformed      |
+| Kind           | Recoverable | Meaning                                        |
+| -------------- | :---------: | ---------------------------------------------- |
+| `unauthorized` |     No      | Tracker rejected the registration password     |
+| `rate_limited` |     Yes     | Tracker rate-limited us                        |
+| `capacity`     |     Yes     | Tracker is full                                |
+| `invalid`      |     No      | Tracker rejected the registration as malformed |
 
 A future tracker version may introduce a new `error_kind` we don't
 recognize. As long as it passes the wire-format check, the publisher
