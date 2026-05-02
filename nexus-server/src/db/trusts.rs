@@ -6,7 +6,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use ipnet::IpNet;
 use sqlx::sqlite::SqlitePool;
 
-use crate::constants::{ERR_SYSTEM_TIME_BEFORE_EPOCH, ERR_VALID_IP_PREFIX};
+use crate::constants::{ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK, ERR_VALID_IP_PREFIX};
 use crate::db::sql;
 
 /// A trust record from the database
@@ -63,7 +63,7 @@ impl TrustDb {
     fn now() -> i64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH)
+            .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK)
             .as_secs() as i64
     }
 

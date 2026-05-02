@@ -5,7 +5,7 @@
 
 use std::net::{IpAddr, SocketAddr};
 
-use crate::constants::ERR_SYSTEM_TIME_AFTER_EPOCH;
+use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
 use uuid::Uuid;
 
 /// Represents a user's active voice session
@@ -44,7 +44,7 @@ impl VoiceSession {
             target,
             joined_at: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .expect(ERR_SYSTEM_TIME_AFTER_EPOCH)
+                .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK)
                 .as_secs() as i64,
             udp_addr: None,
             session_id,

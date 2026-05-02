@@ -486,22 +486,14 @@ pub const ERR_TRANSFER_TRACKER_LOCK: &str = "transfer tracker lock";
 // =============================================================================
 
 /// Panic message: `SystemTime::now().duration_since(UNIX_EPOCH)` failed
-/// (system clock is set before 1970-01-01). Used for ban / trust /
-/// duration / IP-rule-cache timestamps; the daemon can't sensibly
-/// continue with a clock skewed that far back.
-pub const ERR_SYSTEM_TIME_BEFORE_EPOCH: &str = "system time before Unix epoch";
-
-/// Panic message variant of [`ERR_SYSTEM_TIME_BEFORE_EPOCH`] with an
-/// operator hint about checking the system clock. Used at the
-/// `users::user::User::age_seconds()` site, which is hit early enough
-/// that the hint is actionable.
+/// (system clock is set before 1970-01-01). Used everywhere the daemon
+/// derives a Unix-epoch timestamp — bans, trusts, duration parsing,
+/// IP-rule-cache, voice session timestamps, handler-level uptime /
+/// status. The daemon can't sensibly continue with a clock skewed that
+/// far back; the operator hint is actionable rather than a generic
+/// "before epoch" message.
 pub const ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK: &str =
     "system time is before Unix epoch — check system clock configuration";
-
-/// Panic message: alternate wording for the same condition as
-/// [`ERR_SYSTEM_TIME_BEFORE_EPOCH`], used by voice and the
-/// handler-level uptime / status timestamps.
-pub const ERR_SYSTEM_TIME_AFTER_EPOCH: &str = "system time should be after Unix epoch";
 
 /// Panic message: building an `IpNet` from a bare IP returned an error
 /// even though the IP came directly from a parsed `IpAddr`. Used by

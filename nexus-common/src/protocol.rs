@@ -1017,7 +1017,7 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
         /// Updated tracker's id (for the toast message)
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<i64>,
         /// Updated tracker's name (for the toast message)
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1585,19 +1585,17 @@ pub struct TrackerInfo {
 impl std::fmt::Debug for TrackerInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Redact the registration password — it's a shared secret that
-        // never belongs in operator logs. `None` is shown verbatim so
-        // a reader can distinguish "open tracker" from "password set
-        // but redacted".
-        let password: &dyn std::fmt::Debug = match &self.password {
-            Some(_) => &"<REDACTED>",
-            None => &Option::<String>::None,
-        };
+        // never belongs in operator logs. The `Option` wrapper is
+        // preserved on the redacted path so a reader can distinguish
+        // `Some("<REDACTED>")` (password set, hidden) from `None`
+        // (open tracker, no password).
+        let password = self.password.as_ref().map(|_| "<REDACTED>");
         f.debug_struct("TrackerInfo")
             .field("id", &self.id)
             .field("address", &self.address)
             .field("port", &self.port)
             .field("fingerprint", &self.fingerprint)
-            .field("password", password)
+            .field("password", &password)
             .field("name", &self.name)
             .field("enabled", &self.enabled)
             .field("created_at", &self.created_at)

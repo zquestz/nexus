@@ -11,7 +11,7 @@ use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use super::session::VoiceSession;
-use crate::constants::ERR_SYSTEM_TIME_AFTER_EPOCH;
+use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
 
 /// Information needed to send VoiceUserLeft notifications after removing a session.
 ///
@@ -296,7 +296,7 @@ impl VoiceRegistry {
     pub async fn find_stale_sessions(&self, timeout_secs: u64) -> Vec<Uuid> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .expect(ERR_SYSTEM_TIME_AFTER_EPOCH)
+            .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK)
             .as_secs() as i64;
 
         let sessions = self.sessions.read().await;
