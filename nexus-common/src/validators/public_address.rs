@@ -71,7 +71,7 @@ pub enum PublicAddressError {
 ///
 /// Returns a `PublicAddressError` variant describing the validation failure.
 pub fn validate_public_address(addr: &str) -> Result<(), PublicAddressError> {
-    validate_and_normalize_public_address(addr).map(|_| ())
+    validate_and_classify_public_address(addr).map(|_| ())
 }
 
 /// Validate a public address string and return its normalized form.
