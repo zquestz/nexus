@@ -1236,4 +1236,143 @@ mod tests {
         let _ = task.await;
         mock.stop().await;
     }
+
+    #[tokio::test]
+    async fn server_info_changes_propagate_to_next_refresh() {
+        // Verifies the propagation contract documented on
+        // `Database::tracker_registration_fields`: every refresh reads
+        // fresh values from the DB, so an admin's `ServerInfoUpdate`
+        // (or guest-account toggle) reaches the tracker on the next
+        // cycle without any explicit signal. Catches future regressions
+        // that "optimize" by caching across refreshes.
+        let mock = MockTracker::start(MockBehavior {
+            register_response: RegisterPolicy::Success {
+                refresh_interval: 1,
+            },
+            ..Default::default()
+        })
+        .await;
+        let captured = Arc::clone(&mock.behavior.captured_registers);
+        let (db, context) = setup_context().await;
+        let record = seed_tracker(&db, mock.addr, None, None).await;
+
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let task = tokio::spawn(run(
+            record.clone(),
+            Arc::clone(&status),
+            Arc::clone(&context),
+        ));
+
+        // Wait for register #1 (with the original setup_context values).
+        wait_for_capture_count(&captured, 1, Duration::from_secs(5))
+            .await
+            .expect("register #1 should arrive within 5s");
+        {
+            let registers = captured.lock().expect("capture lock");
+            match &registers[0] {
+                TrackerClientMessage::TrackerServerRegister {
+                    name,
+                    description,
+                    address,
+                    allows_guest,
+                    ..
+                } => {
+                    assert_eq!(name, "Test BBS");
+                    assert_eq!(description.as_deref(), Some("a test server"));
+                    assert_eq!(address.as_deref(), Some("bbs.example.com"));
+                    assert!(!allows_guest, "guest should be disabled by default");
+                }
+                other => panic!("expected TrackerServerRegister, got {other:?}"),
+            }
+        }
+
+        // Mutate all four propagating fields.
+        db.config
+            .set_server_name("Renamed BBS")
+            .await
+            .expect("set server name");
+        db.config
+            .set_server_description("renamed description")
+            .await
+            .expect("set description");
+        db.config
+            .set_public_address("renamed.example.com")
+            .await
+            .expect("set public address");
+        db.users
+            .update_user(crate::db::UpdateUserParams {
+                username: "guest",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: Some(true),
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+            })
+            .await
+            .expect("enable guest");
+
+        // Wait for a register that arrived AFTER our mutations. The
+        // refresh fires every 1s, so the next register reflects the
+        // post-mutation DB state. We need at least 2 captures total.
+        wait_for_capture_count(&captured, 2, Duration::from_secs(5))
+            .await
+            .expect("register #2 should arrive within 5s of refresh");
+
+        // Inspect the most recent capture: every field should reflect
+        // the updated DB values.
+        {
+            let registers = captured.lock().expect("capture lock");
+            let last = registers.last().expect("at least one capture");
+            match last {
+                TrackerClientMessage::TrackerServerRegister {
+                    name,
+                    description,
+                    address,
+                    allows_guest,
+                    ..
+                } => {
+                    assert_eq!(name, "Renamed BBS", "server name should propagate");
+                    assert_eq!(
+                        description.as_deref(),
+                        Some("renamed description"),
+                        "description should propagate"
+                    );
+                    assert_eq!(
+                        address.as_deref(),
+                        Some("renamed.example.com"),
+                        "public address should propagate"
+                    );
+                    assert!(allows_guest, "guest enable should propagate");
+                }
+                other => panic!("expected TrackerServerRegister, got {other:?}"),
+            }
+        }
+
+        task.abort();
+        let _ = task.await;
+        mock.stop().await;
+    }
+
+    /// Wait until `captured` contains at least `target` entries, or
+    /// the timeout elapses. Used by the propagation test to wait for
+    /// refresh-cycle captures without sleeping for fixed durations.
+    async fn wait_for_capture_count(
+        captured: &Arc<Mutex<Vec<TrackerClientMessage>>>,
+        target: usize,
+        timeout: Duration,
+    ) -> Option<()> {
+        tokio::time::timeout(timeout, async {
+            loop {
+                if captured.lock().expect("capture lock").len() >= target {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .ok()
+    }
 }

@@ -17,7 +17,7 @@ use nexus_common::io::{
     send_tracker_server_message,
 };
 use nexus_common::protocol::ServerMessage;
-use nexus_common::tracker_protocol::TrackerServerMessage;
+use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 use rcgen::{CertificateParams, KeyPair};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
@@ -44,6 +44,11 @@ pub struct MockBehavior {
     /// accepts. Wrapped in `Arc<Mutex>` so all connection-handler
     /// clones share the same queue.
     pub queued_responses: Arc<Mutex<VecDeque<RegisterPolicy>>>,
+    /// Captures every `TrackerServerRegister` payload the mock
+    /// receives, in order. Used by propagation tests that need to
+    /// inspect refresh-cycle payloads. Wrapped in `Arc<Mutex>` so the
+    /// test can read it after spawning.
+    pub captured_registers: Arc<Mutex<Vec<TrackerClientMessage>>>,
     /// When `true`, the mock accepts TLS but never sends a
     /// `HandshakeResponse` — parks the tracker task in the
     /// handshake-response read await. Used by the shutdown-mid-handshake
@@ -67,6 +72,7 @@ impl Default for MockBehavior {
                 refresh_interval: 300,
             },
             queued_responses: Arc::new(Mutex::new(VecDeque::new())),
+            captured_registers: Arc::new(Mutex::new(Vec::new())),
             wedge_after_tls: false,
         }
     }
@@ -77,6 +83,11 @@ impl Default for MockBehavior {
 pub struct MockTracker {
     pub addr: SocketAddr,
     pub fingerprint: String,
+    /// Snapshot of the behavior the mock was started with. The Arc-
+    /// wrapped fields (`queued_responses`, `captured_registers`) are
+    /// shared with the connection-handler tasks, so tests can mutate /
+    /// read them through this handle.
+    pub behavior: MockBehavior,
     shutdown: Option<oneshot::Sender<()>>,
     join: Option<JoinHandle<()>>,
 }
@@ -104,6 +115,7 @@ impl MockTracker {
 
         let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
         let real_fp = fingerprint.clone();
+        let exposed_behavior = behavior.clone();
 
         let join = tokio::spawn(async move {
             loop {
@@ -127,6 +139,7 @@ impl MockTracker {
         Self {
             addr,
             fingerprint,
+            behavior: exposed_behavior,
             shutdown: Some(shutdown_tx),
             join: Some(join),
         }
@@ -187,46 +200,60 @@ async fn handle_connection(
     )
     .await?;
 
-    // TrackerServerRegister / TrackerServerRegisterResponse.
-    let _register = read_tracker_client_message_with_full_timeout(&mut reader, None, None)
-        .await
-        .map_err(|e| std::io::Error::other(e.to_string()))?;
-    // Queued response wins; otherwise default to `register_response`.
-    let policy = behavior
-        .queued_responses
-        .lock()
-        .expect("mock queue lock poisoned")
-        .pop_front()
-        .unwrap_or_else(|| behavior.register_response.clone());
-    let response = match policy {
-        RegisterPolicy::Success { refresh_interval } => {
-            TrackerServerMessage::TrackerServerRegisterResponse {
-                success: true,
-                refresh_interval: Some(refresh_interval),
-                error: None,
-                error_kind: None,
-            }
-        }
-        RegisterPolicy::Failure { error_kind, error } => {
-            TrackerServerMessage::TrackerServerRegisterResponse {
-                success: false,
-                refresh_interval: None,
-                error: Some(error),
-                error_kind: Some(error_kind),
-            }
-        }
-    };
-    send_tracker_server_message(&mut writer, &response).await?;
-
-    // Hold the connection open until the tracker task (or the mock's
-    // shutdown drop) closes it. The tracker task's refresh interval is
-    // far longer than any test duration, so we just block reading.
+    // TrackerServerRegister / TrackerServerRegisterResponse, plus any
+    // subsequent refresh cycles. Each register payload is captured in
+    // `behavior.captured_registers` so propagation tests can inspect
+    // refresh-cycle field updates. The idle timeout is set well past
+    // any plausible refresh interval; the loop exits cleanly when the
+    // tracker task drops the connection.
     loop {
-        match read_tracker_client_message_with_full_timeout(&mut reader, None, None).await {
-            Ok(Some(_)) => continue,   // unexpected mid-idle frame; ignore
+        let received = match read_tracker_client_message_with_full_timeout(
+            &mut reader,
+            Some(std::time::Duration::from_secs(600)),
+            None,
+        )
+        .await
+        {
+            Ok(Some(r)) => r,
             Ok(None) => return Ok(()), // peer closed
             Err(_) => return Ok(()),   // connection torn down
+        };
+        if matches!(
+            &received.message,
+            TrackerClientMessage::TrackerServerRegister { .. }
+        ) {
+            behavior
+                .captured_registers
+                .lock()
+                .expect("mock capture lock poisoned")
+                .push(received.message.clone());
         }
+        // Queued response wins; otherwise default to `register_response`.
+        let policy = behavior
+            .queued_responses
+            .lock()
+            .expect("mock queue lock poisoned")
+            .pop_front()
+            .unwrap_or_else(|| behavior.register_response.clone());
+        let response = match policy {
+            RegisterPolicy::Success { refresh_interval } => {
+                TrackerServerMessage::TrackerServerRegisterResponse {
+                    success: true,
+                    refresh_interval: Some(refresh_interval),
+                    error: None,
+                    error_kind: None,
+                }
+            }
+            RegisterPolicy::Failure { error_kind, error } => {
+                TrackerServerMessage::TrackerServerRegisterResponse {
+                    success: false,
+                    refresh_interval: None,
+                    error: Some(error),
+                    error_kind: Some(error_kind),
+                }
+            }
+        };
+        send_tracker_server_message(&mut writer, &response).await?;
     }
 }
 
