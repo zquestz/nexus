@@ -45,7 +45,7 @@ pub struct MockBehavior {
     /// clones share the same queue.
     pub queued_responses: Arc<Mutex<VecDeque<RegisterPolicy>>>,
     /// When `true`, the mock accepts TLS but never sends a
-    /// `HandshakeResponse` — parks the publisher in the
+    /// `HandshakeResponse` — parks the tracker task in the
     /// handshake-response read await. Used by the shutdown-mid-handshake
     /// test to verify abort propagates through the deepest cycle await.
     pub wedge_after_tls: bool,

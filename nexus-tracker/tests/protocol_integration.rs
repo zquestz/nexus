@@ -515,7 +515,6 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
         } => {
             assert!(success, "list should succeed");
             assert!(error.is_none());
-            let servers = servers.expect("servers field present on success");
             assert_eq!(servers.len(), 1);
             assert_eq!(servers[0].name, "Integration BBS");
             assert_eq!(servers[0].user_count, 7);
@@ -548,7 +547,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
         } => {
             assert!(success);
             assert_eq!(
-                servers.expect("servers field present").len(),
+                servers.len(),
                 0,
                 "registry should be empty after server disconnect + cleanup"
             );

@@ -472,7 +472,7 @@ mod tests {
     #[tokio::test]
     async fn shutdown_aborts_mid_handshake() {
         // Wedged tracker: accepts TLS, never sends HandshakeResponse.
-        // The publisher's H-1 timeout would otherwise hold this for 30s
+        // The tracker task's H-1 timeout would otherwise hold this for 30s
         // on its own — abort must propagate through that await sooner.
         let mock = MockTracker::start(MockBehavior {
             wedge_after_tls: true,

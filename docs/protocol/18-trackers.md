@@ -437,15 +437,18 @@ than the default name ordering (see [`TrackerServerListResponse`](#trackerserver
 
 Sent by the tracker in reply to `TrackerServerList`.
 
-| Field        | Type             | Required   | Description                                                |
-| ------------ | ---------------- | ---------- | ---------------------------------------------------------- |
-| `success`    | boolean          | Yes        | Whether the listing request was accepted                   |
-| `servers`    | Server Entry [ ] | If success | Array of registered servers (see Server Entry below)       |
-| `error`      | string           | If failure | Human-readable explanation, localized per request `locale` |
-| `error_kind` | string           | If failure | Machine-readable error category (see [Errors](#errors))    |
+| Field        | Type             | Required | Description                                                                                       |
+| ------------ | ---------------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `success`    | boolean          | Yes      | Whether the listing request was accepted                                                          |
+| `servers`    | Server Entry [ ] | Always   | Array of registered servers (see Server Entry below). Empty `[]` on the error path or no servers. |
+| `error`      | string           | Failure  | Human-readable explanation, localized per request `locale`                                        |
+| `error_kind` | string           | Failure  | Machine-readable error category (see [Errors](#errors))                                           |
 
 **Empty list.** A tracker with zero registered servers responds with
 `success: true` and `servers: []`. An empty list is not a failure.
+The error path also returns `servers: []`; clients distinguish empty-
+success from failure via the `success` field, not the `servers`
+length.
 
 **Listing size.** `TrackerServerListResponse` has no per-message-type payload
 limit. The tracker always returns the full set of registered servers in

@@ -175,7 +175,7 @@ async fn attempt_connection_cycle(
     // `TrackerCreate`/`TrackerUpdate` already accepts the same set
     // (via `domain_to_ascii_strict`), so a failure here means the row
     // is structurally broken — admin must edit. Treat as Unrecoverable
-    // so the publisher exits instead of tight-looping on a busted row.
+    // so the tracker task exits instead of tight-looping on a busted row.
     let resolved_host = match nexus_common::address::resolve_host_for_connection(&record.address) {
         Ok(h) => h,
         Err(e) => {

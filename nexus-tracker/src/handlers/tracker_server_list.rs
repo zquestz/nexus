@@ -123,7 +123,7 @@ where
 
     let response = TrackerServerMessage::TrackerServerListResponse {
         success: true,
-        servers: Some(servers),
+        servers,
         error: None,
         error_kind: None,
     };
@@ -142,7 +142,7 @@ where
 {
     let response = TrackerServerMessage::TrackerServerListResponse {
         success: false,
-        servers: None,
+        servers: Vec::new(),
         error: Some(message),
         error_kind: Some(error_kind.to_string()),
     };

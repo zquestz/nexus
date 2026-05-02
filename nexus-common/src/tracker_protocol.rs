@@ -135,9 +135,11 @@ pub enum TrackerServerMessage {
     TrackerServerListResponse {
         /// Whether the listing request was accepted.
         success: bool,
-        /// Array of registered servers (present on success).
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        servers: Option<Vec<ServerEntry>>,
+        /// Array of registered servers, sorted alphabetically by `name`
+        /// (case-insensitive ascending). Empty on the error path; an
+        /// empty list on success means no servers are currently
+        /// registered (not an error).
+        servers: Vec<ServerEntry>,
         /// Human-readable explanation, localized per the request `locale`
         /// (present on failure).
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -281,7 +283,7 @@ mod tests {
     fn test_tracker_server_list_response_empty() {
         let msg = TrackerServerMessage::TrackerServerListResponse {
             success: true,
-            servers: Some(vec![]),
+            servers: Vec::new(),
             error: None,
             error_kind: None,
         };
