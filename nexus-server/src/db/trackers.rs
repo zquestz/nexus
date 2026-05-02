@@ -83,6 +83,10 @@ pub enum TrackerDbError {
     /// Another row already uses this name (case-insensitive collision
     /// on `LOWER(name)`).
     NameDuplicate,
+    /// The configured-trackers row cap was already reached. Returned
+    /// by `create()` when the atomic-insert WHERE clause matched zero
+    /// rows.
+    TooMany,
     /// Any other DB error — pool exhaustion, schema corruption,
     /// unrecognized constraint, etc. The handler logs it and sends a
     /// generic translated database-error response.
@@ -98,6 +102,7 @@ impl std::fmt::Display for TrackerDbError {
             Self::NameDuplicate => {
                 f.write_str("another tracker is already configured with this name")
             }
+            Self::TooMany => f.write_str("tracker row cap reached"),
             Self::Other(e) => write!(f, "tracker database error: {e}"),
         }
     }
@@ -272,13 +277,19 @@ impl TrackerDb {
     /// On UNIQUE-constraint violation, returns
     /// [`TrackerDbError::EndpointDuplicate`] (same `(address, port)`)
     /// or [`TrackerDbError::NameDuplicate`] (same case-insensitive
-    /// name). Other failures bubble up as
-    /// [`TrackerDbError::Other`].
+    /// name). When the table already has
+    /// [`MAX_TRACKERS_PER_SERVER`](nexus_common::framing::MAX_TRACKERS_PER_SERVER)
+    /// rows, returns [`TrackerDbError::TooMany`] (the cap check is
+    /// atomic with the insert via `INSERT … SELECT … WHERE`). Other
+    /// failures bubble up as [`TrackerDbError::Other`].
     pub async fn create(
         &self,
         params: CreateTrackerParams<'_>,
     ) -> Result<TrackerRecord, TrackerDbError> {
         let now = Utc::now().timestamp();
+        // `MAX_TRACKERS_PER_SERVER` is a small `usize` const (64);
+        // casts to i64 cleanly, no realistic overflow path.
+        let cap = nexus_common::framing::MAX_TRACKERS_PER_SERVER as i64;
         let result = sqlx::query(sql::SQL_INSERT_TRACKER)
             .bind(params.address)
             .bind(i64::from(params.port))
@@ -288,8 +299,20 @@ impl TrackerDb {
             .bind(params.enabled)
             .bind(now)
             .bind(now)
+            .bind(cap)
             .execute(&self.pool)
             .await?;
+        // SAFETY: `SQL_INSERT_TRACKER`'s only WHERE clause is the cap
+        // check. Input-value problems (length, format, character set)
+        // are caught upstream by `validate_tracker_inputs`; UNIQUE
+        // collisions surface as `Err(...)` via `From<sqlx::Error>`,
+        // not as zero rows. So `rows_affected == 0` unambiguously
+        // means the cap was reached. Any future WHERE addition would
+        // make this interpretation ambiguous and must be reflected
+        // here.
+        if result.rows_affected() == 0 {
+            return Err(TrackerDbError::TooMany);
+        }
         let id = result.last_insert_rowid();
         Ok(self.get_by_id(id).await?.ok_or(sqlx::Error::RowNotFound)?)
     }
@@ -343,17 +366,6 @@ impl TrackerDb {
             .execute(&self.pool)
             .await?;
         Ok(result.rows_affected() > 0)
-    }
-
-    /// Total number of tracker rows (enabled + disabled). Used by
-    /// `TrackerCreate` to enforce
-    /// [`MAX_TRACKERS_PER_SERVER`](nexus_common::framing::MAX_TRACKERS_PER_SERVER)
-    /// without paying for a full row scan.
-    pub async fn count(&self) -> Result<usize, sqlx::Error> {
-        let (n,): (i64,) = sqlx::query_as(sql::SQL_COUNT_TRACKERS)
-            .fetch_one(&self.pool)
-            .await?;
-        Ok(usize::try_from(n).unwrap_or(usize::MAX))
     }
 
     /// Delete a tracker row by id. Returns `true` if the row existed.

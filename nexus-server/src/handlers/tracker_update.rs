@@ -131,6 +131,21 @@ where
                 .send_message(&reject_update(err_tracker_name_duplicate(ctx.locale)))
                 .await;
         }
+        Err(TrackerDbError::TooMany) => {
+            // `update()` doesn't enforce the row cap — only `create()`
+            // does. This arm is unreachable in practice; route it
+            // through the generic DB-error path so an unexpected
+            // future regression doesn't silently fall through.
+            error!(
+                user = %requesting_user.username,
+                ip = %ctx.peer_addr,
+                id = id,
+                "{}", LOG_TRACKER_UPDATE_DB_ERROR
+            );
+            return ctx
+                .send_error_and_disconnect(&err_database(ctx.locale), Some("TrackerUpdate"))
+                .await;
+        }
         Err(TrackerDbError::Other(e)) => {
             error!(
                 user = %requesting_user.username,

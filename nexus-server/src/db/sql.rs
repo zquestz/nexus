@@ -411,15 +411,23 @@ pub const SQL_SELECT_TRACKER_BY_ID: &str = "
 /// 7. `created_at: i64` - Unix epoch seconds
 /// 8. `updated_at: i64` - Unix epoch seconds (typically equals
 ///    `created_at` on insert)
+/// 9. `cap: i64` - Maximum tracker rows allowed; the insert is a
+///    no-op (0 rows affected) if the table already has `>= cap` rows.
 ///
-/// **Returns:** `last_insert_rowid()` — the new tracker row id.
+/// **Returns:** `last_insert_rowid()` on success, or 0 rows affected
+/// if the cap was reached. Caller distinguishes via `rows_affected()`.
 ///
 /// **Note:** Insert fails with a UNIQUE-constraint violation if
-/// another row with the same `(address, port)` exists.
+/// another row with the same `(address, port)` exists. The cap check
+/// runs atomically with the insert via `INSERT … SELECT … WHERE`, so
+/// concurrent admin requests at `count == cap - 1` cannot both
+/// succeed (matching the admin-protection pattern used elsewhere in
+/// this file).
 pub const SQL_INSERT_TRACKER: &str = "
     INSERT INTO trackers (address, port, fingerprint, password, name, enabled,
                           created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?
+    WHERE (SELECT COUNT(*) FROM trackers) < ?";
 
 /// Replace a tracker row's mutable fields by id (full-row update).
 ///
@@ -462,17 +470,6 @@ pub const SQL_UPDATE_TRACKER_FINGERPRINT: &str = "
 /// **Parameters:**
 /// 1. `id: i64`
 pub const SQL_DELETE_TRACKER: &str = "DELETE FROM trackers WHERE id = ?";
-
-/// Total tracker row count (enabled + disabled).
-///
-/// **Parameters:** None
-///
-/// **Returns:** `(count: i64)`
-///
-/// **Note:** Used by `TrackerCreate` to enforce
-/// [`MAX_TRACKERS_PER_SERVER`](nexus_common::framing::MAX_TRACKERS_PER_SERVER)
-/// before insert.
-pub const SQL_COUNT_TRACKERS: &str = "SELECT COUNT(*) FROM trackers";
 
 // ========================================================================
 // IP Ban Query Operations

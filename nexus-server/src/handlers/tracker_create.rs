@@ -98,41 +98,12 @@ where
         return ctx.send_message(&reject_create(error)).await;
     }
 
-    // Cap on configured rows. Sized to match the
-    // `TrackerListResponse` frame budget so the admin UI can always
-    // serialize the full list — without this guard, an admin who
-    // adds the 65th tracker breaks their own management view.
-    match ctx.db.trackers.count().await {
-        Ok(n) if n >= MAX_TRACKERS_PER_SERVER => {
-            warn!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                count = n,
-                max = MAX_TRACKERS_PER_SERVER,
-                "{}", LOG_TRACKER_CREATE_LIMIT_REACHED
-            );
-            return ctx
-                .send_message(&reject_create(err_tracker_too_many(
-                    ctx.locale,
-                    MAX_TRACKERS_PER_SERVER,
-                )))
-                .await;
-        }
-        Ok(_) => {}
-        Err(e) => {
-            error!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                err = %e,
-                "{}", LOG_TRACKER_CREATE_DB_ERROR
-            );
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("TrackerCreate"))
-                .await;
-        }
-    }
-
-    // Insert into the DB.
+    // Insert into the DB. The `MAX_TRACKERS_PER_SERVER` cap is enforced
+    // atomically inside the insert (see `SQL_INSERT_TRACKER`); a row
+    // count at or above the cap surfaces as `TrackerDbError::TooMany`
+    // here. The atomic check closes the race where two concurrent
+    // creates at `count == cap - 1` could both pass a pre-check and
+    // both insert.
     let result = ctx
         .db
         .trackers
@@ -148,6 +119,20 @@ where
 
     let record = match result {
         Ok(r) => r,
+        Err(TrackerDbError::TooMany) => {
+            warn!(
+                user = %requesting_user.username,
+                ip = %ctx.peer_addr,
+                max = MAX_TRACKERS_PER_SERVER,
+                "{}", LOG_TRACKER_CREATE_LIMIT_REACHED
+            );
+            return ctx
+                .send_message(&reject_create(err_tracker_too_many(
+                    ctx.locale,
+                    MAX_TRACKERS_PER_SERVER,
+                )))
+                .await;
+        }
         Err(TrackerDbError::EndpointDuplicate) => {
             return ctx
                 .send_message(&reject_create(err_tracker_endpoint_duplicate(ctx.locale)))
