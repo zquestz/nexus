@@ -466,11 +466,12 @@ async fn run_optional_ws_accepts(
 ///
 /// - `close_notify` warnings (clients disconnecting abruptly) → silent.
 /// - `TLS handshake failed:` prefix (scanners, incompatible clients) → debug.
+/// - `WebSocket handshake failed:` prefix (HTTP-only crawlers, slow upgrades,
+///   timeout-elapsed peers) → debug.
 /// - everything else (frame errors, write failures, etc.) → error.
 ///
 /// Mirrors `nexus-server`'s shared logger so the two daemons categorize
-/// connection noise the same way. When WebSocket support lands the same
-/// function will route those errors too.
+/// connection noise the same way.
 fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
     let msg = error.to_string();
     if msg.contains(constants::TLS_CLOSE_NOTIFY_MSG) {
@@ -478,6 +479,10 @@ fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
     }
     if msg.contains(nexus_common::TLS_HANDSHAKE_FAILED_PREFIX) {
         debug!(ip = %peer_addr, err = %error, "{}", constants::LOG_CONNECTION_ERROR_TLS);
+        return;
+    }
+    if msg.contains(nexus_common::WS_HANDSHAKE_FAILED_PREFIX) {
+        debug!(ip = %peer_addr, err = %error, "{}", constants::LOG_CONNECTION_ERROR_WS);
         return;
     }
     error!(ip = %peer_addr, err = %error, "{}", constants::LOG_CONNECTION_ERROR);

@@ -15,6 +15,7 @@ use std::sync::RwLock;
 use std::time::Duration;
 
 use chrono::Utc;
+use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{
     read_server_message, read_tracker_server_message_with_full_timeout, send_client_message,
@@ -51,10 +52,11 @@ use crate::constants::{
     LOG_TRACKER_REGISTRATION_REGISTER_REJECTED, LOG_TRACKER_REGISTRATION_RESPONSE_READ_ERROR,
     LOG_TRACKER_REGISTRATION_RESPONSE_TIMEOUT, LOG_TRACKER_REGISTRATION_SEND_HANDSHAKE_FAILED,
     LOG_TRACKER_REGISTRATION_SEND_REGISTER_FAILED, LOG_TRACKER_REGISTRATION_STAGE1_MISMATCH,
-    LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH, LOG_TRACKER_REGISTRATION_TCP_FAILED,
-    LOG_TRACKER_REGISTRATION_TLS_FAILED, LOG_TRACKER_REGISTRATION_TOFU_PINNED,
-    LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED, LOG_TRACKER_REGISTRATION_TRACKER_REPORTED_ERROR,
-    LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME, LOG_TRACKER_REGISTRATION_WRONG_FLOW_RESPONSE,
+    LOG_TRACKER_REGISTRATION_STAGE2_MALFORMED, LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH,
+    LOG_TRACKER_REGISTRATION_TCP_FAILED, LOG_TRACKER_REGISTRATION_TLS_FAILED,
+    LOG_TRACKER_REGISTRATION_TOFU_PINNED, LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED,
+    LOG_TRACKER_REGISTRATION_TRACKER_REPORTED_ERROR, LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME,
+    LOG_TRACKER_REGISTRATION_WRONG_FLOW_RESPONSE, TRACKER_FINGERPRINT_MALFORMED_SENTINEL,
 };
 use crate::db::{TrackerRecord, is_transient_db_error};
 
@@ -372,13 +374,29 @@ async fn attempt_connection_cycle(
         }
     };
 
-    // Phase 6: Stage 2 — TLS-observed vs server-reported.
+    // Phase 6: Stage 2 — TLS-observed vs server-reported. The
+    // `server_reported` value is tracker-supplied: validate canonical
+    // form first (defends against terminal-control vandalism in logs
+    // and distinguishes "tracker is broken" from "tracker is being
+    // intercepted"). All log fields routed through tracker-supplied
+    // strings pass through `sanitize_for_log`.
+    if !is_canonical_fingerprint(&server_reported) {
+        warn!(
+            id = record.id,
+            name = %record.name,
+            tls_observed = %tls_observed,
+            server_reported = TRACKER_FINGERPRINT_MALFORMED_SENTINEL,
+            "{}", LOG_TRACKER_REGISTRATION_STAGE2_MALFORMED
+        );
+        set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR);
+        return CycleOutcome::Unrecoverable;
+    }
     if server_reported != tls_observed {
         warn!(
             id = record.id,
             name = %record.name,
             tls_observed = %tls_observed,
-            server_reported = %server_reported,
+            server_reported = %sanitize_for_log(&server_reported),
             "{}", LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH
         );
         set_status_with_pending_fingerprint(

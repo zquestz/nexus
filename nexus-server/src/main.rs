@@ -1035,6 +1035,8 @@ fn setup_file_area(file_root: Option<std::path::PathBuf>, data_dir: &Path) -> st
 /// Filters out:
 /// - TLS close_notify warnings (clients disconnecting abruptly)
 /// - TLS handshake failures (only logged at debug level)
+/// - WebSocket handshake failures (HTTP-only crawlers, slow upgrades,
+///   timeout-elapsed peers — debug level)
 fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
     let error_msg = error.to_string();
 
@@ -1046,6 +1048,14 @@ fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
     // TLS handshake failures are debug-only (scanners, incompatible clients)
     if error_msg.contains(nexus_common::TLS_HANDSHAKE_FAILED_PREFIX) {
         debug!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR_TLS);
+        return;
+    }
+
+    // WebSocket upgrade failures are debug-only (same noise profile as
+    // TLS scanner traffic — HTTP-only probes, half-spoken upgrades,
+    // slowloris timeouts).
+    if error_msg.contains(nexus_common::WS_HANDSHAKE_FAILED_PREFIX) {
+        debug!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR_WS);
         return;
     }
 

@@ -38,6 +38,7 @@ use nexus_common::io::{
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tls::accept_tls_with_timeout;
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
+use nexus_common::validators::MAX_LOCALE_LENGTH;
 
 use crate::constants::{
     DEFAULT_LOCALE, ERR_REGISTRY_MUTEX_POISONED, HANDSHAKE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED,
@@ -358,9 +359,13 @@ where
                 }
             }
             TrackerClientMessage::TrackerServerList { locale, .. } => {
-                // Role violation: surface and close.
+                // Role violation: surface and close. Match the locale-length
+                // contract enforced by the real handlers (`tracker_server_register`
+                // and `tracker_server_list`); fall back to DEFAULT_LOCALE if the
+                // locale is empty or oversized rather than threading an
+                // untrusted string into `LanguageIdentifier::parse`.
                 warn!(ip = %peer_addr.ip(), command = "TrackerServerList", "{}", LOG_ROLE_VIOLATION);
-                let translation_locale = if locale.is_empty() {
+                let translation_locale = if locale.is_empty() || locale.len() > MAX_LOCALE_LENGTH {
                     DEFAULT_LOCALE
                 } else {
                     &locale

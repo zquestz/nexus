@@ -237,6 +237,9 @@ pub const LOG_CONNECTION_ERROR: &str = "Connection error";
 /// Log: TLS handshake itself failed (paired with `ip = %addr, err = %e`).
 pub const LOG_CONNECTION_ERROR_TLS: &str = "Connection error (TLS handshake)";
 
+/// Log: WebSocket upgrade itself failed (paired with `ip = %addr, err = %e`).
+pub const LOG_CONNECTION_ERROR_WS: &str = "Connection error (WebSocket handshake)";
+
 /// Log: peer sent a non-Handshake message before completing the handshake.
 pub const LOG_HANDSHAKE_REQUIRED: &str = "Handshake: required";
 

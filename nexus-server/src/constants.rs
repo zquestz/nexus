@@ -541,6 +541,7 @@ pub const ERR_PASSWORD_TASK_JOIN: &str = "password task did not complete";
 pub const LOG_ACCEPT_ERROR: &str = "Accept error";
 pub const LOG_CONNECTION_ERROR: &str = "Connection error";
 pub const LOG_CONNECTION_ERROR_TLS: &str = "Connection error (TLS handshake)";
+pub const LOG_CONNECTION_ERROR_WS: &str = "Connection error (WebSocket handshake)";
 pub const LOG_CONNECTION_LIMIT: &str = "Connection limit reached";
 pub const LOG_DISCONNECTED: &str = "Disconnected";
 pub const LOG_ERROR_HANDLING_MESSAGE: &str = "Error handling message";
@@ -807,6 +808,14 @@ pub const LOG_TRACKER_REGISTRATION_NO_PEER_CERTS: &str = "Tracker peer presented
 pub const LOG_TRACKER_REGISTRATION_STAGE1_MISMATCH: &str = "Tracker fingerprint mismatch";
 pub const LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH: &str =
     "Tracker self-reported fingerprint disagrees with TLS certificate";
+pub const LOG_TRACKER_REGISTRATION_STAGE2_MALFORMED: &str =
+    "Tracker self-reported fingerprint is not in canonical form";
+
+/// Sentinel substituted for `server_reported` in operator logs when the
+/// tracker's self-reported fingerprint fails canonical-form validation.
+/// Logging the raw bytes would let a hostile tracker stuff terminal-control
+/// sequences into the warn line; the sentinel keeps the log scannable.
+pub const TRACKER_FINGERPRINT_MALFORMED_SENTINEL: &str = "<malformed>";
 pub const LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED: &str = "Tracker fingerprint write failed";
 pub const LOG_TRACKER_REGISTRATION_TOFU_PINNED: &str = "Tracker fingerprint pinned";
 // BBS handshake
