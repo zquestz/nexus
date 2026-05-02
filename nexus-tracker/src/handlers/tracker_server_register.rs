@@ -426,7 +426,7 @@ where
         .await?;
         return Ok(ValidationOutcome::Rejected);
     }
-    if !check_password(password.as_deref(), stored_hash.as_deref()) {
+    if !check_password(password.as_deref(), stored_hash.as_deref()).await {
         if gated {
             state
                 .auth_failure_rate_limiter

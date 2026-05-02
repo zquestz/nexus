@@ -26,7 +26,7 @@ use super::{
     err_shared_invalid_permissions, err_unknown_permission, err_username_empty,
     err_username_exists, err_username_invalid, err_username_too_long,
 };
-use crate::db::{CreateUserParams, Permission, Permissions, hash_password};
+use crate::db::{CreateUserParams, Permission, Permissions, hash_password_async};
 
 /// User creation request parameters
 pub struct UserCreateRequest {
@@ -368,7 +368,7 @@ where
     }
 
     // Hash password for secure storage
-    let password_hash = match hash_password(&password, min_strength, false) {
+    let password_hash = match hash_password_async(password.clone(), min_strength, false).await {
         Ok(hash) => hash,
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_HASH_ERROR);

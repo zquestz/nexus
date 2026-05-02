@@ -36,8 +36,12 @@ use super::{
     remove_user_with_voice_cleanup,
 };
 use super::{ServerInfoOptions, ServerInfoValues, build_server_info};
+#[cfg(test)]
+use crate::db::hash_password;
 use crate::db::sql::GUEST_USERNAME;
-use crate::db::{Permission, Permissions, UpdateUserParams, hash_password, verify_password};
+use crate::db::{
+    Permission, Permissions, UpdateUserParams, hash_password_async, verify_password_async,
+};
 use crate::voice::send_voice_leave_notifications;
 
 /// User update request parameters
@@ -190,7 +194,7 @@ where
         };
 
         // Verify the current password
-        match verify_password(current_password, &password_hash) {
+        match verify_password_async(current_password.to_string(), password_hash.clone()).await {
             Ok(true) => {} // Password correct, continue
             Ok(false) => {
                 let response = ServerMessage::UserUpdateResponse {
@@ -730,7 +734,7 @@ where
                 };
                 return ctx.send_message(&response).await;
             }
-            match hash_password(password, min_strength, false) {
+            match hash_password_async(password.clone(), min_strength, false).await {
                 Ok(hash) => Some(hash),
                 Err(e) => {
                     error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_HASH_ERROR);

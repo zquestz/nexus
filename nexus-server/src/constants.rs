@@ -528,6 +528,11 @@ pub const ERR_TARGET_SESSIONS_NON_EMPTY: &str = "target_sessions is non-empty";
 /// to be valid.
 pub const ERR_DEFAULT_LOCALE_INVALID: &str = "DEFAULT_LOCALE is a valid locale";
 
+/// `PasswordError::TaskJoin` Display message — the blocking task that ran
+/// Argon2 work panicked or was cancelled. Surfaces here so callers fail
+/// closed instead of treating the operation as a verify-success.
+pub const ERR_PASSWORD_TASK_JOIN: &str = "password task did not complete";
+
 // =============================================================================
 // Log Messages
 // =============================================================================

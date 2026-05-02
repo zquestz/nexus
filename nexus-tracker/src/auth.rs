@@ -139,12 +139,22 @@ pub fn verify_password(plain: &str, phc_hash: &str) -> Result<bool, String> {
 ///   against `stored_hash`. A parse error in the stored PHC string also
 ///   counts as a failure — the operator should be notified, but never by
 ///   accepting unauthenticated requests.
+///
+/// Argon2id verification (~50–500ms with default params) runs on the
+/// blocking pool so a flood of gated requests can't pin every tokio
+/// worker thread.
 #[must_use]
-pub fn check_password(provided: Option<&str>, stored_hash: Option<&str>) -> bool {
+pub async fn check_password(provided: Option<&str>, stored_hash: Option<&str>) -> bool {
     match (provided, stored_hash) {
         (_, None) => true,
-        (Some(plain), Some(hash)) => verify_password(plain, hash).unwrap_or(false),
         (None, Some(_)) => false,
+        (Some(plain), Some(hash)) => {
+            let plain = plain.to_owned();
+            let hash = hash.to_owned();
+            tokio::task::spawn_blocking(move || verify_password(&plain, &hash).unwrap_or(false))
+                .await
+                .unwrap_or(false)
+        }
     }
 }
 

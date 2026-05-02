@@ -20,6 +20,10 @@ pub use channels::ChannelDb;
 pub use config::ConfigDb;
 pub use groups::GroupDb;
 pub use news::NewsDb;
+pub use password::{hash_password_async, verify_password_async};
+// Sync helpers retained for tests (cheap fast-hash path) and the cached test
+// hash helper. Production code in async contexts must use the `_async` variants.
+#[allow(unused_imports)]
 pub use password::{hash_password, verify_password};
 pub use permissions::{Permission, Permissions};
 // Tracker re-exports are dead until chunk 4 (handlers consume them).

@@ -18,6 +18,8 @@ use argon2::{
 use nexus_common::validators::{self, PasswordStrength};
 use std::fmt;
 
+use crate::constants::ERR_PASSWORD_TASK_JOIN;
+
 /// Prefix for fast (test-only) password hashes
 const FAST_HASH_PREFIX: &str = "$FAST$";
 
@@ -28,6 +30,10 @@ pub enum PasswordError {
     Validation(validators::PasswordError),
     /// Hashing or verification operation failed
     Hash(argon2::password_hash::Error),
+    /// The blocking task that ran the Argon2 work panicked or was cancelled.
+    /// Should never happen in practice; surfaces here so the caller fails
+    /// closed instead of treating the operation as a verify-success.
+    TaskJoin,
 }
 
 impl fmt::Display for PasswordError {
@@ -35,6 +41,7 @@ impl fmt::Display for PasswordError {
         match self {
             PasswordError::Validation(e) => write!(f, "{:?}", e),
             PasswordError::Hash(e) => write!(f, "{}", e),
+            PasswordError::TaskJoin => write!(f, "{}", ERR_PASSWORD_TASK_JOIN),
         }
     }
 }
@@ -130,6 +137,44 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, Pass
         Err(argon2::password_hash::Error::Password) => Ok(false),
         Err(e) => Err(PasswordError::Hash(e)),
     }
+}
+
+/// Async wrapper around [`hash_password`] that runs Argon2 on the blocking pool.
+///
+/// Argon2id with default params takes ~50–500 ms per call. Calling the sync
+/// version from an async handler pins the worker thread for that duration; a
+/// flood of password creates / changes from rotating IPs can pin every worker.
+/// This wrapper offloads the Argon2 work via `spawn_blocking` so the runtime
+/// stays responsive.
+///
+/// The fast (test-only) path is sync-cheap (`format!`) and not offloaded.
+pub async fn hash_password_async(
+    password: String,
+    min_strength: PasswordStrength,
+    fast: bool,
+) -> Result<String, PasswordError> {
+    if fast {
+        return hash_password(&password, min_strength, fast);
+    }
+    tokio::task::spawn_blocking(move || hash_password(&password, min_strength, fast))
+        .await
+        .unwrap_or(Err(PasswordError::TaskJoin))
+}
+
+/// Async wrapper around [`verify_password`] that runs Argon2 on the blocking pool.
+///
+/// See [`hash_password_async`] for rationale. Fast hashes short-circuit
+/// inline (string compare); only the Argon2 path is offloaded.
+pub async fn verify_password_async(
+    password: String,
+    password_hash: String,
+) -> Result<bool, PasswordError> {
+    if password_hash.starts_with(FAST_HASH_PREFIX) {
+        return verify_password(&password, &password_hash);
+    }
+    tokio::task::spawn_blocking(move || verify_password(&password, &password_hash))
+        .await
+        .unwrap_or(Err(PasswordError::TaskJoin))
 }
 
 #[cfg(test)]

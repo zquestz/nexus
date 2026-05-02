@@ -173,7 +173,8 @@ where
             password.is_empty()
         } else {
             // Normal password verification
-            match db::verify_password(&password, &account.hashed_password) {
+            match db::verify_password_async(password.clone(), account.hashed_password.clone()).await
+            {
                 Ok(valid) => valid,
                 Err(e) => {
                     error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_PASSWORD_VERIFY_ERROR);
@@ -208,7 +209,9 @@ where
     } else {
         // User doesn't exist - try to create as first user (atomic operation)
         let min_strength = ctx.db.config.get_min_password_strength().await;
-        let hashed_password = match db::hash_password(&password, min_strength, false) {
+        let hashed_password = match db::hash_password_async(password.clone(), min_strength, false)
+            .await
+        {
             Ok(hash) => hash,
             Err(e) => {
                 error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_HASH_ERROR);

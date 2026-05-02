@@ -231,7 +231,7 @@ where
         // Guest account - password must be empty
         password.is_empty()
     } else {
-        match db::verify_password(&password, &account.hashed_password) {
+        match db::verify_password_async(password.clone(), account.hashed_password.clone()).await {
             Ok(valid) => valid,
             Err(e) => {
                 let response = login_error_response(err_authentication(locale));
