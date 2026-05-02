@@ -15,12 +15,33 @@ ExecStart=/usr/local/bin/nexus-trackerd --data-dir /var/lib/nexus-trackerd
 Restart=on-failure
 RestartSec=5
 
-# Security hardening
+# --- Security hardening ---
+
+# Privilege & filesystem isolation
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+RestrictSUIDSGID=yes
+RemoveIPC=yes
+
+# Network family whitelist (TCP/UDP via INET; AF_UNIX kept for any
+# tokio-internal or glibc NSS edge cases)
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Process / namespace / scheduling restrictions
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictRealtime=yes
+
+# Syscall whitelist; EPERM-on-deny instead of process-killing SIGSYS so
+# any unexpected dep usage shows up as a graceful error in logs
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
 
 # Data directory (systemd creates /var/lib/nexus-trackerd owned by nexus-tracker:nexus-tracker)
 StateDirectory=nexus-trackerd
