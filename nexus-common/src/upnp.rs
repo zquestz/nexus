@@ -51,6 +51,17 @@ const LEASE_DURATION: u32 = 3600;
 /// without leaving the daemon hanging at startup.
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// Per-port timeout for `remove_port_mapping`. A healthy router answers
+/// the SOAP delete in well under 500ms; this 15-second cushion is
+/// generous for a slow-but-responsive router without holding the
+/// daemon hostage when one is unreachable. The loop bails on first
+/// failure, so total worst-case shutdown is *one* timeout's duration
+/// (~15s), not multiplied by port count — well under systemd's default
+/// `TimeoutStopSec=90s`. The mapping's natural lease
+/// (`LEASE_DURATION = 3600s`) cleans up anything we couldn't tear down
+/// in time.
+const REMOVE_PORT_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// Bind address for the routing-detection probe.
 const UDP_BIND_ADDRESS: &str = "0.0.0.0:0";
 
@@ -68,6 +79,7 @@ const ERR_GATEWAY_NOT_FOUND: &str = "UPnP gateway not found: ";
 const ERR_GET_EXTERNAL_IP_TASK: &str = "Failed to get external IP task: ";
 const ERR_GET_EXTERNAL_IP: &str = "Failed to get external IP: ";
 const ERR_REMOVE_PORT_TASK: &str = "Remove port mapping task failed: ";
+const ERR_REMOVE_PORT_TIMEOUT: &str = "Remove port mapping timed out (router unreachable?)";
 const ERR_RENEW_LEASE: &str = "Failed to renew lease: ";
 const ERR_CREATE_UDP_SOCKET: &str = "Failed to create UDP socket: ";
 const ERR_DETERMINE_ROUTING: &str = "Failed to determine routing: ";
@@ -263,8 +275,11 @@ impl UpnpGateway {
     }
 
     /// Remove all configured port mappings from the router. Called
-    /// during graceful shutdown. Failures are recoverable — leases
-    /// expire on their own within `LEASE_DURATION` seconds.
+    /// during graceful shutdown. Failures (including per-port
+    /// timeouts) are recoverable — leases expire on their own within
+    /// `LEASE_DURATION` seconds. Each per-port SOAP call is bounded by
+    /// `REMOVE_PORT_TIMEOUT` so an unreachable router can't hold the
+    /// daemon past systemd's / Docker's stop-timeout.
     pub async fn remove_port_mapping(&self) -> Result<(), String> {
         let gateway = self
             .gateway
@@ -275,10 +290,14 @@ impl UpnpGateway {
         for mapping in &self.ports {
             let gw = gateway.clone();
             let mapping = *mapping;
-            tokio::task::spawn_blocking(move || gw.remove_port(mapping.protocol, mapping.port))
-                .await
-                .map_err(|e| format!("{}{}", ERR_REMOVE_PORT_TASK, e))?
-                .map_err(|e| e.to_string())?;
+            let task =
+                tokio::task::spawn_blocking(move || gw.remove_port(mapping.protocol, mapping.port));
+            match tokio::time::timeout(REMOVE_PORT_TIMEOUT, task).await {
+                Ok(Ok(Ok(()))) => {}
+                Ok(Ok(Err(e))) => return Err(e.to_string()),
+                Ok(Err(e)) => return Err(format!("{}{}", ERR_REMOVE_PORT_TASK, e)),
+                Err(_) => return Err(ERR_REMOVE_PORT_TIMEOUT.to_string()),
+            }
         }
 
         Ok(())
