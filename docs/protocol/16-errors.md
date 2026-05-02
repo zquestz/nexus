@@ -108,6 +108,11 @@ Most messages have dedicated response types with `success`, `error`, and sometim
 | `TrustCreate`       | `TrustCreateResponse`       | No               |
 | `TrustDelete`       | `TrustDeleteResponse`       | No               |
 | `TrustList`         | `TrustListResponse`         | No               |
+| `TrackerList`       | `TrackerListResponse`       | No               |
+| `TrackerCreate`     | `TrackerCreateResponse`     | No               |
+| `TrackerEdit`       | `TrackerEditResponse`       | No               |
+| `TrackerUpdate`     | `TrackerUpdateResponse`     | No               |
+| `TrackerDelete`     | `TrackerDeleteResponse`     | No               |
 | `ConnectionMonitor` | `ConnectionMonitorResponse` | No               |
 | `VoiceJoin`         | `VoiceJoinResponse`         | No               |
 | `VoiceLeave`        | `VoiceLeaveResponse`        | No               |

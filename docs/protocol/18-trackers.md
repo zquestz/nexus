@@ -179,9 +179,11 @@ without requiring `ServerInfo.public_address` to be configured. Servers
 behind NAT or proxies that want a stable hostname should set `address`
 explicitly, in which case the tracker validates it as described below.
 
-**Address validation.** When `address` is provided (non-empty), trackers
-MUST validate it before accepting the registration. Validation runs in
-the order below; the first failure produces a typed
+#### Address validation
+
+When `address` is provided (non-empty), trackers MUST validate it before
+accepting the registration. Validation runs in the order below; the
+first failure produces a typed
 `TrackerServerRegisterResponse { success: false, error_kind: "invalid" }`
 and closes the connection.
 
@@ -623,7 +625,7 @@ on it for happy-path logic.
 **Field-validation sub-categories.** A typed response with
 `error_kind: "invalid"` covers every field-level validation failure,
 including the address-validation step described in
-[`TrackerServerRegister` → Address validation](#trackerserverregister).
+[Address validation](#address-validation).
 The reference tracker emits a structured `reason` field in its rejection
 log — `address_loopback`, `address_hostname_no_match`,
 `address_hostname_dns_failed`, etc. — which operators can use to
@@ -673,7 +675,7 @@ Both passwords are access gates, not identity or privacy guarantees:
   password can register any `name` or `fingerprint`. The `address`
   field is bound to the registrant's source IP via the address-
   validation step (see
-  [`TrackerServerRegister` → Address validation](#trackerserverregister)),
+  [Address validation](#address-validation)),
   so a remote attacker can't claim arbitrary network endpoints — but a
   LAN-coresident attacker can, by virtue of the LAN-peer bypass.
 - A **listing password** restricts who can read the list. There is no

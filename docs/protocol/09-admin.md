@@ -1135,8 +1135,8 @@ tracker response). The tracker daemon never produces these.
 #### Tracker-supplied kinds
 
 Echoed verbatim from `TrackerServerRegisterResponse.error_kind` when
-the tracker daemon rejects our `TrackerServerRegister`. The publisher
-validates the wire format (snake_case, length-bounded) before
+the tracker daemon rejects our `TrackerServerRegister`. The tracker
+task validates the wire format (snake_case, length-bounded) before
 storing; malformed kinds are replaced with `tracker_protocol_error`
 above.
 
@@ -1148,11 +1148,11 @@ above.
 | `invalid`      |     No      | Tracker rejected the registration as malformed |
 
 A future tracker version may introduce a new `error_kind` we don't
-recognize. As long as it passes the wire-format check, the publisher
-stores it verbatim and the admin UI falls back to a generic "Tracker
-reported an unknown error" message; the cycle is treated as transient
-(backoff + retry). To avoid breaking forward compatibility, only
-explicitly recognized kinds are unrecoverable.
+recognize. As long as it passes the wire-format check, the tracker
+task stores it verbatim and the admin UI falls back to a generic
+"Tracker reported an unknown error" message; the cycle is treated as
+transient (backoff + retry). To avoid breaking forward compatibility,
+only explicitly recognized kinds are unrecoverable.
 
 #### Recovery
 
@@ -1162,15 +1162,15 @@ exit the registration task; admin intervention (`TrackerUpdate`,
 
 ## Permissions
 
-| Permission       | Required For                                                                                                              |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `user_create`    | Creating user accounts                                                                                                    |
-| `user_edit`      | Editing user accounts                                                                                                     |
-| `user_delete`    | Deleting user accounts                                                                                                    |
-| `user_kick`      | Kicking users                                                                                                             |
-| `group_create`   | Creating account groups                                                                                                   |
-| `group_edit`     | Editing account groups                                                                                                    |
-| `group_delete`   | Deleting account groups                                                                                                   |
+| Permission       | Required For                                                           |
+| ---------------- | ---------------------------------------------------------------------- |
+| `user_create`    | Creating user accounts                                                 |
+| `user_edit`      | Editing user accounts                                                  |
+| `user_delete`    | Deleting user accounts                                                 |
+| `user_kick`      | Kicking users                                                          |
+| `group_create`   | Creating account groups                                                |
+| `group_edit`     | Editing account groups                                                 |
+| `group_delete`   | Deleting account groups                                                |
 | `tracker_create` | Adding a tracker (`TrackerCreate`)                                     |
 | `tracker_edit`   | Fetching tracker details and updating (`TrackerEdit`, `TrackerUpdate`) |
 | `tracker_delete` | Removing a tracker (`TrackerDelete`)                                   |
@@ -1380,14 +1380,14 @@ A server can have at most 64 configured trackers.
 
 ### ServerInfoUpdate Errors
 
-| Error                                            | Cause                           |
-| ------------------------------------------------ | ------------------------------- |
-| Permission denied                                | Non-admin attempted update      |
-| Server name cannot be empty                      | Empty name provided             |
-| Server name too long                             | Exceeds 64 bytes                |
-| Description too long                             | Exceeds 512 bytes               |
-| Image too large                                  | Exceeds 700KB                   |
-| Invalid image format                             | Not PNG/WebP/JPEG/SVG           |
+| Error                                                   | Cause                           |
+| ------------------------------------------------------- | ------------------------------- |
+| Permission denied                                       | Non-admin attempted update      |
+| Server name cannot be empty                             | Empty name provided             |
+| Server name too long                                    | Exceeds 64 bytes                |
+| Description too long                                    | Exceeds 512 bytes               |
+| Image too large                                         | Exceeds 700KB                   |
+| Invalid image format                                    | Not PNG/WebP/JPEG/SVG           |
 | Public address is too long                              | Exceeds 253 bytes               |
 | Public address must not include a URL scheme            | Contains `://`                  |
 | Public address must not include brackets                | Bracketed IPv6 (e.g. `[::1]`)   |
@@ -1397,7 +1397,7 @@ A server can have at most 64 configured trackers.
 | Public address must not include a port                  | Hostname-looking with `:port`   |
 | Public address must not include an IPv6 zone identifier | Contains `%zone`                |
 | Public address is not a valid hostname or IP address    | Fails IDN / IPv4 / IPv6 check   |
-| Invalid password strength value                  | Value not in range 0-4          |
+| Invalid password strength value                         | Value not in range 0-4          |
 
 ### Tracker Validation Errors
 
