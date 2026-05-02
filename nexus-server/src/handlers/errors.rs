@@ -701,53 +701,63 @@ pub fn err_server_image_unsupported_type(locale: &str) -> String {
     t(locale, "err-server-image-unsupported-type")
 }
 
-/// Get translated "public address too long" error
-pub fn err_public_address_too_long(locale: &str, max_length: usize) -> String {
+/// Get translated "address too long" error. Used by both
+/// `ServerInfoUpdate.public_address` and `TrackerCreate/Update.address`
+/// — the underlying `validate_public_address` rule set is shared.
+pub fn err_address_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
-        "err-public-address-too-long",
+        "err-address-too-long",
         &[("max_length", &max_length.to_string())],
     )
 }
 
-/// Get translated "public address contains scheme" error
-pub fn err_public_address_contains_scheme(locale: &str) -> String {
-    t(locale, "err-public-address-contains-scheme")
+/// Get translated "address contains scheme" error.
+pub fn err_address_contains_scheme(locale: &str) -> String {
+    t(locale, "err-address-contains-scheme")
 }
 
-/// Get translated "public address contains brackets" error
-pub fn err_public_address_contains_brackets(locale: &str) -> String {
-    t(locale, "err-public-address-contains-brackets")
+/// Get translated "address contains brackets" error.
+pub fn err_address_contains_brackets(locale: &str) -> String {
+    t(locale, "err-address-contains-brackets")
 }
 
-/// Get translated "public address contains path" error
-pub fn err_public_address_contains_path(locale: &str) -> String {
-    t(locale, "err-public-address-contains-path")
+/// Get translated "address contains path" error.
+pub fn err_address_contains_path(locale: &str) -> String {
+    t(locale, "err-address-contains-path")
 }
 
-/// Get translated "public address contains userinfo" error
-pub fn err_public_address_contains_userinfo(locale: &str) -> String {
-    t(locale, "err-public-address-contains-userinfo")
+/// Get translated "address contains userinfo" error.
+pub fn err_address_contains_userinfo(locale: &str) -> String {
+    t(locale, "err-address-contains-userinfo")
 }
 
-/// Get translated "public address contains whitespace" error
-pub fn err_public_address_contains_whitespace(locale: &str) -> String {
-    t(locale, "err-public-address-contains-whitespace")
+/// Get translated "address contains whitespace" error.
+pub fn err_address_contains_whitespace(locale: &str) -> String {
+    t(locale, "err-address-contains-whitespace")
 }
 
-/// Get translated "public address contains port" error
-pub fn err_public_address_contains_port(locale: &str) -> String {
-    t(locale, "err-public-address-contains-port")
+/// Get translated "address contains port" error.
+pub fn err_address_contains_port(locale: &str) -> String {
+    t(locale, "err-address-contains-port")
 }
 
-/// Get translated "public address contains zone identifier" error
-pub fn err_public_address_contains_zone_id(locale: &str) -> String {
-    t(locale, "err-public-address-contains-zone-id")
+/// Get translated "address contains zone identifier" error.
+pub fn err_address_contains_zone_id(locale: &str) -> String {
+    t(locale, "err-address-contains-zone-id")
 }
 
-/// Get translated "public address invalid format" error
-pub fn err_public_address_invalid_format(locale: &str) -> String {
-    t(locale, "err-public-address-invalid-format")
+/// Get translated "address invalid format" error.
+pub fn err_address_invalid_format(locale: &str) -> String {
+    t(locale, "err-address-invalid-format")
+}
+
+/// Get translated "address cannot be empty" error. Used at validation
+/// boundaries that reject empty addresses (tracker `address`); the
+/// `ServerInfo.public_address` validator legitimately accepts empty
+/// for "unset" and never produces this error.
+pub fn err_address_empty(locale: &str) -> String {
+    t(locale, "err-address-empty")
 }
 
 /// Get translated "no fields to update" error
@@ -1294,21 +1304,6 @@ pub fn err_tracker_name_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
         "err-tracker-name-too-long",
-        &[("max_length", &max_length.to_string())],
-    )
-}
-
-/// Get translated "tracker address invalid" error (any
-/// `validate_public_address` rejection other than length).
-pub fn err_tracker_address_invalid(locale: &str) -> String {
-    t(locale, "err-tracker-address-invalid")
-}
-
-/// Get translated "tracker address too long" error.
-pub fn err_tracker_address_too_long(locale: &str, max_length: usize) -> String {
-    t_args(
-        locale,
-        "err-tracker-address-too-long",
         &[("max_length", &max_length.to_string())],
     )
 }

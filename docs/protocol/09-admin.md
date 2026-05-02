@@ -1388,24 +1388,24 @@ A server can have at most 64 configured trackers.
 
 ### ServerInfoUpdate Errors
 
-| Error                                                   | Cause                           |
-| ------------------------------------------------------- | ------------------------------- |
-| Permission denied                                       | Non-admin attempted update      |
-| Server name cannot be empty                             | Empty name provided             |
-| Server name too long                                    | Exceeds 64 bytes                |
-| Description too long                                    | Exceeds 512 bytes               |
-| Image too large                                         | Exceeds 700KB                   |
-| Invalid image format                                    | Not PNG/WebP/JPEG/SVG           |
-| Public address is too long                              | Exceeds 253 bytes               |
-| Public address must not include a URL scheme            | Contains `://`                  |
-| Public address must not include brackets                | Bracketed IPv6 (e.g. `[::1]`)   |
-| Public address must not include a path                  | Contains `/`                    |
-| Public address must not include a username              | Contains `@`                    |
-| Public address must not contain whitespace              | Contains a whitespace character |
-| Public address must not include a port                  | Hostname-looking with `:port`   |
-| Public address must not include an IPv6 zone identifier | Contains `%zone`                |
-| Public address is not a valid hostname or IP address    | Fails IDN / IPv4 / IPv6 check   |
-| Invalid password strength value                         | Value not in range 0-4          |
+| Error                                            | Cause                           |
+| ------------------------------------------------ | ------------------------------- |
+| Permission denied                                | Non-admin attempted update      |
+| Server name cannot be empty                      | Empty name provided             |
+| Server name too long                             | Exceeds 64 bytes                |
+| Description too long                             | Exceeds 512 bytes               |
+| Image too large                                  | Exceeds 700KB                   |
+| Invalid image format                             | Not PNG/WebP/JPEG/SVG           |
+| Address is too long                              | Exceeds 253 bytes               |
+| Address must not include a URL scheme            | Contains `://`                  |
+| Address must not include brackets                | Bracketed IPv6 (e.g. `[::1]`)   |
+| Address must not include a path                  | Contains `/`                    |
+| Address must not include a username              | Contains `@`                    |
+| Address must not contain whitespace              | Contains a whitespace character |
+| Address must not include a port                  | Hostname-looking with `:port`   |
+| Address must not include an IPv6 zone identifier | Contains `%zone`                |
+| Address is not a valid hostname or IP address    | Fails IDN / IPv4 / IPv6 check   |
+| Invalid password strength value                  | Value not in range 0-4          |
 
 ### Tracker Validation Errors
 
@@ -1416,11 +1416,21 @@ the first failing rule.
 | -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | Permission denied                                              | Missing `tracker_create` / `tracker_edit` / `tracker_delete` / `tracker_list` |
 | Invalid tracker port                                           | Port is 0                                                                     |
-| Invalid tracker address                                        | Address fails the public-address rule set                                     |
-| Tracker address is too long                                    | Address exceeds 253 bytes                                                     |
+| Address cannot be empty                                        | Empty / whitespace-only address                                               |
+| Address is too long                                            | Exceeds 253 bytes                                                             |
+| Address must not include a URL scheme                          | Contains `://`                                                                |
+| Address must not include brackets                              | Bracketed IPv6 (e.g. `[::1]`)                                                 |
+| Address must not include a path                                | Contains `/`                                                                  |
+| Address must not include a username                            | Contains `@`                                                                  |
+| Address must not contain whitespace                            | Contains a whitespace character                                               |
+| Address must not include a port                                | Hostname-looking with `:port`                                                 |
+| Address must not include an IPv6 zone identifier               | Contains `%zone`                                                              |
+| Address is not a valid hostname or IP address                  | Fails IDN / IPv4 / IPv6 check                                                 |
 | Invalid tracker fingerprint format                             | Fingerprint supplied but not in canonical form                                |
 | Tracker password is too long                                   | Password exceeds 256 bytes                                                    |
-| Tracker name contains invalid characters                       | Name has control characters                                                   |
+| Tracker name cannot be empty                                   | Empty / whitespace-only name                                                  |
+| Tracker name cannot contain newlines                           | Name has `\n` or `\r`                                                         |
+| Tracker name contains invalid characters                       | Name has other control characters                                             |
 | Tracker name is too long                                       | Name exceeds 256 bytes                                                        |
 | Another tracker is already configured at this address and port | `(address, port)` collides with an existing row                               |
 | Another tracker is already configured with this name           | Case-insensitive name collides with an existing row                           |

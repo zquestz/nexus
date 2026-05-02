@@ -15,7 +15,7 @@ use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::protocol::TrackerInfo;
 use nexus_common::validators::{
     MAX_PASSWORD_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH, MAX_TRACKER_NAME_LENGTH, PublicAddressError,
-    TrackerNameError, validate_public_address, validate_tracker_name,
+    TrackerAddressError, TrackerNameError, validate_tracker_address, validate_tracker_name,
 };
 use nexus_common::{
     ERROR_KIND_CAPACITY, ERROR_KIND_INVALID, ERROR_KIND_RATE_LIMITED,
@@ -27,9 +27,12 @@ use nexus_common::{
 };
 
 use super::{
-    err_tracker_address_invalid, err_tracker_address_too_long, err_tracker_fingerprint_invalid,
-    err_tracker_name_contains_newlines, err_tracker_name_empty, err_tracker_name_invalid,
-    err_tracker_name_too_long, err_tracker_password_too_long, err_tracker_port_invalid,
+    err_address_contains_brackets, err_address_contains_path, err_address_contains_port,
+    err_address_contains_scheme, err_address_contains_userinfo, err_address_contains_whitespace,
+    err_address_contains_zone_id, err_address_empty, err_address_invalid_format,
+    err_address_too_long, err_tracker_fingerprint_invalid, err_tracker_name_contains_newlines,
+    err_tracker_name_empty, err_tracker_name_invalid, err_tracker_name_too_long,
+    err_tracker_password_too_long, err_tracker_port_invalid,
 };
 use crate::db::TrackerRecord;
 use crate::tracker::TrackerStatus;
@@ -122,12 +125,22 @@ pub fn validate_tracker_inputs(
     password: Option<&str>,
     name: &str,
 ) -> Result<(), String> {
-    if let Err(e) = validate_public_address(address) {
+    if let Err(e) = validate_tracker_address(address) {
         return Err(match e {
-            PublicAddressError::TooLong => {
-                err_tracker_address_too_long(locale, MAX_PUBLIC_ADDRESS_LENGTH)
-            }
-            _ => err_tracker_address_invalid(locale),
+            TrackerAddressError::Empty => err_address_empty(locale),
+            TrackerAddressError::Invalid(inner) => match inner {
+                PublicAddressError::TooLong => {
+                    err_address_too_long(locale, MAX_PUBLIC_ADDRESS_LENGTH)
+                }
+                PublicAddressError::ContainsScheme => err_address_contains_scheme(locale),
+                PublicAddressError::ContainsBrackets => err_address_contains_brackets(locale),
+                PublicAddressError::ContainsPath => err_address_contains_path(locale),
+                PublicAddressError::ContainsUserinfo => err_address_contains_userinfo(locale),
+                PublicAddressError::ContainsWhitespace => err_address_contains_whitespace(locale),
+                PublicAddressError::ContainsPort => err_address_contains_port(locale),
+                PublicAddressError::ContainsZoneId => err_address_contains_zone_id(locale),
+                PublicAddressError::InvalidFormat => err_address_invalid_format(locale),
+            },
         });
     }
     if port == 0 {
@@ -327,6 +340,20 @@ mod tests {
             validate_tracker_inputs("en", "tracker.example.com:7500", 7510, None, None, "Public")
                 .expect_err("should reject");
         assert!(!err.is_empty());
+    }
+
+    #[test]
+    fn validate_rejects_empty_address() {
+        // Empty string and whitespace-only — distinct from the bad-format
+        // path; tracker rows MUST have a real address (the BBS server's
+        // `public_address` accepts empty for "unset", but trackers don't).
+        let expected = crate::i18n::t("en", "err-address-empty");
+        let err = validate_tracker_inputs("en", "", 7510, None, None, "Public")
+            .expect_err("should reject empty");
+        assert_eq!(err, expected);
+        let err = validate_tracker_inputs("en", "   ", 7510, None, None, "Public")
+            .expect_err("should reject whitespace-only");
+        assert_eq!(err, expected);
     }
 
     #[test]
