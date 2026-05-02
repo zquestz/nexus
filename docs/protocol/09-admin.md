@@ -1110,7 +1110,15 @@ A registration cycle progresses through:
 
 Stable machine-readable identifiers in `TrackerInfo.last_error_kind`.
 The matching `TrackerInfo.last_error` is pre-translated to the admin's
-locale.
+locale. Kinds are split by *who set them* — the BBS-side registration
+task itself, or the tracker daemon echoing back via
+`TrackerServerRegisterResponse.error_kind`.
+
+#### BBS-internal kinds
+
+Set by the registration task's own state machine when *our* code
+detects a problem (network failure, fingerprint mismatch, malformed
+tracker response). The tracker daemon never produces these.
 
 | Kind                              | Recoverable | Meaning                                                                            |
 | --------------------------------- | :---------: | ---------------------------------------------------------------------------------- |
@@ -1123,13 +1131,33 @@ locale.
 | `tracker_fingerprint_mismatch`    |     No      | Stage 1: pinned fingerprint disagrees with observed                                |
 | `tracker_fingerprint_intercepted` |     No      | Stage 2: observed cert disagrees with tracker's self-reported value                |
 | `tracker_protocol_error`          |     No      | Tracker sent a malformed `error_kind` (wire-format violation)                      |
-| `unauthorized`                    |     No      | Tracker rejected the registration password                                         |
-| `rate_limited`                    |     Yes     | Tracker rate-limited us                                                            |
-| `capacity`                        |     Yes     | Tracker is full                                                                    |
-| `invalid`                         |     No      | Tracker rejected the registration as malformed                                     |
 
-"Recoverable" kinds back off and retry automatically. Unrecoverable
-kinds exit the registration task; admin intervention (`TrackerUpdate`,
+#### Tracker-supplied kinds
+
+Echoed verbatim from `TrackerServerRegisterResponse.error_kind` when
+the tracker daemon rejects our `TrackerServerRegister`. The publisher
+validates the wire format (snake_case, length-bounded) before
+storing; malformed kinds are replaced with `tracker_protocol_error`
+above.
+
+| Kind           | Recoverable | Meaning                                              |
+| -------------- | :---------: | ---------------------------------------------------- |
+| `unauthorized` |     No      | Tracker rejected the registration password           |
+| `rate_limited` |     Yes     | Tracker rate-limited us                              |
+| `capacity`     |     Yes     | Tracker is full                                      |
+| `invalid`      |     No      | Tracker rejected the registration as malformed      |
+
+A future tracker version may introduce a new `error_kind` we don't
+recognize. As long as it passes the wire-format check, the publisher
+stores it verbatim and the admin UI falls back to a generic "Tracker
+reported an unknown error" message; the cycle is treated as transient
+(backoff + retry). To avoid breaking forward compatibility, only
+explicitly recognized kinds are unrecoverable.
+
+#### Recovery
+
+"Recoverable: Yes" kinds back off and retry automatically. "No" kinds
+exit the registration task; admin intervention (`TrackerUpdate`,
 `TrackerDelete`, or server restart) is required.
 
 ## Permissions
