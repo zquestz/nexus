@@ -1159,8 +1159,14 @@ const TRACKER_DELETE_SIZE: usize = json_type_base("TrackerDelete") + json_i64_fi
 /// - address, name (bounded strings)
 /// - password, fingerprint, pending_fingerprint (bounded strings)
 /// - last_error (bounded by MAX_ERROR_LENGTH), last_error_kind (bounded by MAX_ERROR_KIND_LENGTH)
-const TRACKER_INFO_SIZE: usize = json_type_base("TrackerInfo")
-    + json_i64_field("id")
+///
+/// Plain nested struct: no `"type"` discriminator on the wire (only
+/// the parent `TrackerListResponse` / `TrackerEditResponse` carries
+/// the envelope `"type"`). Follows the same shape as `NEWS_ITEM_SIZE`
+/// and `CHANNEL_JOIN_INFO_SIZE`: first field uses `json_first_*_field`
+/// (no leading comma), subsequent fields carry the comma, trailing
+/// `+ 2` accounts for `{` and `}`.
+const TRACKER_INFO_SIZE: usize = json_first_i64_field("id")
     + json_string_field("address", MAX_PUBLIC_ADDRESS_LENGTH)
     + json_u16_field("port")
     + json_string_field("fingerprint", SHA256_FINGERPRINT_LENGTH)
@@ -1175,7 +1181,8 @@ const TRACKER_INFO_SIZE: usize = json_type_base("TrackerInfo")
     + json_string_field("last_error", MAX_ERROR_LENGTH)
     + json_string_field("last_error_kind", MAX_ERROR_KIND_LENGTH)
     + json_string_field("pending_fingerprint", SHA256_FINGERPRINT_LENGTH)
-    + json_u32_field("refresh_interval");
+    + json_u32_field("refresh_interval")
+    + 2; // {} braces
 
 /// Practical maximum number of trackers a single server will have
 /// configured. 64 is well above any realistic deployment (most servers
