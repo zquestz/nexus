@@ -274,6 +274,8 @@ err-group-shared-mismatch = 계정 유형이 그룹 유형과 일치하지 않�
 # Tracker Errors
 err-tracker-not-found = 트래커를 찾을 수 없습니다
 err-tracker-name-invalid = 트래커 이름에 잘못된 문자가 포함되어 있습니다
+err-tracker-name-empty = 트래커 이름은 비워둘 수 없습니다
+err-tracker-name-contains-newlines = 트래커 이름에 줄바꿈을 포함할 수 없습니다
 err-tracker-name-too-long = 트래커 이름이 너무 깁니다 (최대 { $max_length } 바이트)
 err-tracker-address-invalid = 잘못된 트래커 주소입니다
 err-tracker-address-too-long = 트래커 주소가 너무 깁니다 (최대 { $max_length } 바이트)

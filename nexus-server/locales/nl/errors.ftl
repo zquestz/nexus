@@ -274,6 +274,8 @@ err-group-shared-mismatch = Accounttype komt niet overeen met groepstype (gedeel
 # Tracker Errors
 err-tracker-not-found = Tracker niet gevonden
 err-tracker-name-invalid = Trackernaam bevat ongeldige tekens
+err-tracker-name-empty = Trackernaam mag niet leeg zijn
+err-tracker-name-contains-newlines = Trackernaam mag geen regeleinden bevatten
 err-tracker-name-too-long = Trackernaam is te lang (max { $max_length } bytes)
 err-tracker-address-invalid = Ongeldig trackeradres
 err-tracker-address-too-long = Trackeradres is te lang (max { $max_length } bytes)

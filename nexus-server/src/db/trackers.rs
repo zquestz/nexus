@@ -22,12 +22,12 @@ const SQLITE_CONSTRAINT_UNIQUE: &str = "2067";
 /// SQLite primary result code `SQLITE_BUSY` — another writer holds
 /// the lock; the operation should be retried after a short delay.
 /// Always transient.
-const SQLITE_BUSY: &str = "5";
+const SQLITE_BUSY_PRIMARY: i32 = 5;
 
 /// SQLite primary result code `SQLITE_LOCKED` — the write was
 /// blocked by a different connection's pending transaction. Transient
 /// for the same reason as `SQLITE_BUSY`.
-const SQLITE_LOCKED: &str = "6";
+const SQLITE_LOCKED_PRIMARY: i32 = 6;
 
 /// Whether `err` represents a transient (retryable) DB failure.
 ///
@@ -36,13 +36,26 @@ const SQLITE_LOCKED: &str = "6";
 /// "give up and surface to admin" (corruption, missing schema, disk
 /// I/O). Anything that isn't a recognized transient code is treated
 /// as structural.
+///
+/// sqlx-sqlite surfaces the *extended* result code (e.g. `"261"` for
+/// `SQLITE_BUSY_RECOVERY` or `"773"` for `SQLITE_BUSY_TIMEOUT`). The
+/// primary code lives in the low byte, so every `SQLITE_BUSY_*` /
+/// `SQLITE_LOCKED_*` extended variant is recognized via the mask
+/// rather than enumerated.
 #[must_use]
 pub fn is_transient_db_error(err: &sqlx::Error) -> bool {
-    if let sqlx::Error::Database(db_err) = err {
-        matches!(db_err.code().as_deref(), Some(SQLITE_BUSY | SQLITE_LOCKED))
-    } else {
-        false
-    }
+    let sqlx::Error::Database(db_err) = err else {
+        return false;
+    };
+    let Some(primary) = db_err
+        .code()
+        .as_deref()
+        .and_then(|s| s.parse::<i32>().ok())
+        .map(|code| code & 0xFF)
+    else {
+        return false;
+    };
+    primary == SQLITE_BUSY_PRIMARY || primary == SQLITE_LOCKED_PRIMARY
 }
 
 // SQLite reports UNIQUE constraint violations with two distinct

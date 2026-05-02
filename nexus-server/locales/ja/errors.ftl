@@ -274,6 +274,8 @@ err-group-shared-mismatch = アカウントタイプがグループタイプと�
 # Tracker Errors
 err-tracker-not-found = トラッカーが見つかりません
 err-tracker-name-invalid = トラッカー名に無効な文字が含まれています
+err-tracker-name-empty = トラッカー名を空にすることはできません
+err-tracker-name-contains-newlines = トラッカー名に改行を含めることはできません
 err-tracker-name-too-long = トラッカー名が長すぎます (最大 { $max_length } バイト)
 err-tracker-address-invalid = 無効なトラッカーアドレスです
 err-tracker-address-too-long = トラッカーアドレスが長すぎます (最大 { $max_length } バイト)

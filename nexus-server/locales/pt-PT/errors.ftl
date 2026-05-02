@@ -274,6 +274,8 @@ err-group-shared-mismatch = O tipo de conta não corresponde ao tipo de grupo (c
 # Tracker Errors
 err-tracker-not-found = Rastreador não encontrado
 err-tracker-name-invalid = O nome do rastreador contém caracteres inválidos
+err-tracker-name-empty = O nome do rastreador não pode estar vazio
+err-tracker-name-contains-newlines = O nome do rastreador não pode conter quebras de linha
 err-tracker-name-too-long = O nome do rastreador é demasiado longo (máx { $max_length } bytes)
 err-tracker-address-invalid = Endereço de rastreador inválido
 err-tracker-address-too-long = O endereço do rastreador é demasiado longo (máx { $max_length } bytes)

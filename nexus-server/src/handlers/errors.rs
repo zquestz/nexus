@@ -1272,11 +1272,21 @@ pub fn err_tracker_not_found(locale: &str) -> String {
     t(locale, "err-tracker-not-found")
 }
 
-/// Get translated "tracker name invalid" error (empty, control chars,
-/// or newlines — `validate_tracker_name` failure not covered by the
-/// length-specific helper).
+/// Get translated "tracker name invalid" error (control chars or
+/// other non-printable input — distinct from empty / newline cases
+/// which have their own helpers).
 pub fn err_tracker_name_invalid(locale: &str) -> String {
     t(locale, "err-tracker-name-invalid")
+}
+
+/// Get translated "tracker name empty" error.
+pub fn err_tracker_name_empty(locale: &str) -> String {
+    t(locale, "err-tracker-name-empty")
+}
+
+/// Get translated "tracker name contains newlines" error.
+pub fn err_tracker_name_contains_newlines(locale: &str) -> String {
+    t(locale, "err-tracker-name-contains-newlines")
 }
 
 /// Get translated "tracker name too long" error.

@@ -274,6 +274,8 @@ err-group-shared-mismatch = Kontotyp stimmt nicht mit dem Gruppentyp überein (g
 # Tracker Errors
 err-tracker-not-found = Tracker nicht gefunden
 err-tracker-name-invalid = Tracker-Name enthält ungültige Zeichen
+err-tracker-name-empty = Tracker-Name darf nicht leer sein
+err-tracker-name-contains-newlines = Tracker-Name darf keine Zeilenumbrüche enthalten
 err-tracker-name-too-long = Tracker-Name ist zu lang (max { $max_length } Bytes)
 err-tracker-address-invalid = Ungültige Tracker-Adresse
 err-tracker-address-too-long = Tracker-Adresse ist zu lang (max { $max_length } Bytes)

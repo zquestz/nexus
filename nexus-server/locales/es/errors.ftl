@@ -275,6 +275,8 @@ err-group-shared-mismatch = El tipo de cuenta no coincide con el tipo de grupo (
 # Tracker Errors
 err-tracker-not-found = Rastreador no encontrado
 err-tracker-name-invalid = El nombre del rastreador contiene caracteres no válidos
+err-tracker-name-empty = El nombre del rastreador no puede estar vacío
+err-tracker-name-contains-newlines = El nombre del rastreador no puede contener saltos de línea
 err-tracker-name-too-long = El nombre del rastreador es demasiado largo (máx { $max_length } bytes)
 err-tracker-address-invalid = Dirección de rastreador no válida
 err-tracker-address-too-long = La dirección del rastreador es demasiado larga (máx { $max_length } bytes)

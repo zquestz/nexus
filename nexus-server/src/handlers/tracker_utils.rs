@@ -28,8 +28,8 @@ use nexus_common::{
 
 use super::{
     err_tracker_address_invalid, err_tracker_address_too_long, err_tracker_fingerprint_invalid,
-    err_tracker_name_invalid, err_tracker_name_too_long, err_tracker_password_too_long,
-    err_tracker_port_invalid,
+    err_tracker_name_contains_newlines, err_tracker_name_empty, err_tracker_name_invalid,
+    err_tracker_name_too_long, err_tracker_password_too_long, err_tracker_port_invalid,
 };
 use crate::db::TrackerRecord;
 use crate::tracker::TrackerStatus;
@@ -145,8 +145,10 @@ pub fn validate_tracker_inputs(
     }
     if let Err(e) = validate_tracker_name(name) {
         return Err(match e {
+            TrackerNameError::Empty => err_tracker_name_empty(locale),
             TrackerNameError::TooLong => err_tracker_name_too_long(locale, MAX_TRACKER_NAME_LENGTH),
-            _ => err_tracker_name_invalid(locale),
+            TrackerNameError::ContainsNewlines => err_tracker_name_contains_newlines(locale),
+            TrackerNameError::InvalidCharacters => err_tracker_name_invalid(locale),
         });
     }
     Ok(())

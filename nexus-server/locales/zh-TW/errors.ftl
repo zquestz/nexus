@@ -274,6 +274,8 @@ err-group-shared-mismatch = 帳戶類型與群組類型不相符（共享帳戶�
 # Tracker Errors
 err-tracker-not-found = 找不到追蹤器
 err-tracker-name-invalid = 追蹤器名稱包含無效字元
+err-tracker-name-empty = 追蹤器名稱不能為空
+err-tracker-name-contains-newlines = 追蹤器名稱不能包含換行符
 err-tracker-name-too-long = 追蹤器名稱過長 (最多 { $max_length } 位元組)
 err-tracker-address-invalid = 追蹤器位址無效
 err-tracker-address-too-long = 追蹤器位址過長 (最多 { $max_length } 位元組)

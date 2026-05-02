@@ -274,6 +274,8 @@ err-group-shared-mismatch = Тип учетной записи не соотве
 # Tracker Errors
 err-tracker-not-found = Трекер не найден
 err-tracker-name-invalid = Имя трекера содержит недопустимые символы
+err-tracker-name-empty = Имя трекера не может быть пустым
+err-tracker-name-contains-newlines = Имя трекера не может содержать переносы строк
 err-tracker-name-too-long = Имя трекера слишком длинное (макс. { $max_length } байт)
 err-tracker-address-invalid = Недопустимый адрес трекера
 err-tracker-address-too-long = Адрес трекера слишком длинный (макс. { $max_length } байт)
