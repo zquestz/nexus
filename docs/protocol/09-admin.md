@@ -1049,19 +1049,25 @@ task's runtime status.
 | `id`                  | integer | Always          | Tracker row id                                                                                          |
 | `address`             | string  | Always          | Hostname or IP literal as configured                                                                    |
 | `port`                | integer | Always          | TCP port                                                                                                |
-| `fingerprint`         | string  | When pinned     | Pinned cert fingerprint in canonical form (`null` until first TOFU pin)                                 |
-| `password`            | string  | When set        | Registration password (echoed plaintext to admins; `null` for open trackers)                            |
+| `fingerprint`         | string  | When pinned     | Pinned cert fingerprint in canonical form (absent until first TOFU pin)                                 |
+| `password`            | string  | When set        | Registration password (echoed plaintext to admins; absent for open trackers)                            |
 | `name`                | string  | Always          | Admin-supplied label                                                                                    |
 | `enabled`             | boolean | Always          | Whether the registration task is actively maintained                                                    |
 | `created_at`          | integer | Always          | Unix epoch seconds when the row was created                                                             |
 | `updated_at`          | integer | Always          | Unix epoch seconds when the row was last updated                                                        |
 | `connected`           | boolean | Always          | Whether the registration task currently has a healthy registration                                      |
-| `last_connected_at`   | integer | After 1st conn. | Unix epoch seconds of the most recent successful refresh (`null` if it has never connected)             |
-| `last_attempted_at`   | integer | After 1st cycle | Unix epoch seconds of the most recent connection attempt (`null` until the first cycle starts)          |
-| `last_error`          | string  | On error        | Most recent error message, translated into the requesting admin's locale (`null` if no error)           |
+| `last_connected_at`   | integer | After 1st conn. | Unix epoch seconds of the most recent successful refresh (absent if it has never connected)             |
+| `last_attempted_at`   | integer | After 1st cycle | Unix epoch seconds of the most recent connection attempt (absent until the first cycle starts)          |
+| `last_error`          | string  | On error        | Most recent error message, translated into the requesting admin's locale (absent if no error)           |
 | `last_error_kind`     | string  | On error        | Stable machine-readable error identifier (see "Tracker Error Kinds" below)                              |
-| `pending_fingerprint` | string  | On mismatch     | Newly-observed fingerprint after a Stage 1 mismatch, awaiting admin accept (`null` in normal operation) |
-| `refresh_interval`    | integer | When connected  | Tracker-supplied refresh cadence in seconds (`null` until the first successful registration)            |
+| `pending_fingerprint` | string  | On mismatch     | Newly-observed fingerprint after a Stage 1 mismatch, awaiting admin accept (absent in normal operation) |
+| `refresh_interval`    | integer | When connected  | Tracker-supplied refresh cadence in seconds (absent until the first successful registration)            |
+
+Optional fields are **omitted from the wire** when unset (rather than
+serialized as `null`); the JSON-Schema-style "Required" column above
+indicates when each field is present. Clients should treat absent and
+`null` interchangeably, but the wire bytes saved on the common case
+where most runtime fields are unset add up across a list of trackers.
 
 The `password` is echoed in plaintext because it's invite-code-style
 shared infrastructure (admins may need to share it with collaborators
@@ -1128,19 +1134,19 @@ kinds exit the registration task; admin intervention (`TrackerUpdate`,
 
 ## Permissions
 
-| Permission       | Required For                                                           |
-| ---------------- | ---------------------------------------------------------------------- |
-| `user_create`    | Creating user accounts                                                 |
-| `user_edit`      | Editing user accounts                                                  |
-| `user_delete`    | Deleting user accounts                                                 |
-| `user_kick`      | Kicking users                                                          |
-| `group_create`   | Creating account groups                                                |
-| `group_edit`     | Editing account groups                                                 |
-| `group_delete`   | Deleting account groups                                                |
-| `tracker_create` | Adding a tracker (`TrackerCreate`)                                     |
+| Permission       | Required For                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `user_create`    | Creating user accounts                                                                                                    |
+| `user_edit`      | Editing user accounts                                                                                                     |
+| `user_delete`    | Deleting user accounts                                                                                                    |
+| `user_kick`      | Kicking users                                                                                                             |
+| `group_create`   | Creating account groups                                                                                                   |
+| `group_edit`     | Editing account groups                                                                                                    |
+| `group_delete`   | Deleting account groups                                                                                                   |
+| `tracker_create` | Adding a tracker (`TrackerCreate`)                                                                                        |
 | `tracker_edit`   | Fetching tracker details (including the registration password in plaintext) and updating (`TrackerEdit`, `TrackerUpdate`) |
-| `tracker_delete` | Removing a tracker (`TrackerDelete`)                                   |
-| `tracker_list`   | Listing trackers and their runtime status (`TrackerList`)              |
+| `tracker_delete` | Removing a tracker (`TrackerDelete`)                                                                                      |
+| `tracker_list`   | Listing trackers and their runtime status (`TrackerList`)                                                                 |
 
 **Note on `tracker_edit`:** Granting this permission to a non-admin
 also grants read access to every configured tracker's registration
