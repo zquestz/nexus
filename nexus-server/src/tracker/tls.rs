@@ -26,6 +26,14 @@ use tokio_rustls::rustls::{DigitallySignedStruct, Error as RustlsError, Signatur
 /// Lazy-initialized on first use; the rustls `ClientConfig` is shared
 /// across all connection attempts (cheap to share — just shape state,
 /// no per-connection mutable bits).
+///
+/// **Caller contract:** a rustls crypto provider must be installed
+/// before this LazyLock is first accessed. Production does this in
+/// `main.rs` (during startup, before any tracker task spawns); tests
+/// do it in `MockTracker::start` (idempotent `install_default`). If a
+/// new code path triggers `TLS_CONNECTOR` initialization before either
+/// of those, rustls falls back to whatever default is current rather
+/// than the one this codebase chose.
 pub static TLS_CONNECTOR: LazyLock<TlsConnector> = LazyLock::new(|| {
     let mut config = ClientConfig::builder()
         .dangerous()
