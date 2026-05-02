@@ -224,6 +224,56 @@ pub enum ErrorKind {
     /// The tracker has reached its configured entry limit and cannot
     /// accept new registrations.
     Capacity,
+
+    // ---- Tracker registration kinds ----
+    //
+    // Internal states of a BBS server's per-tracker registration task
+    // (set by the tracker task itself, not echoed from the tracker
+    // protocol). Surfaced to the BBS admin via
+    // `TrackerInfo.last_error_kind`. The client-side tracker
+    // management UI matches on these to render appropriate per-kind
+    // affordances (e.g. "Accept new fingerprint?" for
+    // `TrackerFingerprintMismatch`).
+    /// Tracker task couldn't open the TCP connection to the tracker.
+    TrackerConnectionFailed,
+
+    /// Tracker task's TLS handshake with the tracker failed.
+    TrackerTlsFailed,
+
+    /// Tracker task's BBS-style handshake with the tracker failed
+    /// (the `Handshake` send/receive cycle, distinct from TCP+TLS).
+    TrackerHandshakeFailed,
+
+    /// Tracker task's connection to the tracker was lost mid-session
+    /// (peer closed, read error, register-response timeout, etc.).
+    TrackerConnectionLost,
+
+    /// Tracker task hit a database error while updating local tracker
+    /// state (e.g. TOFU-pinning the fingerprint).
+    TrackerDbFailed,
+
+    /// Stage 1 fingerprint mismatch: tracker's TLS cert disagrees with
+    /// the row's pinned fingerprint. Unrecoverable; admin must accept
+    /// the new fingerprint.
+    TrackerFingerprintMismatch,
+
+    /// Stage 2 fingerprint mismatch: tracker's TLS-observed cert
+    /// disagrees with what the tracker self-reports in
+    /// `HandshakeResponse`. Unrecoverable; suggests active
+    /// interception.
+    TrackerFingerprintIntercepted,
+
+    /// Tracker sent an `error_kind` that violates the wire format
+    /// (non-snake_case, control chars, oversized, etc.). Distinct from
+    /// `ProtocolError` so admin UI can attribute the violation to the
+    /// tracker rather than to a generic protocol mismatch.
+    TrackerProtocolError,
+
+    /// Tracker row's `address` field can't be resolved into a form the
+    /// system resolver / rustls accept (IDNA failure or empty string).
+    /// Reaching this kind means the row is structurally broken — admin
+    /// must edit it.
+    TrackerAddressInvalid,
 }
 
 impl ErrorKind {
@@ -243,6 +293,15 @@ impl ErrorKind {
             Self::Unauthorized => ERROR_KIND_UNAUTHORIZED,
             Self::RateLimited => ERROR_KIND_RATE_LIMITED,
             Self::Capacity => ERROR_KIND_CAPACITY,
+            Self::TrackerConnectionFailed => ERROR_KIND_TRACKER_CONNECTION_FAILED,
+            Self::TrackerTlsFailed => ERROR_KIND_TRACKER_TLS_FAILED,
+            Self::TrackerHandshakeFailed => ERROR_KIND_TRACKER_HANDSHAKE_FAILED,
+            Self::TrackerConnectionLost => ERROR_KIND_TRACKER_CONNECTION_LOST,
+            Self::TrackerDbFailed => ERROR_KIND_TRACKER_DB_FAILED,
+            Self::TrackerFingerprintMismatch => ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH,
+            Self::TrackerFingerprintIntercepted => ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
+            Self::TrackerProtocolError => ERROR_KIND_TRACKER_PROTOCOL_ERROR,
+            Self::TrackerAddressInvalid => ERROR_KIND_TRACKER_ADDRESS_INVALID,
         }
     }
 
@@ -262,6 +321,15 @@ impl ErrorKind {
             ERROR_KIND_UNAUTHORIZED => Some(Self::Unauthorized),
             ERROR_KIND_RATE_LIMITED => Some(Self::RateLimited),
             ERROR_KIND_CAPACITY => Some(Self::Capacity),
+            ERROR_KIND_TRACKER_CONNECTION_FAILED => Some(Self::TrackerConnectionFailed),
+            ERROR_KIND_TRACKER_TLS_FAILED => Some(Self::TrackerTlsFailed),
+            ERROR_KIND_TRACKER_HANDSHAKE_FAILED => Some(Self::TrackerHandshakeFailed),
+            ERROR_KIND_TRACKER_CONNECTION_LOST => Some(Self::TrackerConnectionLost),
+            ERROR_KIND_TRACKER_DB_FAILED => Some(Self::TrackerDbFailed),
+            ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH => Some(Self::TrackerFingerprintMismatch),
+            ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED => Some(Self::TrackerFingerprintIntercepted),
+            ERROR_KIND_TRACKER_PROTOCOL_ERROR => Some(Self::TrackerProtocolError),
+            ERROR_KIND_TRACKER_ADDRESS_INVALID => Some(Self::TrackerAddressInvalid),
             _ => None,
         }
     }
@@ -297,6 +365,36 @@ mod tests {
         assert_eq!(ErrorKind::Unauthorized.as_str(), "unauthorized");
         assert_eq!(ErrorKind::RateLimited.as_str(), "rate_limited");
         assert_eq!(ErrorKind::Capacity.as_str(), "capacity");
+        assert_eq!(
+            ErrorKind::TrackerConnectionFailed.as_str(),
+            "tracker_connection_failed"
+        );
+        assert_eq!(ErrorKind::TrackerTlsFailed.as_str(), "tracker_tls_failed");
+        assert_eq!(
+            ErrorKind::TrackerHandshakeFailed.as_str(),
+            "tracker_handshake_failed"
+        );
+        assert_eq!(
+            ErrorKind::TrackerConnectionLost.as_str(),
+            "tracker_connection_lost"
+        );
+        assert_eq!(ErrorKind::TrackerDbFailed.as_str(), "tracker_db_failed");
+        assert_eq!(
+            ErrorKind::TrackerFingerprintMismatch.as_str(),
+            "tracker_fingerprint_mismatch"
+        );
+        assert_eq!(
+            ErrorKind::TrackerFingerprintIntercepted.as_str(),
+            "tracker_fingerprint_intercepted"
+        );
+        assert_eq!(
+            ErrorKind::TrackerProtocolError.as_str(),
+            "tracker_protocol_error"
+        );
+        assert_eq!(
+            ErrorKind::TrackerAddressInvalid.as_str(),
+            "tracker_address_invalid"
+        );
     }
 
     #[test]
@@ -328,6 +426,42 @@ mod tests {
             Some(ErrorKind::RateLimited)
         );
         assert_eq!(ErrorKind::parse("capacity"), Some(ErrorKind::Capacity));
+        assert_eq!(
+            ErrorKind::parse("tracker_connection_failed"),
+            Some(ErrorKind::TrackerConnectionFailed)
+        );
+        assert_eq!(
+            ErrorKind::parse("tracker_tls_failed"),
+            Some(ErrorKind::TrackerTlsFailed)
+        );
+        assert_eq!(
+            ErrorKind::parse("tracker_handshake_failed"),
+            Some(ErrorKind::TrackerHandshakeFailed)
+        );
+        assert_eq!(
+            ErrorKind::parse("tracker_connection_lost"),
+            Some(ErrorKind::TrackerConnectionLost)
+        );
+        assert_eq!(
+            ErrorKind::parse("tracker_db_failed"),
+            Some(ErrorKind::TrackerDbFailed)
+        );
+        assert_eq!(
+            ErrorKind::parse("tracker_fingerprint_mismatch"),
+            Some(ErrorKind::TrackerFingerprintMismatch)
+        );
+        assert_eq!(
+            ErrorKind::parse("tracker_fingerprint_intercepted"),
+            Some(ErrorKind::TrackerFingerprintIntercepted)
+        );
+        assert_eq!(
+            ErrorKind::parse("tracker_protocol_error"),
+            Some(ErrorKind::TrackerProtocolError)
+        );
+        assert_eq!(
+            ErrorKind::parse("tracker_address_invalid"),
+            Some(ErrorKind::TrackerAddressInvalid)
+        );
         assert_eq!(ErrorKind::parse("unknown"), None);
         assert_eq!(ErrorKind::parse(""), None);
     }
@@ -361,6 +495,15 @@ mod tests {
             ErrorKind::Unauthorized,
             ErrorKind::RateLimited,
             ErrorKind::Capacity,
+            ErrorKind::TrackerConnectionFailed,
+            ErrorKind::TrackerTlsFailed,
+            ErrorKind::TrackerHandshakeFailed,
+            ErrorKind::TrackerConnectionLost,
+            ErrorKind::TrackerDbFailed,
+            ErrorKind::TrackerFingerprintMismatch,
+            ErrorKind::TrackerFingerprintIntercepted,
+            ErrorKind::TrackerProtocolError,
+            ErrorKind::TrackerAddressInvalid,
         ] {
             assert_eq!(ErrorKind::parse(kind.as_str()), Some(kind));
         }
@@ -472,5 +615,41 @@ mod tests {
         assert_eq!(ERROR_KIND_UNAUTHORIZED, ErrorKind::Unauthorized.as_str());
         assert_eq!(ERROR_KIND_RATE_LIMITED, ErrorKind::RateLimited.as_str());
         assert_eq!(ERROR_KIND_CAPACITY, ErrorKind::Capacity.as_str());
+        assert_eq!(
+            ERROR_KIND_TRACKER_CONNECTION_FAILED,
+            ErrorKind::TrackerConnectionFailed.as_str()
+        );
+        assert_eq!(
+            ERROR_KIND_TRACKER_TLS_FAILED,
+            ErrorKind::TrackerTlsFailed.as_str()
+        );
+        assert_eq!(
+            ERROR_KIND_TRACKER_HANDSHAKE_FAILED,
+            ErrorKind::TrackerHandshakeFailed.as_str()
+        );
+        assert_eq!(
+            ERROR_KIND_TRACKER_CONNECTION_LOST,
+            ErrorKind::TrackerConnectionLost.as_str()
+        );
+        assert_eq!(
+            ERROR_KIND_TRACKER_DB_FAILED,
+            ErrorKind::TrackerDbFailed.as_str()
+        );
+        assert_eq!(
+            ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH,
+            ErrorKind::TrackerFingerprintMismatch.as_str()
+        );
+        assert_eq!(
+            ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
+            ErrorKind::TrackerFingerprintIntercepted.as_str()
+        );
+        assert_eq!(
+            ERROR_KIND_TRACKER_PROTOCOL_ERROR,
+            ErrorKind::TrackerProtocolError.as_str()
+        );
+        assert_eq!(
+            ERROR_KIND_TRACKER_ADDRESS_INVALID,
+            ErrorKind::TrackerAddressInvalid.as_str()
+        );
     }
 }
