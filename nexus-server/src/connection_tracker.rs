@@ -4,11 +4,12 @@
 //! resource exhaustion attacks. It tracks main BBS connections,
 //! file transfer connections, and voice connections with separate limits.
 
-use crate::constants::{ERR_CONNECTION_TRACKER_LOCK, ERR_TRANSFER_TRACKER_LOCK};
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+
+use crate::constants::{ERR_CONNECTION_TRACKER_LOCK, ERR_TRANSFER_TRACKER_LOCK};
 
 /// Tracks active connections per IP address for both main and transfer connections
 ///

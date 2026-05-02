@@ -1,16 +1,5 @@
 //! Shared test utilities for handler tests
 
-/// Default locale for tests
-pub const DEFAULT_TEST_LOCALE: &str = "en";
-
-/// Fake server certificate fingerprint used in tests.
-///
-/// Real fingerprints are 32 hex pairs separated by colons (95 chars). Tests
-/// don't validate format, but using a realistic shape avoids surprises if a
-/// validator is added later. Reference this constant rather than the literal
-/// so it can be updated in one place.
-pub const TEST_FINGERPRINT: &str = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
-
 use std::collections::HashMap;
 use std::fs;
 use std::net::SocketAddr;
@@ -30,13 +19,24 @@ use nexus_common::protocol::ServerMessage;
 use super::HandlerContext;
 use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
-use crate::db::{CreateUserParams, Database};
+use crate::db::{CreateUserParams, Database, Permissions};
 use crate::files::FileIndex;
 use crate::ip_rule_cache::IpRuleCache;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
 use crate::users::user::NewSessionParams;
 use crate::voice::VoiceRegistry;
+
+/// Default locale for tests
+pub const DEFAULT_TEST_LOCALE: &str = "en";
+
+/// Fake server certificate fingerprint used in tests.
+///
+/// Real fingerprints are 32 hex pairs separated by colons (95 chars). Tests
+/// don't validate format, but using a realistic shape avoids surprises if a
+/// validator is added later. Reference this constant rather than the literal
+/// so it can be updated in one place.
+pub const TEST_FINGERPRINT: &str = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
 
 /// Type alias for the write half used in tests
 type TestWriteHalf = tokio::net::tcp::OwnedWriteHalf;
@@ -276,8 +276,6 @@ pub async fn login_user_from_ip(
     is_admin: bool,
     ip: &str,
 ) -> u32 {
-    use crate::db::Permissions;
-
     // Get cached password hash (fast path for repeated passwords)
     let hashed = get_cached_password_hash(password);
 
@@ -343,8 +341,6 @@ pub async fn login_user_with_features(
     is_admin: bool,
     features: Vec<String>,
 ) -> u32 {
-    use crate::db::Permissions;
-
     // Get cached password hash (fast path for repeated passwords)
     let hashed = get_cached_password_hash(password);
 
@@ -418,8 +414,6 @@ pub async fn login_observer_user(
     u32,
     mpsc::UnboundedReceiver<(ServerMessage, Option<MessageId>)>,
 ) {
-    use crate::db::Permissions;
-
     let hashed = get_cached_password_hash(password);
 
     let mut perms = Permissions::new();
@@ -481,8 +475,6 @@ pub async fn login_shared_user(
     nickname: &str,
     permissions: &[crate::db::Permission],
 ) -> u32 {
-    use crate::db::Permissions;
-
     // Get cached password hash (fast path for repeated passwords)
     let hashed = get_cached_password_hash(password);
 

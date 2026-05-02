@@ -12,13 +12,20 @@
 //! exercise TOFU semantics.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use nexus_common::TRACKER_PROTOCOL_VERSION;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{read_server_message, send_client_message};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
+use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
+use nexus_common::websocket::WebSocketAdapter;
+use nexus_tracker::registry::Registry;
+use nexus_tracker::state::TrackerState;
+use tokio::io::{ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::TlsConnector;
+use tokio_rustls::client::TlsStream;
 use tokio_rustls::rustls::client::danger::{
     HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
 };
@@ -307,13 +314,6 @@ async fn test_non_handshake_first_message_yields_error() {
 // =============================================================================
 // TrackerServerRegister + TrackerServerList roundtrip
 // =============================================================================
-
-use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
-use nexus_tracker::registry::Registry;
-use nexus_tracker::state::TrackerState;
-use std::time::Duration;
-use tokio::io::{ReadHalf, WriteHalf};
-use tokio_rustls::client::TlsStream;
 
 type ClientReader = FrameReader<ReadHalf<TlsStream<TcpStream>>>;
 type ClientWriter = FrameWriter<WriteHalf<TlsStream<TcpStream>>>;
@@ -940,8 +940,6 @@ async fn test_register_rejected_when_per_ip_cap_reached() {
 // =============================================================================
 // WebSocket roundtrip
 // =============================================================================
-
-use nexus_common::websocket::WebSocketAdapter;
 
 /// Spawn a tracker that accepts WebSocket connections (TLS + WS upgrade
 /// + protocol). Returns the bound address and cert fingerprint.
