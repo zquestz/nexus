@@ -81,6 +81,20 @@ const BACKOFF_JITTER_PCT: f64 = 0.25;
 /// of hanging until the outer 60s frame-completion timeout.
 const TRACKER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Floor for the tracker-supplied `refresh_interval`. Defends against
+/// a buggy or hostile tracker that asks for `0` or any value below the
+/// protocol's stated minimum, which would otherwise drive a tight
+/// refresh loop and burn CPU.
+///
+/// In tests this collapses to 1s so propagation tests can observe
+/// real refresh cycles without 2-minute waits. The shared
+/// `nexus_common::MIN_REFRESH_INTERVAL_SECS` constant (120) is the
+/// production floor and matches the tracker's CLI-side minimum.
+#[cfg(not(test))]
+const MIN_REFRESH_INTERVAL_SECS: u32 = nexus_common::MIN_REFRESH_INTERVAL_SECS;
+#[cfg(test)]
+const MIN_REFRESH_INTERVAL_SECS: u32 = 1;
+
 /// Padding added to the mid-idle read's idle timeout so the refresh
 /// sleep always wins the `tokio::select!` on the happy path. The idle
 /// timeout is purely a backstop — its real value is letting the read
@@ -567,7 +581,15 @@ where
                 refresh_interval,
                 ..
             } => {
-                let interval = refresh_interval.unwrap_or(300);
+                // Floor the tracker-supplied interval at the protocol's
+                // minimum. A buggy or hostile tracker that asks for
+                // `Some(0)` or anything below the floor would otherwise
+                // drive a tight refresh loop here. The reference tracker
+                // enforces the same minimum on its CLI; this is
+                // defense-in-depth for the BBS-client side.
+                let interval = refresh_interval
+                    .unwrap_or(300)
+                    .max(MIN_REFRESH_INTERVAL_SECS);
                 {
                     let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
                     s.connected = true;
@@ -1245,6 +1267,42 @@ mod tests {
             .expect("expected eventual connected status after retry");
         assert!(snap.connected);
         assert!(snap.last_error_kind.is_none());
+
+        task.abort();
+        let _ = task.await;
+        mock.stop().await;
+    }
+
+    #[tokio::test]
+    async fn floor_clamps_low_refresh_interval() {
+        // A buggy / hostile tracker asks for `Some(0)` — the publisher
+        // must clamp to `MIN_REFRESH_INTERVAL_SECS` (1 in tests, 120 in
+        // production) rather than hot-looping at 0s sleep.
+        let mock = MockTracker::start(MockBehavior {
+            register_response: RegisterPolicy::Success {
+                refresh_interval: 0,
+            },
+            ..Default::default()
+        })
+        .await;
+        let (db, context) = setup_context().await;
+        let record = seed_tracker(&db, mock.addr, None, None).await;
+
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let task = tokio::spawn(run(
+            record.clone(),
+            Arc::clone(&status),
+            Arc::clone(&context),
+        ));
+
+        let snap = wait_for_status(&status, Duration::from_secs(5), |s| s.connected)
+            .await
+            .expect("expected connected status");
+        assert_eq!(
+            snap.refresh_interval,
+            Some(MIN_REFRESH_INTERVAL_SECS),
+            "received 0 should be clamped to MIN_REFRESH_INTERVAL_SECS"
+        );
 
         task.abort();
         let _ = task.await;

@@ -62,6 +62,13 @@ pub const DEFAULT_TRANSFER_WEBSOCKET_PORT: u16 = 7503;
 /// Default port for tracker connections
 pub const DEFAULT_TRACKER_PORT: u16 = 7510;
 
+/// Minimum tracker refresh interval (seconds). Shared between the
+/// tracker daemon (CLI floor in `nexus-tracker::args`) and the
+/// BBS-side registration task (clamps received intervals so a buggy
+/// or hostile tracker can't drive the publisher into a tight refresh
+/// loop). Per `docs/protocol/18-trackers.md` § Refresh interval.
+pub const MIN_REFRESH_INTERVAL_SECS: u32 = 120;
+
 /// Default locale for daemons (English). Used as the fallback when a
 /// peer-supplied locale is unknown or a translation key is missing in
 /// the requested locale. Each daemon re-exports this from its own

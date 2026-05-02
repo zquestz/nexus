@@ -1,7 +1,9 @@
 //! Command-line argument parsing
 
 use clap::{Parser, Subcommand, ValueEnum};
-use nexus_common::{DEFAULT_TRACKER_PORT, DEFAULT_TRACKER_WEBSOCKET_PORT};
+use nexus_common::{
+    DEFAULT_TRACKER_PORT, DEFAULT_TRACKER_WEBSOCKET_PORT, MIN_REFRESH_INTERVAL_SECS,
+};
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -106,7 +108,7 @@ pub struct Cli {
     pub max_entries_per_ip: u32,
 
     /// Refresh interval to instruct servers (seconds)
-    #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u32).range(120..=600))]
+    #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u32).range(i64::from(MIN_REFRESH_INTERVAL_SECS)..=600))]
     pub refresh_interval: u32,
 
     /// Connections per minute per source IP (0 = unlimited).
