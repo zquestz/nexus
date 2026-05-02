@@ -261,6 +261,37 @@ mod tests {
         assert_eq!(info.last_error_kind.as_deref(), Some("not_a_real_kind"));
     }
 
+    /// Every `ERROR_KIND_TRACKER_*` constant exposed by `nexus-common`
+    /// must have an explicit arm in `translate_tracker_error_kind` —
+    /// not just fall through to `err-tracker-unknown`. Without this
+    /// test, a future contributor who adds a new tracker kind to
+    /// `nexus-common::error_kind` but forgets the translation map
+    /// gets a silent runtime fallback instead of a build failure.
+    /// Adding a new constant requires updating both the translate map
+    /// and this list.
+    #[test]
+    fn every_canonical_tracker_kind_has_a_translation_arm() {
+        let unknown_en = crate::i18n::t("en", "err-tracker-unknown");
+        for kind in [
+            nexus_common::ERROR_KIND_TRACKER_ADDRESS_INVALID,
+            nexus_common::ERROR_KIND_TRACKER_CONNECTION_FAILED,
+            nexus_common::ERROR_KIND_TRACKER_CONNECTION_LOST,
+            nexus_common::ERROR_KIND_TRACKER_DB_FAILED,
+            nexus_common::ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
+            nexus_common::ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH,
+            nexus_common::ERROR_KIND_TRACKER_HANDSHAKE_FAILED,
+            nexus_common::ERROR_KIND_TRACKER_PROTOCOL_ERROR,
+            nexus_common::ERROR_KIND_TRACKER_TLS_FAILED,
+        ] {
+            let translated = translate_tracker_error_kind("en", kind);
+            assert_ne!(
+                translated, unknown_en,
+                "kind {kind:?} fell through to err-tracker-unknown — \
+                 add an arm to translate_tracker_error_kind"
+            );
+        }
+    }
+
     // ---- validate_tracker_inputs ----
 
     const VALID_FINGERPRINT: &str = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
