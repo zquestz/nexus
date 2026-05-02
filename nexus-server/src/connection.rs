@@ -639,9 +639,6 @@ where
         ClientMessage::TrackerList => {
             handlers::handle_tracker_list(conn_state.session_id, ctx).await?;
         }
-        ClientMessage::TrackerEdit { id } => {
-            handlers::handle_tracker_edit(id, conn_state.session_id, ctx).await?;
-        }
         ClientMessage::TrackerCreate {
             address,
             port,
@@ -659,6 +656,9 @@ where
                 enabled,
             };
             handlers::handle_tracker_create(request, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::TrackerEdit { id } => {
+            handlers::handle_tracker_edit(id, conn_state.session_id, ctx).await?;
         }
         ClientMessage::TrackerUpdate {
             id,
