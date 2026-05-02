@@ -13,16 +13,17 @@ use nexus_common::validators::{
 };
 
 use super::{
-    HandlerContext, ServerInfoValues, channel_error_to_message, err_address_contains_brackets,
-    err_address_contains_path, err_address_contains_port, err_address_contains_scheme,
-    err_address_contains_userinfo, err_address_contains_whitespace, err_address_contains_zone_id,
-    err_address_invalid_format, err_address_too_long, err_admin_required, err_authentication,
-    err_channel_list_invalid, err_database, err_invalid_password_strength, err_no_fields_to_update,
-    err_not_logged_in, err_server_description_contains_newlines,
-    err_server_description_invalid_characters, err_server_description_too_long,
-    err_server_image_invalid_format, err_server_image_too_large, err_server_image_unsupported_type,
-    err_server_name_contains_newlines, err_server_name_empty, err_server_name_invalid_characters,
-    err_server_name_too_long,
+    HandlerContext, ServerInfoValues, channel_error_to_message, err_admin_required,
+    err_authentication, err_channel_list_invalid, err_database, err_invalid_password_strength,
+    err_no_fields_to_update, err_not_logged_in, err_public_address_contains_brackets,
+    err_public_address_contains_path, err_public_address_contains_port,
+    err_public_address_contains_scheme, err_public_address_contains_userinfo,
+    err_public_address_contains_whitespace, err_public_address_contains_zone_id,
+    err_public_address_invalid_format, err_public_address_too_long,
+    err_server_description_contains_newlines, err_server_description_invalid_characters,
+    err_server_description_too_long, err_server_image_invalid_format, err_server_image_too_large,
+    err_server_image_unsupported_type, err_server_name_contains_newlines, err_server_name_empty,
+    err_server_name_invalid_characters, err_server_name_too_long,
 };
 use crate::constants::{
     LOG_SERVER_INFO_ADMIN_REQUIRED, LOG_SERVER_INFO_CHANNEL_CREATE_FAILED,
@@ -163,16 +164,22 @@ where
     {
         let error_msg = match e {
             PublicAddressError::TooLong => {
-                err_address_too_long(ctx.locale, validators::MAX_PUBLIC_ADDRESS_LENGTH)
+                err_public_address_too_long(ctx.locale, validators::MAX_PUBLIC_ADDRESS_LENGTH)
             }
-            PublicAddressError::ContainsScheme => err_address_contains_scheme(ctx.locale),
-            PublicAddressError::ContainsBrackets => err_address_contains_brackets(ctx.locale),
-            PublicAddressError::ContainsPath => err_address_contains_path(ctx.locale),
-            PublicAddressError::ContainsUserinfo => err_address_contains_userinfo(ctx.locale),
-            PublicAddressError::ContainsWhitespace => err_address_contains_whitespace(ctx.locale),
-            PublicAddressError::ContainsPort => err_address_contains_port(ctx.locale),
-            PublicAddressError::ContainsZoneId => err_address_contains_zone_id(ctx.locale),
-            PublicAddressError::InvalidFormat => err_address_invalid_format(ctx.locale),
+            PublicAddressError::ContainsScheme => err_public_address_contains_scheme(ctx.locale),
+            PublicAddressError::ContainsBrackets => {
+                err_public_address_contains_brackets(ctx.locale)
+            }
+            PublicAddressError::ContainsPath => err_public_address_contains_path(ctx.locale),
+            PublicAddressError::ContainsUserinfo => {
+                err_public_address_contains_userinfo(ctx.locale)
+            }
+            PublicAddressError::ContainsWhitespace => {
+                err_public_address_contains_whitespace(ctx.locale)
+            }
+            PublicAddressError::ContainsPort => err_public_address_contains_port(ctx.locale),
+            PublicAddressError::ContainsZoneId => err_public_address_contains_zone_id(ctx.locale),
+            PublicAddressError::InvalidFormat => err_public_address_invalid_format(ctx.locale),
         };
         return ctx.send_error(&error_msg, Some("ServerInfoUpdate")).await;
     }
@@ -1161,7 +1168,10 @@ mod tests {
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::Error { message, command } => {
-                assert_eq!(message, err_address_contains_port(DEFAULT_TEST_LOCALE));
+                assert_eq!(
+                    message,
+                    err_public_address_contains_port(DEFAULT_TEST_LOCALE)
+                );
                 assert_eq!(command, Some("ServerInfoUpdate".to_string()));
             }
             _ => panic!("Expected Error message, got {:?}", response),

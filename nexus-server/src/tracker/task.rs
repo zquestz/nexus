@@ -832,12 +832,21 @@ fn set_status_with_pending_fingerprint(
 /// a compromised tracker the admin already added shouldn't be able to
 /// muck with operator pagers reading server logs.
 ///
-/// Allocates a fresh `String` only when a substitution actually fires;
-/// the sanitized String is identical to the input on the common path.
-fn sanitize_for_log(s: &str) -> String {
-    s.chars()
-        .map(|c| if c.is_control() { '?' } else { c })
-        .collect()
+/// Returns `Cow::Borrowed(s)` on the common path where no substitution
+/// is needed (no control characters present); only the malicious /
+/// vandalism path allocates. `Cow<str>: Display`, so `%`-formatted
+/// tracing fields write the borrowed slice directly without ever
+/// materializing a `String`.
+fn sanitize_for_log(s: &str) -> std::borrow::Cow<'_, str> {
+    if s.chars().any(|c| c.is_control()) {
+        std::borrow::Cow::Owned(
+            s.chars()
+                .map(|c| if c.is_control() { '?' } else { c })
+                .collect(),
+        )
+    } else {
+        std::borrow::Cow::Borrowed(s)
+    }
 }
 
 // =============================================================================
@@ -898,6 +907,19 @@ mod tests {
         assert_eq!(sanitize_for_log("\x07\x08"), "??");
         // Unicode passes through
         assert_eq!(sanitize_for_log("héllo 🌍"), "héllo 🌍");
+    }
+
+    #[test]
+    fn sanitize_borrows_on_common_path() {
+        // The common path (no control chars) must not allocate. Lock in
+        // the invariant so a future regression to "always allocate"
+        // would fail this test.
+        use std::borrow::Cow;
+        assert!(matches!(sanitize_for_log("normal text"), Cow::Borrowed(_)));
+        assert!(matches!(sanitize_for_log(""), Cow::Borrowed(_)));
+        assert!(matches!(sanitize_for_log("héllo 🌍"), Cow::Borrowed(_)));
+        // Control char triggers the owned path.
+        assert!(matches!(sanitize_for_log("a\nb"), Cow::Owned(_)));
     }
 
     #[test]

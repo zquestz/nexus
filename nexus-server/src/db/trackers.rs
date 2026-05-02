@@ -47,6 +47,12 @@ pub fn is_transient_db_error(err: &sqlx::Error) -> bool {
     let sqlx::Error::Database(db_err) = err else {
         return false;
     };
+    // Bias: when we can't classify the error (no code, unparseable
+    // code, or code that doesn't match a known transient primary), we
+    // return `false` so the caller treats it as structural. The
+    // opposite bias would let a permanently-broken DB drive an
+    // infinite retry loop, where the operator never sees the failure.
+    // Loud-failure-on-unknown is the safer operational default.
     let Some(primary) = db_err
         .code()
         .as_deref()

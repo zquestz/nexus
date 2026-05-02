@@ -373,6 +373,17 @@ mod tests {
     }
 
     #[test]
+    fn test_min_refresh_interval_matches_protocol_minimum() {
+        // The tracker protocol mandates a server-side floor of ≥120s
+        // (see docs/protocol/18-trackers.md § Refresh interval).
+        // Both the tracker daemon (CLI floor in `nexus-tracker::args`)
+        // and the BBS-side registration task floor on this constant;
+        // a future bump in either side must update both, and this
+        // assertion locks in the protocol-mandated value.
+        assert_eq!(MIN_REFRESH_INTERVAL_SECS, 120);
+    }
+
+    #[test]
     fn test_default_port_str_matches() {
         // Verify DEFAULT_PORT_STR matches DEFAULT_PORT
         assert_eq!(DEFAULT_PORT_STR, DEFAULT_PORT.to_string());

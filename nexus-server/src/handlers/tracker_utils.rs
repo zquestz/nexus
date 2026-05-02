@@ -27,12 +27,14 @@ use nexus_common::{
 };
 
 use super::{
-    err_address_contains_brackets, err_address_contains_path, err_address_contains_port,
-    err_address_contains_scheme, err_address_contains_userinfo, err_address_contains_whitespace,
-    err_address_contains_zone_id, err_address_empty, err_address_invalid_format,
-    err_address_too_long, err_tracker_fingerprint_invalid, err_tracker_name_contains_newlines,
-    err_tracker_name_empty, err_tracker_name_invalid, err_tracker_name_too_long,
-    err_tracker_password_too_long, err_tracker_port_invalid,
+    err_tracker_address_contains_brackets, err_tracker_address_contains_path,
+    err_tracker_address_contains_port, err_tracker_address_contains_scheme,
+    err_tracker_address_contains_userinfo, err_tracker_address_contains_whitespace,
+    err_tracker_address_contains_zone_id, err_tracker_address_empty,
+    err_tracker_address_invalid_format, err_tracker_address_too_long,
+    err_tracker_fingerprint_invalid, err_tracker_name_contains_newlines, err_tracker_name_empty,
+    err_tracker_name_invalid, err_tracker_name_too_long, err_tracker_password_too_long,
+    err_tracker_port_invalid,
 };
 use crate::db::TrackerRecord;
 use crate::tracker::TrackerStatus;
@@ -127,19 +129,25 @@ pub fn validate_tracker_inputs(
 ) -> Result<(), String> {
     if let Err(e) = validate_tracker_address(address) {
         return Err(match e {
-            TrackerAddressError::Empty => err_address_empty(locale),
+            TrackerAddressError::Empty => err_tracker_address_empty(locale),
             TrackerAddressError::Invalid(inner) => match inner {
                 PublicAddressError::TooLong => {
-                    err_address_too_long(locale, MAX_PUBLIC_ADDRESS_LENGTH)
+                    err_tracker_address_too_long(locale, MAX_PUBLIC_ADDRESS_LENGTH)
                 }
-                PublicAddressError::ContainsScheme => err_address_contains_scheme(locale),
-                PublicAddressError::ContainsBrackets => err_address_contains_brackets(locale),
-                PublicAddressError::ContainsPath => err_address_contains_path(locale),
-                PublicAddressError::ContainsUserinfo => err_address_contains_userinfo(locale),
-                PublicAddressError::ContainsWhitespace => err_address_contains_whitespace(locale),
-                PublicAddressError::ContainsPort => err_address_contains_port(locale),
-                PublicAddressError::ContainsZoneId => err_address_contains_zone_id(locale),
-                PublicAddressError::InvalidFormat => err_address_invalid_format(locale),
+                PublicAddressError::ContainsScheme => err_tracker_address_contains_scheme(locale),
+                PublicAddressError::ContainsBrackets => {
+                    err_tracker_address_contains_brackets(locale)
+                }
+                PublicAddressError::ContainsPath => err_tracker_address_contains_path(locale),
+                PublicAddressError::ContainsUserinfo => {
+                    err_tracker_address_contains_userinfo(locale)
+                }
+                PublicAddressError::ContainsWhitespace => {
+                    err_tracker_address_contains_whitespace(locale)
+                }
+                PublicAddressError::ContainsPort => err_tracker_address_contains_port(locale),
+                PublicAddressError::ContainsZoneId => err_tracker_address_contains_zone_id(locale),
+                PublicAddressError::InvalidFormat => err_tracker_address_invalid_format(locale),
             },
         });
     }
@@ -347,7 +355,7 @@ mod tests {
         // Empty string and whitespace-only — distinct from the bad-format
         // path; tracker rows MUST have a real address (the BBS server's
         // `public_address` accepts empty for "unset", but trackers don't).
-        let expected = crate::i18n::t("en", "err-address-empty");
+        let expected = crate::i18n::t("en", "err-tracker-address-empty");
         let err = validate_tracker_inputs("en", "", 7510, None, None, "Public")
             .expect_err("should reject empty");
         assert_eq!(err, expected);
