@@ -13,6 +13,40 @@ env:
   TRACKER_IMAGE_NAME: ${{ github.repository_owner }}/nexus-trackerd
 
 jobs:
+  # Extract the tracker crate version once, surface it as outputs for every
+  # downstream tracker job. The tracker is versioned independently from the
+  # BBS server, so we read it from `nexus-tracker/Cargo.toml` rather than
+  # the release's git tag. `cargo metadata` is robust against
+  # `version.workspace = true` and other manifest forms; the regex
+  # validation aborts the workflow if extraction yields anything other
+  # than a SemVer-shaped string (defends against silently publishing an
+  # empty / malformed tag, which would clobber `latest`).
+  prepare-tracker-version:
+    name: Prepare Tracker Version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.extract.outputs.version }}
+      major_minor: ${{ steps.extract.outputs.major_minor }}
+      major: ${{ steps.extract.outputs.major }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Extract tracker version
+        id: extract
+        run: |
+          set -euo pipefail
+          VERSION=$(cargo metadata --format-version=1 --no-deps \
+            | jq -r '.packages[] | select(.name=="nexus-tracker") | .version')
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::nexus-tracker version not extractable: '$VERSION'" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "major_minor=$(echo "$VERSION" | cut -d. -f1-2)" >> "$GITHUB_OUTPUT"
+          echo "major=$(echo "$VERSION" | cut -d. -f1)" >> "$GITHUB_OUTPUT"
+
   # Build Linux client packages (deb, rpm, appimage)
   build-linux-client:
     name: Build Linux Client (${{ matrix.arch }})
@@ -170,6 +204,7 @@ jobs:
     name: Build Linux Tracker (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    needs: prepare-tracker-version
     strategy:
       fail-fast: false
       matrix:
@@ -211,12 +246,6 @@ jobs:
       - name: Build tracker
         run: cargo build --release --package nexus-tracker
 
-      - name: Get tracker version from crate
-        id: tracker_version
-        run: |
-          VERSION=$(grep '^version' nexus-tracker/Cargo.toml | head -1 | sed -E 's/version = "(.+)"/\1/')
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Package tracker
         run: |
           mkdir -p dist/nexus-trackerd
@@ -224,7 +253,7 @@ jobs:
           cp README.md LICENSE dist/nexus-trackerd/
           cp nexus-tracker/dist/nexus-trackerd.service dist/nexus-trackerd/
           cd dist
-          tar -czvf nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-linux-${{ matrix.arch }}.tar.gz nexus-trackerd
+          tar -czvf nexus-trackerd-${{ needs.prepare-tracker-version.outputs.version }}-linux-${{ matrix.arch }}.tar.gz nexus-trackerd
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -516,6 +545,7 @@ jobs:
     name: Build macOS Tracker (both architectures)
     runs-on: macos-14
     timeout-minutes: 30
+    needs: prepare-tracker-version
     steps:
       - uses: actions/checkout@v4
 
@@ -554,19 +584,13 @@ jobs:
       - name: Build tracker (x64)
         run: cargo build --release --package nexus-tracker --target x86_64-apple-darwin
 
-      - name: Get tracker version from crate
-        id: tracker_version
-        run: |
-          VERSION=$(grep '^version' nexus-tracker/Cargo.toml | head -1 | sed -E 's/version = "(.+)"/\1/')
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Package tracker (x64)
         run: |
           mkdir -p dist/nexus-trackerd
           cp target/x86_64-apple-darwin/release/nexus-trackerd dist/nexus-trackerd/
           cp README.md LICENSE dist/nexus-trackerd/
           cd dist
-          tar -czvf nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-macos-x64.tar.gz nexus-trackerd
+          tar -czvf nexus-trackerd-${{ needs.prepare-tracker-version.outputs.version }}-macos-x64.tar.gz nexus-trackerd
           rm -rf nexus-trackerd
 
       - name: Package tracker (arm64)
@@ -575,7 +599,7 @@ jobs:
           cp target/aarch64-apple-darwin/release/nexus-trackerd dist/nexus-trackerd/
           cp README.md LICENSE dist/nexus-trackerd/
           cd dist
-          tar -czvf nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-macos-arm64.tar.gz nexus-trackerd
+          tar -czvf nexus-trackerd-${{ needs.prepare-tracker-version.outputs.version }}-macos-arm64.tar.gz nexus-trackerd
           rm -rf nexus-trackerd
 
       - name: Upload artifacts
@@ -719,6 +743,7 @@ jobs:
     name: Build Windows Tracker
     runs-on: windows-latest
     timeout-minutes: 30
+    needs: prepare-tracker-version
     steps:
       - uses: actions/checkout@v4
 
@@ -752,13 +777,6 @@ jobs:
       - name: Build tracker
         run: cargo build --release --package nexus-tracker
 
-      - name: Get tracker version from crate
-        id: tracker_version
-        shell: bash
-        run: |
-          VERSION=$(grep '^version' nexus-tracker/Cargo.toml | head -1 | sed -E 's/version = "(.+)"/\1/')
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-
       - name: Package tracker
         shell: bash
         run: |
@@ -766,7 +784,7 @@ jobs:
           cp target/release/nexus-trackerd.exe dist/nexus-trackerd/
           cp README.md LICENSE dist/nexus-trackerd/
           cd dist
-          7z a -tzip nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-windows-x64.zip nexus-trackerd
+          7z a -tzip nexus-trackerd-${{ needs.prepare-tracker-version.outputs.version }}-windows-x64.zip nexus-trackerd
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -779,7 +797,7 @@ jobs:
     name: Create Release
     runs-on: ubuntu-22.04
     timeout-minutes: 10
-    needs: [build-linux-client, build-linux-server, build-linux-tracker, build-macos-client-universal, build-macos-server, build-macos-tracker, build-windows-client, build-windows-server, build-windows-tracker]
+    needs: [prepare-tracker-version, build-linux-client, build-linux-server, build-linux-tracker, build-macos-client-universal, build-macos-server, build-macos-tracker, build-windows-client, build-windows-server, build-windows-tracker]
     permissions:
       contents: write
     steps:
@@ -788,12 +806,6 @@ jobs:
       - name: Get version from tag
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Get tracker version from crate
-        id: tracker_version
-        run: |
-          VERSION=$(grep '^version' nexus-tracker/Cargo.toml | head -1 | sed -E 's/version = "(.+)"/\1/')
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Download Linux client artifacts
         uses: actions/download-artifact@v4
@@ -899,7 +911,7 @@ jobs:
             docker pull ghcr.io/${{ github.repository_owner }}/nexusd:${{ steps.version.outputs.VERSION }}
 
             # Tracker (versioned independently)
-            docker pull ghcr.io/${{ github.repository_owner }}/nexus-trackerd:${{ steps.tracker_version.outputs.VERSION }}
+            docker pull ghcr.io/${{ github.repository_owner }}/nexus-trackerd:${{ needs.prepare-tracker-version.outputs.version }}
             ```
 
             ## Downloads
@@ -934,13 +946,13 @@ jobs:
 
             ### Tracker (nexus-trackerd)
 
-            The tracker is versioned independently from the BBS server and client. The current tracker version is **${{ steps.tracker_version.outputs.VERSION }}**.
+            The tracker is versioned independently from the BBS server and client. The current tracker version is **${{ needs.prepare-tracker-version.outputs.version }}**.
 
             | Platform | x64 | ARM64 |
             |----------|-----|-------|
-            | macOS | `nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-macos-x64.tar.gz` | `nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-macos-arm64.tar.gz` |
-            | Windows | `nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-windows-x64.zip` | — |
-            | Linux | `nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-linux-x64.tar.gz` | `nexus-trackerd-${{ steps.tracker_version.outputs.VERSION }}-linux-arm64.tar.gz` |
+            | macOS | `nexus-trackerd-${{ needs.prepare-tracker-version.outputs.version }}-macos-x64.tar.gz` | `nexus-trackerd-${{ needs.prepare-tracker-version.outputs.version }}-macos-arm64.tar.gz` |
+            | Windows | `nexus-trackerd-${{ needs.prepare-tracker-version.outputs.version }}-windows-x64.zip` | — |
+            | Linux | `nexus-trackerd-${{ needs.prepare-tracker-version.outputs.version }}-linux-x64.tar.gz` | `nexus-trackerd-${{ needs.prepare-tracker-version.outputs.version }}-linux-arm64.tar.gz` |
 
             ### Verification
 
@@ -1158,20 +1170,12 @@ jobs:
     name: Create Tracker Docker Manifest
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [build-docker-tracker-amd64, build-docker-tracker-arm64]
+    needs: [prepare-tracker-version, build-docker-tracker-amd64, build-docker-tracker-arm64]
     permissions:
       contents: read
       packages: write
     steps:
       - uses: actions/checkout@v4
-
-      - name: Get tracker version from crate
-        id: tracker_version
-        run: |
-          VERSION=$(grep '^version' nexus-tracker/Cargo.toml | head -1 | sed -E 's/version = "(.+)"/\1/')
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "MAJOR_MINOR=$(echo $VERSION | cut -d. -f1-2)" >> $GITHUB_OUTPUT
-          echo "MAJOR=$(echo $VERSION | cut -d. -f1)" >> $GITHUB_OUTPUT
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -1183,9 +1187,9 @@ jobs:
       - name: Create and push manifest
         run: |
           IMAGE="${{ env.REGISTRY }}/${{ env.TRACKER_IMAGE_NAME }}"
-          VERSION="${{ steps.tracker_version.outputs.VERSION }}"
-          MAJOR_MINOR="${{ steps.tracker_version.outputs.MAJOR_MINOR }}"
-          MAJOR="${{ steps.tracker_version.outputs.MAJOR }}"
+          VERSION="${{ needs.prepare-tracker-version.outputs.version }}"
+          MAJOR_MINOR="${{ needs.prepare-tracker-version.outputs.major_minor }}"
+          MAJOR="${{ needs.prepare-tracker-version.outputs.major }}"
 
           for TAG in "$VERSION" "$MAJOR_MINOR" "$MAJOR" "latest"; do
             echo "Creating manifest for $IMAGE:$TAG"
