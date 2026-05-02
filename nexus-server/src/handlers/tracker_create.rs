@@ -80,8 +80,11 @@ where
             .await;
     }
 
-    // Normalize empty-string password to None at the protocol boundary.
+    // Normalize empty-string password / fingerprint to None at the
+    // protocol boundary. An empty fingerprint means "clear the pin /
+    // use TOFU on next connect" — same as omitted.
     let password = password.filter(|s| !s.is_empty());
+    let fingerprint = fingerprint.filter(|s| !s.is_empty());
 
     // Validate inputs. First failure produces a typed response.
     if let Err(error) = validate_tracker_inputs(
