@@ -201,8 +201,6 @@ fn generate_self_signed(
     key_path: &Path,
     common_name: &str,
 ) -> Result<(), String> {
-    use rcgen::{CertificateParams, KeyPair};
-
     let key_pair = KeyPair::generate().map_err(|e| format!("{}{}", ERR_GENERATE_KEYPAIR, e))?;
     let mut params =
         CertificateParams::new(vec![]).map_err(|e| format!("{}{}", ERR_CREATE_CERT_PARAMS, e))?;
