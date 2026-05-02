@@ -85,22 +85,96 @@ Client                                        Server
    │                                             │
 ```
 
+### Listing Trackers
+
+```
+Client                                        Server
+   │                                             │
+   │  TrackerList                                │
+   │ ───────────────────────────────────────►    │
+   │                                             │
+   │   TrackerListResponse { trackers: [...] }   │
+   │ ◄───────────────────────────────────────    │
+   │                                             │
+```
+
+### Creating a Tracker
+
+```
+Client                                        Server
+   │                                             │
+   │  TrackerCreate { address, port, name, ... } │
+   │ ───────────────────────────────────────►    │
+   │                                             │
+   │     TrackerCreateResponse { id, name }      │
+   │ ◄───────────────────────────────────────    │
+   │                                             │
+```
+
+### Editing and Updating a Tracker
+
+```
+Client                                        Server
+   │                                             │
+   │  TrackerEdit { id }                         │
+   │ ───────────────────────────────────────►    │
+   │                                             │
+   │     TrackerEditResponse { tracker: {...} }  │
+   │ ◄───────────────────────────────────────    │
+   │                                             │
+   │  TrackerUpdate { id, address, ... }         │
+   │ ───────────────────────────────────────►    │
+   │                                             │
+   │     TrackerUpdateResponse { id, name }      │
+   │ ◄───────────────────────────────────────    │
+   │                                             │
+```
+
+`TrackerEditResponse` carries the full `TrackerInfo` (config plus
+runtime status), so the admin form can pre-populate every field and
+show the current connection state. After `TrackerUpdate` succeeds the
+server aborts the running tracker task and spawns a fresh one with the
+new config (or no task if `enabled: false`).
+
+### Accepting a New Fingerprint
+
+When the tracker's TLS certificate has rotated and disagrees with the
+pinned fingerprint, the running tracker task surfaces a Stage 1
+fingerprint mismatch in `TrackerInfo.last_error_kind` and stores the
+newly-observed value in `pending_fingerprint`. The admin accepts by
+re-issuing `TrackerUpdate` with the new fingerprint copied into the
+`fingerprint` field — the same message used for any other edit. There
+is no dedicated "accept fingerprint" message.
+
+### Deleting a Tracker
+
+```
+Client                                        Server
+   │                                             │
+   │  TrackerDelete { id }                       │
+   │ ───────────────────────────────────────►    │
+   │                                             │
+   │     TrackerDeleteResponse { name }          │
+   │ ◄───────────────────────────────────────    │
+   │                                             │
+```
+
 ## Messages
 
 ### UserCreate (Client → Server)
 
 Create a new user account.
 
-| Field         | Type    | Required | Description                                                                   |
-| ------------- | ------- | -------- | ----------------------------------------------------------------------------- |
-| `username`    | string  | Yes      | Account username (1-32 characters)                                            |
-| `password`    | string  | Yes      | Account password (1-256 bytes, must meet server's min password strength)      |
-| `is_admin`    | boolean | Yes      | Whether user has admin privileges                                             |
-| `is_shared`   | boolean | No       | Whether this is a shared account (default: false)                             |
-| `enabled`     | boolean | Yes      | Whether account is enabled                                                    |
-| `permissions` | array   | Yes      | List of permission strings                                                    |
-| `group_id`    | integer | No       | Group to assign the user to (null for no group)                               |
-| `revokes`     | array   | No       | Permissions to revoke from group (only with group)                            |
+| Field         | Type    | Required | Description                                                              |
+| ------------- | ------- | -------- | ------------------------------------------------------------------------ |
+| `username`    | string  | Yes      | Account username (1-32 characters)                                       |
+| `password`    | string  | Yes      | Account password (1-256 bytes, must meet server's min password strength) |
+| `is_admin`    | boolean | Yes      | Whether user has admin privileges                                        |
+| `is_shared`   | boolean | No       | Whether this is a shared account (default: false)                        |
+| `enabled`     | boolean | Yes      | Whether account is enabled                                               |
+| `permissions` | array   | Yes      | List of permission strings                                               |
+| `group_id`    | integer | No       | Group to assign the user to (null for no group)                          |
+| `revokes`     | array   | No       | Permissions to revoke from group (only with group)                       |
 
 **Regular user:**
 
@@ -666,17 +740,407 @@ Broadcast when a user account is modified.
 }
 ```
 
+### TrackerList (Client → Server)
+
+Fetch all configured trackers with their runtime status. Carries no
+fields.
+
+**Example:**
+
+```json
+{}
+```
+
+### TrackerListResponse (Server → Client)
+
+Response containing every configured tracker plus its current runtime
+state.
+
+| Field      | Type    | Required   | Description                                              |
+| ---------- | ------- | ---------- | -------------------------------------------------------- |
+| `success`  | boolean | Yes        | Whether the request succeeded                            |
+| `error`    | string  | If failure | Error message                                            |
+| `trackers` | array   | Always     | List of `TrackerInfo` objects (empty if none configured) |
+
+`trackers` is always present. On the error path it is `[]`; on success
+an empty list means no trackers are configured yet (not an error).
+
+**Success example:**
+
+```json
+{
+  "success": true,
+  "trackers": [
+    {
+      "id": 1,
+      "address": "tracker.example.com",
+      "port": 7510,
+      "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
+      "password": null,
+      "name": "Public Tracker",
+      "enabled": true,
+      "created_at": 1730000000,
+      "updated_at": 1730000000,
+      "connected": true,
+      "last_connected_at": 1730003600,
+      "last_attempted_at": 1730003600,
+      "refresh_interval": 300
+    }
+  ]
+}
+```
+
+### TrackerCreate (Client → Server)
+
+Add a new tracker to the server's tracker list. Spawns a long-lived
+registration task once the row is inserted (unless `enabled: false`).
+
+| Field         | Type    | Required | Description                                                                     |
+| ------------- | ------- | -------- | ------------------------------------------------------------------------------- |
+| `address`     | string  | Yes      | Hostname or IP literal (1-253 bytes; same rules as `ServerInfo.public_address`) |
+| `port`        | integer | Yes      | TCP port, 1-65535 (typically 7510)                                              |
+| `fingerprint` | string  | No       | Pinned cert fingerprint in canonical form. Omit to TOFU-pin on first connect    |
+| `password`    | string  | No       | Registration password (omit or empty for an open tracker)                       |
+| `name`        | string  | Yes      | Admin-supplied label (1-256 bytes; case-insensitively unique)                   |
+| `enabled`     | boolean | Yes      | Whether the registration task should actively maintain a connection             |
+
+**Example (open tracker, TOFU-pin on first connect):**
+
+```json
+{
+  "address": "tracker.example.com",
+  "port": 7510,
+  "name": "Public Tracker",
+  "enabled": true
+}
+```
+
+**Example (gated tracker with pinned fingerprint):**
+
+```json
+{
+  "address": "tracker.private.example",
+  "port": 7510,
+  "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
+  "password": "invitecode",
+  "name": "Private Tracker",
+  "enabled": true
+}
+```
+
+### TrackerCreateResponse (Server → Client)
+
+Response after creating a tracker.
+
+| Field     | Type    | Required   | Description                |
+| --------- | ------- | ---------- | -------------------------- |
+| `success` | boolean | Yes        | Whether creation succeeded |
+| `error`   | string  | If failure | Error message              |
+| `id`      | integer | If success | Created tracker's row id   |
+| `name`    | string  | If success | Created tracker's name     |
+
+**Success example:**
+
+```json
+{
+  "success": true,
+  "id": 3,
+  "name": "Public Tracker"
+}
+```
+
+**Failure example:**
+
+```json
+{
+  "success": false,
+  "error": "Another tracker is already configured at this address and port"
+}
+```
+
+### TrackerEdit (Client → Server)
+
+Fetch one tracker's full record (config plus runtime status) for the
+edit form. Returns the same `TrackerInfo` shape as `TrackerListResponse`.
+
+| Field | Type    | Required | Description    |
+| ----- | ------- | -------- | -------------- |
+| `id`  | integer | Yes      | Tracker row id |
+
+**Example:**
+
+```json
+{
+  "id": 3
+}
+```
+
+### TrackerEditResponse (Server → Client)
+
+Response containing the requested tracker's full record. The
+`tracker.password` field is echoed in plaintext so the admin form can
+show it (the registration password is invite-code-style shared
+infrastructure, not a personal credential).
+
+| Field     | Type    | Required   | Description                             |
+| --------- | ------- | ---------- | --------------------------------------- |
+| `success` | boolean | Yes        | Whether the request succeeded           |
+| `error`   | string  | If failure | Error message                           |
+| `tracker` | object  | If success | `TrackerInfo` object (see schema below) |
+
+**Success example:**
+
+```json
+{
+  "success": true,
+  "tracker": {
+    "id": 3,
+    "address": "tracker.example.com",
+    "port": 7510,
+    "fingerprint": "AA:BB:...",
+    "password": null,
+    "name": "Public Tracker",
+    "enabled": true,
+    "created_at": 1730000000,
+    "updated_at": 1730000000,
+    "connected": false,
+    "last_attempted_at": 1730003600,
+    "last_error": "Tracker certificate does not match the pinned fingerprint",
+    "last_error_kind": "tracker_fingerprint_mismatch",
+    "pending_fingerprint": "11:22:33:44:..."
+  }
+}
+```
+
+**Failure example:**
+
+```json
+{
+  "success": false,
+  "error": "Tracker not found"
+}
+```
+
+### TrackerUpdate (Client → Server)
+
+Replace a tracker's configuration. The server aborts the running
+registration task and spawns a fresh one with the new config (or just
+aborts, if the new record is `enabled: false`). All fields are
+required — `TrackerUpdate` is a full replacement, not a patch.
+
+| Field         | Type    | Required | Description                                                         |
+| ------------- | ------- | -------- | ------------------------------------------------------------------- |
+| `id`          | integer | Yes      | Tracker row id                                                      |
+| `address`     | string  | Yes      | Hostname or IP literal                                              |
+| `port`        | integer | Yes      | TCP port                                                            |
+| `fingerprint` | string  | No       | Pinned cert fingerprint (omit to clear and re-TOFU on next connect) |
+| `password`    | string  | No       | Registration password (omit or empty for an open tracker)           |
+| `name`        | string  | Yes      | Admin-supplied label                                                |
+| `enabled`     | boolean | Yes      | Whether the registration task should actively maintain a connection |
+
+**Accept a new fingerprint after rotation:**
+
+```json
+{
+  "id": 3,
+  "address": "tracker.example.com",
+  "port": 7510,
+  "fingerprint": "11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00",
+  "name": "Public Tracker",
+  "enabled": true
+}
+```
+
+**Pause a tracker:**
+
+```json
+{
+  "id": 3,
+  "address": "tracker.example.com",
+  "port": 7510,
+  "name": "Public Tracker",
+  "enabled": false
+}
+```
+
+### TrackerUpdateResponse (Server → Client)
+
+Response after replacing a tracker's configuration.
+
+| Field     | Type    | Required   | Description                       |
+| --------- | ------- | ---------- | --------------------------------- |
+| `success` | boolean | Yes        | Whether the update succeeded      |
+| `error`   | string  | If failure | Error message                     |
+| `id`      | integer | If success | Tracker row id                    |
+| `name`    | string  | If success | Final tracker name (after update) |
+
+**Success example:**
+
+```json
+{
+  "success": true,
+  "id": 3,
+  "name": "Public Tracker"
+}
+```
+
+**Failure example:**
+
+```json
+{
+  "success": false,
+  "error": "Another tracker is already configured at this address and port"
+}
+```
+
+### TrackerDelete (Client → Server)
+
+Remove a tracker from the server's tracker list. Aborts the
+registration task and removes the row.
+
+| Field | Type    | Required | Description    |
+| ----- | ------- | -------- | -------------- |
+| `id`  | integer | Yes      | Tracker row id |
+
+**Example:**
+
+```json
+{
+  "id": 3
+}
+```
+
+### TrackerDeleteResponse (Server → Client)
+
+Response after deleting a tracker.
+
+| Field     | Type    | Required   | Description                    |
+| --------- | ------- | ---------- | ------------------------------ |
+| `success` | boolean | Yes        | Whether the deletion succeeded |
+| `error`   | string  | If failure | Error message                  |
+| `name`    | string  | If success | Deleted tracker's name         |
+
+**Success example:**
+
+```json
+{
+  "success": true,
+  "name": "Public Tracker"
+}
+```
+
+**Failure example:**
+
+```json
+{
+  "success": false,
+  "error": "Tracker not found"
+}
+```
+
+### TrackerInfo (object)
+
+Combined record returned by `TrackerListResponse` and
+`TrackerEditResponse`. Bundles the durable DB row with the registration
+task's runtime status.
+
+| Field                 | Type    | Required        | Description                                                                                             |
+| --------------------- | ------- | --------------- | ------------------------------------------------------------------------------------------------------- |
+| `id`                  | integer | Always          | Tracker row id                                                                                          |
+| `address`             | string  | Always          | Hostname or IP literal as configured                                                                    |
+| `port`                | integer | Always          | TCP port                                                                                                |
+| `fingerprint`         | string  | When pinned     | Pinned cert fingerprint in canonical form (`null` until first TOFU pin)                                 |
+| `password`            | string  | When set        | Registration password (echoed plaintext to admins; `null` for open trackers)                            |
+| `name`                | string  | Always          | Admin-supplied label                                                                                    |
+| `enabled`             | boolean | Always          | Whether the registration task is actively maintained                                                    |
+| `created_at`          | integer | Always          | Unix epoch seconds when the row was created                                                             |
+| `updated_at`          | integer | Always          | Unix epoch seconds when the row was last updated                                                        |
+| `connected`           | boolean | Always          | Whether the registration task currently has a healthy registration                                      |
+| `last_connected_at`   | integer | After 1st conn. | Unix epoch seconds of the most recent successful refresh (`null` if it has never connected)             |
+| `last_attempted_at`   | integer | After 1st cycle | Unix epoch seconds of the most recent connection attempt (`null` until the first cycle starts)          |
+| `last_error`          | string  | On error        | Most recent error message, translated into the requesting admin's locale (`null` if no error)           |
+| `last_error_kind`     | string  | On error        | Stable machine-readable error identifier (see "Tracker Error Kinds" below)                              |
+| `pending_fingerprint` | string  | On mismatch     | Newly-observed fingerprint after a Stage 1 mismatch, awaiting admin accept (`null` in normal operation) |
+| `refresh_interval`    | integer | When connected  | Tracker-supplied refresh cadence in seconds (`null` until the first successful registration)            |
+
+The `password` is echoed in plaintext because it's invite-code-style
+shared infrastructure (admins may need to share it with collaborators
+registering with the same tracker), not a personal credential.
+
+## Tracker Lifecycle
+
+Each enabled tracker row has a long-lived registration task that
+maintains a TLS connection to the tracker daemon and refreshes the
+registration on the tracker-supplied interval. Runtime status flows
+back to the admin UI through `TrackerInfo`'s status fields.
+
+### Stages
+
+A registration cycle progresses through:
+
+1. **Address resolve** — IDN/Punycode normalization, IPv6 bracket strip.
+2. **TCP connect** to the tracker.
+3. **TLS handshake** (no CA validation; TOFU model).
+4. **Stage 1 fingerprint check** — observed cert vs. row's pinned value.
+5. **BBS-style `Handshake` exchange** to negotiate the tracker protocol version.
+6. **Stage 2 fingerprint check** — observed cert vs. tracker's
+   self-reported value (defends against active interception by a peer
+   the admin already trusted).
+7. **TOFU commit** if no fingerprint was previously pinned.
+8. **`TrackerServerRegister` / `TrackerServerRegisterResponse`** loop —
+   sent on first connect and on every refresh interval thereafter.
+
+### TOFU and Stage 1 Mismatch Handling
+
+- **First connect** (no pinned fingerprint): TLS-observed value is
+  written to the row and used for all future cycles.
+- **Pinned fingerprint matches observed**: cycle proceeds.
+- **Pinned fingerprint differs from observed** (Stage 1 mismatch): the
+  task records `last_error_kind = "tracker_fingerprint_mismatch"`, sets
+  `pending_fingerprint` to the newly-observed value, and exits. Admin
+  accepts by sending `TrackerUpdate` with the new fingerprint.
+
+### Tracker Error Kinds
+
+Stable machine-readable identifiers in `TrackerInfo.last_error_kind`.
+The matching `TrackerInfo.last_error` is pre-translated to the admin's
+locale.
+
+| Kind                              | Recoverable | Meaning                                                                            |
+| --------------------------------- | :---------: | ---------------------------------------------------------------------------------- |
+| `tracker_address_invalid`         |     No      | Row's address can't be resolved (IDNA failure, malformed)                          |
+| `tracker_connection_failed`       |     Yes     | TCP connect failed                                                                 |
+| `tracker_tls_failed`              |     Yes     | TLS handshake failed                                                               |
+| `tracker_handshake_failed`        |     Yes     | BBS-style handshake exchange failed                                                |
+| `tracker_connection_lost`         |     Yes     | Connection dropped mid-session                                                     |
+| `tracker_db_failed`               |  Sometimes  | Local DB write failed (lock contention is recoverable; structural failures aren't) |
+| `tracker_fingerprint_mismatch`    |     No      | Stage 1: pinned fingerprint disagrees with observed                                |
+| `tracker_fingerprint_intercepted` |     No      | Stage 2: observed cert disagrees with tracker's self-reported value                |
+| `tracker_protocol_error`          |     No      | Tracker sent a malformed `error_kind` (wire-format violation)                      |
+| `unauthorized`                    |     No      | Tracker rejected the registration password                                         |
+| `rate_limited`                    |     Yes     | Tracker rate-limited us                                                            |
+| `capacity`                        |     Yes     | Tracker is full                                                                    |
+| `invalid`                         |     No      | Tracker rejected the registration as malformed                                     |
+
+"Recoverable" kinds back off and retry automatically. Unrecoverable
+kinds exit the registration task; admin intervention (`TrackerUpdate`,
+`TrackerDelete`, or server restart) is required.
+
 ## Permissions
 
-| Permission     | Required For            |
-| -------------- | ----------------------- |
-| `user_create`  | Creating user accounts  |
-| `user_edit`    | Editing user accounts   |
-| `user_delete`  | Deleting user accounts  |
-| `user_kick`    | Kicking users           |
-| `group_create` | Creating account groups |
-| `group_edit`   | Editing account groups  |
-| `group_delete` | Deleting account groups |
+| Permission       | Required For                                                           |
+| ---------------- | ---------------------------------------------------------------------- |
+| `user_create`    | Creating user accounts                                                 |
+| `user_edit`      | Editing user accounts                                                  |
+| `user_delete`    | Deleting user accounts                                                 |
+| `user_kick`      | Kicking users                                                          |
+| `group_create`   | Creating account groups                                                |
+| `group_edit`     | Editing account groups                                                 |
+| `group_delete`   | Deleting account groups                                                |
+| `tracker_create` | Adding a tracker (`TrackerCreate`)                                     |
+| `tracker_edit`   | Fetching tracker details and updating (`TrackerEdit`, `TrackerUpdate`) |
+| `tracker_delete` | Removing a tracker (`TrackerDelete`)                                   |
+| `tracker_list`   | Listing trackers and their runtime status (`TrackerList`)              |
 
 **Admin-only operations:**
 
@@ -811,6 +1275,18 @@ Users cannot:
 | `max_transfers_per_ip`   | Positive integer                                            |
 | `min_password_strength`  | Integer 0-4 (0=Weak, 1=Fair, 2=Good, 3=Strong, 4=Excellent) |
 
+## Tracker Validation
+
+| Field         | Rules                                                                                                                                   |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `address`     | 1-253 bytes; DNS hostname, IPv4 / bare IPv6 literal, or IDN. No URL scheme, brackets, path, port, userinfo, whitespace, or IPv6 zone id |
+| `port`        | 1-65535                                                                                                                                 |
+| `fingerprint` | When supplied: canonical form (32 uppercase hex bytes separated by colons, exactly 95 chars)                                            |
+| `password`    | 0-256 bytes (empty / omitted = open tracker)                                                                                            |
+| `name`        | 1-256 bytes after trim; case-insensitively unique across all configured trackers                                                        |
+
+A server can have at most 64 configured trackers.
+
 ## Username Validation
 
 | Rule             | Value                                                     |
@@ -888,6 +1364,26 @@ Users cannot:
 | Public address must not include an IPv6 zone identifier | Contains `%zone`                |
 | Public address is not a valid hostname or IP address    | Fails IDN / IPv4 / IPv6 check   |
 | Invalid password strength value                         | Value not in range 0-4          |
+
+### Tracker Validation Errors
+
+These apply to `TrackerCreate` and `TrackerUpdate`. The handler returns
+the first failing rule.
+
+| Error                                                          | Cause                                                                         |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Permission denied                                              | Missing `tracker_create` / `tracker_edit` / `tracker_delete` / `tracker_list` |
+| Invalid tracker port                                           | Port is 0                                                                     |
+| Invalid tracker address                                        | Address fails the public-address rule set                                     |
+| Tracker address is too long                                    | Address exceeds 253 bytes                                                     |
+| Invalid tracker fingerprint format                             | Fingerprint supplied but not in canonical form                                |
+| Tracker password is too long                                   | Password exceeds 256 bytes                                                    |
+| Tracker name contains invalid characters                       | Name has control characters                                                   |
+| Tracker name is too long                                       | Name exceeds 256 bytes                                                        |
+| Another tracker is already configured at this address and port | `(address, port)` collides with an existing row                               |
+| Another tracker is already configured with this name           | Case-insensitive name collides with an existing row                           |
+| Tracker limit reached (max N)                                  | `TrackerCreate` would exceed the 64-row cap                                   |
+| Tracker not found                                              | `TrackerUpdate` / `TrackerDelete` / `TrackerEdit` against an unknown id       |
 
 ## Kick Behavior
 

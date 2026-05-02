@@ -82,6 +82,15 @@ const BACKOFF_JITTER_PCT: f64 = 0.25;
 /// of hanging until the outer 60s frame-completion timeout.
 const TRACKER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Padding added to the mid-idle read's idle timeout so the refresh
+/// sleep always wins the `tokio::select!` on the happy path. The idle
+/// timeout is purely a backstop — its real value is letting the read
+/// arm fire promptly when the peer closes the connection (e.g. tracker
+/// restart), so we reconnect in seconds instead of waiting out the
+/// full refresh interval. 15s is gracious; loopback latency is
+/// microseconds and even satellite RTT is well under 1s.
+const IDLE_READ_PADDING: Duration = Duration::from_secs(15);
+
 /// Run the tracker task for one tracker. Loops forever (with
 /// backoff) until cancelled by the manager, or exits early on an
 /// unrecoverable error. The manager's `JoinHandle` carries the exit.
@@ -439,11 +448,20 @@ where
     loop {
         // Wait until it's time to refresh, OR until the tracker sends
         // us something (which is unexpected — the tracker only sends
-        // responses to our requests; any frame read here likely means
-        // the connection is closing).
+        // responses to our requests; any frame read here means the
+        // connection is closing). The read arm is a fast-path for
+        // tracker-restart detection: catching a clean peer-close
+        // immediately lets us reconnect within seconds instead of
+        // waiting out the full refresh interval. The idle timeout is
+        // padded past `sleep_for` so the sleep arm always wins on the
+        // happy path; it's only a backstop for the read.
         tokio::select! {
             _ = tokio::time::sleep(sleep_for) => {}
-            frame = read_tracker_server_message_with_full_timeout(reader, None, None) => {
+            frame = read_tracker_server_message_with_full_timeout(
+                reader,
+                Some(sleep_for + IDLE_READ_PADDING),
+                None,
+            ) => {
                 match frame {
                     Ok(Some(_)) => {
                         // Unexpected mid-idle frame; treat as connection
