@@ -516,7 +516,7 @@ mod tests {
         assert!(started.is_ok(), "task should have started a cycle");
 
         // Shutdown must return promptly via abort, not block on the
-        // publisher's 30s response timeout.
+        // tracker task's 30s response timeout.
         tokio::time::timeout(Duration::from_secs(5), manager.shutdown())
             .await
             .expect("shutdown should complete despite parked task");
