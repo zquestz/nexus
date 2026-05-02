@@ -831,10 +831,12 @@ pub const LOG_TRACKER_REGISTRATION_RESPONSE_TIMEOUT: &str =
     "Tracker timeout: TrackerServerRegisterResponse";
 pub const LOG_TRACKER_REGISTRATION_REFRESHED: &str = "Tracker refreshed";
 pub const LOG_TRACKER_REGISTRATION_REGISTER_REJECTED: &str = "Tracker rejected register";
-pub const LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE: &str =
-    "Tracker sent unexpected response to TrackerServerRegister";
 pub const LOG_TRACKER_REGISTRATION_INVALID_ERROR_KIND: &str =
     "Tracker sent malformed error_kind, treating as protocol error";
+pub const LOG_TRACKER_REGISTRATION_TRACKER_REPORTED_ERROR: &str =
+    "Tracker reported a protocol-level error, exiting";
+pub const LOG_TRACKER_REGISTRATION_WRONG_FLOW_RESPONSE: &str =
+    "Tracker sent a client-flow response on a server connection, exiting";
 
 // Panic messages for the tracker manager's sync-lock acquisitions.
 // These only ever surface if a lock is actually poisoned (a panic

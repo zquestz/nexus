@@ -53,8 +53,8 @@ use crate::constants::{
     LOG_TRACKER_REGISTRATION_SEND_REGISTER_FAILED, LOG_TRACKER_REGISTRATION_STAGE1_MISMATCH,
     LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH, LOG_TRACKER_REGISTRATION_TCP_FAILED,
     LOG_TRACKER_REGISTRATION_TLS_FAILED, LOG_TRACKER_REGISTRATION_TOFU_PINNED,
-    LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED, LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME,
-    LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE,
+    LOG_TRACKER_REGISTRATION_TOFU_WRITE_FAILED, LOG_TRACKER_REGISTRATION_TRACKER_REPORTED_ERROR,
+    LOG_TRACKER_REGISTRATION_UNEXPECTED_FRAME, LOG_TRACKER_REGISTRATION_WRONG_FLOW_RESPONSE,
 };
 use crate::db::{TrackerRecord, is_transient_db_error};
 
@@ -645,18 +645,32 @@ where
                 set_status_error(status, &kind);
                 return outcome;
             }
-            // Any other variant on the register port is a protocol
-            // violation by the tracker. Treat as transient — likely
-            // version skew or daemon bug.
-            other => {
+            // Tracker explicitly reported a protocol-level error (e.g.
+            // role-violation, unknown message type). The tracker has
+            // diagnosed something we did wrong, so retrying isn't
+            // going to help. Exit Unrecoverable; admin must fix.
+            TrackerServerMessage::Error { message, command } => {
                 warn!(
                     id = record.id,
                     name = %record.name,
-                    response = ?other,
-                    "{}", LOG_TRACKER_REGISTRATION_UNEXPECTED_RESPONSE
+                    command = %command.unwrap_or_default(),
+                    err = %message,
+                    "{}", LOG_TRACKER_REGISTRATION_TRACKER_REPORTED_ERROR
                 );
-                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_LOST);
-                return CycleOutcome::Transient;
+                set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR);
+                return CycleOutcome::Unrecoverable;
+            }
+            // Tracker sent a client-flow response on our server
+            // connection — itself a role violation by the tracker.
+            // Exit Unrecoverable for the same reason as above.
+            TrackerServerMessage::TrackerServerListResponse { .. } => {
+                warn!(
+                    id = record.id,
+                    name = %record.name,
+                    "{}", LOG_TRACKER_REGISTRATION_WRONG_FLOW_RESPONSE
+                );
+                set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR);
+                return CycleOutcome::Unrecoverable;
             }
         }
     }
