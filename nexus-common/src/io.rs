@@ -66,7 +66,7 @@ where
     let payload =
         serde_json::to_vec(message).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    let frame = RawFrame::new(message_id, message_type.to_string(), payload);
+    let frame = RawFrame::new(message_id, message_type, payload);
     writer.write_frame(&frame).await.map_err(Into::into)
 }
 
@@ -101,7 +101,7 @@ where
     let payload =
         serde_json::to_vec(message).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    let frame = RawFrame::new(message_id, message_type.to_string(), payload);
+    let frame = RawFrame::new(message_id, message_type, payload);
     writer.write_frame(&frame).await.map_err(Into::into)
 }
 
@@ -490,7 +490,7 @@ where
     let message_type = tracker_server_message_type(message);
     let payload =
         serde_json::to_vec(message).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    let frame = RawFrame::new(message_id, message_type.to_string(), payload);
+    let frame = RawFrame::new(message_id, message_type, payload);
     writer.write_frame(&frame).await.map_err(io::Error::from)?;
     Ok(message_id)
 }
@@ -511,7 +511,7 @@ where
     let message_type = tracker_client_message_type(message);
     let payload =
         serde_json::to_vec(message).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    let frame = RawFrame::new(message_id, message_type.to_string(), payload);
+    let frame = RawFrame::new(message_id, message_type, payload);
     writer.write_frame(&frame).await.map_err(io::Error::from)?;
     Ok(message_id)
 }

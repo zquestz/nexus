@@ -1,5 +1,7 @@
 //! Raw frame structure for protocol messages
 
+use std::borrow::Cow;
+
 use super::message_id::MessageId;
 use super::{
     DELIMITER, MAGIC, MAX_PAYLOAD_LENGTH_DIGITS, MAX_TYPE_LENGTH_DIGITS, MSG_ID_LENGTH, TERMINATOR,
@@ -13,8 +15,15 @@ use super::{
 pub struct RawFrame {
     /// The message ID for request-response correlation
     pub message_id: MessageId,
-    /// The message type string (e.g., "ChatSend", "Login")
-    pub message_type: String,
+    /// The message type string (e.g., "ChatSend", "Login").
+    ///
+    /// `Cow<'static, str>` so the send path can pass a `&'static str`
+    /// literal (`Cow::Borrowed`, zero alloc) while the receive path
+    /// can pass an owned `String` parsed from frame bytes
+    /// (`Cow::Owned`, no extra alloc — the existing `String` is just
+    /// wrapped). All consumers read as `&str` via `Deref`, so the
+    /// switch is transparent at use sites.
+    pub message_type: Cow<'static, str>,
     /// The raw JSON payload bytes
     pub payload: Vec<u8>,
 }
@@ -22,10 +31,14 @@ pub struct RawFrame {
 impl RawFrame {
     /// Create a new raw frame
     #[must_use]
-    pub fn new(message_id: MessageId, message_type: String, payload: Vec<u8>) -> Self {
+    pub fn new(
+        message_id: MessageId,
+        message_type: impl Into<Cow<'static, str>>,
+        payload: Vec<u8>,
+    ) -> Self {
         Self {
             message_id,
-            message_type,
+            message_type: message_type.into(),
             payload,
         }
     }
@@ -72,11 +85,7 @@ mod tests {
     #[test]
     fn test_raw_frame_to_bytes() {
         let id = MessageId::new();
-        let frame = RawFrame::new(
-            id,
-            "ChatSend".to_string(),
-            b"{\"message\":\"Hello!\"}".to_vec(),
-        );
+        let frame = RawFrame::new(id, "ChatSend", b"{\"message\":\"Hello!\"}".to_vec());
 
         let bytes = frame.to_bytes();
         let expected = format!("NX|8|ChatSend|{}|20|{{\"message\":\"Hello!\"}}\n", id);
@@ -86,7 +95,7 @@ mod tests {
     #[test]
     fn test_raw_frame_to_bytes_minimal_payload() {
         let id = MessageId::new();
-        let frame = RawFrame::new(id, "UserList".to_string(), b"{}".to_vec());
+        let frame = RawFrame::new(id, "UserList", b"{}".to_vec());
 
         let bytes = frame.to_bytes();
         let expected = format!("NX|8|UserList|{}|2|{{}}\n", id);
@@ -96,7 +105,7 @@ mod tests {
     #[test]
     fn test_raw_frame_to_bytes_empty_payload() {
         let id = MessageId::new();
-        let frame = RawFrame::new(id, "UserList".to_string(), vec![]);
+        let frame = RawFrame::new(id, "UserList", vec![]);
 
         let bytes = frame.to_bytes();
         let expected = format!("NX|8|UserList|{}|0|\n", id);
