@@ -5,8 +5,9 @@ mod common;
 use std::collections::HashSet;
 
 use common::{add_test_user, create_test_db};
-use nexus_common::protocol::{ChatAction, ServerMessage, UserInfo};
+use nexus_common::protocol::{ChatAction, NewsAction, ServerMessage, UserInfo};
 use nexus_common::validators::DEFAULT_CHANNEL;
+use nexus_server::constants::FEATURE_NEWS;
 use nexus_server::db::{self, CreateUserParams, Permission, Permissions};
 use nexus_server::users::UserManager;
 
@@ -381,6 +382,99 @@ async fn test_broadcast_excludes_specified_session() {
     }
 }
 
+#[tokio::test]
+async fn test_broadcast_to_feature_excludes_specified_session() {
+    // Mirrors the call shape used by news_create / news_update / news_delete:
+    // each handler broadcasts NewsUpdated to the "news" feature gated by
+    // NewsList, excluding the requesting session so the originator doesn't
+    // receive a redundant refresh on top of their typed *Response.
+    let db = create_test_db().await;
+    let user_manager = UserManager::new();
+
+    // Create two users with NewsList permission
+    let hashed = db::hash_password(
+        "password",
+        nexus_common::validators::PasswordStrength::Weak,
+        true,
+    )
+    .unwrap();
+    let mut perms = Permissions::new();
+    perms.add(Permission::NewsList);
+
+    let user1 = db
+        .users
+        .create_user(CreateUserParams {
+            username: "user1",
+            hashed_password: &hashed,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+            revokes: &[],
+        })
+        .await
+        .unwrap();
+    let user2 = db
+        .users
+        .create_user(CreateUserParams {
+            username: "user2",
+            hashed_password: &hashed,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+            revokes: &[],
+        })
+        .await
+        .unwrap();
+
+    // Add users with cached permissions (add_test_user grants the "news" feature by default)
+    let cached_perms: HashSet<Permission> = [Permission::NewsList].into_iter().collect();
+    let (session_id1, mut rx1) = add_test_user(
+        &user_manager,
+        user1.id,
+        "user1",
+        false,
+        cached_perms.clone(),
+    )
+    .await;
+    let (_session_id2, mut rx2) =
+        add_test_user(&user_manager, user2.id, "user2", false, cached_perms).await;
+
+    // Broadcast NewsUpdated, excluding the originator (session 1)
+    let post_id: i64 = 42;
+    user_manager
+        .broadcast_to_feature(
+            FEATURE_NEWS,
+            ServerMessage::NewsUpdated {
+                action: NewsAction::Created,
+                id: post_id,
+            },
+            Permission::NewsList,
+            Some(session_id1),
+        )
+        .await;
+
+    // Originator should NOT receive (excluded)
+    assert!(
+        rx1.try_recv().is_err(),
+        "Originator should not receive NewsUpdated for their own action"
+    );
+
+    // Observer should receive
+    let msg2 = rx2.try_recv();
+    assert!(msg2.is_ok(), "Observer should receive NewsUpdated");
+    match msg2.unwrap().0 {
+        ServerMessage::NewsUpdated { action, id } => {
+            assert_eq!(action, NewsAction::Created);
+            assert_eq!(id, post_id);
+        }
+        other => panic!("Expected NewsUpdated, got {other:?}"),
+    }
+}
+
 // ============================================================================
 // Disconnect Detection Tests
 // ============================================================================
@@ -474,6 +568,7 @@ async fn test_broadcast_detects_closed_channels() {
                 timestamp: 0,
             },
             Permission::ChatReceive,
+            None,
         )
         .await;
 

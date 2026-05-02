@@ -398,6 +398,81 @@ pub async fn login_user_with_features(
         .expect("Failed to add user to UserManager")
 }
 
+/// Helper to create an "observer" user who watches for broadcasts on their own channel.
+///
+/// Unlike `login_user` / `login_user_with_features`, this does NOT clone
+/// `test_ctx.tx`; it allocates a fresh `mpsc::unbounded_channel()` for the
+/// new session. The returned `rx` lets the caller verify which broadcasts
+/// were delivered to this specific session, independently of the originator's.
+///
+/// Used to verify sender-exclusion in broadcasts (e.g. that the originator
+/// of a NewsCreate doesn't receive the resulting NewsUpdated, while a
+/// separate observer session does).
+pub async fn login_observer_user(
+    test_ctx: &mut TestContext,
+    username: &str,
+    password: &str,
+    permissions: &[crate::db::Permission],
+    features: Vec<String>,
+) -> (
+    u32,
+    mpsc::UnboundedReceiver<(ServerMessage, Option<MessageId>)>,
+) {
+    use crate::db::Permissions;
+
+    let hashed = get_cached_password_hash(password);
+
+    let mut perms = Permissions::new();
+    for perm in permissions {
+        perms.permissions.insert(*perm);
+    }
+
+    let user = test_ctx
+        .db
+        .users
+        .create_user(CreateUserParams {
+            username,
+            hashed_password: &hashed,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &perms,
+            group_id: None,
+            revokes: &[],
+        })
+        .await
+        .unwrap();
+
+    let (tx, rx) = mpsc::unbounded_channel();
+
+    let session_id = test_ctx
+        .user_manager
+        .add_user(NewSessionParams {
+            session_id: 0, // Will be assigned by add_user
+            user_id: user.id,
+            username: username.to_string(),
+            is_admin: false,
+            is_shared: false,
+            permissions: perms.permissions.clone(),
+            address: test_ctx.peer_addr,
+            created_at: user.created_at,
+            tx,
+            features,
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: username.to_string(),
+            is_away: false,
+            status: None,
+            group_id: None,
+            group_name: None,
+            last_activity: std::time::Instant::now(),
+        })
+        .await
+        .expect("Failed to add observer user to UserManager");
+
+    (session_id, rx)
+}
+
 /// Helper to create a shared account user with a nickname and add them to UserManager
 pub async fn login_shared_user(
     test_ctx: &mut TestContext,

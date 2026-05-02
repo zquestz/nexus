@@ -135,7 +135,12 @@ where
         id,
     };
     ctx.user_manager
-        .broadcast_to_feature(FEATURE_NEWS, broadcast, Permission::NewsList)
+        .broadcast_to_feature(
+            FEATURE_NEWS,
+            broadcast,
+            Permission::NewsList,
+            Some(requesting_session_id),
+        )
         .await;
 
     Ok(())
@@ -144,8 +149,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::FEATURE_NEWS;
     use crate::db;
-    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use crate::handlers::testing::{
+        create_test_context, login_observer_user, login_user, login_user_with_features,
+        read_server_message,
+    };
 
     #[tokio::test]
     async fn test_news_delete_requires_login() {
@@ -490,6 +499,77 @@ mod tests {
                 assert_eq!(id, Some(created.id));
             }
             _ => panic!("Expected NewsDeleteResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_news_delete_excludes_originator_from_broadcast() {
+        let mut test_ctx = create_test_context().await;
+
+        // Originator: alice with NewsCreate (lets her delete her own) + NewsList + "news"
+        let alice_session = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::NewsCreate, db::Permission::NewsList],
+            false,
+            vec![FEATURE_NEWS.to_string()],
+        )
+        .await;
+
+        // Pre-create a post authored by alice so she can delete it
+        let alice = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+        let created = test_ctx
+            .db
+            .news
+            .create_news(Some("My post"), None, alice.id)
+            .await
+            .unwrap();
+
+        // Observer: bob with NewsList + "news" feature, on a separate broadcast channel
+        let (_bob_session, mut bob_rx) = login_observer_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[db::Permission::NewsList],
+            vec![FEATURE_NEWS.to_string()],
+        )
+        .await;
+
+        let result = handle_news_delete(
+            created.id,
+            Some(alice_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::NewsDeleteResponse { success, .. } => assert!(success),
+            other => panic!("Expected NewsDeleteResponse, got {other:?}"),
+        }
+
+        assert!(
+            test_ctx.rx.try_recv().is_err(),
+            "Originator should not receive NewsUpdated for their own NewsDelete"
+        );
+
+        let broadcast = bob_rx
+            .try_recv()
+            .expect("Observer should receive NewsUpdated broadcast")
+            .0;
+        match broadcast {
+            ServerMessage::NewsUpdated { action, id } => {
+                assert_eq!(action, NewsAction::Deleted);
+                assert_eq!(id, created.id);
+            }
+            other => panic!("Expected NewsUpdated, got {other:?}"),
         }
     }
 }

@@ -67,7 +67,7 @@ pub async fn add_test_user(
             address: addr,
             created_at,
             tx,
-            features: vec!["chat".to_string()],
+            features: vec!["chat".to_string(), "news".to_string()],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
             nickname: username.to_string(),

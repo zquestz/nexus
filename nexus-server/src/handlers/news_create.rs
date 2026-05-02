@@ -159,7 +159,12 @@ where
         id: news.id,
     };
     ctx.user_manager
-        .broadcast_to_feature(FEATURE_NEWS, broadcast, Permission::NewsList)
+        .broadcast_to_feature(
+            FEATURE_NEWS,
+            broadcast,
+            Permission::NewsList,
+            Some(requesting_session_id),
+        )
         .await;
 
     Ok(())
@@ -169,7 +174,10 @@ where
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use crate::handlers::testing::{
+        create_test_context, login_observer_user, login_user, login_user_with_features,
+        read_server_message,
+    };
 
     #[tokio::test]
     async fn test_news_create_requires_login() {
@@ -545,6 +553,65 @@ mod tests {
                 assert!(news.author_is_admin);
             }
             _ => panic!("Expected NewsCreateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_news_create_excludes_originator_from_broadcast() {
+        let mut test_ctx = create_test_context().await;
+
+        // Originator: alice with NewsCreate + NewsList + "news" feature
+        let alice_session = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::NewsCreate, db::Permission::NewsList],
+            false,
+            vec![FEATURE_NEWS.to_string()],
+        )
+        .await;
+
+        // Observer: bob with NewsList + "news" feature, on a separate broadcast channel
+        let (_bob_session, mut bob_rx) = login_observer_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[db::Permission::NewsList],
+            vec![FEATURE_NEWS.to_string()],
+        )
+        .await;
+
+        let result = handle_news_create(
+            Some("Test post".to_string()),
+            None,
+            Some(alice_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        // Originator gets the typed response on TCP
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::NewsCreateResponse { success, .. } => assert!(success),
+            other => panic!("Expected NewsCreateResponse, got {other:?}"),
+        }
+
+        // Originator's broadcast channel must be empty (excluded)
+        assert!(
+            test_ctx.rx.try_recv().is_err(),
+            "Originator should not receive NewsUpdated for their own NewsCreate"
+        );
+
+        // Observer should receive NewsUpdated{Created}
+        let broadcast = bob_rx
+            .try_recv()
+            .expect("Observer should receive NewsUpdated broadcast")
+            .0;
+        match broadcast {
+            ServerMessage::NewsUpdated { action, .. } => {
+                assert_eq!(action, NewsAction::Created);
+            }
+            other => panic!("Expected NewsUpdated, got {other:?}"),
         }
     }
 }

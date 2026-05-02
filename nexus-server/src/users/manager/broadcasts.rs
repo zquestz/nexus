@@ -45,18 +45,29 @@ impl UserManager {
     /// This method checks both that the user has requested the feature (client preference)
     /// and that they have permission to receive it (server enforcement).
     ///
+    /// Optionally excludes a specific session_id (e.g., the originator of an action who
+    /// already received an authoritative typed response and doesn't need the broadcast).
+    ///
     /// Automatically removes users whose channels have closed (disconnected connections).
     pub async fn broadcast_to_feature(
         &self,
         feature: &str,
         message: ServerMessage,
         required_permission: Permission,
+        exclude_session_id: Option<u32>,
     ) {
         let mut disconnected = Vec::new();
 
         {
             let users = self.users.read().await;
             for user in users.values() {
+                // Skip excluded session
+                if let Some(excluded) = exclude_session_id
+                    && user.session_id == excluded
+                {
+                    continue;
+                }
+
                 // Check if user has the required feature
                 if !user.has_feature(feature) {
                     continue;
