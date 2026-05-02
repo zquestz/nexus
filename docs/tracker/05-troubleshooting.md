@@ -229,7 +229,7 @@ If the registry stays empty for longer than `2 × refresh_interval`, no servers 
 
 ## Refresh Issues
 
-### "Refresh interval too short" at startup
+### "Refresh interval out of range" at startup
 
 **Cause:** `--refresh-interval` is below the 120-second floor or above the 600-second ceiling.
 

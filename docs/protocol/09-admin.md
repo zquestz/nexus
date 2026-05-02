@@ -898,7 +898,6 @@ infrastructure, not a personal credential).
     "address": "tracker.example.com",
     "port": 7510,
     "fingerprint": "AA:BB:...",
-    "password": null,
     "name": "Public Tracker",
     "enabled": true,
     "created_at": 1730000000,
@@ -1317,7 +1316,7 @@ Users cannot:
 | `port`        | 1-65535                                                                                                                                 |
 | `fingerprint` | When supplied: canonical form (32 uppercase hex bytes separated by colons, exactly 95 chars)                                            |
 | `password`    | 0-256 bytes (empty / omitted = open tracker)                                                                                            |
-| `name`        | 1-256 bytes after trim; case-insensitively unique across all configured trackers                                                        |
+| `name`        | 1-256 bytes (whitespace-only rejected); case-insensitively unique across all configured trackers                                        |
 
 A server can have at most 64 configured trackers.
 

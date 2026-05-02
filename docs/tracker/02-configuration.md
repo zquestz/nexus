@@ -34,6 +34,14 @@ nexus-trackerd set-password registration|listing
 nexus-trackerd clear-password registration|listing
 ```
 
+The `--data-dir` flag is global and applies to subcommands as well —
+operators using a non-default data directory (e.g. systemd's
+`/var/lib/nexus-trackerd/`) should pass it through:
+
+```bash
+nexus-trackerd --data-dir /var/lib/nexus-trackerd set-password registration
+```
+
 See [Password Management](04-passwords.md) for usage.
 
 ## Network Binding

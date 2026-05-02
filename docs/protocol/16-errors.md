@@ -154,6 +154,32 @@ The `error_kind` field provides machine-readable error classification for progra
 | `exists`              | File already exists (upload)   | Admin must delete existing   |
 | `conflict`            | Concurrent upload in progress  | Wait and retry               |
 
+### Tracker Errors
+
+Tracker protocol responses use typed `error_kind` values for rejection
+classification. Wire-facing kinds are sent by the tracker daemon to
+registrants/clients; BBS-internal kinds (the `tracker_*` family) are
+set by the BBS-side registration task and surfaced via
+`TrackerInfo.last_error_kind` on admin responses. Full semantics:
+[Trackers → Errors](18-trackers.md#errors) and [Admin → Tracker
+Error Kinds](09-admin.md#tracker-error-kinds).
+
+| Value                             | Description                                              |
+| --------------------------------- | -------------------------------------------------------- |
+| `unauthorized`                    | Wrong / missing tracker password                         |
+| `rate_limited`                    | Per-IP rate cap exceeded                                 |
+| `capacity`                        | Tracker at its configured entry limit                    |
+| `invalid`                         | Field validation failed (address, fingerprint, etc.)     |
+| `tracker_connection_failed`       | TCP connect to tracker failed                            |
+| `tracker_tls_failed`              | TLS handshake with tracker failed                        |
+| `tracker_handshake_failed`        | Protocol handshake with tracker failed                   |
+| `tracker_connection_lost`         | Connection to tracker lost mid-session                   |
+| `tracker_db_failed`               | Local DB write error during tracker state update         |
+| `tracker_fingerprint_mismatch`    | Stage 1: TLS cert disagrees with pinned fingerprint      |
+| `tracker_fingerprint_intercepted` | Stage 2: TLS cert disagrees with tracker's self-reported |
+| `tracker_protocol_error`          | Tracker sent a malformed `error_kind`                    |
+| `tracker_address_invalid`         | Tracker address can't be resolved (admin must edit)      |
+
 ## Connection Behavior
 
 Errors can either keep the connection open or disconnect the client:
