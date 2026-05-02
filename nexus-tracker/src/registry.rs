@@ -106,7 +106,9 @@ impl Registry {
         }
 
         let id = self.next_id;
-        // 2^64 ids is many lifetimes of refreshes; wrap is theoretical.
+        // 2^64 ids is ~584 billion years at 1 register/sec; wrap is
+        // theoretical. If it ever did happen the next id would silently
+        // collide with whatever still holds id 0 in the entries map.
         self.next_id = self.next_id.wrapping_add(1);
 
         self.entries.insert(

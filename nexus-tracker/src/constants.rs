@@ -259,6 +259,12 @@ pub const LOG_REGISTER_NEW: &str = "TrackerServerRegister: new entry";
 
 /// Log: a server connection refreshed an existing entry.
 /// Paired with `id = %connection_id, user_count = %user_count`.
+///
+/// Intentionally logged at **debug** level (paired
+/// [`LOG_REGISTER_NEW`] is at info): refreshes fire every
+/// `refresh_interval` seconds per entry and would dominate operator
+/// log volume if elevated. Level should not be "fixed" without
+/// considering log-volume impact at fleet scale.
 pub const LOG_REGISTER_REFRESH: &str = "TrackerServerRegister: refresh";
 
 /// Log: TrackerServerRegister rejected for an operator-actionable reason
@@ -484,6 +490,10 @@ pub const ERR_PASSWORD_HASH_LOCK_POISONED: &str = "password hash lock poisoned";
 /// rate-limit maps. 60s is a tradeoff: short enough that long-lived
 /// daemons under disposable-IP attack don't accumulate too many stale
 /// entries between sweeps, long enough that the sweep itself is cheap.
+///
+/// Must be `< RATE_LIMITER_IDLE_TTL` — if the GC interval ever exceeds
+/// the idle TTL, eviction lags arbitrarily and idle buckets pile up
+/// past their nominal expiry.
 pub const RATE_LIMITER_GC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Bucket idle TTL — how long an IP's bucket sticks around after its

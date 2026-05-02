@@ -76,6 +76,11 @@ pub struct TrackerState {
     /// `TrackerServerRegister`. Defaults to [`TokioResolver`] in
     /// [`Self::new`]; tests substitute a mock via
     /// [`Self::with_resolver`].
+    ///
+    /// `Send + Sync` is required transitively via [`Resolver`]'s trait
+    /// bound — without it `TrackerState` itself wouldn't be `Send +
+    /// Sync` and couldn't be shared across the accept loop via
+    /// `Arc<TrackerState>`.
     pub resolver: Box<dyn Resolver>,
 }
 
