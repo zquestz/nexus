@@ -14,6 +14,16 @@ use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::validators::{self, PasswordError, VersionError};
 use nexus_common::version::{self, CompatibilityResult};
 
+use crate::constants::{
+    ERR_TRANSFER_ACCOUNT_DISABLED, ERR_TRANSFER_CONNECTION_CLOSED, ERR_TRANSFER_DB_ERROR,
+    ERR_TRANSFER_HANDSHAKE_CLOSED, ERR_TRANSFER_HANDSHAKE_EXPECTED,
+    ERR_TRANSFER_INVALID_CREDENTIALS, ERR_TRANSFER_LOGIN_CLOSED, ERR_TRANSFER_LOGIN_EXPECTED,
+    ERR_TRANSFER_PASSWORD_INVALID, ERR_TRANSFER_PASSWORD_VERIFY_ERROR, ERR_TRANSFER_READ_HANDSHAKE,
+    ERR_TRANSFER_READ_LOGIN, ERR_TRANSFER_READ_MESSAGE, ERR_TRANSFER_USER_NOT_FOUND,
+    ERR_TRANSFER_USERNAME_INVALID, ERR_TRANSFER_VERSION_CLIENT_TOO_NEW,
+    ERR_TRANSFER_VERSION_INVALID, ERR_TRANSFER_VERSION_MAJOR_MISMATCH,
+    ERR_TRANSFER_VERSION_MINOR_MISMATCH,
+};
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, Database};
 use crate::handlers::{
@@ -42,8 +52,13 @@ where
     // Read handshake message (with idle timeout - no idle connections on transfer port)
     let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
         Ok(Some(msg)) => msg,
-        Ok(None) => return Err(io::Error::other("Connection closed during handshake")),
-        Err(e) => return Err(io::Error::other(format!("Failed to read handshake: {e}"))),
+        Ok(None) => return Err(io::Error::other(ERR_TRANSFER_HANDSHAKE_CLOSED)),
+        Err(e) => {
+            return Err(io::Error::other(format!(
+                "{}{}",
+                ERR_TRANSFER_READ_HANDSHAKE, e
+            )));
+        }
     };
 
     let version = match received.message {
@@ -56,7 +71,7 @@ where
                 error: Some(err_handshake_required(locale)),
             };
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
-            return Err(io::Error::other("Expected Handshake message"));
+            return Err(io::Error::other(ERR_TRANSFER_HANDSHAKE_EXPECTED));
         }
     };
 
@@ -78,7 +93,7 @@ where
                 error: Some(error_msg),
             };
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
-            return Err(io::Error::other("Invalid version string"));
+            return Err(io::Error::other(ERR_TRANSFER_VERSION_INVALID));
         }
     };
 
@@ -109,7 +124,7 @@ where
                 )),
             };
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
-            Err(io::Error::other("Major version mismatch"))
+            Err(io::Error::other(ERR_TRANSFER_VERSION_MAJOR_MISMATCH))
         }
         CompatibilityResult::MinorMismatch {
             server_minor,
@@ -127,7 +142,8 @@ where
             };
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
             Err(io::Error::other(format!(
-                "Minor version mismatch, pre-1.0 (server minor: {server_minor})"
+                "{}{}",
+                ERR_TRANSFER_VERSION_MINOR_MISMATCH, server_minor
             )))
         }
         CompatibilityResult::ClientTooNew {
@@ -146,7 +162,8 @@ where
             };
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
             Err(io::Error::other(format!(
-                "Client version too new (server minor: {server_minor})"
+                "{}{}",
+                ERR_TRANSFER_VERSION_CLIENT_TOO_NEW, server_minor
             )))
         }
     }
@@ -166,8 +183,13 @@ where
     // Read login message (with idle timeout - no idle connections on transfer port)
     let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
         Ok(Some(msg)) => msg,
-        Ok(None) => return Err(io::Error::other("Connection closed during login")),
-        Err(e) => return Err(io::Error::other(format!("Failed to read login: {e}"))),
+        Ok(None) => return Err(io::Error::other(ERR_TRANSFER_LOGIN_CLOSED)),
+        Err(e) => {
+            return Err(io::Error::other(format!(
+                "{}{}",
+                ERR_TRANSFER_READ_LOGIN, e
+            )));
+        }
     };
 
     let (raw_username, password, request_locale, request_nickname) = match received.message {
@@ -181,7 +203,7 @@ where
         _ => {
             let response = login_error_response(err_not_logged_in(locale));
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
-            return Err(io::Error::other("Expected Login message"));
+            return Err(io::Error::other(ERR_TRANSFER_LOGIN_EXPECTED));
         }
     };
 
@@ -201,14 +223,14 @@ where
     {
         let response = login_error_response(err_invalid_credentials(locale));
         send_server_message_with_id(frame_writer, &response, received.message_id).await?;
-        return Err(io::Error::other("Invalid username"));
+        return Err(io::Error::other(ERR_TRANSFER_USERNAME_INVALID));
     }
 
     // Validate password (use validate_password_input which allows empty for guest accounts)
     if let Err(PasswordError::TooLong) = validators::validate_password_input(&password) {
         let response = login_error_response(err_invalid_credentials(locale));
         send_server_message_with_id(frame_writer, &response, received.message_id).await?;
-        return Err(io::Error::other("Invalid password"));
+        return Err(io::Error::other(ERR_TRANSFER_PASSWORD_INVALID));
     }
 
     // Look up user
@@ -217,12 +239,12 @@ where
         Ok(None) => {
             let response = login_error_response(err_invalid_credentials(locale));
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
-            return Err(io::Error::other("User not found"));
+            return Err(io::Error::other(ERR_TRANSFER_USER_NOT_FOUND));
         }
         Err(e) => {
             let response = login_error_response(err_database(locale));
             send_server_message_with_id(frame_writer, &response, received.message_id).await?;
-            return Err(io::Error::other(format!("Database error: {e}")));
+            return Err(io::Error::other(format!("{}{}", ERR_TRANSFER_DB_ERROR, e)));
         }
     };
 
@@ -237,7 +259,8 @@ where
                 let response = login_error_response(err_authentication(locale));
                 send_server_message_with_id(frame_writer, &response, received.message_id).await?;
                 return Err(io::Error::other(format!(
-                    "Password verification error: {e}"
+                    "{}{}",
+                    ERR_TRANSFER_PASSWORD_VERIFY_ERROR, e
                 )));
             }
         }
@@ -246,7 +269,7 @@ where
     if !password_valid {
         let response = login_error_response(err_invalid_credentials(locale));
         send_server_message_with_id(frame_writer, &response, received.message_id).await?;
-        return Err(io::Error::other("Invalid credentials"));
+        return Err(io::Error::other(ERR_TRANSFER_INVALID_CREDENTIALS));
     }
 
     // Check if account is enabled
@@ -258,7 +281,7 @@ where
         };
         let response = login_error_response(error_msg);
         send_server_message_with_id(frame_writer, &response, received.message_id).await?;
-        return Err(io::Error::other("Account disabled"));
+        return Err(io::Error::other(ERR_TRANSFER_ACCOUNT_DISABLED));
     }
 
     // Get permissions
@@ -317,8 +340,13 @@ where
     // With idle timeout - no idle connections on transfer port
     let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
         Ok(Some(msg)) => msg,
-        Ok(None) => return Err(io::Error::other("Connection closed")),
-        Err(e) => return Err(io::Error::other(format!("Failed to read message: {e}"))),
+        Ok(None) => return Err(io::Error::other(ERR_TRANSFER_CONNECTION_CLOSED)),
+        Err(e) => {
+            return Err(io::Error::other(format!(
+                "{}{}",
+                ERR_TRANSFER_READ_MESSAGE, e
+            )));
+        }
     };
 
     match received.message {

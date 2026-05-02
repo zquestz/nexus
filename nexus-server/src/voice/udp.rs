@@ -424,7 +424,7 @@ pub async fn create_voice_listener(
 
     let listener = listen(addr, config)
         .await
-        .map_err(|e| format!("Failed to create voice DTLS listener on {}: {}", addr, e))?;
+        .map_err(|e| format!("{}{}: {}", ERR_VOICE_DTLS_LISTENER_PREFIX, addr, e))?;
 
     Ok(Arc::new(listener))
 }
@@ -434,11 +434,11 @@ pub async fn create_voice_listener(
 /// Uses the same certificate as the TCP/TLS server.
 fn load_dtls_config(cert_path: &Path, key_path: &Path) -> Result<DtlsConfig, String> {
     // Read certificate and key PEM files
-    let cert_pem = fs::read_to_string(cert_path)
-        .map_err(|e| format!("Failed to read certificate file: {}", e))?;
+    let cert_pem =
+        fs::read_to_string(cert_path).map_err(|e| format!("{}{}", ERR_VOICE_READ_CERT_FILE, e))?;
 
-    let key_pem = fs::read_to_string(key_path)
-        .map_err(|e| format!("Failed to read private key file: {}", e))?;
+    let key_pem =
+        fs::read_to_string(key_path).map_err(|e| format!("{}{}", ERR_VOICE_READ_KEY_FILE, e))?;
 
     // WORKAROUND: The dtls crate (0.13.0) has a bug in its PEM parser - it expects the tag
     // "PRIVATE_KEY" (with underscore) but standard PKCS#8 PEM files use "PRIVATE KEY" (with space).
@@ -453,7 +453,7 @@ fn load_dtls_config(cert_path: &Path, key_path: &Path) -> Result<DtlsConfig, Str
 
     // Parse certificate with private key
     let certificate = Certificate::from_pem(&combined_pem)
-        .map_err(|e| format!("Failed to parse certificate: {}", e))?;
+        .map_err(|e| format!("{}{}", ERR_VOICE_PARSE_CERT, e))?;
 
     // Create DTLS config
     let config = DtlsConfig {

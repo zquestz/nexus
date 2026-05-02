@@ -159,7 +159,7 @@ impl FileIndex {
     fn build_index(&self) -> Result<usize, String> {
         // Create temp file with CSV writer
         let file = File::create(&self.temp_path)
-            .map_err(|e| format!("Failed to create temp index: {}", e))?;
+            .map_err(|e| format!("{}{}", ERR_FILE_INDEX_CREATE_TEMP, e))?;
 
         // Set restrictive permissions on index file (contains file tree structure)
         #[cfg(unix)]
@@ -167,7 +167,7 @@ impl FileIndex {
             use std::os::unix::fs::PermissionsExt;
             let perms = std::fs::Permissions::from_mode(0o600);
             fs::set_permissions(&self.temp_path, perms)
-                .map_err(|e| format!("Failed to set index permissions: {}", e))?;
+                .map_err(|e| format!("{}{}", ERR_FILE_INDEX_SET_PERMISSIONS, e))?;
         }
 
         let mut writer = WriterBuilder::new().has_headers(false).from_writer(file);
@@ -234,7 +234,7 @@ impl FileIndex {
                     modified_str.as_str(),
                     is_dir_str,
                 ])
-                .map_err(|e| format!("Failed to write index entry: {}", e))?;
+                .map_err(|e| format!("{}{}", ERR_FILE_INDEX_WRITE_ENTRY, e))?;
 
             count += 1;
         }
@@ -242,12 +242,12 @@ impl FileIndex {
         // Flush and close
         writer
             .flush()
-            .map_err(|e| format!("Failed to flush index: {}", e))?;
+            .map_err(|e| format!("{}{}", ERR_FILE_INDEX_FLUSH, e))?;
         drop(writer);
 
         // Atomic rename
         fs::rename(&self.temp_path, &self.index_path)
-            .map_err(|e| format!("Failed to swap index file: {}", e))?;
+            .map_err(|e| format!("{}{}", ERR_FILE_INDEX_SWAP, e))?;
 
         let now_secs = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -287,8 +287,8 @@ impl FileIndex {
         // Use first term for initial grep search (fastest filter)
         let first_term = regex::escape(terms[0]);
         let pattern = format!("(?i){}", first_term);
-        let matcher =
-            RegexMatcher::new(&pattern).map_err(|e| format!("Invalid search pattern: {}", e))?;
+        let matcher = RegexMatcher::new(&pattern)
+            .map_err(|e| format!("{}{}", ERR_FILE_INDEX_SEARCH_PATTERN, e))?;
 
         // Prepare remaining terms for secondary filtering (lowercase for case-insensitive)
         let remaining_terms: Vec<String> = terms[1..].iter().map(|t| t.to_lowercase()).collect();

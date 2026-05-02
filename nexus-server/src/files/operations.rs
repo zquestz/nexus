@@ -15,6 +15,8 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+use crate::constants::{ERR_FILE_OP_COPY_TASK, ERR_FILE_OP_REMOVE_TASK, ERR_FILE_OP_RENAME_TASK};
+
 /// Check if `child` path is a subpath of (starts with) `parent` path
 ///
 /// This is used to prevent moving/copying a directory into itself,
@@ -83,7 +85,7 @@ pub async fn remove_path_async(path: &Path) -> io::Result<()> {
     let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || remove_path(&path))
         .await
-        .map_err(|e| io::Error::other(format!("remove task failed: {e}")))?
+        .map_err(|e| io::Error::other(format!("{}{}", ERR_FILE_OP_REMOVE_TASK, e)))?
 }
 
 /// Recursively copy a path (file, symlink, or directory) - synchronous version
@@ -139,7 +141,7 @@ pub async fn copy_path_recursive_async(source: &Path, target: &Path) -> io::Resu
     let target = target.to_path_buf();
     tokio::task::spawn_blocking(move || copy_path_recursive(&source, &target))
         .await
-        .map_err(|e| io::Error::other(format!("copy task failed: {e}")))?
+        .map_err(|e| io::Error::other(format!("{}{}", ERR_FILE_OP_COPY_TASK, e)))?
 }
 
 /// Rename/move a path - async version
@@ -164,7 +166,7 @@ pub async fn rename_path_async(source: &Path, target: &Path) -> io::Result<()> {
     let target = target.to_path_buf();
     tokio::task::spawn_blocking(move || std::fs::rename(&source, &target))
         .await
-        .map_err(|e| io::Error::other(format!("rename task failed: {e}")))?
+        .map_err(|e| io::Error::other(format!("{}{}", ERR_FILE_OP_RENAME_TASK, e)))?
 }
 
 /// Copy a symlink without following it

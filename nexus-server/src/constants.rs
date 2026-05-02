@@ -533,6 +533,70 @@ pub const ERR_DEFAULT_LOCALE_INVALID: &str = "DEFAULT_LOCALE is a valid locale";
 /// closed instead of treating the operation as a verify-success.
 pub const ERR_PASSWORD_TASK_JOIN: &str = "password task did not complete";
 
+// --- File Index errors ---
+//
+// Prefixed messages emitted by `files::index::FileIndex` plumbing.
+// Composed via `format!("{}{}", PREFIX, err)` to surface the
+// underlying I/O / regex error.
+pub const ERR_FILE_INDEX_CREATE_TEMP: &str = "Failed to create temp index: ";
+pub const ERR_FILE_INDEX_SET_PERMISSIONS: &str = "Failed to set index permissions: ";
+pub const ERR_FILE_INDEX_WRITE_ENTRY: &str = "Failed to write index entry: ";
+pub const ERR_FILE_INDEX_FLUSH: &str = "Failed to flush index: ";
+pub const ERR_FILE_INDEX_SWAP: &str = "Failed to swap index file: ";
+pub const ERR_FILE_INDEX_SEARCH_PATTERN: &str = "Invalid search pattern: ";
+
+// --- File operation task errors ---
+//
+// `spawn_blocking` failures from `files::operations`. The task wrapper
+// catches panics inside the blocking pool; the prefix identifies which
+// blocking-pool call failed.
+pub const ERR_FILE_OP_REMOVE_TASK: &str = "remove task failed: ";
+pub const ERR_FILE_OP_COPY_TASK: &str = "copy task failed: ";
+pub const ERR_FILE_OP_RENAME_TASK: &str = "rename task failed: ";
+
+// --- Transfer-port handshake / login / DB errors ---
+//
+// Internal `io::Error` messages emitted by the transfer-port auth flow
+// (port 7501 / WS 7503). Pure-static for connection-state assertions
+// (e.g. "Connection closed") and prefix-style for wrapping I/O errors.
+// These are operator-log strings, not localized — the transfer port
+// has no locale negotiation before authentication completes.
+
+// Pure-static
+pub const ERR_TRANSFER_HANDSHAKE_CLOSED: &str = "Connection closed during handshake";
+pub const ERR_TRANSFER_HANDSHAKE_EXPECTED: &str = "Expected Handshake message";
+pub const ERR_TRANSFER_VERSION_INVALID: &str = "Invalid version string";
+pub const ERR_TRANSFER_VERSION_MAJOR_MISMATCH: &str = "Major version mismatch";
+pub const ERR_TRANSFER_LOGIN_CLOSED: &str = "Connection closed during login";
+pub const ERR_TRANSFER_LOGIN_EXPECTED: &str = "Expected Login message";
+pub const ERR_TRANSFER_USERNAME_INVALID: &str = "Invalid username";
+pub const ERR_TRANSFER_PASSWORD_INVALID: &str = "Invalid password";
+pub const ERR_TRANSFER_USER_NOT_FOUND: &str = "User not found";
+pub const ERR_TRANSFER_INVALID_CREDENTIALS: &str = "Invalid credentials";
+pub const ERR_TRANSFER_ACCOUNT_DISABLED: &str = "Account disabled";
+pub const ERR_TRANSFER_CONNECTION_CLOSED: &str = "Connection closed";
+
+// Prefix-style
+pub const ERR_TRANSFER_READ_HANDSHAKE: &str = "Failed to read handshake: ";
+pub const ERR_TRANSFER_READ_LOGIN: &str = "Failed to read login: ";
+pub const ERR_TRANSFER_READ_MESSAGE: &str = "Failed to read message: ";
+pub const ERR_TRANSFER_DB_ERROR: &str = "Database error: ";
+pub const ERR_TRANSFER_PASSWORD_VERIFY_ERROR: &str = "Password verification error: ";
+pub const ERR_TRANSFER_VERSION_MINOR_MISMATCH: &str =
+    "Minor version mismatch, pre-1.0, server minor: ";
+pub const ERR_TRANSFER_VERSION_CLIENT_TOO_NEW: &str = "Client version too new, server minor: ";
+
+// --- Voice DTLS plumbing errors ---
+//
+// `voice::udp` cert/key load failures and listener-bind failure.
+// Composed via `format!("{}{}", PREFIX, err)`. The DTLS-listener prefix
+// includes a trailing space so callers can tack on the bind address
+// before the underlying error: `format!("{}{}: {}", PREFIX, addr, e)`.
+pub const ERR_VOICE_DTLS_LISTENER_PREFIX: &str = "Failed to create voice DTLS listener on ";
+pub const ERR_VOICE_READ_CERT_FILE: &str = "Failed to read certificate file: ";
+pub const ERR_VOICE_READ_KEY_FILE: &str = "Failed to read private key file: ";
+pub const ERR_VOICE_PARSE_CERT: &str = "Failed to parse certificate: ";
+
 // =============================================================================
 // Log Messages
 // =============================================================================
