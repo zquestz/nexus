@@ -48,7 +48,8 @@ use crate::constants::{
     STALE_TIMEOUT_REFRESH_MULTIPLIER,
 };
 use crate::errors::{
-    err_tracker_frame_error, err_tracker_handshake_required, err_tracker_role_violation,
+    err_tracker_frame_error, err_tracker_handshake_required, err_tracker_malformed_message,
+    err_tracker_payload_too_large, err_tracker_role_violation, err_tracker_unknown_message_type,
 };
 use crate::handlers;
 use crate::handlers::tracker_server_list::{ListParams, handle_tracker_server_list};
@@ -147,7 +148,7 @@ where
             Ok(Some(msg)) => msg,
             Ok(None) => return Ok(false), // clean pre-handshake disconnect
             Err(e) => {
-                send_handshake_error(writer, None, err_tracker_frame_error(DEFAULT_LOCALE)).await;
+                send_handshake_error(writer, None, frame_error_message(&e, DEFAULT_LOCALE)).await;
                 return Err(e.into());
             }
         };
@@ -196,7 +197,7 @@ where
         Ok(Some(msg)) => msg,
         Ok(None) => return Ok(()), // clean disconnect; nothing to clean up yet
         Err(e) => {
-            send_tracker_error(writer, None, err_tracker_frame_error(DEFAULT_LOCALE)).await;
+            send_tracker_error(writer, None, frame_error_message(&e, DEFAULT_LOCALE)).await;
             return Err(e.into());
         }
     };
@@ -313,7 +314,7 @@ where
                     "{}",
                     LOG_REGISTER_DISCONNECTED
                 );
-                send_tracker_error(writer, None, err_tracker_frame_error(DEFAULT_LOCALE)).await;
+                send_tracker_error(writer, None, frame_error_message(&e, DEFAULT_LOCALE)).await;
                 return Ok(());
             }
         };
@@ -446,4 +447,20 @@ async fn send_tracker_error<W>(
 {
     let response = TrackerServerMessage::Error { message, command };
     let _ = send_tracker_server_message(writer, &response).await;
+}
+
+/// Map a [`FrameError`] to the operator-facing translated message used
+/// in the handshake / dispatch / refresh failure paths. Differentiates
+/// the three cases the spec calls out separately
+/// (`InvalidJson` → malformed JSON, `UnknownMessageType` → wrong-port
+/// peer, `PayloadLengthExceedsTypeMax` → oversize) from generic frame
+/// structural violations, so registrants see an actionable diagnostic
+/// instead of a catch-all "Frame format violation".
+fn frame_error_message(err: &FrameError, locale: &str) -> String {
+    match err {
+        FrameError::InvalidJson(_) => err_tracker_malformed_message(locale),
+        FrameError::UnknownMessageType(_) => err_tracker_unknown_message_type(locale),
+        FrameError::PayloadLengthExceedsTypeMax { .. } => err_tracker_payload_too_large(locale),
+        _ => err_tracker_frame_error(locale),
+    }
 }

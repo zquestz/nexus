@@ -117,11 +117,9 @@ pub fn err_tracker_per_ip_capacity(locale: &str) -> String {
 // Protocol-level
 // =============================================================================
 
-/// JSON parse failed for an otherwise-known message envelope. The
-/// connection task currently lumps all `FrameError` cases under
-/// `err_tracker_frame_error`; this helper goes live once we differentiate
-/// JSON-parse failures from frame-format violations (later step).
-#[allow(dead_code)] // used once we differentiate FrameError variants
+/// JSON parse failed for an otherwise-known message envelope.
+/// Differentiated from `err_tracker_frame_error` (structural / framing
+/// violation) so registrants see an actionable diagnostic.
 pub fn err_tracker_malformed_message(locale: &str) -> String {
     t(locale, "err-tracker-malformed-message")
 }
@@ -153,7 +151,9 @@ pub fn err_tracker_protocol_version_mismatch(locale: &str, server: &str, client:
 }
 
 /// Peer sent a message whose `type` field isn't recognized.
-#[allow(dead_code)] // used by connection task (later step)
+/// Differentiated from `err_tracker_frame_error` so a peer connecting
+/// to the wrong port (e.g. BBS `Login` on the tracker port) sees the
+/// real cause.
 pub fn err_tracker_unknown_message_type(locale: &str) -> String {
     t(locale, "err-tracker-unknown-message-type")
 }
@@ -168,7 +168,6 @@ pub fn err_tracker_frame_error(locale: &str) -> String {
 }
 
 /// Frame payload exceeded the per-message-type maximum.
-#[allow(dead_code)] // used by connection task (later step, when reading typed messages)
 pub fn err_tracker_payload_too_large(locale: &str) -> String {
     t(locale, "err-tracker-payload-too-large")
 }

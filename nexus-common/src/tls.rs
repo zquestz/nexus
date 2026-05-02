@@ -18,6 +18,7 @@ use std::io::{self, BufReader};
 use std::path::Path;
 use std::sync::Arc;
 
+use rcgen::{CertificateParams, KeyPair};
 use time::{Duration, OffsetDateTime};
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
