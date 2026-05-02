@@ -30,7 +30,8 @@ use nexus_common::{ERROR_KIND_INVALID, ERROR_KIND_RATE_LIMITED, ERROR_KIND_UNAUT
 use crate::auth::check_password;
 use crate::constants::{
     DEFAULT_LOCALE, ERR_REGISTRY_MUTEX_POISONED, LOG_AUTH_RATE_LIMITED, LOG_LIST_REJECTED,
-    LOG_LIST_RESPONSE,
+    LOG_LIST_RESPONSE, REASON_LOCALE_TOO_LONG, REASON_PASSWORD_TOO_LONG, REASON_RATE_LIMITED,
+    REASON_UNAUTHORIZED,
 };
 use crate::errors::{
     err_tracker_locale_too_long, err_tracker_password_too_long, err_tracker_rate_limited,
@@ -62,7 +63,7 @@ where
     // it's within bounds; fall back to DEFAULT_LOCALE when the locale
     // field itself is what's too long (we can't trust it for translation).
     if locale.len() > MAX_LOCALE_LENGTH {
-        warn!(ip = %peer_addr.ip(), reason = "locale_too_long", "{}", LOG_LIST_REJECTED);
+        warn!(ip = %peer_addr.ip(), reason = REASON_LOCALE_TOO_LONG, "{}", LOG_LIST_REJECTED);
         return send_failure(
             writer,
             ERROR_KIND_INVALID,
@@ -73,7 +74,7 @@ where
     if let Some(p) = &password
         && p.len() > MAX_PASSWORD_LENGTH
     {
-        warn!(ip = %peer_addr.ip(), reason = "password_too_long", "{}", LOG_LIST_REJECTED);
+        warn!(ip = %peer_addr.ip(), reason = REASON_PASSWORD_TOO_LONG, "{}", LOG_LIST_REJECTED);
         return send_failure(
             writer,
             ERROR_KIND_INVALID,
@@ -90,7 +91,7 @@ where
     let gated = stored_hash.is_some();
     if gated && state.auth_failure_rate_limiter.check_only(peer_addr.ip()) == RateCheck::Limited {
         warn!(ip = %peer_addr.ip(), "{}", LOG_AUTH_RATE_LIMITED);
-        warn!(ip = %peer_addr.ip(), reason = "rate_limited", "{}", LOG_LIST_REJECTED);
+        warn!(ip = %peer_addr.ip(), reason = REASON_RATE_LIMITED, "{}", LOG_LIST_REJECTED);
         return send_failure(
             writer,
             ERROR_KIND_RATE_LIMITED,
@@ -104,7 +105,7 @@ where
                 .auth_failure_rate_limiter
                 .record_failure(peer_addr.ip());
         }
-        warn!(ip = %peer_addr.ip(), reason = "unauthorized", "{}", LOG_LIST_REJECTED);
+        warn!(ip = %peer_addr.ip(), reason = REASON_UNAUTHORIZED, "{}", LOG_LIST_REJECTED);
         return send_failure(
             writer,
             ERROR_KIND_UNAUTHORIZED,

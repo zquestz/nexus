@@ -50,7 +50,10 @@ use crate::constants::{
     REASON_ADDRESS_DOCUMENTATION, REASON_ADDRESS_HOSTNAME_DNS_FAILED,
     REASON_ADDRESS_HOSTNAME_NO_MATCH, REASON_ADDRESS_HOSTNAME_NOT_FOUND, REASON_ADDRESS_INVALID,
     REASON_ADDRESS_IP_LITERAL_MISMATCH, REASON_ADDRESS_LINK_LOCAL, REASON_ADDRESS_LOOPBACK,
-    REASON_ADDRESS_MULTICAST, REASON_ADDRESS_UNSPECIFIED,
+    REASON_ADDRESS_MULTICAST, REASON_ADDRESS_TOO_LONG, REASON_ADDRESS_UNSPECIFIED, REASON_CAPACITY,
+    REASON_DESCRIPTION_TOO_LONG, REASON_FINGERPRINT_INVALID, REASON_LOCALE_TOO_LONG,
+    REASON_NAME_TOO_LONG, REASON_PASSWORD_TOO_LONG, REASON_PER_IP_CAPACITY, REASON_RATE_LIMITED,
+    REASON_REFRESH_TOO_SOON, REASON_UNAUTHORIZED, REASON_VERSION_TOO_LONG,
 };
 use crate::errors::{
     err_tracker_address_invalid, err_tracker_address_too_long, err_tracker_capacity,
@@ -161,8 +164,8 @@ where
         Err(RegisterError::Capacity) => {
             reject(
                 writer,
-                ip(&peer_addr),
-                "capacity",
+                peer_addr,
+                REASON_CAPACITY,
                 ERROR_KIND_CAPACITY,
                 err_tracker_capacity(&locale),
             )
@@ -172,8 +175,8 @@ where
         Err(RegisterError::PerIpCapacity) => {
             reject(
                 writer,
-                ip(&peer_addr),
-                "per_ip_capacity",
+                peer_addr,
+                REASON_PER_IP_CAPACITY,
                 ERROR_KIND_CAPACITY,
                 err_tracker_per_ip_capacity(&locale),
             )
@@ -225,8 +228,8 @@ where
             warn!(ip = %peer_addr.ip(), id = id, "{}", LOG_REFRESH_TOO_SOON);
             reject(
                 writer,
-                ip(&peer_addr),
-                "refresh_too_soon",
+                peer_addr,
+                REASON_REFRESH_TOO_SOON,
                 ERROR_KIND_RATE_LIMITED,
                 err_tracker_rate_limited(&params.locale),
             )
@@ -322,8 +325,8 @@ where
     if locale.len() > MAX_LOCALE_LENGTH {
         reject(
             writer,
-            ip(&peer_addr),
-            "locale_too_long",
+            peer_addr,
+            REASON_LOCALE_TOO_LONG,
             ERROR_KIND_INVALID,
             err_tracker_locale_too_long(DEFAULT_LOCALE, MAX_LOCALE_LENGTH),
         )
@@ -335,8 +338,8 @@ where
     {
         reject(
             writer,
-            ip(&peer_addr),
-            "password_too_long",
+            peer_addr,
+            REASON_PASSWORD_TOO_LONG,
             ERROR_KIND_INVALID,
             err_tracker_password_too_long(&locale, MAX_PASSWORD_LENGTH),
         )
@@ -346,8 +349,8 @@ where
     if name.len() > MAX_SERVER_NAME_LENGTH {
         reject(
             writer,
-            ip(&peer_addr),
-            "name_too_long",
+            peer_addr,
+            REASON_NAME_TOO_LONG,
             ERROR_KIND_INVALID,
             err_tracker_name_too_long(&locale, MAX_SERVER_NAME_LENGTH),
         )
@@ -359,8 +362,8 @@ where
     {
         reject(
             writer,
-            ip(&peer_addr),
-            "description_too_long",
+            peer_addr,
+            REASON_DESCRIPTION_TOO_LONG,
             ERROR_KIND_INVALID,
             err_tracker_description_too_long(&locale, MAX_SERVER_DESCRIPTION_LENGTH),
         )
@@ -372,8 +375,8 @@ where
     {
         reject(
             writer,
-            ip(&peer_addr),
-            "address_too_long",
+            peer_addr,
+            REASON_ADDRESS_TOO_LONG,
             ERROR_KIND_INVALID,
             err_tracker_address_too_long(&locale, MAX_PUBLIC_ADDRESS_LENGTH),
         )
@@ -383,8 +386,8 @@ where
     if version.len() > MAX_VERSION_LENGTH {
         reject(
             writer,
-            ip(&peer_addr),
-            "version_too_long",
+            peer_addr,
+            REASON_VERSION_TOO_LONG,
             ERROR_KIND_INVALID,
             err_tracker_version_too_long(&locale, MAX_VERSION_LENGTH),
         )
@@ -394,8 +397,8 @@ where
     if !nexus_common::fingerprint::is_canonical_fingerprint(&fingerprint) {
         reject(
             writer,
-            ip(&peer_addr),
-            "fingerprint_invalid",
+            peer_addr,
+            REASON_FINGERPRINT_INVALID,
             ERROR_KIND_INVALID,
             err_tracker_fingerprint_invalid(&locale),
         )
@@ -418,8 +421,8 @@ where
         warn!(ip = %peer_addr.ip(), "{}", LOG_AUTH_RATE_LIMITED);
         reject(
             writer,
-            ip(&peer_addr),
-            "rate_limited",
+            peer_addr,
+            REASON_RATE_LIMITED,
             ERROR_KIND_RATE_LIMITED,
             err_tracker_rate_limited(&locale),
         )
@@ -434,8 +437,8 @@ where
         }
         reject(
             writer,
-            ip(&peer_addr),
-            "unauthorized",
+            peer_addr,
+            REASON_UNAUTHORIZED,
             ERROR_KIND_UNAUTHORIZED,
             err_tracker_unauthorized(&locale),
         )
@@ -456,7 +459,7 @@ where
             {
                 reject(
                     writer,
-                    ip(&peer_addr),
+                    peer_addr,
                     reason,
                     ERROR_KIND_INVALID,
                     err_tracker_address_invalid(&locale),
@@ -638,7 +641,7 @@ where
 /// structured `reason`) and send the failure response.
 async fn reject<W>(
     writer: &mut FrameWriter<W>,
-    peer_ip_str: String,
+    peer_addr: SocketAddr,
     reason: &str,
     error_kind: &str,
     error_msg: String,
@@ -646,13 +649,8 @@ async fn reject<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    warn!(ip = %peer_ip_str, reason = %reason, "{}", LOG_REGISTER_REJECTED);
+    warn!(ip = %peer_addr.ip(), reason = %reason, "{}", LOG_REGISTER_REJECTED);
     send_failure(writer, error_kind, error_msg).await
-}
-
-/// Stringify the peer IP for log structured-field output.
-fn ip(addr: &SocketAddr) -> String {
-    addr.ip().to_string()
 }
 
 #[cfg(test)]

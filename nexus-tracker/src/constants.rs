@@ -316,6 +316,80 @@ pub const REASON_ADDRESS_HOSTNAME_NO_MATCH: &str = "address_hostname_no_match";
 /// errors so an established entry isn't evicted by a brief DNS blip.
 pub const REASON_ADDRESS_HOSTNAME_DNS_FAILED: &str = "address_hostname_dns_failed";
 
+// =============================================================================
+// Rejection reasons (non-address)
+// =============================================================================
+//
+// Operator-facing structured-log values for rejection causes that aren't
+// address-validation specific. Paired with the same `reason = %const`
+// field on `LOG_REGISTER_REJECTED` / `LOG_LIST_REJECTED`. Values may
+// equal an `ERROR_KIND_*` string but are tracked as separate constants
+// so the log-side namespace is distinct from the wire-side one.
+
+/// Registry was at its global capacity ceiling.
+pub const REASON_CAPACITY: &str = "capacity";
+
+/// Registry was at the per-source-IP cap (peer already has the maximum
+/// number of registered entries from its IP).
+pub const REASON_PER_IP_CAPACITY: &str = "per_ip_capacity";
+
+/// Refresh arrived before the per-entry refresh floor elapsed
+/// (server-side defense against compromised trackers asking for floods).
+pub const REASON_REFRESH_TOO_SOON: &str = "refresh_too_soon";
+
+/// `locale` field exceeded `MAX_LOCALE_LENGTH`.
+pub const REASON_LOCALE_TOO_LONG: &str = "locale_too_long";
+
+/// `password` field exceeded `MAX_PASSWORD_LENGTH`.
+pub const REASON_PASSWORD_TOO_LONG: &str = "password_too_long";
+
+/// `name` field exceeded `MAX_SERVER_NAME_LENGTH`.
+pub const REASON_NAME_TOO_LONG: &str = "name_too_long";
+
+/// `description` field exceeded `MAX_SERVER_DESCRIPTION_LENGTH`.
+pub const REASON_DESCRIPTION_TOO_LONG: &str = "description_too_long";
+
+/// `address` field exceeded `MAX_PUBLIC_ADDRESS_LENGTH`.
+pub const REASON_ADDRESS_TOO_LONG: &str = "address_too_long";
+
+/// `version` field exceeded `MAX_VERSION_LENGTH`.
+pub const REASON_VERSION_TOO_LONG: &str = "version_too_long";
+
+/// `fingerprint` field failed `is_canonical_fingerprint`.
+pub const REASON_FINGERPRINT_INVALID: &str = "fingerprint_invalid";
+
+/// Auth-failure rate limiter denied the request.
+pub const REASON_RATE_LIMITED: &str = "rate_limited";
+
+/// Password (registration or listing) didn't verify against the stored hash.
+pub const REASON_UNAUTHORIZED: &str = "unauthorized";
+
+// =============================================================================
+// Disconnect-cause categorization
+// =============================================================================
+//
+// Operator-facing structured-log values for the `LOG_REGISTER_DISCONNECTED`
+// event, identifying *why* an established server connection disconnected.
+// Distinct from rejection reasons (which fire instead of registration); a
+// disconnect happens after a successful registration.
+
+/// Peer closed the connection cleanly (TCP FIN). Normal shutdown.
+pub const REASON_DISCONNECT_CLEAN_CLOSE: &str = "clean_close";
+
+/// Stale-timeout fired (no refresh within 2× refresh_interval).
+pub const REASON_DISCONNECT_STALE_TIMEOUT: &str = "stale_timeout";
+
+/// Frame parser hit an error mid-stream.
+pub const REASON_DISCONNECT_FRAME_ERROR: &str = "frame_error";
+
+/// Refresh was rejected (e.g. validation failed mid-session); the
+/// per-connection task exits.
+pub const REASON_DISCONNECT_REJECTED: &str = "rejected";
+
+/// Peer sent the wrong message type for its locked role (e.g.
+/// `TrackerServerList` on an established server connection).
+pub const REASON_DISCONNECT_ROLE_VIOLATION: &str = "role_violation";
+
 /// Log: hostname address validation hit a transient resolver failure
 /// (timeout, network error). Always emitted at warn level when the
 /// transient is encountered. The downstream outcome is mode-dependent:

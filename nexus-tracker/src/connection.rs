@@ -42,7 +42,9 @@ use nexus_common::validators::MAX_LOCALE_LENGTH;
 
 use crate::constants::{
     DEFAULT_LOCALE, ERR_REGISTRY_MUTEX_POISONED, HANDSHAKE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED,
-    LOG_HANDSHAKE_REQUIRED, LOG_REGISTER_DISCONNECTED, LOG_ROLE_VIOLATION, ROLE_ESTABLISH_TIMEOUT,
+    LOG_HANDSHAKE_REQUIRED, LOG_REGISTER_DISCONNECTED, LOG_ROLE_VIOLATION,
+    REASON_DISCONNECT_CLEAN_CLOSE, REASON_DISCONNECT_FRAME_ERROR, REASON_DISCONNECT_REJECTED,
+    REASON_DISCONNECT_ROLE_VIOLATION, REASON_DISCONNECT_STALE_TIMEOUT, ROLE_ESTABLISH_TIMEOUT,
     STALE_TIMEOUT_REFRESH_MULTIPLIER,
 };
 use crate::errors::{
@@ -283,7 +285,7 @@ where
                 info!(
                     ip = %peer_addr.ip(),
                     id = id,
-                    reason = "clean_close",
+                    reason = REASON_DISCONNECT_CLEAN_CLOSE,
                     "{}",
                     LOG_REGISTER_DISCONNECTED
                 );
@@ -293,7 +295,7 @@ where
                 info!(
                     ip = %peer_addr.ip(),
                     id = id,
-                    reason = "stale_timeout",
+                    reason = REASON_DISCONNECT_STALE_TIMEOUT,
                     "{}",
                     LOG_REGISTER_DISCONNECTED
                 );
@@ -307,7 +309,7 @@ where
                     ip = %peer_addr.ip(),
                     id = id,
                     err = ?e,
-                    reason = "frame_error",
+                    reason = REASON_DISCONNECT_FRAME_ERROR,
                     "{}",
                     LOG_REGISTER_DISCONNECTED
                 );
@@ -350,7 +352,7 @@ where
                         info!(
                             ip = %peer_addr.ip(),
                             id = id,
-                            reason = "rejected",
+                            reason = REASON_DISCONNECT_REJECTED,
                             "{}",
                             LOG_REGISTER_DISCONNECTED
                         );
@@ -379,7 +381,7 @@ where
                 info!(
                     ip = %peer_addr.ip(),
                     id = id,
-                    reason = "role_violation",
+                    reason = REASON_DISCONNECT_ROLE_VIOLATION,
                     "{}",
                     LOG_REGISTER_DISCONNECTED
                 );
