@@ -1171,18 +1171,10 @@ exit the registration task; admin intervention (`TrackerUpdate`,
 | `group_create`   | Creating account groups                                                                                                   |
 | `group_edit`     | Editing account groups                                                                                                    |
 | `group_delete`   | Deleting account groups                                                                                                   |
-| `tracker_create` | Adding a tracker (`TrackerCreate`)                                                                                        |
-| `tracker_edit`   | Fetching tracker details (including the registration password in plaintext) and updating (`TrackerEdit`, `TrackerUpdate`) |
-| `tracker_delete` | Removing a tracker (`TrackerDelete`)                                                                                      |
-| `tracker_list`   | Listing trackers and their runtime status (`TrackerList`)                                                                 |
-
-**Note on `tracker_edit`:** Granting this permission to a non-admin
-also grants read access to every configured tracker's registration
-password (see [`TrackerEditResponse`](#trackereditresponse-server--client)).
-Registration passwords are invite-code-style shared infrastructure, so
-echoing them to admins is intentional — but operators should treat
-`tracker_edit` as equivalent to "trusted with all tracker passwords"
-when delegating.
+| `tracker_create` | Adding a tracker (`TrackerCreate`)                                     |
+| `tracker_edit`   | Fetching tracker details and updating (`TrackerEdit`, `TrackerUpdate`) |
+| `tracker_delete` | Removing a tracker (`TrackerDelete`)                                   |
+| `tracker_list`   | Listing trackers and their runtime status (`TrackerList`)              |
 
 **Admin-only operations:**
 

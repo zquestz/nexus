@@ -21,7 +21,7 @@ use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage}
 use rcgen::{CertificateParams, KeyPair};
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
+use tokio::task::{JoinHandle, JoinSet};
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
@@ -49,10 +49,12 @@ pub struct MockBehavior {
     /// inspect refresh-cycle payloads. Wrapped in `Arc<Mutex>` so the
     /// test can read it after spawning.
     pub captured_registers: Arc<Mutex<Vec<TrackerClientMessage>>>,
-    /// When `true`, the mock accepts TLS but never sends a
-    /// `HandshakeResponse` — parks the tracker task in the
-    /// handshake-response read await. Used by the shutdown-mid-handshake
-    /// test to verify abort propagates through the deepest cycle await.
+    /// When `true`, the mock accepts TLS and then parks (never reads
+    /// the publisher's `Handshake` request, never sends a
+    /// `HandshakeResponse`). The tracker task ends up parked in its
+    /// own `read_handshake_response` await waiting for bytes that
+    /// will never come. Used by the shutdown-mid-handshake test to
+    /// verify abort propagates through the deepest cycle await.
     pub wedge_after_tls: bool,
 }
 
@@ -118,6 +120,13 @@ impl MockTracker {
         let exposed_behavior = behavior.clone();
 
         let join = tokio::spawn(async move {
+            // Track per-connection handler tasks in a JoinSet so the
+            // listener can abort them all on shutdown. Without this,
+            // a long-idle handler (e.g. wedged in a 600s read) would
+            // survive `MockTracker::stop`/`Drop` and only die when
+            // the runtime goes down — producing stderr noise from a
+            // slowly-failing TLS write in shared-runtime test setups.
+            let mut connections = JoinSet::new();
             loop {
                 tokio::select! {
                     _ = &mut shutdown_rx => break,
@@ -126,7 +135,7 @@ impl MockTracker {
                         let acceptor = acceptor.clone();
                         let behavior = behavior.clone();
                         let real_fp = real_fp.clone();
-                        tokio::spawn(async move {
+                        connections.spawn(async move {
                             // Best-effort. Connection errors are expected
                             // when the peer drops mid-protocol.
                             let _ = handle_connection(tcp, acceptor, behavior, real_fp).await;
@@ -134,6 +143,10 @@ impl MockTracker {
                     }
                 }
             }
+            // Shutdown reached: abort and drain every in-flight handler
+            // before the listener task itself returns.
+            connections.abort_all();
+            while connections.join_next().await.is_some() {}
         });
 
         Self {

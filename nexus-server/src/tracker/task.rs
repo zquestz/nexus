@@ -123,11 +123,13 @@ pub async fn run(
     let mut backoff = BACKOFF_BASE;
 
     loop {
-        // Reset connection-state fields at the start of each attempt;
-        // preserve `pending_fingerprint` so admin-visible state from a
-        // prior mismatch survives until the new attempt resolves it.
-        // Also stamp `last_attempted_at` so the admin UI can surface
+        // Reset transient connection state at the start of each attempt
+        // and stamp `last_attempted_at` so the admin UI can surface
         // forward progress even when every recent attempt has failed.
+        // We don't touch `pending_fingerprint` here — it's set only on
+        // Unrecoverable Stage-1/Stage-2 mismatch (which `return`s out
+        // of the task) and cleared on successful TOFU commit, so a
+        // mid-loop reset would never apply.
         {
             let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
             s.connected = false;
@@ -343,7 +345,7 @@ async fn attempt_connection_cycle(
             warn!(
                 id = record.id,
                 name = %record.name,
-                err = %error.unwrap_or_default(),
+                err = %sanitize_for_log(&error.unwrap_or_default()),
                 "{}", LOG_TRACKER_REGISTRATION_HANDSHAKE_REJECTED
             );
             set_status_error(status, ERROR_KIND_TRACKER_HANDSHAKE_FAILED);
@@ -626,7 +628,7 @@ where
                     warn!(
                         id = record.id,
                         name = %record.name,
-                        rejected_kind = %raw,
+                        rejected_kind = %sanitize_for_log(raw),
                         "{}", LOG_TRACKER_REGISTRATION_INVALID_ERROR_KIND
                     );
                     set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR);
@@ -661,7 +663,7 @@ where
                     id = record.id,
                     name = %record.name,
                     error_kind = %kind,
-                    err = %detail,
+                    err = %sanitize_for_log(&detail),
                     "{}", LOG_TRACKER_REGISTRATION_REGISTER_REJECTED
                 );
                 set_status_error(status, &kind);
@@ -675,8 +677,8 @@ where
                 warn!(
                     id = record.id,
                     name = %record.name,
-                    command = %command.unwrap_or_default(),
-                    err = %message,
+                    command = %sanitize_for_log(&command.unwrap_or_default()),
+                    err = %sanitize_for_log(&message),
                     "{}", LOG_TRACKER_REGISTRATION_TRACKER_REPORTED_ERROR
                 );
                 set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR);
@@ -820,6 +822,25 @@ fn set_status_with_pending_fingerprint(
 }
 
 // =============================================================================
+// Log-sanitization helper
+// =============================================================================
+
+/// Replace ASCII control characters with `?` so a tracker-supplied
+/// string can be safely embedded in operator logs without leaking
+/// terminal escape sequences (color, cursor moves, line clears) or
+/// other display vandalism. The tracker is in our trust boundary, but
+/// a compromised tracker the admin already added shouldn't be able to
+/// muck with operator pagers reading server logs.
+///
+/// Allocates a fresh `String` only when a substitution actually fires;
+/// the sanitized String is identical to the input on the common path.
+fn sanitize_for_log(s: &str) -> String {
+    s.chars()
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect()
+}
+
+// =============================================================================
 // Backoff helpers
 // =============================================================================
 
@@ -859,6 +880,24 @@ mod tests {
                 "jitter {j:?} outside expected band [{lower:?}, {upper:?}]"
             );
         }
+    }
+
+    #[test]
+    fn sanitize_replaces_control_characters() {
+        assert_eq!(sanitize_for_log("hello"), "hello");
+        // ANSI escape: \x1b[31m (red foreground)
+        assert_eq!(
+            sanitize_for_log("ok\x1b[31mlying\x1b[0m"),
+            "ok?[31mlying?[0m"
+        );
+        // Newlines and tabs
+        assert_eq!(sanitize_for_log("line1\nline2\tend"), "line1?line2?end");
+        // Null byte
+        assert_eq!(sanitize_for_log("a\0b"), "a?b");
+        // Bell, backspace
+        assert_eq!(sanitize_for_log("\x07\x08"), "??");
+        // Unicode passes through
+        assert_eq!(sanitize_for_log("héllo 🌍"), "héllo 🌍");
     }
 
     #[test]

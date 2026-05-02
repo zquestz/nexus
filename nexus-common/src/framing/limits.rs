@@ -160,6 +160,31 @@ const fn json_string_array_field(key: &str, count: usize, max_elem_len: usize) -
     key.len() + 5 + count * (max_elem_len + 3)
 }
 
+/// Size of a JSON array-of-objects field with `count` elements, each
+/// up to `per_object_size` bytes (including the surrounding `{}` and
+/// inner fields).
+///
+/// Use this when the array elements are JSON objects (e.g. `TrackerInfo`,
+/// `ServerEntry`), not plain strings — `json_string_array_field` would
+/// model them as `"…"` instead of `{…}`.
+///
+/// # Formula
+///
+/// - Field header: `,"key":` = key.len() + 4
+/// - Array: `[` + elements + `]` = 2
+/// - Each element: `per_object_size`
+/// - Commas between elements: count - 1 (folded into the per-element
+///   constant: `+ 1`, then subtract 1 at the end)
+///
+/// Empty array case: `,"key":[]` = key.len() + 6.
+/// Non-empty: key.len() + 5 + count * (per_object_size + 1).
+const fn json_object_array_field(key: &str, count: usize, per_object_size: usize) -> usize {
+    if count == 0 {
+        return key.len() + 6;
+    }
+    key.len() + 5 + count * (per_object_size + 1)
+}
+
 /// Size of an object field header: `,"key":{`
 ///
 /// Does not include the closing `}`. Use with nested object calculations.
@@ -1163,7 +1188,7 @@ pub const MAX_TRACKERS_PER_SERVER: usize = 64;
 const TRACKER_LIST_RESPONSE_SIZE: usize = json_type_base("TrackerListResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_field("trackers", MAX_TRACKERS_PER_SERVER * TRACKER_INFO_SIZE);
+    + json_object_array_field("trackers", MAX_TRACKERS_PER_SERVER, TRACKER_INFO_SIZE);
 
 /// TrackerEditResponse: {"type":"TrackerEditResponse","success":false,"error":"...2048...","tracker":TrackerInfo}
 const TRACKER_EDIT_RESPONSE_SIZE: usize = json_type_base("TrackerEditResponse")
@@ -3870,5 +3895,126 @@ mod tests {
     fn test_limit_tracker_server_list_response_unlimited() {
         // TrackerServerListResponse has no per-message-type limit (set to 0).
         assert_eq!(max_payload_for_type("TrackerServerListResponse"), 0);
+    }
+
+    // =========================================================================
+    // BBS-side tracker admin response size tests
+    //
+    // Catch a future field addition / size-constant bump that would push the
+    // worst-case wire shape past the 20% pad on `pad_limit`. Each test builds
+    // a TrackerInfo (or response wrapping it) with every field at its maximum
+    // and asserts the JSON size is within the per-message-type budget.
+    // =========================================================================
+
+    /// Build a worst-case `TrackerInfo` (every Option populated, every
+    /// String at its max length, every numeric at its max value).
+    fn worst_case_tracker_info() -> crate::protocol::TrackerInfo {
+        crate::protocol::TrackerInfo {
+            id: i64::MAX,
+            address: str_of_len(MAX_PUBLIC_ADDRESS_LENGTH),
+            port: u16::MAX,
+            fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
+            password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
+            name: str_of_len(MAX_TRACKER_NAME_LENGTH),
+            enabled: true,
+            created_at: i64::MAX,
+            updated_at: i64::MAX,
+            connected: true,
+            last_connected_at: Some(i64::MAX),
+            last_attempted_at: Some(i64::MAX),
+            last_error: Some(str_of_len(MAX_ERROR_LENGTH)),
+            last_error_kind: Some(str_of_len(MAX_ERROR_KIND_LENGTH)),
+            pending_fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
+            refresh_interval: Some(u32::MAX),
+        }
+    }
+
+    #[test]
+    fn test_limit_tracker_list_response() {
+        let msg = ServerMessage::TrackerListResponse {
+            success: false,
+            error: Some(str_of_len(MAX_ERROR_LENGTH)),
+            trackers: (0..MAX_TRACKERS_PER_SERVER)
+                .map(|_| worst_case_tracker_info())
+                .collect(),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerListResponse") as usize;
+        assert!(
+            size <= limit,
+            "TrackerListResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_tracker_edit_response() {
+        let msg = ServerMessage::TrackerEditResponse {
+            success: false,
+            error: Some(str_of_len(MAX_ERROR_LENGTH)),
+            tracker: Some(worst_case_tracker_info()),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerEditResponse") as usize;
+        assert!(
+            size <= limit,
+            "TrackerEditResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_tracker_create_response() {
+        let msg = ServerMessage::TrackerCreateResponse {
+            success: false,
+            error: Some(str_of_len(MAX_ERROR_LENGTH)),
+            id: Some(i64::MAX),
+            name: Some(str_of_len(MAX_TRACKER_NAME_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerCreateResponse") as usize;
+        assert!(
+            size <= limit,
+            "TrackerCreateResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_tracker_update_response() {
+        let msg = ServerMessage::TrackerUpdateResponse {
+            success: false,
+            error: Some(str_of_len(MAX_ERROR_LENGTH)),
+            id: Some(i64::MAX),
+            name: Some(str_of_len(MAX_TRACKER_NAME_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerUpdateResponse") as usize;
+        assert!(
+            size <= limit,
+            "TrackerUpdateResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_tracker_delete_response() {
+        let msg = ServerMessage::TrackerDeleteResponse {
+            success: false,
+            error: Some(str_of_len(MAX_ERROR_LENGTH)),
+            name: Some(str_of_len(MAX_TRACKER_NAME_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerDeleteResponse") as usize;
+        assert!(
+            size <= limit,
+            "TrackerDeleteResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
     }
 }
