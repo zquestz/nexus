@@ -100,7 +100,13 @@ impl NexusApp {
             && let Err(e) = validators::validate_nickname(nickname)
         {
             let error_msg = match e {
-                validators::NicknameError::Empty => unreachable!(),
+                // The outer `if let Some(ref nickname)` doesn't filter
+                // empty strings (only `None`), so a `Some("")` from
+                // config could reach the validator and produce `Empty`.
+                // Surface the existing translated error instead of
+                // panicking — `unreachable!()` would crash the client
+                // when saving settings with an empty configured nickname.
+                validators::NicknameError::Empty => t("err-nickname-empty"),
                 validators::NicknameError::TooLong => t_args(
                     "err-nickname-too-long",
                     &[("max", &validators::MAX_NICKNAME_LENGTH.to_string())],

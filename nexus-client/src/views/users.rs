@@ -1034,7 +1034,13 @@ pub fn users_view<'a>(
                 user_management.delete_error.as_ref(),
                 user_management.is_delete_submitting,
             ),
-            UserManagementMode::List => unreachable!(),
+            // The outer `if mode != List` branch guards this function's
+            // form-mode dispatch, so this arm isn't expected to fire.
+            // Fall through to the tabbed list view (what the function
+            // returns at its bottom for the List case) rather than
+            // panicking — a future refactor should not be able to
+            // crash the UI.
+            UserManagementMode::List => tabbed_list_view(conn, user_management, theme),
         };
     }
 

@@ -511,7 +511,15 @@ impl NexusApp {
 
                 // Check permission before sending
                 let has_permission = match &conn.active_chat_tab {
-                    ChatTab::Console => unreachable!(), // Handled above
+                    // Handled by the early return above; defensive fallback
+                    // re-emits the same error rather than panicking, in case
+                    // a future refactor moves the guard.
+                    ChatTab::Console => {
+                        return self.add_chat_error(
+                            conn_id,
+                            t_args("err-console-no-send", &[("join", "join"), ("msg", "msg")]),
+                        );
+                    }
                     ChatTab::Channel(_) => conn.has_permission(PERMISSION_CHAT_SEND),
                     ChatTab::UserMessage(_) => conn.has_permission(PERMISSION_USER_MESSAGE),
                 };
@@ -543,7 +551,16 @@ impl NexusApp {
                 };
 
                 let (msg, pm_nickname) = match &conn.active_chat_tab {
-                    ChatTab::Console => unreachable!(), // Handled at start of Message branch
+                    // Handled by the early return at the start of this
+                    // branch; defensive fallback re-emits the same error
+                    // rather than panicking, in case a future refactor
+                    // moves the guard.
+                    ChatTab::Console => {
+                        return self.add_chat_error(
+                            conn_id,
+                            t_args("err-console-no-send", &[("join", "join"), ("msg", "msg")]),
+                        );
+                    }
                     ChatTab::Channel(channel) => (
                         ClientMessage::ChatSend {
                             message,

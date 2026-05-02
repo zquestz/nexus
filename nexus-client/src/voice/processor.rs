@@ -158,7 +158,12 @@ impl AudioProcessor {
                         NoiseSuppressionLevel::Moderate => WebrtcNsLevel::Moderate,
                         NoiseSuppressionLevel::High => WebrtcNsLevel::High,
                         NoiseSuppressionLevel::VeryHigh => WebrtcNsLevel::VeryHigh,
-                        NoiseSuppressionLevel::Off => unreachable!(),
+                        // Off is filtered by the outer arm, so this isn't
+                        // expected to fire. Fall back to the project default
+                        // (Moderate) rather than panicking — a future
+                        // refactor should not be able to crash voice
+                        // processor init.
+                        NoiseSuppressionLevel::Off => WebrtcNsLevel::Moderate,
                     },
                     // NOTE: analyze_linear_aec_output crashes AEC3 when enabled
                     // via set_config (null BlockFramer in ProcessCapture). The

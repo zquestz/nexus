@@ -72,7 +72,8 @@ pub use password::{
 };
 pub use permissions::{MAX_PERMISSION_LENGTH, PermissionsError, validate_permissions};
 pub use public_address::{
-    MAX_PUBLIC_ADDRESS_LENGTH, PublicAddressError, validate_and_normalize_public_address,
+    MAX_PUBLIC_ADDRESS_LENGTH, NormalizedAddress, PublicAddressError,
+    validate_and_classify_public_address, validate_and_normalize_public_address,
     validate_public_address,
 };
 pub use search_query::{

@@ -35,8 +35,8 @@ use nexus_common::io::send_tracker_server_message;
 use nexus_common::tracker_protocol::{ServerEntry, TrackerServerMessage};
 use nexus_common::validators::{
     MAX_LOCALE_LENGTH, MAX_PASSWORD_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH,
-    MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_VERSION_LENGTH,
-    validate_and_normalize_public_address,
+    MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_VERSION_LENGTH, NormalizedAddress,
+    validate_and_classify_public_address,
 };
 use nexus_common::{
     ERROR_KIND_CAPACITY, ERROR_KIND_INVALID, ERROR_KIND_RATE_LIMITED, ERROR_KIND_UNAUTHORIZED,
@@ -497,12 +497,13 @@ where
 ///
 /// The order is:
 ///
-/// 1. **Structural + normalize** — `validate_and_normalize_public_address`
+/// 1. **Structural + classify** — `validate_and_classify_public_address`
 ///    rejects scheme/path/port/zone-id/whitespace, verifies IDNA
-///    well-formedness, and returns the canonical form: stringified
-///    `IpAddr` for IP literals, Punycode for hostnames. The normalized
-///    form is what we hand to the resolver in step 5; we don't run
-///    `idna::domain_to_ascii_strict` separately.
+///    well-formedness, and returns a typed [`NormalizedAddress`]: a
+///    parsed `IpAddr` for IP literals, the Punycode ASCII form for
+///    hostnames. The Punycode form is what we hand to the resolver in
+///    step 5; we don't run `idna::domain_to_ascii_strict` separately,
+///    and we don't reparse the canonical IP-literal string.
 /// 2. **Hard-reject classification** — when the address is an IP
 ///    literal, the `classify_invalid` set rejects loopback / unspecified
 ///    / link-local / multicast / documentation / broadcast regardless
@@ -530,54 +531,64 @@ async fn validate_address(
     resolver: &dyn Resolver,
     mode: RegisterMode,
 ) -> Result<(), &'static str> {
-    // Validate + normalize in one pass. Returned `normalized` is the
-    // canonical IP string for IP literals, or the Punycode ASCII form
-    // for hostnames. This avoids running `idna::domain_to_ascii_strict`
-    // twice (once inside the validator, once here for the lookup).
-    let normalized = match validate_and_normalize_public_address(address) {
-        Ok(s) => s,
-        Err(_) => return Err(REASON_ADDRESS_INVALID),
-    };
+    // Validate + classify in one pass. The typed enum preserves the
+    // kind (IP literal vs hostname) and the parsed `IpAddr`, so we
+    // don't reparse the canonical string later.
+    let classified =
+        validate_and_classify_public_address(address).map_err(|_| REASON_ADDRESS_INVALID)?;
 
-    let parsed_ip = normalized.parse::<IpAddr>().ok();
-
-    // Hard-reject invalid IP categories regardless of peer / bypass.
-    if let Some(ip) = parsed_ip
-        && let Some(kind) = common_address::classify_invalid(ip)
-    {
-        return Err(invalid_kind_to_reason(kind));
-    }
-
-    // LAN-peer bypass.
-    if common_address::is_private_network(peer_ip) {
-        return Ok(());
-    }
-
-    // Public peer with an IP literal: require match.
-    if let Some(ip) = parsed_ip {
-        return if ip == peer_ip {
-            Ok(())
-        } else {
-            Err(REASON_ADDRESS_IP_LITERAL_MISMATCH)
-        };
-    }
-
-    // Public peer with a hostname: resolve and look for peer in the
-    // result set. `normalized` is already the Punycode form per the
-    // validator's contract.
-    match tokio::time::timeout(ADDRESS_LOOKUP_TIMEOUT, resolver.lookup(&normalized)).await {
-        Err(_elapsed) => {
-            warn!(ip = %peer_ip, host = %normalized, "{}", LOG_ADDRESS_DNS_TRANSIENT);
-            transient_outcome(mode)
+    match classified {
+        NormalizedAddress::Empty => {
+            // The caller substitutes the peer IP for empty `address`
+            // before entering this function, so this arm isn't expected
+            // to fire here. Treat as a structural rejection rather than
+            // panicking — a future caller skipping the empty-substitute
+            // guard shouldn't crash the daemon.
+            Err(REASON_ADDRESS_INVALID)
         }
-        Ok(Err(e)) if e.kind() == io::ErrorKind::NotFound => Err(REASON_ADDRESS_HOSTNAME_NOT_FOUND),
-        Ok(Err(e)) => {
-            warn!(ip = %peer_ip, host = %normalized, err = %e, "{}", LOG_ADDRESS_DNS_TRANSIENT);
-            transient_outcome(mode)
+        NormalizedAddress::Ip(ip) => {
+            // Hard-reject invalid IP categories regardless of peer / bypass.
+            if let Some(kind) = common_address::classify_invalid(ip) {
+                return Err(invalid_kind_to_reason(kind));
+            }
+            // LAN-peer bypass.
+            if common_address::is_private_network(peer_ip) {
+                return Ok(());
+            }
+            // Public peer with an IP literal: require match.
+            if ip == peer_ip {
+                Ok(())
+            } else {
+                Err(REASON_ADDRESS_IP_LITERAL_MISMATCH)
+            }
         }
-        Ok(Ok(ips)) if ips.is_empty() => Err(REASON_ADDRESS_HOSTNAME_NOT_FOUND),
-        Ok(Ok(ips)) if ips.contains(&peer_ip) => Ok(()),
-        Ok(Ok(_)) => Err(REASON_ADDRESS_HOSTNAME_NO_MATCH),
+        NormalizedAddress::Hostname(host) => {
+            // LAN-peer bypass: same as the IP-literal path. A LAN-coresident
+            // operator can't generally make a public hostname resolve to
+            // their RFC 1918 source IP, so we accept the hostname as-is.
+            if common_address::is_private_network(peer_ip) {
+                return Ok(());
+            }
+            // Public peer with a hostname: resolve and look for peer in
+            // the result set. `host` is the Punycode ASCII form per the
+            // validator's contract.
+            match tokio::time::timeout(ADDRESS_LOOKUP_TIMEOUT, resolver.lookup(&host)).await {
+                Err(_elapsed) => {
+                    warn!(ip = %peer_ip, host = %host, "{}", LOG_ADDRESS_DNS_TRANSIENT);
+                    transient_outcome(mode)
+                }
+                Ok(Err(e)) if e.kind() == io::ErrorKind::NotFound => {
+                    Err(REASON_ADDRESS_HOSTNAME_NOT_FOUND)
+                }
+                Ok(Err(e)) => {
+                    warn!(ip = %peer_ip, host = %host, err = %e, "{}", LOG_ADDRESS_DNS_TRANSIENT);
+                    transient_outcome(mode)
+                }
+                Ok(Ok(ips)) if ips.is_empty() => Err(REASON_ADDRESS_HOSTNAME_NOT_FOUND),
+                Ok(Ok(ips)) if ips.contains(&peer_ip) => Ok(()),
+                Ok(Ok(_)) => Err(REASON_ADDRESS_HOSTNAME_NO_MATCH),
+            }
+        }
     }
 }
 

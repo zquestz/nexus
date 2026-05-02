@@ -6,10 +6,31 @@
 //! names (IDN) in Unicode or Punycode form; storage preserves the
 //! admin's input as-typed.
 
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 /// Maximum length for a public address (RFC 1035 DNS name limit)
 pub const MAX_PUBLIC_ADDRESS_LENGTH: usize = 253;
+
+/// Result of [`validate_and_classify_public_address`].
+///
+/// Discriminates between the three legal shapes of a validated public
+/// address — empty / IP literal / hostname — so callers that need the
+/// kind (e.g. the tracker registration handler, which branches on
+/// IP-literal vs hostname semantics) don't have to reparse the
+/// canonical-form string returned by
+/// [`validate_and_normalize_public_address`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum NormalizedAddress {
+    /// Empty input (treated as "unset"; consistent with
+    /// [`validate_and_normalize_public_address`] returning `""`).
+    Empty,
+    /// Parsed IPv4 or IPv6 literal. The validator already parsed the
+    /// input as an `IpAddr`; callers that classify on this shape don't
+    /// need to reparse the canonical form via `.parse::<IpAddr>()`.
+    Ip(IpAddr),
+    /// Hostname in Punycode ASCII form, ready to hand to a resolver.
+    Hostname(String),
+}
 
 /// Validation error for public addresses
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,12 +93,39 @@ pub fn validate_public_address(addr: &str) -> Result<(), PublicAddressError> {
 /// user typed. Use this when you need both the validation answer
 /// *and* the normalized form, to avoid double-encoding via `idna`.
 ///
+/// Callers that want to *branch* on whether the address is an IP
+/// literal vs a hostname should use [`validate_and_classify_public_address`]
+/// instead — same validation, but returns the typed
+/// [`NormalizedAddress`] enum so the kind is preserved without
+/// reparsing the canonical string.
+///
 /// # Errors
 ///
 /// Returns a `PublicAddressError` variant describing the validation failure.
 pub fn validate_and_normalize_public_address(addr: &str) -> Result<String, PublicAddressError> {
+    Ok(match validate_and_classify_public_address(addr)? {
+        NormalizedAddress::Empty => String::new(),
+        NormalizedAddress::Ip(ip) => ip.to_string(),
+        NormalizedAddress::Hostname(s) => s,
+    })
+}
+
+/// Validate a public address and return its kind plus parsed form.
+///
+/// Same validation contract as [`validate_and_normalize_public_address`]
+/// but the success value preserves the kind: callers that need to
+/// distinguish IP literal from hostname (e.g. the tracker registration
+/// handler) can `match` on the returned enum without reparsing the
+/// canonical string via `.parse::<IpAddr>().ok()`.
+///
+/// # Errors
+///
+/// Returns a `PublicAddressError` variant describing the validation failure.
+pub fn validate_and_classify_public_address(
+    addr: &str,
+) -> Result<NormalizedAddress, PublicAddressError> {
     if addr.is_empty() {
-        return Ok(String::new());
+        return Ok(NormalizedAddress::Empty);
     }
     if addr.len() > MAX_PUBLIC_ADDRESS_LENGTH {
         return Err(PublicAddressError::TooLong);
@@ -106,13 +154,13 @@ pub fn validate_and_normalize_public_address(addr: &str) -> Result<String, Publi
             return Err(PublicAddressError::ContainsZoneId);
         }
         return match addr.parse::<Ipv6Addr>() {
-            Ok(ip) => Ok(ip.to_string()),
+            Ok(ip) => Ok(NormalizedAddress::Ip(IpAddr::V6(ip))),
             Err(_) => Err(PublicAddressError::ContainsPort),
         };
     }
 
     if let Ok(ip) = addr.parse::<Ipv4Addr>() {
-        return Ok(ip.to_string());
+        return Ok(NormalizedAddress::Ip(IpAddr::V4(ip)));
     }
 
     // IDNA: accepts ASCII hostnames, Unicode IDN, and pre-encoded Punycode.
@@ -134,7 +182,7 @@ pub fn validate_and_normalize_public_address(addr: &str) -> Result<String, Publi
     {
         return Err(PublicAddressError::InvalidFormat);
     }
-    Ok(ascii)
+    Ok(NormalizedAddress::Hostname(ascii))
 }
 
 #[cfg(test)]
@@ -397,6 +445,75 @@ mod tests {
         );
         assert_eq!(
             validate_and_normalize_public_address("example.com:7500"),
+            Err(PublicAddressError::ContainsPort)
+        );
+    }
+
+    // ---- validate_and_classify_public_address ----
+
+    #[test]
+    fn test_classify_empty() {
+        assert_eq!(
+            validate_and_classify_public_address(""),
+            Ok(NormalizedAddress::Empty)
+        );
+    }
+
+    #[test]
+    fn test_classify_ipv4() {
+        assert_eq!(
+            validate_and_classify_public_address("127.0.0.1"),
+            Ok(NormalizedAddress::Ip(IpAddr::V4(Ipv4Addr::new(
+                127, 0, 0, 1
+            ))))
+        );
+        assert_eq!(
+            validate_and_classify_public_address("8.8.8.8"),
+            Ok(NormalizedAddress::Ip(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))))
+        );
+    }
+
+    #[test]
+    fn test_classify_ipv6() {
+        assert_eq!(
+            validate_and_classify_public_address("::1"),
+            Ok(NormalizedAddress::Ip(IpAddr::V6(Ipv6Addr::LOCALHOST)))
+        );
+        let expected: Ipv6Addr = "2001:db8::1".parse().expect("valid IPv6 literal");
+        assert_eq!(
+            validate_and_classify_public_address("2001:DB8::1"),
+            Ok(NormalizedAddress::Ip(IpAddr::V6(expected)))
+        );
+    }
+
+    #[test]
+    fn test_classify_ascii_hostname() {
+        assert_eq!(
+            validate_and_classify_public_address("example.com"),
+            Ok(NormalizedAddress::Hostname("example.com".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_classify_unicode_idn_returns_punycode_hostname() {
+        assert_eq!(
+            validate_and_classify_public_address("münchen.de"),
+            Ok(NormalizedAddress::Hostname("xn--mnchen-3ya.de".to_string()))
+        );
+    }
+
+    #[test]
+    fn test_classify_propagates_validation_errors() {
+        assert_eq!(
+            validate_and_classify_public_address("https://example.com"),
+            Err(PublicAddressError::ContainsScheme)
+        );
+        assert_eq!(
+            validate_and_classify_public_address("[::1]"),
+            Err(PublicAddressError::ContainsBrackets)
+        );
+        assert_eq!(
+            validate_and_classify_public_address("example.com:7500"),
             Err(PublicAddressError::ContainsPort)
         );
     }
