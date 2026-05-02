@@ -211,18 +211,28 @@ pub fn classify_invalid(ip: IpAddr) -> Option<InvalidAddressKind> {
 
 /// Strip IPv6 decoration so the result can be fed to `IpAddr::parse`.
 ///
-/// Removes a single leading `[` and trailing `]` (URL-style bracketing
-/// like `[::1]`) and truncates at any `%` (IPv6 zone identifier like
-/// `fe80::1%eth0`). Returns the input unchanged if no decoration is
-/// present, so calling this on a hostname like `example.com` is a no-op.
+/// Strips a single matching pair of URL-style brackets (`[` … `]`)
+/// like `[::1]`, and truncates at any `%` (IPv6 zone identifier like
+/// `fe80::1%eth0`). Mismatched or unbracketed input is returned
+/// untouched — `[::1` and `::1]` both pass through unchanged so a
+/// downstream `IpAddr::parse` rejects them loudly. Calling this on a
+/// hostname like `example.com` is a no-op.
+///
+/// Matches the bracket-stripping behavior of
+/// [`resolve_host_for_connection`] — both functions take the same
+/// "exactly one matching pair" approach so a caller picking either
+/// gets identical normalization.
 ///
 /// Intended use: `address::normalize_ip_literal(s).parse::<IpAddr>()`.
 /// If the input was a hostname, the parse will fail and the caller can
 /// fall through to a DNS lookup.
 #[must_use]
 pub fn normalize_ip_literal(address: &str) -> &str {
-    let trimmed = address.trim_start_matches('[').trim_end_matches(']');
-    trimmed.split('%').next().unwrap_or(trimmed)
+    let bare = address
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(address);
+    bare.split('%').next().unwrap_or(bare)
 }
 
 /// Resolve an as-typed user/admin-supplied address into a form
@@ -565,6 +575,23 @@ mod tests {
         // Hostnames pass through unchanged so the caller can fall
         // through to a DNS lookup.
         assert_eq!(normalize_ip_literal("example.com"), "example.com");
+    }
+
+    #[test]
+    fn normalize_strips_only_one_matching_bracket_pair() {
+        // Doubled brackets: only the outer pair is stripped — matching
+        // `resolve_host_for_connection`'s behavior. Downstream
+        // `IpAddr::parse` rejects the residual `[::1]` loudly.
+        assert_eq!(normalize_ip_literal("[[::1]]"), "[::1]");
+    }
+
+    #[test]
+    fn normalize_leaves_mismatched_brackets_untouched() {
+        // Mismatched brackets are not URL-style decoration; pass them
+        // through so downstream parse rejects them rather than
+        // accepting a half-malformed input.
+        assert_eq!(normalize_ip_literal("[::1"), "[::1");
+        assert_eq!(normalize_ip_literal("::1]"), "::1]");
     }
 
     // ----- resolve_host_for_connection -----
