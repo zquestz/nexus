@@ -224,7 +224,7 @@ pub async fn create_test_context() -> TestContext {
     let tracker_context = Arc::new(crate::tracker::TrackerContext {
         db: db.clone(),
         user_manager: user_manager.clone(),
-        server_fingerprint: TEST_FINGERPRINT.to_string(),
+        server_fingerprint: TEST_FINGERPRINT,
         server_port: nexus_common::DEFAULT_PORT,
         server_websocket_port: None,
     });

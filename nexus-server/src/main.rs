@@ -258,7 +258,7 @@ async fn main() {
     let tracker_context = Arc::new(tracker::TrackerContext {
         db: database.clone(),
         user_manager: user_manager.clone(),
-        server_fingerprint: fingerprint.to_string(),
+        server_fingerprint: fingerprint,
         server_port: cli.port,
         server_websocket_port: if cli.websocket {
             Some(cli.websocket_port)

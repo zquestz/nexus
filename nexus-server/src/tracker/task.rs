@@ -686,7 +686,7 @@ async fn build_register_payload(
         port: context.server_port,
         websocket_port: context.server_websocket_port,
         version: env!("CARGO_PKG_VERSION").to_string(),
-        fingerprint: context.server_fingerprint.clone(),
+        fingerprint: context.server_fingerprint.to_string(),
         user_count,
         allows_guest: fields.allows_guest,
     })
@@ -856,7 +856,7 @@ mod tests {
         let context = Arc::new(TrackerContext {
             db: db.clone(),
             user_manager,
-            server_fingerprint: TEST_FINGERPRINT.to_string(),
+            server_fingerprint: TEST_FINGERPRINT,
             server_port: 7500,
             server_websocket_port: Some(7502),
         });

@@ -29,7 +29,10 @@ pub struct TrackerContext {
     /// The BBS server's own TLS certificate fingerprint, in canonical
     /// form (32 uppercase hex bytes separated by colons, 95 bytes).
     /// Computed once at startup from `server.crt` and injected here.
-    pub server_fingerprint: String,
+    /// `&'static str` because the value is process-lifetime constant
+    /// and the same `Box::leak`'d slice is shared with the handler
+    /// dispatch path in `main.rs`.
+    pub server_fingerprint: &'static str,
     /// The BBS server's main TCP port (typically 7500).
     pub server_port: u16,
     /// The BBS server's WebSocket port, if `--websocket` is enabled.
