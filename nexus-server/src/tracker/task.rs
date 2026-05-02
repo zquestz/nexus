@@ -10,7 +10,6 @@
 //! See `docs/TODO.md` § "Server-Side Tracker Registration Implementation Plan"
 //! for the design rationale.
 
-use std::borrow::Cow;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::time::Duration;
@@ -643,7 +642,7 @@ where
                     err = %detail,
                     "{}", LOG_TRACKER_REGISTRATION_REGISTER_REJECTED
                 );
-                set_status_error(status, kind);
+                set_status_error(status, &kind);
                 return outcome;
             }
             // Any other variant on the register port is a protocol
@@ -765,21 +764,21 @@ fn observed_fingerprint(stream: &tokio_rustls::client::TlsStream<TcpStream>) -> 
 // raw underlying error (if any) flows to operator logs separately
 // via `warn!(err = %e, …)` at the call site.
 
-fn set_status_error(status: &Arc<RwLock<TrackerStatus>>, kind: impl Into<Cow<'static, str>>) {
+fn set_status_error(status: &Arc<RwLock<TrackerStatus>>, kind: &str) {
     let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
     s.connected = false;
-    s.last_error_kind = Some(kind.into());
+    s.last_error_kind = Some(kind.to_string());
     s.refresh_interval = None;
 }
 
 fn set_status_with_pending_fingerprint(
     status: &Arc<RwLock<TrackerStatus>>,
-    kind: impl Into<Cow<'static, str>>,
+    kind: &str,
     pending: String,
 ) {
     let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
     s.connected = false;
-    s.last_error_kind = Some(kind.into());
+    s.last_error_kind = Some(kind.to_string());
     s.pending_fingerprint = Some(pending);
     s.refresh_interval = None;
 }

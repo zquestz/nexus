@@ -67,7 +67,7 @@ pub fn compose_tracker_info(
         last_connected_at: s.last_connected_at,
         last_attempted_at: s.last_attempted_at,
         last_error,
-        last_error_kind: s.last_error_kind.map(std::borrow::Cow::into_owned),
+        last_error_kind: s.last_error_kind,
         pending_fingerprint: s.pending_fingerprint,
         refresh_interval: s.refresh_interval,
     }
@@ -219,7 +219,9 @@ mod tests {
             connected: false,
             last_connected_at: None,
             last_attempted_at: None,
-            last_error_kind: Some(nexus_common::ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH.into()),
+            last_error_kind: Some(
+                nexus_common::ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH.to_string(),
+            ),
             pending_fingerprint: Some("CC:DD".to_string()),
             refresh_interval: None,
         };
@@ -246,7 +248,7 @@ mod tests {
             connected: false,
             last_connected_at: None,
             last_attempted_at: None,
-            last_error_kind: Some("not_a_real_kind".into()),
+            last_error_kind: Some("not_a_real_kind".to_string()),
             pending_fingerprint: None,
             refresh_interval: None,
         };
