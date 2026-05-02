@@ -39,6 +39,7 @@ use tokio_rustls::TlsAcceptor;
 use tracing::debug;
 
 use nexus_common::framing::{FrameReader, FrameWriter};
+use nexus_common::tls::accept_tls_with_timeout;
 
 use crate::constants::*;
 use crate::handlers::err_file_area_not_configured;
@@ -61,10 +62,9 @@ pub async fn handle_transfer_connection(
     tls_acceptor: TlsAcceptor,
     params: TransferParams,
 ) -> io::Result<()> {
-    // Perform TLS handshake (mandatory, same cert as main port)
-    let tls_stream = tls_acceptor.accept(socket).await.map_err(|e| {
-        io::Error::other(format!("{}{e}", nexus_common::TLS_HANDSHAKE_FAILED_PREFIX))
-    })?;
+    // Perform TLS handshake (mandatory, same cert as main port) with
+    // slowloris-defense timeout.
+    let tls_stream = accept_tls_with_timeout(&tls_acceptor, socket).await?;
 
     handle_transfer_connection_inner(tls_stream, params).await
 }

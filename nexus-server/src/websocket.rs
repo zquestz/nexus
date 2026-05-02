@@ -10,8 +10,8 @@ use std::io;
 use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
 
-use nexus_common::websocket::WebSocketAdapter;
-use nexus_common::{TLS_HANDSHAKE_FAILED_PREFIX, WS_HANDSHAKE_FAILED_PREFIX};
+use nexus_common::tls::accept_tls_with_timeout;
+use nexus_common::websocket::{WebSocketAdapter, accept_ws_with_timeout};
 
 use crate::connection::{ConnectionParams, handle_connection_inner};
 use crate::transfers::{TransferParams, handle_transfer_connection_inner};
@@ -25,16 +25,11 @@ pub async fn handle_websocket_connection(
     tls_acceptor: TlsAcceptor,
     params: ConnectionParams,
 ) -> io::Result<()> {
-    // Perform TLS handshake (mandatory, same as TCP)
-    let tls_stream = tls_acceptor
-        .accept(socket)
-        .await
-        .map_err(|e| io::Error::other(format!("{}{}", TLS_HANDSHAKE_FAILED_PREFIX, e)))?;
+    // TLS handshake (mandatory, same as TCP) with slowloris-defense timeout.
+    let tls_stream = accept_tls_with_timeout(&tls_acceptor, socket).await?;
 
-    // Perform WebSocket handshake over TLS
-    let ws_stream = tokio_tungstenite::accept_async(tls_stream)
-        .await
-        .map_err(|e| io::Error::other(format!("{}{}", WS_HANDSHAKE_FAILED_PREFIX, e)))?;
+    // WebSocket upgrade over TLS, also timeout-bounded.
+    let ws_stream = accept_ws_with_timeout(tls_stream).await?;
 
     // Wrap in adapter and delegate to standard handler
     let adapter = WebSocketAdapter::new(ws_stream);
@@ -50,16 +45,11 @@ pub async fn handle_websocket_transfer_connection(
     tls_acceptor: TlsAcceptor,
     params: TransferParams,
 ) -> io::Result<()> {
-    // Perform TLS handshake (mandatory, same as TCP)
-    let tls_stream = tls_acceptor
-        .accept(socket)
-        .await
-        .map_err(|e| io::Error::other(format!("{}{}", TLS_HANDSHAKE_FAILED_PREFIX, e)))?;
+    // TLS handshake (mandatory, same as TCP) with slowloris-defense timeout.
+    let tls_stream = accept_tls_with_timeout(&tls_acceptor, socket).await?;
 
-    // Perform WebSocket handshake over TLS
-    let ws_stream = tokio_tungstenite::accept_async(tls_stream)
-        .await
-        .map_err(|e| io::Error::other(format!("{}{}", WS_HANDSHAKE_FAILED_PREFIX, e)))?;
+    // WebSocket upgrade over TLS, also timeout-bounded.
+    let ws_stream = accept_ws_with_timeout(tls_stream).await?;
 
     // Wrap in adapter and delegate to standard transfer handler
     let adapter = WebSocketAdapter::new(ws_stream);

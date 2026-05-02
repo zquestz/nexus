@@ -15,8 +15,8 @@ use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
 use tracing::debug;
 
-use nexus_common::websocket::WebSocketAdapter;
-use nexus_common::{TLS_HANDSHAKE_FAILED_PREFIX, WS_HANDSHAKE_FAILED_PREFIX};
+use nexus_common::tls::accept_tls_with_timeout;
+use nexus_common::websocket::{WebSocketAdapter, accept_ws_with_timeout};
 
 use crate::connection::handle_connection_inner;
 use crate::constants::LOG_CONNECTION_RATE_LIMITED;
@@ -48,21 +48,17 @@ pub async fn handle_tracker_websocket_connection(
         return Ok(());
     }
 
-    // TLS first, same as the TCP path. Wrapping with the prefix lets
-    // `log_connection_error` downgrade scanner / incompatible-client
-    // noise to debug.
-    let tls_stream = tls_acceptor
-        .accept(socket)
-        .await
-        .map_err(|e| io::Error::other(format!("{}{}", TLS_HANDSHAKE_FAILED_PREFIX, e)))?;
+    // TLS first, same as the TCP path. The shared helper wraps the
+    // accept in `TLS_HANDSHAKE_TIMEOUT` (slowloris defense) and prefixes
+    // failures with `TLS_HANDSHAKE_FAILED_PREFIX` so `log_connection_error`
+    // downgrades scanner / incompatible-client noise to debug.
+    let tls_stream = accept_tls_with_timeout(&tls_acceptor, socket).await?;
 
-    // WebSocket upgrade over TLS. Failures here are typically benign
-    // (peer not actually speaking WebSocket); they bubble up as plain
-    // `io::Error` and `log_connection_error` reports them at error
-    // level.
-    let ws_stream = tokio_tungstenite::accept_async(tls_stream)
-        .await
-        .map_err(|e| io::Error::other(format!("{}{}", WS_HANDSHAKE_FAILED_PREFIX, e)))?;
+    // WebSocket upgrade over TLS. The shared helper wraps the upgrade
+    // in `WS_HANDSHAKE_TIMEOUT`. Failures here are typically benign
+    // (peer not actually speaking WebSocket); the prefix is recognized
+    // by `log_connection_error`.
+    let ws_stream = accept_ws_with_timeout(tls_stream).await?;
 
     let adapter = WebSocketAdapter::new(ws_stream);
     handle_connection_inner(adapter, peer_addr, fingerprint, state).await

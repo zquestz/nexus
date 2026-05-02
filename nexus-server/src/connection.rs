@@ -17,6 +17,7 @@ use nexus_common::io::{
     send_server_message_with_id,
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
+use nexus_common::tls::accept_tls_with_timeout;
 
 use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
@@ -77,14 +78,8 @@ pub async fn handle_connection(
     tls_acceptor: TlsAcceptor,
     params: ConnectionParams,
 ) -> io::Result<()> {
-    // Perform TLS handshake (mandatory)
-    let tls_stream = tls_acceptor.accept(socket).await.map_err(|e| {
-        io::Error::other(format!(
-            "{}{}",
-            nexus_common::TLS_HANDSHAKE_FAILED_PREFIX,
-            e
-        ))
-    })?;
+    // Perform TLS handshake (mandatory) with slowloris-defense timeout.
+    let tls_stream = accept_tls_with_timeout(&tls_acceptor, socket).await?;
 
     handle_connection_inner(tls_stream, params).await
 }

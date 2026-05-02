@@ -99,6 +99,30 @@ pub const TLS_HANDSHAKE_FAILED_PREFIX: &str = "TLS handshake failed: ";
 /// [`TLS_HANDSHAKE_FAILED_PREFIX`].
 pub const WS_HANDSHAKE_FAILED_PREFIX: &str = "WebSocket handshake failed: ";
 
+/// Maximum time to wait for the TLS handshake to complete on accept.
+/// Slowloris defense: a peer that opens TCP and sends a partial
+/// ClientHello (or stops mid-handshake) would otherwise hold a
+/// connection task indefinitely. 30s is generous vs real TLS (<1s on
+/// reasonable links, even over Yggdrasil/mobile) and short enough to
+/// bound per-IP attacker exposure beyond the connection-rate budget.
+pub const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Maximum time to wait for the WebSocket HTTP-101 upgrade to complete
+/// after TLS. Same slowloris-defense purpose as
+/// [`TLS_HANDSHAKE_TIMEOUT`]; an upgrade after TLS takes <100ms in
+/// practice, so 30s is purely budget for stalled / hostile peers.
+pub const WS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Error message used when [`TLS_HANDSHAKE_TIMEOUT`] elapses. Composed
+/// to match the [`TLS_HANDSHAKE_FAILED_PREFIX`] format so
+/// `log_connection_error` downgrades it to debug, same as other TLS
+/// handshake failures.
+pub const TLS_HANDSHAKE_TIMEOUT_MSG: &str = "TLS handshake failed: timeout";
+
+/// Error message used when [`WS_HANDSHAKE_TIMEOUT`] elapses. Composed
+/// to match the [`WS_HANDSHAKE_FAILED_PREFIX`] format.
+pub const WS_HANDSHAKE_TIMEOUT_MSG: &str = "WebSocket handshake failed: timeout";
+
 /// Backoff between `TcpListener::accept` retries after an `Err`.
 ///
 /// Caps the accept-loop iteration rate at ~10/s while the failure

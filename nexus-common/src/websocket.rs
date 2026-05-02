@@ -250,6 +250,42 @@ where
     }
 }
 
+/// Accept a WebSocket upgrade with a slowloris-defense timeout.
+///
+/// Wraps [`tokio_tungstenite::accept_async`] in
+/// [`crate::WS_HANDSHAKE_TIMEOUT`]. On elapse or upgrade failure, returns
+/// an `io::Error` whose message is prefixed with
+/// [`crate::WS_HANDSHAKE_FAILED_PREFIX`] so the per-daemon
+/// `log_connection_error` downgrades scanner / non-WS-client noise to
+/// debug level.
+///
+/// # Errors
+///
+/// Returns `io::Error` on timeout or upgrade failure. The connection is
+/// dropped silently — at this layer the upgrade hasn't completed, so
+/// there's no useful response to send.
+pub async fn accept_ws_with_timeout<S>(
+    stream: S,
+) -> io::Result<tokio_tungstenite::WebSocketStream<S>>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    match tokio::time::timeout(
+        crate::WS_HANDSHAKE_TIMEOUT,
+        tokio_tungstenite::accept_async(stream),
+    )
+    .await
+    {
+        Ok(Ok(s)) => Ok(s),
+        Ok(Err(e)) => Err(io::Error::other(format!(
+            "{}{}",
+            crate::WS_HANDSHAKE_FAILED_PREFIX,
+            e
+        ))),
+        Err(_) => Err(io::Error::other(crate::WS_HANDSHAKE_TIMEOUT_MSG)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -14,11 +14,12 @@
 //! const`s rather than per-daemon constants.
 
 use std::fs;
-use std::io::BufReader;
+use std::io::{self, BufReader};
 use std::path::Path;
 use std::sync::Arc;
 
 use time::{Duration, OffsetDateTime};
+use tokio::net::TcpStream;
 use tokio_rustls::TlsAcceptor;
 use tokio_rustls::rustls::ServerConfig;
 use tokio_rustls::rustls::pki_types::CertificateDer;
@@ -164,6 +165,34 @@ pub fn build_acceptor(data_dir: &Path, config: TlsCertConfig<'_>) -> Result<TlsA
         .with_single_cert(certs, private_key)
         .map_err(|e| format!("{}{}", ERR_CREATE_TLS_CONFIG, e))?;
     Ok(TlsAcceptor::from(Arc::new(config)))
+}
+
+/// Accept a TLS connection with a slowloris-defense timeout.
+///
+/// Wraps [`TlsAcceptor::accept`] in [`crate::TLS_HANDSHAKE_TIMEOUT`]. On
+/// elapse or handshake error, returns an `io::Error` whose message is
+/// prefixed with [`crate::TLS_HANDSHAKE_FAILED_PREFIX`] so the per-daemon
+/// `log_connection_error` downgrades scanner / incompatible-client noise
+/// to debug level.
+///
+/// # Errors
+///
+/// Returns `io::Error` on timeout or rustls handshake failure. The
+/// connection is dropped silently — at this layer there's no encrypted
+/// channel to send a meaningful response over.
+pub async fn accept_tls_with_timeout(
+    acceptor: &TlsAcceptor,
+    stream: TcpStream,
+) -> io::Result<tokio_rustls::server::TlsStream<TcpStream>> {
+    match tokio::time::timeout(crate::TLS_HANDSHAKE_TIMEOUT, acceptor.accept(stream)).await {
+        Ok(Ok(s)) => Ok(s),
+        Ok(Err(e)) => Err(io::Error::other(format!(
+            "{}{}",
+            crate::TLS_HANDSHAKE_FAILED_PREFIX,
+            e
+        ))),
+        Err(_) => Err(io::Error::other(crate::TLS_HANDSHAKE_TIMEOUT_MSG)),
+    }
 }
 
 fn generate_self_signed(

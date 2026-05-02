@@ -36,9 +36,8 @@ use nexus_common::io::{
     send_tracker_server_message,
 };
 use nexus_common::protocol::{ClientMessage, ServerMessage};
+use nexus_common::tls::accept_tls_with_timeout;
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
-
-use nexus_common::TLS_HANDSHAKE_FAILED_PREFIX;
 
 use crate::constants::{
     DEFAULT_LOCALE, ERR_REGISTRY_MUTEX_POISONED, HANDSHAKE_TIMEOUT, LOG_CONNECTION_RATE_LIMITED,
@@ -91,10 +90,7 @@ pub async fn handle_connection(
         return Ok(());
     }
 
-    let tls_stream = tls_acceptor
-        .accept(stream)
-        .await
-        .map_err(|e| io::Error::other(format!("{}{}", TLS_HANDSHAKE_FAILED_PREFIX, e)))?;
+    let tls_stream = accept_tls_with_timeout(&tls_acceptor, stream).await?;
 
     handle_connection_inner(tls_stream, peer_addr, fingerprint, state).await
 }
