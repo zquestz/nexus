@@ -183,7 +183,7 @@ impl Registry {
     /// `max_entries == 0` (unlimited).
     #[must_use]
     pub fn is_full(&self) -> bool {
-        self.max_entries != 0 && (self.entries.len() as u32) >= self.max_entries
+        self.max_entries != 0 && self.entries.len() as u64 >= u64::from(self.max_entries)
     }
 
     fn decrement_ip_count(&mut self, peer_ip: &IpAddr) {

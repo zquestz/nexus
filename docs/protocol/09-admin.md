@@ -643,6 +643,10 @@ Broadcast to all users when server info changes.
 }
 ```
 
+When the server is started with `--websocket`, `ServerInfoUpdated` also
+includes `transfer_websocket_port` (default `7503`); it is omitted on the
+wire when WebSocket is disabled.
+
 ### PermissionsUpdated (Server → Client)
 
 Sent to a user when their permissions change.
@@ -776,7 +780,6 @@ an empty list means no trackers are configured yet (not an error).
       "address": "tracker.example.com",
       "port": 7510,
       "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
-      "password": null,
       "name": "Public Tracker",
       "enabled": true,
       "created_at": 1730000000,
@@ -1322,13 +1325,13 @@ A server can have at most 64 configured trackers.
 
 ## Username Validation
 
-| Rule             | Value                                                     |
-| ---------------- | --------------------------------------------------------- | ------ |
-| Min length       | 1 character                                               |
-| Max length       | 32 characters                                             |
-| Valid characters | Unicode letters and ASCII graphic (no spaces, no `/\:.<>" | ?\*#`) |
-| Case sensitivity | Case-insensitive (stored as entered, matched lowercase)   |
-| Reserved         | `guest` cannot be renamed                                 |
+| Rule             | Value                                                             |
+| ---------------- | ----------------------------------------------------------------- |
+| Min length       | 1 character                                                       |
+| Max length       | 32 characters                                                     |
+| Valid characters | Unicode letters and ASCII graphic (no spaces, no `/\:.<>"\|?\*#`) |
+| Case sensitivity | Case-insensitive (stored as entered, matched lowercase)           |
+| Reserved         | `guest` cannot be renamed                                         |
 
 ## Error Handling
 

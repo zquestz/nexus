@@ -182,7 +182,9 @@ volumes:
 
 ### Separate File Area
 
-Mount the file area separately for easier management:
+Mount the file area separately for easier management. This example assumes
+the default file-area layout under the daemon's data dir; if you override
+`--file-root`, adjust the bind path accordingly.
 
 ```yaml
 volumes:

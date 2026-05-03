@@ -81,6 +81,31 @@ pub struct RegisterParams {
     pub allows_guest: bool,
 }
 
+// Manual `Debug` impl that redacts `password`, matching the convention
+// used by `TrackerClientMessage` and `protocol::ClientMessage`. Defense
+// in depth: deriving `Debug` on this struct would silently leak the
+// plaintext registration password to anything that `{:?}`-prints it
+// (panic backtraces, future debug logging). The `Some("<REDACTED>")` /
+// `None` distinction is preserved so a reader can still tell whether a
+// password was supplied.
+impl std::fmt::Debug for RegisterParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RegisterParams")
+            .field("password", &self.password.as_ref().map(|_| "<REDACTED>"))
+            .field("locale", &self.locale)
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("address", &self.address)
+            .field("port", &self.port)
+            .field("websocket_port", &self.websocket_port)
+            .field("version", &self.version)
+            .field("fingerprint", &self.fingerprint)
+            .field("user_count", &self.user_count)
+            .field("allows_guest", &self.allows_guest)
+            .finish()
+    }
+}
+
 /// Whether a `TrackerServerRegister` message is the first one on a
 /// fresh connection (`Initial`) or a refresh on an already-registered
 /// connection (`Refresh`). Threaded through validation so the address
@@ -452,6 +477,13 @@ where
     // (hard-reject categories), peer-IP match for IP literals, and
     // DNS-vs-peer-IP match for hostnames. The validated string is
     // stored as-typed to preserve IDN Unicode form for display.
+    //
+    // IPv6 substitution: `peer_addr.ip().to_string()` produces the
+    // bare canonical form for IPv6 (e.g. `"2001:db8::1"`, no
+    // brackets). The substituted form matches the contract of the
+    // `address` field — registrant inputs are bracket-rejected by the
+    // structural validator — so downstream URI assembly is the layer
+    // responsible for wrapping IPv6 literals in `[…]`.
     let resolved_address = match address {
         Some(a) if !a.is_empty() => {
             if let Err(reason) =
@@ -595,6 +627,15 @@ async fn validate_address(
 /// Mode-aware outcome for transient resolver failures. Initial register
 /// hard-rejects to keep unverified entries out; refresh soft-passes so
 /// an already-validated entry survives a brief DNS blip.
+///
+/// Security note: the asymmetry is deliberate. A registrant whose DNS
+/// "transiently fails" on the initial registration could be trying to
+/// bypass the hostname-vs-peer-IP check — we have no prior signal that
+/// this hostname legitimately maps to this peer, so the failure is
+/// fatal. On refresh, the entry has already passed validation at least
+/// once, so a transient failure of the *resolver* (which we don't
+/// control) shouldn't evict a legit entry. A persistent resolver
+/// outage will still be caught by the stale-entry sweep.
 fn transient_outcome(mode: RegisterMode) -> Result<(), &'static str> {
     match mode {
         RegisterMode::Initial => Err(REASON_ADDRESS_HOSTNAME_DNS_FAILED),

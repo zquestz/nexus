@@ -69,6 +69,9 @@ cargo build --release
 # Run server (first user becomes admin)
 ./target/release/nexusd
 
+# Run tracker (optional, for server discovery)
+./target/release/nexus-trackerd
+
 # Run client
 ./target/release/nexus
 ```

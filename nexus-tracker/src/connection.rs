@@ -197,6 +197,11 @@ where
         Ok(Some(msg)) => msg,
         Ok(None) => return Ok(()), // clean disconnect; nothing to clean up yet
         Err(e) => {
+            // The registrant's `locale` lives inside the message we
+            // just failed to parse, so we can't honor it. Per spec
+            // §Localization (docs/protocol/18-trackers.md), `Error`
+            // sent before the request's `locale` is known is rendered
+            // in the implementation's default locale.
             send_tracker_error(writer, None, frame_error_message(&e, DEFAULT_LOCALE)).await;
             return Err(e.into());
         }

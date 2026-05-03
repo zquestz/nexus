@@ -163,7 +163,7 @@ Presence of `registration.hash` means the registration flow is gated; presence o
 
 ### Hashing
 
-Passwords are hashed with **Argon2id** using the `argon2` crate's defaults. The PHC-encoded output includes the algorithm parameters (memory cost, iterations, parallelism) and a fresh random salt per password. The same password set twice produces different stored hashes.
+Passwords are hashed with **Argon2id** using the `argon2` crate's default parameters at build time. The PHC-encoded output includes the algorithm parameters (memory cost, iterations, parallelism) and a fresh random salt per password. The same password set twice produces different stored hashes.
 
 ### File Permissions
 
