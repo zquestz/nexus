@@ -14,9 +14,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use argon2::password_hash::{SaltString, rand_core::OsRng};
+use argon2::{Argon2, PasswordHasher};
 use nexus_common::TRACKER_PROTOCOL_VERSION;
-use nexus_common::framing::{FrameReader, FrameWriter};
-use nexus_common::io::{read_server_message, send_client_message};
+use nexus_common::framing::{FrameError, FrameReader, FrameWriter, MessageId, RawFrame};
+use nexus_common::io::{read_server_message, send_client_message, tracker_client_message_type};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 use nexus_common::websocket::WebSocketAdapter;
@@ -103,10 +105,6 @@ fn build_test_client() -> TlsConnector {
 /// in a background tokio task. Returns the cert fingerprint for the
 /// caller to compare against the wire response.
 async fn spawn_one_shot_tracker(data_dir: &std::path::Path) -> (std::net::SocketAddr, String) {
-    use nexus_tracker::registry::Registry;
-    use nexus_tracker::state::TrackerState;
-    use std::sync::Arc;
-
     let tls_config = nexus_common::tls::TlsCertConfig {
         cert_filename: nexus_tracker::constants::CERT_FILENAME,
         key_filename: nexus_tracker::constants::KEY_FILENAME,
@@ -418,8 +416,6 @@ async fn send_tracker_client<W>(writer: &mut FrameWriter<W>, msg: &TrackerClient
 where
     W: tokio::io::AsyncWrite + Unpin,
 {
-    use nexus_common::framing::{MessageId, RawFrame};
-    use nexus_common::io::tracker_client_message_type;
     let payload = serde_json::to_vec(msg).expect("serialize");
     let message_type = tracker_client_message_type(msg);
     let frame = RawFrame::new(MessageId::new(), message_type.to_string(), payload);
@@ -740,8 +736,6 @@ async fn test_unauthorized_register_when_password_required() {
     let tmp = tempfile::tempdir().expect("tempdir");
 
     // Set a registration hash directly (any valid PHC string for "secret").
-    use argon2::password_hash::{SaltString, rand_core::OsRng};
-    use argon2::{Argon2, PasswordHasher};
     let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default()
         .hash_password(b"secret", &salt)
@@ -784,7 +778,6 @@ async fn read_tracker_server<R>(reader: &mut FrameReader<R>) -> TrackerServerMes
 where
     R: tokio::io::AsyncRead + Unpin,
 {
-    use nexus_common::framing::FrameError;
     let frame = match reader
         .read_frame_with_full_timeout(Duration::from_secs(5), Duration::from_secs(5))
         .await
@@ -1068,8 +1061,6 @@ async fn test_websocket_handshake_register_list_roundtrip() {
 /// Argon2id PHC hash of "secret", suitable for use as a tracker password
 /// hash in tests that need a gated tracker.
 fn hash_secret() -> String {
-    use argon2::password_hash::{SaltString, rand_core::OsRng};
-    use argon2::{Argon2, PasswordHasher};
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
         .hash_password(b"secret", &salt)

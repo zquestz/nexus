@@ -241,6 +241,8 @@ fn compute_fingerprint(cert_path: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
 
     fn test_config() -> TlsCertConfig<'static> {
         TlsCertConfig {
@@ -297,7 +299,6 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn cert_and_key_are_owner_only_on_unix() {
-        use std::os::unix::fs::PermissionsExt;
         let tmp = tempfile::tempdir().expect("tempdir");
         let cfg = test_config();
         ensure_cert(tmp.path(), cfg).expect("ensure_cert");

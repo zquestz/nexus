@@ -5,12 +5,14 @@ use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::{Arc, LazyLock, RwLock};
+use std::time::Duration;
 
 use tempfile::TempDir;
 
 use tokio::io::BufReader;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
+use tokio::time::timeout;
 
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::read_server_message as io_read_server_message;
@@ -569,9 +571,6 @@ pub async fn read_server_message_matching<F>(
 where
     F: Fn(&ServerMessage) -> bool,
 {
-    use std::time::Duration;
-    use tokio::time::timeout;
-
     let result = timeout(Duration::from_secs(5), async {
         loop {
             let msg = read_server_message(test_ctx).await;
