@@ -367,6 +367,10 @@ pub enum Message {
     UserManagementGroupSelected(Option<i64>),
     /// User management: Edit form - group dropdown changed
     UserManagementEditGroupSelected(Option<i64>),
+    /// User management: Refresh users list (Users tab toolbar)
+    UserManagementRefreshUsers,
+    /// User management: Refresh groups list (Groups tab toolbar)
+    UserManagementRefreshGroups,
 
     // Group management (Groups tab within User Management panel)
     /// Group management: Show create form

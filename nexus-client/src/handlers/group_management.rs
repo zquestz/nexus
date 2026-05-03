@@ -41,8 +41,8 @@ impl NexusApp {
                         .track(message_id, ResponseRouting::PopulateGroupManagementList);
                 }
                 Err(e) => {
-                    conn.user_management.group_management.list_error =
-                        Some(format!("{}: {}", t("err-send-failed"), e));
+                    conn.user_management.available_groups =
+                        Some(Err(format!("{}: {}", t("err-send-failed"), e)));
                 }
             }
         }
@@ -70,8 +70,7 @@ impl NexusApp {
             let old_group_permissions: Vec<String> =
                 if let Some(old_gid) = conn.user_management.create_group_id {
                     conn.user_management
-                        .available_groups
-                        .as_ref()
+                        .loaded_groups()
                         .and_then(|groups| groups.iter().find(|g| g.id == old_gid))
                         .map(|g| g.permissions.clone())
                         .unwrap_or_default()
@@ -82,8 +81,7 @@ impl NexusApp {
             // Look up new group permissions
             let new_group_permissions: Vec<String> = if let Some(gid) = group_id {
                 conn.user_management
-                    .available_groups
-                    .as_ref()
+                    .loaded_groups()
                     .and_then(|groups| groups.iter().find(|g| g.id == gid))
                     .map(|g| g.permissions.clone())
                     .unwrap_or_default()
@@ -126,8 +124,7 @@ impl NexusApp {
         // Look up new group permissions
         let new_group_permissions: Vec<String> = if let Some(gid) = group_id {
             conn.user_management
-                .available_groups
-                .as_ref()
+                .loaded_groups()
                 .and_then(|groups| groups.iter().find(|g| g.id == gid))
                 .map(|g| g.permissions.clone())
                 .unwrap_or_default()
@@ -225,8 +222,11 @@ impl NexusApp {
                     .track(message_id, ResponseRouting::PopulateGroupManagementEdit);
             }
             Err(e) => {
-                conn.user_management.group_management.list_error =
-                    Some(format!("{}: {}", t("err-send-failed"), e));
+                conn.user_management.set_group_list_error(format!(
+                    "{}: {}",
+                    t("err-send-failed"),
+                    e
+                ));
             }
         }
 

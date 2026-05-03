@@ -6,19 +6,17 @@ use iced::font;
 use iced::widget::button as btn;
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    Column, Id, Row, Space, button, checkbox, column, container, lazy, pick_list, row, scrollable,
-    table, text, text_input, tooltip,
+    Column, Id, Space, button, checkbox, column, container, lazy, pick_list, row, scrollable,
+    table, text, text_input,
 };
-use iced::{Center, Element, Fill, Theme, alignment};
+use iced::{Center, Element, Fill, Theme};
 use iced_aw::{TabLabel, Tabs};
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::{GroupInfo, UserInfo};
 
-use super::constants::{
-    PERMISSION_GROUP_CREATE, PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT,
-};
+use super::constants::{PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT};
 use super::groups::{group_form_view, group_list_content};
-use super::helpers::t_args;
+use super::helpers::{t_args, tab_toolbar_icon_button};
 use super::layout::scrollable_panel;
 use super::password_strength::password_strength_bar;
 use crate::i18n::{t, translate_permission};
@@ -26,14 +24,12 @@ use crate::icon;
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, CONTEXT_MENU_ITEM_PADDING,
     CONTEXT_MENU_MIN_WIDTH, CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_HEIGHT,
-    CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING,
-    SCROLLBAR_PADDING, SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE, SORT_ICON_LEFT_MARGIN,
-    SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM,
-    SPACER_SIZE_SMALL, TAB_LABEL_PADDING, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING,
-    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat, clickable_text_style,
-    content_background_style, context_menu_container_style, error_text_style,
+    CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING, INPUT_PADDING, NO_SPACING, SEPARATOR_HEIGHT,
+    SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_LARGE,
+    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TAB_LABEL_PADDING, TEXT_SIZE, chat,
+    clickable_text_style, content_background_style, context_menu_container_style, error_text_style,
     menu_button_danger_style, menu_button_style, muted_text_style, panel_title, separator_style,
-    shaped_text, shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
+    shaped_text, shaped_text_wrapped, transparent_icon_button_style,
 };
 use crate::types::InputId;
 use crate::types::{
@@ -480,13 +476,44 @@ fn build_user_context_menu(
 // List View
 // ============================================================================
 
+/// Build the Users tab toolbar (Create User + Refresh icon buttons).
+///
+/// Create User is permission-gated on `user_create`. Refresh is disabled
+/// while a list fetch is in flight (`all_users.is_none()`); after an
+/// error response, `all_users` becomes `Some(Err(_))`, so `is_some()`
+/// re-enables the button — don't change this to `is_some_and(Result::is_ok)`
+/// or the button would lock up after a failed fetch.
+fn users_tab_toolbar<'a>(
+    conn: &'a ServerConnection,
+    user_management: &'a UserManagementState,
+) -> Element<'a, Message> {
+    let create_btn = tab_toolbar_icon_button(
+        icon::user_plus(),
+        "tooltip-create-user",
+        Message::UserManagementShowCreate,
+        conn.has_permission(PERMISSION_USER_CREATE),
+    );
+    let refresh_btn = tab_toolbar_icon_button(
+        icon::refresh(),
+        "tooltip-refresh",
+        Message::UserManagementRefreshUsers,
+        user_management.all_users.is_some(),
+    );
+
+    row![create_btn, refresh_btn]
+        .spacing(SPACER_SIZE_SMALL)
+        .into()
+}
+
 /// Build the user list view as a sortable table
 fn list_view<'a>(
     conn: &'a ServerConnection,
     user_management: &'a UserManagementState,
     theme: &Theme,
 ) -> Element<'a, Message> {
-    match &user_management.all_users {
+    let toolbar = users_tab_toolbar(conn, user_management);
+
+    let body: Element<'a, Message> = match &user_management.all_users {
         None => {
             // Loading state
             container(
@@ -545,7 +572,12 @@ fn list_view<'a>(
                 scrollable(lazy_user_table(deps)).height(Fill).into()
             }
         }
-    }
+    };
+
+    column![toolbar, body]
+        .spacing(SPACER_SIZE_SMALL)
+        .height(Fill)
+        .into()
 }
 
 // ============================================================================
@@ -630,7 +662,7 @@ fn create_view<'a>(
     // Group dropdown
     let group_label = shaped_text(t("user-management-group")).size(TEXT_SIZE);
     let group_options = build_group_options(
-        user_management.available_groups.as_deref(),
+        user_management.loaded_groups(),
         conn,
         user_management.is_shared,
     );
@@ -647,11 +679,9 @@ fn create_view<'a>(
         .align_y(Center);
 
     // Compute group permissions for override UI (if a group is selected).
-    // Reference directly from available_groups to avoid lifetime issues.
     let create_group_perms: Option<&[String]> = user_management.create_group_id.and_then(|gid| {
         user_management
-            .available_groups
-            .as_ref()
+            .loaded_groups()
             .and_then(|groups| groups.iter().find(|g| g.id == gid))
             .map(|g| g.permissions.as_slice())
     });
@@ -820,11 +850,8 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
 
     // Group dropdown
     let group_label = shaped_text(t("user-management-group")).size(TEXT_SIZE);
-    let group_options = build_group_options(
-        ctx.user_management.available_groups.as_deref(),
-        ctx.conn,
-        ctx.is_shared,
-    );
+    let group_options =
+        build_group_options(ctx.user_management.loaded_groups(), ctx.conn, ctx.is_shared);
     let selected_group = group_options.iter().find(|o| o.id == ctx.group_id).cloned();
     let group_picker = pick_list(group_options, selected_group, |option| {
         Message::UserManagementEditGroupSelected(option.id)
@@ -1075,7 +1102,7 @@ fn tabbed_list_view<'a>(
         _ => "…".to_string(),
     };
     let groups_count = match &user_management.available_groups {
-        Some(groups) => groups.len().to_string(),
+        Some(Ok(groups)) => groups.len().to_string(),
         _ => "…".to_string(),
     };
     let users_label = format!("{} ({})", t("tab-users"), users_count);
@@ -1098,100 +1125,52 @@ fn tabbed_list_view<'a>(
         .text_size(TEXT_SIZE)
         .tab_label_padding(TAB_LABEL_PADDING);
 
-    // Add user button (permission-gated)
-    let add_user_btn: Option<Element<'_, Message>> = if conn.has_permission(PERMISSION_USER_CREATE)
-    {
-        let add_icon = container(icon::user_plus().size(SIDEBAR_ACTION_ICON_SIZE))
-            .width(SIDEBAR_ACTION_ICON_SIZE)
-            .height(SIDEBAR_ACTION_ICON_SIZE)
-            .align_x(alignment::Horizontal::Center)
-            .align_y(alignment::Vertical::Center);
+    // Title row: clean centered title (Create / Refresh actions live
+    // inside each tab's toolbar — see `users_tab_toolbar` and the
+    // equivalent in `groups::group_list_content`).
+    let title = panel_title(t("title-user-management"));
 
-        Some(
-            tooltip(
-                button(add_icon)
-                    .on_press(Message::UserManagementShowCreate)
-                    .padding(ICON_BUTTON_PADDING)
-                    .style(transparent_icon_button_style),
-                container(shaped_text(t("tooltip-create-user")).size(TOOLTIP_TEXT_SIZE))
-                    .padding(TOOLTIP_BACKGROUND_PADDING)
-                    .style(tooltip_container_style),
-                tooltip::Position::Top,
-            )
-            .gap(TOOLTIP_GAP)
-            .padding(TOOLTIP_PADDING)
-            .into(),
-        )
-    } else {
-        None
-    };
+    // Panel-level action error (UserEdit or GroupEdit fetch failure).
+    // Mutually exclusive between the two `list_error` fields, so at most
+    // one is ever Some — see UserManagementState::set_user_list_error.
+    let panel_error = user_management
+        .list_error
+        .as_ref()
+        .or(user_management.group_management.list_error.as_ref());
 
-    // Add group button (permission-gated)
-    let add_group_btn: Option<Element<'_, Message>> =
-        if conn.has_permission(PERMISSION_GROUP_CREATE) {
-            let add_icon = container(icon::plus_circled().size(SIDEBAR_ACTION_ICON_SIZE))
-                .width(SIDEBAR_ACTION_ICON_SIZE)
-                .height(SIDEBAR_ACTION_ICON_SIZE)
-                .align_x(alignment::Horizontal::Center)
-                .align_y(alignment::Vertical::Center);
-
-            Some(
-                tooltip(
-                    button(add_icon)
-                        .on_press(Message::GroupManagementShowCreate)
-                        .padding(ICON_BUTTON_PADDING)
-                        .style(transparent_icon_button_style),
-                    container(shaped_text(t("tooltip-create-group")).size(TOOLTIP_TEXT_SIZE))
-                        .padding(TOOLTIP_BACKGROUND_PADDING)
-                        .style(tooltip_container_style),
-                    tooltip::Position::Top,
-                )
-                .gap(TOOLTIP_GAP)
-                .padding(TOOLTIP_PADDING)
+    // Build the form with max_width constraint.
+    //
+    // Error spacing follows the in-form convention (see e.g.
+    // `groups::create_view`): if an error is present, render it with a
+    // small trailing spacer (the error contributes its own height to the
+    // gap); otherwise emit the original `LARGE - MEDIUM` breathing
+    // spacer so the steady-state title→tabs rhythm is unchanged.
+    let mut form_items: Vec<Element<'_, Message>> = vec![Element::<'_, Message>::from(title)];
+    if let Some(err) = panel_error {
+        form_items.push(
+            shaped_text_wrapped(err)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
                 .into(),
-            )
-        } else {
-            None
-        };
-
-    // Count visible buttons for balancing
-    let button_count = [add_user_btn.is_some(), add_group_btn.is_some()]
-        .iter()
-        .filter(|&&b| b)
-        .count();
-    let button_width =
-        SIDEBAR_ACTION_ICON_SIZE + ICON_BUTTON_PADDING.left + ICON_BUTTON_PADDING.right;
-    let total_button_width = button_width * button_count as f32;
-
-    // Title row: [scrollbar_pad][balancer]  Title  [+user][+group][scrollbar_pad]
-    let mut title_row = Row::new().align_y(Center);
-    title_row = title_row.push(Space::new().width(SCROLLBAR_PADDING));
-    title_row = title_row.push(Space::new().width(total_button_width));
-    title_row = title_row.push(
-        shaped_text(t("title-user-management"))
-            .size(TITLE_SIZE)
-            .width(Fill)
-            .align_x(Center),
-    );
-    if let Some(btn) = add_user_btn {
-        title_row = title_row.push(btn);
+        );
+        form_items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    } else {
+        form_items.push(
+            Space::new()
+                .height(SPACER_SIZE_LARGE - SPACER_SIZE_MEDIUM)
+                .into(),
+        );
     }
-    if let Some(btn) = add_group_btn {
-        title_row = title_row.push(btn);
-    }
-    title_row = title_row.push(Space::new().width(SCROLLBAR_PADDING));
+    form_items.push(container(tabs).height(Fill).into());
 
-    // Build the form with max_width constraint
-    let form = column![
-        Element::<'_, Message>::from(title_row),
-        Space::new().height(SPACER_SIZE_LARGE - SPACER_SIZE_MEDIUM),
-        container(tabs).height(Fill),
-    ]
-    .spacing(SPACER_SIZE_MEDIUM)
-    .align_x(Center)
-    .padding(CONTENT_PADDING)
-    .max_width(CONTENT_MAX_WIDTH)
-    .height(Fill);
+    let form = Column::with_children(form_items)
+        .spacing(SPACER_SIZE_MEDIUM)
+        .align_x(Center)
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH)
+        .height(Fill);
 
     // Center the form horizontally
     let centered_form = container(form).width(Fill).center_x(Fill);

@@ -24,10 +24,10 @@ use crate::avatar::{avatar_cache_key, generate_identicon};
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    CONTENT_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, SCROLLBAR_PADDING,
-    SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE, TOOLBAR_CONTAINER_PADDING,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
-    USER_LIST_AVATAR_SIZE, USER_LIST_AVATAR_SPACING, USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH,
+    CONTENT_PADDING, HEADING_BUTTON_PADDING, ICON_SIZE, INPUT_PADDING, NO_SPACING,
+    SCROLLBAR_PADDING, SEPARATOR_HEIGHT, TOOLBAR_CONTAINER_PADDING, TOOLTIP_BACKGROUND_PADDING,
+    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, USER_LIST_AVATAR_SIZE,
+    USER_LIST_AVATAR_SPACING, USER_LIST_ITEM_SPACING, USER_LIST_PANEL_WIDTH,
     USER_LIST_SMALL_TEXT_SIZE, USER_LIST_SPACING, USER_LIST_TEXT_SIZE, USER_LIST_TITLE_SIZE,
     alternating_row_style, chat, clickable_text_style, disabled_icon_button_style,
     icon_button_with_hover_style, muted_text_style, shaped_text, sidebar_panel_style,
@@ -42,18 +42,18 @@ use crate::types::{ChatTab, Message, ServerConnection, UserInfo};
 
 /// Create an icon container with consistent sizing and alignment
 fn icon_container(icon: iced::widget::Text<'_>) -> iced::widget::Container<'_, Message> {
-    container(icon.size(SIDEBAR_ACTION_ICON_SIZE))
-        .width(SIDEBAR_ACTION_ICON_SIZE)
-        .height(SIDEBAR_ACTION_ICON_SIZE)
+    container(icon.size(ICON_SIZE))
+        .width(ICON_SIZE)
+        .height(ICON_SIZE)
         .align_x(iced::alignment::Horizontal::Center)
         .align_y(iced::alignment::Vertical::Center)
 }
 
 /// Container for mute/volume icons that aligns left to prevent icon shifting
 fn mute_icon_container(icon: iced::widget::Text<'_>) -> iced::widget::Container<'_, Message> {
-    container(icon.size(SIDEBAR_ACTION_ICON_SIZE))
-        .width(SIDEBAR_ACTION_ICON_SIZE)
-        .height(SIDEBAR_ACTION_ICON_SIZE)
+    container(icon.size(ICON_SIZE))
+        .width(ICON_SIZE)
+        .height(ICON_SIZE)
         .align_x(iced::alignment::Horizontal::Left)
         .align_y(iced::alignment::Vertical::Center)
 }
@@ -67,14 +67,14 @@ fn enabled_icon_button<'a>(
 ) -> button::Button<'a, Message> {
     button(icon)
         .on_press(message)
-        .padding(ICON_BUTTON_PADDING)
+        .padding(HEADING_BUTTON_PADDING)
         .style(icon_button_with_hover_style(hover_color, normal_color))
 }
 
 /// Create a disabled icon button (greyed out)
 fn disabled_icon_button(icon: iced::widget::Container<'_, Message>) -> button::Button<'_, Message> {
     button(icon)
-        .padding(ICON_BUTTON_PADDING)
+        .padding(HEADING_BUTTON_PADDING)
         .style(disabled_icon_button_style)
 }
 

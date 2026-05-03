@@ -113,9 +113,10 @@ pub struct UserManagementState {
     pub mode: UserManagementMode,
     /// All users from database (None = not loaded, Some(Ok) = loaded, Some(Err) = error)
     pub all_users: Option<Result<Vec<UserInfo>, String>>,
-    /// Available groups for dropdown and group list view
-    /// (None = not loaded, Some = loaded from GroupListResponse or UserEditResponse)
-    pub available_groups: Option<Vec<GroupInfo>>,
+    /// Available groups for dropdown and group list view.
+    /// `None` = list fetch in flight, `Some(Ok(_))` = loaded (from `GroupListResponse`
+    /// or as a snapshot inside `UserEditResponse`), `Some(Err(_))` = list fetch failed.
+    pub available_groups: Option<Result<Vec<GroupInfo>, String>>,
     /// Group management state (for Groups tab)
     pub group_management: GroupManagementState,
     /// Panel to return to after edit (e.g., UserInfo if edit was triggered from there)
@@ -138,7 +139,15 @@ pub struct UserManagementState {
     pub create_error: Option<String>,
     /// Error message for edit user form
     pub edit_error: Option<String>,
-    /// Error message for list view (e.g., delete failed)
+    /// Panel-level action error from the user side (e.g., `UserEdit` fetch
+    /// failed when clicking Edit on a row). Displayed as a banner above the
+    /// tabs in the user-management panel. Mutually exclusive with
+    /// `group_management.list_error` — write via [`set_user_list_error`] /
+    /// [`set_group_list_error`] to maintain the invariant so the banner
+    /// only ever shows one error at a time.
+    ///
+    /// [`set_user_list_error`]: UserManagementState::set_user_list_error
+    /// [`set_group_list_error`]: UserManagementState::set_group_list_error
     pub list_error: Option<String>,
     /// Error message for delete confirmation dialog
     pub delete_error: Option<String>,
@@ -191,7 +200,10 @@ impl std::fmt::Debug for UserManagementState {
             .field("all_users", &self.all_users)
             .field(
                 "available_groups",
-                &self.available_groups.as_ref().map(|g| g.len()),
+                &self
+                    .available_groups
+                    .as_ref()
+                    .map(|r| r.as_ref().map(|g| g.len())),
             )
             .field("group_management", &self.group_management)
             .field("return_to_panel", &self.return_to_panel)
@@ -313,5 +325,32 @@ impl UserManagementState {
         self.mode = UserManagementMode::ConfirmDelete { id, username };
         self.delete_error = None;
         self.is_delete_submitting = false;
+    }
+
+    /// Set the user-side panel error and clear any pending group-side
+    /// error. The two `list_error` fields are mutually exclusive so the
+    /// panel banner only ever shows one error at a time.
+    pub fn set_user_list_error(&mut self, message: String) {
+        self.list_error = Some(message);
+        self.group_management.list_error = None;
+    }
+
+    /// Set the group-side panel error and clear any pending user-side
+    /// error. See [`set_user_list_error`](Self::set_user_list_error) for
+    /// the mutual-exclusion rule.
+    pub fn set_group_list_error(&mut self, message: String) {
+        self.group_management.list_error = Some(message);
+        self.list_error = None;
+    }
+
+    /// Returns the successfully loaded group list, or `None` if the
+    /// fetch is in flight or has failed. Use this anywhere that needs
+    /// to read the cached groups without caring about the loading or
+    /// error state.
+    pub fn loaded_groups(&self) -> Option<&[GroupInfo]> {
+        self.available_groups
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .map(Vec::as_slice)
     }
 }

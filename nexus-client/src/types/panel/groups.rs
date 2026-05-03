@@ -65,7 +65,12 @@ pub struct GroupManagementState {
     pub create_error: Option<String>,
     /// Error message for edit form
     pub edit_error: Option<String>,
-    /// Error message for list view
+    /// Panel-level action error from the group side (e.g., `GroupEdit` fetch
+    /// failed when clicking Edit on a row). Displayed as a banner above the
+    /// tabs in the user-management panel — see the parent
+    /// `UserManagementState.list_error` field for the symmetric user-side
+    /// error and the mutual-exclusion invariant. Write via
+    /// `UserManagementState::set_group_list_error` to maintain the invariant.
     pub list_error: Option<String>,
     /// Error message for delete confirmation
     pub delete_error: Option<String>,

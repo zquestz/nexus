@@ -17,8 +17,12 @@ pub const TOOLBAR_ICON_SIZE: f32 = 20.0;
 pub const SERVER_LIST_DISCONNECT_ICON_SIZE: f32 = 18.0;
 
 // ============================================================================
-// Sidebar Action Icons
+// Action Icons
 // ============================================================================
 
-/// Sidebar action icon size (for add bookmark, user actions, etc.)
-pub const SIDEBAR_ACTION_ICON_SIZE: f32 = 18.0;
+/// Standard small-action icon size used by both toolbar-row buttons
+/// (file browser toolbar, user-management tab toolbars) and panel-header
+/// singleton action buttons (news, transfers, connection monitor, etc.).
+/// The two roles differ only in their button padding — see
+/// `TOOLBAR_BUTTON_PADDING` and `HEADING_BUTTON_PADDING` in `style::layout`.
+pub const ICON_SIZE: f32 = 18.0;

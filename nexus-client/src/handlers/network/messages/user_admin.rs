@@ -162,7 +162,7 @@ impl NexusApp {
             if matches!(routing, Some(ResponseRouting::PopulateUserManagementEdit)) {
                 // Update available_groups cache if provided
                 if let Some(groups) = data.available_groups {
-                    conn.user_management.available_groups = Some(groups);
+                    conn.user_management.available_groups = Some(Ok(groups));
                 }
 
                 conn.user_management.enter_edit_mode(UserEditInit {
@@ -180,8 +180,9 @@ impl NexusApp {
         } else {
             // On error, show in the appropriate place
             if matches!(routing, Some(ResponseRouting::PopulateUserManagementEdit)) {
-                // Show error on list view
-                conn.user_management.list_error = Some(data.error.unwrap_or_default());
+                // Show error in the panel-level banner above the tabs
+                conn.user_management
+                    .set_user_list_error(data.error.unwrap_or_default());
             } else {
                 // Show error in chat
                 return self.add_active_tab_message(

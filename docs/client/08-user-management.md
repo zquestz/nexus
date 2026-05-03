@@ -13,6 +13,13 @@ The User Management panel lets administrators and users with appropriate permiss
 
 Click the **User Management** icon in the toolbar, or use any admin operation command. The panel requires at least one of: `user_create`, `user_edit`, `user_delete`, `group_create`, `group_edit`, or `group_delete` permission.
 
+## Tab Toolbar
+
+Each tab has a toolbar above its table with two icon buttons:
+
+- **Create** (person-with-plus on the Users tab, plus-in-circle on the Groups tab) — opens the creation form for the active tab. Disabled when you lack `user_create` / `group_create`.
+- **Refresh** (circular arrow) — re-fetches the list for the active tab. The list is not auto-refreshed; use this to pick up changes made by other admins. Refresh is briefly disabled while a fetch is in flight.
+
 ## Users Tab
 
 The Users tab shows all accounts on the server.
@@ -39,7 +46,7 @@ Right-click a username to access the context menu:
 
 ### Creating Users
 
-Click **Create User** to open the creation form. Requires `user_create` permission.
+In the Users tab toolbar, click the **Create User** icon (person-with-plus) to open the creation form. Requires `user_create` permission.
 
 | Field          | Description                                            |
 | -------------- | ------------------------------------------------------ |
@@ -116,7 +123,7 @@ Right-click a group name to access the context menu:
 
 ### Creating Groups
 
-Click **Create Group** to open the creation form. Requires `group_create` permission.
+In the Groups tab toolbar, click the **Create Group** icon (plus-in-circle) to open the creation form. Requires `group_create` permission.
 
 | Field        | Description                              |
 | ------------ | ---------------------------------------- |
@@ -175,6 +182,12 @@ Users with management permissions but without admin status have restrictions:
 - Permissions they don't control are preserved unchanged
 
 This prevents privilege escalation — a manager cannot give a user more access than they themselves have.
+
+## Action Errors
+
+When a user-management action fails before reaching its dialog — for example, clicking **Edit** on a user or group that was just deleted by another admin — the error appears as a red banner above the tabs. The banner persists across tab switches (it's panel-level, not tab-level) and is cleared by clicking **Refresh** on the relevant tab.
+
+Errors that fail _inside_ a dialog (validation errors, server rejections during create/update/delete) continue to appear inside the dialog itself. The banner is reserved for failures that prevent a dialog from opening in the first place.
 
 ## Keyboard Shortcuts
 

@@ -20,7 +20,7 @@ use crate::icon;
 use crate::style::{
     CONTENT_MAX_WIDTH, CONTENT_PADDING, CONTEXT_MENU_ITEM_PADDING, CONTEXT_MENU_MIN_WIDTH,
     CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_HEIGHT, CONTEXT_MENU_SEPARATOR_MARGIN,
-    ICON_BUTTON_PADDING, NO_SPACING, SCROLLBAR_PADDING, SEPARATOR_HEIGHT, SIDEBAR_ACTION_ICON_SIZE,
+    HEADING_BUTTON_PADDING, ICON_SIZE, NO_SPACING, SCROLLBAR_PADDING, SEPARATOR_HEIGHT,
     SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_LARGE,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TAB_LABEL_PADDING, TEXT_SIZE, TITLE_SIZE,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat,
@@ -1084,16 +1084,16 @@ pub fn connection_monitor_view<'a>(
 
     // Refresh button with tooltip
     let refresh_btn: Element<'_, Message> = {
-        let refresh_icon = container(icon::refresh().size(SIDEBAR_ACTION_ICON_SIZE))
-            .width(SIDEBAR_ACTION_ICON_SIZE)
-            .height(SIDEBAR_ACTION_ICON_SIZE)
+        let refresh_icon = container(icon::refresh().size(ICON_SIZE))
+            .width(ICON_SIZE)
+            .height(ICON_SIZE)
             .align_x(alignment::Horizontal::Center)
             .align_y(alignment::Vertical::Center);
 
         tooltip(
             button(refresh_icon)
                 .on_press(Message::RefreshConnectionMonitor)
-                .padding(ICON_BUTTON_PADDING)
+                .padding(HEADING_BUTTON_PADDING)
                 .style(transparent_icon_button_style),
             container(shaped_text(t("tooltip-files-refresh")).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
@@ -1107,8 +1107,7 @@ pub fn connection_monitor_view<'a>(
 
     // Title row with refresh button on the right
     // Add invisible spacer on the left to balance the button width for proper centering
-    let button_width =
-        SIDEBAR_ACTION_ICON_SIZE + ICON_BUTTON_PADDING.left + ICON_BUTTON_PADDING.right;
+    let button_width = ICON_SIZE + HEADING_BUTTON_PADDING.left + HEADING_BUTTON_PADDING.right;
     let title_row: Element<'_, Message> = row![
         Space::new().width(SCROLLBAR_PADDING),
         Space::new().width(button_width), // Balance the refresh button on the right

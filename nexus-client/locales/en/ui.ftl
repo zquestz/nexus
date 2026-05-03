@@ -289,6 +289,7 @@ tooltip-create-user = Create User
 tooltip-create-group = Create Group
 tooltip-create-news = Create News Post
 tooltip-delete = Delete
+tooltip-refresh = Refresh
 context-menu-download = Download
 context-menu-upload = Upload
 context-menu-open = Open

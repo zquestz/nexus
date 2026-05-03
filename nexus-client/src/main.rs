@@ -739,6 +739,8 @@ impl NexusApp {
             Message::UserManagementEditGroupSelected(group_id) => {
                 self.handle_user_management_edit_group_selected(group_id)
             }
+            Message::UserManagementRefreshUsers => self.handle_user_management_refresh_users(),
+            Message::UserManagementRefreshGroups => self.handle_user_management_refresh_groups(),
 
             // Group management (Groups tab within User Management panel)
             Message::CancelGroupManagement => self.handle_cancel_group_management(),

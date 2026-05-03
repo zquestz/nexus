@@ -10,13 +10,13 @@ use uuid::Uuid;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    CONTENT_PADDING, ICON_BUTTON_PADDING, INPUT_PADDING, NO_SPACING, PANEL_SPACING,
+    CONTENT_PADDING, HEADING_BUTTON_PADDING, ICON_SIZE, INPUT_PADDING, NO_SPACING, PANEL_SPACING,
     SCROLLBAR_PADDING, SECTION_TITLE_SIZE, SEPARATOR_HEIGHT, SERVER_LIST_BUTTON_HEIGHT,
     SERVER_LIST_DISCONNECT_ICON_SIZE, SERVER_LIST_ITEM_SPACING, SERVER_LIST_PANEL_WIDTH,
     SERVER_LIST_SECTION_SPACING, SERVER_LIST_SMALL_TEXT_SIZE, SERVER_LIST_TEXT_SIZE,
-    SIDEBAR_ACTION_ICON_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
-    TOOLTIP_TEXT_SIZE, alternating_row_style, danger_icon_button_style, list_item_button_style,
-    muted_text_style, separator_style, shaped_text, sidebar_panel_style, tooltip_container_style,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    alternating_row_style, danger_icon_button_style, list_item_button_style, muted_text_style,
+    separator_style, shaped_text, sidebar_panel_style, tooltip_container_style,
     transparent_icon_button_style,
 };
 use crate::types::{Message, ServerBookmark, ServerConnection};
@@ -227,16 +227,16 @@ fn bookmarks_section<'a>(
         .width(Fill);
 
     // Add bookmark button
-    let add_icon = container(icon::bookmark().size(SIDEBAR_ACTION_ICON_SIZE))
-        .width(SIDEBAR_ACTION_ICON_SIZE)
-        .height(SIDEBAR_ACTION_ICON_SIZE)
+    let add_icon = container(icon::bookmark().size(ICON_SIZE))
+        .width(ICON_SIZE)
+        .height(ICON_SIZE)
         .align_x(alignment::Horizontal::Center)
         .align_y(alignment::Vertical::Center);
 
     let add_btn = tooltip(
         button(add_icon)
             .on_press(Message::ShowAddBookmark)
-            .padding(ICON_BUTTON_PADDING)
+            .padding(HEADING_BUTTON_PADDING)
             .style(transparent_icon_button_style),
         container(shaped_text(t("tooltip-add-bookmark")).size(TOOLTIP_TEXT_SIZE))
             .padding(TOOLTIP_BACKGROUND_PADDING)

@@ -19,10 +19,10 @@ use crate::i18n::t;
 use crate::icon;
 use crate::image::CachedImage;
 use crate::style::{
-    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, ICON_BUTTON_PADDING,
-    INPUT_PADDING, NEWS_ACTION_BUTTON_SIZE, NEWS_ACTION_ICON_SIZE, NEWS_EDITOR_LINE_HEIGHT,
-    NEWS_IMAGE_PREVIEW_SIZE, NEWS_ITEM_SPACING, NO_SPACING, SCROLLBAR_PADDING,
-    SIDEBAR_ACTION_ICON_SIZE, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, HEADING_BUTTON_PADDING,
+    ICON_SIZE, INPUT_PADDING, NEWS_ACTION_BUTTON_SIZE, NEWS_ACTION_ICON_SIZE,
+    NEWS_EDITOR_LINE_HEIGHT, NEWS_IMAGE_PREVIEW_SIZE, NEWS_ITEM_SPACING, NO_SPACING,
+    SCROLLBAR_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     alternating_row_style, chat, content_background_style, danger_icon_button_style,
     error_text_style, muted_text_style, panel_title, shaped_text, shaped_text_wrapped,
@@ -191,9 +191,9 @@ fn list_view<'a>(
 
     // Create post button (icon style like add bookmark)
     let create_btn: Option<Element<'a, Message>> = if can_create {
-        let add_icon = container(icon::plus().size(SIDEBAR_ACTION_ICON_SIZE))
-            .width(SIDEBAR_ACTION_ICON_SIZE)
-            .height(SIDEBAR_ACTION_ICON_SIZE)
+        let add_icon = container(icon::plus().size(ICON_SIZE))
+            .width(ICON_SIZE)
+            .height(ICON_SIZE)
             .align_x(alignment::Horizontal::Center)
             .align_y(alignment::Vertical::Center);
 
@@ -201,7 +201,7 @@ fn list_view<'a>(
             tooltip(
                 button(add_icon)
                     .on_press(Message::NewsShowCreate)
-                    .padding(ICON_BUTTON_PADDING)
+                    .padding(HEADING_BUTTON_PADDING)
                     .style(transparent_icon_button_style),
                 container(shaped_text(t("tooltip-create-news")).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
@@ -218,8 +218,7 @@ fn list_view<'a>(
 
     // Title row with create button on the right
     // We add an invisible spacer on the left to balance the button width for proper centering
-    let button_width =
-        SIDEBAR_ACTION_ICON_SIZE + ICON_BUTTON_PADDING.left + ICON_BUTTON_PADDING.right;
+    let button_width = ICON_SIZE + HEADING_BUTTON_PADDING.left + HEADING_BUTTON_PADDING.right;
     let title_row: Element<'a, Message> = if let Some(create_btn) = create_btn {
         row![
             Space::new().width(SCROLLBAR_PADDING),

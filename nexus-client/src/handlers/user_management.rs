@@ -128,6 +128,68 @@ impl NexusApp {
         operation::focus(Id::from(InputId::AdminUsername))
     }
 
+    /// Refresh the users list (Users tab toolbar refresh button).
+    ///
+    /// Resets `all_users` to `None` (loading state, also disables the
+    /// refresh button) and clears the user-side panel error before
+    /// re-issuing `UserList`. On send failure, populates `all_users`
+    /// with an error so the button re-enables.
+    pub fn handle_user_management_refresh_users(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.user_management.all_users = None;
+        conn.user_management.list_error = None;
+
+        match conn.send(ClientMessage::UserList { all: true }) {
+            Ok(message_id) => {
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::PopulateUserManagementList);
+            }
+            Err(e) => {
+                conn.user_management.all_users =
+                    Some(Err(format!("{}: {}", t("err-send-failed"), e)));
+            }
+        }
+
+        Task::none()
+    }
+
+    /// Refresh the groups list (Groups tab toolbar refresh button).
+    ///
+    /// Resets `available_groups` to `None` (loading state, also disables
+    /// the refresh button) and clears the group-side panel error. On send
+    /// failure, populates `available_groups` with `Some(Err(_))` so the
+    /// button re-enables and the error is shown in the Groups tab body.
+    pub fn handle_user_management_refresh_groups(&mut self) -> Task<Message> {
+        let Some(conn_id) = self.active_connection else {
+            return Task::none();
+        };
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return Task::none();
+        };
+
+        conn.user_management.available_groups = None;
+        conn.user_management.group_management.list_error = None;
+
+        match conn.send(ClientMessage::GroupList) {
+            Ok(message_id) => {
+                conn.pending_requests
+                    .track(message_id, ResponseRouting::PopulateGroupManagementList);
+            }
+            Err(e) => {
+                conn.user_management.available_groups =
+                    Some(Err(format!("{}: {}", t("err-send-failed"), e)));
+            }
+        }
+
+        Task::none()
+    }
+
     /// Handle edit button click on a user in the list (or from user info panel)
     ///
     /// Requests user details from server, then transitions to edit mode.
@@ -158,7 +220,11 @@ impl NexusApp {
                     .track(message_id, ResponseRouting::PopulateUserManagementEdit);
             }
             Err(e) => {
-                conn.user_management.list_error = Some(format!("{}: {}", t("err-send-failed"), e));
+                conn.user_management.set_user_list_error(format!(
+                    "{}: {}",
+                    t("err-send-failed"),
+                    e
+                ));
             }
         }
 
@@ -412,8 +478,7 @@ impl NexusApp {
         let create_group_id = conn.user_management.create_group_id;
         let create_revokes = create_group_id.and_then(|gid| {
             conn.user_management
-                .available_groups
-                .as_ref()
+                .loaded_groups()
                 .and_then(|groups| groups.iter().find(|g| g.id == gid))
                 .map(|group| {
                     // Revokes: group permissions that are unchecked in the form

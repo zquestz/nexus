@@ -44,9 +44,9 @@ use iced::{Center, Element, Fill};
 use crate::i18n::{t, t_args};
 use crate::icon;
 use crate::style::{
-    CONTENT_MAX_WIDTH, CONTENT_PADDING, DETAIL_TEXT_SIZE, ELEMENT_SPACING, ICON_BUTTON_PADDING,
-    SCROLLBAR_PADDING, SIDEBAR_ACTION_ICON_SIZE, SMALL_SPACING, SPACER_SIZE_SMALL, TEXT_SIZE,
-    TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    CONTENT_MAX_WIDTH, CONTENT_PADDING, DETAIL_TEXT_SIZE, ELEMENT_SPACING, HEADING_BUTTON_PADDING,
+    ICON_SIZE, SCROLLBAR_PADDING, SMALL_SPACING, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     TRANSFER_ACTION_BUTTON_SIZE, TRANSFER_ACTION_ICON_SIZE, TRANSFER_ICON_SIZE,
     TRANSFER_INFO_SPACING, TRANSFER_ITEM_SPACING, TRANSFER_PROGRESS_BAR_HEIGHT,
     TRANSFER_PROGRESS_SPACING, TRANSFER_ROW_PADDING, alternating_row_style,
@@ -429,13 +429,13 @@ pub fn transfers_view<'a>(manager: &'a TransferManager) -> Element<'a, Message> 
 
     // Clear Inactive button (in title row) - always visible, disabled when no inactive transfers
     let clear_inactive_btn: Element<'a, Message> = {
-        let trash_icon = container(icon::trash().size(SIDEBAR_ACTION_ICON_SIZE))
-            .width(SIDEBAR_ACTION_ICON_SIZE)
-            .height(SIDEBAR_ACTION_ICON_SIZE)
+        let trash_icon = container(icon::trash().size(ICON_SIZE))
+            .width(ICON_SIZE)
+            .height(ICON_SIZE)
             .align_x(alignment::Horizontal::Center)
             .align_y(alignment::Vertical::Center);
 
-        let btn = button(trash_icon).padding(ICON_BUTTON_PADDING);
+        let btn = button(trash_icon).padding(HEADING_BUTTON_PADDING);
 
         let btn = if has_inactive {
             btn.on_press(Message::TransferClearInactive)
@@ -458,8 +458,7 @@ pub fn transfers_view<'a>(manager: &'a TransferManager) -> Element<'a, Message> 
 
     // Title row with clear inactive button on the right
     // We add an invisible spacer on the left to balance the button width for proper centering
-    let button_width =
-        SIDEBAR_ACTION_ICON_SIZE + ICON_BUTTON_PADDING.left + ICON_BUTTON_PADDING.right;
+    let button_width = ICON_SIZE + HEADING_BUTTON_PADDING.left + HEADING_BUTTON_PADDING.right;
     let title_row: Element<'a, Message> = row![
         Space::new().width(SCROLLBAR_PADDING),
         Space::new().width(button_width), // Balance the button on the right

@@ -23,18 +23,37 @@ pub const TOOLBAR_PADDING_HORIZONTAL: f32 = 20.0;
 /// Toolbar vertical padding
 pub const TOOLBAR_PADDING_VERTICAL: f32 = 8.0;
 
-/// Icon button padding (vertical)
-pub const ICON_BUTTON_PADDING_VERTICAL: f32 = 8.0;
+/// Heading-button vertical padding (for action icons sitting in or
+/// adjacent to a panel title bar).
+pub const HEADING_BUTTON_PADDING_VERTICAL: f32 = 8.0;
 
-/// Icon button padding (horizontal)
-pub const ICON_BUTTON_PADDING_HORIZONTAL: f32 = 4.0;
+/// Heading-button horizontal padding.
+pub const HEADING_BUTTON_PADDING_HORIZONTAL: f32 = 4.0;
 
-/// Icon button padding (combined for symmetric buttons)
-pub const ICON_BUTTON_PADDING: iced::Padding = iced::Padding {
-    top: ICON_BUTTON_PADDING_VERTICAL,
-    right: ICON_BUTTON_PADDING_HORIZONTAL,
-    bottom: ICON_BUTTON_PADDING_VERTICAL,
-    left: ICON_BUTTON_PADDING_HORIZONTAL,
+/// Padding for "heading" action buttons — singleton action icons that
+/// sit in or adjacent to a panel title bar (news / transfers /
+/// connection monitor / server list / files-panel "+" / user list).
+/// Asymmetric (taller than wide) because they're isolated buttons that
+/// benefit from extra vertical breathing room.
+///
+/// For *rows* of action icons forming a toolbar, use
+/// [`TOOLBAR_BUTTON_PADDING`] instead.
+pub const HEADING_BUTTON_PADDING: iced::Padding = iced::Padding {
+    top: HEADING_BUTTON_PADDING_VERTICAL,
+    right: HEADING_BUTTON_PADDING_HORIZONTAL,
+    bottom: HEADING_BUTTON_PADDING_VERTICAL,
+    left: HEADING_BUTTON_PADDING_HORIZONTAL,
+};
+
+/// Padding for "toolbar" action buttons — buttons sitting in a
+/// horizontal row of action icons above panel content (file browser
+/// toolbar, user-management tab toolbars). Symmetric so adjacent
+/// buttons read as a tightly-packed compact row.
+pub const TOOLBAR_BUTTON_PADDING: iced::Padding = iced::Padding {
+    top: 5.0,
+    right: 5.0,
+    bottom: 5.0,
+    left: 5.0,
 };
 
 /// Close button padding (left padding only, for close icon in tabs)
@@ -210,9 +229,9 @@ pub const USER_INFO_AVATAR_SIZE: f32 = 64.0;
 
 /// Title row height for panels with action buttons (matches news/users panels)
 ///
-/// Calculated as: SIDEBAR_ACTION_ICON_SIZE (18.0) + vertical padding from ICON_BUTTON_PADDING
+/// Calculated as: ICON_SIZE (18.0) + vertical padding from HEADING_BUTTON_PADDING
 /// Note: Uses hardcoded value to avoid circular dependency with icons module.
-pub const TITLE_ROW_HEIGHT_WITH_ACTION: f32 = 18.0 + ICON_BUTTON_PADDING_VERTICAL * 2.0;
+pub const TITLE_ROW_HEIGHT_WITH_ACTION: f32 = 18.0 + HEADING_BUTTON_PADDING_VERTICAL * 2.0;
 
 /// Spacing between avatar and username in user info panel
 pub const USER_INFO_AVATAR_SPACING: f32 = 12.0;
@@ -291,12 +310,6 @@ pub const TRANSFER_PROGRESS_SPACING: f32 = 4.0;
 // ============================================================================
 // File Browser
 // ============================================================================
-
-/// Icon size for file browser toolbar buttons (Home, Refresh, Up)
-pub const FILE_TOOLBAR_ICON_SIZE: f32 = 16.0;
-
-/// Button padding for file browser toolbar buttons (compact)
-pub const FILE_TOOLBAR_BUTTON_PADDING: f32 = BUTTON_PADDING / 2.0;
 
 /// Icon size for file/folder icons in the file list
 pub const FILE_LIST_ICON_SIZE: f32 = 16.0;

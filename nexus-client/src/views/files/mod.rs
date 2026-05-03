@@ -36,12 +36,11 @@ use nexus_common::protocol::{FileEntry, FileSearchResult};
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    CONTENT_MAX_WIDTH, CONTENT_PADDING, DROP_OVERLAY_ICON_SIZE, ICON_BUTTON_PADDING, NO_SPACING,
-    SCROLLBAR_PADDING, SIDEBAR_ACTION_ICON_SIZE, SMALL_PADDING, SPACER_SIZE_MEDIUM,
-    SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, content_background_style, drop_overlay_style,
-    error_text_style, muted_text_style, shaped_text, shaped_text_wrapped, tooltip_container_style,
-    transparent_icon_button_style,
+    CONTENT_MAX_WIDTH, CONTENT_PADDING, DROP_OVERLAY_ICON_SIZE, HEADING_BUTTON_PADDING, ICON_SIZE,
+    NO_SPACING, SCROLLBAR_PADDING, SMALL_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE,
+    TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    content_background_style, drop_overlay_style, error_text_style, muted_text_style, shaped_text,
+    shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::{
     ClipboardOperation, FileSortColumn, FilesManagementState, Message, ScrollableId,
@@ -231,16 +230,16 @@ pub fn files_view<'a>(
 
     // New tab button (icon style like news create button)
     let new_tab_btn: Element<'_, Message> = {
-        let add_icon = container(icon::plus().size(SIDEBAR_ACTION_ICON_SIZE))
-            .width(SIDEBAR_ACTION_ICON_SIZE)
-            .height(SIDEBAR_ACTION_ICON_SIZE)
+        let add_icon = container(icon::plus().size(ICON_SIZE))
+            .width(ICON_SIZE)
+            .height(ICON_SIZE)
             .align_x(alignment::Horizontal::Center)
             .align_y(alignment::Vertical::Center);
 
         tooltip(
             button(add_icon)
                 .on_press(Message::FileTabNew)
-                .padding(ICON_BUTTON_PADDING)
+                .padding(HEADING_BUTTON_PADDING)
                 .style(transparent_icon_button_style),
             container(shaped_text(t("tooltip-new-tab")).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
@@ -254,8 +253,7 @@ pub fn files_view<'a>(
 
     // Title row with new tab button on the right
     // We add an invisible spacer on the left to balance the button width for proper centering
-    let button_width =
-        SIDEBAR_ACTION_ICON_SIZE + ICON_BUTTON_PADDING.left + ICON_BUTTON_PADDING.right;
+    let button_width = ICON_SIZE + HEADING_BUTTON_PADDING.left + HEADING_BUTTON_PADDING.right;
     let title_row: Element<'_, Message> = row![
         Space::new().width(SCROLLBAR_PADDING),
         Space::new().width(button_width), // Balance the new tab button on the right

@@ -44,13 +44,15 @@ impl NexusApp {
 
         if success {
             // Always update the available_groups cache
-            conn.user_management.available_groups = Some(groups.unwrap_or_default());
+            conn.user_management.available_groups = Some(Ok(groups.unwrap_or_default()));
             return Task::none();
         }
 
         // On error, show in the appropriate place
         if matches!(routing, Some(ResponseRouting::PopulateGroupManagementList)) {
-            conn.user_management.group_management.list_error = Some(error.unwrap_or_default());
+            // List-fetch failure — store inline so the Groups tab content
+            // shows it in place of the table (mirrors the users-list shape).
+            conn.user_management.available_groups = Some(Err(error.unwrap_or_default()));
         } else {
             return self.add_active_tab_message(
                 connection_id,
@@ -144,8 +146,8 @@ impl NexusApp {
         } else {
             // On error, show in the appropriate place
             if matches!(routing, Some(ResponseRouting::PopulateGroupManagementEdit)) {
-                conn.user_management.group_management.list_error =
-                    Some(data.error.unwrap_or_default());
+                conn.user_management
+                    .set_group_list_error(data.error.unwrap_or_default());
             } else {
                 return self.add_active_tab_message(
                     connection_id,
@@ -287,7 +289,7 @@ impl NexusApp {
                     .track(message_id, ResponseRouting::PopulateGroupManagementList);
             }
             Err(e) => {
-                conn.user_management.group_management.list_error = Some(e.to_string());
+                conn.user_management.available_groups = Some(Err(e.to_string()));
             }
         }
 

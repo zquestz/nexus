@@ -8,14 +8,15 @@ use std::hash::{Hash, Hasher};
 use iced::widget::button as btn;
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    Column, Space, button, checkbox, container, lazy, row, scrollable, table, text, text_input,
+    Column, Space, button, checkbox, column, container, lazy, row, scrollable, table, text,
+    text_input,
 };
 use iced::{Center, Element, Fill};
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::GroupInfo;
 
-use super::constants::{PERMISSION_GROUP_DELETE, PERMISSION_GROUP_EDIT};
-use super::helpers::t_args;
+use super::constants::{PERMISSION_GROUP_CREATE, PERMISSION_GROUP_DELETE, PERMISSION_GROUP_EDIT};
+use super::helpers::{t_args, tab_toolbar_icon_button};
 use super::layout::scrollable_panel;
 use crate::i18n::{t, translate_permission};
 use crate::icon;
@@ -348,6 +349,34 @@ fn lazy_group_table(deps: GroupTableDeps) -> Element<'static, Message> {
 // List Content (for Groups tab)
 // ============================================================================
 
+/// Build the Groups tab toolbar (Create Group + Refresh icon buttons).
+///
+/// Create Group is permission-gated on `group_create`. Refresh is
+/// disabled while a list fetch is in flight (`available_groups.is_none()`).
+/// After a failed fetch, `available_groups` is `Some(Err(_))` so refresh
+/// re-enables for retry — same shape as the users-list flow.
+fn groups_tab_toolbar<'a>(
+    conn: &'a ServerConnection,
+    user_management: &'a UserManagementState,
+) -> Element<'a, Message> {
+    let create_btn = tab_toolbar_icon_button(
+        icon::plus_circled(),
+        "tooltip-create-group",
+        Message::GroupManagementShowCreate,
+        conn.has_permission(PERMISSION_GROUP_CREATE),
+    );
+    let refresh_btn = tab_toolbar_icon_button(
+        icon::refresh(),
+        "tooltip-refresh",
+        Message::UserManagementRefreshGroups,
+        user_management.available_groups.is_some(),
+    );
+
+    row![create_btn, refresh_btn]
+        .spacing(SPACER_SIZE_SMALL)
+        .into()
+}
+
 /// Build the group list content for inside the Groups tab
 ///
 /// Returns a self-contained element with a sortable table of groups.
@@ -358,20 +387,9 @@ pub fn group_list_content<'a>(
     let can_edit = conn.has_permission(PERMISSION_GROUP_EDIT);
     let can_delete = conn.has_permission(PERMISSION_GROUP_DELETE);
 
-    if let Some(error) = &user_management.group_management.list_error {
-        // Error state
-        return container(
-            shaped_text_wrapped(error)
-                .size(TEXT_SIZE)
-                .style(error_text_style),
-        )
-        .width(Fill)
-        .center_x(Fill)
-        .padding(SPACER_SIZE_SMALL)
-        .into();
-    }
+    let toolbar = groups_tab_toolbar(conn, user_management);
 
-    match &user_management.available_groups {
+    let body: Element<'a, Message> = match &user_management.available_groups {
         None => {
             // Loading state
             container(
@@ -384,7 +402,19 @@ pub fn group_list_content<'a>(
             .padding(SPACER_SIZE_SMALL)
             .into()
         }
-        Some(groups) => {
+        Some(Err(error)) => {
+            // Error state — list fetch failed
+            container(
+                shaped_text_wrapped(error)
+                    .size(TEXT_SIZE)
+                    .style(error_text_style),
+            )
+            .width(Fill)
+            .center_x(Fill)
+            .padding(SPACER_SIZE_SMALL)
+            .into()
+        }
+        Some(Ok(groups)) => {
             if groups.is_empty() {
                 // Empty state
                 container(
@@ -413,7 +443,12 @@ pub fn group_list_content<'a>(
                 scrollable(lazy_group_table(deps)).height(Fill).into()
             }
         }
-    }
+    };
+
+    column![toolbar, body]
+        .spacing(SPACER_SIZE_SMALL)
+        .height(Fill)
+        .into()
 }
 
 // ============================================================================

@@ -9,11 +9,10 @@ use super::helpers::{parse_breadcrumbs, truncate_segment};
 use crate::i18n::{t, t_args};
 use crate::icon;
 use crate::style::{
-    BREADCRUMB_MAX_SEGMENT_LENGTH, FILE_TOOLBAR_BUTTON_PADDING, FILE_TOOLBAR_ICON_SIZE,
-    INPUT_PADDING, NO_SPACING, SMALL_SPACING, SPACER_SIZE_SMALL, TEXT_SIZE,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
-    disabled_icon_button_style, muted_text_style, shaped_text, tooltip_container_style,
-    transparent_icon_button_style,
+    BREADCRUMB_MAX_SEGMENT_LENGTH, ICON_SIZE, INPUT_PADDING, NO_SPACING, SMALL_SPACING,
+    SPACER_SIZE_SMALL, TEXT_SIZE, TOOLBAR_BUTTON_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, disabled_icon_button_style, muted_text_style, shaped_text,
+    tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::{FilesManagementState, InputId, Message};
 
@@ -102,8 +101,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
         t("tooltip-files-home")
     };
     let home_button = tooltip(
-        button(icon::home().size(FILE_TOOLBAR_ICON_SIZE))
-            .padding(FILE_TOOLBAR_BUTTON_PADDING)
+        button(icon::home().size(ICON_SIZE))
+            .padding(TOOLBAR_BUTTON_PADDING)
             .style(transparent_icon_button_style)
             .on_press(Message::FileNavigateHome),
         container(shaped_text(home_tooltip).size(TOOLTIP_TEXT_SIZE))
@@ -116,8 +115,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
 
     // Refresh button - always enabled
     let refresh_button = tooltip(
-        button(icon::refresh().size(FILE_TOOLBAR_ICON_SIZE))
-            .padding(FILE_TOOLBAR_BUTTON_PADDING)
+        button(icon::refresh().size(ICON_SIZE))
+            .padding(TOOLBAR_BUTTON_PADDING)
             .style(transparent_icon_button_style)
             .on_press(Message::FileRefresh),
         container(shaped_text(t("tooltip-files-refresh")).size(TOOLTIP_TEXT_SIZE))
@@ -131,8 +130,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     // Up button - enabled only when not at home and not searching
     let up_button: Element<'a, Message> = if state.can_go_up && !state.is_searching {
         tooltip(
-            button(icon::up_dir().size(FILE_TOOLBAR_ICON_SIZE))
-                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            button(icon::up_dir().size(ICON_SIZE))
+                .padding(TOOLBAR_BUTTON_PADDING)
                 .style(transparent_icon_button_style)
                 .on_press(Message::FileNavigateUp),
             container(shaped_text(t("tooltip-files-up")).size(TOOLTIP_TEXT_SIZE))
@@ -145,8 +144,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
         .into()
     } else {
         // Disabled up button (no tooltip needed for disabled state)
-        button(icon::up_dir().size(FILE_TOOLBAR_ICON_SIZE))
-            .padding(FILE_TOOLBAR_BUTTON_PADDING)
+        button(icon::up_dir().size(ICON_SIZE))
+            .padding(TOOLBAR_BUTTON_PADDING)
             .style(disabled_icon_button_style)
             .into()
     };
@@ -163,8 +162,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
         };
 
         let root_toggle_button = tooltip(
-            button(icon::folder_root().size(FILE_TOOLBAR_ICON_SIZE))
-                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            button(icon::folder_root().size(ICON_SIZE))
+                .padding(TOOLBAR_BUTTON_PADDING)
                 .style(transparent_icon_button_style)
                 .on_press(Message::FileToggleRoot),
             container(shaped_text(root_toggle_tooltip).size(TOOLTIP_TEXT_SIZE))
@@ -194,8 +193,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
             t("tooltip-files-show-hidden")
         };
         tooltip(
-            button(hidden_icon.size(FILE_TOOLBAR_ICON_SIZE))
-                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            button(hidden_icon.size(ICON_SIZE))
+                .padding(TOOLBAR_BUTTON_PADDING)
                 .style(transparent_icon_button_style)
                 .on_press(Message::FileToggleHidden),
             container(shaped_text(hidden_tooltip).size(TOOLTIP_TEXT_SIZE))
@@ -207,8 +206,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
         .padding(TOOLTIP_PADDING)
         .into()
     } else {
-        button(hidden_icon.size(FILE_TOOLBAR_ICON_SIZE))
-            .padding(FILE_TOOLBAR_BUTTON_PADDING)
+        button(hidden_icon.size(ICON_SIZE))
+            .padding(TOOLBAR_BUTTON_PADDING)
             .style(disabled_icon_button_style)
             .into()
     };
@@ -220,8 +219,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     let download_all_button: Element<'a, Message> =
         if state.has_file_download && !state.is_loading && !state.is_searching {
             tooltip(
-                button(icon::download().size(FILE_TOOLBAR_ICON_SIZE))
-                    .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                button(icon::download().size(ICON_SIZE))
+                    .padding(TOOLBAR_BUTTON_PADDING)
                     .style(transparent_icon_button_style)
                     .on_press(Message::FileDownloadAll(state.current_path.to_string())),
                 container(shaped_text(t("tooltip-download-all")).size(TOOLTIP_TEXT_SIZE))
@@ -234,8 +233,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
             .into()
         } else {
             // Disabled download button (shown but not clickable)
-            button(icon::download().size(FILE_TOOLBAR_ICON_SIZE))
-                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            button(icon::download().size(ICON_SIZE))
+                .padding(TOOLBAR_BUTTON_PADDING)
                 .style(disabled_icon_button_style)
                 .into()
         };
@@ -247,8 +246,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     let upload_button: Element<'a, Message> =
         if state.has_file_upload && state.can_upload && !state.is_loading && !state.is_searching {
             tooltip(
-                button(icon::upload().size(FILE_TOOLBAR_ICON_SIZE))
-                    .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                button(icon::upload().size(ICON_SIZE))
+                    .padding(TOOLBAR_BUTTON_PADDING)
                     .style(transparent_icon_button_style)
                     .on_press(Message::FileUpload(state.current_path.to_string())),
                 container(shaped_text(t("tooltip-upload")).size(TOOLTIP_TEXT_SIZE))
@@ -261,8 +260,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
             .into()
         } else if state.has_file_upload {
             // Disabled upload button (shown but not clickable when not in upload folder)
-            button(icon::upload().size(FILE_TOOLBAR_ICON_SIZE))
-                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            button(icon::upload().size(ICON_SIZE))
+                .padding(TOOLBAR_BUTTON_PADDING)
                 .style(disabled_icon_button_style)
                 .into()
         } else {
@@ -277,8 +276,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     let new_dir_button: Element<'a, Message> =
         if state.can_create_dir && !state.is_loading && !state.is_searching {
             tooltip(
-                button(icon::folder_empty().size(FILE_TOOLBAR_ICON_SIZE))
-                    .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                button(icon::folder_empty().size(ICON_SIZE))
+                    .padding(TOOLBAR_BUTTON_PADDING)
                     .style(transparent_icon_button_style)
                     .on_press(Message::FileNewDirectoryClicked),
                 container(shaped_text(t("tooltip-files-new-directory")).size(TOOLTIP_TEXT_SIZE))
@@ -291,8 +290,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
             .into()
         } else {
             // Disabled new directory button
-            button(icon::folder_empty().size(FILE_TOOLBAR_ICON_SIZE))
-                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            button(icon::folder_empty().size(ICON_SIZE))
+                .padding(TOOLBAR_BUTTON_PADDING)
                 .style(disabled_icon_button_style)
                 .into()
         };
@@ -304,8 +303,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     let paste_button: Element<'a, Message> =
         if state.has_clipboard && !state.is_loading && !state.is_searching {
             tooltip(
-                button(icon::paste().size(FILE_TOOLBAR_ICON_SIZE))
-                    .padding(FILE_TOOLBAR_BUTTON_PADDING)
+                button(icon::paste().size(ICON_SIZE))
+                    .padding(TOOLBAR_BUTTON_PADDING)
                     .style(transparent_icon_button_style)
                     .on_press(Message::FilePaste),
                 container(shaped_text(t("tooltip-files-paste")).size(TOOLTIP_TEXT_SIZE))
@@ -318,8 +317,8 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
             .into()
         } else {
             // Disabled paste button
-            button(icon::paste().size(FILE_TOOLBAR_ICON_SIZE))
-                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            button(icon::paste().size(ICON_SIZE))
+                .padding(TOOLBAR_BUTTON_PADDING)
                 .style(disabled_icon_button_style)
                 .into()
         };
@@ -343,14 +342,14 @@ pub(super) fn search_input_row<'a>(
         .width(Fill);
 
     let search_button: Element<'_, Message> = if search_loading {
-        button(icon::search().size(FILE_TOOLBAR_ICON_SIZE))
-            .padding(FILE_TOOLBAR_BUTTON_PADDING)
+        button(icon::search().size(ICON_SIZE))
+            .padding(TOOLBAR_BUTTON_PADDING)
             .style(disabled_icon_button_style)
             .into()
     } else {
         tooltip(
-            button(icon::search().size(FILE_TOOLBAR_ICON_SIZE))
-                .padding(FILE_TOOLBAR_BUTTON_PADDING)
+            button(icon::search().size(ICON_SIZE))
+                .padding(TOOLBAR_BUTTON_PADDING)
                 .style(transparent_icon_button_style)
                 .on_press(Message::FileSearchSubmit),
             container(shaped_text(t("tooltip-files-search")).size(TOOLTIP_TEXT_SIZE))
