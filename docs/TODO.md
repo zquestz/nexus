@@ -2,20 +2,20 @@
 
 ## Implementation Order (Pre-Launch)
 
-| #   | Feature                  | Effort | Status      |
-| --- | ------------------------ | ------ | ----------- |
-| 1   | Account groups           | Low    | ✅ Done     |
-| 2   | Password strength        | Low    | ✅ Done     |
-| 3   | Streaming hash transfers | Medium | ✅ Done     |
-| 4   | Boards                   | High   | Planned     |
-| 5   | File previews            | Low    | Planned     |
-| 6   | Tracker registration     | Medium | ✅ Done     |
-| 7   | Tracker discovery        | Low    | Planned     |
-| 8   | Speed limiting           | Medium | Planned     |
-| 9   | Flood protection         | Low    | ✅ Done     |
-| 10  | Server logs              | Medium | ✅ Done     |
-| 11  | Auto-away                | Low    | ✅ Done     |
-| 12  | Invite system            | Medium | Planned     |
+| #   | Feature                  | Effort | Status  |
+| --- | ------------------------ | ------ | ------- |
+| 1   | Account groups           | Low    | ✅ Done |
+| 2   | Password strength        | Low    | ✅ Done |
+| 3   | Streaming hash transfers | Medium | ✅ Done |
+| 4   | Boards                   | High   | Planned |
+| 5   | File previews            | Low    | Planned |
+| 6   | Tracker registration     | Medium | ✅ Done |
+| 7   | Tracker discovery        | Low    | Planned |
+| 8   | Speed limiting           | Medium | Planned |
+| 9   | Flood protection         | Low    | ✅ Done |
+| 10  | Server logs              | Medium | ✅ Done |
+| 11  | Auto-away                | Low    | ✅ Done |
+| 12  | Invite system            | Medium | Planned |
 
 **Post-launch:** IRC gateway (if demand exists)
 
