@@ -22,6 +22,7 @@ mod news;
 mod permissions;
 mod server_info;
 mod time_format;
+mod tracker_admin;
 mod trust_create;
 mod trust_delete;
 mod trust_list;
@@ -557,6 +558,67 @@ impl NexusApp {
                 ips,
                 nickname,
             } => self.handle_trust_delete_response(connection_id, success, error, ips, nickname),
+
+            ServerMessage::TrackerAcceptFingerprintResponse {
+                success,
+                error,
+                id: _,
+                name,
+            } => self.handle_tracker_accept_fingerprint_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                name,
+            ),
+
+            ServerMessage::TrackerAddResponse {
+                success,
+                error,
+                id: _,
+                name,
+            } => self.handle_tracker_add_response(connection_id, message_id, success, error, name),
+
+            ServerMessage::TrackerEditResponse {
+                success,
+                error,
+                tracker,
+            } => self.handle_tracker_edit_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                tracker,
+            ),
+
+            ServerMessage::TrackerListResponse {
+                success,
+                error,
+                trackers,
+            } => self.handle_tracker_list_response(
+                connection_id,
+                message_id,
+                success,
+                error,
+                trackers,
+            ),
+
+            ServerMessage::TrackerRemoveResponse {
+                success,
+                error,
+                name,
+            } => {
+                self.handle_tracker_remove_response(connection_id, message_id, success, error, name)
+            }
+
+            ServerMessage::TrackerUpdateResponse {
+                success,
+                error,
+                id: _,
+                name,
+            } => {
+                self.handle_tracker_update_response(connection_id, message_id, success, error, name)
+            }
 
             ServerMessage::TrustListResponse {
                 success,

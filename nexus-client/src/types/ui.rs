@@ -181,6 +181,28 @@ pub enum InputId {
     RenameName,
     /// Files panel: Search input
     FileSearchInput,
+    /// Tracker management add form: Name input
+    AddTrackerName,
+    /// Tracker management add form: Address input
+    AddTrackerAddress,
+    /// Tracker management add form: Port input
+    AddTrackerPort,
+    /// Tracker management add form: Fingerprint input
+    AddTrackerFingerprint,
+    /// Tracker management add form: Password input
+    AddTrackerPassword,
+    /// Tracker management edit form: Name input
+    EditTrackerName,
+    /// Tracker management edit form: Address input
+    EditTrackerAddress,
+    /// Tracker management edit form: Port input
+    EditTrackerPort,
+    /// Tracker management edit form: Fingerprint input
+    EditTrackerFingerprint,
+    /// Tracker management edit form: Password input
+    EditTrackerPassword,
+    /// Group management edit form: Name input
+    EditGroupName,
 }
 
 impl From<InputId> for Id {
@@ -228,6 +250,17 @@ impl From<InputId> for Id {
             InputId::NewDirectoryName => "InputId::NewDirectoryName",
             InputId::RenameName => "InputId::RenameName",
             InputId::FileSearchInput => "InputId::FileSearchInput",
+            InputId::AddTrackerName => "InputId::AddTrackerName",
+            InputId::AddTrackerAddress => "InputId::AddTrackerAddress",
+            InputId::AddTrackerPort => "InputId::AddTrackerPort",
+            InputId::AddTrackerFingerprint => "InputId::AddTrackerFingerprint",
+            InputId::AddTrackerPassword => "InputId::AddTrackerPassword",
+            InputId::EditTrackerName => "InputId::EditTrackerName",
+            InputId::EditTrackerAddress => "InputId::EditTrackerAddress",
+            InputId::EditTrackerPort => "InputId::EditTrackerPort",
+            InputId::EditTrackerFingerprint => "InputId::EditTrackerFingerprint",
+            InputId::EditTrackerPassword => "InputId::EditTrackerPassword",
+            InputId::EditGroupName => "InputId::EditGroupName",
         })
     }
 }

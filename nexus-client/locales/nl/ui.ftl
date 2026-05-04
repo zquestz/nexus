@@ -13,7 +13,7 @@ button-create = Aanmaken
 button-edit = Bewerken
 button-update = Bijwerken
 
-button-accept-new-certificate = Nieuw Certificaat Accepteren
+button-accept-new-certificate = Accepteren
 button-close = Sluiten
 button-choose-avatar = Avatar Kiezen
 button-clear-avatar = Wissen
@@ -285,6 +285,7 @@ tooltip-create-user = Gebruiker Aanmaken
 tooltip-create-group = Groep Aanmaken
 tooltip-create-news = Nieuwsbericht Aanmaken
 tooltip-delete = Verwijderen
+tooltip-refresh = Vernieuwen
 context-menu-download = Downloaden
 context-menu-upload = Uploaden
 context-menu-open = Openen
@@ -1212,3 +1213,98 @@ toast-uploads-queued = { $count } { $count ->
     [one] upload
    *[other] uploads
 } in wachtrij
+
+# =============================================================================
+# Server Info Panel
+# =============================================================================
+
+# Tabs
+tab-config = Configuratie
+tab-trackers = Trackers
+
+# =============================================================================
+# Tracker Management
+# =============================================================================
+
+# Buttons
+button-add = Toevoegen
+button-remove = Verwijderen
+button-accept-fingerprint = Accepteren
+
+# Titles
+title-add-tracker = Tracker toevoegen
+title-edit-tracker = Tracker bewerken
+title-accept-fingerprint = Vingerafdruk accepteren
+
+# Labels
+label-address = Adres:
+label-tracker-password = Wachtwoord:
+label-fingerprint-unpinned = (niet vastgezet)
+
+# Placeholders
+placeholder-tracker-name = Naam van tracker
+placeholder-tracker-address = tracker.example.com
+placeholder-tracker-fingerprint = SHA-256-vingerafdruk (optioneel)
+placeholder-tracker-password = Wachtwoord (optioneel)
+
+# Tooltips
+tooltip-add-tracker = Tracker toevoegen
+tooltip-edit-server-info = Serverinfo bewerken
+tooltip-tracker-connected = Verbonden
+tooltip-tracker-disconnected = Verbroken
+tooltip-tracker-fingerprint-pending = Vingerafdruk Komt Niet Overeen
+
+# Table columns
+col-status = Status
+col-address = Adres
+
+# Empty / loading states
+tracker-management-loading = Trackers laden…
+tracker-management-no-trackers = Geen trackers geconfigureerd
+
+# Dialog
+dialog-remove-tracker-title = Tracker verwijderen
+dialog-remove-tracker-body = Weet je zeker dat je tracker "{ $name }" wilt verwijderen? Je server publiceert dan geen registratie meer op deze tracker. De vermelding kan later opnieuw worden toegevoegd.
+tracker-fingerprint-warning = De tracker presenteerde een nieuwe certificaatvingerafdruk. Verifieer deze via een vertrouwd kanaal (website van de tracker-operator, ondertekende aankondiging, enzovoort) voordat je accepteert. Accepteren maakt de nieuwe vingerafdruk de vastgezette waarde voor deze server.
+
+# Toasts
+toast-fingerprint-copied = Vingerafdruk gekopieerd
+toast-tracker-added = Tracker toegevoegd
+toast-tracker-added-name = Tracker "{ $name }" toegevoegd
+toast-tracker-updated = Tracker bijgewerkt
+toast-tracker-updated-name = Tracker "{ $name }" bijgewerkt
+toast-tracker-removed = Tracker verwijderd
+toast-tracker-removed-name = Tracker "{ $name }" verwijderd
+toast-tracker-fingerprint-accepted = Vingerafdruk geaccepteerd
+toast-tracker-fingerprint-stale = Vingerafdrukcontrole niet meer in behandeling
+toast-tracker-fingerprint-accepted-name = Vingerafdruk geaccepteerd voor "{ $name }"
+
+# Errors
+err-tracker-name-empty = Naam van tracker is verplicht
+err-tracker-name-too-long = Trackernaam is te lang (max { $max } bytes)
+err-tracker-name-contains-newlines = Naam van tracker mag geen regeleinden bevatten
+err-tracker-name-invalid-characters = Naam van tracker bevat ongeldige stuurtekens
+err-tracker-address-empty = Adres van tracker is verplicht
+err-tracker-address-too-long = Het trackeradres is te lang (maximaal { $max } bytes)
+err-tracker-address-contains-scheme = Het trackeradres mag geen URL-schema bevatten
+err-tracker-address-contains-brackets = Het trackeradres mag geen haakjes bevatten
+err-tracker-address-contains-path = Het trackeradres mag geen pad bevatten
+err-tracker-address-contains-userinfo = Het trackeradres mag geen gebruikersnaam bevatten
+err-tracker-address-contains-whitespace = Het trackeradres mag geen spaties bevatten
+err-tracker-address-contains-port = Het trackeradres mag geen poort bevatten
+err-tracker-address-contains-zone-id = Het trackeradres mag geen IPv6-zone-identificatie bevatten
+err-tracker-address-invalid-format = Het trackeradres is geen geldige hostnaam of IP-adres
+err-tracker-fingerprint-invalid = Vingerafdruk moet 32 hoofdletter-hexparen door dubbelepunten gescheiden zijn (95 tekens)
+err-tracker-password-too-long = Trackerwachtwoord is te lang (max { $max } bytes)
+err-tracker-add-failed = Kan tracker niet toevoegen
+err-tracker-update-failed = Kan tracker niet bijwerken
+err-tracker-remove-failed = Kan tracker niet verwijderen
+err-tracker-accept-fingerprint-failed = Kan vingerafdruk niet accepteren
+err-tracker-edit-no-payload = Server heeft geen tracker-details teruggegeven
+
+# Permissions
+permission-tracker_list = Trackerlijst
+permission-tracker_add = Tracker Toevoegen
+permission-tracker_edit = Tracker Bewerken
+permission-tracker_remove = Tracker Verwijderen
+

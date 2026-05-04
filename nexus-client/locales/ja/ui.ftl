@@ -12,7 +12,7 @@ button-save = 保存
 button-create = 作成
 button-edit = 編集
 button-update = 更新
-button-accept-new-certificate = 新しい証明書を受け入れる
+button-accept-new-certificate = 受け入れる
 button-close = 閉じる
 button-choose-avatar = アバターを選択
 button-clear-avatar = クリア
@@ -193,6 +193,10 @@ permission-user_delete = ユーザー削除
 permission-user_edit = ユーザー編集
 permission-user_kick = ユーザーキック
 permission-user_message = ユーザーメッセージ
+permission-tracker_list = トラッカーリスト
+permission-tracker_add = トラッカー追加
+permission-tracker_edit = トラッカー編集
+permission-tracker_remove = トラッカー削除
 permission-news_list = ニュース一覧
 permission-news_create = ニュース作成
 permission-news_edit = ニュース編集
@@ -277,6 +281,7 @@ tooltip-create-user = ユーザーを作成
 tooltip-create-group = グループ作成
 tooltip-create-news = 投稿を作成
 tooltip-delete = 削除
+tooltip-refresh = 更新
 context-menu-download = ダウンロード
 context-menu-upload = アップロード
 context-menu-open = 開く
@@ -1160,3 +1165,91 @@ toast-upload-started = { $filename } をアップロード中
 toast-upload-queued = アップロード待ち: { $filename }
 toast-uploads-started = { $count } 個のファイルをアップロード中
 toast-uploads-queued = { $count } 個のアップロード待ち
+
+# =============================================================================
+# Server Info Panel
+# =============================================================================
+
+# Tabs
+tab-config = 設定
+tab-trackers = トラッカー
+
+# =============================================================================
+# Tracker Management
+# =============================================================================
+
+# Buttons
+button-add = 追加
+button-remove = 削除
+button-accept-fingerprint = 受け入れる
+
+# Columns
+col-status = 状態
+col-address = アドレス
+
+# Titles
+title-add-tracker = トラッカー追加
+title-edit-tracker = トラッカー編集
+title-accept-fingerprint = フィンガープリントを承認
+
+# Labels
+label-address = アドレス:
+label-tracker-password = パスワード:
+label-fingerprint-unpinned = (固定なし)
+
+# Placeholders
+placeholder-tracker-name = トラッカー名
+placeholder-tracker-address = tracker.example.com
+placeholder-tracker-fingerprint = SHA-256 フィンガープリント（任意）
+placeholder-tracker-password = パスワード（任意）
+
+# Tooltips
+tooltip-add-tracker = トラッカー追加
+tooltip-edit-server-info = サーバー情報を編集
+tooltip-tracker-connected = 接続済み
+tooltip-tracker-disconnected = 未接続
+tooltip-tracker-fingerprint-pending = フィンガープリント不一致
+
+# States
+tracker-management-loading = トラッカーを読み込み中…
+tracker-management-no-trackers = トラッカーが設定されていません
+
+# Dialog
+dialog-remove-tracker-title = トラッカーを削除
+dialog-remove-tracker-body = トラッカー「{ $name }」を削除しますか？このトラッカーへのサーバー登録の公開を停止します。後で再度追加できます。
+tracker-fingerprint-warning = トラッカーが新しい証明書のフィンガープリントを提示しました。承認する前に、信頼できる経路（トラッカー運営者のウェブサイト、署名された通知など）で検証してください。承認すると、新しいフィンガープリントがこのサーバーで使用される固定値に昇格されます。
+
+# Toasts
+toast-fingerprint-copied = フィンガープリントをコピーしました
+toast-tracker-added = トラッカーを追加しました
+toast-tracker-added-name = トラッカー「{ $name }」を追加しました
+toast-tracker-updated = トラッカーを更新しました
+toast-tracker-updated-name = トラッカー「{ $name }」を更新しました
+toast-tracker-removed = トラッカーを削除しました
+toast-tracker-removed-name = トラッカー「{ $name }」を削除しました
+toast-tracker-fingerprint-accepted = フィンガープリントを承認しました
+toast-tracker-fingerprint-stale = フィンガープリント確認は保留されていません
+toast-tracker-fingerprint-accepted-name = 「{ $name }」のフィンガープリントを承認しました
+
+# Errors
+err-tracker-name-empty = トラッカー名を入力してください
+err-tracker-name-too-long = トラッカー名が長すぎます（最大 { $max } バイト）
+err-tracker-name-contains-newlines = トラッカー名に改行を含めることはできません
+err-tracker-name-invalid-characters = トラッカー名に無効な制御文字が含まれています
+err-tracker-address-empty = トラッカーアドレスを入力してください
+err-tracker-address-too-long = トラッカーアドレスが長すぎます（最大{ $max }バイト）
+err-tracker-address-contains-scheme = トラッカーアドレスにURLスキームを含めることはできません
+err-tracker-address-contains-brackets = トラッカーアドレスに角括弧を含めることはできません
+err-tracker-address-contains-path = トラッカーアドレスにパスを含めることはできません
+err-tracker-address-contains-userinfo = トラッカーアドレスにユーザー名を含めることはできません
+err-tracker-address-contains-whitespace = トラッカーアドレスに空白を含めることはできません
+err-tracker-address-contains-port = トラッカーアドレスにポートを含めることはできません
+err-tracker-address-contains-zone-id = トラッカーアドレスにIPv6ゾーン識別子を含めることはできません
+err-tracker-address-invalid-format = トラッカーアドレスは有効なホスト名またはIPアドレスではありません
+err-tracker-fingerprint-invalid = フィンガープリントは32組の大文字16進数をコロンで区切った形式（95文字）でなければなりません
+err-tracker-password-too-long = トラッカーのパスワードが長すぎます（最大 { $max } バイト）
+err-tracker-add-failed = トラッカーの追加に失敗しました
+err-tracker-update-failed = トラッカーの更新に失敗しました
+err-tracker-remove-failed = トラッカーの削除に失敗しました
+err-tracker-accept-fingerprint-failed = フィンガープリントの承認に失敗しました
+err-tracker-edit-no-payload = サーバーがトラッカーの詳細を返しませんでした

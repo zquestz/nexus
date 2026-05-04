@@ -16,7 +16,8 @@ use nexus_common::protocol::ChannelJoinInfo;
 use super::{
     ActivePanel, ChannelState, ChatMessage, ChatTab, ConnectionMonitorState, DisconnectDialogState,
     FilesManagementState, NewsManagementState, PasswordChangeState, ResponseRouting, ScrollState,
-    ServerInfoEditState, ServerInfoTab, UserInfo, UserManagementState, VoiceState,
+    ServerInfoEditState, ServerInfoTab, TrackerManagementState, UserInfo, UserManagementState,
+    VoiceState,
 };
 use crate::image::CachedImage;
 
@@ -256,6 +257,8 @@ pub struct ServerConnection {
     pub pending_requests: HashMap<MessageId, ResponseRouting>,
     /// Error message for broadcast operations
     pub broadcast_error: Option<String>,
+    /// Tracker management panel state (Trackers tab inside Server Info)
+    pub tracker_management: TrackerManagementState,
     /// User management panel state
     pub user_management: UserManagementState,
     /// User info panel data (None = loading, Some(Ok) = loaded, Some(Err) = error)
@@ -406,6 +409,7 @@ impl ServerConnection {
             scroll_states: HashMap::new(),
             pending_requests: HashMap::new(),
             broadcast_error: None,
+            tracker_management: TrackerManagementState::default(),
             user_management: UserManagementState::default(),
             user_info_data: None,
 

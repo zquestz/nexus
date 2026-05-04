@@ -866,6 +866,11 @@ pub const LOG_TRACKER_REGISTRATION_BACKOFF: &str = "Tracker registration backoff
 // Connection setup
 pub const LOG_TRACKER_REGISTRATION_INVALID_HOST: &str =
     "Tracker address could not be resolved as a hostname or IP literal";
+pub const LOG_TRACKER_REGISTRATION_DNS_FAILED: &str = "Tracker hostname DNS lookup failed";
+pub const LOG_TRACKER_REGISTRATION_DNS_TIMEOUT: &str =
+    "Tracker hostname DNS lookup exceeded timeout";
+pub const LOG_TRACKER_REGISTRATION_DNS_NO_RECORDS: &str =
+    "Tracker hostname DNS lookup returned no records";
 pub const LOG_TRACKER_REGISTRATION_TCP_FAILED: &str = "Tracker TCP connect failed";
 pub const LOG_TRACKER_REGISTRATION_TLS_FAILED: &str = "Tracker TLS handshake failed";
 pub const LOG_TRACKER_REGISTRATION_NO_PEER_CERTS: &str = "Tracker peer presented no certificates";

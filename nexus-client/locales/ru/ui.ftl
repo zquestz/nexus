@@ -12,7 +12,7 @@ button-save = Сохранить
 button-create = Создать
 button-edit = Редактировать
 button-update = Обновить
-button-accept-new-certificate = Принять новый сертификат
+button-accept-new-certificate = Принять
 button-close = Закрыть
 button-choose-avatar = Выбрать аватар
 button-clear-avatar = Очистить
@@ -201,6 +201,10 @@ permission-user_delete = Удаление Пользователя
 permission-user_edit = Редактирование Пользователя
 permission-user_kick = Выгнать Пользователя
 permission-user_message = Сообщение Пользователю
+permission-tracker_list = Список Трекеров
+permission-tracker_add = Добавление Трекера
+permission-tracker_edit = Редактирование Трекера
+permission-tracker_remove = Удаление Трекера
 permission-news_list = Список Новостей
 permission-news_create = Создать Новость
 permission-news_edit = Редактировать Новость
@@ -285,6 +289,7 @@ tooltip-create-user = Создать пользователя
 tooltip-create-group = Создать Группу
 tooltip-create-news = Создать публикацию
 tooltip-delete = Удалить
+tooltip-refresh = Обновить
 context-menu-download = Скачать
 context-menu-upload = Загрузить
 context-menu-open = Открыть
@@ -1228,3 +1233,91 @@ toast-uploads-queued = { $count } { $count ->
     [few] отправки
    *[other] отправок
 } в очереди
+
+# =============================================================================
+# Server Info Panel
+# =============================================================================
+
+# Tabs
+tab-config = Настройки
+tab-trackers = Трекеры
+
+# =============================================================================
+# Tracker Management
+# =============================================================================
+
+# Buttons
+button-add = Добавить
+button-remove = Удалить
+button-accept-fingerprint = Принять
+
+# Columns
+col-status = Состояние
+col-address = Адрес
+
+# Titles
+title-add-tracker = Добавить трекер
+title-edit-tracker = Изменить трекер
+title-accept-fingerprint = Принять отпечаток
+
+# Labels
+label-address = Адрес:
+label-tracker-password = Пароль:
+label-fingerprint-unpinned = (не закреплён)
+
+# Placeholders
+placeholder-tracker-name = Имя трекера
+placeholder-tracker-address = tracker.example.com
+placeholder-tracker-fingerprint = Отпечаток SHA-256 (необязательно)
+placeholder-tracker-password = Пароль (необязательно)
+
+# Tooltips
+tooltip-add-tracker = Добавить трекер
+tooltip-edit-server-info = Редактировать информацию о сервере
+tooltip-tracker-connected = Подключено
+tooltip-tracker-disconnected = Отключено
+tooltip-tracker-fingerprint-pending = Несовпадение отпечатка
+
+# States
+tracker-management-loading = Загрузка трекеров…
+tracker-management-no-trackers = Трекеры не настроены
+
+# Dialog
+dialog-remove-tracker-title = Удалить трекер
+dialog-remove-tracker-body = Удалить трекер «{ $name }»? Публикация регистрации сервера на этот трекер будет прекращена. Запись трекера можно будет добавить снова позже.
+tracker-fingerprint-warning = Трекер представил новый отпечаток сертификата. Перед принятием проверьте его через надёжный источник (сайт оператора трекера, подписанное объявление и т. п.). Принятие назначит новый отпечаток в качестве закреплённого значения для этого сервера.
+
+# Toasts
+toast-fingerprint-copied = Отпечаток скопирован
+toast-tracker-added = Трекер добавлен
+toast-tracker-added-name = Трекер «{ $name }» добавлен
+toast-tracker-updated = Трекер обновлён
+toast-tracker-updated-name = Трекер «{ $name }» обновлён
+toast-tracker-removed = Трекер удалён
+toast-tracker-removed-name = Трекер «{ $name }» удалён
+toast-tracker-fingerprint-accepted = Отпечаток принят
+toast-tracker-fingerprint-stale = Проверка отпечатка больше не ожидает рассмотрения
+toast-tracker-fingerprint-accepted-name = Отпечаток для «{ $name }» принят
+
+# Errors
+err-tracker-name-empty = Требуется имя трекера
+err-tracker-name-too-long = Имя трекера слишком длинное (макс { $max } байт)
+err-tracker-name-contains-newlines = Имя трекера не может содержать переносы строк
+err-tracker-name-invalid-characters = Имя трекера содержит недопустимые управляющие символы
+err-tracker-address-empty = Требуется адрес трекера
+err-tracker-address-too-long = Адрес трекера слишком длинный (максимум { $max } байт)
+err-tracker-address-contains-scheme = Адрес трекера не должен содержать URL-схему
+err-tracker-address-contains-brackets = Адрес трекера не должен содержать скобки
+err-tracker-address-contains-path = Адрес трекера не должен содержать путь
+err-tracker-address-contains-userinfo = Адрес трекера не должен содержать имя пользователя
+err-tracker-address-contains-whitespace = Адрес трекера не должен содержать пробелы
+err-tracker-address-contains-port = Адрес трекера не должен содержать порт
+err-tracker-address-contains-zone-id = Адрес трекера не должен содержать идентификатор зоны IPv6
+err-tracker-address-invalid-format = Адрес трекера не является допустимым именем хоста или IP-адресом
+err-tracker-fingerprint-invalid = Отпечаток должен состоять из 32 пар шестнадцатеричных символов в верхнем регистре, разделённых двоеточиями (95 символов)
+err-tracker-password-too-long = Пароль трекера слишком длинный (макс { $max } байт)
+err-tracker-add-failed = Не удалось добавить трекер
+err-tracker-update-failed = Не удалось обновить трекер
+err-tracker-remove-failed = Не удалось удалить трекер
+err-tracker-accept-fingerprint-failed = Не удалось принять отпечаток
+err-tracker-edit-no-payload = Сервер не вернул сведения о трекере

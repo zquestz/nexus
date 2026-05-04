@@ -19,6 +19,7 @@ pub(crate) mod password_strength;
 mod server_info;
 mod server_list;
 mod settings;
+mod trackers;
 pub(crate) mod transfers;
 mod user_info;
 mod user_list;

@@ -8,21 +8,19 @@ use nexus_common::validators::PasswordStrength;
 // Server Info Display Tab
 // =============================================================================
 
-/// Tab selection for server info display mode
+/// Tab selection for the Server Info panel.
 ///
-/// Tabs are shown based on available data:
-/// - General: visible to all users (version, log level, connections, transfers, password strength)
-/// - Files: visible to admins or users with file_reindex permission
-/// - Chat: visible to users with chat_join permission (auto-join only) or admins (both)
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// Two-tab layout:
+/// - Config: alphabetical configuration rows, visibility per-row by permission.
+/// - Trackers: tracker administration (list / add / edit / remove / accept).
+///   Gated on `tracker_list`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum ServerInfoTab {
-    /// General tab: version, log level, connections per IP, transfers per IP, password strength
+    /// Config tab: alphabetical configuration rows.
     #[default]
-    General,
-    /// Files tab: reindex interval (admins + file_reindex permission)
-    Files,
-    /// Chat tab: auto-join (chat_join permission), persistent (admins only), flood config
-    Chat,
+    Config,
+    /// Trackers tab: tracker admin (gated on `tracker_list`).
+    Trackers,
 }
 
 // =============================================================================

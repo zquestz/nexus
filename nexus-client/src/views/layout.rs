@@ -21,7 +21,7 @@ use super::constants::{
 use super::disconnect_dialog::disconnect_dialog_view;
 use super::files::{FilePermissions, files_view};
 use super::news::news_view;
-use super::server_info::{ServerInfoData, server_info_view};
+use super::server_info::server_info_view;
 use super::transfers::transfers_view;
 use super::user_info::{password_change_view, user_info_view};
 use crate::config::events::EventSettings;
@@ -926,34 +926,13 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
         .width(Fill)
         .height(Fill)
         .into(),
-        ActivePanel::ServerInfo => {
-            let data = ServerInfoData {
-                name: ctx.conn.server_name.clone(),
-                description: ctx.conn.server_description.clone(),
-                version: ctx.conn.server_version.clone(),
-                max_connections_per_ip: ctx.conn.max_connections_per_ip,
-                max_transfers_per_ip: ctx.conn.max_transfers_per_ip,
-                file_reindex_interval: ctx.conn.file_reindex_interval,
-                persistent_channels: ctx.conn.persistent_channels.clone(),
-                auto_join_channels: ctx.conn.auto_join_channels.clone(),
-                cached_server_image: ctx.conn.cached_server_image.as_ref(),
-                min_password_strength: Some(ctx.conn.min_password_strength),
-                log_level: ctx.conn.log_level.clone(),
-                is_admin: ctx.conn.is_admin,
-                active_tab: ctx.conn.server_info_tab,
-                edit_state: ctx.conn.server_info_edit.as_ref(),
-                chat_burst_limit: ctx.conn.chat_burst_limit,
-                chat_rate_limit: ctx.conn.chat_rate_limit,
-                fingerprint: Some(ctx.conn.connection_info.certificate_fingerprint.clone()),
-                connection_address: ctx.conn.connection_info.address.clone(),
-                connection_port: ctx.conn.connection_info.port,
-                public_address: ctx.conn.public_address.clone(),
-            };
-            stack![chat, server_info_view(&data, &ctx.theme)]
-                .width(Fill)
-                .height(Fill)
-                .into()
-        }
+        ActivePanel::ServerInfo => stack![
+            chat,
+            server_info_view(ctx.conn, &ctx.conn.tracker_management, &ctx.theme)
+        ]
+        .width(Fill)
+        .height(Fill)
+        .into(),
         ActivePanel::UserInfo => stack![chat, user_info_view(ctx.conn, ctx.theme)]
             .width(Fill)
             .height(Fill)

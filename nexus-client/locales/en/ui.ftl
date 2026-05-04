@@ -12,7 +12,7 @@ button-save = Save
 button-create = Create
 button-edit = Edit
 button-update = Update
-button-accept-new-certificate = Accept New Certificate
+button-accept-new-certificate = Accept
 button-close = Close
 button-choose-avatar = Choose Avatar
 button-clear-avatar = Clear
@@ -1239,3 +1239,97 @@ toast-uploads-queued = { $count } { $count ->
     [one] upload
    *[other] uploads
 } queued
+
+# =============================================================================
+# Server Info Panel
+# =============================================================================
+
+# Tabs
+tab-config = Config
+tab-trackers = Trackers
+
+# =============================================================================
+# Tracker Management
+# =============================================================================
+
+# Buttons
+button-add = Add
+button-remove = Remove
+button-accept-fingerprint = Accept
+
+# Titles
+title-add-tracker = Add Tracker
+title-edit-tracker = Edit Tracker
+title-accept-fingerprint = Accept Fingerprint
+
+# Labels
+label-address = Address:
+label-tracker-password = Password:
+label-fingerprint-unpinned = (unpinned)
+
+# Placeholders
+placeholder-tracker-name = Tracker name
+placeholder-tracker-address = tracker.example.com
+placeholder-tracker-fingerprint = SHA-256 fingerprint (optional)
+placeholder-tracker-password = Password (optional)
+
+# Tooltips
+tooltip-add-tracker = Add Tracker
+tooltip-edit-server-info = Edit Server Info
+tooltip-tracker-connected = Connected
+tooltip-tracker-disconnected = Disconnected
+tooltip-tracker-fingerprint-pending = Fingerprint Mismatch
+
+# Table columns
+col-status = Status
+col-address = Address
+
+# Empty / loading states
+tracker-management-loading = Loading trackers…
+tracker-management-no-trackers = No trackers configured
+
+# Dialog
+dialog-remove-tracker-title = Remove Tracker
+dialog-remove-tracker-body = Are you sure you want to remove the tracker "{ $name }"? This will stop publishing your server registration to this tracker. The tracker entry can be re-added later.
+tracker-fingerprint-warning = The tracker presented a new certificate fingerprint. Verify it via a trusted channel (the tracker operator's website, a signed announcement, etc.) before accepting. Accepting promotes the new fingerprint to the pinned value used by this server.
+
+# Toasts
+toast-fingerprint-copied = Fingerprint copied
+toast-tracker-added = Tracker added
+toast-tracker-added-name = Tracker "{ $name }" added
+toast-tracker-updated = Tracker updated
+toast-tracker-updated-name = Tracker "{ $name }" updated
+toast-tracker-removed = Tracker removed
+toast-tracker-removed-name = Tracker "{ $name }" removed
+toast-tracker-fingerprint-accepted = Fingerprint accepted
+toast-tracker-fingerprint-stale = Fingerprint review no longer pending
+toast-tracker-fingerprint-accepted-name = Fingerprint accepted for "{ $name }"
+
+# Errors
+err-tracker-name-empty = Tracker name is required
+err-tracker-name-too-long = Tracker name is too long (max { $max } bytes)
+err-tracker-name-contains-newlines = Tracker name cannot contain newlines
+err-tracker-name-invalid-characters = Tracker name contains invalid control characters
+err-tracker-address-empty = Tracker address is required
+err-tracker-address-too-long = Tracker address is too long (max { $max } bytes)
+err-tracker-address-contains-scheme = Tracker address must not include a URL scheme
+err-tracker-address-contains-brackets = Tracker address must not include brackets
+err-tracker-address-contains-path = Tracker address must not include a path
+err-tracker-address-contains-userinfo = Tracker address must not include a username
+err-tracker-address-contains-whitespace = Tracker address must not contain whitespace
+err-tracker-address-contains-port = Tracker address must not include a port
+err-tracker-address-contains-zone-id = Tracker address must not include an IPv6 zone identifier
+err-tracker-address-invalid-format = Tracker address is not a valid hostname or IP address
+err-tracker-fingerprint-invalid = Fingerprint must be 32 uppercase hex pairs separated by colons (95 characters)
+err-tracker-password-too-long = Tracker password is too long (max { $max } bytes)
+err-tracker-add-failed = Failed to add tracker
+err-tracker-update-failed = Failed to update tracker
+err-tracker-remove-failed = Failed to remove tracker
+err-tracker-accept-fingerprint-failed = Failed to accept fingerprint
+err-tracker-edit-no-payload = Server returned no tracker details
+
+# Permissions (rendered in User/Group edit forms)
+permission-tracker_list = Tracker List
+permission-tracker_add = Tracker Add
+permission-tracker_edit = Tracker Edit
+permission-tracker_remove = Tracker Remove

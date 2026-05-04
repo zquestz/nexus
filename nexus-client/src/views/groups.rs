@@ -8,7 +8,7 @@ use std::hash::{Hash, Hasher};
 use iced::widget::button as btn;
 use iced::widget::text::Wrapping;
 use iced::widget::{
-    Column, Space, button, checkbox, column, container, lazy, row, scrollable, table, text,
+    Column, Id, Space, button, checkbox, column, container, lazy, row, scrollable, table, text,
     text_input,
 };
 use iced::{Center, Element, Fill};
@@ -30,7 +30,8 @@ use crate::style::{
     shaped_text, shaped_text_wrapped, transparent_icon_button_style,
 };
 use crate::types::{
-    GroupManagementMode, GroupManagementSortColumn, Message, ServerConnection, UserManagementState,
+    GroupManagementMode, GroupManagementSortColumn, InputId, Message, ServerConnection,
+    UserManagementState,
 };
 use crate::widgets::{LazyContextMenu, MenuButton};
 
@@ -570,6 +571,7 @@ fn edit_view(ctx: EditGroupContext<'_>) -> Element<'_, Message> {
     let name_input = text_input(&t("group-form-name"), ctx.new_name)
         .on_input(Message::GroupManagementEditNameChanged)
         .on_submit(submit_action)
+        .id(Id::from(InputId::EditGroupName))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 

@@ -1,14 +1,38 @@
-//! Server info panel view
+//! Server info panel view (Config + Trackers tabs)
+//!
+//! Top-level structure:
+//!  - Identity block (always visible): server image, name, description,
+//!    shareable URI, fingerprint (click-to-copy).
+//!  - Panel-level action error banner (between identity and tabs, only
+//!    when set; mirrors User Management's panel-level banner).
+//!  - Tab bar: `Config` | `Trackers` (Trackers gated on `tracker_list`).
+//!  - Tab body:
+//!    - Config tab: alphabetical two-column field list, no toolbar.
+//!    - Trackers tab: per-tab toolbar (Add + Refresh) above a sortable
+//!      table — the toolbar pattern only applies to tabs whose body is
+//!      a table, so Config doesn't get one.
+//!  - Bottom button row (Config tab only): `[Edit (admin)] [Close]` —
+//!    matches the original pre-restructure panel; Trackers handles
+//!    dismissal via clicking another panel (User Management pattern).
+//!
+//! Edit mode (admin-only) replaces the whole panel with the existing
+//! single-column edit form.
 
 use iced::widget::button as btn;
-use iced::widget::{Id, Space, button, image, pick_list, rich_text, row, span, svg, text_input};
+use iced::widget::{
+    Column, Id, Space, button, column, container, image, pick_list, rich_text, row, span, svg,
+    text_input,
+};
 use iced::{Center, Element, Fill, Length, Theme};
 use iced_aw::{NumberInput, TabLabel, Tabs};
 use nexus_common::validators::PasswordStrength;
 
+use super::constants::PERMISSION_TRACKER_LIST;
+use super::helpers::t_args;
 use super::layout::scrollable_panel;
 use super::password_strength::LocalizedPasswordStrength;
-use crate::i18n::{log_level_translation_key, strength_translation_key, t, t_args};
+use super::trackers::trackers_tab_view;
+use crate::i18n::{log_level_translation_key, strength_translation_key, t};
 use crate::image::CachedImage;
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, INPUT_PADDING,
@@ -16,72 +40,105 @@ use crate::style::{
     SPACER_SIZE_SMALL, TAB_LABEL_PADDING, TEXT_SIZE, error_text_style, muted_text_style,
     panel_title, shaped_text, shaped_text_wrapped,
 };
-use crate::types::{InputId, Message, ServerInfoEditState, ServerInfoTab};
+use crate::types::{
+    InputId, Message, ServerConnection, ServerInfoEditState, ServerInfoTab, TrackerManagementState,
+};
 
-/// Data needed to render the server info panel
-pub struct ServerInfoData<'a> {
-    /// Server name (if provided)
-    pub name: Option<String>,
-    /// Server description (if provided)
-    pub description: Option<String>,
-    /// Server version (if provided)
-    pub version: Option<String>,
-    /// Max connections per IP (all users)
-    pub max_connections_per_ip: Option<u32>,
-    /// Max transfers per IP (all users)
-    pub max_transfers_per_ip: Option<u32>,
-    /// File reindex interval in minutes (admins + file_reindex permission, 0 = disabled)
-    pub file_reindex_interval: Option<u32>,
-    /// Persistent channels (space-separated, admin only)
-    pub persistent_channels: Option<String>,
-    /// Auto-join channels (space-separated, users with chat_join permission + admins)
-    pub auto_join_channels: Option<String>,
-    /// Cached server image for display (None if no image set)
-    pub cached_server_image: Option<&'a CachedImage>,
-    /// Minimum password strength requirement (if provided by server)
-    pub min_password_strength: Option<PasswordStrength>,
-    /// Server log level (read-only, from ServerInfo)
-    pub log_level: Option<String>,
-    /// Whether the current user is an admin
-    pub is_admin: bool,
-    /// Active tab in display mode (shown based on available data)
-    pub active_tab: ServerInfoTab,
-    /// Edit state (Some when in edit mode)
-    pub edit_state: Option<&'a ServerInfoEditState>,
-    /// Chat burst limit (flood protection)
-    pub chat_burst_limit: Option<u32>,
-    /// Chat rate limit (messages per minute, flood protection)
-    pub chat_rate_limit: Option<u32>,
-    /// Server certificate fingerprint (SHA-256)
-    pub fingerprint: Option<String>,
-    /// Address the client is currently connected to (fallback for the shareable URI)
-    pub connection_address: String,
-    /// Port the client is currently connected on
-    pub connection_port: u16,
-    /// Public address advertised by the admin for sharing (from ServerInfo)
-    pub public_address: Option<String>,
+/// Render the server info panel.
+///
+/// `conn` and `tracker_management` are borrowed separately so the caller
+/// can pass live references without having to pre-build a `ServerInfoData`
+/// that owns those borrows (which would have a hard time satisfying the
+/// caller's lifetime).
+pub fn server_info_view<'a>(
+    conn: &'a ServerConnection,
+    tracker_management: &'a TrackerManagementState,
+    theme: &Theme,
+) -> Element<'a, Message> {
+    let edit_state = conn.server_info_edit.as_ref();
+
+    if let Some(edit_state) = edit_state {
+        return server_info_edit_view(edit_state);
+    }
+
+    // Tracker subview / modal dispatch (replaces the whole panel body,
+    // mirroring User Management's full-panel form pattern).
+    match &tracker_management.mode {
+        crate::types::TrackerManagementMode::Add => {
+            return super::trackers::add_tracker_view(tracker_management);
+        }
+        crate::types::TrackerManagementMode::Edit { .. } => {
+            return super::trackers::edit_tracker_view(tracker_management);
+        }
+        crate::types::TrackerManagementMode::ConfirmRemove { .. } => {
+            return super::trackers::remove_tracker_modal(tracker_management);
+        }
+        crate::types::TrackerManagementMode::AcceptFingerprint { .. } => {
+            return super::trackers::accept_fingerprint_modal(tracker_management);
+        }
+        crate::types::TrackerManagementMode::List => {}
+    }
+
+    let data = build_display_data(conn);
+    server_info_display_view(data, conn, tracker_management, theme)
 }
 
-/// Render the server info panel
-///
-/// Displays server information received during login.
-/// Only shows fields that were provided by the server.
-/// Admins see an Edit button to modify server configuration.
-pub fn server_info_view(data: &ServerInfoData<'_>, theme: &Theme) -> Element<'static, Message> {
-    if let Some(edit_state) = data.edit_state {
-        server_info_edit_view(edit_state)
-    } else {
-        server_info_display_view(data, theme)
+/// Build the snapshot of display-only fields used by the Config tab.
+fn build_display_data(conn: &ServerConnection) -> DisplayFields {
+    DisplayFields {
+        name: conn.server_name.clone(),
+        description: conn.server_description.clone(),
+        version: conn.server_version.clone(),
+        max_connections_per_ip: conn.max_connections_per_ip,
+        max_transfers_per_ip: conn.max_transfers_per_ip,
+        file_reindex_interval: conn.file_reindex_interval,
+        persistent_channels: conn.persistent_channels.clone(),
+        auto_join_channels: conn.auto_join_channels.clone(),
+        min_password_strength: Some(conn.min_password_strength),
+        log_level: conn.log_level.clone(),
+        chat_burst_limit: conn.chat_burst_limit,
+        chat_rate_limit: conn.chat_rate_limit,
+        fingerprint: Some(conn.connection_info.certificate_fingerprint.clone()),
+        connection_address: conn.connection_info.address.clone(),
+        connection_port: conn.connection_info.port,
+        public_address: conn.public_address.clone(),
     }
 }
 
-/// Render the server info display view (read-only)
-fn server_info_display_view(data: &ServerInfoData<'_>, theme: &Theme) -> Element<'static, Message> {
-    let mut items: Vec<Element<'static, Message>> = Vec::new();
+/// Owned snapshot of the display-only fields. The cached server image is
+/// passed as a borrow alongside this struct because `CachedImage` doesn't
+/// derive `Clone`.
+struct DisplayFields {
+    name: Option<String>,
+    description: Option<String>,
+    version: Option<String>,
+    max_connections_per_ip: Option<u32>,
+    max_transfers_per_ip: Option<u32>,
+    file_reindex_interval: Option<u32>,
+    persistent_channels: Option<String>,
+    auto_join_channels: Option<String>,
+    min_password_strength: Option<PasswordStrength>,
+    log_level: Option<String>,
+    chat_burst_limit: Option<u32>,
+    chat_rate_limit: Option<u32>,
+    fingerprint: Option<String>,
+    connection_address: String,
+    connection_port: u16,
+    public_address: Option<String>,
+}
+
+/// Render the server info display view (Config + Trackers tabs).
+fn server_info_display_view<'a>(
+    data: DisplayFields,
+    conn: &'a ServerConnection,
+    tracker_management: &'a TrackerManagementState,
+    theme: &Theme,
+) -> Element<'a, Message> {
+    let mut items: Vec<Element<'a, Message>> = Vec::new();
 
     // Server image at the top (if set)
-    if let Some(cached_image) = data.cached_server_image {
-        let image_element: Element<'static, Message> = match cached_image {
+    if let Some(cached_image) = conn.cached_server_image.as_ref() {
+        let image_element: Element<'a, Message> = match cached_image {
             CachedImage::Raster(handle) => image(handle.clone())
                 .width(Length::Fill)
                 .content_fit(iced::ContentFit::ScaleDown)
@@ -132,255 +189,261 @@ fn server_info_display_view(data: &ServerInfoData<'_>, theme: &Theme) -> Element
         .into(),
     );
 
-    // Determine which tabs to show based on available data
-    let has_general = data.log_level.is_some()
-        || data.max_connections_per_ip.is_some()
-        || data.max_transfers_per_ip.is_some()
-        || data.min_password_strength.is_some()
-        || data.version.is_some()
-        || data.fingerprint.is_some();
-    let has_files = data.file_reindex_interval.is_some();
-    let has_chat = data.persistent_channels.is_some()
-        || data.auto_join_channels.is_some()
-        || data.chat_burst_limit.is_some()
-        || data.chat_rate_limit.is_some();
+    // Fingerprint moved to identity block: label + hex on a single
+    // centered, glyph-wrapped rich_text. Glyph wrapping (rather than
+    // WordOrGlyph) lets the colon-separated hex break at any character
+    // when it hits the right edge — colons aren't word boundaries so
+    // anything word-aware would treat the whole hex as one
+    // unbreakable token. The hex value is a link so clicking copies
+    // it to the clipboard.
+    if let Some(fingerprint) = &data.fingerprint {
+        let fp_copy_value = fingerprint.clone();
+        let label_part = format!("{} ", t("label-fingerprint"));
+        let fingerprint_link = rich_text![
+            span(label_part),
+            span(fingerprint.clone())
+                .color(theme.palette().primary)
+                .font(MONOSPACE_FONT)
+                .link(fp_copy_value),
+        ]
+        .on_link_click(Message::CopyServerFingerprint)
+        .size(TEXT_SIZE)
+        .width(Fill)
+        .align_x(Center)
+        .wrapping(iced::widget::text::Wrapping::Glyph);
+        items.push(fingerprint_link.into());
+    }
 
-    // Show settings tabs if user has any settings data
-    if has_general || has_files || has_chat {
-        items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
-
-        // Build tab content for each available tab
-        let general_content: Element<'static, Message> = {
-            let mut content_items: Vec<Element<'static, Message>> = Vec::new();
-            // Space between tab bar and first content
-            content_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
-            if let Some(fingerprint) = &data.fingerprint {
-                content_items.push(
-                    row![
-                        shaped_text(t("label-fingerprint")).size(TEXT_SIZE),
-                        Space::new().width(ELEMENT_SPACING),
-                        shaped_text(fingerprint.clone())
-                            .size(TEXT_SIZE)
-                            .font(MONOSPACE_FONT)
-                            .wrapping(iced::widget::text::Wrapping::WordOrGlyph),
-                    ]
-                    .into(),
-                );
-            }
-            if let Some(level) = &data.log_level {
-                content_items.push(
-                    row![
-                        shaped_text(t("label-log-level")).size(TEXT_SIZE),
-                        Space::new().width(ELEMENT_SPACING),
-                        shaped_text_wrapped(t(log_level_translation_key(level))).size(TEXT_SIZE),
-                    ]
-                    .into(),
-                );
-            }
-            if let Some(max_conn) = data.max_connections_per_ip {
-                content_items.push(
-                    row![
-                        shaped_text(t("label-max-connections-per-ip")).size(TEXT_SIZE),
-                        Space::new().width(ELEMENT_SPACING),
-                        shaped_text_wrapped(max_conn.to_string()).size(TEXT_SIZE),
-                    ]
-                    .into(),
-                );
-            }
-            if let Some(max_xfer) = data.max_transfers_per_ip {
-                content_items.push(
-                    row![
-                        shaped_text(t("label-max-transfers-per-ip")).size(TEXT_SIZE),
-                        Space::new().width(ELEMENT_SPACING),
-                        shaped_text_wrapped(max_xfer.to_string()).size(TEXT_SIZE),
-                    ]
-                    .into(),
-                );
-            }
-            if let Some(strength) = data.min_password_strength {
-                content_items.push(
-                    row![
-                        shaped_text(t("label-min-password-strength")).size(TEXT_SIZE),
-                        Space::new().width(ELEMENT_SPACING),
-                        shaped_text_wrapped(t(strength_translation_key(strength))).size(TEXT_SIZE),
-                    ]
-                    .into(),
-                );
-            }
-            if let Some(version) = &data.version {
-                content_items.push(
-                    row![
-                        shaped_text(t("label-version-short")).size(TEXT_SIZE),
-                        Space::new().width(ELEMENT_SPACING),
-                        shaped_text_wrapped(version.clone()).size(TEXT_SIZE),
-                    ]
-                    .into(),
-                );
-            }
-
-            iced::widget::Column::with_children(content_items)
-                .spacing(ELEMENT_SPACING)
-                .into()
-        };
-
-        let files_content: Element<'static, Message> = {
-            let mut content_items: Vec<Element<'static, Message>> = Vec::new();
-            // Space between tab bar and first content
-            content_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
-            if let Some(interval) = data.file_reindex_interval {
-                let value = if interval == 0 {
-                    t("label-disabled")
-                } else {
-                    t_args(
-                        "label-file-reindex-interval-value",
-                        &[("minutes", &interval.to_string())],
-                    )
-                };
-                content_items.push(
-                    row![
-                        shaped_text(t("label-reindex-short")).size(TEXT_SIZE),
-                        Space::new().width(ELEMENT_SPACING),
-                        shaped_text_wrapped(value).size(TEXT_SIZE),
-                    ]
-                    .into(),
-                );
-            }
-            iced::widget::Column::with_children(content_items)
-                .spacing(ELEMENT_SPACING)
-                .into()
-        };
-
-        let chat_content: Element<'static, Message> = {
-            let mut content_items: Vec<Element<'static, Message>> = Vec::new();
-            // Space between tab bar and first content
-            content_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
-            // Alphabetical: Auto-join, Chat Burst Limit, Chat Rate Limit, Persistent
-            if let Some(channels) = &data.auto_join_channels {
-                let value = if channels.is_empty() {
-                    t("label-none")
-                } else {
-                    channels.clone()
-                };
-                content_items.push(
-                    row![
-                        shaped_text(t("label-auto-join-channels")).size(TEXT_SIZE),
-                        Space::new().width(ELEMENT_SPACING),
-                        shaped_text_wrapped(value).size(TEXT_SIZE),
-                    ]
-                    .into(),
-                );
-            }
-            if let Some(burst) = data.chat_burst_limit {
-                content_items.push(
-                    row![
-                        shaped_text(t("label-chat-burst-limit")).size(TEXT_SIZE),
-                        Space::new().width(ELEMENT_SPACING),
-                        shaped_text_wrapped(burst.to_string()).size(TEXT_SIZE),
-                    ]
-                    .into(),
-                );
-            }
-            if let Some(rate) = data.chat_rate_limit {
-                content_items.push(
-                    row![
-                        shaped_text(t("label-chat-rate-limit")).size(TEXT_SIZE),
-                        Space::new().width(ELEMENT_SPACING),
-                        shaped_text_wrapped(rate.to_string()).size(TEXT_SIZE),
-                    ]
-                    .into(),
-                );
-            }
-            if let Some(channels) = &data.persistent_channels {
-                let value = if channels.is_empty() {
-                    t("label-none")
-                } else {
-                    channels.clone()
-                };
-                content_items.push(
-                    row![
-                        shaped_text(t("label-persistent-channels")).size(TEXT_SIZE),
-                        Space::new().width(ELEMENT_SPACING),
-                        shaped_text_wrapped(value).size(TEXT_SIZE),
-                    ]
-                    .into(),
-                );
-            }
-            iced::widget::Column::with_children(content_items)
-                .spacing(ELEMENT_SPACING)
-                .into()
-        };
-
-        // Build tabs widget (only including tabs for available data)
-        // Tab order: General, Chat, Files
-        let mut tabs: Tabs<'static, Message, ServerInfoTab> =
-            Tabs::new(Message::ServerInfoTabChanged);
-
-        if has_general {
-            tabs = tabs.push(
-                ServerInfoTab::General,
-                TabLabel::Text(t("tab-general")),
-                general_content,
-            );
-        }
-
-        if has_chat {
-            tabs = tabs.push(
-                ServerInfoTab::Chat,
-                TabLabel::Text(t("tab-chat")),
-                chat_content,
-            );
-        }
-
-        if has_files {
-            tabs = tabs.push(
-                ServerInfoTab::Files,
-                TabLabel::Text(t("tab-files")),
-                files_content,
-            );
-        }
-
-        let tabs = tabs
-            .set_active_tab(&data.active_tab)
-            .tab_bar_position(iced_aw::TabBarPosition::Top)
-            .text_size(TEXT_SIZE)
-            .tab_label_padding(TAB_LABEL_PADDING);
-
-        items.push(tabs.into());
+    // Panel-level action error banner (between identity and tabs).
+    if let Some(err) = &tracker_management.list_error {
+        items.push(
+            shaped_text_wrapped(err.clone())
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into(),
+        );
     }
 
     items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
-    // Buttons: Edit (admin only, secondary) and Close (primary)
-    let buttons = if data.is_admin {
-        row![
-            Space::new().width(Fill),
-            button(shaped_text(t("button-edit")).size(TEXT_SIZE))
-                .on_press(Message::EditServerInfoPressed)
-                .padding(BUTTON_PADDING)
-                .style(btn::secondary),
-            button(shaped_text(t("button-close")).size(TEXT_SIZE))
-                .on_press(Message::CloseServerInfo)
-                .padding(BUTTON_PADDING),
-        ]
-        .spacing(ELEMENT_SPACING)
+    // Config tab content: just the body (no per-tab toolbar). The
+    // Edit / Close affordances live in a bottom button row below the
+    // Tabs widget — toolbar-style icons looked out of place above a
+    // pure label/value list, and the original pre-restructure panel
+    // had bottom buttons too. Trackers tab keeps its toolbar because
+    // its body is a sortable table where the toolbar pattern fits.
+    let config_body = config_tab_body(&data);
+    let config_content: Element<'a, Message> =
+        column![Space::new().height(SPACER_SIZE_MEDIUM), config_body,]
+            .height(Fill)
+            .into();
+
+    // Build the Trackers tab content
+    let has_tracker_list_perm = conn.has_permission(PERMISSION_TRACKER_LIST);
+
+    let mut tabs: Tabs<'a, Message, ServerInfoTab> = Tabs::new(Message::ServerInfoTabChanged).push(
+        ServerInfoTab::Config,
+        TabLabel::Text(t("tab-config")),
+        config_content,
+    );
+
+    if has_tracker_list_perm {
+        let trackers_tab = trackers_tab_view(conn, tracker_management, theme);
+        let trackers_content: Element<'a, Message> =
+            column![Space::new().height(SPACER_SIZE_MEDIUM), trackers_tab,]
+                .height(Fill)
+                .into();
+        tabs = tabs.push(
+            ServerInfoTab::Trackers,
+            TabLabel::Text(t("tab-trackers")),
+            trackers_content,
+        );
+    }
+
+    // If user lacks tracker_list and currently has Trackers selected
+    // (e.g., the permission was just revoked), fall back to Config so
+    // the tab bar doesn't render with an inactive selected state.
+    let active_tab = if conn.server_info_tab == ServerInfoTab::Trackers && !has_tracker_list_perm {
+        ServerInfoTab::Config
     } else {
-        row![
-            Space::new().width(Fill),
-            button(shaped_text(t("button-close")).size(TEXT_SIZE))
-                .on_press(Message::CloseServerInfo)
-                .padding(BUTTON_PADDING),
-        ]
-        .spacing(ELEMENT_SPACING)
+        conn.server_info_tab
     };
 
-    items.push(buttons.into());
+    let tabs = tabs
+        .set_active_tab(&active_tab)
+        .tab_bar_position(iced_aw::TabBarPosition::Top)
+        .text_size(TEXT_SIZE)
+        .tab_label_padding(TAB_LABEL_PADDING);
 
-    let content = iced::widget::Column::with_children(items)
+    items.push(container(tabs).height(Fill).into());
+
+    // Bottom button row — only on the Config tab (Trackers handles
+    // dismissal via clicking another panel, like User Management does;
+    // its toolbar covers the in-tab actions). Edit is admin-gated.
+    //
+    // The leading spacer matches the breathing room the original
+    // pre-restructure panel had between the field list and the
+    // buttons; without it the buttons crowd the last config row.
+    if active_tab == ServerInfoTab::Config {
+        items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+        let mut buttons = row![Space::new().width(Fill)].spacing(ELEMENT_SPACING);
+        if conn.is_admin {
+            buttons = buttons.push(
+                button(shaped_text(t("button-edit")).size(TEXT_SIZE))
+                    .on_press(Message::EditServerInfoPressed)
+                    .padding(BUTTON_PADDING)
+                    .style(btn::secondary),
+            );
+        }
+        buttons = buttons.push(
+            button(shaped_text(t("button-close")).size(TEXT_SIZE))
+                .on_press(Message::CloseServerInfo)
+                .padding(BUTTON_PADDING),
+        );
+        items.push(buttons.into());
+    }
+
+    let content = Column::with_children(items)
         .spacing(ELEMENT_SPACING)
         .padding(CONTENT_PADDING)
-        .max_width(CONTENT_MAX_WIDTH);
+        .max_width(CONTENT_MAX_WIDTH)
+        .height(Fill);
 
+    // Wrap in scrollable so the identity block + tabs scroll together
+    // when the window is shorter than the content (mirrors the original
+    // pre-tab-restructure layout's scrollable_panel behavior).
     scrollable_panel(content)
+}
+
+/// Build the Config tab body — three permission-gated sections.
+///
+/// Sections (`General`, `Chat`, `Files`) mirror the structure of the
+/// edit view, so admins see the same grouping in display and edit
+/// modes. Each section renders its heading and rows only when at
+/// least one of its fields is visible to the requesting user; an
+/// entirely-hidden section disappears from the layout.
+///
+/// Within a section, rows are alphabetical.
+fn config_tab_body(data: &DisplayFields) -> Element<'static, Message> {
+    let mut general_rows: Vec<Element<'static, Message>> = Vec::new();
+    let mut chat_rows: Vec<Element<'static, Message>> = Vec::new();
+    let mut files_rows: Vec<Element<'static, Message>> = Vec::new();
+
+    // -- General (alphabetical) --
+    if let Some(level) = &data.log_level {
+        general_rows.push(config_row(
+            t("label-log-level"),
+            t(log_level_translation_key(level)),
+        ));
+    }
+    if let Some(max_conn) = data.max_connections_per_ip {
+        general_rows.push(config_row(
+            t("label-max-connections-per-ip"),
+            max_conn.to_string(),
+        ));
+    }
+    if let Some(max_xfer) = data.max_transfers_per_ip {
+        general_rows.push(config_row(
+            t("label-max-transfers-per-ip"),
+            max_xfer.to_string(),
+        ));
+    }
+    if let Some(strength) = data.min_password_strength {
+        general_rows.push(config_row(
+            t("label-min-password-strength"),
+            t(strength_translation_key(strength)),
+        ));
+    }
+    if let Some(version) = &data.version {
+        general_rows.push(config_row(t("label-version-short"), version.clone()));
+    }
+
+    // -- Chat (alphabetical) --
+    if let Some(channels) = &data.auto_join_channels {
+        let value = if channels.is_empty() {
+            t("label-none")
+        } else {
+            channels.clone()
+        };
+        chat_rows.push(config_row(t("label-auto-join-channels"), value));
+    }
+    if let Some(burst) = data.chat_burst_limit {
+        chat_rows.push(config_row(t("label-chat-burst-limit"), burst.to_string()));
+    }
+    if let Some(rate) = data.chat_rate_limit {
+        chat_rows.push(config_row(t("label-chat-rate-limit"), rate.to_string()));
+    }
+    if let Some(channels) = &data.persistent_channels {
+        let value = if channels.is_empty() {
+            t("label-none")
+        } else {
+            channels.clone()
+        };
+        chat_rows.push(config_row(t("label-persistent-channels"), value));
+    }
+
+    // -- Files --
+    if let Some(interval) = data.file_reindex_interval {
+        let value = if interval == 0 {
+            t("label-disabled")
+        } else {
+            t_args(
+                "label-file-reindex-interval-value",
+                &[("minutes", &interval.to_string())],
+            )
+        };
+        files_rows.push(config_row(t("label-file-reindex-interval"), value));
+    }
+
+    // Compose. Sections that contributed no rows are skipped entirely
+    // (heading included). Every emitted section gets a leading
+    // SPACER_SIZE_MEDIUM — the first section's spacer compounds with
+    // the outer wrapper's spacer to give the topmost heading the
+    // breathing room it needs from the tab bar's hard bottom edge,
+    // while between sections a single MEDIUM gap is enough.
+    let sections: [(&str, Vec<Element<'static, Message>>); 3] = [
+        ("tab-general", general_rows),
+        ("tab-chat", chat_rows),
+        ("tab-files", files_rows),
+    ];
+    let mut items: Vec<Element<'static, Message>> = Vec::new();
+    for (heading_key, rows) in sections {
+        if rows.is_empty() {
+            continue;
+        }
+        items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+        items.push(
+            shaped_text(t(heading_key))
+                .size(TEXT_SIZE)
+                .style(muted_text_style)
+                .into(),
+        );
+        items.extend(rows);
+    }
+
+    Column::with_children(items)
+        .spacing(ELEMENT_SPACING)
+        .width(Fill)
+        .into()
+}
+
+/// Build a single Config-tab row with label + value.
+///
+/// `width(Fill)` on the row + `width(Fill)` on the wrapped value makes
+/// the value take the remainder of the row's allotted width and wrap
+/// at word boundaries when the column is too narrow to fit on one
+/// line. Without these, the row sizes to its intrinsic content and
+/// overflows the column when the window is narrow.
+fn config_row<'a>(label: String, value: String) -> Element<'a, Message> {
+    row![
+        shaped_text(label).size(TEXT_SIZE),
+        Space::new().width(ELEMENT_SPACING),
+        shaped_text_wrapped(value).size(TEXT_SIZE).width(Fill),
+    ]
+    .width(Fill)
+    .into()
 }
 
 /// Render the server info edit view (editable form)
@@ -686,7 +749,7 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
     );
 
     // Reindex with "minutes" suffix inline
-    let reindex_label = shaped_text(t("label-reindex-short")).size(TEXT_SIZE);
+    let reindex_label = shaped_text(t("label-file-reindex-interval")).size(TEXT_SIZE);
     let reindex_value = edit_state.file_reindex_interval.unwrap_or(5);
     let reindex_input: Element<'static, Message> = NumberInput::new(
         &reindex_value,

@@ -176,6 +176,8 @@ impl NexusApp {
                     group_permissions: data.group_permissions.unwrap_or_default(),
                     revoked_permissions: data.revoked_permissions.unwrap_or_default(),
                 });
+                self.focused_field = InputId::EditNewUsername;
+                return operation::focus(Id::from(InputId::EditNewUsername));
             }
         } else {
             // On error, show in the appropriate place

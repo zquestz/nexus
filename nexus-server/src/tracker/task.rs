@@ -44,9 +44,10 @@ use crate::constants::{
     EXPECT_TRACKER_STATUS_LOCK_POISONED, LOG_TRACKER_REGISTRATION_BACKOFF,
     LOG_TRACKER_REGISTRATION_BUILD_PAYLOAD_FAILED,
     LOG_TRACKER_REGISTRATION_CLOSED_AWAITING_RESPONSE, LOG_TRACKER_REGISTRATION_CLOSED_MID_IDLE,
-    LOG_TRACKER_REGISTRATION_CONNECTED, LOG_TRACKER_REGISTRATION_EXITING,
-    LOG_TRACKER_REGISTRATION_HANDSHAKE_CLOSED, LOG_TRACKER_REGISTRATION_HANDSHAKE_REJECTED,
-    LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR,
+    LOG_TRACKER_REGISTRATION_CONNECTED, LOG_TRACKER_REGISTRATION_DNS_FAILED,
+    LOG_TRACKER_REGISTRATION_DNS_NO_RECORDS, LOG_TRACKER_REGISTRATION_DNS_TIMEOUT,
+    LOG_TRACKER_REGISTRATION_EXITING, LOG_TRACKER_REGISTRATION_HANDSHAKE_CLOSED,
+    LOG_TRACKER_REGISTRATION_HANDSHAKE_REJECTED, LOG_TRACKER_REGISTRATION_HANDSHAKE_RESPONSE_ERROR,
     LOG_TRACKER_REGISTRATION_HANDSHAKE_UNEXPECTED, LOG_TRACKER_REGISTRATION_INVALID_ERROR_KIND,
     LOG_TRACKER_REGISTRATION_INVALID_HOST, LOG_TRACKER_REGISTRATION_NO_PEER_CERTS,
     LOG_TRACKER_REGISTRATION_READ_ERROR_MID_IDLE, LOG_TRACKER_REGISTRATION_REFRESHED,
@@ -83,6 +84,13 @@ const BACKOFF_JITTER_PCT: f64 = 0.25;
 /// latency; tight enough to recover from a wedged connection instead
 /// of hanging until the outer 60s frame-completion timeout.
 const TRACKER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Hard ceiling on a single `tokio::net::lookup_host` call. Defends
+/// against a hostile or wedged resolver hanging the tracker task
+/// indefinitely (the frame-completion timeout doesn't apply pre-frame).
+/// Generous on purpose — 15s comfortably accommodates slow upstream
+/// DNS chains while still failing in human-noticeable time.
+const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Floor for the tracker-supplied `refresh_interval`. Defends against
 /// a buggy or hostile tracker that asks for `0` or any value below the
@@ -124,6 +132,12 @@ pub async fn run(
     context: Arc<TrackerContext>,
 ) {
     let mut backoff = BACKOFF_BASE;
+    // Tracks whether the admin-supplied hostname has resolved at least
+    // once in this task's lifetime. The first failed DNS lookup is
+    // treated as `Unrecoverable` (likely a typo); subsequent failures
+    // — after at least one success — are `Transient` (DNS server hiccup,
+    // network blip). Resets to false on task respawn after a row edit.
+    let mut has_resolved_once = false;
 
     loop {
         // Reset transient connection state at the start of each attempt
@@ -139,7 +153,8 @@ pub async fn run(
             s.last_attempted_at = Some(Utc::now().timestamp());
         }
 
-        match attempt_connection_cycle(&mut record, &status, &context).await {
+        match attempt_connection_cycle(&mut record, &status, &context, &mut has_resolved_once).await
+        {
             CycleOutcome::Transient => {
                 // Already logged + status-updated. Backoff and retry.
             }
@@ -181,10 +196,15 @@ enum CycleOutcome {
 
 /// Run one connection cycle: TCP → TLS → fingerprint stages →
 /// tracker handshake → refresh loop. Returns when something exits.
+///
+/// `has_resolved_once` is set to `true` the first time DNS resolves
+/// the configured hostname — see [`run`] for the semantics. Pass-by-
+/// `&mut` so the flag persists across cycles within a task lifetime.
 async fn attempt_connection_cycle(
     record: &mut TrackerRecord,
     status: &Arc<RwLock<TrackerStatus>>,
     context: &Arc<TrackerContext>,
+    has_resolved_once: &mut bool,
 ) -> CycleOutcome {
     // Phase 0: resolve the admin-supplied address into the form both
     // the system resolver and rustls's `ServerName::try_from` expect
@@ -209,8 +229,73 @@ async fn attempt_connection_cycle(
         }
     };
 
-    // Phase 1: TCP connect.
-    let tcp = match TcpStream::connect((resolved_host.as_str(), record.port)).await {
+    // Phase 1a: DNS resolution. Split out from `TcpStream::connect` so
+    // we can distinguish "this hostname doesn't resolve" from "TCP
+    // connect failed."
+    //
+    // First-ever lookup fails → `Unrecoverable`: most likely a typo in
+    // the admin-supplied address; no point retrying until the row is
+    // edited. Subsequent lookup failures (after at least one success)
+    // are `Transient`: the hostname is real, the DNS server's just
+    // having a moment.
+    let addrs: Vec<std::net::SocketAddr> = match tokio::time::timeout(
+        DNS_LOOKUP_TIMEOUT,
+        tokio::net::lookup_host((resolved_host.as_str(), record.port)),
+    )
+    .await
+    {
+        Ok(Ok(it)) => it.collect(),
+        Ok(Err(e)) => {
+            warn!(
+                id = record.id,
+                name = %record.name,
+                address = %record.address,
+                err = %e,
+                "{}", LOG_TRACKER_REGISTRATION_DNS_FAILED
+            );
+            if *has_resolved_once {
+                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
+                return CycleOutcome::Transient;
+            }
+            set_status_error(status, ERROR_KIND_TRACKER_ADDRESS_INVALID);
+            return CycleOutcome::Unrecoverable;
+        }
+        Err(_) => {
+            warn!(
+                id = record.id,
+                name = %record.name,
+                address = %record.address,
+                timeout_secs = DNS_LOOKUP_TIMEOUT.as_secs(),
+                "{}", LOG_TRACKER_REGISTRATION_DNS_TIMEOUT
+            );
+            if *has_resolved_once {
+                set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
+                return CycleOutcome::Transient;
+            }
+            set_status_error(status, ERROR_KIND_TRACKER_ADDRESS_INVALID);
+            return CycleOutcome::Unrecoverable;
+        }
+    };
+    if addrs.is_empty() {
+        warn!(
+            id = record.id,
+            name = %record.name,
+            address = %record.address,
+            "{}", LOG_TRACKER_REGISTRATION_DNS_NO_RECORDS
+        );
+        if *has_resolved_once {
+            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
+            return CycleOutcome::Transient;
+        }
+        set_status_error(status, ERROR_KIND_TRACKER_ADDRESS_INVALID);
+        return CycleOutcome::Unrecoverable;
+    }
+    *has_resolved_once = true;
+
+    // Phase 1b: TCP connect to one of the resolved addresses. Failure
+    // here is `Transient` (server briefly unreachable, network glitch,
+    // etc.) and the next refresh cycle will retry with backoff.
+    let tcp = match TcpStream::connect(&addrs[..]).await {
         Ok(s) => s,
         Err(e) => {
             warn!(
@@ -1531,6 +1616,98 @@ mod tests {
         task.abort();
         let _ = task.await;
         mock.stop().await;
+    }
+
+    /// First-ever DNS lookup failure short-circuits to `Unrecoverable` so
+    /// the task exits. Most likely the admin typed the address wrong;
+    /// tight-looping on a non-resolving hostname would just spam the
+    /// operator log.
+    #[tokio::test]
+    async fn dns_failure_first_time_is_unrecoverable() {
+        let (_db, context) = setup_context().await;
+        let mut record = TrackerRecord {
+            id: 1,
+            // RFC 2606 reserves `.invalid` for guaranteed DNS failure.
+            address: "tracker.dns-test.invalid".to_string(),
+            port: 7510,
+            fingerprint: None,
+            password: None,
+            name: "Invalid".to_string(),
+            enabled: true,
+            created_at: 0,
+            updated_at: 0,
+        };
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        let mut has_resolved_once = false;
+
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(10),
+            attempt_connection_cycle(&mut record, &status, &context, &mut has_resolved_once),
+        )
+        .await
+        .expect("DNS lookup of an .invalid hostname must fail fast — the resolver hung");
+
+        assert!(
+            matches!(outcome, CycleOutcome::Unrecoverable),
+            "first-ever DNS failure should short-circuit to Unrecoverable"
+        );
+        assert!(
+            !has_resolved_once,
+            "flag must remain false after a failed lookup"
+        );
+        let snap = status.read().expect("status lock").clone();
+        assert!(!snap.connected);
+        assert_eq!(
+            snap.last_error_kind.as_deref(),
+            Some(ERROR_KIND_TRACKER_ADDRESS_INVALID),
+            "first-ever failure surfaces as address-invalid (admin needs to edit the row)"
+        );
+    }
+
+    /// DNS lookup failure *after* at least one successful resolution is
+    /// `Transient`. The hostname proved real once, so we treat this as a
+    /// network blip and let the next refresh cycle retry with backoff.
+    #[tokio::test]
+    async fn dns_failure_after_resolved_once_is_transient() {
+        let (_db, context) = setup_context().await;
+        let mut record = TrackerRecord {
+            id: 1,
+            address: "tracker.dns-test.invalid".to_string(),
+            port: 7510,
+            fingerprint: None,
+            password: None,
+            name: "Invalid".to_string(),
+            enabled: true,
+            created_at: 0,
+            updated_at: 0,
+        };
+        let status = Arc::new(RwLock::new(TrackerStatus::default()));
+        // Simulate the real-life shape: a previous cycle succeeded, the
+        // task is mid-loop, and DNS has just started failing.
+        let mut has_resolved_once = true;
+
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(10),
+            attempt_connection_cycle(&mut record, &status, &context, &mut has_resolved_once),
+        )
+        .await
+        .expect("DNS lookup of an .invalid hostname must fail fast — the resolver hung");
+
+        assert!(
+            matches!(outcome, CycleOutcome::Transient),
+            "DNS failure after a prior success should be transient"
+        );
+        assert!(
+            has_resolved_once,
+            "flag must remain true so subsequent failures stay transient"
+        );
+        let snap = status.read().expect("status lock").clone();
+        assert!(!snap.connected);
+        assert_eq!(
+            snap.last_error_kind.as_deref(),
+            Some(ERROR_KIND_TRACKER_CONNECTION_FAILED),
+            "subsequent failure surfaces as connection-failed (transient)"
+        );
     }
 
     /// Wait until `captured` contains at least `target` entries, or

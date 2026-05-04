@@ -727,6 +727,8 @@ impl NexusApp {
                 self.handle_user_management_create_tab_pressed()
             }
             Message::UserManagementEditTabPressed => self.handle_user_management_edit_tab_pressed(),
+            Message::AddTrackerTabPressed => self.handle_add_tracker_tab_pressed(),
+            Message::EditTrackerTabPressed => self.handle_edit_tracker_tab_pressed(),
             Message::UserManagementSortBy(column) => self.handle_user_management_sort_by(column),
 
             // User management: Tab and group selection
@@ -959,6 +961,56 @@ impl NexusApp {
             Message::ShowServerInfo => self.handle_show_server_info(),
             Message::UpdateServerInfoPressed => self.handle_update_server_info_pressed(),
             Message::ServerInfoEditTabPressed => self.handle_server_info_edit_tab_pressed(),
+
+            // Tracker management (Trackers tab inside Server Info)
+            Message::TrackerManagementShowAdd => self.handle_tracker_management_show_add(),
+            Message::TrackerManagementShowEdit(id) => self.handle_tracker_management_show_edit(id),
+            Message::TrackerManagementShowRemove(id, name) => {
+                self.handle_tracker_management_show_remove(id, name)
+            }
+            Message::TrackerManagementShowAcceptFingerprint(id) => {
+                self.handle_tracker_management_show_accept_fingerprint(id)
+            }
+            Message::CancelTrackerManagement => self.handle_cancel_tracker_management(),
+            Message::TrackerManagementRefresh => self.handle_tracker_management_refresh(),
+            Message::TrackerManagementSortChanged(column) => {
+                self.handle_tracker_management_sort_changed(column)
+            }
+            Message::AddTrackerNameChanged(name) => self.handle_add_tracker_name_changed(name),
+            Message::AddTrackerAddressChanged(addr) => {
+                self.handle_add_tracker_address_changed(addr)
+            }
+            Message::AddTrackerPortChanged(port) => self.handle_add_tracker_port_changed(port),
+            Message::AddTrackerFingerprintChanged(fp) => {
+                self.handle_add_tracker_fingerprint_changed(fp)
+            }
+            Message::AddTrackerPasswordChanged(pw) => self.handle_add_tracker_password_changed(pw),
+            Message::AddTrackerEnabledToggled(enabled) => {
+                self.handle_add_tracker_enabled_toggled(enabled)
+            }
+            Message::AddTrackerSubmit => self.handle_add_tracker_submit(),
+            Message::ValidateAddTracker => self.handle_validate_add_tracker(),
+            Message::EditTrackerNameChanged(name) => self.handle_edit_tracker_name_changed(name),
+            Message::EditTrackerAddressChanged(addr) => {
+                self.handle_edit_tracker_address_changed(addr)
+            }
+            Message::EditTrackerPortChanged(port) => self.handle_edit_tracker_port_changed(port),
+            Message::EditTrackerFingerprintChanged(fp) => {
+                self.handle_edit_tracker_fingerprint_changed(fp)
+            }
+            Message::EditTrackerPasswordChanged(pw) => {
+                self.handle_edit_tracker_password_changed(pw)
+            }
+            Message::EditTrackerEnabledToggled(enabled) => {
+                self.handle_edit_tracker_enabled_toggled(enabled)
+            }
+            Message::EditTrackerSubmit => self.handle_edit_tracker_submit(),
+            Message::ValidateEditTracker => self.handle_validate_edit_tracker(),
+            Message::RemoveTrackerConfirm => self.handle_remove_tracker_confirm(),
+            Message::RemoveTrackerCancel => self.handle_remove_tracker_cancel(),
+            Message::AcceptFingerprintConfirm => self.handle_accept_fingerprint_confirm(),
+            Message::AcceptFingerprintCancel => self.handle_accept_fingerprint_cancel(),
+            Message::CopyServerFingerprint(fp) => self.handle_copy_server_fingerprint(fp),
 
             // User info
             Message::CloseUserInfo => self.handle_close_user_info(),

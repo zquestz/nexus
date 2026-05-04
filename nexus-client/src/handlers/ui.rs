@@ -2,9 +2,10 @@
 
 use iced::Task;
 use iced::widget::markdown;
+use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
-use crate::types::{ActivePanel, Message};
+use crate::types::{ActivePanel, Message, PendingRequests};
 
 impl NexusApp {
     // ==================== Active Panel Helpers ====================
@@ -72,13 +73,40 @@ impl NexusApp {
 
     // ==================== Server Info ====================
 
-    /// Show Server Info panel
+    /// Show Server Info panel.
+    ///
+    /// If the user has `tracker_list` permission, kick off a `TrackerList`
+    /// fetch in the background so the Trackers tab is populated when the
+    /// admin switches to it.
     pub fn handle_show_server_info(&mut self) -> Task<Message> {
         if self.active_panel() == ActivePanel::ServerInfo {
             return Task::none();
         }
 
         self.set_active_panel(ActivePanel::ServerInfo);
+
+        // Reset tracker management mode and prefetch the list if allowed.
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            conn.tracker_management.reset_to_list();
+            if conn.has_permission(crate::views::constants::PERMISSION_TRACKER_LIST) {
+                conn.tracker_management.all_trackers = None;
+                match conn.send(ClientMessage::TrackerList) {
+                    Ok(message_id) => {
+                        conn.pending_requests.track(
+                            message_id,
+                            crate::types::ResponseRouting::PopulateTrackerManagementList,
+                        );
+                    }
+                    Err(e) => {
+                        conn.tracker_management.all_trackers =
+                            Some(Err(format!("{}: {}", crate::i18n::t("err-send-failed"), e)));
+                    }
+                }
+            }
+        }
+
         Task::none()
     }
 

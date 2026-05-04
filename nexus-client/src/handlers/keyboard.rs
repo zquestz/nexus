@@ -10,7 +10,7 @@ use nexus_common::protocol::ClientMessage;
 use crate::NexusApp;
 use crate::types::{
     ActivePanel, BookmarkEditMode, ChatTab, InputId, Message, NewsManagementMode, PendingRequests,
-    ResponseRouting, UserManagementMode,
+    ResponseRouting, TrackerManagementMode, UserManagementMode,
 };
 use crate::voice::ptt::build_hotkey_string;
 
@@ -273,12 +273,50 @@ impl NexusApp {
                 // On about screen, close the panel
                 return self.update(Message::CloseAbout);
             } else if self.active_panel() == ActivePanel::ServerInfo {
-                // On server info screen, submit if in edit mode, otherwise close
+                // On server info screen, dispatch based on what subview is open:
+                //   server_info_edit ─→ UpdateServerInfoPressed
+                //   tracker Add/Edit ─→ Validate or Submit (mirrors the form's on_submit)
+                //   tracker ConfirmRemove / AcceptFingerprint ─→ Confirm
+                //     (these modals have no text inputs, so the keyboard handler is
+                //      the only path that can fire their primary action)
+                //   otherwise ─→ CloseServerInfo
                 if let Some(conn_id) = self.active_connection
                     && let Some(conn) = self.connections.get(&conn_id)
-                    && conn.server_info_edit.is_some()
                 {
-                    return self.update(Message::UpdateServerInfoPressed);
+                    if conn.server_info_edit.is_some() {
+                        return self.update(Message::UpdateServerInfoPressed);
+                    }
+                    match &conn.tracker_management.mode {
+                        TrackerManagementMode::Add => {
+                            let can_submit = !conn.tracker_management.add_name.trim().is_empty()
+                                && !conn.tracker_management.add_address.trim().is_empty()
+                                && !conn.tracker_management.is_submitting;
+                            let msg = if can_submit {
+                                Message::AddTrackerSubmit
+                            } else {
+                                Message::ValidateAddTracker
+                            };
+                            return self.update(msg);
+                        }
+                        TrackerManagementMode::Edit { name, address, .. } => {
+                            let can_submit = !name.trim().is_empty()
+                                && !address.trim().is_empty()
+                                && !conn.tracker_management.is_submitting;
+                            let msg = if can_submit {
+                                Message::EditTrackerSubmit
+                            } else {
+                                Message::ValidateEditTracker
+                            };
+                            return self.update(msg);
+                        }
+                        TrackerManagementMode::ConfirmRemove { .. } => {
+                            return self.update(Message::RemoveTrackerConfirm);
+                        }
+                        TrackerManagementMode::AcceptFingerprint { .. } => {
+                            return self.update(Message::AcceptFingerprintConfirm);
+                        }
+                        TrackerManagementMode::List => {}
+                    }
                 }
                 return self.update(Message::CloseServerInfo);
             } else if self.active_panel() == ActivePanel::UserInfo {
@@ -353,12 +391,22 @@ impl NexusApp {
                     ActivePanel::Broadcast => return self.update(Message::CancelBroadcast),
                     ActivePanel::Settings => return self.update(Message::CancelSettings),
                     ActivePanel::ServerInfo => {
-                        // If in edit mode, cancel edit; otherwise close panel
+                        // Escape priority on the Server Info panel:
+                        //   1. Edit form open    → cancel edit, return to display.
+                        //   2. Tracker subview / modal open → return to trackers list.
+                        //   3. Otherwise         → close the panel entirely.
                         if let Some(conn_id) = self.active_connection
                             && let Some(conn) = self.connections.get(&conn_id)
-                            && conn.server_info_edit.is_some()
                         {
-                            return self.update(Message::CancelEditServerInfo);
+                            if conn.server_info_edit.is_some() {
+                                return self.update(Message::CancelEditServerInfo);
+                            }
+                            if !matches!(
+                                conn.tracker_management.mode,
+                                crate::types::TrackerManagementMode::List
+                            ) {
+                                return self.update(Message::CancelTrackerManagement);
+                            }
                         }
                         return self.update(Message::CloseServerInfo);
                     }
@@ -574,12 +622,23 @@ impl NexusApp {
             // Change password panel: check actual focus and cycle through fields
             return self.update(Message::ChangePasswordTabPressed);
         } else if self.active_panel() == ActivePanel::ServerInfo {
-            // Server info edit screen: check actual focus and cycle
+            // Server info panel: dispatch on edit-form / tracker-subview state.
             if let Some(conn_id) = self.active_connection
                 && let Some(conn) = self.connections.get(&conn_id)
-                && conn.server_info_edit.is_some()
             {
-                return self.update(Message::ServerInfoEditTabPressed);
+                if conn.server_info_edit.is_some() {
+                    return self.update(Message::ServerInfoEditTabPressed);
+                }
+                match &conn.tracker_management.mode {
+                    crate::types::TrackerManagementMode::Add => {
+                        return self.update(Message::AddTrackerTabPressed);
+                    }
+                    crate::types::TrackerManagementMode::Edit { .. } => {
+                        return self.update(Message::EditTrackerTabPressed);
+                    }
+                    // List / ConfirmRemove / AcceptFingerprint: no Tab cycling.
+                    _ => {}
+                }
             }
         } else if self.active_panel() == ActivePanel::Files {
             // Files panel: focus the appropriate input if a dialog is open

@@ -12,7 +12,7 @@ button-save = Guardar
 button-create = Criar
 button-edit = Editar
 button-update = Atualizar
-button-accept-new-certificate = Aceitar Novo Certificado
+button-accept-new-certificate = Aceitar
 button-close = Fechar
 button-choose-avatar = Escolher Ícone
 button-clear-avatar = Limpar
@@ -199,6 +199,10 @@ permission-user_delete = Eliminar Utilizador
 permission-user_edit = Editar Utilizador
 permission-user_kick = Expulsar Utilizador
 permission-user_message = Mensagem de Utilizador
+permission-tracker_list = Lista de Trackers
+permission-tracker_add = Adicionar Tracker
+permission-tracker_edit = Editar Tracker
+permission-tracker_remove = Remover Tracker
 permission-news_list = Lista de Notícias
 permission-news_create = Criar Notícia
 permission-news_edit = Editar Notícia
@@ -283,6 +287,7 @@ tooltip-create-user = Criar Utilizador
 tooltip-create-group = Criar Grupo
 tooltip-create-news = Criar Publicação
 tooltip-delete = Eliminar
+tooltip-refresh = Atualizar
 context-menu-download = Transferir
 context-menu-upload = Carregar
 context-menu-open = Abrir
@@ -1211,3 +1216,91 @@ toast-uploads-queued = { $count } { $count ->
     [one] envio
    *[other] envios
 } na fila
+
+# =============================================================================
+# Server Info Panel
+# =============================================================================
+
+# Tabs
+tab-config = Configuração
+tab-trackers = Trackers
+
+# =============================================================================
+# Tracker Management
+# =============================================================================
+
+# Buttons
+button-add = Adicionar
+button-remove = Remover
+button-accept-fingerprint = Aceitar
+
+# Columns
+col-status = Estado
+col-address = Endereço
+
+# Titles
+title-add-tracker = Adicionar Tracker
+title-edit-tracker = Editar Tracker
+title-accept-fingerprint = Aceitar Impressão Digital
+
+# Labels
+label-address = Endereço:
+label-tracker-password = Palavra-passe:
+label-fingerprint-unpinned = (não fixada)
+
+# Placeholders
+placeholder-tracker-name = Nome do tracker
+placeholder-tracker-address = tracker.example.com
+placeholder-tracker-fingerprint = Impressão digital SHA-256 (opcional)
+placeholder-tracker-password = Palavra-passe (opcional)
+
+# Tooltips
+tooltip-add-tracker = Adicionar Tracker
+tooltip-edit-server-info = Editar Info do Servidor
+tooltip-tracker-connected = Ligado
+tooltip-tracker-disconnected = Desligado
+tooltip-tracker-fingerprint-pending = Impressão Digital Não Coincide
+
+# States
+tracker-management-loading = A carregar trackers…
+tracker-management-no-trackers = Nenhum tracker configurado
+
+# Dialog
+dialog-remove-tracker-title = Remover Tracker
+dialog-remove-tracker-body = Tem a certeza de que deseja remover o tracker "{ $name }"? Isto irá interromper a publicação do registo do servidor para este tracker. A entrada do tracker pode ser adicionada novamente mais tarde.
+tracker-fingerprint-warning = O tracker apresentou uma nova impressão digital de certificado. Verifique-a através de um canal de confiança (site do operador do tracker, anúncio assinado, etc.) antes de aceitar. Aceitar promove a nova impressão digital para o valor fixado utilizado por este servidor.
+
+# Toasts
+toast-fingerprint-copied = Impressão digital copiada
+toast-tracker-added = Tracker adicionado
+toast-tracker-added-name = Tracker "{ $name }" adicionado
+toast-tracker-updated = Tracker atualizado
+toast-tracker-updated-name = Tracker "{ $name }" atualizado
+toast-tracker-removed = Tracker removido
+toast-tracker-removed-name = Tracker "{ $name }" removido
+toast-tracker-fingerprint-accepted = Impressão digital aceite
+toast-tracker-fingerprint-stale = Revisão de impressão digital já não está pendente
+toast-tracker-fingerprint-accepted-name = Impressão digital aceite para "{ $name }"
+
+# Errors
+err-tracker-name-empty = O nome do tracker é obrigatório
+err-tracker-name-too-long = O nome do tracker é demasiado longo (máx { $max } bytes)
+err-tracker-name-contains-newlines = O nome do tracker não pode conter quebras de linha
+err-tracker-name-invalid-characters = O nome do tracker contém caracteres de controlo inválidos
+err-tracker-address-empty = O endereço do tracker é obrigatório
+err-tracker-address-too-long = O endereço do tracker é demasiado longo (máximo { $max } bytes)
+err-tracker-address-contains-scheme = O endereço do tracker não pode incluir um esquema de URL
+err-tracker-address-contains-brackets = O endereço do tracker não pode incluir parênteses retos
+err-tracker-address-contains-path = O endereço do tracker não pode incluir um caminho
+err-tracker-address-contains-userinfo = O endereço do tracker não pode incluir um nome de utilizador
+err-tracker-address-contains-whitespace = O endereço do tracker não pode conter espaços em branco
+err-tracker-address-contains-port = O endereço do tracker não pode incluir uma porta
+err-tracker-address-contains-zone-id = O endereço do tracker não pode incluir um identificador de zona IPv6
+err-tracker-address-invalid-format = O endereço do tracker não é um nome de anfitrião ou endereço IP válido
+err-tracker-fingerprint-invalid = A impressão digital deve ser 32 pares hexadecimais maiúsculos separados por dois pontos (95 caracteres)
+err-tracker-password-too-long = A palavra-passe do tracker é demasiado longa (máx { $max } bytes)
+err-tracker-add-failed = Falha ao adicionar tracker
+err-tracker-update-failed = Falha ao atualizar tracker
+err-tracker-remove-failed = Falha ao remover tracker
+err-tracker-accept-fingerprint-failed = Falha ao aceitar a impressão digital
+err-tracker-edit-no-payload = O servidor não devolveu detalhes do tracker

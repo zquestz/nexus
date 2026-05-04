@@ -156,3 +156,17 @@ pub(crate) const PERMISSION_VOICE_LISTEN: &str = "voice_listen";
 
 /// Permission to transmit audio in voice chat
 pub(crate) const PERMISSION_VOICE_TALK: &str = "voice_talk";
+
+// === Tracker Permissions ===
+
+/// Permission to view the tracker list
+pub(crate) const PERMISSION_TRACKER_LIST: &str = "tracker_list";
+
+/// Permission to add new trackers
+pub(crate) const PERMISSION_TRACKER_ADD: &str = "tracker_add";
+
+/// Permission to edit trackers (also gates Accept Fingerprint)
+pub(crate) const PERMISSION_TRACKER_EDIT: &str = "tracker_edit";
+
+/// Permission to remove trackers
+pub(crate) const PERMISSION_TRACKER_REMOVE: &str = "tracker_remove";

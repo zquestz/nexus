@@ -12,7 +12,7 @@ button-save = 저장
 button-create = 생성
 button-edit = 편집
 button-update = 업데이트
-button-accept-new-certificate = 새 인증서 수락
+button-accept-new-certificate = 수락
 button-close = 닫기
 button-choose-avatar = 아바타 선택
 button-clear-avatar = 지우기
@@ -193,6 +193,10 @@ permission-user_delete = 사용자 삭제
 permission-user_edit = 사용자 편집
 permission-user_kick = 사용자 추방
 permission-user_message = 사용자 메시지
+permission-tracker_list = 트래커 목록
+permission-tracker_add = 트래커 추가
+permission-tracker_edit = 트래커 편집
+permission-tracker_remove = 트래커 제거
 permission-news_list = 뉴스 목록
 permission-news_create = 뉴스 작성
 permission-news_edit = 뉴스 편집
@@ -277,6 +281,7 @@ tooltip-create-user = 사용자 생성
 tooltip-create-group = 그룹 생성
 tooltip-create-news = 게시물 작성
 tooltip-delete = 삭제
+tooltip-refresh = 새로고침
 context-menu-download = 다운로드
 context-menu-upload = 업로드
 context-menu-open = 열기
@@ -1160,3 +1165,91 @@ toast-upload-started = { $filename } 업로드 중
 toast-upload-queued = 업로드 대기: { $filename }
 toast-uploads-started = { $count }개 파일 업로드 중
 toast-uploads-queued = { $count }개 업로드 대기
+
+# =============================================================================
+# Server Info Panel
+# =============================================================================
+
+# Tabs
+tab-config = 설정
+tab-trackers = 트래커
+
+# =============================================================================
+# Tracker Management
+# =============================================================================
+
+# Buttons
+button-add = 추가
+button-remove = 제거
+button-accept-fingerprint = 수락
+
+# Columns
+col-status = 상태
+col-address = 주소
+
+# Titles
+title-add-tracker = 트래커 추가
+title-edit-tracker = 트래커 편집
+title-accept-fingerprint = 지문 수락
+
+# Labels
+label-address = 주소:
+label-tracker-password = 비밀번호:
+label-fingerprint-unpinned = (고정 안 됨)
+
+# Placeholders
+placeholder-tracker-name = 트래커 이름
+placeholder-tracker-address = tracker.example.com
+placeholder-tracker-fingerprint = SHA-256 지문 (선택 사항)
+placeholder-tracker-password = 비밀번호 (선택 사항)
+
+# Tooltips
+tooltip-add-tracker = 트래커 추가
+tooltip-edit-server-info = 서버 정보 편집
+tooltip-tracker-connected = 연결됨
+tooltip-tracker-disconnected = 연결 끊김
+tooltip-tracker-fingerprint-pending = 지문 불일치
+
+# States
+tracker-management-loading = 트래커 로드 중…
+tracker-management-no-trackers = 구성된 트래커가 없습니다
+
+# Dialog
+dialog-remove-tracker-title = 트래커 제거
+dialog-remove-tracker-body = 트래커 "{ $name }"을(를) 제거하시겠습니까? 이 트래커에 서버 등록 게시가 중지됩니다. 트래커 항목은 나중에 다시 추가할 수 있습니다.
+tracker-fingerprint-warning = 트래커가 새 인증서 지문을 제시했습니다. 수락하기 전에 신뢰할 수 있는 경로(트래커 운영자의 웹사이트, 서명된 공지 등)로 확인하세요. 수락하면 새 지문이 이 서버에서 사용되는 고정 값으로 승격됩니다.
+
+# Toasts
+toast-fingerprint-copied = 지문을 복사했습니다
+toast-tracker-added = 트래커가 추가되었습니다
+toast-tracker-added-name = 트래커 "{ $name }"이(가) 추가되었습니다
+toast-tracker-updated = 트래커가 업데이트되었습니다
+toast-tracker-updated-name = 트래커 "{ $name }"이(가) 업데이트되었습니다
+toast-tracker-removed = 트래커가 제거되었습니다
+toast-tracker-removed-name = 트래커 "{ $name }"이(가) 제거되었습니다
+toast-tracker-fingerprint-accepted = 지문이 수락되었습니다
+toast-tracker-fingerprint-stale = 지문 검토가 더 이상 보류 상태가 아닙니다
+toast-tracker-fingerprint-accepted-name = "{ $name }"의 지문이 수락되었습니다
+
+# Errors
+err-tracker-name-empty = 트래커 이름이 필요합니다
+err-tracker-name-too-long = 트래커 이름이 너무 깁니다 (최대 { $max } 바이트)
+err-tracker-name-contains-newlines = 트래커 이름에 줄바꿈을 포함할 수 없습니다
+err-tracker-name-invalid-characters = 트래커 이름에 잘못된 제어 문자가 포함되어 있습니다
+err-tracker-address-empty = 트래커 주소가 필요합니다
+err-tracker-address-too-long = 트래커 주소가 너무 깁니다 (최대 { $max } 바이트)
+err-tracker-address-contains-scheme = 트래커 주소에는 URL 스킴을 포함할 수 없습니다
+err-tracker-address-contains-brackets = 트래커 주소에는 대괄호를 포함할 수 없습니다
+err-tracker-address-contains-path = 트래커 주소에는 경로를 포함할 수 없습니다
+err-tracker-address-contains-userinfo = 트래커 주소에는 사용자 이름을 포함할 수 없습니다
+err-tracker-address-contains-whitespace = 트래커 주소에는 공백을 포함할 수 없습니다
+err-tracker-address-contains-port = 트래커 주소에는 포트를 포함할 수 없습니다
+err-tracker-address-contains-zone-id = 트래커 주소에는 IPv6 영역 식별자를 포함할 수 없습니다
+err-tracker-address-invalid-format = 트래커 주소가 유효한 호스트 이름 또는 IP 주소가 아닙니다
+err-tracker-fingerprint-invalid = 지문은 콜론으로 구분된 32개의 대문자 16진수 쌍(95자)이어야 합니다
+err-tracker-password-too-long = 트래커 비밀번호가 너무 깁니다 (최대 { $max } 바이트)
+err-tracker-add-failed = 트래커 추가에 실패했습니다
+err-tracker-update-failed = 트래커 업데이트에 실패했습니다
+err-tracker-remove-failed = 트래커 제거에 실패했습니다
+err-tracker-accept-fingerprint-failed = 지문 수락에 실패했습니다
+err-tracker-edit-no-payload = 서버가 트래커 세부 정보를 반환하지 않았습니다

@@ -12,6 +12,7 @@ pub(crate) mod network;
 mod news;
 mod server_info;
 mod settings;
+mod tracker_management;
 mod transfers;
 #[cfg(not(target_os = "macos"))]
 mod tray;

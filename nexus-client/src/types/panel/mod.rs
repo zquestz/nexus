@@ -11,6 +11,7 @@ mod news;
 mod password;
 mod server_info;
 mod settings;
+mod trackers;
 mod users;
 
 pub use connection::*;
@@ -22,4 +23,5 @@ pub use news::*;
 pub use password::*;
 pub use server_info::*;
 pub use settings::*;
+pub use trackers::*;
 pub use users::*;

@@ -108,6 +108,18 @@ pub enum ResponseRouting {
     SecretResult { channel: String, secret: bool },
     /// Ping command result - contains send time for latency calculation
     PingResult(std::time::Instant),
+    /// Populate tracker management list (from panel open or refresh)
+    PopulateTrackerManagementList,
+    /// Populate tracker management edit form (from edit row click)
+    PopulateTrackerManagementEdit,
+    /// Tracker management add result (return to list on success)
+    TrackerManagementAddResult,
+    /// Tracker management update result (return to list on success)
+    TrackerManagementUpdateResult,
+    /// Tracker management remove result (close confirm modal on success)
+    TrackerManagementRemoveResult,
+    /// Tracker management accept-fingerprint result (close dialog on success)
+    TrackerManagementAcceptFingerprintResult,
 }
 
 /// Extension trait for tracking pending requests
@@ -492,6 +504,75 @@ mod tests {
         assert!(matches!(
             pending.get(&id),
             Some(ResponseRouting::StatusResult(None))
+        ));
+    }
+
+    #[test]
+    fn test_track_populate_tracker_management_list() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::PopulateTrackerManagementList);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::PopulateTrackerManagementList)
+        ));
+    }
+
+    #[test]
+    fn test_track_populate_tracker_management_edit() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::PopulateTrackerManagementEdit);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::PopulateTrackerManagementEdit)
+        ));
+    }
+
+    #[test]
+    fn test_track_tracker_management_add_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::TrackerManagementAddResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::TrackerManagementAddResult)
+        ));
+    }
+
+    #[test]
+    fn test_track_tracker_management_update_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::TrackerManagementUpdateResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::TrackerManagementUpdateResult)
+        ));
+    }
+
+    #[test]
+    fn test_track_tracker_management_remove_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(id, ResponseRouting::TrackerManagementRemoveResult);
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::TrackerManagementRemoveResult)
+        ));
+    }
+
+    #[test]
+    fn test_track_tracker_management_accept_fingerprint_result() {
+        let mut pending: HashMap<MessageId, ResponseRouting> = HashMap::new();
+        let id = MessageId::new();
+        pending.track(
+            id,
+            ResponseRouting::TrackerManagementAcceptFingerprintResult,
+        );
+        assert!(matches!(
+            pending.get(&id),
+            Some(ResponseRouting::TrackerManagementAcceptFingerprintResult)
         ));
     }
 }

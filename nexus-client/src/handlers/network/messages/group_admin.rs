@@ -1,13 +1,15 @@
 //! Group administration response handlers
 
 use iced::Task;
+use iced::widget::{Id, operation};
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::{ClientMessage, GroupInfo};
 
 use crate::NexusApp;
 use crate::i18n::t_args;
 use crate::types::{
-    ActivePanel, ChatMessage, GroupManagementMode, Message, PendingRequests, ResponseRouting,
+    ActivePanel, ChatMessage, GroupManagementMode, InputId, Message, PendingRequests,
+    ResponseRouting,
 };
 
 /// Data from a GroupEditResponse message
@@ -142,6 +144,8 @@ impl NexusApp {
                     data.member_count.unwrap_or(0),
                     data.permissions.unwrap_or_default(),
                 );
+                self.focused_field = InputId::EditGroupName;
+                return operation::focus(Id::from(InputId::EditGroupName));
             }
         } else {
             // On error, show in the appropriate place

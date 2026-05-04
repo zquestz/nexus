@@ -12,7 +12,7 @@ button-save = 儲存
 button-create = 建立
 button-edit = 編輯
 button-update = 更新
-button-accept-new-certificate = 接受新憑證
+button-accept-new-certificate = 接受
 button-close = 關閉
 button-choose-avatar = 選擇頭像
 button-clear-avatar = 清除
@@ -193,6 +193,10 @@ permission-user_delete = 刪除使用者
 permission-user_edit = 編輯使用者
 permission-user_kick = 踢除使用者
 permission-user_message = 使用者訊息
+permission-tracker_list = 追蹤器清單
+permission-tracker_add = 新增追蹤器
+permission-tracker_edit = 編輯追蹤器
+permission-tracker_remove = 移除追蹤器
 permission-news_list = 新聞列表
 permission-news_create = 建立新聞
 permission-news_edit = 編輯新聞
@@ -277,6 +281,7 @@ tooltip-create-user = 建立使用者
 tooltip-create-group = 建立群組
 tooltip-create-news = 建立貼文
 tooltip-delete = 刪除
+tooltip-refresh = 重新整理
 context-menu-download = 下載
 context-menu-upload = 上傳
 context-menu-open = 開啟
@@ -1160,3 +1165,91 @@ toast-upload-started = 正在上傳 { $filename }
 toast-upload-queued = 上傳已排隊: { $filename }
 toast-uploads-started = 正在上傳 { $count } 個檔案
 toast-uploads-queued = { $count } 個上傳已排隊
+
+# =============================================================================
+# Server Info Panel
+# =============================================================================
+
+# Tabs
+tab-config = 設定
+tab-trackers = 追蹤器
+
+# =============================================================================
+# Tracker Management
+# =============================================================================
+
+# Buttons
+button-add = 新增
+button-remove = 移除
+button-accept-fingerprint = 接受
+
+# Columns
+col-status = 狀態
+col-address = 位址
+
+# Titles
+title-add-tracker = 新增追蹤器
+title-edit-tracker = 編輯追蹤器
+title-accept-fingerprint = 接受指紋
+
+# Labels
+label-address = 位址：
+label-tracker-password = 密碼：
+label-fingerprint-unpinned = (未釘選)
+
+# Placeholders
+placeholder-tracker-name = 追蹤器名稱
+placeholder-tracker-address = tracker.example.com
+placeholder-tracker-fingerprint = SHA-256 指紋（選填）
+placeholder-tracker-password = 密碼（選填）
+
+# Tooltips
+tooltip-add-tracker = 新增追蹤器
+tooltip-edit-server-info = 編輯伺服器資訊
+tooltip-tracker-connected = 已連線
+tooltip-tracker-disconnected = 未連線
+tooltip-tracker-fingerprint-pending = 指紋不符
+
+# States
+tracker-management-loading = 正在載入追蹤器…
+tracker-management-no-trackers = 尚未設定追蹤器
+
+# Dialog
+dialog-remove-tracker-title = 移除追蹤器
+dialog-remove-tracker-body = 確定要移除追蹤器「{ $name }」嗎？這將停止向此追蹤器發佈伺服器註冊。該追蹤器項目稍後可重新新增。
+tracker-fingerprint-warning = 追蹤器提供了新的憑證指紋。在接受之前,請透過可信任的管道(追蹤器營運者的網站、已簽署的公告等)進行驗證。接受會將新指紋設為此伺服器使用的釘選值。
+
+# Toasts
+toast-fingerprint-copied = 已複製指紋
+toast-tracker-added = 已新增追蹤器
+toast-tracker-added-name = 已新增追蹤器「{ $name }」
+toast-tracker-updated = 已更新追蹤器
+toast-tracker-updated-name = 已更新追蹤器「{ $name }」
+toast-tracker-removed = 已移除追蹤器
+toast-tracker-removed-name = 已移除追蹤器「{ $name }」
+toast-tracker-fingerprint-accepted = 指紋已接受
+toast-tracker-fingerprint-stale = 指紋審核已不再處於待處理狀態
+toast-tracker-fingerprint-accepted-name = 已接受「{ $name }」的指紋
+
+# Errors
+err-tracker-name-empty = 需要追蹤器名稱
+err-tracker-name-too-long = 追蹤器名稱過長（最多 { $max } 個位元組）
+err-tracker-name-contains-newlines = 追蹤器名稱不能包含換行字元
+err-tracker-name-invalid-characters = 追蹤器名稱包含無效的控制字元
+err-tracker-address-empty = 需要追蹤器位址
+err-tracker-address-too-long = 追蹤器位址太長（最多{ $max }個位元組）
+err-tracker-address-contains-scheme = 追蹤器位址不能包含URL協定
+err-tracker-address-contains-brackets = 追蹤器位址不能包含方括號
+err-tracker-address-contains-path = 追蹤器位址不能包含路徑
+err-tracker-address-contains-userinfo = 追蹤器位址不能包含使用者名稱
+err-tracker-address-contains-whitespace = 追蹤器位址不能包含空格
+err-tracker-address-contains-port = 追蹤器位址不能包含連接埠
+err-tracker-address-contains-zone-id = 追蹤器位址不能包含IPv6區域識別碼
+err-tracker-address-invalid-format = 追蹤器位址不是有效的主機名稱或IP位址
+err-tracker-fingerprint-invalid = 指紋必須是用冒號分隔的 32 組大寫十六進位字元（共 95 個字元）
+err-tracker-password-too-long = 追蹤器密碼過長（最多 { $max } 個位元組）
+err-tracker-add-failed = 新增追蹤器失敗
+err-tracker-update-failed = 更新追蹤器失敗
+err-tracker-remove-failed = 移除追蹤器失敗
+err-tracker-accept-fingerprint-failed = 接受指紋失敗
+err-tracker-edit-no-payload = 伺服器未傳回追蹤器詳細資訊

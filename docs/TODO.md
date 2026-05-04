@@ -121,10 +121,10 @@ Discovery service for Nexus servers. Protocol design is complete; see
 
 **Remaining work** — v0.8.2 ships when these land:
 
-| Item                            | Notes                                                                                                                                                 |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Client-side admin UI            | Tracker management panel in `nexus-client` admin section; calls the tracker admin protocol messages. **See plan below.**                              |
-| Client-side browser integration | `nexus-client` queries one or more trackers and surfaces the listing in the bookmarks / server-list UI. (Separate from the admin UI.)                 |
+| Item                            | Notes                                                                                                                                                                      |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Client-side admin UI            | Tracker management panel in `nexus-client` admin section; calls the tracker admin protocol messages. **See plan below.**                                                   |
+| Client-side browser integration | `nexus-client` queries one or more trackers and surfaces the listing in the bookmarks / server-list UI. (Separate from the admin UI.)                                      |
 | 12-locale i18n backfill         | All client-side keys listed below need the other 12 locales after feature is functional. (Server-side `err-tracker-no-pending-fingerprint` is already complete in all 13.) |
 
 #### Server Info Panel + Tracker Admin UI Plan (v0.8.2)
@@ -138,7 +138,7 @@ ambiguities — when in doubt, mirror what `views/users.rs`, `views/groups.rs`,
 
 Replace the current 3-tab `General | Chat | Files` display with
 `Config | Trackers`, lift identity-shaped data to a panel header, and
-move the `Edit` action into a per-tab toolbar.
+put the `Edit` and `Close` actions in a bottom button row on the Config tab.
 
 Layout (top to bottom):
 
@@ -158,30 +158,32 @@ Layout (top to bottom):
    form's banner; modal errors stay in their own modal.
 3. **Tab bar:** `Config | Trackers`. Trackers tab gated on
    `tracker_list`; reactive to `PermissionsUpdated`.
-4. **Per-tab toolbar** (between tab bar and body, mirrors recent
-   User Management refactor):
-   - **Config:** single `[icon::edit()]` icon, left-aligned. Always
-     visible, disabled when not admin. Clicking swaps the panel
-     into the existing monolithic edit form (no change to that view
-     for now — it's rarely accessed).
-   - **Trackers:** `[icon::plus_circled()]` then `[icon::refresh()]`,
-     both left-aligned, mirroring Groups. Add disabled without
-     `tracker_add`. Refresh disabled only while a fetch is in flight
-     (uses the `.is_some()` check on `all_trackers: Option<Result<…, _>>`
-     — don't change to `.is_some_and(Result::is_ok)` or it locks up
-     after a failed fetch).
+4. **Trackers toolbar** (Trackers tab only, between tab bar and table):
+   `[icon::plus_circled()]` then `[icon::refresh()]`, both
+   left-aligned, mirroring Groups. Add disabled without `tracker_add`.
+   Refresh disabled only while a fetch is in flight (uses the
+   `.is_some()` check on `all_trackers: Option<Result<…, _>>` —
+   don't change to `.is_some_and(Result::is_ok)` or it locks up
+   after a failed fetch). The Config tab has no toolbar — its
+   actions live in the bottom button row instead.
 5. **Body** (per tab — see sections below).
-6. **No bottom button row.** Dismiss by opening another panel
-   (consistent with User Management). No keyboard dismissal — we
-   confirmed this is acceptable.
+6. **Bottom button row** (Config tab only): `[Edit] [Close]`,
+   right-aligned. Edit is admin-gated and uses the secondary button
+   style (`btn::secondary`); Close uses the default style. Trackers
+   tab has no bottom row — actions live in the toolbar and per-row
+   context menus. Enter/Escape semantics: Escape closes the panel
+   from List mode, cancels back to List from any subview; Enter
+   submits the active subview, falls through to Close from the
+   Config display view.
 
 ##### Config tab body
 
 - Render the **available** fields (permission-gated per row),
-  alphabetically sorted, into two **equal-width** columns
-  (`row![Column.width(Fill), Space(SPACER_SIZE_LARGE), Column.width(Fill)]`).
-  No empty slots — distribute the visible-to-this-user subset
-  across the two columns top-to-bottom.
+  alphabetically sorted, into a **single column** of label/value
+  rows. (Plan originally specified two equal-width columns, but
+  during browser testing the two-column layout ran into per-row
+  height alignment issues with multi-line values; single column
+  reads cleaner and matches the layout used elsewhere.)
 - Field set: Auto-Join Channels, Chat Burst Limit, Chat Rate
   Limit, File Reindex Interval, Log Level, Max Connections per
   IP, Max Transfers per IP, Min Password Strength, Persistent
@@ -197,14 +199,17 @@ Layout (top to bottom):
 ##### Trackers tab body
 
 - Sortable table with default sort **Name ascending**. Columns:
-  `Status | Name | Address | Port`. Match `Table Consistency`
+  `Status | Name | Address` (3 columns, all
+  `Length::FillPortion(1)`). Port is omitted from the table; when
+  a tracker uses a non-default port, the Address cell shows
+  `host:port`, otherwise just the host. Match `Table Consistency`
   rules in `CLAUDE.md`:
   - Stable headers with `Space::new().width(SORT_ICON_SIZE)` placeholder.
-  - Wrap with `lazy()` + a `TrackerListDeps` struct (manual `Hash`
+  - Wrap with `lazy()` + a `TrackerTableDeps` struct (manual `Hash`
     impl matching rendered data: trackers list, sort column,
     sort direction).
   - Per-column wrapping: Status `Word`, Name `WordOrGlyph`,
-    Address `WordOrGlyph`, Port `Word`, headers `Word`.
+    Address `WordOrGlyph`, headers `Word`.
 - **Status indicator:** themed-color Unicode bullet `●` at
   `TEXT_SIZE`, top-aligned (so multi-line rows render the bullet
   next to the first line):
@@ -260,8 +265,11 @@ Triggered by right-click → Edit. **Refetches via `TrackerEdit`**
 - Same fields as Add, prefilled from `tracker`. Form's banner
   shows `last_error` when present so admins see the operational
   context while editing.
-- Submit: `button-save` (reuse). Submit disabled when
-  `has_changes()` returns false.
+- Submit: `button-save` (reuse). Submit always enabled when name and
+  address are non-empty — matches User/Group/News/Bookmark, which
+  send their update request unconditionally on Save click. (The plan
+  originally required a `has_changes()` gate; dropped during
+  implementation for consistency with the other admin forms.)
 - `is_submitting: bool` guard.
 - Wire: `ClientMessage::TrackerUpdate { id, … all fields }` →
   `TrackerUpdateResponse { success, error, id, name }`. On
@@ -412,8 +420,8 @@ Enumerate during implementation.
    `TrackerUpdateResponse`, `TrackerRemoveResponse`,
    `TrackerAcceptFingerprintResponse`).
 3. **Server Info panel restructure** — identity-block fingerprint
-   move, tab consolidation, per-tab toolbar plumbing, two-column
-   alphabetical Config rendering.
+   move, tab consolidation, single-column alphabetical Config
+   rendering, bottom Edit/Close button row on the Config tab.
 4. **Trackers tab list view** — sortable table, status bullet,
    `LazyContextMenu`.
 5. **Add Tracker subview.**
@@ -459,10 +467,13 @@ Enumerate during implementation.
   full `TrackerInfo` including current `last_error` and
   `pending_fingerprint` so the form can show operational
   context while editing.
-- **Single-icon Config toolbar accepted:** thin visually but
-  preserves the "every tab has a toolbar" pattern. Alternative
-  was Edit on the right side of the tab bar — non-standard,
-  rejected.
+- **Bottom button row on Config (vs per-tab toolbar):** the
+  per-tab toolbar pattern from User Management didn't translate
+  well — a single `[Edit]` toolbar icon above a column of
+  label/value rows looked floating and isolated. Bottom-anchored
+  `[Edit] [Close]` reads as the natural footer for a settings-style
+  display view. Trackers tab keeps its toolbar (real multi-icon
+  toolbar with Add and Refresh, plus per-row context menus).
 - **No keyboard dismissal for the panel:** consistent with all
   other Nexus panels (User Management, News). Acceptable.
 

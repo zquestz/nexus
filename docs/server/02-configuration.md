@@ -276,9 +276,11 @@ Some settings are configured at runtime by admins through the client:
 These settings are stored in the database and persist across restarts.
 
 Admins can also register the server with **discovery trackers** so it
-appears in tracker server lists. See
-[Admin → Listing Trackers](../protocol/09-admin.md#listing-trackers) for
-the full message reference. Up to 64 trackers may be configured.
+appears in tracker server lists. The easiest path is the client GUI —
+see [Server Info → Tracker Management](../client/10-server-info.md#tracker-management)
+for the admin walk-through. The protocol-level reference lives at
+[Admin → Listing Trackers](../protocol/09-admin.md#listing-trackers).
+Up to 64 trackers may be configured.
 
 ## Example Configurations
 

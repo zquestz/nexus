@@ -11,8 +11,8 @@ use nexus_common::validators::PasswordStrength;
 use nexus_common::voice::VoiceQuality;
 
 use super::panel::{
-    FileSortColumn, GroupManagementSortColumn, SettingsTab, TabId, UserManagementSortColumn,
-    UserManagementTab,
+    FileSortColumn, GroupManagementSortColumn, SettingsTab, TabId, TrackerManagementSortColumn,
+    UserManagementSortColumn, UserManagementTab,
 };
 use super::{ChatTab, NetworkConnection, ServerMessage};
 use crate::config::audio::{PttMode, PttReleaseDelay};
@@ -98,6 +98,10 @@ pub enum Message {
     UserManagementCreateTabPressed,
     /// User management edit: Tab pressed, move to next field
     UserManagementEditTabPressed,
+    /// Tracker add form: Tab pressed, move to next field
+    AddTrackerTabPressed,
+    /// Tracker edit form: Tab pressed, move to next field
+    EditTrackerTabPressed,
     /// Server info edit: Tab pressed, move to next field
     ServerInfoEditTabPressed,
     /// Settings panel: Tab pressed, move to next field
@@ -402,6 +406,62 @@ pub enum Message {
     /// Group management: Update button pressed (in edit form)
     GroupManagementUpdatePressed,
 
+    // ==================== Tracker Management (Trackers tab inside Server Info) ====================
+    /// Tracker management: Show Add subview (toolbar [+] button)
+    TrackerManagementShowAdd,
+    /// Tracker management: Edit row clicked (refetches via TrackerEdit)
+    TrackerManagementShowEdit(i64),
+    /// Tracker management: Remove row clicked (opens confirm modal) (id, name)
+    TrackerManagementShowRemove(i64, String),
+    /// Tracker management: Accept Fingerprint clicked from row context menu
+    TrackerManagementShowAcceptFingerprint(i64),
+    /// Tracker management: Cancel button (close form / modal / subview)
+    CancelTrackerManagement,
+    /// Tracker management: Refresh tracker list (toolbar refresh button)
+    TrackerManagementRefresh,
+    /// Tracker management: Sort column clicked
+    TrackerManagementSortChanged(TrackerManagementSortColumn),
+    /// Add form: Name field changed
+    AddTrackerNameChanged(String),
+    /// Add form: Address field changed
+    AddTrackerAddressChanged(String),
+    /// Add form: Port field changed
+    AddTrackerPortChanged(u16),
+    /// Add form: Fingerprint field changed
+    AddTrackerFingerprintChanged(String),
+    /// Add form: Password field changed
+    AddTrackerPasswordChanged(String),
+    /// Add form: Enabled checkbox toggled
+    AddTrackerEnabledToggled(bool),
+    /// Add form: Submit button pressed
+    AddTrackerSubmit,
+    /// Add form: Validate (called on Enter when form incomplete)
+    ValidateAddTracker,
+    /// Edit form: Name field changed
+    EditTrackerNameChanged(String),
+    /// Edit form: Address field changed
+    EditTrackerAddressChanged(String),
+    /// Edit form: Port field changed
+    EditTrackerPortChanged(u16),
+    /// Edit form: Fingerprint field changed
+    EditTrackerFingerprintChanged(String),
+    /// Edit form: Password field changed
+    EditTrackerPasswordChanged(String),
+    /// Edit form: Enabled checkbox toggled
+    EditTrackerEnabledToggled(bool),
+    /// Edit form: Submit button pressed
+    EditTrackerSubmit,
+    /// Edit form: Validate (called on Enter when form incomplete)
+    ValidateEditTracker,
+    /// Remove confirm: Confirm button pressed
+    RemoveTrackerConfirm,
+    /// Remove confirm: Cancel button pressed
+    RemoveTrackerCancel,
+    /// Accept Fingerprint dialog: Confirm button pressed
+    AcceptFingerprintConfirm,
+    /// Accept Fingerprint dialog: Cancel button pressed
+    AcceptFingerprintCancel,
+
     /// Server info edit: Update button pressed (save changes)
     UpdateServerInfoPressed,
     /// User list: Info icon clicked on expanded user (nickname)
@@ -545,6 +605,8 @@ pub enum Message {
     FileShare(String),
     /// Server info: Copy the server's public `nexus://` URI to the clipboard
     CopyServerUri(String),
+    /// Server info: Copy the server's certificate fingerprint to the clipboard
+    CopyServerFingerprint(String),
     /// Files: Download file (from context menu)
     FileDownload(String),
     /// Files: Download directory (from context menu or toolbar)

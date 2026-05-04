@@ -13,7 +13,7 @@ button-create = Créer
 button-edit = Modifier
 button-update = Mettre à jour
 
-button-accept-new-certificate = Accepter le Nouveau Certificat
+button-accept-new-certificate = Accepter
 button-close = Fermer
 button-choose-avatar = Choisir une Icône
 button-clear-avatar = Effacer
@@ -284,6 +284,7 @@ tooltip-create-user = Créer un Utilisateur
 tooltip-create-group = Créer un Groupe
 tooltip-create-news = Créer une Publication
 tooltip-delete = Supprimer
+tooltip-refresh = Actualiser
 context-menu-download = Télécharger
 context-menu-upload = Téléverser
 context-menu-open = Ouvrir
@@ -1211,3 +1212,98 @@ toast-uploads-queued = { $count } { $count ->
     [one] envoi
    *[other] envois
 } en file d'attente
+
+# =============================================================================
+# Server Info Panel
+# =============================================================================
+
+# Tabs
+tab-config = Configuration
+tab-trackers = Trackers
+
+# =============================================================================
+# Tracker Management
+# =============================================================================
+
+# Buttons
+button-add = Ajouter
+button-remove = Supprimer
+button-accept-fingerprint = Accepter
+
+# Titles
+title-add-tracker = Ajouter un tracker
+title-edit-tracker = Modifier le tracker
+title-accept-fingerprint = Accepter l'empreinte
+
+# Labels
+label-address = Adresse :
+label-tracker-password = Mot de passe :
+label-fingerprint-unpinned = (non épinglée)
+
+# Placeholders
+placeholder-tracker-name = Nom du tracker
+placeholder-tracker-address = tracker.example.com
+placeholder-tracker-fingerprint = Empreinte SHA-256 (optionnelle)
+placeholder-tracker-password = Mot de passe (optionnel)
+
+# Tooltips
+tooltip-add-tracker = Ajouter un tracker
+tooltip-edit-server-info = Modifier les infos du serveur
+tooltip-tracker-connected = Connecté
+tooltip-tracker-disconnected = Déconnecté
+tooltip-tracker-fingerprint-pending = Empreinte Différente
+
+# Table columns
+col-status = État
+col-address = Adresse
+
+# Empty / loading states
+tracker-management-loading = Chargement des trackers…
+tracker-management-no-trackers = Aucun tracker configuré
+
+# Dialog
+dialog-remove-tracker-title = Supprimer le tracker
+dialog-remove-tracker-body = Voulez-vous vraiment supprimer le tracker « { $name } » ? L'enregistrement de votre serveur ne sera plus publié sur ce tracker. L'entrée pourra être recréée plus tard.
+tracker-fingerprint-warning = Le tracker présente une nouvelle empreinte de certificat. Vérifiez-la via un canal de confiance (site de l'opérateur, annonce signée, etc.) avant d'accepter. L'acceptation promeut la nouvelle empreinte au statut épinglé pour ce serveur.
+
+# Toasts
+toast-fingerprint-copied = Empreinte copiée
+toast-tracker-added = Tracker ajouté
+toast-tracker-added-name = Tracker « { $name } » ajouté
+toast-tracker-updated = Tracker mis à jour
+toast-tracker-updated-name = Tracker « { $name } » mis à jour
+toast-tracker-removed = Tracker supprimé
+toast-tracker-removed-name = Tracker « { $name } » supprimé
+toast-tracker-fingerprint-accepted = Empreinte acceptée
+toast-tracker-fingerprint-stale = Vérification d'empreinte plus en attente
+toast-tracker-fingerprint-accepted-name = Empreinte acceptée pour « { $name } »
+
+# Errors
+err-tracker-name-empty = Le nom du tracker est requis
+err-tracker-name-too-long = Le nom du tracker est trop long (max { $max } octets)
+err-tracker-name-contains-newlines = Le nom du tracker ne peut pas contenir de saut de ligne
+err-tracker-name-invalid-characters = Le nom du tracker contient des caractères de contrôle invalides
+err-tracker-address-empty = L'adresse du tracker est requise
+err-tracker-address-too-long = L'adresse du tracker est trop longue (maximum { $max } octets)
+err-tracker-address-contains-scheme = L'adresse du tracker ne doit pas inclure de schéma d'URL
+err-tracker-address-contains-brackets = L'adresse du tracker ne doit pas inclure de crochets
+err-tracker-address-contains-path = L'adresse du tracker ne doit pas inclure de chemin
+err-tracker-address-contains-userinfo = L'adresse du tracker ne doit pas inclure de nom d'utilisateur
+err-tracker-address-contains-whitespace = L'adresse du tracker ne doit pas contenir d'espaces
+err-tracker-address-contains-port = L'adresse du tracker ne doit pas inclure de port
+err-tracker-address-contains-zone-id = L'adresse du tracker ne doit pas inclure d'identifiant de zone IPv6
+err-tracker-address-invalid-format = L'adresse du tracker n'est pas un nom d'hôte ou une adresse IP valide
+err-tracker-fingerprint-invalid = L'empreinte doit être 32 paires hex en majuscules séparées par des deux-points (95 caractères)
+err-tracker-password-too-long = Le mot de passe du tracker est trop long (max { $max } octets)
+err-tracker-add-failed = Impossible d'ajouter le tracker
+err-tracker-update-failed = Impossible de mettre à jour le tracker
+err-tracker-remove-failed = Impossible de supprimer le tracker
+err-tracker-accept-fingerprint-failed = Impossible d'accepter l'empreinte
+err-tracker-edit-no-payload = Le serveur n'a renvoyé aucun détail de tracker
+
+# Permissions
+permission-tracker_list = Liste des Trackers
+permission-tracker_add = Ajouter Tracker
+permission-tracker_edit = Modifier Tracker
+permission-tracker_remove = Retirer Tracker
+
