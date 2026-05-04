@@ -62,6 +62,8 @@ pub const ERR_SNI_SERVER_NAME_INVALID: &str = "SNI_SERVER_NAME is valid";
 
 /// Panic message: the global `TRAY_RX` was accessed before the tray
 /// service initialized it. Programmer-error in the startup sequence.
+/// Linux-only — the Windows tray uses crossbeam channels, no static.
+#[cfg(target_os = "linux")]
 pub const ERR_TRAY_RX_UNINITIALIZED: &str = "TRAY_RX not initialized";
 
 /// Panic message: `DEFAULT_LOCALE` failed to parse as a Fluent
