@@ -1198,8 +1198,8 @@ tray-tooltip-unread = Nexus BBS - { $count ->
 # Toast Notifications
 # =============================================================================
 
-toast-link-copied = Lien copié dans le presse-papiers
-toast-copied = Copié dans le presse-papiers
+toast-link-copied = Lien copié
+toast-copied = Copié
 toast-download-started = Téléchargement de { $filename }
 toast-download-queued = Téléchargement en file d'attente : { $filename }
 toast-upload-started = Envoi de { $filename }

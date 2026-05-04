@@ -1157,8 +1157,8 @@ tray-tooltip-unread = Nexus BBS - { $count } 個未讀對話
 # Toast Notifications
 # =============================================================================
 
-toast-link-copied = 連結已複製到剪貼簿
-toast-copied = 已複製到剪貼簿
+toast-link-copied = 連結已複製
+toast-copied = 已複製
 toast-download-started = 正在下載 { $filename }
 toast-download-queued = 下載已排隊: { $filename }
 toast-upload-started = 正在上傳 { $filename }
@@ -1220,7 +1220,7 @@ dialog-remove-tracker-body = 確定要移除追蹤器「{ $name }」嗎？這將
 tracker-fingerprint-warning = 追蹤器提供了新的憑證指紋。在接受之前,請透過可信任的管道(追蹤器營運者的網站、已簽署的公告等)進行驗證。接受會將新指紋設為此伺服器使用的釘選值。
 
 # Toasts
-toast-fingerprint-copied = 已複製指紋
+toast-fingerprint-copied = 指紋已複製
 toast-tracker-added = 已新增追蹤器
 toast-tracker-added-name = 已新增追蹤器「{ $name }」
 toast-tracker-updated = 已更新追蹤器

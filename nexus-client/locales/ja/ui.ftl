@@ -1157,8 +1157,8 @@ tray-tooltip-unread = Nexus BBS - 未読の会話 { $count } 件
 # Toast Notifications
 # =============================================================================
 
-toast-link-copied = リンクをクリップボードにコピーしました
-toast-copied = クリップボードにコピーしました
+toast-link-copied = リンクをコピーしました
+toast-copied = コピーしました
 toast-download-started = { $filename } をダウンロード中
 toast-download-queued = ダウンロード待ち: { $filename }
 toast-upload-started = { $filename } をアップロード中
