@@ -1227,7 +1227,7 @@ tab-trackers = Trackers
 
 # Buttons
 button-add = Ajouter
-button-remove = Supprimer
+button-remove = Retirer
 button-accept-fingerprint = Accepter
 
 # Titles
@@ -1275,7 +1275,7 @@ toast-tracker-updated-name = Tracker « { $name } » mis à jour
 toast-tracker-removed = Tracker supprimé
 toast-tracker-removed-name = Tracker « { $name } » supprimé
 toast-tracker-fingerprint-accepted = Empreinte acceptée
-toast-tracker-fingerprint-stale = Vérification d'empreinte plus en attente
+toast-tracker-fingerprint-stale = L'empreinte n'est plus en attente
 toast-tracker-fingerprint-accepted-name = Empreinte acceptée pour « { $name } »
 
 # Errors
