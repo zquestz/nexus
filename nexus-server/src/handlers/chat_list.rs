@@ -5,7 +5,9 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::warn;
 
-use crate::constants::{LOG_CHAT_LIST_NOT_LOGGED_IN, LOG_CHAT_LIST_PERMISSION_DENIED};
+use crate::constants::{
+    HANDLER_CHAT_LIST, LOG_CHAT_LIST_NOT_LOGGED_IN, LOG_CHAT_LIST_PERMISSION_DENIED,
+};
 
 use nexus_common::protocol::{ChannelInfo, ServerMessage};
 
@@ -28,7 +30,7 @@ where
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_LIST_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatList"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_LIST))
             .await;
     };
 
@@ -37,7 +39,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("ChatList"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_CHAT_LIST))
                 .await;
         }
     };

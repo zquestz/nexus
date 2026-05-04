@@ -636,10 +636,10 @@ where
         ClientMessage::GroupDelete { id } => {
             handlers::handle_group_delete(id, conn_state.session_id, ctx).await?;
         }
-        ClientMessage::TrackerList => {
-            handlers::handle_tracker_list(conn_state.session_id, ctx).await?;
+        ClientMessage::TrackerAcceptFingerprint { id } => {
+            handlers::handle_tracker_accept_fingerprint(id, conn_state.session_id, ctx).await?;
         }
-        ClientMessage::TrackerCreate {
+        ClientMessage::TrackerAdd {
             address,
             port,
             fingerprint,
@@ -647,7 +647,7 @@ where
             name,
             enabled,
         } => {
-            let request = handlers::TrackerCreateRequest {
+            let request = handlers::TrackerAddRequest {
                 address,
                 port,
                 fingerprint,
@@ -655,10 +655,16 @@ where
                 name,
                 enabled,
             };
-            handlers::handle_tracker_create(request, conn_state.session_id, ctx).await?;
+            handlers::handle_tracker_add(request, conn_state.session_id, ctx).await?;
         }
         ClientMessage::TrackerEdit { id } => {
             handlers::handle_tracker_edit(id, conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::TrackerList => {
+            handlers::handle_tracker_list(conn_state.session_id, ctx).await?;
+        }
+        ClientMessage::TrackerRemove { id } => {
+            handlers::handle_tracker_remove(id, conn_state.session_id, ctx).await?;
         }
         ClientMessage::TrackerUpdate {
             id,
@@ -679,9 +685,6 @@ where
                 enabled,
             };
             handlers::handle_tracker_update(request, conn_state.session_id, ctx).await?;
-        }
-        ClientMessage::TrackerDelete { id } => {
-            handlers::handle_tracker_delete(id, conn_state.session_id, ctx).await?;
         }
     }
 

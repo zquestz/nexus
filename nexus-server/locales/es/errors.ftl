@@ -274,6 +274,7 @@ err-group-shared-mismatch = El tipo de cuenta no coincide con el tipo de grupo (
 
 # Tracker Errors
 err-tracker-not-found = Rastreador no encontrado
+err-tracker-no-pending-fingerprint = El rastreador no tiene una huella digital pendiente para aceptar
 err-tracker-name-invalid = El nombre del rastreador contiene caracteres no válidos
 err-tracker-name-empty = El nombre del rastreador no puede estar vacío
 err-tracker-name-contains-newlines = El nombre del rastreador no puede contener saltos de línea

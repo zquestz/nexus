@@ -1,4 +1,4 @@
-//! TrackerCreate message handler — adds a new tracker to the
+//! TrackerAdd message handler — adds a new tracker to the
 //! server's tracker list.
 
 use std::io;
@@ -14,17 +14,16 @@ use super::{
     validate_tracker_inputs,
 };
 use crate::constants::{
-    LOG_TRACKER_CREATE_DB_ERROR, LOG_TRACKER_CREATE_LIMIT_REACHED,
-    LOG_TRACKER_CREATE_NOT_LOGGED_IN, LOG_TRACKER_CREATE_PERMISSION_DENIED,
-    LOG_TRACKER_CREATE_SUCCESS,
+    HANDLER_TRACKER_ADD, LOG_TRACKER_ADD_DB_ERROR, LOG_TRACKER_ADD_LIMIT_REACHED,
+    LOG_TRACKER_ADD_NOT_LOGGED_IN, LOG_TRACKER_ADD_PERMISSION_DENIED, LOG_TRACKER_ADD_SUCCESS,
 };
 use crate::db::{CreateTrackerParams, Permission, TrackerDbError};
 
-/// Fields for `handle_tracker_create`, mirroring the
-/// `ClientMessage::TrackerCreate` variant. Bundled into a struct so
+/// Fields for `handle_tracker_add`, mirroring the
+/// `ClientMessage::TrackerAdd` variant. Bundled into a struct so
 /// the handler signature stays under the workspace-wide
 /// too-many-arguments limit.
-pub struct TrackerCreateRequest {
+pub struct TrackerAddRequest {
     pub address: String,
     pub port: u16,
     pub fingerprint: Option<String>,
@@ -33,18 +32,18 @@ pub struct TrackerCreateRequest {
     pub enabled: bool,
 }
 
-/// Handle a `TrackerCreate { ... }` request. Requires the
-/// `tracker_create` permission. Validates inputs, inserts the row,
+/// Handle a `TrackerAdd { ... }` request. Requires the
+/// `tracker_add` permission. Validates inputs, inserts the row,
 /// and spawns a tracker task for it (or skips spawn if disabled).
-pub async fn handle_tracker_create<W>(
-    request: TrackerCreateRequest,
+pub async fn handle_tracker_add<W>(
+    request: TrackerAddRequest,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
 where
     W: AsyncWrite + Unpin,
 {
-    let TrackerCreateRequest {
+    let TrackerAddRequest {
         address,
         port,
         fingerprint,
@@ -54,9 +53,9 @@ where
     } = request;
 
     let Some(session_id) = session_id else {
-        warn!(ip = %ctx.peer_addr, "{}", LOG_TRACKER_CREATE_NOT_LOGGED_IN);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_TRACKER_ADD_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("TrackerCreate"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_TRACKER_ADD))
             .await;
     };
 
@@ -64,19 +63,22 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("TrackerCreate"))
+                .send_error_and_disconnect(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_TRACKER_ADD),
+                )
                 .await;
         }
     };
 
-    if !requesting_user.has_permission(Permission::TrackerCreate) {
+    if !requesting_user.has_permission(Permission::TrackerAdd) {
         warn!(
             user = %requesting_user.username,
             ip = %ctx.peer_addr,
-            "{}", LOG_TRACKER_CREATE_PERMISSION_DENIED
+            "{}", LOG_TRACKER_ADD_PERMISSION_DENIED
         );
         return ctx
-            .send_message(&reject_create(err_permission_denied(ctx.locale)))
+            .send_message(&reject_add(err_permission_denied(ctx.locale)))
             .await;
     }
 
@@ -95,7 +97,7 @@ where
         password.as_deref(),
         &name,
     ) {
-        return ctx.send_message(&reject_create(error)).await;
+        return ctx.send_message(&reject_add(error)).await;
     }
 
     // Insert into the DB. The `MAX_TRACKERS_PER_SERVER` cap is enforced
@@ -124,10 +126,10 @@ where
                 user = %requesting_user.username,
                 ip = %ctx.peer_addr,
                 max = MAX_TRACKERS_PER_SERVER,
-                "{}", LOG_TRACKER_CREATE_LIMIT_REACHED
+                "{}", LOG_TRACKER_ADD_LIMIT_REACHED
             );
             return ctx
-                .send_message(&reject_create(err_tracker_too_many(
+                .send_message(&reject_add(err_tracker_too_many(
                     ctx.locale,
                     MAX_TRACKERS_PER_SERVER,
                 )))
@@ -135,12 +137,12 @@ where
         }
         Err(TrackerDbError::EndpointDuplicate) => {
             return ctx
-                .send_message(&reject_create(err_tracker_endpoint_duplicate(ctx.locale)))
+                .send_message(&reject_add(err_tracker_endpoint_duplicate(ctx.locale)))
                 .await;
         }
         Err(TrackerDbError::NameDuplicate) => {
             return ctx
-                .send_message(&reject_create(err_tracker_name_duplicate(ctx.locale)))
+                .send_message(&reject_add(err_tracker_name_duplicate(ctx.locale)))
                 .await;
         }
         Err(TrackerDbError::Other(e)) => {
@@ -148,10 +150,10 @@ where
                 user = %requesting_user.username,
                 ip = %ctx.peer_addr,
                 err = %e,
-                "{}", LOG_TRACKER_CREATE_DB_ERROR
+                "{}", LOG_TRACKER_ADD_DB_ERROR
             );
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("TrackerCreate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_TRACKER_ADD))
                 .await;
         }
     };
@@ -161,13 +163,13 @@ where
         ip = %ctx.peer_addr,
         id = record.id,
         name = %record.name,
-        "{}", LOG_TRACKER_CREATE_SUCCESS
+        "{}", LOG_TRACKER_ADD_SUCCESS
     );
 
     // Spawn a tracker task for the new row. No-op if disabled.
     ctx.tracker_manager.spawn(record.clone());
 
-    let response = ServerMessage::TrackerCreateResponse {
+    let response = ServerMessage::TrackerAddResponse {
         success: true,
         error: None,
         id: Some(record.id),
@@ -176,8 +178,8 @@ where
     ctx.send_message(&response).await
 }
 
-fn reject_create(error: String) -> ServerMessage {
-    ServerMessage::TrackerCreateResponse {
+fn reject_add(error: String) -> ServerMessage {
+    ServerMessage::TrackerAddResponse {
         success: false,
         error: Some(error),
         id: None,
@@ -190,12 +192,12 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
-    use crate::handlers::tracker_delete::handle_tracker_delete;
     use crate::handlers::tracker_list::handle_tracker_list;
+    use crate::handlers::tracker_remove::handle_tracker_remove;
     use crate::handlers::tracker_update::{TrackerUpdateRequest, handle_tracker_update};
 
-    fn valid_request() -> TrackerCreateRequest {
-        TrackerCreateRequest {
+    fn valid_request() -> TrackerAddRequest {
+        TrackerAddRequest {
             address: "tracker.example.com".to_string(),
             port: 7510,
             fingerprint: None,
@@ -209,7 +211,7 @@ mod tests {
     async fn requires_login() {
         let mut test_ctx = create_test_context().await;
         let result =
-            handle_tracker_create(valid_request(), None, &mut test_ctx.handler_context()).await;
+            handle_tracker_add(valid_request(), None, &mut test_ctx.handler_context()).await;
         assert!(result.is_err());
     }
 
@@ -218,7 +220,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
-        let result = handle_tracker_create(
+        let result = handle_tracker_add(
             valid_request(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -226,8 +228,8 @@ mod tests {
         .await;
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerCreateResponse { success, .. } => assert!(!success),
-            other => panic!("Expected TrackerCreateResponse, got {other:?}"),
+            ServerMessage::TrackerAddResponse { success, .. } => assert!(!success),
+            other => panic!("Expected TrackerAddResponse, got {other:?}"),
         }
     }
 
@@ -238,7 +240,7 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::TrackerCreate],
+            &[db::Permission::TrackerAdd],
             false,
         )
         .await;
@@ -246,10 +248,10 @@ mod tests {
         let request = valid_request();
         let expected_name = request.name.clone();
         let result =
-            handle_tracker_create(request, Some(session_id), &mut test_ctx.handler_context()).await;
+            handle_tracker_add(request, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerCreateResponse {
+            ServerMessage::TrackerAddResponse {
                 success,
                 id,
                 name,
@@ -259,7 +261,7 @@ mod tests {
                 assert!(id.is_some());
                 assert_eq!(name.as_deref(), Some(expected_name.as_str()));
             }
-            other => panic!("Expected TrackerCreateResponse, got {other:?}"),
+            other => panic!("Expected TrackerAddResponse, got {other:?}"),
         }
     }
 
@@ -270,14 +272,14 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::TrackerCreate],
+            &[db::Permission::TrackerAdd],
             false,
         )
         .await;
 
         // Address with embedded port — rejected by validate_public_address.
-        let result = handle_tracker_create(
-            TrackerCreateRequest {
+        let result = handle_tracker_add(
+            TrackerAddRequest {
                 address: "tracker.example.com:7500".to_string(),
                 ..valid_request()
             },
@@ -287,11 +289,11 @@ mod tests {
         .await;
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerCreateResponse { success, error, .. } => {
+            ServerMessage::TrackerAddResponse { success, error, .. } => {
                 assert!(!success);
                 assert!(error.is_some());
             }
-            other => panic!("Expected TrackerCreateResponse, got {other:?}"),
+            other => panic!("Expected TrackerAddResponse, got {other:?}"),
         }
     }
 
@@ -302,13 +304,13 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::TrackerCreate],
+            &[db::Permission::TrackerAdd],
             false,
         )
         .await;
 
-        let result = handle_tracker_create(
-            TrackerCreateRequest {
+        let result = handle_tracker_add(
+            TrackerAddRequest {
                 port: 0,
                 ..valid_request()
             },
@@ -318,8 +320,8 @@ mod tests {
         .await;
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerCreateResponse { success, .. } => assert!(!success),
-            other => panic!("Expected TrackerCreateResponse, got {other:?}"),
+            ServerMessage::TrackerAddResponse { success, .. } => assert!(!success),
+            other => panic!("Expected TrackerAddResponse, got {other:?}"),
         }
     }
 
@@ -330,13 +332,13 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::TrackerCreate],
+            &[db::Permission::TrackerAdd],
             false,
         )
         .await;
 
-        let result = handle_tracker_create(
-            TrackerCreateRequest {
+        let result = handle_tracker_add(
+            TrackerAddRequest {
                 fingerprint: Some("not-a-fingerprint".to_string()),
                 ..valid_request()
             },
@@ -346,8 +348,8 @@ mod tests {
         .await;
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerCreateResponse { success, .. } => assert!(!success),
-            other => panic!("Expected TrackerCreateResponse, got {other:?}"),
+            ServerMessage::TrackerAddResponse { success, .. } => assert!(!success),
+            other => panic!("Expected TrackerAddResponse, got {other:?}"),
         }
     }
 
@@ -358,13 +360,13 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::TrackerCreate],
+            &[db::Permission::TrackerAdd],
             false,
         )
         .await;
 
-        let result = handle_tracker_create(
-            TrackerCreateRequest {
+        let result = handle_tracker_add(
+            TrackerAddRequest {
                 name: "   ".to_string(),
                 ..valid_request()
             },
@@ -374,8 +376,8 @@ mod tests {
         .await;
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerCreateResponse { success, .. } => assert!(!success),
-            other => panic!("Expected TrackerCreateResponse, got {other:?}"),
+            ServerMessage::TrackerAddResponse { success, .. } => assert!(!success),
+            other => panic!("Expected TrackerAddResponse, got {other:?}"),
         }
     }
 
@@ -386,13 +388,13 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::TrackerCreate],
+            &[db::Permission::TrackerAdd],
             false,
         )
         .await;
 
-        // First create.
-        handle_tracker_create(
+        // First add.
+        handle_tracker_add(
             valid_request(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -401,9 +403,9 @@ mod tests {
         .unwrap();
         let _ = read_server_message(&mut test_ctx).await;
 
-        // Second create with same (address, port) but different name.
-        let result = handle_tracker_create(
-            TrackerCreateRequest {
+        // Second add with same (address, port) but different name.
+        let result = handle_tracker_add(
+            TrackerAddRequest {
                 name: "Different Name".to_string(),
                 ..valid_request()
             },
@@ -413,11 +415,11 @@ mod tests {
         .await;
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerCreateResponse { success, error, .. } => {
+            ServerMessage::TrackerAddResponse { success, error, .. } => {
                 assert!(!success);
                 assert!(error.is_some());
             }
-            other => panic!("Expected TrackerCreateResponse, got {other:?}"),
+            other => panic!("Expected TrackerAddResponse, got {other:?}"),
         }
     }
 
@@ -428,12 +430,12 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::TrackerCreate],
+            &[db::Permission::TrackerAdd],
             false,
         )
         .await;
 
-        handle_tracker_create(
+        handle_tracker_add(
             valid_request(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -442,9 +444,9 @@ mod tests {
         .unwrap();
         let _ = read_server_message(&mut test_ctx).await;
 
-        // Second create with same name (case-insensitive) but different address.
-        let result = handle_tracker_create(
-            TrackerCreateRequest {
+        // Second add with same name (case-insensitive) but different address.
+        let result = handle_tracker_add(
+            TrackerAddRequest {
                 address: "other.example.com".to_string(),
                 name: "public".to_string(), // case-insensitive collision with "Public"
                 ..valid_request()
@@ -455,11 +457,11 @@ mod tests {
         .await;
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerCreateResponse { success, error, .. } => {
+            ServerMessage::TrackerAddResponse { success, error, .. } => {
                 assert!(!success);
                 assert!(error.is_some());
             }
-            other => panic!("Expected TrackerCreateResponse, got {other:?}"),
+            other => panic!("Expected TrackerAddResponse, got {other:?}"),
         }
     }
 
@@ -470,7 +472,7 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::TrackerCreate],
+            &[db::Permission::TrackerAdd],
             false,
         )
         .await;
@@ -493,7 +495,7 @@ mod tests {
                 .expect("seed row");
         }
 
-        let result = handle_tracker_create(
+        let result = handle_tracker_add(
             valid_request(),
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -501,7 +503,7 @@ mod tests {
         .await;
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerCreateResponse { success, error, .. } => {
+            ServerMessage::TrackerAddResponse { success, error, .. } => {
                 assert!(!success);
                 let error = error.expect("error string");
                 assert!(
@@ -509,52 +511,52 @@ mod tests {
                     "error should mention the cap: {error}"
                 );
             }
-            other => panic!("Expected TrackerCreateResponse, got {other:?}"),
+            other => panic!("Expected TrackerAddResponse, got {other:?}"),
         }
     }
 
     /// Walk a full tracker admin lifecycle through the protocol layer:
-    /// create → list → update (rename) → list → delete → list. Catches
+    /// add → list → update (rename) → list → remove → list. Catches
     /// regressions in the handler-to-manager wiring (e.g. a future
     /// refactor that forgets to call `manager.spawn`/`replace`/`terminate`)
     /// that the per-handler unit tests would miss.
     #[tokio::test]
-    async fn lifecycle_create_list_update_delete() {
+    async fn lifecycle_add_list_update_remove() {
         let mut test_ctx = create_test_context().await;
         let session_id = login_user(
             &mut test_ctx,
             "alice",
             "password",
             &[
-                db::Permission::TrackerCreate,
+                db::Permission::TrackerAdd,
                 db::Permission::TrackerList,
                 db::Permission::TrackerEdit,
-                db::Permission::TrackerDelete,
+                db::Permission::TrackerRemove,
             ],
             false,
         )
         .await;
 
-        // ---- Create ----
-        handle_tracker_create(
+        // ---- Add ----
+        handle_tracker_add(
             valid_request(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
         .await
-        .expect("create call");
+        .expect("add call");
         let id = match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerCreateResponse {
+            ServerMessage::TrackerAddResponse {
                 success: true,
                 id: Some(id),
                 ..
             } => id,
-            other => panic!("expected create success, got {other:?}"),
+            other => panic!("expected add success, got {other:?}"),
         };
         // Manager spawned a task for the new row.
         assert!(
             test_ctx.tracker_manager.status_for(id).is_some(),
-            "manager should have spawned a task on create"
+            "manager should have spawned a task on add"
         );
 
         // ---- List shows 1 entry with original name ----
@@ -617,31 +619,31 @@ mod tests {
             other => panic!("expected list success after update, got {other:?}"),
         }
 
-        // ---- Delete ----
-        handle_tracker_delete(id, Some(session_id), &mut test_ctx.handler_context())
+        // ---- Remove ----
+        handle_tracker_remove(id, Some(session_id), &mut test_ctx.handler_context())
             .await
-            .expect("delete call");
+            .expect("remove call");
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerDeleteResponse { success: true, .. } => {}
-            other => panic!("expected delete success, got {other:?}"),
+            ServerMessage::TrackerRemoveResponse { success: true, .. } => {}
+            other => panic!("expected remove success, got {other:?}"),
         }
         // Manager dropped the task.
         assert!(
             test_ctx.tracker_manager.status_for(id).is_none(),
-            "manager should have terminated the task on delete"
+            "manager should have terminated the task on remove"
         );
 
         // ---- List shows empty ----
         handle_tracker_list(Some(session_id), &mut test_ctx.handler_context())
             .await
-            .expect("list call after delete");
+            .expect("list call after remove");
         match read_server_message(&mut test_ctx).await {
             ServerMessage::TrackerListResponse {
                 success: true,
                 trackers,
                 ..
             } => {
-                assert!(trackers.is_empty(), "list should be empty after delete");
+                assert!(trackers.is_empty(), "list should be empty after remove");
             }
             other => panic!("expected empty list, got {other:?}"),
         }

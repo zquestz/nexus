@@ -7,8 +7,8 @@ use tokio::io::AsyncWrite;
 use tracing::{error, warn};
 
 use crate::constants::{
-    LOG_FILE_SEARCH_ERROR, LOG_FILE_SEARCH_NOT_LOGGED_IN, LOG_FILE_SEARCH_PANIC,
-    LOG_FILE_SEARCH_PERMISSION_DENIED, LOG_FILE_SEARCH_ROOT_DENIED,
+    HANDLER_FILE_SEARCH, LOG_FILE_SEARCH_ERROR, LOG_FILE_SEARCH_NOT_LOGGED_IN,
+    LOG_FILE_SEARCH_PANIC, LOG_FILE_SEARCH_PERMISSION_DENIED, LOG_FILE_SEARCH_ROOT_DENIED,
 };
 
 use nexus_common::protocol::ServerMessage;
@@ -36,7 +36,7 @@ where
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_SEARCH_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileSearch"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_FILE_SEARCH))
             .await;
     };
 
@@ -45,7 +45,10 @@ where
         Some(user) => user,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileSearch"))
+                .send_error_and_disconnect(
+                    &err_not_logged_in(ctx.locale),
+                    Some(HANDLER_FILE_SEARCH),
+                )
                 .await;
         }
     };

@@ -32,7 +32,7 @@ where
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_GROUP_LIST_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("GroupList"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_GROUP_LIST))
             .await;
     };
 
@@ -41,7 +41,10 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("GroupList"))
+                .send_error_and_disconnect(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_GROUP_LIST),
+                )
                 .await;
         }
     };
@@ -69,7 +72,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_LIST_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("GroupList"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_GROUP_LIST))
                 .await;
         }
     };

@@ -273,6 +273,7 @@ err-group-shared-mismatch = Тип учетной записи не соотве
 
 # Tracker Errors
 err-tracker-not-found = Трекер не найден
+err-tracker-no-pending-fingerprint = У трекера нет ожидающего отпечатка для принятия
 err-tracker-name-invalid = Имя трекера содержит недопустимые символы
 err-tracker-name-empty = Имя трекера не может быть пустым
 err-tracker-name-contains-newlines = Имя трекера не может содержать переносы строк

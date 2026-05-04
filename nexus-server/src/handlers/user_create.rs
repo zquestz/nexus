@@ -6,9 +6,10 @@ use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use crate::constants::{
-    LOG_USER_CREATE_DB_ERROR, LOG_USER_CREATE_HASH_ERROR, LOG_USER_CREATE_NOT_LOGGED_IN,
-    LOG_USER_CREATE_PERMISSION_DENIED, LOG_USER_CREATE_SUCCESS, LOG_USER_CREATE_UNOWNED_GROUP,
-    LOG_USER_CREATE_UNOWNED_PERMISSION, LOG_USER_CREATE_UNOWNED_REVOKE,
+    HANDLER_USER_CREATE, LOG_USER_CREATE_DB_ERROR, LOG_USER_CREATE_HASH_ERROR,
+    LOG_USER_CREATE_NOT_LOGGED_IN, LOG_USER_CREATE_PERMISSION_DENIED, LOG_USER_CREATE_SUCCESS,
+    LOG_USER_CREATE_UNOWNED_GROUP, LOG_USER_CREATE_UNOWNED_PERMISSION,
+    LOG_USER_CREATE_UNOWNED_REVOKE,
 };
 
 use nexus_common::is_shared_account_permission;
@@ -64,7 +65,7 @@ where
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_CREATE_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserCreate"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_CREATE))
             .await;
     };
 
@@ -77,7 +78,10 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserCreate"))
+                .send_error_and_disconnect(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_USER_CREATE),
+                )
                 .await;
         }
     };
@@ -158,7 +162,10 @@ where
     // Verify admin creation privilege (use is_admin from UserManager)
     if is_admin && !requesting_user.is_admin {
         return ctx
-            .send_error_and_disconnect(&err_cannot_create_admin(ctx.locale), Some("UserCreate"))
+            .send_error_and_disconnect(
+                &err_cannot_create_admin(ctx.locale),
+                Some(HANDLER_USER_CREATE),
+            )
             .await;
     }
 
@@ -212,7 +219,7 @@ where
             Err(e) => {
                 error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
                 return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_CREATE))
                     .await;
             }
         };
@@ -362,7 +369,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_CREATE))
                 .await;
         }
     }
@@ -373,7 +380,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_HASH_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_CREATE))
                 .await;
         }
     };
@@ -408,7 +415,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserCreate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_CREATE))
                 .await;
         }
     }

@@ -14,7 +14,7 @@ use super::{
     err_file_path_invalid, err_file_path_too_long, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
-    LOG_FILE_CREATE_DIR_FAILED, LOG_FILE_CREATE_DIR_NOT_LOGGED_IN,
+    HANDLER_FILE_CREATE_DIR, LOG_FILE_CREATE_DIR_FAILED, LOG_FILE_CREATE_DIR_NOT_LOGGED_IN,
     LOG_FILE_CREATE_DIR_PERMISSION_DENIED, LOG_FILE_CREATE_DIR_ROOT_DENIED,
     LOG_FILE_CREATE_DIR_SUCCESS,
 };
@@ -40,7 +40,10 @@ where
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_CREATE_DIR_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileCreateDir"))
+            .send_error_and_disconnect(
+                &err_not_logged_in(ctx.locale),
+                Some(HANDLER_FILE_CREATE_DIR),
+            )
             .await;
     };
 

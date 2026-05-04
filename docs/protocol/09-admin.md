@@ -98,15 +98,15 @@ Client                                        Server
    │                                             │
 ```
 
-### Creating a Tracker
+### Adding a Tracker
 
 ```
 Client                                        Server
    │                                             │
-   │  TrackerCreate { address, port, name, ... } │
+   │  TrackerAdd { address, port, name, ... }    │
    │ ───────────────────────────────────────►    │
    │                                             │
-   │     TrackerCreateResponse { id, name }      │
+   │      TrackerAddResponse { id, name }        │
    │ ◄───────────────────────────────────────    │
    │                                             │
 ```
@@ -141,20 +141,43 @@ new config (or no task if `enabled: false`).
 When the tracker's TLS certificate has rotated and disagrees with the
 pinned fingerprint, the running tracker task surfaces a Stage 1
 fingerprint mismatch in `TrackerInfo.last_error_kind` and stores the
-newly-observed value in `pending_fingerprint`. The admin accepts by
-re-issuing `TrackerUpdate` with the new fingerprint copied into the
-`fingerprint` field — the same message used for any other edit. There
-is no dedicated "accept fingerprint" message.
+newly-observed value in `pending_fingerprint`.
 
-### Deleting a Tracker
+```
+Client                                                Server
+   │                                                     │
+   │  TrackerAcceptFingerprint { id }                    │
+   │ ────────────────────────────────────────────►       │
+   │                                                     │
+   │   TrackerAcceptFingerprintResponse { id, name }     │
+   │ ◄────────────────────────────────────────────       │
+   │                                                     │
+```
+
+`TrackerAcceptFingerprint` promotes the row's `pending_fingerprint`
+value to its active `fingerprint` and clears `pending_fingerprint` —
+the client never supplies the new fingerprint, removing any payload
+round-trip and making the action self-describing in audit logs. The
+server rejects the request if the row has no `pending_fingerprint`,
+which naturally restricts the flow to **Stage 1** mismatches: Stage 2
+mismatches (TLS cert disagrees with the tracker's self-reported
+fingerprint in `HandshakeResponse`) are unrecoverable and never
+populate `pending_fingerprint`.
+
+`TrackerUpdate` retains the ability to set the `fingerprint` field
+directly. Admins who prefer to hand-edit the field — for example, when
+they want to pin a fingerprint they have not yet observed live — can
+still do so via the standard edit form.
+
+### Removing a Tracker
 
 ```
 Client                                        Server
    │                                             │
-   │  TrackerDelete { id }                       │
+   │  TrackerRemove { id }                       │
    │ ───────────────────────────────────────►    │
    │                                             │
-   │     TrackerDeleteResponse { name }          │
+   │     TrackerRemoveResponse { name }          │
    │ ◄───────────────────────────────────────    │
    │                                             │
 ```
@@ -793,7 +816,7 @@ an empty list means no trackers are configured yet (not an error).
 }
 ```
 
-### TrackerCreate (Client → Server)
+### TrackerAdd (Client → Server)
 
 Add a new tracker to the server's tracker list. Spawns a long-lived
 registration task once the row is inserted (unless `enabled: false`).
@@ -831,16 +854,16 @@ registration task once the row is inserted (unless `enabled: false`).
 }
 ```
 
-### TrackerCreateResponse (Server → Client)
+### TrackerAddResponse (Server → Client)
 
-Response after creating a tracker.
+Response after adding a tracker.
 
-| Field     | Type    | Required   | Description                |
-| --------- | ------- | ---------- | -------------------------- |
-| `success` | boolean | Yes        | Whether creation succeeded |
-| `error`   | string  | If failure | Error message              |
-| `id`      | integer | If success | Created tracker's row id   |
-| `name`    | string  | If success | Created tracker's name     |
+| Field     | Type    | Required   | Description               |
+| --------- | ------- | ---------- | ------------------------- |
+| `success` | boolean | Yes        | Whether the add succeeded |
+| `error`   | string  | If failure | Error message             |
+| `id`      | integer | If success | New tracker's row id      |
+| `name`    | string  | If success | New tracker's name        |
 
 **Success example:**
 
@@ -995,7 +1018,61 @@ Response after replacing a tracker's configuration.
 }
 ```
 
-### TrackerDelete (Client → Server)
+### TrackerAcceptFingerprint (Client → Server)
+
+Promote a tracker's `pending_fingerprint` to its active `fingerprint`,
+clearing the pending value. Used after a Stage 1 TLS-cert rotation has
+populated `pending_fingerprint` and the admin has verified the new
+fingerprint through a trusted out-of-band channel.
+
+The server rejects the request if the row's `pending_fingerprint` is
+not set, which restricts the flow to **Stage 1** mismatches: Stage 2
+mismatches are unrecoverable and never populate `pending_fingerprint`.
+
+| Field | Type    | Required | Description    |
+| ----- | ------- | -------- | -------------- |
+| `id`  | integer | Yes      | Tracker row id |
+
+**Example:**
+
+```json
+{
+  "id": 3
+}
+```
+
+### TrackerAcceptFingerprintResponse (Server → Client)
+
+Response after promoting a `pending_fingerprint`. After success the
+tracker task is restarted with the newly-pinned fingerprint.
+
+| Field     | Type    | Required   | Description                            |
+| --------- | ------- | ---------- | -------------------------------------- |
+| `success` | boolean | Yes        | Whether the fingerprint was accepted   |
+| `error`   | string  | If failure | Error message                          |
+| `id`      | integer | If success | Tracker row id                         |
+| `name`    | string  | If success | Tracker's name (for the toast message) |
+
+**Success example:**
+
+```json
+{
+  "success": true,
+  "id": 3,
+  "name": "Public Tracker"
+}
+```
+
+**Failure example (no pending fingerprint):**
+
+```json
+{
+  "success": false,
+  "error": "Tracker has no pending fingerprint to accept"
+}
+```
+
+### TrackerRemove (Client → Server)
 
 Remove a tracker from the server's tracker list. Aborts the
 registration task and removes the row.
@@ -1012,15 +1089,15 @@ registration task and removes the row.
 }
 ```
 
-### TrackerDeleteResponse (Server → Client)
+### TrackerRemoveResponse (Server → Client)
 
-Response after deleting a tracker.
+Response after removing a tracker.
 
-| Field     | Type    | Required   | Description                    |
-| --------- | ------- | ---------- | ------------------------------ |
-| `success` | boolean | Yes        | Whether the deletion succeeded |
-| `error`   | string  | If failure | Error message                  |
-| `name`    | string  | If success | Deleted tracker's name         |
+| Field     | Type    | Required   | Description                   |
+| --------- | ------- | ---------- | ----------------------------- |
+| `success` | boolean | Yes        | Whether the removal succeeded |
+| `error`   | string  | If failure | Error message                 |
+| `name`    | string  | If success | Removed tracker's name        |
 
 **Success example:**
 
@@ -1160,23 +1237,23 @@ only explicitly recognized kinds are unrecoverable.
 
 "Recoverable: Yes" kinds back off and retry automatically. "No" kinds
 exit the registration task; admin intervention (`TrackerUpdate`,
-`TrackerDelete`, or server restart) is required.
+`TrackerRemove`, or server restart) is required.
 
 ## Permissions
 
-| Permission       | Required For                                                           |
-| ---------------- | ---------------------------------------------------------------------- |
-| `user_create`    | Creating user accounts                                                 |
-| `user_edit`      | Editing user accounts                                                  |
-| `user_delete`    | Deleting user accounts                                                 |
-| `user_kick`      | Kicking users                                                          |
-| `group_create`   | Creating account groups                                                |
-| `group_edit`     | Editing account groups                                                 |
-| `group_delete`   | Deleting account groups                                                |
-| `tracker_create` | Adding a tracker (`TrackerCreate`)                                     |
-| `tracker_edit`   | Fetching tracker details and updating (`TrackerEdit`, `TrackerUpdate`) |
-| `tracker_delete` | Removing a tracker (`TrackerDelete`)                                   |
-| `tracker_list`   | Listing trackers and their runtime status (`TrackerList`)              |
+| Permission       | Required For                                                                                                                                 |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user_create`    | Creating user accounts                                                                                                                       |
+| `user_edit`      | Editing user accounts                                                                                                                        |
+| `user_delete`    | Deleting user accounts                                                                                                                       |
+| `user_kick`      | Kicking users                                                                                                                                |
+| `group_create`   | Creating account groups                                                                                                                      |
+| `group_edit`     | Editing account groups                                                                                                                       |
+| `group_delete`   | Deleting account groups                                                                                                                      |
+| `tracker_add`    | Adding a tracker (`TrackerAdd`)                                                                                                              |
+| `tracker_edit`   | Fetching tracker details, updating, and accepting a Stage 1 pending fingerprint (`TrackerEdit`, `TrackerUpdate`, `TrackerAcceptFingerprint`) |
+| `tracker_list`   | Listing trackers and their runtime status (`TrackerList`)                                                                                    |
+| `tracker_remove` | Removing a tracker (`TrackerRemove`)                                                                                                         |
 
 **Admin-only operations:**
 
@@ -1403,33 +1480,33 @@ A server can have at most 64 configured trackers.
 
 ### Tracker Validation Errors
 
-These apply to `TrackerCreate` and `TrackerUpdate`. The handler returns
+These apply to `TrackerAdd` and `TrackerUpdate`. The handler returns
 the first failing rule.
 
-| Error                                                          | Cause                                                                         |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Permission denied                                              | Missing `tracker_create` / `tracker_edit` / `tracker_delete` / `tracker_list` |
-| Invalid tracker port                                           | Port is 0                                                                     |
-| Tracker address cannot be empty                                | Empty / whitespace-only address                                               |
-| Tracker address is too long                                    | Exceeds 253 bytes                                                             |
-| Tracker address must not include a URL scheme                  | Contains `://`                                                                |
-| Tracker address must not include brackets                      | Bracketed IPv6 (e.g. `[::1]`)                                                 |
-| Tracker address must not include a path                        | Contains `/`                                                                  |
-| Tracker address must not include a username                    | Contains `@`                                                                  |
-| Tracker address must not contain whitespace                    | Contains a whitespace character                                               |
-| Tracker address must not include a port                        | Hostname-looking with `:port`                                                 |
-| Tracker address must not include an IPv6 zone identifier       | Contains `%zone`                                                              |
-| Tracker address is not a valid hostname or IP address          | Fails IDN / IPv4 / IPv6 check                                                 |
-| Invalid tracker fingerprint format                             | Fingerprint supplied but not in canonical form                                |
-| Tracker password is too long                                   | Password exceeds 256 bytes                                                    |
-| Tracker name cannot be empty                                   | Empty / whitespace-only name                                                  |
-| Tracker name cannot contain newlines                           | Name has `\n` or `\r`                                                         |
-| Tracker name contains invalid characters                       | Name has other control characters                                             |
-| Tracker name is too long                                       | Name exceeds 256 bytes                                                        |
-| Another tracker is already configured at this address and port | `(address, port)` collides with an existing row                               |
-| Another tracker is already configured with this name           | Case-insensitive name collides with an existing row                           |
-| Tracker limit reached (max N)                                  | `TrackerCreate` would exceed the 64-row cap                                   |
-| Tracker not found                                              | `TrackerUpdate` / `TrackerDelete` / `TrackerEdit` against an unknown id       |
+| Error                                                          | Cause                                                                                                |
+| -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Permission denied                                              | Missing `tracker_add` / `tracker_edit` / `tracker_list` / `tracker_remove`                           |
+| Invalid tracker port                                           | Port is 0                                                                                            |
+| Tracker address cannot be empty                                | Empty / whitespace-only address                                                                      |
+| Tracker address is too long                                    | Exceeds 253 bytes                                                                                    |
+| Tracker address must not include a URL scheme                  | Contains `://`                                                                                       |
+| Tracker address must not include brackets                      | Bracketed IPv6 (e.g. `[::1]`)                                                                        |
+| Tracker address must not include a path                        | Contains `/`                                                                                         |
+| Tracker address must not include a username                    | Contains `@`                                                                                         |
+| Tracker address must not contain whitespace                    | Contains a whitespace character                                                                      |
+| Tracker address must not include a port                        | Hostname-looking with `:port`                                                                        |
+| Tracker address must not include an IPv6 zone identifier       | Contains `%zone`                                                                                     |
+| Tracker address is not a valid hostname or IP address          | Fails IDN / IPv4 / IPv6 check                                                                        |
+| Invalid tracker fingerprint format                             | Fingerprint supplied but not in canonical form                                                       |
+| Tracker password is too long                                   | Password exceeds 256 bytes                                                                           |
+| Tracker name cannot be empty                                   | Empty / whitespace-only name                                                                         |
+| Tracker name cannot contain newlines                           | Name has `\n` or `\r`                                                                                |
+| Tracker name contains invalid characters                       | Name has other control characters                                                                    |
+| Tracker name is too long                                       | Name exceeds 256 bytes                                                                               |
+| Another tracker is already configured at this address and port | `(address, port)` collides with an existing row                                                      |
+| Another tracker is already configured with this name           | Case-insensitive name collides with an existing row                                                  |
+| Tracker limit reached (max N)                                  | `TrackerAdd` would exceed the 64-row cap                                                             |
+| Tracker not found                                              | `TrackerUpdate` / `TrackerRemove` / `TrackerEdit` / `TrackerAcceptFingerprint` against an unknown id |
 
 ## Kick Behavior
 

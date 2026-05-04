@@ -53,9 +53,10 @@ struct TrackerHandle {
 ///
 /// API mirrors the data lifecycle:
 /// - [`bootstrap`] at startup loads enabled rows and spawns one task each.
-/// - [`spawn`] is called after `TrackerCreate` inserts a row.
-/// - [`replace`] is called after `TrackerUpdate` modifies a row.
-/// - [`terminate`] is called after `TrackerDelete` removes a row.
+/// - [`spawn`] is called after `TrackerAdd` inserts a row.
+/// - [`replace`] is called after `TrackerUpdate` (or
+///   `TrackerAcceptFingerprint`) modifies a row.
+/// - [`terminate`] is called after `TrackerRemove` removes a row.
 /// - [`status_for`] / [`status_all`] feed admin response composition.
 /// - [`shutdown`] aborts every task during server shutdown.
 ///
@@ -109,8 +110,8 @@ impl TrackerManager {
         Ok(())
     }
 
-    /// Spawn a tracker task for a freshly-created tracker. Called
-    /// by the `TrackerCreate` handler after the DB insert succeeds.
+    /// Spawn a tracker task for a freshly-added tracker. Called
+    /// by the `TrackerAdd` handler after the DB insert succeeds.
     /// No-op if the record is disabled.
     pub fn spawn(&self, record: TrackerRecord) {
         if !record.enabled {
@@ -203,6 +204,47 @@ impl TrackerManager {
                 (*id, status)
             })
             .collect()
+    }
+
+    /// Test-only: directly set `pending_fingerprint` on a running
+    /// tracker's status, bypassing the real Stage 1 mismatch flow. Lets
+    /// handler unit tests exercise the
+    /// `TrackerAcceptFingerprint`-success path without spinning up a
+    /// `MockTracker` with a rotated cert. No-op if no task is running
+    /// for `id`.
+    #[cfg(test)]
+    pub(crate) fn set_pending_fingerprint_for_test(&self, id: i64, fingerprint: String) {
+        let map = self
+            .inner
+            .lock()
+            .expect(EXPECT_TRACKER_MANAGER_LOCK_POISONED);
+        if let Some(handle) = map.get(&id) {
+            let mut status = handle
+                .status
+                .write()
+                .expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
+            status.pending_fingerprint = Some(fingerprint);
+        }
+    }
+
+    /// Test-only: directly set `last_error_kind` on a running tracker's
+    /// status. Companion to [`Self::set_pending_fingerprint_for_test`]
+    /// for unit tests that simulate specific tracker error states
+    /// (e.g. Stage 2 interception detection) without driving a real
+    /// `MockTracker`. No-op if no task is running for `id`.
+    #[cfg(test)]
+    pub(crate) fn set_last_error_kind_for_test(&self, id: i64, kind: String) {
+        let map = self
+            .inner
+            .lock()
+            .expect(EXPECT_TRACKER_MANAGER_LOCK_POISONED);
+        if let Some(handle) = map.get(&id) {
+            let mut status = handle
+                .status
+                .write()
+                .expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
+            status.last_error_kind = Some(kind);
+        }
     }
 
     /// Abort every running task and await each `JoinHandle` to ensure

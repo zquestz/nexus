@@ -10,7 +10,7 @@ use nexus_common::protocol::{ServerMessage, UserInfo};
 use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
 
 use crate::constants::{
-    DEFAULT_LOCALE, LOG_USER_UPDATE_ADMIN, LOG_USER_UPDATE_DB_ERROR,
+    DEFAULT_LOCALE, HANDLER_USER_UPDATE, LOG_USER_UPDATE_ADMIN, LOG_USER_UPDATE_DB_ERROR,
     LOG_USER_UPDATE_DB_ERROR_GROUP, LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS,
     LOG_USER_UPDATE_DB_ERROR_LOOKUP, LOG_USER_UPDATE_DB_ERROR_PERMISSIONS,
     LOG_USER_UPDATE_DB_ERROR_TARGET, LOG_USER_UPDATE_DB_ERROR_USER, LOG_USER_UPDATE_HASH_ERROR,
@@ -71,7 +71,7 @@ where
     let Some(requesting_session_id) = request.session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserUpdate"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_UPDATE))
             .await;
     };
 
@@ -84,7 +84,10 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserUpdate"))
+                .send_error_and_disconnect(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_USER_UPDATE),
+                )
                 .await;
         }
     };
@@ -104,7 +107,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %request.id, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_LOOKUP);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
                 .await;
         }
     };
@@ -188,7 +191,7 @@ where
             Err(e) => {
                 error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_USER);
                 return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
                     .await;
             }
         };
@@ -208,7 +211,7 @@ where
             Err(e) => {
                 error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_PASSWORD_VERIFY);
                 return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                    .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
                     .await;
             }
         }
@@ -252,7 +255,10 @@ where
                 Err(e) => {
                     error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
                     return ctx
-                        .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                        .send_error_and_disconnect(
+                            &err_database(ctx.locale),
+                            Some(HANDLER_USER_UPDATE),
+                        )
                         .await;
                 }
             }
@@ -337,7 +343,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
                 .await;
         }
     };
@@ -433,7 +439,10 @@ where
                 Err(e) => {
                     error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_PERMISSIONS);
                     return ctx
-                        .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                        .send_error_and_disconnect(
+                            &err_database(ctx.locale),
+                            Some(HANDLER_USER_UPDATE),
+                        )
                         .await;
                 }
             };
@@ -566,7 +575,7 @@ where
                             return ctx
                                 .send_error_and_disconnect(
                                     &err_database(ctx.locale),
-                                    Some("UserUpdate"),
+                                    Some(HANDLER_USER_UPDATE),
                                 )
                                 .await;
                         }
@@ -739,7 +748,10 @@ where
                 Err(e) => {
                     error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_HASH_ERROR);
                     return ctx
-                        .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                        .send_error_and_disconnect(
+                            &err_database(ctx.locale),
+                            Some(HANDLER_USER_UPDATE),
+                        )
                         .await;
                 }
             }
@@ -1171,7 +1183,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserUpdate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
                 .await;
         }
     }

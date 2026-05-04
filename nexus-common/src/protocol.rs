@@ -315,9 +315,18 @@ pub enum ClientMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         min_password_strength: Option<u8>,
     },
+    /// Promote a tracker's `pending_fingerprint` (set after a Stage 1 TOFU
+    /// mismatch) to its active `fingerprint`. Requires `tracker_edit`
+    /// permission. Server rejects if the row has no `pending_fingerprint`,
+    /// which naturally restricts this flow to Stage 1 mismatches — Stage 2
+    /// (server-reported vs TLS-observed) mismatches are unrecoverable and
+    /// never populate `pending_fingerprint`.
+    TrackerAcceptFingerprint {
+        id: i64,
+    },
     /// Add a tracker the server should publish registration entries to.
-    /// Requires `tracker_create` permission.
-    TrackerCreate {
+    /// Requires `tracker_add` permission.
+    TrackerAdd {
         /// Hostname or IP literal (validated as a public address).
         address: String,
         /// TCP port (typically 7510).
@@ -334,11 +343,6 @@ pub enum ClientMessage {
         /// Whether the tracker task should actively maintain a connection.
         enabled: bool,
     },
-    /// Remove a tracker from the server's tracker list. Requires
-    /// `tracker_delete` permission.
-    TrackerDelete {
-        id: i64,
-    },
     /// Fetch a single tracker's details for the edit form. Requires
     /// `tracker_edit` permission.
     TrackerEdit {
@@ -347,6 +351,11 @@ pub enum ClientMessage {
     /// List all configured trackers and their runtime status. Requires
     /// `tracker_list` permission.
     TrackerList,
+    /// Remove a tracker from the server's tracker list. Requires
+    /// `tracker_remove` permission.
+    TrackerRemove {
+        id: i64,
+    },
     /// Replace a tracker's configuration. Requires `tracker_edit`
     /// permission.
     TrackerUpdate {
@@ -971,8 +980,20 @@ pub enum ServerMessage {
     ServerInfoUpdated {
         server_info: ServerInfo,
     },
-    /// Response to TrackerCreate request
-    TrackerCreateResponse {
+    /// Response to TrackerAcceptFingerprint request
+    TrackerAcceptFingerprintResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Tracker's id (so the client can identify which row was affected)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        id: Option<i64>,
+        /// Tracker's name (for the toast message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+    },
+    /// Response to TrackerAdd request
+    TrackerAddResponse {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
@@ -980,15 +1001,6 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         id: Option<i64>,
         /// New tracker's name (for the toast message)
-        #[serde(skip_serializing_if = "Option::is_none")]
-        name: Option<String>,
-    },
-    /// Response to TrackerDelete request
-    TrackerDeleteResponse {
-        success: bool,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        error: Option<String>,
-        /// Removed tracker's name (for the toast message)
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
     },
@@ -1010,6 +1022,15 @@ pub enum ServerMessage {
         /// on the error path; an empty list on success means no
         /// trackers are configured yet.
         trackers: Vec<TrackerInfo>,
+    },
+    /// Response to TrackerRemove request
+    TrackerRemoveResponse {
+        success: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        /// Removed tracker's name (for the toast message)
+        #[serde(skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
     },
     /// Response to TrackerUpdate request
     TrackerUpdateResponse {
@@ -1899,7 +1920,11 @@ impl std::fmt::Debug for ClientMessage {
                 }
                 s.finish()
             }
-            ClientMessage::TrackerCreate {
+            ClientMessage::TrackerAcceptFingerprint { id } => f
+                .debug_struct("TrackerAcceptFingerprint")
+                .field("id", id)
+                .finish(),
+            ClientMessage::TrackerAdd {
                 address,
                 port,
                 fingerprint,
@@ -1907,7 +1932,7 @@ impl std::fmt::Debug for ClientMessage {
                 enabled,
                 ..
             } => f
-                .debug_struct("TrackerCreate")
+                .debug_struct("TrackerAdd")
                 .field("address", address)
                 .field("port", port)
                 .field("fingerprint", fingerprint)
@@ -1915,13 +1940,13 @@ impl std::fmt::Debug for ClientMessage {
                 .field("name", name)
                 .field("enabled", enabled)
                 .finish(),
-            ClientMessage::TrackerDelete { id } => {
-                f.debug_struct("TrackerDelete").field("id", id).finish()
-            }
             ClientMessage::TrackerEdit { id } => {
                 f.debug_struct("TrackerEdit").field("id", id).finish()
             }
             ClientMessage::TrackerList => f.debug_struct("TrackerList").finish(),
+            ClientMessage::TrackerRemove { id } => {
+                f.debug_struct("TrackerRemove").field("id", id).finish()
+            }
             ClientMessage::TrackerUpdate {
                 id,
                 address,

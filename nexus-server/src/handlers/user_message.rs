@@ -16,7 +16,7 @@ use super::{
     err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
-    LOG_FLOOD_DISCONNECT, LOG_FLOOD_LIMITED, LOG_USER_MESSAGE_NOT_LOGGED_IN,
+    HANDLER_USER_MESSAGE, LOG_FLOOD_DISCONNECT, LOG_FLOOD_LIMITED, LOG_USER_MESSAGE_NOT_LOGGED_IN,
     LOG_USER_MESSAGE_PERMISSION_DENIED,
 };
 use crate::db::Permission;
@@ -38,7 +38,7 @@ where
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_MESSAGE_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserMessage"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_MESSAGE))
             .await;
     };
 
@@ -47,7 +47,10 @@ where
         Some(user) => user,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserMessage"))
+                .send_error_and_disconnect(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_USER_MESSAGE),
+                )
                 .await;
         }
     };
@@ -98,7 +101,7 @@ where
                 return ctx
                     .send_error_and_disconnect(
                         &err_flood_disconnect(ctx.locale),
-                        Some("UserMessage"),
+                        Some(HANDLER_USER_MESSAGE),
                     )
                     .await;
             }

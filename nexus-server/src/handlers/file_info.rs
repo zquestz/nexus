@@ -14,7 +14,8 @@ use super::{
     err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
-    LOG_FILE_INFO_NOT_LOGGED_IN, LOG_FILE_INFO_PERMISSION_DENIED, LOG_FILE_INFO_ROOT_DENIED,
+    HANDLER_FILE_INFO, LOG_FILE_INFO_NOT_LOGGED_IN, LOG_FILE_INFO_PERMISSION_DENIED,
+    LOG_FILE_INFO_ROOT_DENIED,
 };
 use crate::db::Permission;
 use crate::files::{build_and_validate_candidate_path, resolve_path, resolve_user_area};
@@ -129,7 +130,7 @@ where
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_INFO_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileInfo"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_FILE_INFO))
             .await;
     };
 

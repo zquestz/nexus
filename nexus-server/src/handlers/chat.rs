@@ -17,7 +17,7 @@ use super::{
     err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
-    FEATURE_CHAT, LOG_CHAT_SEND_NOT_LOGGED_IN, LOG_CHAT_SEND_PERMISSION_DENIED,
+    FEATURE_CHAT, HANDLER_CHAT_SEND, LOG_CHAT_SEND_NOT_LOGGED_IN, LOG_CHAT_SEND_PERMISSION_DENIED,
     LOG_FLOOD_DISCONNECT, LOG_FLOOD_LIMITED,
 };
 use crate::db::Permission;
@@ -39,7 +39,7 @@ where
     let Some(id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_SEND_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatSend"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_SEND))
             .await;
     };
 
@@ -48,7 +48,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("ChatSend"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_CHAT_SEND))
                 .await;
         }
     };
@@ -56,7 +56,10 @@ where
     // Check chat feature
     if !user.has_feature(FEATURE_CHAT) {
         return ctx
-            .send_error_and_disconnect(&err_chat_feature_not_enabled(ctx.locale), Some("ChatSend"))
+            .send_error_and_disconnect(
+                &err_chat_feature_not_enabled(ctx.locale),
+                Some(HANDLER_CHAT_SEND),
+            )
             .await;
     }
 
@@ -64,7 +67,7 @@ where
     if !user.has_permission(Permission::ChatSend) {
         warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_SEND_PERMISSION_DENIED);
         return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("ChatSend"))
+            .send_error(&err_permission_denied(ctx.locale), Some(HANDLER_CHAT_SEND))
             .await;
     }
 
@@ -87,14 +90,17 @@ where
                 return ctx
                     .send_error(
                         &err_flood_warning(ctx.locale, wait_seconds, violation, max_violations),
-                        Some("ChatSend"),
+                        Some(HANDLER_CHAT_SEND),
                     )
                     .await;
             }
             FloodCheck::Disconnect => {
                 warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_FLOOD_DISCONNECT);
                 return ctx
-                    .send_error_and_disconnect(&err_flood_disconnect(ctx.locale), Some("ChatSend"))
+                    .send_error_and_disconnect(
+                        &err_flood_disconnect(ctx.locale),
+                        Some(HANDLER_CHAT_SEND),
+                    )
                     .await;
             }
         }
@@ -109,14 +115,17 @@ where
             MessageError::InvalidCharacters => err_message_invalid_characters(ctx.locale),
         };
         return ctx
-            .send_error_and_disconnect(&error_msg, Some("ChatSend"))
+            .send_error_and_disconnect(&error_msg, Some(HANDLER_CHAT_SEND))
             .await;
     }
 
     // Validate channel name
     if let Err(e) = validators::validate_channel(&channel) {
         return ctx
-            .send_error(&channel_error_to_message(e, ctx.locale), Some("ChatSend"))
+            .send_error(
+                &channel_error_to_message(e, ctx.locale),
+                Some(HANDLER_CHAT_SEND),
+            )
             .await;
     }
 
@@ -127,7 +136,7 @@ where
         return ctx
             .send_error(
                 &err_channel_not_found(ctx.locale, &channel),
-                Some("ChatSend"),
+                Some(HANDLER_CHAT_SEND),
             )
             .await;
     }

@@ -14,7 +14,7 @@ use super::{
 };
 use crate::channels::JoinError;
 use crate::constants::{
-    FEATURE_CHAT, LOG_CHAT_JOIN_CREATE_DENIED, LOG_CHAT_JOIN_NOT_LOGGED_IN,
+    FEATURE_CHAT, HANDLER_CHAT_JOIN, LOG_CHAT_JOIN_CREATE_DENIED, LOG_CHAT_JOIN_NOT_LOGGED_IN,
     LOG_CHAT_JOIN_PERMISSION_DENIED,
 };
 use crate::db::Permission;
@@ -52,7 +52,7 @@ where
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatJoin"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_JOIN))
             .await;
     };
 
@@ -61,7 +61,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("ChatJoin"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_CHAT_JOIN))
                 .await;
         }
     };

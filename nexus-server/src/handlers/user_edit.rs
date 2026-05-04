@@ -14,7 +14,7 @@ use super::{
     err_not_logged_in, err_permission_denied, err_user_not_found,
 };
 use crate::constants::{
-    LOG_USER_EDIT_ADMIN, LOG_USER_EDIT_DB_ERROR, LOG_USER_EDIT_NOT_LOGGED_IN,
+    HANDLER_USER_EDIT, LOG_USER_EDIT_ADMIN, LOG_USER_EDIT_DB_ERROR, LOG_USER_EDIT_NOT_LOGGED_IN,
     LOG_USER_EDIT_PERMISSION_DENIED,
 };
 use crate::db::Permission;
@@ -32,7 +32,7 @@ where
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_EDIT_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserEdit"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_EDIT))
             .await;
     };
 
@@ -45,7 +45,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserEdit"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_USER_EDIT))
                 .await;
         }
     };
@@ -115,7 +115,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_EDIT_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserEdit"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_EDIT))
                 .await;
         }
     };
@@ -147,7 +147,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_EDIT_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserEdit"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_EDIT))
                 .await;
         }
     };

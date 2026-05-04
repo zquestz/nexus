@@ -7,7 +7,9 @@ use tracing::warn;
 
 use nexus_common::protocol::ServerMessage;
 
-use crate::constants::{LOG_VOICE_JOIN_NOT_LOGGED_IN, LOG_VOICE_JOIN_PERMISSION_DENIED};
+use crate::constants::{
+    HANDLER_VOICE_JOIN, LOG_VOICE_JOIN_NOT_LOGGED_IN, LOG_VOICE_JOIN_PERMISSION_DENIED,
+};
 
 use super::{
     HandlerContext, err_authentication, err_not_logged_in, err_voice_already_joined,
@@ -38,7 +40,7 @@ where
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_VOICE_JOIN_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("VoiceJoin"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_VOICE_JOIN))
             .await;
     };
 
@@ -47,7 +49,10 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("VoiceJoin"))
+                .send_error_and_disconnect(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_VOICE_JOIN),
+                )
                 .await;
         }
     };

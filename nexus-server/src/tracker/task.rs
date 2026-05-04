@@ -190,7 +190,7 @@ async fn attempt_connection_cycle(
     // the system resolver and rustls's `ServerName::try_from` expect
     // — strips IPv6 URL brackets, passes IP literals through, and
     // Punycode-encodes Unicode hostnames. The validator at
-    // `TrackerCreate`/`TrackerUpdate` already accepts the same set
+    // `TrackerAdd`/`TrackerUpdate` already accepts the same set
     // (via `domain_to_ascii_strict`), so a failure here means the row
     // is structurally broken — admin must edit. Treat as Unrecoverable
     // so the tracker task exits instead of tight-looping on a busted row.
@@ -400,11 +400,17 @@ async fn attempt_connection_cycle(
             server_reported = %sanitize_for_log(&server_reported),
             "{}", LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH
         );
-        set_status_with_pending_fingerprint(
-            status,
-            ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED,
-            tls_observed.clone(),
-        );
+        // Stage 2 mismatch (TLS-observed cert disagrees with the
+        // tracker's self-reported fingerprint in HandshakeResponse) is
+        // an active-interception signal. We deliberately do NOT write
+        // the observed fingerprint into `pending_fingerprint`: that
+        // field is consumed by `TrackerAcceptFingerprint` as a
+        // one-click promote-to-active-pin, and offering that path here
+        // would let an admin pin the attacker's cert. The TLS-observed
+        // fingerprint is captured in the operator log line above.
+        // Recovery requires admin investigation (Edit / Remove), not a
+        // one-click accept.
+        set_status_error(status, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED);
         return CycleOutcome::Unrecoverable;
     }
 
@@ -1204,7 +1210,6 @@ mod tests {
             ..Default::default()
         })
         .await;
-        let mock_fp = mock.fingerprint.clone();
         let (db, context) = setup_context().await;
         // No pin → Stage 1 skipped; we reach the handshake and Stage 2
         // is what fires.
@@ -1223,9 +1228,11 @@ mod tests {
         .await
         .expect("expected fingerprint_intercepted status within timeout");
 
-        // Pending fingerprint records the *TLS-observed* cert (not the
-        // self-reported lie) so the admin can compare.
-        assert_eq!(snap.pending_fingerprint.as_deref(), Some(mock_fp.as_str()));
+        // Stage 2 must NOT populate pending_fingerprint — that field
+        // gates the one-click `TrackerAcceptFingerprint` flow, and
+        // accepting the TLS-observed cert here would let an admin pin
+        // the attacker's certificate. Recovery requires Edit / Remove.
+        assert!(snap.pending_fingerprint.is_none());
         assert!(!snap.connected);
 
         // Stage 2 mismatch is unrecoverable → task exits.

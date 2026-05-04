@@ -8,8 +8,8 @@ use tracing::{error, info, warn};
 use nexus_common::protocol::ServerMessage;
 
 use crate::constants::{
-    LOG_USER_DELETE_ADMIN, LOG_USER_DELETE_DB_ERROR, LOG_USER_DELETE_NOT_LOGGED_IN,
-    LOG_USER_DELETE_PERMISSION_DENIED, LOG_USER_DELETE_SUCCESS,
+    HANDLER_USER_DELETE, LOG_USER_DELETE_ADMIN, LOG_USER_DELETE_DB_ERROR,
+    LOG_USER_DELETE_NOT_LOGGED_IN, LOG_USER_DELETE_PERMISSION_DENIED, LOG_USER_DELETE_SUCCESS,
 };
 
 #[cfg(test)]
@@ -35,7 +35,7 @@ where
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserDelete"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_DELETE))
             .await;
     };
 
@@ -44,7 +44,10 @@ where
         Some(user) => user,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserDelete"))
+                .send_error_and_disconnect(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_USER_DELETE),
+                )
                 .await;
         }
     };
@@ -74,7 +77,7 @@ where
         Err(e) => {
             error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserDelete"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_DELETE))
                 .await;
         }
     };
@@ -161,7 +164,7 @@ where
         }
         Err(e) => {
             error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
-            ctx.send_error_and_disconnect(&err_database(ctx.locale), Some("UserDelete"))
+            ctx.send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_DELETE))
                 .await
         }
     }

@@ -273,6 +273,7 @@ err-group-shared-mismatch = 계정 유형이 그룹 유형과 일치하지 않�
 
 # Tracker Errors
 err-tracker-not-found = 트래커를 찾을 수 없습니다
+err-tracker-no-pending-fingerprint = 트래커에 수락할 보류 중인 지문이 없습니다
 err-tracker-name-invalid = 트래커 이름에 잘못된 문자가 포함되어 있습니다
 err-tracker-name-empty = 트래커 이름은 비워둘 수 없습니다
 err-tracker-name-contains-newlines = 트래커 이름에 줄바꿈을 포함할 수 없습니다

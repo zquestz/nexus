@@ -1330,6 +1330,13 @@ pub fn err_tracker_not_found(locale: &str) -> String {
     t(locale, "err-tracker-not-found")
 }
 
+/// Get translated "tracker has no pending fingerprint to accept" error.
+/// Used by `TrackerAcceptFingerprint` when the row has no
+/// `pending_fingerprint` to promote.
+pub fn err_tracker_no_pending_fingerprint(locale: &str) -> String {
+    t(locale, "err-tracker-no-pending-fingerprint")
+}
+
 /// Get translated "tracker name invalid" error (control chars or
 /// other non-printable input — distinct from empty / newline cases
 /// which have their own helpers).

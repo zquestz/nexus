@@ -21,7 +21,7 @@ use super::{
     err_password_too_long, err_username_empty, err_username_invalid, err_username_too_long,
 };
 use crate::constants::{
-    FEATURE_CHAT, LOG_LOGIN_ACCOUNT_DISABLED, LOG_LOGIN_ALREADY_LOGGED_IN,
+    FEATURE_CHAT, HANDLER_LOGIN, LOG_LOGIN_ACCOUNT_DISABLED, LOG_LOGIN_ALREADY_LOGGED_IN,
     LOG_LOGIN_CREATE_USER_ERROR, LOG_LOGIN_DB_ERROR, LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN,
     LOG_LOGIN_GROUP_ERROR, LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR,
     LOG_LOGIN_INVALID_CREDENTIALS, LOG_LOGIN_PASSWORD_VERIFY_ERROR, LOG_LOGIN_PERMISSIONS_ERROR,
@@ -73,7 +73,7 @@ where
     if !handshake_complete {
         warn!(ip = %ctx.peer_addr, "{}", LOG_LOGIN_HANDSHAKE_REQUIRED);
         return ctx
-            .send_error_and_disconnect(&err_handshake_required(&locale), Some("Login"))
+            .send_error_and_disconnect(&err_handshake_required(&locale), Some(HANDLER_LOGIN))
             .await;
     }
 
@@ -81,7 +81,7 @@ where
     if session_id.is_some() {
         warn!(ip = %ctx.peer_addr, "{}", LOG_LOGIN_ALREADY_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_already_logged_in(&locale), Some("Login"))
+            .send_error_and_disconnect(&err_already_logged_in(&locale), Some(HANDLER_LOGIN))
             .await;
     }
 
@@ -95,7 +95,7 @@ where
             UsernameError::InvalidCharacters => err_username_invalid(&locale),
         };
         return ctx
-            .send_error_and_disconnect(&error_msg, Some("Login"))
+            .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
             .await;
     }
 
@@ -104,7 +104,7 @@ where
         return ctx
             .send_error_and_disconnect(
                 &err_password_too_long(&locale, validators::MAX_PASSWORD_LENGTH),
-                Some("Login"),
+                Some(HANDLER_LOGIN),
             )
             .await;
     }
@@ -116,7 +116,7 @@ where
             LocaleError::InvalidCharacters => err_locale_invalid_characters(&locale),
         };
         return ctx
-            .send_error_and_disconnect(&error_msg, Some("Login"))
+            .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
             .await;
     }
 
@@ -133,7 +133,7 @@ where
             FeaturesError::InvalidCharacters => err_features_invalid_characters(&locale),
         };
         return ctx
-            .send_error_and_disconnect(&error_msg, Some("Login"))
+            .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
             .await;
     }
 
@@ -149,7 +149,7 @@ where
             AvatarError::UnsupportedType => err_avatar_unsupported_type(&locale),
         };
         return ctx
-            .send_error_and_disconnect(&error_msg, Some("Login"))
+            .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
             .await;
     }
 
@@ -159,7 +159,7 @@ where
         Err(e) => {
             error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(&locale), Some("Login"))
+                .send_error_and_disconnect(&err_database(&locale), Some(HANDLER_LOGIN))
                 .await;
         }
     };
@@ -179,7 +179,10 @@ where
                 Err(e) => {
                     error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_PASSWORD_VERIFY_ERROR);
                     return ctx
-                        .send_error_and_disconnect(&err_authentication(&locale), Some("Login"))
+                        .send_error_and_disconnect(
+                            &err_authentication(&locale),
+                            Some(HANDLER_LOGIN),
+                        )
                         .await;
                 }
             }
@@ -196,14 +199,14 @@ where
                     err_account_disabled(&locale, &username)
                 };
                 return ctx
-                    .send_error_and_disconnect(&error_msg, Some("Login"))
+                    .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
                     .await;
             }
             account
         } else {
             warn!(ip = %ctx.peer_addr, target = %username, "{}", LOG_LOGIN_INVALID_CREDENTIALS);
             return ctx
-                .send_error_and_disconnect(&err_invalid_credentials(&locale), Some("Login"))
+                .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
                 .await;
         }
     } else {
@@ -218,7 +221,7 @@ where
                 return ctx
                     .send_error_and_disconnect(
                         &err_failed_to_create_user(&locale, &username),
-                        Some("Login"),
+                        Some(HANDLER_LOGIN),
                     )
                     .await;
             }
@@ -239,7 +242,10 @@ where
                 // User doesn't exist and not first user - use same error as invalid password
                 // to avoid revealing whether username exists
                 return ctx
-                    .send_error_and_disconnect(&err_invalid_credentials(&locale), Some("Login"))
+                    .send_error_and_disconnect(
+                        &err_invalid_credentials(&locale),
+                        Some(HANDLER_LOGIN),
+                    )
                     .await;
             }
             Err(e) => {
@@ -247,7 +253,7 @@ where
                 return ctx
                     .send_error_and_disconnect(
                         &err_failed_to_create_user(&locale, &username),
-                        Some("Login"),
+                        Some(HANDLER_LOGIN),
                     )
                     .await;
             }
@@ -261,7 +267,7 @@ where
         // Shared account - nickname is required
         let Some(nickname) = nickname else {
             return ctx
-                .send_error_and_disconnect(&err_nickname_required(&locale), Some("Login"))
+                .send_error_and_disconnect(&err_nickname_required(&locale), Some(HANDLER_LOGIN))
                 .await;
         };
 
@@ -275,7 +281,7 @@ where
                 NicknameError::InvalidCharacters => err_nickname_invalid(&locale),
             };
             return ctx
-                .send_error_and_disconnect(&error_msg, Some("Login"))
+                .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
                 .await;
         }
 
@@ -283,14 +289,17 @@ where
         match ctx.db.users.username_exists(&nickname).await {
             Ok(true) => {
                 return ctx
-                    .send_error_and_disconnect(&err_nickname_is_username(&locale), Some("Login"))
+                    .send_error_and_disconnect(
+                        &err_nickname_is_username(&locale),
+                        Some(HANDLER_LOGIN),
+                    )
                     .await;
             }
             Ok(false) => {}
             Err(e) => {
                 error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_NICKNAME);
                 return ctx
-                    .send_error_and_disconnect(&err_database(&locale), Some("Login"))
+                    .send_error_and_disconnect(&err_database(&locale), Some(HANDLER_LOGIN))
                     .await;
             }
         }
@@ -298,7 +307,7 @@ where
         // Check if nickname is in use by an active session (case-insensitive)
         if ctx.user_manager.is_nickname_in_use(&nickname).await {
             return ctx
-                .send_error_and_disconnect(&err_nickname_in_use(&locale), Some("Login"))
+                .send_error_and_disconnect(&err_nickname_in_use(&locale), Some(HANDLER_LOGIN))
                 .await;
         }
 
@@ -408,7 +417,7 @@ where
         Ok(id) => id,
         Err(AddUserError::NicknameInUse) => {
             return ctx
-                .send_error_and_disconnect(&err_nickname_in_use(&locale), Some("Login"))
+                .send_error_and_disconnect(&err_nickname_in_use(&locale), Some(HANDLER_LOGIN))
                 .await;
         }
     };

@@ -12,7 +12,9 @@ use super::{
     HandlerContext, err_authentication, err_not_logged_in, err_status_contains_newlines,
     err_status_invalid_characters, err_status_too_long,
 };
-use crate::constants::{ERR_AT_LEAST_ONE_SESSION_EXISTS, LOG_USER_STATUS_NOT_LOGGED_IN};
+use crate::constants::{
+    ERR_AT_LEAST_ONE_SESSION_EXISTS, HANDLER_USER_STATUS, LOG_USER_STATUS_NOT_LOGGED_IN,
+};
 use crate::users::manager::UserManager;
 
 /// Handle UserStatus command - set status message and clear away status
@@ -32,7 +34,7 @@ where
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_STATUS_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserStatus"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_STATUS))
             .await;
     };
 
@@ -59,7 +61,7 @@ where
         .await
     else {
         return ctx
-            .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserStatus"))
+            .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_USER_STATUS))
             .await;
     };
 

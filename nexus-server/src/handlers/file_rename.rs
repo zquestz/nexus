@@ -14,8 +14,8 @@ use super::{
     err_permission_denied, err_rename_failed, err_rename_target_exists,
 };
 use crate::constants::{
-    LOG_FILE_RENAME_FAILED, LOG_FILE_RENAME_NOT_LOGGED_IN, LOG_FILE_RENAME_PERMISSION_DENIED,
-    LOG_FILE_RENAME_ROOT_DENIED, LOG_FILE_RENAME_SUCCESS,
+    HANDLER_FILE_RENAME, LOG_FILE_RENAME_FAILED, LOG_FILE_RENAME_NOT_LOGGED_IN,
+    LOG_FILE_RENAME_PERMISSION_DENIED, LOG_FILE_RENAME_ROOT_DENIED, LOG_FILE_RENAME_SUCCESS,
 };
 use crate::db::Permission;
 use crate::files::{
@@ -38,7 +38,7 @@ where
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileRename"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_FILE_RENAME))
             .await;
     };
 

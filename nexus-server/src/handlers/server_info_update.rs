@@ -26,13 +26,13 @@ use super::{
     err_server_name_invalid_characters, err_server_name_too_long,
 };
 use crate::constants::{
-    LOG_SERVER_INFO_ADMIN_REQUIRED, LOG_SERVER_INFO_CHANNEL_CREATE_FAILED,
-    LOG_SERVER_INFO_CHANNEL_DELETE_FAILED, LOG_SERVER_INFO_DB_AUTO_JOIN,
-    LOG_SERVER_INFO_DB_CHAT_BURST, LOG_SERVER_INFO_DB_CHAT_RATE, LOG_SERVER_INFO_DB_CONNECTIONS,
-    LOG_SERVER_INFO_DB_DESC, LOG_SERVER_INFO_DB_IMAGE, LOG_SERVER_INFO_DB_NAME,
-    LOG_SERVER_INFO_DB_PASSWORD, LOG_SERVER_INFO_DB_PERSISTENT, LOG_SERVER_INFO_DB_PUBLIC_ADDRESS,
-    LOG_SERVER_INFO_DB_REINDEX, LOG_SERVER_INFO_DB_TRANSFERS, LOG_SERVER_INFO_NOT_LOGGED_IN,
-    LOG_SERVER_INFO_SUCCESS,
+    HANDLER_SERVER_INFO_UPDATE, LOG_SERVER_INFO_ADMIN_REQUIRED,
+    LOG_SERVER_INFO_CHANNEL_CREATE_FAILED, LOG_SERVER_INFO_CHANNEL_DELETE_FAILED,
+    LOG_SERVER_INFO_DB_AUTO_JOIN, LOG_SERVER_INFO_DB_CHAT_BURST, LOG_SERVER_INFO_DB_CHAT_RATE,
+    LOG_SERVER_INFO_DB_CONNECTIONS, LOG_SERVER_INFO_DB_DESC, LOG_SERVER_INFO_DB_IMAGE,
+    LOG_SERVER_INFO_DB_NAME, LOG_SERVER_INFO_DB_PASSWORD, LOG_SERVER_INFO_DB_PERSISTENT,
+    LOG_SERVER_INFO_DB_PUBLIC_ADDRESS, LOG_SERVER_INFO_DB_REINDEX, LOG_SERVER_INFO_DB_TRANSFERS,
+    LOG_SERVER_INFO_NOT_LOGGED_IN, LOG_SERVER_INFO_SUCCESS,
 };
 
 /// Request parameters for ServerInfoUpdate command
@@ -80,7 +80,10 @@ where
     let Some(id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_NOT_LOGGED_IN);
         return ctx
-            .send_error(&err_not_logged_in(ctx.locale), Some("ServerInfoUpdate"))
+            .send_error(
+                &err_not_logged_in(ctx.locale),
+                Some(HANDLER_SERVER_INFO_UPDATE),
+            )
             .await;
     };
 
@@ -89,7 +92,10 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error(&err_authentication(ctx.locale), Some("ServerInfoUpdate"))
+                .send_error(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_SERVER_INFO_UPDATE),
+                )
                 .await;
         }
     };
@@ -98,7 +104,10 @@ where
     if !user.is_admin {
         warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_ADMIN_REQUIRED);
         return ctx
-            .send_error(&err_admin_required(ctx.locale), Some("ServerInfoUpdate"))
+            .send_error(
+                &err_admin_required(ctx.locale),
+                Some(HANDLER_SERVER_INFO_UPDATE),
+            )
             .await;
     }
 
@@ -119,7 +128,7 @@ where
         return ctx
             .send_error(
                 &err_no_fields_to_update(ctx.locale),
-                Some("ServerInfoUpdate"),
+                Some(HANDLER_SERVER_INFO_UPDATE),
             )
             .await;
     }
@@ -136,7 +145,9 @@ where
             ServerNameError::ContainsNewlines => err_server_name_contains_newlines(ctx.locale),
             ServerNameError::InvalidCharacters => err_server_name_invalid_characters(ctx.locale),
         };
-        return ctx.send_error(&error_msg, Some("ServerInfoUpdate")).await;
+        return ctx
+            .send_error(&error_msg, Some(HANDLER_SERVER_INFO_UPDATE))
+            .await;
     }
 
     // Validate description if provided
@@ -155,7 +166,9 @@ where
                 err_server_description_invalid_characters(ctx.locale)
             }
         };
-        return ctx.send_error(&error_msg, Some("ServerInfoUpdate")).await;
+        return ctx
+            .send_error(&error_msg, Some(HANDLER_SERVER_INFO_UPDATE))
+            .await;
     }
 
     // Validate public_address if provided (empty string clears the advertised value)
@@ -181,7 +194,9 @@ where
             PublicAddressError::ContainsZoneId => err_public_address_contains_zone_id(ctx.locale),
             PublicAddressError::InvalidFormat => err_public_address_invalid_format(ctx.locale),
         };
-        return ctx.send_error(&error_msg, Some("ServerInfoUpdate")).await;
+        return ctx
+            .send_error(&error_msg, Some(HANDLER_SERVER_INFO_UPDATE))
+            .await;
     }
 
     // Note: max_connections_per_ip and max_transfers_per_ip allow 0 (meaning unlimited)
@@ -197,7 +212,9 @@ where
             ServerImageError::InvalidFormat => err_server_image_invalid_format(ctx.locale),
             ServerImageError::UnsupportedType => err_server_image_unsupported_type(ctx.locale),
         };
-        return ctx.send_error(&error_msg, Some("ServerInfoUpdate")).await;
+        return ctx
+            .send_error(&error_msg, Some(HANDLER_SERVER_INFO_UPDATE))
+            .await;
     }
 
     // Validate persistent_channels if provided
@@ -207,7 +224,9 @@ where
             if let Err(e) = validate_channel(name) {
                 let reason = channel_error_to_message(e, ctx.locale);
                 let error_msg = err_channel_list_invalid(ctx.locale, name, &reason);
-                return ctx.send_error(&error_msg, Some("ServerInfoUpdate")).await;
+                return ctx
+                    .send_error(&error_msg, Some(HANDLER_SERVER_INFO_UPDATE))
+                    .await;
             }
         }
     }
@@ -219,7 +238,9 @@ where
             if let Err(e) = validate_channel(name) {
                 let reason = channel_error_to_message(e, ctx.locale);
                 let error_msg = err_channel_list_invalid(ctx.locale, name, &reason);
-                return ctx.send_error(&error_msg, Some("ServerInfoUpdate")).await;
+                return ctx
+                    .send_error(&error_msg, Some(HANDLER_SERVER_INFO_UPDATE))
+                    .await;
             }
         }
     }
@@ -241,7 +262,7 @@ where
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_NAME);
         return ctx
-            .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+            .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
             .await;
     }
 
@@ -250,7 +271,7 @@ where
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_DESC);
         return ctx
-            .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+            .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
             .await;
     }
 
@@ -259,7 +280,7 @@ where
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_PUBLIC_ADDRESS);
         return ctx
-            .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+            .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
             .await;
     }
 
@@ -267,7 +288,7 @@ where
         if let Err(e) = ctx.db.config.set_max_connections_per_ip(max_conn).await {
             error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_CONNECTIONS);
             return ctx
-                .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+                .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
                 .await;
         }
         // Update the connection tracker limit dynamically
@@ -279,7 +300,7 @@ where
         if let Err(e) = ctx.db.config.set_max_transfers_per_ip(max_xfer).await {
             error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_TRANSFERS);
             return ctx
-                .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+                .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
                 .await;
         }
         // Update the connection tracker limit dynamically
@@ -292,7 +313,7 @@ where
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_IMAGE);
         return ctx
-            .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+            .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
             .await;
     }
 
@@ -301,7 +322,7 @@ where
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_REINDEX);
         return ctx
-            .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+            .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
             .await;
     }
     // Note: The timer task reads from config each cycle, so no runtime update needed
@@ -312,7 +333,7 @@ where
         if let Err(e) = ctx.db.config.set_persistent_channels(channels_str).await {
             error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_PERSISTENT);
             return ctx
-                .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+                .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
                 .await;
         }
 
@@ -400,7 +421,7 @@ where
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_AUTO_JOIN);
         return ctx
-            .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+            .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
             .await;
     }
 
@@ -409,7 +430,7 @@ where
         if let Err(e) = ctx.db.config.set_chat_burst_limit(burst).await {
             error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_CHAT_BURST);
             return ctx
-                .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+                .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
                 .await;
         }
         // Update the shared flood config dynamically
@@ -421,7 +442,7 @@ where
         if let Err(e) = ctx.db.config.set_chat_rate_limit(rate).await {
             error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_CHAT_RATE);
             return ctx
-                .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+                .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
                 .await;
         }
         // Update the shared flood config dynamically
@@ -434,7 +455,7 @@ where
         if let Err(e) = ctx.db.config.set_min_password_strength(strength).await {
             error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_PASSWORD);
             return ctx
-                .send_error(&err_database(ctx.locale), Some("ServerInfoUpdate"))
+                .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
                 .await;
         }
     }

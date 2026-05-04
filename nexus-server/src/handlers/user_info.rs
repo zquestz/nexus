@@ -13,7 +13,7 @@ use super::{
     err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
-    DEFAULT_LOCALE, ERR_TARGET_SESSIONS_NON_EMPTY, LOG_USER_INFO_DB_ERROR,
+    DEFAULT_LOCALE, ERR_TARGET_SESSIONS_NON_EMPTY, HANDLER_USER_INFO, LOG_USER_INFO_DB_ERROR,
     LOG_USER_INFO_NOT_LOGGED_IN, LOG_USER_INFO_PERMISSION_DENIED,
 };
 use crate::db::Permission;
@@ -36,7 +36,7 @@ where
     let Some(id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_INFO_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserInfo"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_INFO))
             .await;
     };
 
@@ -45,7 +45,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserInfo"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_USER_INFO))
                 .await;
         }
     };
@@ -104,13 +104,13 @@ where
         Ok(Some(acc)) => acc,
         Ok(None) => {
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserInfo"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_INFO))
                 .await;
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_INFO_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("UserInfo"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_INFO))
                 .await;
         }
     };

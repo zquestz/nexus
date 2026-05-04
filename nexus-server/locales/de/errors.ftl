@@ -273,6 +273,7 @@ err-group-shared-mismatch = Kontotyp stimmt nicht mit dem Gruppentyp überein (g
 
 # Tracker Errors
 err-tracker-not-found = Tracker nicht gefunden
+err-tracker-no-pending-fingerprint = Tracker hat keinen ausstehenden Fingerabdruck zum Akzeptieren
 err-tracker-name-invalid = Tracker-Name enthält ungültige Zeichen
 err-tracker-name-empty = Tracker-Name darf nicht leer sein
 err-tracker-name-contains-newlines = Tracker-Name darf keine Zeilenumbrüche enthalten

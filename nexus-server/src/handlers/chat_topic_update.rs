@@ -6,7 +6,8 @@ use tokio::io::AsyncWrite;
 use tracing::{error, warn};
 
 use crate::constants::{
-    LOG_CHAT_TOPIC_DB_ERROR, LOG_CHAT_TOPIC_NOT_LOGGED_IN, LOG_CHAT_TOPIC_PERMISSION_DENIED,
+    HANDLER_CHAT_TOPIC_UPDATE, LOG_CHAT_TOPIC_DB_ERROR, LOG_CHAT_TOPIC_NOT_LOGGED_IN,
+    LOG_CHAT_TOPIC_PERMISSION_DENIED,
 };
 
 use nexus_common::protocol::ServerMessage;
@@ -34,7 +35,10 @@ where
     let Some(id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_TOPIC_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ChatTopicUpdate"))
+            .send_error_and_disconnect(
+                &err_not_logged_in(ctx.locale),
+                Some(HANDLER_CHAT_TOPIC_UPDATE),
+            )
             .await;
     };
 
@@ -43,7 +47,10 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("ChatTopicUpdate"))
+                .send_error_and_disconnect(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_CHAT_TOPIC_UPDATE),
+                )
                 .await;
         }
     };

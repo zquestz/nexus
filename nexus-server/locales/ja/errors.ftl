@@ -273,6 +273,7 @@ err-group-shared-mismatch = アカウントタイプがグループタイプと�
 
 # Tracker Errors
 err-tracker-not-found = トラッカーが見つかりません
+err-tracker-no-pending-fingerprint = トラッカーには受け入れる保留中のフィンガープリントがありません
 err-tracker-name-invalid = トラッカー名に無効な文字が含まれています
 err-tracker-name-empty = トラッカー名を空にすることはできません
 err-tracker-name-contains-newlines = トラッカー名に改行を含めることはできません

@@ -16,7 +16,7 @@ use super::{
     err_news_image_unsupported_type, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
-    FEATURE_NEWS, LOG_NEWS_CREATE_DB_ERROR, LOG_NEWS_CREATE_NOT_LOGGED_IN,
+    FEATURE_NEWS, HANDLER_NEWS_CREATE, LOG_NEWS_CREATE_DB_ERROR, LOG_NEWS_CREATE_NOT_LOGGED_IN,
     LOG_NEWS_CREATE_PERMISSION_DENIED, LOG_NEWS_CREATE_SUCCESS,
 };
 use crate::db::Permission;
@@ -35,7 +35,7 @@ where
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_NEWS_CREATE_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("NewsCreate"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_NEWS_CREATE))
             .await;
     };
 
@@ -128,7 +128,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_NEWS_CREATE_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("NewsCreate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_NEWS_CREATE))
                 .await;
         }
     };

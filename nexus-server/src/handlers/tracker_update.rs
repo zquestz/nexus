@@ -13,7 +13,7 @@ use super::{
     validate_tracker_inputs,
 };
 use crate::constants::{
-    LOG_TRACKER_UPDATE_DB_ERROR, LOG_TRACKER_UPDATE_NOT_LOGGED_IN,
+    HANDLER_TRACKER_UPDATE, LOG_TRACKER_UPDATE_DB_ERROR, LOG_TRACKER_UPDATE_NOT_LOGGED_IN,
     LOG_TRACKER_UPDATE_PERMISSION_DENIED, LOG_TRACKER_UPDATE_SUCCESS,
 };
 use crate::db::{Permission, TrackerDbError, UpdateTrackerParams};
@@ -57,7 +57,7 @@ where
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_TRACKER_UPDATE_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("TrackerUpdate"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_TRACKER_UPDATE))
             .await;
     };
 
@@ -65,7 +65,10 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("TrackerUpdate"))
+                .send_error_and_disconnect(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_TRACKER_UPDATE),
+                )
                 .await;
         }
     };
@@ -143,7 +146,7 @@ where
                 "{}", LOG_TRACKER_UPDATE_DB_ERROR
             );
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("TrackerUpdate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_TRACKER_UPDATE))
                 .await;
         }
         Err(TrackerDbError::Other(e)) => {
@@ -155,7 +158,7 @@ where
                 "{}", LOG_TRACKER_UPDATE_DB_ERROR
             );
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("TrackerUpdate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_TRACKER_UPDATE))
                 .await;
         }
     };

@@ -829,19 +829,28 @@ pub const LOG_TRACKER_LIST_DB_ERROR: &str = "TrackerList: database error";
 pub const LOG_TRACKER_EDIT_NOT_LOGGED_IN: &str = "TrackerEdit: not logged in";
 pub const LOG_TRACKER_EDIT_PERMISSION_DENIED: &str = "TrackerEdit: permission denied";
 pub const LOG_TRACKER_EDIT_DB_ERROR: &str = "TrackerEdit: database error";
-pub const LOG_TRACKER_CREATE_NOT_LOGGED_IN: &str = "TrackerCreate: not logged in";
-pub const LOG_TRACKER_CREATE_PERMISSION_DENIED: &str = "TrackerCreate: permission denied";
-pub const LOG_TRACKER_CREATE_DB_ERROR: &str = "TrackerCreate: database error";
-pub const LOG_TRACKER_CREATE_LIMIT_REACHED: &str = "TrackerCreate: tracker limit reached";
-pub const LOG_TRACKER_CREATE_SUCCESS: &str = "TrackerCreate: success";
+pub const LOG_TRACKER_ACCEPT_FINGERPRINT_NOT_LOGGED_IN: &str =
+    "TrackerAcceptFingerprint: not logged in";
+pub const LOG_TRACKER_ACCEPT_FINGERPRINT_PERMISSION_DENIED: &str =
+    "TrackerAcceptFingerprint: permission denied";
+pub const LOG_TRACKER_ACCEPT_FINGERPRINT_NO_PENDING: &str =
+    "TrackerAcceptFingerprint: no pending fingerprint";
+pub const LOG_TRACKER_ACCEPT_FINGERPRINT_DB_ERROR: &str =
+    "TrackerAcceptFingerprint: database error";
+pub const LOG_TRACKER_ACCEPT_FINGERPRINT_SUCCESS: &str = "TrackerAcceptFingerprint: success";
+pub const LOG_TRACKER_ADD_NOT_LOGGED_IN: &str = "TrackerAdd: not logged in";
+pub const LOG_TRACKER_ADD_PERMISSION_DENIED: &str = "TrackerAdd: permission denied";
+pub const LOG_TRACKER_ADD_DB_ERROR: &str = "TrackerAdd: database error";
+pub const LOG_TRACKER_ADD_LIMIT_REACHED: &str = "TrackerAdd: tracker limit reached";
+pub const LOG_TRACKER_ADD_SUCCESS: &str = "TrackerAdd: success";
 pub const LOG_TRACKER_UPDATE_NOT_LOGGED_IN: &str = "TrackerUpdate: not logged in";
 pub const LOG_TRACKER_UPDATE_PERMISSION_DENIED: &str = "TrackerUpdate: permission denied";
 pub const LOG_TRACKER_UPDATE_DB_ERROR: &str = "TrackerUpdate: database error";
 pub const LOG_TRACKER_UPDATE_SUCCESS: &str = "TrackerUpdate: success";
-pub const LOG_TRACKER_DELETE_NOT_LOGGED_IN: &str = "TrackerDelete: not logged in";
-pub const LOG_TRACKER_DELETE_PERMISSION_DENIED: &str = "TrackerDelete: permission denied";
-pub const LOG_TRACKER_DELETE_DB_ERROR: &str = "TrackerDelete: database error";
-pub const LOG_TRACKER_DELETE_SUCCESS: &str = "TrackerDelete: success";
+pub const LOG_TRACKER_REMOVE_NOT_LOGGED_IN: &str = "TrackerRemove: not logged in";
+pub const LOG_TRACKER_REMOVE_PERMISSION_DENIED: &str = "TrackerRemove: permission denied";
+pub const LOG_TRACKER_REMOVE_DB_ERROR: &str = "TrackerRemove: database error";
+pub const LOG_TRACKER_REMOVE_SUCCESS: &str = "TrackerRemove: success";
 
 // --- Tracker Registration ---
 // Manager
@@ -1067,3 +1076,70 @@ pub const LOG_LOGIN_PASSWORD_VERIFY_ERROR: &str = "Login: password verification 
 pub const LOG_VOICE_JOIN_NOT_LOGGED_IN: &str = "VoiceJoin: not logged in";
 pub const LOG_VOICE_JOIN_PERMISSION_DENIED: &str = "VoiceJoin: permission denied";
 pub const LOG_VOICE_LEAVE_NOT_LOGGED_IN: &str = "VoiceLeave: not logged in";
+
+// =============================================================================
+// Handler Names — wire-level message-type labels passed as the `command` field
+// to `Error` responses via `send_error_and_disconnect(..., Some(...))`.
+//
+// Defined as constants (not literal strings at each callsite) so the compiler
+// catches typos: a misspelled label would otherwise silently produce a
+// malformed `Error.command` on the wire and a misleading log line. Each value
+// must exactly match the corresponding `ClientMessage` enum variant name in
+// `nexus-common/src/protocol.rs`.
+// =============================================================================
+
+pub const HANDLER_BAN_CREATE: &str = "BanCreate";
+pub const HANDLER_BAN_DELETE: &str = "BanDelete";
+pub const HANDLER_BAN_LIST: &str = "BanList";
+pub const HANDLER_CHAT_JOIN: &str = "ChatJoin";
+pub const HANDLER_CHAT_LEAVE: &str = "ChatLeave";
+pub const HANDLER_CHAT_LIST: &str = "ChatList";
+pub const HANDLER_CHAT_SECRET: &str = "ChatSecret";
+pub const HANDLER_CHAT_SEND: &str = "ChatSend";
+pub const HANDLER_CHAT_TOPIC_UPDATE: &str = "ChatTopicUpdate";
+pub const HANDLER_CONNECTION_MONITOR: &str = "ConnectionMonitor";
+pub const HANDLER_FILE_COPY: &str = "FileCopy";
+pub const HANDLER_FILE_CREATE_DIR: &str = "FileCreateDir";
+pub const HANDLER_FILE_DELETE: &str = "FileDelete";
+pub const HANDLER_FILE_INFO: &str = "FileInfo";
+pub const HANDLER_FILE_LIST: &str = "FileList";
+pub const HANDLER_FILE_MOVE: &str = "FileMove";
+pub const HANDLER_FILE_REINDEX: &str = "FileReindex";
+pub const HANDLER_FILE_RENAME: &str = "FileRename";
+pub const HANDLER_FILE_SEARCH: &str = "FileSearch";
+pub const HANDLER_GROUP_CREATE: &str = "GroupCreate";
+pub const HANDLER_GROUP_DELETE: &str = "GroupDelete";
+pub const HANDLER_GROUP_EDIT: &str = "GroupEdit";
+pub const HANDLER_GROUP_LIST: &str = "GroupList";
+pub const HANDLER_GROUP_UPDATE: &str = "GroupUpdate";
+pub const HANDLER_LOGIN: &str = "Login";
+pub const HANDLER_NEWS_CREATE: &str = "NewsCreate";
+pub const HANDLER_NEWS_DELETE: &str = "NewsDelete";
+pub const HANDLER_NEWS_EDIT: &str = "NewsEdit";
+pub const HANDLER_NEWS_LIST: &str = "NewsList";
+pub const HANDLER_NEWS_SHOW: &str = "NewsShow";
+pub const HANDLER_NEWS_UPDATE: &str = "NewsUpdate";
+pub const HANDLER_SERVER_INFO_UPDATE: &str = "ServerInfoUpdate";
+pub const HANDLER_TRACKER_ACCEPT_FINGERPRINT: &str = "TrackerAcceptFingerprint";
+pub const HANDLER_TRACKER_ADD: &str = "TrackerAdd";
+pub const HANDLER_TRACKER_EDIT: &str = "TrackerEdit";
+pub const HANDLER_TRACKER_LIST: &str = "TrackerList";
+pub const HANDLER_TRACKER_REMOVE: &str = "TrackerRemove";
+pub const HANDLER_TRACKER_UPDATE: &str = "TrackerUpdate";
+pub const HANDLER_TRUST_CREATE: &str = "TrustCreate";
+pub const HANDLER_TRUST_DELETE: &str = "TrustDelete";
+pub const HANDLER_TRUST_LIST: &str = "TrustList";
+pub const HANDLER_USER_AWAY: &str = "UserAway";
+pub const HANDLER_USER_BACK: &str = "UserBack";
+pub const HANDLER_USER_BROADCAST: &str = "UserBroadcast";
+pub const HANDLER_USER_CREATE: &str = "UserCreate";
+pub const HANDLER_USER_DELETE: &str = "UserDelete";
+pub const HANDLER_USER_EDIT: &str = "UserEdit";
+pub const HANDLER_USER_INFO: &str = "UserInfo";
+pub const HANDLER_USER_KICK: &str = "UserKick";
+pub const HANDLER_USER_LIST: &str = "UserList";
+pub const HANDLER_USER_MESSAGE: &str = "UserMessage";
+pub const HANDLER_USER_STATUS: &str = "UserStatus";
+pub const HANDLER_USER_UPDATE: &str = "UserUpdate";
+pub const HANDLER_VOICE_JOIN: &str = "VoiceJoin";
+pub const HANDLER_VOICE_LEAVE: &str = "VoiceLeave";

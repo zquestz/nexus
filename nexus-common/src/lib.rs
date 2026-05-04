@@ -200,10 +200,10 @@ pub const DEFAULT_PORT_STR: &str = "7500";
 /// - `news_delete`: Delete any news post (without: only own posts)
 /// - `news_edit`: Edit any news post (without: only own posts)
 /// - `news_list`: View news posts
-/// - `tracker_create`: Add a tracker to the server's tracker list
-/// - `tracker_delete`: Remove a tracker from the server's tracker list
-/// - `tracker_edit`: Edit a tracker's configuration (also gates fetching detail for the edit form)
+/// - `tracker_add`: Add a tracker to the server's tracker list
+/// - `tracker_edit`: Edit a tracker's configuration (also gates fetching detail for the edit form, and accepting a Stage 1 pending fingerprint)
 /// - `tracker_list`: View the server's configured trackers and their runtime status
+/// - `tracker_remove`: Remove a tracker from the server's tracker list
 /// - `trust_create`: Create/update trusted IPs
 /// - `trust_delete`: Remove trusted IPs
 /// - `trust_list`: View list of trusted IPs
@@ -251,10 +251,10 @@ pub const ALL_PERMISSIONS: &[&str] = &[
     "news_delete",
     "news_edit",
     "news_list",
-    "tracker_create",
-    "tracker_delete",
+    "tracker_add",
     "tracker_edit",
     "tracker_list",
+    "tracker_remove",
     "trust_create",
     "trust_delete",
     "trust_list",

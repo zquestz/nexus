@@ -12,7 +12,8 @@ use super::{
     err_permission_denied,
 };
 use crate::constants::{
-    LOG_TRACKER_LIST_DB_ERROR, LOG_TRACKER_LIST_NOT_LOGGED_IN, LOG_TRACKER_LIST_PERMISSION_DENIED,
+    HANDLER_TRACKER_LIST, LOG_TRACKER_LIST_DB_ERROR, LOG_TRACKER_LIST_NOT_LOGGED_IN,
+    LOG_TRACKER_LIST_PERMISSION_DENIED,
 };
 use crate::db::Permission;
 
@@ -28,7 +29,7 @@ where
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_TRACKER_LIST_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("TrackerList"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_TRACKER_LIST))
             .await;
     };
 
@@ -36,7 +37,10 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("TrackerList"))
+                .send_error_and_disconnect(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_TRACKER_LIST),
+                )
                 .await;
         }
     };
@@ -65,7 +69,7 @@ where
                 "{}", LOG_TRACKER_LIST_DB_ERROR
             );
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("TrackerList"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_TRACKER_LIST))
                 .await;
         }
     };

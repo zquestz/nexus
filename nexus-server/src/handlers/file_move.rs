@@ -15,9 +15,9 @@ use super::{
     err_file_path_too_long, err_move_failed, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
-    LOG_FILE_MOVE_DELETE_DENIED, LOG_FILE_MOVE_FAILED, LOG_FILE_MOVE_NOT_LOGGED_IN,
-    LOG_FILE_MOVE_PERMISSION_DENIED, LOG_FILE_MOVE_REMOVE_FAILED, LOG_FILE_MOVE_ROOT_DENIED,
-    LOG_FILE_MOVE_SUCCESS,
+    HANDLER_FILE_MOVE, LOG_FILE_MOVE_DELETE_DENIED, LOG_FILE_MOVE_FAILED,
+    LOG_FILE_MOVE_NOT_LOGGED_IN, LOG_FILE_MOVE_PERMISSION_DENIED, LOG_FILE_MOVE_REMOVE_FAILED,
+    LOG_FILE_MOVE_ROOT_DENIED, LOG_FILE_MOVE_SUCCESS,
 };
 use crate::db::Permission;
 use crate::files::{
@@ -42,7 +42,7 @@ where
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_MOVE_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("FileMove"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_FILE_MOVE))
             .await;
     };
 

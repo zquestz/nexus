@@ -273,6 +273,7 @@ err-group-shared-mismatch = 账户类型与群组类型不匹配（共享账户�
 
 # Tracker Errors
 err-tracker-not-found = 找不到追踪器
+err-tracker-no-pending-fingerprint = 追踪器没有待接受的指纹
 err-tracker-name-invalid = 追踪器名称包含无效字符
 err-tracker-name-empty = 追踪器名称不能为空
 err-tracker-name-contains-newlines = 追踪器名称不能包含换行符

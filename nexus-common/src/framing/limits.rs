@@ -1120,20 +1120,27 @@ const GROUP_DELETE_SIZE: usize = json_type_base("GroupDelete") + json_i64_field(
 // Tracker client messages
 // -----------------------------------------------------------------------------
 
-/// TrackerList: {"type":"TrackerList"}
-const TRACKER_LIST_SIZE: usize = json_type_base("TrackerList");
+/// TrackerAcceptFingerprint: {"type":"TrackerAcceptFingerprint","id":i64}
+const TRACKER_ACCEPT_FINGERPRINT_SIZE: usize =
+    json_type_base("TrackerAcceptFingerprint") + json_i64_field("id");
 
-/// TrackerEdit: {"type":"TrackerEdit","id":i64}
-const TRACKER_EDIT_SIZE: usize = json_type_base("TrackerEdit") + json_i64_field("id");
-
-/// TrackerCreate: {"type":"TrackerCreate","address":"...253...","port":u16,"fingerprint":"...95...","password":"...256...","name":"...256...","enabled":false}
-const TRACKER_CREATE_SIZE: usize = json_type_base("TrackerCreate")
+/// TrackerAdd: {"type":"TrackerAdd","address":"...253...","port":u16,"fingerprint":"...95...","password":"...256...","name":"...256...","enabled":false}
+const TRACKER_ADD_SIZE: usize = json_type_base("TrackerAdd")
     + json_string_field("address", MAX_PUBLIC_ADDRESS_LENGTH)
     + json_u16_field("port")
     + json_string_field("fingerprint", SHA256_FINGERPRINT_LENGTH)
     + json_string_field("password", MAX_PASSWORD_LENGTH)
     + json_string_field("name", MAX_TRACKER_NAME_LENGTH)
     + json_bool_field("enabled");
+
+/// TrackerEdit: {"type":"TrackerEdit","id":i64}
+const TRACKER_EDIT_SIZE: usize = json_type_base("TrackerEdit") + json_i64_field("id");
+
+/// TrackerList: {"type":"TrackerList"}
+const TRACKER_LIST_SIZE: usize = json_type_base("TrackerList");
+
+/// TrackerRemove: {"type":"TrackerRemove","id":i64}
+const TRACKER_REMOVE_SIZE: usize = json_type_base("TrackerRemove") + json_i64_field("id");
 
 /// TrackerUpdate: {"type":"TrackerUpdate","id":i64,"address":"...253...","port":u16,"fingerprint":"...95...","password":"...256...","name":"...256...","enabled":false}
 const TRACKER_UPDATE_SIZE: usize = json_type_base("TrackerUpdate")
@@ -1144,9 +1151,6 @@ const TRACKER_UPDATE_SIZE: usize = json_type_base("TrackerUpdate")
     + json_string_field("password", MAX_PASSWORD_LENGTH)
     + json_string_field("name", MAX_TRACKER_NAME_LENGTH)
     + json_bool_field("enabled");
-
-/// TrackerDelete: {"type":"TrackerDelete","id":i64}
-const TRACKER_DELETE_SIZE: usize = json_type_base("TrackerDelete") + json_i64_field("id");
 
 // -----------------------------------------------------------------------------
 // Tracker server messages
@@ -1191,11 +1195,20 @@ const TRACKER_INFO_SIZE: usize = json_first_i64_field("id")
 /// tracker tasks both bound this in practice.
 pub const MAX_TRACKERS_PER_SERVER: usize = 64;
 
-/// TrackerListResponse: {"type":"TrackerListResponse","success":false,"error":"...2048...","trackers":[TrackerInfo, ...]}
-const TRACKER_LIST_RESPONSE_SIZE: usize = json_type_base("TrackerListResponse")
+/// TrackerAcceptFingerprintResponse: {"type":"TrackerAcceptFingerprintResponse","success":false,"error":"...2048...","id":i64,"name":"...256..."}
+const TRACKER_ACCEPT_FINGERPRINT_RESPONSE_SIZE: usize =
+    json_type_base("TrackerAcceptFingerprintResponse")
+        + json_bool_field("success")
+        + json_string_field("error", MAX_ERROR_LENGTH)
+        + json_i64_field("id")
+        + json_string_field("name", MAX_TRACKER_NAME_LENGTH);
+
+/// TrackerAddResponse: {"type":"TrackerAddResponse","success":false,"error":"...2048...","id":i64,"name":"...256..."}
+const TRACKER_ADD_RESPONSE_SIZE: usize = json_type_base("TrackerAddResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_object_array_field("trackers", MAX_TRACKERS_PER_SERVER, TRACKER_INFO_SIZE);
+    + json_i64_field("id")
+    + json_string_field("name", MAX_TRACKER_NAME_LENGTH);
 
 /// TrackerEditResponse: {"type":"TrackerEditResponse","success":false,"error":"...2048...","tracker":TrackerInfo}
 const TRACKER_EDIT_RESPONSE_SIZE: usize = json_type_base("TrackerEditResponse")
@@ -1203,11 +1216,16 @@ const TRACKER_EDIT_RESPONSE_SIZE: usize = json_type_base("TrackerEditResponse")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + TRACKER_INFO_SIZE;
 
-/// TrackerCreateResponse: {"type":"TrackerCreateResponse","success":false,"error":"...2048...","id":i64,"name":"...256..."}
-const TRACKER_CREATE_RESPONSE_SIZE: usize = json_type_base("TrackerCreateResponse")
+/// TrackerListResponse: {"type":"TrackerListResponse","success":false,"error":"...2048...","trackers":[TrackerInfo, ...]}
+const TRACKER_LIST_RESPONSE_SIZE: usize = json_type_base("TrackerListResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_i64_field("id")
+    + json_object_array_field("trackers", MAX_TRACKERS_PER_SERVER, TRACKER_INFO_SIZE);
+
+/// TrackerRemoveResponse: {"type":"TrackerRemoveResponse","success":false,"error":"...2048...","name":"...256..."}
+const TRACKER_REMOVE_RESPONSE_SIZE: usize = json_type_base("TrackerRemoveResponse")
+    + json_bool_field("success")
+    + json_string_field("error", MAX_ERROR_LENGTH)
     + json_string_field("name", MAX_TRACKER_NAME_LENGTH);
 
 /// TrackerUpdateResponse: {"type":"TrackerUpdateResponse","success":false,"error":"...2048...","id":i64,"name":"...256..."}
@@ -1215,12 +1233,6 @@ const TRACKER_UPDATE_RESPONSE_SIZE: usize = json_type_base("TrackerUpdateRespons
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_i64_field("id")
-    + json_string_field("name", MAX_TRACKER_NAME_LENGTH);
-
-/// TrackerDeleteResponse: {"type":"TrackerDeleteResponse","success":false,"error":"...2048...","name":"...256..."}
-const TRACKER_DELETE_RESPONSE_SIZE: usize = json_type_base("TrackerDeleteResponse")
-    + json_bool_field("success")
-    + json_string_field("error", MAX_ERROR_LENGTH)
     + json_string_field("name", MAX_TRACKER_NAME_LENGTH);
 
 // -----------------------------------------------------------------------------
@@ -1342,11 +1354,15 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     m.insert("GroupDelete", pad_limit(GROUP_DELETE_SIZE as u64));
 
     // Tracker client messages
-    m.insert("TrackerList", pad_limit(TRACKER_LIST_SIZE as u64));
+    m.insert(
+        "TrackerAcceptFingerprint",
+        pad_limit(TRACKER_ACCEPT_FINGERPRINT_SIZE as u64),
+    );
+    m.insert("TrackerAdd", pad_limit(TRACKER_ADD_SIZE as u64));
     m.insert("TrackerEdit", pad_limit(TRACKER_EDIT_SIZE as u64));
-    m.insert("TrackerCreate", pad_limit(TRACKER_CREATE_SIZE as u64));
+    m.insert("TrackerList", pad_limit(TRACKER_LIST_SIZE as u64));
+    m.insert("TrackerRemove", pad_limit(TRACKER_REMOVE_SIZE as u64));
     m.insert("TrackerUpdate", pad_limit(TRACKER_UPDATE_SIZE as u64));
-    m.insert("TrackerDelete", pad_limit(TRACKER_DELETE_SIZE as u64));
 
     // News client messages (self-documenting via const calculations)
     m.insert("NewsList", pad_limit(NEWS_LIST_SIZE as u64));
@@ -1514,24 +1530,28 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
 
     // Tracker server messages
     m.insert(
-        "TrackerListResponse",
-        pad_limit(TRACKER_LIST_RESPONSE_SIZE as u64),
+        "TrackerAcceptFingerprintResponse",
+        pad_limit(TRACKER_ACCEPT_FINGERPRINT_RESPONSE_SIZE as u64),
+    );
+    m.insert(
+        "TrackerAddResponse",
+        pad_limit(TRACKER_ADD_RESPONSE_SIZE as u64),
     );
     m.insert(
         "TrackerEditResponse",
         pad_limit(TRACKER_EDIT_RESPONSE_SIZE as u64),
     );
     m.insert(
-        "TrackerCreateResponse",
-        pad_limit(TRACKER_CREATE_RESPONSE_SIZE as u64),
+        "TrackerListResponse",
+        pad_limit(TRACKER_LIST_RESPONSE_SIZE as u64),
+    );
+    m.insert(
+        "TrackerRemoveResponse",
+        pad_limit(TRACKER_REMOVE_RESPONSE_SIZE as u64),
     );
     m.insert(
         "TrackerUpdateResponse",
         pad_limit(TRACKER_UPDATE_RESPONSE_SIZE as u64),
-    );
-    m.insert(
-        "TrackerDeleteResponse",
-        pad_limit(TRACKER_DELETE_RESPONSE_SIZE as u64),
     );
 
     // News server messages (self-documenting via const calculations)
@@ -2103,8 +2123,8 @@ mod tests {
     // Note: Some type names are shared between client and server enums
     // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing, FileHash),
     // so they're only counted once in the HashMap.
-    const CLIENT_MESSAGE_COUNT: usize = 63; // 6 News + 8 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 4 Chat channel + 1 ConnectionMonitor + 5 Group + 5 Tracker + 2 Voice client messages + 1 Ping
-    const SERVER_MESSAGE_COUNT: usize = 78; // 7 News + 9 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 6 Chat channel + 1 ConnectionMonitor + 5 Group + 5 Tracker + 4 Voice server messages + 1 Pong
+    const CLIENT_MESSAGE_COUNT: usize = 64; // 6 News + 8 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 4 Chat channel + 1 ConnectionMonitor + 5 Group + 6 Tracker + 2 Voice client messages + 1 Ping
+    const SERVER_MESSAGE_COUNT: usize = 79; // 7 News + 9 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 6 Chat channel + 1 ConnectionMonitor + 5 Group + 6 Tracker + 4 Voice server messages + 1 Pong
     const SHARED_MESSAGE_COUNT: usize = 6; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing, FileHash
 
     // Tracker protocol message counts (separate protocol from BBS).
@@ -3937,6 +3957,99 @@ mod tests {
     }
 
     #[test]
+    fn test_limit_tracker_list() {
+        let msg = ClientMessage::TrackerList;
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerList") as usize;
+        assert!(
+            size <= limit,
+            "TrackerList size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_tracker_edit() {
+        let msg = ClientMessage::TrackerEdit { id: i64::MAX };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerEdit") as usize;
+        assert!(
+            size <= limit,
+            "TrackerEdit size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_tracker_add() {
+        let msg = ClientMessage::TrackerAdd {
+            address: str_of_len(MAX_PUBLIC_ADDRESS_LENGTH),
+            port: u16::MAX,
+            fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
+            password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
+            name: str_of_len(MAX_TRACKER_NAME_LENGTH),
+            enabled: false,
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerAdd") as usize;
+        assert!(
+            size <= limit,
+            "TrackerAdd size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_tracker_update() {
+        let msg = ClientMessage::TrackerUpdate {
+            id: i64::MAX,
+            address: str_of_len(MAX_PUBLIC_ADDRESS_LENGTH),
+            port: u16::MAX,
+            fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
+            password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
+            name: str_of_len(MAX_TRACKER_NAME_LENGTH),
+            enabled: false,
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerUpdate") as usize;
+        assert!(
+            size <= limit,
+            "TrackerUpdate size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_tracker_remove() {
+        let msg = ClientMessage::TrackerRemove { id: i64::MAX };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerRemove") as usize;
+        assert!(
+            size <= limit,
+            "TrackerRemove size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_tracker_accept_fingerprint() {
+        let msg = ClientMessage::TrackerAcceptFingerprint { id: i64::MAX };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerAcceptFingerprint") as usize;
+        assert!(
+            size <= limit,
+            "TrackerAcceptFingerprint size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
     fn test_limit_tracker_list_response() {
         let msg = ServerMessage::TrackerListResponse {
             success: false,
@@ -3973,18 +4086,18 @@ mod tests {
     }
 
     #[test]
-    fn test_limit_tracker_create_response() {
-        let msg = ServerMessage::TrackerCreateResponse {
+    fn test_limit_tracker_add_response() {
+        let msg = ServerMessage::TrackerAddResponse {
             success: false,
             error: Some(str_of_len(MAX_ERROR_LENGTH)),
             id: Some(i64::MAX),
             name: Some(str_of_len(MAX_TRACKER_NAME_LENGTH)),
         };
         let size = json_size(&msg);
-        let limit = max_payload_for_type("TrackerCreateResponse") as usize;
+        let limit = max_payload_for_type("TrackerAddResponse") as usize;
         assert!(
             size <= limit,
-            "TrackerCreateResponse size {} exceeds limit {}",
+            "TrackerAddResponse size {} exceeds limit {}",
             size,
             limit
         );
@@ -4009,17 +4122,35 @@ mod tests {
     }
 
     #[test]
-    fn test_limit_tracker_delete_response() {
-        let msg = ServerMessage::TrackerDeleteResponse {
+    fn test_limit_tracker_accept_fingerprint_response() {
+        let msg = ServerMessage::TrackerAcceptFingerprintResponse {
+            success: false,
+            error: Some(str_of_len(MAX_ERROR_LENGTH)),
+            id: Some(i64::MAX),
+            name: Some(str_of_len(MAX_TRACKER_NAME_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerAcceptFingerprintResponse") as usize;
+        assert!(
+            size <= limit,
+            "TrackerAcceptFingerprintResponse size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_tracker_remove_response() {
+        let msg = ServerMessage::TrackerRemoveResponse {
             success: false,
             error: Some(str_of_len(MAX_ERROR_LENGTH)),
             name: Some(str_of_len(MAX_TRACKER_NAME_LENGTH)),
         };
         let size = json_size(&msg);
-        let limit = max_payload_for_type("TrackerDeleteResponse") as usize;
+        let limit = max_payload_for_type("TrackerRemoveResponse") as usize;
         assert!(
             size <= limit,
-            "TrackerDeleteResponse size {} exceeds limit {}",
+            "TrackerRemoveResponse size {} exceeds limit {}",
             size,
             limit
         );

@@ -35,7 +35,7 @@ where
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_BAN_DELETE_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("BanDelete"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_BAN_DELETE))
             .await;
     };
 
@@ -44,7 +44,10 @@ where
         Some(user) => user,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("BanDelete"))
+                .send_error_and_disconnect(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_BAN_DELETE),
+                )
                 .await;
         }
     };

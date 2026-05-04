@@ -7,7 +7,7 @@
 //!   requesting admin's locale, so `TrackerInfo.last_error` is
 //!   pre-translated by the time it reaches the client.
 //! - [`validate_tracker_inputs`] — single-source-of-truth field
-//!   validator used by both `TrackerCreate` and `TrackerUpdate` so the
+//!   validator used by both `TrackerAdd` and `TrackerUpdate` so the
 //!   address/port/fingerprint/password/name rules can't drift between
 //!   the two handlers.
 
@@ -106,7 +106,7 @@ fn translate_tracker_error_kind(locale: &str, kind: &str) -> String {
     crate::i18n::t(locale, i18n_key)
 }
 
-/// Validate the field set common to `TrackerCreate` and
+/// Validate the field set common to `TrackerAdd` and
 /// `TrackerUpdate`. Returns `Ok(())` if all rules pass, otherwise
 /// `Err(localized_message)` with a translated error string the handler
 /// can drop straight into its typed response's `error` field.

@@ -93,7 +93,7 @@ pub const ERROR_KIND_TRACKER_PROTOCOL_ERROR: &str = "tracker_protocol_error";
 
 /// Tracker row's `address` field can't be resolved into a form the
 /// system resolver / rustls accept (IDNA failure or empty string).
-/// The validator at `TrackerCreate`/`TrackerUpdate` should have
+/// The validator at `TrackerAdd`/`TrackerUpdate` should have
 /// already rejected this, so reaching this kind means the row is
 /// structurally broken — admin must edit it. Unrecoverable.
 pub const ERROR_KIND_TRACKER_ADDRESS_INVALID: &str = "tracker_address_invalid";

@@ -1,4 +1,4 @@
-//! TrackerDelete message handler — removes a tracker from the
+//! TrackerRemove message handler — removes a tracker from the
 //! server's tracker list and aborts its task.
 
 use std::io;
@@ -12,16 +12,16 @@ use super::{
     err_tracker_not_found,
 };
 use crate::constants::{
-    LOG_TRACKER_DELETE_DB_ERROR, LOG_TRACKER_DELETE_NOT_LOGGED_IN,
-    LOG_TRACKER_DELETE_PERMISSION_DENIED, LOG_TRACKER_DELETE_SUCCESS,
+    HANDLER_TRACKER_REMOVE, LOG_TRACKER_REMOVE_DB_ERROR, LOG_TRACKER_REMOVE_NOT_LOGGED_IN,
+    LOG_TRACKER_REMOVE_PERMISSION_DENIED, LOG_TRACKER_REMOVE_SUCCESS,
 };
 use crate::db::Permission;
 
-/// Handle a `TrackerDelete { id }` request. Requires the
-/// `tracker_delete` permission. Removes the row, aborts the tracker
-/// task, and reports the deleted name back to the client for the
+/// Handle a `TrackerRemove { id }` request. Requires the
+/// `tracker_remove` permission. Removes the row, aborts the tracker
+/// task, and reports the removed name back to the client for the
 /// confirmation toast.
-pub async fn handle_tracker_delete<W>(
+pub async fn handle_tracker_remove<W>(
     id: i64,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -30,9 +30,9 @@ where
     W: AsyncWrite + Unpin,
 {
     let Some(session_id) = session_id else {
-        warn!(ip = %ctx.peer_addr, "{}", LOG_TRACKER_DELETE_NOT_LOGGED_IN);
+        warn!(ip = %ctx.peer_addr, "{}", LOG_TRACKER_REMOVE_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("TrackerDelete"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_TRACKER_REMOVE))
             .await;
     };
 
@@ -40,18 +40,21 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("TrackerDelete"))
+                .send_error_and_disconnect(
+                    &err_authentication(ctx.locale),
+                    Some(HANDLER_TRACKER_REMOVE),
+                )
                 .await;
         }
     };
 
-    if !requesting_user.has_permission(Permission::TrackerDelete) {
+    if !requesting_user.has_permission(Permission::TrackerRemove) {
         warn!(
             user = %requesting_user.username,
             ip = %ctx.peer_addr,
-            "{}", LOG_TRACKER_DELETE_PERMISSION_DENIED
+            "{}", LOG_TRACKER_REMOVE_PERMISSION_DENIED
         );
-        let response = ServerMessage::TrackerDeleteResponse {
+        let response = ServerMessage::TrackerRemoveResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
             name: None,
@@ -64,7 +67,7 @@ where
     let existing = match ctx.db.trackers.get_by_id(id).await {
         Ok(Some(r)) => r,
         Ok(None) => {
-            let response = ServerMessage::TrackerDeleteResponse {
+            let response = ServerMessage::TrackerRemoveResponse {
                 success: false,
                 error: Some(err_tracker_not_found(ctx.locale)),
                 name: None,
@@ -77,10 +80,10 @@ where
                 ip = %ctx.peer_addr,
                 id = id,
                 err = %e,
-                "{}", LOG_TRACKER_DELETE_DB_ERROR
+                "{}", LOG_TRACKER_REMOVE_DB_ERROR
             );
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("TrackerDelete"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_TRACKER_REMOVE))
                 .await;
         }
     };
@@ -91,7 +94,7 @@ where
             // Race: row vanished between the get and the delete. Treat
             // as not-found rather than success (nothing was actually
             // deleted on this call).
-            let response = ServerMessage::TrackerDeleteResponse {
+            let response = ServerMessage::TrackerRemoveResponse {
                 success: false,
                 error: Some(err_tracker_not_found(ctx.locale)),
                 name: None,
@@ -105,10 +108,10 @@ where
                 id = id,
                 name = %existing.name,
                 err = %e,
-                "{}", LOG_TRACKER_DELETE_DB_ERROR
+                "{}", LOG_TRACKER_REMOVE_DB_ERROR
             );
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("TrackerDelete"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_TRACKER_REMOVE))
                 .await;
         }
     }
@@ -118,13 +121,13 @@ where
         ip = %ctx.peer_addr,
         id = id,
         name = %existing.name,
-        "{}", LOG_TRACKER_DELETE_SUCCESS
+        "{}", LOG_TRACKER_REMOVE_SUCCESS
     );
 
     // Abort the tracker task (idempotent; no-op if disabled or never spawned).
     ctx.tracker_manager.terminate(id);
 
-    let response = ServerMessage::TrackerDeleteResponse {
+    let response = ServerMessage::TrackerRemoveResponse {
         success: true,
         error: None,
         name: Some(existing.name),
@@ -141,7 +144,7 @@ mod tests {
     #[tokio::test]
     async fn requires_login() {
         let mut test_ctx = create_test_context().await;
-        let result = handle_tracker_delete(1, None, &mut test_ctx.handler_context()).await;
+        let result = handle_tracker_remove(1, None, &mut test_ctx.handler_context()).await;
         assert!(result.is_err());
     }
 
@@ -151,14 +154,14 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result =
-            handle_tracker_delete(1, Some(session_id), &mut test_ctx.handler_context()).await;
+            handle_tracker_remove(1, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerDeleteResponse { success, name, .. } => {
+            ServerMessage::TrackerRemoveResponse { success, name, .. } => {
                 assert!(!success);
                 assert!(name.is_none());
             }
-            other => panic!("Expected TrackerDeleteResponse, got {other:?}"),
+            other => panic!("Expected TrackerRemoveResponse, got {other:?}"),
         }
     }
 
@@ -169,31 +172,31 @@ mod tests {
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::TrackerDelete],
+            &[db::Permission::TrackerRemove],
             false,
         )
         .await;
 
         let result =
-            handle_tracker_delete(99_999, Some(session_id), &mut test_ctx.handler_context()).await;
+            handle_tracker_remove(99_999, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerDeleteResponse { success, name, .. } => {
+            ServerMessage::TrackerRemoveResponse { success, name, .. } => {
                 assert!(!success);
                 assert!(name.is_none());
             }
-            other => panic!("Expected TrackerDeleteResponse, got {other:?}"),
+            other => panic!("Expected TrackerRemoveResponse, got {other:?}"),
         }
     }
 
     #[tokio::test]
-    async fn deletes_existing_row_and_returns_name() {
+    async fn removes_existing_row_and_returns_name() {
         let mut test_ctx = create_test_context().await;
         let session_id = login_user(
             &mut test_ctx,
             "alice",
             "password",
-            &[db::Permission::TrackerDelete],
+            &[db::Permission::TrackerRemove],
             false,
         )
         .await;
@@ -206,13 +209,13 @@ mod tests {
                 port: 7510,
                 fingerprint: None,
                 password: None,
-                name: "ToDelete",
+                name: "ToRemove",
                 enabled: true,
             })
             .await
             .expect("create");
 
-        let result = handle_tracker_delete(
+        let result = handle_tracker_remove(
             created.id,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -220,15 +223,15 @@ mod tests {
         .await;
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
-            ServerMessage::TrackerDeleteResponse {
+            ServerMessage::TrackerRemoveResponse {
                 success,
                 name,
                 error,
             } => {
                 assert!(success, "expected success, got error: {error:?}");
-                assert_eq!(name.as_deref(), Some("ToDelete"));
+                assert_eq!(name.as_deref(), Some("ToRemove"));
             }
-            other => panic!("Expected TrackerDeleteResponse, got {other:?}"),
+            other => panic!("Expected TrackerRemoveResponse, got {other:?}"),
         }
 
         // Row should be gone.

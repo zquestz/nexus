@@ -6,8 +6,9 @@ use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use crate::constants::{
-    LOG_NEWS_UPDATE_ADMIN, LOG_NEWS_UPDATE_DB_ERROR, LOG_NEWS_UPDATE_DB_ERROR_GET,
-    LOG_NEWS_UPDATE_NOT_LOGGED_IN, LOG_NEWS_UPDATE_PERMISSION_DENIED, LOG_NEWS_UPDATE_SUCCESS,
+    HANDLER_NEWS_UPDATE, LOG_NEWS_UPDATE_ADMIN, LOG_NEWS_UPDATE_DB_ERROR,
+    LOG_NEWS_UPDATE_DB_ERROR_GET, LOG_NEWS_UPDATE_NOT_LOGGED_IN, LOG_NEWS_UPDATE_PERMISSION_DENIED,
+    LOG_NEWS_UPDATE_SUCCESS,
 };
 
 use nexus_common::protocol::{NewsAction, NewsItem, ServerMessage};
@@ -39,7 +40,7 @@ where
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_NEWS_UPDATE_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("NewsUpdate"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_NEWS_UPDATE))
             .await;
     };
 
@@ -75,7 +76,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_NEWS_UPDATE_DB_ERROR_GET);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("NewsUpdate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_NEWS_UPDATE))
                 .await;
         }
     };
@@ -174,7 +175,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_NEWS_UPDATE_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some("NewsUpdate"))
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_NEWS_UPDATE))
                 .await;
         }
     };

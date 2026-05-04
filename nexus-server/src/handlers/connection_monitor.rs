@@ -8,7 +8,9 @@ use tracing::warn;
 use nexus_common::protocol::{ConnectionInfo, ServerMessage};
 
 use super::{HandlerContext, err_authentication, err_not_logged_in, err_permission_denied};
-use crate::constants::{LOG_CONN_MONITOR_NOT_LOGGED_IN, LOG_CONN_MONITOR_PERMISSION_DENIED};
+use crate::constants::{
+    HANDLER_CONNECTION_MONITOR, LOG_CONN_MONITOR_NOT_LOGGED_IN, LOG_CONN_MONITOR_PERMISSION_DENIED,
+};
 use crate::db::Permission;
 
 /// Handle ConnectionMonitor command
@@ -25,7 +27,10 @@ where
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_CONN_MONITOR_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("ConnectionMonitor"))
+            .send_error_and_disconnect(
+                &err_not_logged_in(ctx.locale),
+                Some(HANDLER_CONNECTION_MONITOR),
+            )
             .await;
     };
 
@@ -36,7 +41,7 @@ where
             return ctx
                 .send_error_and_disconnect(
                     &err_authentication(ctx.locale),
-                    Some("ConnectionMonitor"),
+                    Some(HANDLER_CONNECTION_MONITOR),
                 )
                 .await;
         }

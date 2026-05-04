@@ -6,7 +6,8 @@ use std::io;
 use tracing::{error, warn};
 
 use crate::constants::{
-    LOG_USER_LIST_DB_ERROR, LOG_USER_LIST_NOT_LOGGED_IN, LOG_USER_LIST_PERMISSION_DENIED,
+    HANDLER_USER_LIST, LOG_USER_LIST_DB_ERROR, LOG_USER_LIST_NOT_LOGGED_IN,
+    LOG_USER_LIST_PERMISSION_DENIED,
 };
 
 /// Aggregated user data for deduplication of regular (non-shared) accounts.
@@ -55,7 +56,7 @@ where
     let Some(id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_LIST_NOT_LOGGED_IN);
         return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some("UserList"))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_LIST))
             .await;
     };
 
@@ -64,7 +65,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some("UserList"))
+                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_USER_LIST))
                 .await;
         }
     };
@@ -83,7 +84,7 @@ where
     if !has_permission {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, all = all, "{}", LOG_USER_LIST_PERMISSION_DENIED);
         return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some("UserList"))
+            .send_error(&err_permission_denied(ctx.locale), Some(HANDLER_USER_LIST))
             .await;
     }
 
@@ -96,7 +97,7 @@ where
             Err(e) => {
                 error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_LIST_DB_ERROR);
                 return ctx
-                    .send_error(&err_database(ctx.locale), Some("UserList"))
+                    .send_error(&err_database(ctx.locale), Some(HANDLER_USER_LIST))
                     .await;
             }
         };
