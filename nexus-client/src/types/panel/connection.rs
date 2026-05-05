@@ -21,6 +21,10 @@ pub struct ConnectionFormState {
     pub password: String,
     /// Nickname for shared account authentication
     pub nickname: String,
+    /// Optional TLS certificate fingerprint pin (canonical 95-char form).
+    /// Empty = unpinned (TOFU on first connect). Non-empty = Stage 1 pin
+    /// enforced before login.
+    pub fingerprint: String,
     /// Connection error message
     pub error: Option<String>,
     /// Whether a connection attempt is currently in progress
@@ -38,6 +42,7 @@ impl Default for ConnectionFormState {
             username: String::new(),
             password: String::new(),
             nickname: String::new(),
+            fingerprint: String::new(),
             error: None,
             is_connecting: false,
             add_bookmark: false,
@@ -54,6 +59,7 @@ impl std::fmt::Debug for ConnectionFormState {
             .field("username", &self.username)
             .field("password", &"[REDACTED]")
             .field("nickname", &self.nickname)
+            .field("fingerprint", &self.fingerprint)
             .field("error", &self.error)
             .field("is_connecting", &self.is_connecting)
             .field("add_bookmark", &self.add_bookmark)
@@ -70,5 +76,6 @@ impl ConnectionFormState {
         self.username.clear();
         self.password.clear();
         self.nickname.clear();
+        self.fingerprint.clear();
     }
 }

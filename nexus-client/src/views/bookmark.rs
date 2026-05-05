@@ -123,6 +123,20 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
         .into(),
+        text_input(
+            &t("placeholder-fingerprint"),
+            state
+                .bookmark
+                .certificate_fingerprint
+                .as_deref()
+                .unwrap_or(""),
+        )
+        .on_input(Message::BookmarkFingerprintChanged)
+        .on_submit(Message::SaveBookmark)
+        .id(Id::from(InputId::BookmarkFingerprint))
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE)
+        .into(),
         Space::new().height(SPACER_SIZE_SMALL).into(),
         checkbox(state.bookmark.auto_connect)
             .label(t("label-auto-connect"))

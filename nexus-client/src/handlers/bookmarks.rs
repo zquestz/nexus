@@ -2,12 +2,15 @@
 
 use iced::Task;
 use iced::widget::{Id, operation};
+use nexus_common::fingerprint::is_canonical_fingerprint;
 use uuid::Uuid;
 
 use crate::NexusApp;
 use crate::i18n::{get_locale, t, t_args};
 use crate::network::{ConnectionParams, ProxyConfig};
-use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
+use crate::types::{
+    BookmarkEditMode, BookmarkEditState, InputId, Message, normalize_certificate_fingerprint,
+};
 
 impl NexusApp {
     // ==================== Form Field Handlers ====================
@@ -66,6 +69,20 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle bookmark fingerprint pin field change.
+    ///
+    /// Routes through [`normalize_certificate_fingerprint`] so whitespace-only
+    /// input (typing-then-deleting) collapses to `None` immediately rather
+    /// than transiently storing `Some(" ")`. Same normalization Save runs, so
+    /// Validate and Save see identical state.
+    pub fn handle_bookmark_fingerprint_changed(&mut self, fingerprint: String) -> Task<Message> {
+        self.bookmark_edit.bookmark.certificate_fingerprint =
+            normalize_certificate_fingerprint(Some(fingerprint));
+        self.bookmark_edit.error = None;
+        self.focused_field = InputId::BookmarkFingerprint;
+        Task::none()
+    }
+
     // ==================== Dialog Actions ====================
 
     /// Cancel bookmark editing and close the dialog
@@ -98,6 +115,12 @@ impl NexusApp {
             self.bookmark_edit.bookmark.username.trim().to_string();
         self.bookmark_edit.bookmark.nickname =
             self.bookmark_edit.bookmark.nickname.trim().to_string();
+        // Normalize the fingerprint pin so the on-disk shape stays consistent
+        // regardless of how the user typed it (e.g. stray whitespace won't
+        // produce a `Some("…")` value with leading/trailing spaces).
+        self.bookmark_edit.bookmark.certificate_fingerprint = normalize_certificate_fingerprint(
+            self.bookmark_edit.bookmark.certificate_fingerprint.clone(),
+        );
 
         let bookmark = self.bookmark_edit.bookmark.clone();
 
@@ -146,8 +169,9 @@ impl NexusApp {
             self.bookmark_edit.bookmark.username = conn.connection_info.username.clone();
             self.bookmark_edit.bookmark.password = conn.connection_info.password.clone();
             self.bookmark_edit.bookmark.nickname = conn.connection_info.nickname.clone();
-            self.bookmark_edit.bookmark.certificate_fingerprint =
-                Some(conn.connection_info.certificate_fingerprint.clone());
+            self.bookmark_edit.bookmark.certificate_fingerprint = normalize_certificate_fingerprint(
+                Some(conn.connection_info.certificate_fingerprint.clone()),
+            );
         }
 
         self.focused_field = InputId::BookmarkName;
@@ -274,7 +298,8 @@ impl NexusApp {
             InputId::BookmarkPort => InputId::BookmarkUsername,
             InputId::BookmarkUsername => InputId::BookmarkPassword,
             InputId::BookmarkPassword => InputId::BookmarkNickname,
-            InputId::BookmarkNickname => InputId::BookmarkName,
+            InputId::BookmarkNickname => InputId::BookmarkFingerprint,
+            InputId::BookmarkFingerprint => InputId::BookmarkName,
             _ => InputId::BookmarkName,
         };
 
@@ -291,6 +316,20 @@ impl NexusApp {
         }
         if self.bookmark_edit.bookmark.address.trim().is_empty() {
             return Some(t("err-address-required"));
+        }
+        // Optional fingerprint pin: empty/None = unpinned, otherwise must
+        // match the canonical 95-char uppercase form. The handler stores
+        // empty input as None, so a `Some` here always has content.
+        if let Some(fp) = self
+            .bookmark_edit
+            .bookmark
+            .certificate_fingerprint
+            .as_deref()
+        {
+            let trimmed = fp.trim();
+            if !trimmed.is_empty() && !is_canonical_fingerprint(trimmed) {
+                return Some(t("err-fingerprint-invalid"));
+            }
         }
 
         None

@@ -599,6 +599,7 @@ impl NexusApp {
             Message::ServerNameChanged(name) => self.handle_server_name_changed(name),
             Message::UsernameChanged(username) => self.handle_username_changed(username),
             Message::NicknameChanged(nickname) => self.handle_nickname_changed(nickname),
+            Message::FingerprintChanged(fp) => self.handle_fingerprint_changed(fp),
             Message::ConnectionFormTabPressed => self.handle_connection_form_tab_pressed(),
 
             // Bookmark management
@@ -617,6 +618,7 @@ impl NexusApp {
             Message::BookmarkNicknameChanged(nickname) => {
                 self.handle_bookmark_nickname_changed(nickname)
             }
+            Message::BookmarkFingerprintChanged(fp) => self.handle_bookmark_fingerprint_changed(fp),
             Message::CancelBookmarkEdit => self.handle_cancel_bookmark_edit(),
             Message::CancelDeleteBookmark => {
                 self.bookmark_edit.confirm_delete = false;

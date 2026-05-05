@@ -163,8 +163,12 @@ pub enum InputId {
     NewsBody,
     /// Connection form: Nickname input
     Nickname,
+    /// Connection form: Optional fingerprint pin input
+    Fingerprint,
     /// Bookmark editor: Nickname input
     BookmarkNickname,
+    /// Bookmark editor: Optional fingerprint pin input
+    BookmarkFingerprint,
     /// Settings panel: Nickname input
     SettingsNickname,
     /// Settings panel: Proxy address input
@@ -241,7 +245,9 @@ impl From<InputId> for Id {
             InputId::ChangePasswordConfirm => "InputId::ChangePasswordConfirm",
             InputId::NewsBody => "InputId::NewsBody",
             InputId::Nickname => "InputId::Nickname",
+            InputId::Fingerprint => "InputId::Fingerprint",
             InputId::BookmarkNickname => "InputId::BookmarkNickname",
+            InputId::BookmarkFingerprint => "InputId::BookmarkFingerprint",
             InputId::SettingsNickname => "InputId::SettingsNickname",
             InputId::ProxyAddress => "InputId::ProxyAddress",
             InputId::ProxyPort => "InputId::ProxyPort",

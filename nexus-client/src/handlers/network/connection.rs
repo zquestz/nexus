@@ -17,6 +17,7 @@ use crate::types::ChatMessage;
 use crate::types::{
     ActivePanel, ChannelState, FingerprintMismatch, InputId, Message, NetworkConnection,
     ReconnectAction, ServerBookmark, ServerConnection, ServerConnectionParams,
+    normalize_certificate_fingerprint,
 };
 use crate::views::constants::PERMISSION_USER_LIST;
 
@@ -257,7 +258,8 @@ impl NexusApp {
             && let Some(bookmark) = self.config.get_bookmark_mut(id)
             && bookmark.certificate_fingerprint.is_none()
         {
-            bookmark.certificate_fingerprint = Some(ctx.certificate_fingerprint.clone());
+            bookmark.certificate_fingerprint =
+                normalize_certificate_fingerprint(Some(ctx.certificate_fingerprint.clone()));
             let _ = self.config.save();
         }
 
@@ -680,7 +682,9 @@ impl NexusApp {
             password: self.connection_form.password.clone(),
             nickname: self.connection_form.nickname.clone(),
             auto_connect: false,
-            certificate_fingerprint: Some(certificate_fingerprint),
+            certificate_fingerprint: normalize_certificate_fingerprint(Some(
+                certificate_fingerprint,
+            )),
         };
         let bookmark_id = new_bookmark.id;
         self.config.add_bookmark(new_bookmark);

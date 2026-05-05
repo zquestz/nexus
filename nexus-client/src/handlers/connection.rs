@@ -2,6 +2,7 @@
 
 use iced::Task;
 use iced::widget::{Id, operation, scrollable};
+use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, MessageError};
 
@@ -77,6 +78,14 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle fingerprint pin field change
+    pub fn handle_fingerprint_changed(&mut self, fingerprint: String) -> Task<Message> {
+        self.connection_form.fingerprint = fingerprint;
+        self.connection_form.error = None;
+        self.focused_field = InputId::Fingerprint;
+        Task::none()
+    }
+
     // ==================== Connection Actions ====================
 
     /// Handle connect button press
@@ -95,6 +104,16 @@ impl NexusApp {
             return Task::none();
         }
 
+        // Optional fingerprint pin: empty/whitespace = unpinned, otherwise must
+        // match the canonical 95-char uppercase form. Trim is preserved on the
+        // form state below so the user sees the cleaned-up value if any other
+        // validation fails after this.
+        let trimmed_fingerprint = self.connection_form.fingerprint.trim();
+        if !trimmed_fingerprint.is_empty() && !is_canonical_fingerprint(trimmed_fingerprint) {
+            self.connection_form.error = Some(t("err-fingerprint-invalid"));
+            return Task::none();
+        }
+
         self.connection_form.error = None;
 
         // Normalize whitespace on identifying fields so lookups don't miss due
@@ -105,6 +124,7 @@ impl NexusApp {
             self.connection_form.server_address.trim().to_string();
         self.connection_form.username = self.connection_form.username.trim().to_string();
         self.connection_form.nickname = self.connection_form.nickname.trim().to_string();
+        self.connection_form.fingerprint = trimmed_fingerprint.to_string();
 
         let port = self.connection_form.port;
 
@@ -136,19 +156,25 @@ impl NexusApp {
             None
         };
 
-        // If the form data matches an existing bookmark, use that bookmark's
-        // stored fingerprint for the stage-1 TOFU check. Otherwise this is
-        // either a brand-new server or one without a stored fingerprint, and
-        // stage 1 is a no-op.
-        let expected_fingerprint = self
-            .config
-            .find_bookmark_matching(
-                &server_address,
-                port,
-                &username,
-                &self.connection_form.nickname,
-            )
-            .and_then(|b| b.certificate_fingerprint.clone());
+        // Stage 1 fingerprint pin priority:
+        //   1. Form-supplied fingerprint (validated above as canonical).
+        //      Lets the user pin a fingerprint received out-of-band before
+        //      the first connect, including for servers they aren't
+        //      bookmarking.
+        //   2. Matching bookmark's stored fingerprint.
+        //   3. None — TOFU.
+        let expected_fingerprint = if !self.connection_form.fingerprint.is_empty() {
+            Some(self.connection_form.fingerprint.clone())
+        } else {
+            self.config
+                .find_bookmark_matching(
+                    &server_address,
+                    port,
+                    &username,
+                    &self.connection_form.nickname,
+                )
+                .and_then(|b| b.certificate_fingerprint.clone())
+        };
 
         let params = ConnectionParams {
             server_address,
@@ -648,7 +674,8 @@ impl NexusApp {
             InputId::Port => InputId::Username,
             InputId::Username => InputId::Password,
             InputId::Password => InputId::Nickname,
-            InputId::Nickname => InputId::ServerName,
+            InputId::Nickname => InputId::Fingerprint,
+            InputId::Fingerprint => InputId::ServerName,
             _ => InputId::ServerName,
         };
 

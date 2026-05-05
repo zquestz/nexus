@@ -75,6 +75,13 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 
+    let fingerprint_input = text_input(&t("placeholder-fingerprint"), &form.fingerprint)
+        .on_input(Message::FingerprintChanged)
+        .on_submit(Message::ConnectPressed)
+        .id(Id::from(InputId::Fingerprint))
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE);
+
     let connect_button = if can_connect && !form.is_connecting {
         button(shaped_text(t("button-connect")).size(TEXT_SIZE))
             .on_press(Message::ConnectPressed)
@@ -107,6 +114,7 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         username_input.into(),
         password_input.into(),
         nickname_input.into(),
+        fingerprint_input.into(),
         Space::new().height(SPACER_SIZE_SMALL).into(),
         checkbox(form.add_bookmark)
             .label(t("label-add-bookmark"))

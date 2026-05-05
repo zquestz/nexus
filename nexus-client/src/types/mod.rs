@@ -12,7 +12,9 @@ mod view_config;
 mod voice;
 
 // Re-export types for convenience
-pub use bookmark::{BookmarkEditMode, BookmarkEditState, ServerBookmark};
+pub use bookmark::{
+    BookmarkEditMode, BookmarkEditState, ServerBookmark, normalize_certificate_fingerprint,
+};
 pub use channel::ChannelState;
 pub use connection::{
     ConnectionInfo, NetworkConnection, ServerConnection, ServerConnectionParams, TabCompletionState,

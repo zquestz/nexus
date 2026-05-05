@@ -4,6 +4,31 @@ use nexus_common::DEFAULT_PORT;
 use serde::{Deserialize, Deserializer, Serialize};
 use uuid::Uuid;
 
+/// Normalize a certificate fingerprint pin to a canonical shape.
+///
+/// `None`, `Some("")`, and `Some(<whitespace>)` all collapse to `None` so the
+/// stored representation is always either `None` (unpinned) or `Some(<trimmed
+/// content>)`. Use at every assignment site for
+/// `ServerBookmark.certificate_fingerprint` to keep the in-memory and on-disk
+/// shape consistent — Stage 1 TOFU then never has to disambiguate "empty
+/// string" from "no pin".
+pub fn normalize_certificate_fingerprint(fp: Option<String>) -> Option<String> {
+    fp.map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+}
+
+/// Deserializer that runs `Option<String>` through
+/// [`normalize_certificate_fingerprint`] so a hand-edited `config.json`
+/// containing `"certificate_fingerprint": ""` (or whitespace) loads as
+/// `None` rather than `Some("")` — which would otherwise reach Stage 1 and
+/// produce a confusing mismatch dialog with `expected = ""`.
+fn deserialize_normalized_fingerprint<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let opt = Option::<String>::deserialize(deserializer)?;
+    Ok(normalize_certificate_fingerprint(opt))
+}
+
 /// Deserialize port from either a number or a string (for backward compatibility)
 fn deserialize_port<'de, D>(deserializer: D) -> Result<u16, D::Error>
 where
@@ -67,8 +92,11 @@ pub struct ServerBookmark {
     /// Whether to auto-connect on startup
     #[serde(default)]
     pub auto_connect: bool,
-    /// Certificate fingerprint (SHA-256) for Trust On First Use
-    #[serde(default)]
+    /// Certificate fingerprint (SHA-256) for Trust On First Use.
+    ///
+    /// Deserialized via [`deserialize_normalized_fingerprint`] so empty /
+    /// whitespace-only values from a hand-edited config collapse to `None`.
+    #[serde(default, deserialize_with = "deserialize_normalized_fingerprint")]
     pub certificate_fingerprint: Option<String>,
 }
 

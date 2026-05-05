@@ -57,6 +57,8 @@ pub enum Message {
     BookmarkUsernameChanged(String),
     /// Bookmark editor: Nickname field changed
     BookmarkNicknameChanged(String),
+    /// Bookmark editor: Optional fingerprint pin field changed
+    BookmarkFingerprintChanged(String),
     /// Broadcast: Message input changed
     BroadcastMessageChanged(String),
     /// Group management: Cancel button pressed (return to list)
@@ -195,6 +197,8 @@ pub enum Message {
     ServerNameChanged(String),
     /// Connection form: Nickname field changed
     NicknameChanged(String),
+    /// Connection form: Optional fingerprint pin field changed
+    FingerprintChanged(String),
     /// Settings panel: Nickname field changed
     SettingsNicknameChanged(String),
     /// Bookmark list: Add Bookmark button pressed

@@ -6,7 +6,7 @@ use crate::NexusApp;
 use crate::history::rotate_fingerprint;
 use crate::i18n::t;
 use crate::transfers::update_registry_fingerprint;
-use crate::types::{Message, ReconnectAction};
+use crate::types::{Message, ReconnectAction, normalize_certificate_fingerprint};
 
 impl NexusApp {
     /// Accept new certificate fingerprint and replay the original connect
@@ -30,7 +30,8 @@ impl NexusApp {
         // Update the stored bookmark fingerprint (handle case where the
         // bookmark was deleted between mismatch and accept).
         if let Some(bookmark) = self.config.get_bookmark_mut(mismatch.bookmark_id) {
-            bookmark.certificate_fingerprint = Some(new_fingerprint.clone());
+            bookmark.certificate_fingerprint =
+                normalize_certificate_fingerprint(Some(new_fingerprint.clone()));
             let _ = self.config.save();
         }
 

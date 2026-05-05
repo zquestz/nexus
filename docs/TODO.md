@@ -16,7 +16,7 @@
 | 10  | Server logs                 | Medium | ✅ Done |
 | 11  | Auto-away                   | Low    | ✅ Done |
 | 12  | Invite system               | Medium | Planned |
-| 13  | Certificate fingerprint pin | Low    | Planned |
+| 13  | Certificate fingerprint pin | Low    | ✅ Done |
 
 **Post-launch:** IRC gateway (if demand exists)
 
@@ -95,83 +95,6 @@ Preview files before downloading.
 
 - Syntax highlighting via `syntect` (light/dark themes)
 - Line numbers
-
-### Certificate Fingerprint Pin
-
-Optional fingerprint field on the Connect dialog and Bookmark
-Add / Edit forms. Lets users pin a server's TLS certificate
-fingerprint out-of-band before the first connection, defending
-against MITM-on-first-connect when the user got the fingerprint from
-a trusted source.
-
-Independent of tracker discovery (planning entry #7), but a
-prerequisite — the tracker-discovery panel will pre-fill this field
-from each tracker-advertised entry so users can see what the tracker
-claimed before connecting.
-
-**Forms affected:**
-
-- Connect dialog (`views/connection.rs`)
-- Bookmark Add modal (`views/bookmark.rs`)
-- Bookmark Edit modal (`views/bookmark.rs`)
-
-**Field placement:**
-
-- After Nickname, before the existing Add Bookmark checkbox on the
-  Connect dialog; in the equivalent slot on the Bookmark forms.
-- Single-line `text_input`. Optional — empty input is valid and
-  means unpinned.
-- Placeholder text showing the canonical format.
-- On Bookmark Edit, the field is pre-filled with the saved pin (if
-  any). Editing replaces it; clearing removes it.
-
-**Tab order:**
-
-Last input field on each form. Existing tab cycle is updated to
-include the new field as the final stop before the submit button.
-Care needed around `NumberInput` (Port), which consumes Tab and is
-already routed around per the CLAUDE.md "UI Quirks" note.
-
-**Validation (on submit only, not live):**
-
-- Empty / whitespace-only → unpinned, no error.
-- Leading and trailing whitespace trimmed before validation.
-- **Case is strict — uppercase only.** Lowercase input is rejected
-  with a localized inline error rather than auto-corrected.
-  Rationale: legitimate sources (mismatch dialogs, tracker listings,
-  bookmark copy) always emit uppercase canonical form. Lowercase =
-  manually typed = likely wrong or malicious; silently uppercasing
-  would mask the signal.
-- Must match canonical form: 32 hex bytes separated by `:`, exactly
-  95 characters total, hex digits `0`–`9` / `A`–`F` only.
-- Validator lives in `nexus-common/src/validators/`. Handlers
-  translate validator errors to localized strings via the existing
-  per-error i18n key pattern.
-
-**TOFU integration:**
-
-- Empty form value: behaves identically to today — TOFU on the first
-  connection commits the observed fingerprint.
-- Non-empty form value: treated as a Stage 1 pin. The pre-login
-  fingerprint check in `network/connect.rs` compares it against the
-  TLS-observed fingerprint; mismatch fires the existing mismatch
-  dialog.
-- Mismatch acceptance with a form-supplied value: accept = use the
-  TLS-observed value for this connection. If Add Bookmark was
-  checked, the resulting bookmark stores the TLS-observed value, not
-  the originally-typed value. Reject = abort the connection.
-
-**i18n:**
-
-13 locales. New keys for the field label, placeholder, and each
-distinct validation failure (invalid length, invalid hex, missing
-or misplaced separator, must-be-uppercase).
-
-**Out of scope:**
-
-- No "Advanced" collapsible. The fingerprint field is just one more
-  optional input, always visible.
-- No automatic case-fixing or formatting on the user's behalf.
 
 ### Trackers
 
