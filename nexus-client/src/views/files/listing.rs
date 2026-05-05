@@ -2,7 +2,7 @@
 
 use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, container, lazy, row, table};
-use iced::{Center, Element, Fill, Right};
+use iced::{Center, Element, Fill};
 
 use super::helpers::{file_icon_for_extension, format_size, format_timestamp};
 use super::{FilePermissions, FileRowData, FileTableDeps};
@@ -190,8 +190,7 @@ pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> 
                 .wrapping(Wrapping::Word)
                 .style(muted_text_style)
         })
-        .width(FILE_SIZE_COLUMN_WIDTH)
-        .align_x(Right);
+        .width(FILE_SIZE_COLUMN_WIDTH);
 
         // Modified column header
         let modified_sort_icon: Element<'static, Message> =
@@ -235,8 +234,7 @@ pub(super) fn lazy_file_table(deps: FileTableDeps) -> Element<'static, Message> 
                 .wrapping(Wrapping::Word)
                 .style(muted_text_style)
         })
-        .width(FILE_DATE_COLUMN_WIDTH)
-        .align_x(Right);
+        .width(FILE_DATE_COLUMN_WIDTH);
 
         let columns = [name_column, size_column, modified_column];
 
