@@ -44,7 +44,7 @@ fn create_active_file_tab_button(
                 .on_press(Message::FileTabClose(tab_id))
                 .padding(CLOSE_BUTTON_PADDING)
                 .style(close_button_on_primary_style()),
-            container(shaped_text(t("tooltip-close-tab")).size(TOOLTIP_TEXT_SIZE))
+            container(shaped_text(t("tooltip-tab-close")).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
                 .style(tooltip_container_style),
             tooltip::Position::Bottom,

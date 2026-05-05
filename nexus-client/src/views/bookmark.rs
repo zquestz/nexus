@@ -32,8 +32,8 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
     }
 
     let dialog_title = match state.mode {
-        BookmarkEditMode::Add => t("title-add-bookmark"),
-        BookmarkEditMode::Edit(_) => t("title-edit-server"),
+        BookmarkEditMode::Add => t("title-bookmark-create"),
+        BookmarkEditMode::Edit(_) => t("title-bookmark-edit"),
         BookmarkEditMode::None => String::new(),
     };
 

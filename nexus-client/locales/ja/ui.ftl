@@ -11,7 +11,6 @@ button-connect = 接続
 button-save = 保存
 button-create = 作成
 button-edit = 編集
-button-update = 更新
 button-accept-new-certificate = 受け入れる
 button-close = 閉じる
 button-choose-avatar = アバターを選択
@@ -28,12 +27,11 @@ button-browse = 参照
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = サーバーに接続
-title-add-bookmark = ブックマークを追加
-title-edit-server = サーバーを編集
+title-bookmark-create = ブックマークを作成
+title-bookmark-edit = ブックマークを編集
 title-broadcast-message = ブロードキャスト
 title-user-create = ユーザー作成
-title-user-edit = ユーザー編集
-title-update-user = ユーザー更新
+title-user-edit = ユーザーを編集
 title-user-management = ユーザー管理
 title-group-create = グループ作成
 title-group-edit = グループ編集
@@ -42,12 +40,12 @@ title-connected = 接続中
 title-settings = 設定
 title-bookmarks = ブックマーク
 title-users = ユーザー
-title-edit-server-info = サーバー情報を編集
+title-server-info-edit = サーバー情報を編集
 title-fingerprint-mismatch = 証明書のフィンガープリントが一致しません！
 title-server-info = サーバー情報
 title-user-info = ユーザー情報
 title-about = アプリについて
-title-change-password = パスワードを変更
+title-password-change = パスワードを変更
 title-news = ニュース
 title-transfers = 転送
 title-news-create = 投稿を作成
@@ -250,11 +248,11 @@ tooltip-connection-monitor = 接続モニター
 tooltip-server-info = サーバー情報
 tooltip-about = アプリについて
 tooltip-transfers = 転送
-tooltip-download-all = すべてダウンロード
+tooltip-files-download-all = すべてダウンロード
 tooltip-upload = アップロード
 file-picker-upload-title = アップロードするファイルを選択
 drop-to-upload = ドロップしてアップロード
-tooltip-clear-inactive = 非アクティブを消去
+tooltip-transfers-clear-inactive = 非アクティブを消去
 tooltip-transfer-pause = 一時停止
 tooltip-transfer-resume = 再開
 tooltip-transfer-cancel = キャンセル
@@ -264,22 +262,22 @@ tooltip-transfer-move-up = 上に移動
 tooltip-transfer-move-down = 下に移動
 tooltip-transfer-retry = 再試行
 tooltip-settings = 設定
-tooltip-hide-bookmarks = ブックマークを隠す
-tooltip-show-bookmarks = ブックマークを表示
-tooltip-hide-user-list = ユーザーリストを隠す
-tooltip-show-user-list = ユーザーリストを表示
+tooltip-bookmarks-hide = ブックマークを隠す
+tooltip-bookmarks-show = ブックマークを表示
+tooltip-user-list-hide = ユーザーリストを隠す
+tooltip-user-list-show = ユーザーリストを表示
 tooltip-disconnect = 切断
 tooltip-edit = 編集
 tooltip-info = 情報
 tooltip-message = メッセージ
 tooltip-kick = キック
 tooltip-close = 閉じる
-tooltip-new-tab = 新しいタブ
-tooltip-close-tab = タブを閉じる
-tooltip-add-bookmark = ブックマークを追加
-tooltip-create-user = ユーザーを作成
-tooltip-create-group = グループ作成
-tooltip-create-news = 投稿を作成
+tooltip-tab-new = 新しいタブ
+tooltip-tab-close = タブを閉じる
+tooltip-bookmark-create = ブックマークを作成
+tooltip-user-create = ユーザーを作成
+tooltip-group-create = グループ作成
+tooltip-news-create = 投稿を作成
 tooltip-delete = 削除
 tooltip-refresh = 更新
 context-menu-download = ダウンロード
@@ -959,7 +957,7 @@ unknown-server = 不明なサーバー
 # Disconnect Dialog
 # =============================================================================
 
-title-disconnect-user-name = { $nickname } を切断
+title-user-disconnect-name = { $nickname } を切断
 disconnect-action-kick = キック
 disconnect-action-ban = BAN
 disconnect-duration-label = 期間:
@@ -1179,7 +1177,6 @@ tab-trackers = トラッカー
 # =============================================================================
 
 # Buttons
-button-add = 追加
 button-remove = 削除
 button-accept-fingerprint = 受け入れる
 
@@ -1188,9 +1185,9 @@ col-status = 状態
 col-address = アドレス
 
 # Titles
-title-add-tracker = トラッカー追加
-title-edit-tracker = トラッカー編集
-title-accept-fingerprint = フィンガープリントを承認
+title-tracker-add = トラッカー追加
+title-tracker-edit = トラッカー編集
+title-fingerprint-accept = フィンガープリントを承認
 
 # Labels
 label-address = アドレス:
@@ -1204,8 +1201,7 @@ placeholder-tracker-fingerprint = SHA-256 フィンガープリント（任意�
 placeholder-tracker-password = パスワード（任意）
 
 # Tooltips
-tooltip-add-tracker = トラッカー追加
-tooltip-edit-server-info = サーバー情報を編集
+tooltip-tracker-add = トラッカー追加
 tooltip-tracker-connected = 接続済み
 tooltip-tracker-disconnected = 未接続
 tooltip-tracker-fingerprint-pending = フィンガープリント不一致

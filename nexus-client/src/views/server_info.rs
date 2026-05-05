@@ -448,7 +448,7 @@ fn config_row<'a>(label: String, value: String) -> Element<'a, Message> {
 
 /// Render the server info edit view (editable form)
 fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, Message> {
-    let title = panel_title(t("title-edit-server-info"));
+    let title = panel_title(t("title-server-info-edit"));
 
     let mut form_items: Vec<Element<'static, Message>> = vec![title.into()];
 

@@ -317,12 +317,6 @@ pub const FILE_LIST_ICON_SIZE: f32 = 16.0;
 /// Spacing between file/folder icon and filename
 pub const FILE_LIST_ICON_SPACING: f32 = 8.0;
 
-/// Width of the file size column in the file list
-pub const FILE_SIZE_COLUMN_WIDTH: f32 = 80.0;
-
-/// Width of the modified date column in the file list
-pub const FILE_DATE_COLUMN_WIDTH: f32 = 140.0;
-
 /// Icon size for file info dialog (large icon next to filename)
 pub const FILE_INFO_ICON_SIZE: f32 = 64.0;
 

@@ -446,7 +446,7 @@ pub fn transfers_view<'a>(manager: &'a TransferManager) -> Element<'a, Message> 
 
         tooltip(
             btn,
-            container(shaped_text(t("tooltip-clear-inactive")).size(TOOLTIP_TEXT_SIZE))
+            container(shaped_text(t("tooltip-transfers-clear-inactive")).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
                 .style(tooltip_container_style),
             tooltip::Position::Top,

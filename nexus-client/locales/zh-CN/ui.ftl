@@ -11,7 +11,6 @@ button-connect = 连接
 button-save = 保存
 button-create = 创建
 button-edit = 编辑
-button-update = 更新
 button-accept-new-certificate = 接受
 button-close = 关闭
 button-choose-avatar = 选择头像
@@ -28,12 +27,11 @@ button-browse = 浏览
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = 连接到服务器
-title-add-bookmark = 添加书签
-title-edit-server = 编辑服务器
+title-bookmark-create = 创建书签
+title-bookmark-edit = 编辑书签
 title-broadcast-message = 广播
 title-user-create = 创建用户
 title-user-edit = 编辑用户
-title-update-user = 更新用户
 title-user-management = 用户管理
 title-group-create = 创建群组
 title-group-edit = 编辑群组
@@ -42,12 +40,12 @@ title-connected = 已连接
 title-settings = 设置
 title-bookmarks = 书签
 title-users = 用户
-title-edit-server-info = 编辑服务器信息
+title-server-info-edit = 编辑服务器信息
 title-fingerprint-mismatch = 证书指纹不匹配！
 title-server-info = 服务器信息
 title-user-info = 用户信息
 title-about = 关于
-title-change-password = 修改密码
+title-password-change = 修改密码
 title-news = 新闻
 title-transfers = 传输
 title-news-create = 创建帖子
@@ -250,11 +248,11 @@ tooltip-connection-monitor = 连接监视器
 tooltip-server-info = 服务器信息
 tooltip-about = 关于
 tooltip-transfers = 传输
-tooltip-download-all = 全部下载
+tooltip-files-download-all = 全部下载
 tooltip-upload = 上传
 file-picker-upload-title = 选择要上传的文件
 drop-to-upload = 拖放以上传
-tooltip-clear-inactive = 清除非活动项
+tooltip-transfers-clear-inactive = 清除非活动项
 tooltip-transfer-pause = 暂停
 tooltip-transfer-resume = 继续
 tooltip-transfer-cancel = 取消
@@ -264,22 +262,22 @@ tooltip-transfer-move-up = 上移
 tooltip-transfer-move-down = 下移
 tooltip-transfer-retry = 重试
 tooltip-settings = 设置
-tooltip-hide-bookmarks = 隐藏书签
-tooltip-show-bookmarks = 显示书签
-tooltip-hide-user-list = 隐藏用户列表
-tooltip-show-user-list = 显示用户列表
+tooltip-bookmarks-hide = 隐藏书签
+tooltip-bookmarks-show = 显示书签
+tooltip-user-list-hide = 隐藏用户列表
+tooltip-user-list-show = 显示用户列表
 tooltip-disconnect = 断开连接
 tooltip-edit = 编辑
 tooltip-info = 信息
 tooltip-message = 消息
 tooltip-kick = 踢出
 tooltip-close = 关闭
-tooltip-new-tab = 新标签页
-tooltip-close-tab = 关闭标签页
-tooltip-add-bookmark = 添加书签
-tooltip-create-user = 创建用户
-tooltip-create-group = 创建群组
-tooltip-create-news = 创建帖子
+tooltip-tab-new = 新标签页
+tooltip-tab-close = 关闭标签页
+tooltip-bookmark-create = 创建书签
+tooltip-user-create = 创建用户
+tooltip-group-create = 创建群组
+tooltip-news-create = 创建帖子
 tooltip-delete = 删除
 tooltip-refresh = 刷新
 context-menu-download = 下载
@@ -960,7 +958,7 @@ unknown-server = 未知服务器
 # Disconnect Dialog
 # =============================================================================
 
-title-disconnect-user-name = 断开 { $nickname } 的连接
+title-user-disconnect-name = 断开 { $nickname } 的连接
 disconnect-action-kick = 踢出
 disconnect-action-ban = 封禁
 disconnect-duration-label = 时长:
@@ -1180,7 +1178,6 @@ tab-trackers = 追踪器
 # =============================================================================
 
 # Buttons
-button-add = 添加
 button-remove = 移除
 button-accept-fingerprint = 接受
 
@@ -1189,9 +1186,9 @@ col-status = 状态
 col-address = 地址
 
 # Titles
-title-add-tracker = 添加追踪器
-title-edit-tracker = 编辑追踪器
-title-accept-fingerprint = 接受指纹
+title-tracker-add = 添加追踪器
+title-tracker-edit = 编辑追踪器
+title-fingerprint-accept = 接受指纹
 
 # Labels
 label-address = 地址：
@@ -1205,8 +1202,7 @@ placeholder-tracker-fingerprint = SHA-256 指纹（可选）
 placeholder-tracker-password = 密码（可选）
 
 # Tooltips
-tooltip-add-tracker = 添加追踪器
-tooltip-edit-server-info = 编辑服务器信息
+tooltip-tracker-add = 添加追踪器
 tooltip-tracker-connected = 已连接
 tooltip-tracker-disconnected = 未连接
 tooltip-tracker-fingerprint-pending = 指纹不匹配

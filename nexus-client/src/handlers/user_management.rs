@@ -9,8 +9,8 @@ use nexus_common::validators::{self, PasswordError, UsernameError};
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{
-    ActivePanel, ChatMessage, ChatTab, InputId, Message, PasswordChangeState, PendingRequests,
-    ResponseRouting, UserManagementMode, UserManagementSortColumn,
+    ActivePanel, ChatMessage, ChatTab, GroupManagementMode, InputId, Message, PasswordChangeState,
+    PendingRequests, ResponseRouting, UserManagementMode, UserManagementSortColumn,
 };
 use crate::views::constants::PERMISSION_USER_INFO;
 
@@ -80,6 +80,16 @@ impl NexusApp {
 
         match &conn.user_management.mode {
             UserManagementMode::List => {
+                // The Groups sub-panel reuses User Management's `List` top-level
+                // mode while running its own Create/Edit/ConfirmDelete flow.
+                // If the group sub-panel is in a form mode, treat Escape as
+                // "back to the tabbed list" instead of closing the whole panel.
+                if !matches!(
+                    conn.user_management.group_management.mode,
+                    GroupManagementMode::List
+                ) {
+                    return self.handle_cancel_group_management();
+                }
                 // In list mode, close the panel
                 self.handle_show_chat_view()
             }

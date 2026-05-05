@@ -22,7 +22,7 @@ use super::constants::{
     PERMISSION_TRACKER_ADD, PERMISSION_TRACKER_EDIT, PERMISSION_TRACKER_REMOVE,
 };
 use super::fingerprint::format_fingerprint_multiline;
-use super::helpers::tab_toolbar_icon_button;
+use super::helpers::{sort_icon_or_placeholder, tab_toolbar_icon_button};
 use super::layout::{scrollable_modal, scrollable_panel};
 use crate::i18n::t;
 use crate::icon;
@@ -33,7 +33,7 @@ use crate::style::{
     FINGERPRINT_SPACE_AFTER_SERVER_INFO, FINGERPRINT_SPACE_AFTER_TITLE,
     FINGERPRINT_SPACE_AFTER_WARNING, FINGERPRINT_SPACE_BEFORE_BUTTONS,
     FINGERPRINT_SPACE_BETWEEN_SECTIONS, INPUT_PADDING, MONOSPACE_FONT, NO_SPACING,
-    SEPARATOR_HEIGHT, SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE,
+    SCROLLBAR_PADDING, SEPARATOR_HEIGHT, SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
     TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, context_menu_container_style, error_text_style,
     menu_button_danger_style, menu_button_style, muted_text_style, panel_title, separator_style,
@@ -235,17 +235,10 @@ fn lazy_tracker_table(deps: TrackerTableDeps) -> Element<'static, Message> {
 
     lazy(deps, move |deps| {
         // Status header (sortable, no label text — the column is just bullets).
-        let status_sort_icon: Element<'static, Message> =
-            if deps.sort_column == TrackerManagementSortColumn::Status {
-                let icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                icon.size(SORT_ICON_SIZE).style(muted_text_style).into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let status_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == TrackerManagementSortColumn::Status,
+            deps.sort_ascending,
+        );
         let status_header_content: Element<'static, Message> = row![
             shaped_text(t("col-status"))
                 .size(TEXT_SIZE)
@@ -260,7 +253,7 @@ fn lazy_tracker_table(deps: TrackerTableDeps) -> Element<'static, Message> {
         .into();
         let status_header: Element<'static, Message> = button(status_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::TrackerManagementSortChanged(
                 TrackerManagementSortColumn::Status,
@@ -293,20 +286,13 @@ fn lazy_tracker_table(deps: TrackerTableDeps) -> Element<'static, Message> {
             .gap(TOOLTIP_GAP)
             .padding(TOOLTIP_PADDING)
         })
-        .width(Length::FillPortion(1));
+        .width(Length::Shrink);
 
         // Name header
-        let name_sort_icon: Element<'static, Message> =
-            if deps.sort_column == TrackerManagementSortColumn::Name {
-                let icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                icon.size(SORT_ICON_SIZE).style(muted_text_style).into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let name_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == TrackerManagementSortColumn::Name,
+            deps.sort_ascending,
+        );
         let name_header_content: Element<'static, Message> = row![
             shaped_text(t("col-name"))
                 .size(TEXT_SIZE)
@@ -321,7 +307,7 @@ fn lazy_tracker_table(deps: TrackerTableDeps) -> Element<'static, Message> {
         .into();
         let name_header: Element<'static, Message> = button(name_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::TrackerManagementSortChanged(
                 TrackerManagementSortColumn::Name,
@@ -368,17 +354,10 @@ fn lazy_tracker_table(deps: TrackerTableDeps) -> Element<'static, Message> {
         .width(Length::FillPortion(1));
 
         // Address header
-        let address_sort_icon: Element<'static, Message> =
-            if deps.sort_column == TrackerManagementSortColumn::Address {
-                let icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                icon.size(SORT_ICON_SIZE).style(muted_text_style).into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let address_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == TrackerManagementSortColumn::Address,
+            deps.sort_ascending,
+        );
         let address_header_content: Element<'static, Message> = row![
             shaped_text(t("col-address"))
                 .size(TEXT_SIZE)
@@ -388,18 +367,22 @@ fn lazy_tracker_table(deps: TrackerTableDeps) -> Element<'static, Message> {
             Space::new().width(SORT_ICON_LEFT_MARGIN),
             address_sort_icon,
             Space::new().width(SORT_ICON_RIGHT_MARGIN),
+            // Trailing gap so the rightmost column doesn't abut the scrollbar.
+            Space::new().width(SCROLLBAR_PADDING),
         ]
         .align_y(Center)
         .into();
         let address_header: Element<'static, Message> = button(address_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::TrackerManagementSortChanged(
                 TrackerManagementSortColumn::Address,
             ))
             .into();
 
+        // Address column. Trailing Space matches the header so the rightmost
+        // column doesn't abut the scrollbar.
         let address_column = table::column(address_header, |tracker: TrackerInfo| {
             // Show the port suffix only when it differs from the well-known
             // default — keeps the common case clean while making non-default
@@ -409,10 +392,14 @@ fn lazy_tracker_table(deps: TrackerTableDeps) -> Element<'static, Message> {
             } else {
                 format!("{}:{}", tracker.address, tracker.port)
             };
-            shaped_text(display)
-                .size(TEXT_SIZE)
-                .wrapping(Wrapping::WordOrGlyph)
-                .style(muted_text_style)
+            row![
+                shaped_text(display)
+                    .size(TEXT_SIZE)
+                    .wrapping(Wrapping::WordOrGlyph)
+                    .style(muted_text_style),
+                Space::new().width(SCROLLBAR_PADDING),
+            ]
+            .align_y(Center)
         })
         .width(Length::FillPortion(1));
 
@@ -439,7 +426,7 @@ fn trackers_tab_toolbar<'a>(
 ) -> Element<'a, Message> {
     let add_btn = tab_toolbar_icon_button(
         icon::plus_circled(),
-        "tooltip-add-tracker",
+        "tooltip-tracker-add",
         Message::TrackerManagementShowAdd,
         conn.has_permission(PERMISSION_TRACKER_ADD),
     );
@@ -530,7 +517,7 @@ pub fn trackers_tab_view<'a>(
 
 /// Render the Add Tracker subview (full-panel form).
 pub fn add_tracker_view(state: &TrackerManagementState) -> Element<'_, Message> {
-    let title = panel_title(t("title-add-tracker"));
+    let title = panel_title(t("title-tracker-add"));
 
     let can_submit = !state.add_name.trim().is_empty()
         && !state.add_address.trim().is_empty()
@@ -670,11 +657,11 @@ pub fn add_tracker_view(state: &TrackerManagementState) -> Element<'_, Message> 
         .style(btn::secondary);
 
     let submit_button = if can_submit {
-        button(shaped_text(t("button-add")).size(TEXT_SIZE))
+        button(shaped_text(t("button-save")).size(TEXT_SIZE))
             .on_press(Message::AddTrackerSubmit)
             .padding(BUTTON_PADDING)
     } else {
-        button(shaped_text(t("button-add")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
+        button(shaped_text(t("button-save")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
     };
 
     items.push(
@@ -713,7 +700,7 @@ pub fn edit_tracker_view(state: &TrackerManagementState) -> Element<'_, Message>
         return Space::new().into();
     };
 
-    let title = panel_title(t("title-edit-tracker"));
+    let title = panel_title(t("title-tracker-edit"));
     let subtitle = shaped_text_wrapped(original_name.clone())
         .size(TEXT_SIZE)
         .width(Fill)
@@ -972,7 +959,7 @@ pub fn accept_fingerprint_modal(state: &TrackerManagementState) -> Element<'_, M
         return Space::new().into();
     };
 
-    let title = panel_title(t("title-accept-fingerprint"));
+    let title = panel_title(t("title-fingerprint-accept"));
 
     let server_line_text = format!("{} - {}:{}", name, address, port);
     let server_line = shaped_text(server_line_text).size(TEXT_SIZE);

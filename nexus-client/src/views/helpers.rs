@@ -1,13 +1,14 @@
 //! Shared helper functions for view rendering
 
-use iced::widget::{Text, button, container, tooltip};
+use iced::widget::{Space, Text, button, container, tooltip};
 use iced::{Element, alignment};
 
 use crate::i18n::t;
+use crate::icon;
 use crate::style::{
-    ICON_SIZE, TOOLBAR_BUTTON_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING,
-    TOOLTIP_TEXT_SIZE, disabled_icon_button_style, shaped_text, tooltip_container_style,
-    transparent_icon_button_style,
+    ICON_SIZE, SORT_ICON_SIZE, TOOLBAR_BUTTON_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, disabled_icon_button_style, muted_text_style, shaped_text,
+    tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::Message;
 
@@ -53,5 +54,29 @@ pub fn tab_toolbar_icon_button<'a>(
             .padding(TOOLBAR_BUTTON_PADDING)
             .style(disabled_icon_button_style)
             .into()
+    }
+}
+
+/// Build the sort indicator for a sortable table column header.
+///
+/// Active branch wraps the icon in a fixed-width container so the rendered
+/// width matches the inactive `Space` placeholder exactly. `.size()` sets
+/// font size, not glyph width, so without the container the column visibly
+/// jiggles when sort is toggled — only noticeable when the column itself is
+/// `Length::Shrink`, but the cost is the same either way and the behaviour
+/// is now consistent across all sortable tables.
+pub fn sort_icon_or_placeholder(is_active: bool, is_ascending: bool) -> Element<'static, Message> {
+    if is_active {
+        let icon = if is_ascending {
+            icon::down_dir()
+        } else {
+            icon::up_dir()
+        };
+        container(icon.size(SORT_ICON_SIZE).style(muted_text_style))
+            .width(SORT_ICON_SIZE)
+            .center_x(SORT_ICON_SIZE)
+            .into()
+    } else {
+        Space::new().width(SORT_ICON_SIZE).into()
     }
 }

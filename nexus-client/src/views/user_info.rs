@@ -132,7 +132,7 @@ pub fn password_change_view<'a>(
     let mut content = column![].spacing(ELEMENT_SPACING);
 
     // Title (centered)
-    content = content.push(panel_title(t("title-change-password")));
+    content = content.push(panel_title(t("title-password-change")));
 
     // Error message (if any) - shown under title, centered
     if let Some(error) = &state.error {

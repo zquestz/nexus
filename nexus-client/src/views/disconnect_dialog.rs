@@ -38,7 +38,7 @@ pub fn disconnect_dialog_view<'a>(
 
     // Title with nickname
     let title = panel_title(t_args(
-        "title-disconnect-user-name",
+        "title-user-disconnect-name",
         &[("nickname", &state.nickname)],
     ));
 

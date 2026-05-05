@@ -11,20 +11,20 @@ use iced::widget::{
     Column, Id, Space, button, checkbox, column, container, lazy, row, scrollable, table, text,
     text_input,
 };
-use iced::{Center, Element, Fill};
+use iced::{Center, Element, Fill, Length};
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::GroupInfo;
 
 use super::constants::{PERMISSION_GROUP_CREATE, PERMISSION_GROUP_DELETE, PERMISSION_GROUP_EDIT};
-use super::helpers::{t_args, tab_toolbar_icon_button};
+use super::helpers::{sort_icon_or_placeholder, t_args, tab_toolbar_icon_button};
 use super::layout::scrollable_panel;
 use crate::i18n::{t, translate_permission};
 use crate::icon;
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, CONTEXT_MENU_ITEM_PADDING,
     CONTEXT_MENU_MIN_WIDTH, CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_HEIGHT,
-    CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING, INPUT_PADDING, NO_SPACING, SEPARATOR_HEIGHT,
-    SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_MEDIUM,
+    CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING, INPUT_PADDING, NO_SPACING, SCROLLBAR_PADDING,
+    SEPARATOR_HEIGHT, SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN, SPACER_SIZE_MEDIUM,
     SPACER_SIZE_SMALL, TEXT_SIZE, context_menu_container_style, error_text_style,
     menu_button_danger_style, menu_button_style, muted_text_style, panel_title, separator_style,
     shaped_text, shaped_text_wrapped, transparent_icon_button_style,
@@ -220,17 +220,10 @@ fn lazy_group_table(deps: GroupTableDeps) -> Element<'static, Message> {
 
     lazy(deps, move |deps| {
         // Name column header (sortable, stable layout)
-        let name_sort_icon: Element<'static, Message> =
-            if deps.sort_column == GroupManagementSortColumn::Name {
-                let icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                icon.size(SORT_ICON_SIZE).style(muted_text_style).into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let name_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == GroupManagementSortColumn::Name,
+            deps.sort_ascending,
+        );
         let name_header_content: Element<'static, Message> = row![
             shaped_text(t("col-name"))
                 .size(TEXT_SIZE)
@@ -245,7 +238,7 @@ fn lazy_group_table(deps: GroupTableDeps) -> Element<'static, Message> {
         .into();
         let name_header: Element<'static, Message> = button(name_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::GroupManagementSortBy(
                 GroupManagementSortColumn::Name,
@@ -289,20 +282,13 @@ fn lazy_group_table(deps: GroupTableDeps) -> Element<'static, Message> {
                 content
             }
         })
-        .width(Fill);
+        .width(Length::FillPortion(1));
 
         // Members column header (sortable, stable layout)
-        let members_sort_icon: Element<'static, Message> =
-            if deps.sort_column == GroupManagementSortColumn::Members {
-                let icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                icon.size(SORT_ICON_SIZE).style(muted_text_style).into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let members_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == GroupManagementSortColumn::Members,
+            deps.sort_ascending,
+        );
         let members_header_content: Element<'static, Message> = row![
             shaped_text(t("col-members"))
                 .size(TEXT_SIZE)
@@ -312,26 +298,33 @@ fn lazy_group_table(deps: GroupTableDeps) -> Element<'static, Message> {
             Space::new().width(SORT_ICON_LEFT_MARGIN),
             members_sort_icon,
             Space::new().width(SORT_ICON_RIGHT_MARGIN),
+            // Trailing gap so the rightmost column doesn't abut the scrollbar.
+            Space::new().width(SCROLLBAR_PADDING),
         ]
         .align_y(Center)
         .into();
         let members_header: Element<'static, Message> = button(members_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::GroupManagementSortBy(
                 GroupManagementSortColumn::Members,
             ))
             .into();
 
-        // Members column cell
+        // Members column cell. Trailing Space matches the header so the
+        // rightmost column doesn't abut the scrollbar.
         let members_column = table::column(members_header, |group: GroupInfo| {
-            shaped_text(group.member_count.to_string())
-                .size(TEXT_SIZE)
-                .wrapping(Wrapping::Word)
-                .style(muted_text_style)
+            row![
+                shaped_text(group.member_count.to_string())
+                    .size(TEXT_SIZE)
+                    .wrapping(Wrapping::Word)
+                    .style(muted_text_style),
+                Space::new().width(SCROLLBAR_PADDING),
+            ]
+            .align_y(Center)
         })
-        .width(Fill);
+        .width(Length::Shrink);
 
         // Build the table
         let columns = [name_column, members_column];
@@ -362,7 +355,7 @@ fn groups_tab_toolbar<'a>(
 ) -> Element<'a, Message> {
     let create_btn = tab_toolbar_icon_button(
         icon::plus_circled(),
-        "tooltip-create-group",
+        "tooltip-group-create",
         Message::GroupManagementShowCreate,
         conn.has_permission(PERMISSION_GROUP_CREATE),
     );
@@ -496,11 +489,11 @@ fn create_view<'a>(
     );
 
     let create_button = if can_create {
-        button(shaped_text(t("button-create")).size(TEXT_SIZE))
+        button(shaped_text(t("button-save")).size(TEXT_SIZE))
             .on_press(Message::GroupManagementCreatePressed)
             .padding(BUTTON_PADDING)
     } else {
-        button(shaped_text(t("button-create")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
+        button(shaped_text(t("button-save")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
@@ -599,11 +592,11 @@ fn edit_view(ctx: EditGroupContext<'_>) -> Element<'_, Message> {
     );
 
     let update_button = if can_update {
-        button(shaped_text(t("button-update")).size(TEXT_SIZE))
+        button(shaped_text(t("button-save")).size(TEXT_SIZE))
             .on_press(Message::GroupManagementUpdatePressed)
             .padding(BUTTON_PADDING)
     } else {
-        button(shaped_text(t("button-update")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
+        button(shaped_text(t("button-save")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))

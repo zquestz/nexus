@@ -203,7 +203,7 @@ fn list_view<'a>(
                     .on_press(Message::NewsShowCreate)
                     .padding(HEADING_BUTTON_PADDING)
                     .style(transparent_icon_button_style),
-                container(shaped_text(t("tooltip-create-news")).size(TOOLTIP_TEXT_SIZE))
+                container(shaped_text(t("tooltip-news-create")).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(tooltip_container_style),
                 tooltip::Position::Top,
@@ -483,13 +483,8 @@ fn form_view<'a>(
         image_buttons.into()
     };
 
-    // Submit button (Create or Save)
-    let submit_label = shaped_text(if is_edit {
-        t("button-save")
-    } else {
-        t("button-create")
-    })
-    .size(TEXT_SIZE);
+    // Submit button
+    let submit_label = shaped_text(t("button-save")).size(TEXT_SIZE);
 
     let submit_button = if has_content && !news_management.is_submitting {
         button(submit_label)

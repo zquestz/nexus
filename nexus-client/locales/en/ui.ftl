@@ -11,7 +11,6 @@ button-connect = Connect
 button-save = Save
 button-create = Create
 button-edit = Edit
-button-update = Update
 button-accept-new-certificate = Accept
 button-close = Close
 button-choose-avatar = Choose Avatar
@@ -28,12 +27,11 @@ button-browse = Browse…
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = Connect to Server
-title-add-bookmark = Add Bookmark
-title-edit-server = Edit Server
+title-bookmark-create = Create Bookmark
+title-bookmark-edit = Edit Bookmark
 title-broadcast-message = Broadcast
-title-user-create = User Create
-title-user-edit = User Edit
-title-update-user = Update User
+title-user-create = Create User
+title-user-edit = Edit User
 title-user-management = User Management
 title-group-create = Create Group
 title-group-edit = Edit Group
@@ -43,12 +41,12 @@ title-settings = Settings
 title-bookmarks = Bookmarks
 title-users = Users
 title-channel-members = Members
-title-edit-server-info = Edit Server Info
+title-server-info-edit = Edit Server Info
 title-fingerprint-mismatch = Certificate Fingerprint Mismatch!
 title-server-info = Server Info
 title-user-info = User Info
 title-about = About
-title-change-password = Change Password
+title-password-change = Change Password
 title-news = News
 title-transfers = Transfers
 title-news-create = Create News Post
@@ -258,11 +256,11 @@ tooltip-connection-monitor = Connection Monitor
 tooltip-server-info = Server Info
 tooltip-about = About
 tooltip-transfers = Transfers
-tooltip-download-all = Download All
+tooltip-files-download-all = Download All
 tooltip-upload = Upload
 file-picker-upload-title = Select files to upload
 drop-to-upload = Drop to upload
-tooltip-clear-inactive = Clear Inactive
+tooltip-transfers-clear-inactive = Clear Inactive
 tooltip-transfer-pause = Pause
 tooltip-transfer-resume = Resume
 tooltip-transfer-cancel = Cancel
@@ -272,22 +270,22 @@ tooltip-transfer-move-up = Move Up
 tooltip-transfer-move-down = Move Down
 tooltip-transfer-retry = Retry
 tooltip-settings = Settings
-tooltip-hide-bookmarks = Hide Bookmarks
-tooltip-show-bookmarks = Show Bookmarks
-tooltip-hide-user-list = Hide User List
-tooltip-show-user-list = Show User List
+tooltip-bookmarks-hide = Hide Bookmarks
+tooltip-bookmarks-show = Show Bookmarks
+tooltip-user-list-hide = Hide User List
+tooltip-user-list-show = Show User List
 tooltip-disconnect = Disconnect
 tooltip-edit = Edit
 tooltip-info = Info
 tooltip-message = Message
 tooltip-kick = Kick
 tooltip-close = Close
-tooltip-new-tab = New Tab
-tooltip-close-tab = Close Tab
-tooltip-add-bookmark = Add Bookmark
-tooltip-create-user = Create User
-tooltip-create-group = Create Group
-tooltip-create-news = Create News Post
+tooltip-tab-new = New Tab
+tooltip-tab-close = Close Tab
+tooltip-bookmark-create = Create Bookmark
+tooltip-user-create = Create User
+tooltip-group-create = Create Group
+tooltip-news-create = Create News Post
 tooltip-delete = Delete
 tooltip-refresh = Refresh
 context-menu-download = Download
@@ -987,7 +985,7 @@ unknown-server = Unknown server
 # Disconnect Dialog
 # =============================================================================
 
-title-disconnect-user-name = Disconnect { $nickname }
+title-user-disconnect-name = Disconnect { $nickname }
 disconnect-action-kick = Kick
 disconnect-action-ban = Ban
 disconnect-duration-label = Duration:
@@ -1253,14 +1251,13 @@ tab-trackers = Trackers
 # =============================================================================
 
 # Buttons
-button-add = Add
 button-remove = Remove
 button-accept-fingerprint = Accept
 
 # Titles
-title-add-tracker = Add Tracker
-title-edit-tracker = Edit Tracker
-title-accept-fingerprint = Accept Fingerprint
+title-tracker-add = Add Tracker
+title-tracker-edit = Edit Tracker
+title-fingerprint-accept = Accept Fingerprint
 
 # Labels
 label-address = Address:
@@ -1274,8 +1271,7 @@ placeholder-tracker-fingerprint = SHA-256 fingerprint (optional)
 placeholder-tracker-password = Password (optional)
 
 # Tooltips
-tooltip-add-tracker = Add Tracker
-tooltip-edit-server-info = Edit Server Info
+tooltip-tracker-add = Add Tracker
 tooltip-tracker-connected = Connected
 tooltip-tracker-disconnected = Disconnected
 tooltip-tracker-fingerprint-pending = Fingerprint Mismatch

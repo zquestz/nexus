@@ -764,9 +764,9 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     .style(transparent_icon_button_style),
                     container(
                         shaped_text(if state.show_bookmarks {
-                            t("tooltip-hide-bookmarks")
+                            t("tooltip-bookmarks-hide")
                         } else {
-                            t("tooltip-show-bookmarks")
+                            t("tooltip-bookmarks-show")
                         })
                         .size(TOOLTIP_TEXT_SIZE)
                     )
@@ -791,9 +791,9 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                         .style(transparent_icon_button_style),
                         container(
                             shaped_text(if state.show_user_list {
-                                t("tooltip-hide-user-list")
+                                t("tooltip-user-list-hide")
                             } else {
-                                t("tooltip-show-user-list")
+                                t("tooltip-user-list-show")
                             })
                             .size(TOOLTIP_TEXT_SIZE),
                         )
@@ -814,7 +814,7 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                             .size(TOOLBAR_ICON_SIZE),
                         )
                         .style(disabled_icon_button_style),
-                        container(shaped_text(t("tooltip-show-user-list")).size(TOOLTIP_TEXT_SIZE))
+                        container(shaped_text(t("tooltip-user-list-show")).size(TOOLTIP_TEXT_SIZE))
                             .padding(TOOLTIP_BACKGROUND_PADDING)
                             .style(tooltip_container_style),
                         tooltip::Position::Bottom,

@@ -11,7 +11,6 @@ button-connect = Verbinden
 button-save = Speichern
 button-create = Erstellen
 button-edit = Bearbeiten
-button-update = Aktualisieren
 button-accept-new-certificate = Akzeptieren
 button-close = Schließen
 button-choose-avatar = Avatar auswählen
@@ -28,12 +27,11 @@ button-browse = Durchsuchen
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = Mit Server verbinden
-title-add-bookmark = Lesezeichen hinzufügen
-title-edit-server = Server bearbeiten
+title-bookmark-create = Lesezeichen erstellen
+title-bookmark-edit = Lesezeichen bearbeiten
 title-broadcast-message = Rundnachricht
 title-user-create = Benutzer erstellen
 title-user-edit = Benutzer bearbeiten
-title-update-user = Benutzer aktualisieren
 title-user-management = Benutzer verwalten
 title-group-create = Gruppe erstellen
 title-group-edit = Gruppe bearbeiten
@@ -42,12 +40,12 @@ title-connected = Verbunden
 title-settings = Einstellungen
 title-bookmarks = Lesezeichen
 title-users = Benutzer
-title-edit-server-info = Server-Info bearbeiten
+title-server-info-edit = Server-Info bearbeiten
 title-fingerprint-mismatch = Zertifikat-Fingerabdruck stimmt nicht überein!
 title-server-info = Server-Info
 title-user-info = Benutzer-Info
 title-about = Über
-title-change-password = Passwort ändern
+title-password-change = Passwort ändern
 title-news = Neuigkeiten
 title-transfers = Übertragungen
 title-news-create = Beitrag erstellen
@@ -252,11 +250,11 @@ tooltip-connection-monitor = Verbindungsmonitor
 tooltip-server-info = Server-Info
 tooltip-about = Über
 tooltip-transfers = Übertragungen
-tooltip-download-all = Alles herunterladen
+tooltip-files-download-all = Alles herunterladen
 tooltip-upload = Hochladen
 file-picker-upload-title = Dateien zum Hochladen auswählen
 drop-to-upload = Zum Hochladen ablegen
-tooltip-clear-inactive = Inaktive löschen
+tooltip-transfers-clear-inactive = Inaktive löschen
 tooltip-transfer-pause = Pausieren
 tooltip-transfer-resume = Fortsetzen
 tooltip-transfer-cancel = Abbrechen
@@ -266,22 +264,22 @@ tooltip-transfer-move-up = Nach oben
 tooltip-transfer-move-down = Nach unten
 tooltip-transfer-retry = Erneut versuchen
 tooltip-settings = Einstellungen
-tooltip-hide-bookmarks = Lesezeichen ausblenden
-tooltip-show-bookmarks = Lesezeichen anzeigen
-tooltip-hide-user-list = Benutzerliste ausblenden
-tooltip-show-user-list = Benutzerliste anzeigen
+tooltip-bookmarks-hide = Lesezeichen ausblenden
+tooltip-bookmarks-show = Lesezeichen anzeigen
+tooltip-user-list-hide = Benutzerliste ausblenden
+tooltip-user-list-show = Benutzerliste anzeigen
 tooltip-disconnect = Trennen
 tooltip-edit = Bearbeiten
 tooltip-info = Info
 tooltip-message = Nachricht
 tooltip-kick = Rauswerfen
 tooltip-close = Schließen
-tooltip-new-tab = Neuer Tab
-tooltip-close-tab = Tab schließen
-tooltip-add-bookmark = Lesezeichen hinzufügen
-tooltip-create-user = Benutzer erstellen
-tooltip-create-group = Gruppe erstellen
-tooltip-create-news = Beitrag erstellen
+tooltip-tab-new = Neuer Tab
+tooltip-tab-close = Tab schließen
+tooltip-bookmark-create = Lesezeichen erstellen
+tooltip-user-create = Benutzer erstellen
+tooltip-group-create = Gruppe erstellen
+tooltip-news-create = Beitrag erstellen
 tooltip-delete = Löschen
 tooltip-refresh = Aktualisieren
 context-menu-download = Herunterladen
@@ -997,7 +995,7 @@ unknown-server = Unbekannter Server
 # Disconnect Dialog
 # =============================================================================
 
-title-disconnect-user-name = { $nickname } trennen
+title-user-disconnect-name = { $nickname } trennen
 disconnect-action-kick = Kicken
 disconnect-action-ban = Sperren
 disconnect-duration-label = Dauer:
@@ -1229,14 +1227,13 @@ tab-trackers = Tracker
 # =============================================================================
 
 # Buttons
-button-add = Hinzufügen
 button-remove = Entfernen
 button-accept-fingerprint = Akzeptieren
 
 # Titles
-title-add-tracker = Tracker hinzufügen
-title-edit-tracker = Tracker bearbeiten
-title-accept-fingerprint = Fingerabdruck akzeptieren
+title-tracker-add = Tracker hinzufügen
+title-tracker-edit = Tracker bearbeiten
+title-fingerprint-accept = Fingerabdruck akzeptieren
 
 # Labels
 label-address = Adresse:
@@ -1250,8 +1247,7 @@ placeholder-tracker-fingerprint = SHA-256-Fingerabdruck (optional)
 placeholder-tracker-password = Passwort (optional)
 
 # Tooltips
-tooltip-add-tracker = Tracker hinzufügen
-tooltip-edit-server-info = Serverinfo bearbeiten
+tooltip-tracker-add = Tracker hinzufügen
 tooltip-tracker-connected = Verbunden
 tooltip-tracker-disconnected = Getrennt
 tooltip-tracker-fingerprint-pending = Fingerabdruck-Konflikt

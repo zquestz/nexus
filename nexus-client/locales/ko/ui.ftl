@@ -11,7 +11,6 @@ button-connect = 연결
 button-save = 저장
 button-create = 생성
 button-edit = 편집
-button-update = 업데이트
 button-accept-new-certificate = 수락
 button-close = 닫기
 button-choose-avatar = 아바타 선택
@@ -28,12 +27,11 @@ button-browse = 찾아보기
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = 서버에 연결
-title-add-bookmark = 북마크 추가
-title-edit-server = 서버 편집
+title-bookmark-create = 북마크 생성
+title-bookmark-edit = 북마크 편집
 title-broadcast-message = 브로드캐스트
 title-user-create = 사용자 생성
 title-user-edit = 사용자 편집
-title-update-user = 사용자 업데이트
 title-user-management = 사용자 관리
 title-group-create = 그룹 생성
 title-group-edit = 그룹 편집
@@ -42,12 +40,12 @@ title-connected = 연결됨
 title-settings = 설정
 title-bookmarks = 북마크
 title-users = 사용자
-title-edit-server-info = 서버 정보 편집
+title-server-info-edit = 서버 정보 편집
 title-fingerprint-mismatch = 인증서 지문이 일치하지 않습니다!
 title-server-info = 서버 정보
 title-user-info = 사용자 정보
 title-about = 정보
-title-change-password = 비밀번호 변경
+title-password-change = 비밀번호 변경
 title-news = 뉴스
 title-transfers = 전송
 title-news-create = 게시물 작성
@@ -250,11 +248,11 @@ tooltip-connection-monitor = 연결 모니터
 tooltip-server-info = 서버 정보
 tooltip-about = 정보
 tooltip-transfers = 전송
-tooltip-download-all = 전체 다운로드
+tooltip-files-download-all = 전체 다운로드
 tooltip-upload = 업로드
 file-picker-upload-title = 업로드할 파일 선택
 drop-to-upload = 드롭하여 업로드
-tooltip-clear-inactive = 비활성 항목 지우기
+tooltip-transfers-clear-inactive = 비활성 항목 지우기
 tooltip-transfer-pause = 일시 정지
 tooltip-transfer-resume = 재개
 tooltip-transfer-cancel = 취소
@@ -264,22 +262,22 @@ tooltip-transfer-move-up = 위로 이동
 tooltip-transfer-move-down = 아래로 이동
 tooltip-transfer-retry = 다시 시도
 tooltip-settings = 설정
-tooltip-hide-bookmarks = 북마크 숨기기
-tooltip-show-bookmarks = 북마크 표시
-tooltip-hide-user-list = 사용자 목록 숨기기
-tooltip-show-user-list = 사용자 목록 표시
+tooltip-bookmarks-hide = 북마크 숨기기
+tooltip-bookmarks-show = 북마크 표시
+tooltip-user-list-hide = 사용자 목록 숨기기
+tooltip-user-list-show = 사용자 목록 표시
 tooltip-disconnect = 연결 끊기
 tooltip-edit = 편집
 tooltip-info = 정보
 tooltip-message = 메시지
 tooltip-kick = 추방
 tooltip-close = 닫기
-tooltip-new-tab = 새 탭
-tooltip-close-tab = 탭 닫기
-tooltip-add-bookmark = 북마크 추가
-tooltip-create-user = 사용자 생성
-tooltip-create-group = 그룹 생성
-tooltip-create-news = 게시물 작성
+tooltip-tab-new = 새 탭
+tooltip-tab-close = 탭 닫기
+tooltip-bookmark-create = 북마크 생성
+tooltip-user-create = 사용자 생성
+tooltip-group-create = 그룹 생성
+tooltip-news-create = 게시물 작성
 tooltip-delete = 삭제
 tooltip-refresh = 새로고침
 context-menu-download = 다운로드
@@ -959,7 +957,7 @@ unknown-server = 알 수 없는 서버
 # Disconnect Dialog
 # =============================================================================
 
-title-disconnect-user-name = { $nickname } 연결 끊기
+title-user-disconnect-name = { $nickname } 연결 끊기
 disconnect-action-kick = 추방
 disconnect-action-ban = 차단
 disconnect-duration-label = 기간:
@@ -1179,7 +1177,6 @@ tab-trackers = 트래커
 # =============================================================================
 
 # Buttons
-button-add = 추가
 button-remove = 제거
 button-accept-fingerprint = 수락
 
@@ -1188,9 +1185,9 @@ col-status = 상태
 col-address = 주소
 
 # Titles
-title-add-tracker = 트래커 추가
-title-edit-tracker = 트래커 편집
-title-accept-fingerprint = 지문 수락
+title-tracker-add = 트래커 추가
+title-tracker-edit = 트래커 편집
+title-fingerprint-accept = 지문 수락
 
 # Labels
 label-address = 주소:
@@ -1204,8 +1201,7 @@ placeholder-tracker-fingerprint = SHA-256 지문 (선택 사항)
 placeholder-tracker-password = 비밀번호 (선택 사항)
 
 # Tooltips
-tooltip-add-tracker = 트래커 추가
-tooltip-edit-server-info = 서버 정보 편집
+tooltip-tracker-add = 트래커 추가
 tooltip-tracker-connected = 연결됨
 tooltip-tracker-disconnected = 연결 끊김
 tooltip-tracker-fingerprint-pending = 지문 불일치

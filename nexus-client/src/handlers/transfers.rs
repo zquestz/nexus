@@ -160,9 +160,26 @@ impl NexusApp {
             return false;
         }
 
-        // Check if viewing the upload destination directory
+        // Check if viewing the upload destination directory.
+        //
+        // `remote_path` means different things depending on the upload kind:
+        //   - File: it's the destination directory (where the file lands).
+        //   - Directory: it's the directory the server creates — the actual
+        //     destination is its parent.
+        let upload_parent: &str = if transfer.is_directory {
+            match transfer.remote_path.rfind('/') {
+                // Root case: "/MyFolder" → parent is "/"
+                Some(0) => "/",
+                // Nested: "/Uploads/MyFolder" → parent is "/Uploads"
+                Some(idx) => &transfer.remote_path[..idx],
+                // No slash at all — treat as empty / root
+                None => "",
+            }
+        } else {
+            &transfer.remote_path
+        };
         let current_path = &conn.files_management.active_tab().current_path;
-        current_path == &transfer.remote_path
+        current_path == upload_parent
     }
 
     /// Handle request to pause a transfer

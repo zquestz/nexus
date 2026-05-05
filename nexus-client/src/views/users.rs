@@ -9,14 +9,14 @@ use iced::widget::{
     Column, Id, Space, button, checkbox, column, container, lazy, pick_list, row, scrollable,
     table, text, text_input,
 };
-use iced::{Center, Element, Fill, Theme};
+use iced::{Center, Element, Fill, Length, Theme};
 use iced_aw::{TabLabel, Tabs};
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::{GroupInfo, UserInfo};
 
 use super::constants::{PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT};
 use super::groups::{group_form_view, group_list_content};
-use super::helpers::{t_args, tab_toolbar_icon_button};
+use super::helpers::{sort_icon_or_placeholder, t_args, tab_toolbar_icon_button};
 use super::layout::scrollable_panel;
 use super::password_strength::password_strength_bar;
 use crate::i18n::{t, translate_permission};
@@ -24,8 +24,8 @@ use crate::icon;
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, CONTEXT_MENU_ITEM_PADDING,
     CONTEXT_MENU_MIN_WIDTH, CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_HEIGHT,
-    CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING, INPUT_PADDING, NO_SPACING, SEPARATOR_HEIGHT,
-    SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_LARGE,
+    CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING, INPUT_PADDING, NO_SPACING, SCROLLBAR_PADDING,
+    SEPARATOR_HEIGHT, SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN, SPACER_SIZE_LARGE,
     SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TAB_LABEL_PADDING, TEXT_SIZE, chat,
     clickable_text_style, content_background_style, context_menu_container_style, error_text_style,
     menu_button_danger_style, menu_button_style, muted_text_style, panel_title, separator_style,
@@ -273,17 +273,10 @@ fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
         let shared_color = deps.shared_color;
 
         // Username column header (sortable, stable layout)
-        let username_sort_icon: Element<'static, Message> =
-            if deps.sort_column == UserManagementSortColumn::Username {
-                let icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                icon.size(SORT_ICON_SIZE).style(muted_text_style).into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let username_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == UserManagementSortColumn::Username,
+            deps.sort_ascending,
+        );
         let username_header_content: Element<'static, Message> = row![
             shaped_text(t("col-username"))
                 .size(TEXT_SIZE)
@@ -298,7 +291,7 @@ fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
         .into();
         let username_header: Element<'static, Message> = button(username_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::UserManagementSortBy(
                 UserManagementSortColumn::Username,
@@ -359,20 +352,13 @@ fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
                 content
             }
         })
-        .width(Fill);
+        .width(Length::FillPortion(1));
 
         // Group column header (sortable, stable layout)
-        let group_sort_icon: Element<'static, Message> =
-            if deps.sort_column == UserManagementSortColumn::Group {
-                let icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                icon.size(SORT_ICON_SIZE).style(muted_text_style).into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let group_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == UserManagementSortColumn::Group,
+            deps.sort_ascending,
+        );
         let group_header_content: Element<'static, Message> = row![
             shaped_text(t("col-group"))
                 .size(TEXT_SIZE)
@@ -382,27 +368,34 @@ fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
             Space::new().width(SORT_ICON_LEFT_MARGIN),
             group_sort_icon,
             Space::new().width(SORT_ICON_RIGHT_MARGIN),
+            // Trailing gap so the rightmost column doesn't abut the scrollbar.
+            Space::new().width(SCROLLBAR_PADDING),
         ]
         .align_y(Center)
         .into();
         let group_header: Element<'static, Message> = button(group_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::UserManagementSortBy(
                 UserManagementSortColumn::Group,
             ))
             .into();
 
-        // Group column
+        // Group column. Trailing Space matches the header so the rightmost
+        // column doesn't abut the scrollbar.
         let group_column = table::column(group_header, |user: UserInfo| {
             let label = user.group_name.unwrap_or_else(|| "—".to_string());
-            shaped_text(label)
-                .size(TEXT_SIZE)
-                .wrapping(Wrapping::WordOrGlyph)
-                .style(muted_text_style)
+            row![
+                shaped_text(label)
+                    .size(TEXT_SIZE)
+                    .wrapping(Wrapping::WordOrGlyph)
+                    .style(muted_text_style),
+                Space::new().width(SCROLLBAR_PADDING),
+            ]
+            .align_y(Center)
         })
-        .width(Fill);
+        .width(Length::FillPortion(1));
 
         // Build the table
         let columns = [username_column, group_column];
@@ -489,7 +482,7 @@ fn users_tab_toolbar<'a>(
 ) -> Element<'a, Message> {
     let create_btn = tab_toolbar_icon_button(
         icon::user_plus(),
-        "tooltip-create-user",
+        "tooltip-user-create",
         Message::UserManagementShowCreate,
         conn.has_permission(PERMISSION_USER_CREATE),
     );
@@ -696,11 +689,11 @@ fn create_view<'a>(
     );
 
     let create_button = if can_create {
-        button(shaped_text(t("button-create")).size(TEXT_SIZE))
+        button(shaped_text(t("button-save")).size(TEXT_SIZE))
             .on_press(Message::UserManagementCreatePressed)
             .padding(BUTTON_PADDING)
     } else {
-        button(shaped_text(t("button-create")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
+        button(shaped_text(t("button-save")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
@@ -766,7 +759,7 @@ fn create_view<'a>(
 
 /// Build the edit user form
 fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message> {
-    let title = panel_title(t("title-update-user"));
+    let title = panel_title(t("title-user-edit"));
 
     let subtitle = shaped_text_wrapped(ctx.original_username)
         .size(TEXT_SIZE)
@@ -878,11 +871,11 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
     );
 
     let update_button = if can_update {
-        button(shaped_text(t("button-update")).size(TEXT_SIZE))
+        button(shaped_text(t("button-save")).size(TEXT_SIZE))
             .on_press(Message::UserManagementUpdatePressed)
             .padding(BUTTON_PADDING)
     } else {
-        button(shaped_text(t("button-update")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
+        button(shaped_text(t("button-save")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
     };
 
     let cancel_button = button(shaped_text(t("button-cancel")).size(TEXT_SIZE))

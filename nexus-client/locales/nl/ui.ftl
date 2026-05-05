@@ -11,8 +11,6 @@ button-connect = Verbinden
 button-save = Opslaan
 button-create = Aanmaken
 button-edit = Bewerken
-button-update = Bijwerken
-
 button-accept-new-certificate = Accepteren
 button-close = Sluiten
 button-choose-avatar = Avatar Kiezen
@@ -29,12 +27,11 @@ button-browse = Bladeren
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = Verbinden met server
-title-add-bookmark = Bladwijzer toevoegen
-title-edit-server = Server bewerken
+title-bookmark-create = Bladwijzer aanmaken
+title-bookmark-edit = Bladwijzer bewerken
 title-broadcast-message = Broadcast
 title-user-create = Gebruiker aanmaken
 title-user-edit = Gebruiker bewerken
-title-update-user = Gebruiker bijwerken
 title-user-management = Gebruikers Beheren
 title-group-create = Groep Aanmaken
 title-group-edit = Groep Bewerken
@@ -43,12 +40,12 @@ title-connected = Verbonden
 title-settings = Instellingen
 title-bookmarks = Bladwijzers
 title-users = Gebruikers
-title-edit-server-info = Server Info bewerken
+title-server-info-edit = Server Info bewerken
 title-fingerprint-mismatch = Certificaatvingerafdruk komt niet overeen!
 title-server-info = Server Info
 title-user-info = Gebruiker Info
 title-about = Over
-title-change-password = Wachtwoord Wijzigen
+title-password-change = Wachtwoord Wijzigen
 title-news = Nieuws
 title-transfers = Overdrachten
 title-news-create = Bericht Maken
@@ -254,11 +251,11 @@ tooltip-connection-monitor = Verbindingsmonitor
 tooltip-server-info = Server-Info
 tooltip-about = Over
 tooltip-transfers = Overdrachten
-tooltip-download-all = Alles Downloaden
+tooltip-files-download-all = Alles Downloaden
 tooltip-upload = Uploaden
 file-picker-upload-title = Selecteer bestanden om te uploaden
 drop-to-upload = Neerzetten om te uploaden
-tooltip-clear-inactive = Inactieve wissen
+tooltip-transfers-clear-inactive = Inactieve wissen
 tooltip-transfer-pause = Pauzeren
 tooltip-transfer-resume = Hervatten
 tooltip-transfer-cancel = Annuleren
@@ -268,22 +265,22 @@ tooltip-transfer-move-up = Omhoog
 tooltip-transfer-move-down = Omlaag
 tooltip-transfer-retry = Opnieuw proberen
 tooltip-settings = Instellingen
-tooltip-hide-bookmarks = Bladwijzers verbergen
-tooltip-show-bookmarks = Bladwijzers tonen
-tooltip-hide-user-list = Gebruikerslijst verbergen
-tooltip-show-user-list = Gebruikerslijst tonen
+tooltip-bookmarks-hide = Bladwijzers verbergen
+tooltip-bookmarks-show = Bladwijzers tonen
+tooltip-user-list-hide = Gebruikerslijst verbergen
+tooltip-user-list-show = Gebruikerslijst tonen
 tooltip-disconnect = Verbinding verbreken
 tooltip-edit = Bewerken
 tooltip-info = Info
 tooltip-message = Bericht
 tooltip-kick = Verwijderen
-tooltip-add-bookmark = Bladwijzer Toevoegen
+tooltip-bookmark-create = Bladwijzer Aanmaken
 tooltip-close = Sluiten
-tooltip-new-tab = Nieuw Tabblad
-tooltip-close-tab = Tabblad Sluiten
-tooltip-create-user = Gebruiker Aanmaken
-tooltip-create-group = Groep Aanmaken
-tooltip-create-news = Nieuwsbericht Aanmaken
+tooltip-tab-new = Nieuw Tabblad
+tooltip-tab-close = Tabblad Sluiten
+tooltip-user-create = Gebruiker Aanmaken
+tooltip-group-create = Groep Aanmaken
+tooltip-news-create = Nieuwsbericht Aanmaken
 tooltip-delete = Verwijderen
 tooltip-refresh = Vernieuwen
 context-menu-download = Downloaden
@@ -995,7 +992,7 @@ unknown-server = Onbekende server
 # Disconnect Dialog
 # =============================================================================
 
-title-disconnect-user-name = { $nickname } verbreken
+title-user-disconnect-name = { $nickname } verbreken
 disconnect-action-kick = Kicken
 disconnect-action-ban = Bannen
 disconnect-duration-label = Duur:
@@ -1227,14 +1224,13 @@ tab-trackers = Trackers
 # =============================================================================
 
 # Buttons
-button-add = Toevoegen
 button-remove = Verwijderen
 button-accept-fingerprint = Accepteren
 
 # Titles
-title-add-tracker = Tracker toevoegen
-title-edit-tracker = Tracker bewerken
-title-accept-fingerprint = Vingerafdruk accepteren
+title-tracker-add = Tracker toevoegen
+title-tracker-edit = Tracker bewerken
+title-fingerprint-accept = Vingerafdruk accepteren
 
 # Labels
 label-address = Adres:
@@ -1248,8 +1244,7 @@ placeholder-tracker-fingerprint = SHA-256-vingerafdruk (optioneel)
 placeholder-tracker-password = Wachtwoord (optioneel)
 
 # Tooltips
-tooltip-add-tracker = Tracker toevoegen
-tooltip-edit-server-info = Serverinfo bewerken
+tooltip-tracker-add = Tracker toevoegen
 tooltip-tracker-connected = Verbonden
 tooltip-tracker-disconnected = Verbroken
 tooltip-tracker-fingerprint-pending = Vingerafdruk Komt Niet Overeen

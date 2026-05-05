@@ -11,7 +11,6 @@ button-connect = Подключиться
 button-save = Сохранить
 button-create = Создать
 button-edit = Редактировать
-button-update = Обновить
 button-accept-new-certificate = Принять
 button-close = Закрыть
 button-choose-avatar = Выбрать аватар
@@ -28,12 +27,11 @@ button-browse = Обзор
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = Подключение к серверу
-title-add-bookmark = Добавить закладку
-title-edit-server = Редактировать сервер
+title-bookmark-create = Создать закладку
+title-bookmark-edit = Редактировать закладку
 title-broadcast-message = Рассылка
 title-user-create = Создать пользователя
 title-user-edit = Редактировать пользователя
-title-update-user = Обновить пользователя
 title-user-management = Управление Пользователями
 title-group-create = Создать Группу
 title-group-edit = Редактировать Группу
@@ -42,12 +40,12 @@ title-connected = Подключённые
 title-settings = Настройки
 title-bookmarks = Закладки
 title-users = Пользователи
-title-edit-server-info = Редактировать информацию о сервере
+title-server-info-edit = Редактировать информацию о сервере
 title-fingerprint-mismatch = Отпечаток сертификата не совпадает!
 title-server-info = Информация о сервере
 title-user-info = Информация о пользователе
 title-about = О программе
-title-change-password = Изменить пароль
+title-password-change = Изменить пароль
 title-news = Новости
 title-transfers = Передачи
 title-news-create = Создать Публикацию
@@ -258,11 +256,11 @@ tooltip-connection-monitor = Монитор Подключений
 tooltip-server-info = Информация о Сервере
 tooltip-about = О программе
 tooltip-transfers = Передачи
-tooltip-download-all = Скачать всё
+tooltip-files-download-all = Скачать всё
 tooltip-upload = Загрузить
 file-picker-upload-title = Выберите файлы для загрузки
 drop-to-upload = Отпустите для загрузки
-tooltip-clear-inactive = Очистить неактивные
+tooltip-transfers-clear-inactive = Очистить неактивные
 tooltip-transfer-pause = Пауза
 tooltip-transfer-resume = Продолжить
 tooltip-transfer-cancel = Отменить
@@ -272,22 +270,22 @@ tooltip-transfer-move-up = Вверх
 tooltip-transfer-move-down = Вниз
 tooltip-transfer-retry = Повторить
 tooltip-settings = Настройки
-tooltip-hide-bookmarks = Скрыть закладки
-tooltip-show-bookmarks = Показать закладки
-tooltip-hide-user-list = Скрыть список пользователей
-tooltip-show-user-list = Показать список пользователей
+tooltip-bookmarks-hide = Скрыть закладки
+tooltip-bookmarks-show = Показать закладки
+tooltip-user-list-hide = Скрыть список пользователей
+tooltip-user-list-show = Показать список пользователей
 tooltip-disconnect = Отключиться
 tooltip-edit = Редактировать
 tooltip-info = Инфо
 tooltip-message = Сообщение
 tooltip-kick = Выгнать
 tooltip-close = Закрыть
-tooltip-new-tab = Новая вкладка
-tooltip-close-tab = Закрыть вкладку
-tooltip-add-bookmark = Добавить закладку
-tooltip-create-user = Создать пользователя
-tooltip-create-group = Создать Группу
-tooltip-create-news = Создать публикацию
+tooltip-tab-new = Новая вкладка
+tooltip-tab-close = Закрыть вкладку
+tooltip-bookmark-create = Создать закладку
+tooltip-user-create = Создать пользователя
+tooltip-group-create = Создать Группу
+tooltip-news-create = Создать публикацию
 tooltip-delete = Удалить
 tooltip-refresh = Обновить
 context-menu-download = Скачать
@@ -1011,7 +1009,7 @@ unknown-server = Неизвестный сервер
 # Disconnect Dialog
 # =============================================================================
 
-title-disconnect-user-name = Отключить { $nickname }
+title-user-disconnect-name = Отключить { $nickname }
 disconnect-action-kick = Кикнуть
 disconnect-action-ban = Забанить
 disconnect-duration-label = Длительность:
@@ -1247,7 +1245,6 @@ tab-trackers = Трекеры
 # =============================================================================
 
 # Buttons
-button-add = Добавить
 button-remove = Удалить
 button-accept-fingerprint = Принять
 
@@ -1256,9 +1253,9 @@ col-status = Состояние
 col-address = Адрес
 
 # Titles
-title-add-tracker = Добавить трекер
-title-edit-tracker = Изменить трекер
-title-accept-fingerprint = Принять отпечаток
+title-tracker-add = Добавить трекер
+title-tracker-edit = Изменить трекер
+title-fingerprint-accept = Принять отпечаток
 
 # Labels
 label-address = Адрес:
@@ -1272,8 +1269,7 @@ placeholder-tracker-fingerprint = Отпечаток SHA-256 (необязате
 placeholder-tracker-password = Пароль (необязательно)
 
 # Tooltips
-tooltip-add-tracker = Добавить трекер
-tooltip-edit-server-info = Редактировать информацию о сервере
+tooltip-tracker-add = Добавить трекер
 tooltip-tracker-connected = Подключено
 tooltip-tracker-disconnected = Отключено
 tooltip-tracker-fingerprint-pending = Несовпадение отпечатка

@@ -11,7 +11,6 @@ button-connect = Connetti
 button-save = Salva
 button-create = Crea
 button-edit = Modifica
-button-update = Aggiorna
 button-accept-new-certificate = Accetta
 button-close = Chiudi
 button-choose-avatar = Scegli Icona
@@ -28,12 +27,11 @@ button-browse = Sfoglia
 
 title-nexus-bbs = Nexus BBS
 title-connect-to-server = Connetti al server
-title-add-bookmark = Aggiungi segnalibro
-title-edit-server = Modifica server
+title-bookmark-create = Crea segnalibro
+title-bookmark-edit = Modifica segnalibro
 title-broadcast-message = Broadcast
 title-user-create = Crea utente
 title-user-edit = Modifica utente
-title-update-user = Aggiorna utente
 title-user-management = Gestione Utenti
 title-group-create = Crea Gruppo
 title-group-edit = Modifica Gruppo
@@ -42,12 +40,12 @@ title-connected = Connessi
 title-settings = Impostazioni
 title-bookmarks = Segnalibri
 title-users = Utenti
-title-edit-server-info = Modifica Info Server
+title-server-info-edit = Modifica Info Server
 title-fingerprint-mismatch = Impronta certificato non corrispondente!
 title-server-info = Info Server
 title-user-info = Info Utente
 title-about = Informazioni
-title-change-password = Cambia Password
+title-password-change = Cambia Password
 title-news = Notizie
 title-transfers = Trasferimenti
 title-news-create = Crea Pubblicazione
@@ -253,11 +251,11 @@ tooltip-connection-monitor = Monitor Connessioni
 tooltip-server-info = Info Server
 tooltip-about = Informazioni
 tooltip-transfers = Trasferimenti
-tooltip-download-all = Scarica Tutto
+tooltip-files-download-all = Scarica Tutto
 tooltip-upload = Carica
 file-picker-upload-title = Seleziona file da caricare
 drop-to-upload = Rilascia per caricare
-tooltip-clear-inactive = Cancella Inattivi
+tooltip-transfers-clear-inactive = Cancella Inattivi
 tooltip-transfer-pause = Pausa
 tooltip-transfer-resume = Riprendi
 tooltip-transfer-cancel = Annulla
@@ -267,22 +265,22 @@ tooltip-transfer-move-up = Sposta Su
 tooltip-transfer-move-down = Sposta Giù
 tooltip-transfer-retry = Riprova
 tooltip-settings = Impostazioni
-tooltip-hide-bookmarks = Nascondi segnalibri
-tooltip-show-bookmarks = Mostra segnalibri
-tooltip-hide-user-list = Nascondi Lista Utenti
-tooltip-show-user-list = Mostra Lista Utenti
+tooltip-bookmarks-hide = Nascondi segnalibri
+tooltip-bookmarks-show = Mostra segnalibri
+tooltip-user-list-hide = Nascondi Lista Utenti
+tooltip-user-list-show = Mostra Lista Utenti
 tooltip-disconnect = Disconnetti
 tooltip-edit = Modifica
 tooltip-info = Info
 tooltip-message = Messaggio
 tooltip-kick = Espelli
 tooltip-close = Chiudi
-tooltip-new-tab = Nuova Scheda
-tooltip-close-tab = Chiudi Scheda
-tooltip-add-bookmark = Aggiungi Segnalibro
-tooltip-create-user = Crea Utente
-tooltip-create-group = Crea Gruppo
-tooltip-create-news = Crea Pubblicazione
+tooltip-tab-new = Nuova Scheda
+tooltip-tab-close = Chiudi Scheda
+tooltip-bookmark-create = Crea Segnalibro
+tooltip-user-create = Crea Utente
+tooltip-group-create = Crea Gruppo
+tooltip-news-create = Crea Pubblicazione
 tooltip-delete = Elimina
 tooltip-refresh = Aggiorna
 context-menu-download = Scarica
@@ -997,7 +995,7 @@ unknown-server = Server sconosciuto
 # Disconnect Dialog
 # =============================================================================
 
-title-disconnect-user-name = Disconnetti { $nickname }
+title-user-disconnect-name = Disconnetti { $nickname }
 disconnect-action-kick = Espelli
 disconnect-action-ban = Banna
 disconnect-duration-label = Durata:
@@ -1229,14 +1227,13 @@ tab-trackers = Tracker
 # =============================================================================
 
 # Buttons
-button-add = Aggiungi
 button-remove = Rimuovi
 button-accept-fingerprint = Accetta
 
 # Titles
-title-add-tracker = Aggiungi tracker
-title-edit-tracker = Modifica tracker
-title-accept-fingerprint = Accetta impronta
+title-tracker-add = Aggiungi tracker
+title-tracker-edit = Modifica tracker
+title-fingerprint-accept = Accetta impronta
 
 # Labels
 label-address = Indirizzo:
@@ -1250,8 +1247,7 @@ placeholder-tracker-fingerprint = Impronta SHA-256 (opzionale)
 placeholder-tracker-password = Password (opzionale)
 
 # Tooltips
-tooltip-add-tracker = Aggiungi tracker
-tooltip-edit-server-info = Modifica info del server
+tooltip-tracker-add = Aggiungi tracker
 tooltip-tracker-connected = Connesso
 tooltip-tracker-disconnected = Disconnesso
 tooltip-tracker-fingerprint-pending = Impronta Non Corrispondente

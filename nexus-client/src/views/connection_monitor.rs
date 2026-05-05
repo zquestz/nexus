@@ -10,33 +10,29 @@ use std::hash::{Hash, Hasher};
 use crate::widgets::{LazyContextMenu, MenuButton};
 use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, column, container, lazy, row, scrollable, table, tooltip};
-use iced::{Center, Element, Fill, Right, Theme, alignment};
+use iced::{Center, Element, Fill, Length, Theme, alignment};
 use iced_aw::{TabLabel, Tabs};
 use nexus_common::protocol::{ConnectionInfo, TransferInfo};
 
 use super::constants::{PERMISSION_BAN_CREATE, PERMISSION_USER_INFO, PERMISSION_USER_KICK};
+use super::helpers::sort_icon_or_placeholder;
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
     CONTENT_MAX_WIDTH, CONTENT_PADDING, CONTEXT_MENU_ITEM_PADDING, CONTEXT_MENU_MIN_WIDTH,
     CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_HEIGHT, CONTEXT_MENU_SEPARATOR_MARGIN,
     HEADING_BUTTON_PADDING, ICON_SIZE, NO_SPACING, SCROLLBAR_PADDING, SEPARATOR_HEIGHT,
-    SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN, SORT_ICON_SIZE, SPACER_SIZE_LARGE,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TAB_LABEL_PADDING, TEXT_SIZE, TITLE_SIZE,
-    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat,
-    content_background_style, context_menu_container_style, error_text_style,
-    menu_button_danger_style, menu_button_style, muted_text_style, separator_style, shaped_text,
-    shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
+    SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN, SPACER_SIZE_LARGE, SPACER_SIZE_MEDIUM,
+    SPACER_SIZE_SMALL, TAB_LABEL_PADDING, TEXT_SIZE, TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING,
+    TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, chat, content_background_style,
+    context_menu_container_style, error_text_style, menu_button_danger_style, menu_button_style,
+    muted_text_style, separator_style, shaped_text, shaped_text_wrapped, tooltip_container_style,
+    transparent_icon_button_style,
 };
 use crate::types::{
     ConnectionMonitorSortColumn, ConnectionMonitorState, ConnectionMonitorTab, Message,
     ServerConnection, TransferSortColumn,
 };
-
-// Column width for fixed-size time column (connections table)
-const TIME_COLUMN_WIDTH: f32 = 80.0;
-// Column width for direction column (transfers table - icon header and icon content)
-const DIRECTION_COLUMN_WIDTH: f32 = 30.0;
 
 /// Permissions for connection monitor context menu
 #[derive(Clone, Copy, Hash)]
@@ -284,20 +280,10 @@ fn lazy_connection_table(deps: ConnectionTableDeps) -> Element<'static, Message>
 
     lazy(deps, move |deps| {
         // Nickname column header
-        let nickname_sort_icon: Element<'static, Message> =
-            if deps.sort_column == ConnectionMonitorSortColumn::Nickname {
-                let sort_icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                sort_icon
-                    .size(SORT_ICON_SIZE)
-                    .style(muted_text_style)
-                    .into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let nickname_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == ConnectionMonitorSortColumn::Nickname,
+            deps.sort_ascending,
+        );
         let nickname_header_content: Element<'static, Message> = row![
             shaped_text(t("col-nickname"))
                 .size(TEXT_SIZE)
@@ -312,7 +298,7 @@ fn lazy_connection_table(deps: ConnectionTableDeps) -> Element<'static, Message>
         .into();
         let nickname_header: Element<'static, Message> = button(nickname_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::ConnectionMonitorSortBy(
                 ConnectionMonitorSortColumn::Nickname,
@@ -357,23 +343,13 @@ fn lazy_connection_table(deps: ConnectionTableDeps) -> Element<'static, Message>
                 )
             })
         })
-        .width(Fill);
+        .width(Length::FillPortion(1));
 
         // Username column header
-        let username_sort_icon: Element<'static, Message> =
-            if deps.sort_column == ConnectionMonitorSortColumn::Username {
-                let sort_icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                sort_icon
-                    .size(SORT_ICON_SIZE)
-                    .style(muted_text_style)
-                    .into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let username_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == ConnectionMonitorSortColumn::Username,
+            deps.sort_ascending,
+        );
         let username_header_content: Element<'static, Message> = row![
             shaped_text(t("col-username"))
                 .size(TEXT_SIZE)
@@ -388,7 +364,7 @@ fn lazy_connection_table(deps: ConnectionTableDeps) -> Element<'static, Message>
         .into();
         let username_header: Element<'static, Message> = button(username_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::ConnectionMonitorSortBy(
                 ConnectionMonitorSortColumn::Username,
@@ -430,23 +406,13 @@ fn lazy_connection_table(deps: ConnectionTableDeps) -> Element<'static, Message>
                 )
             })
         })
-        .width(Fill);
+        .width(Length::FillPortion(1));
 
         // IP Address column header
-        let ip_sort_icon: Element<'static, Message> =
-            if deps.sort_column == ConnectionMonitorSortColumn::Ip {
-                let sort_icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                sort_icon
-                    .size(SORT_ICON_SIZE)
-                    .style(muted_text_style)
-                    .into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let ip_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == ConnectionMonitorSortColumn::Ip,
+            deps.sort_ascending,
+        );
         let ip_header_content: Element<'static, Message> = row![
             shaped_text(t("col-ip-address"))
                 .size(TEXT_SIZE)
@@ -461,7 +427,7 @@ fn lazy_connection_table(deps: ConnectionTableDeps) -> Element<'static, Message>
         .into();
         let ip_header: Element<'static, Message> = button(ip_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::ConnectionMonitorSortBy(
                 ConnectionMonitorSortColumn::Ip,
@@ -489,23 +455,13 @@ fn lazy_connection_table(deps: ConnectionTableDeps) -> Element<'static, Message>
                 )
             })
         })
-        .width(Fill);
+        .width(Length::FillPortion(1));
 
         // Connected time column header
-        let connected_sort_icon: Element<'static, Message> =
-            if deps.sort_column == ConnectionMonitorSortColumn::Connected {
-                let sort_icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                sort_icon
-                    .size(SORT_ICON_SIZE)
-                    .style(muted_text_style)
-                    .into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let connected_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == ConnectionMonitorSortColumn::Connected,
+            deps.sort_ascending,
+        );
         let connected_header_content: Element<'static, Message> = row![
             shaped_text(t("col-time"))
                 .size(TEXT_SIZE)
@@ -515,28 +471,34 @@ fn lazy_connection_table(deps: ConnectionTableDeps) -> Element<'static, Message>
             Space::new().width(SORT_ICON_LEFT_MARGIN),
             connected_sort_icon,
             Space::new().width(SORT_ICON_RIGHT_MARGIN),
+            // Trailing gap so the rightmost column doesn't abut the scrollbar.
+            Space::new().width(SCROLLBAR_PADDING),
         ]
         .align_y(Center)
         .into();
         let connected_header: Element<'static, Message> = button(connected_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::ConnectionMonitorSortBy(
                 ConnectionMonitorSortColumn::Connected,
             ))
             .into();
 
-        // Connected time column
+        // Connected time column. Trailing Space matches the header so the
+        // rightmost column doesn't abut the scrollbar.
         let connected_column = table::column(connected_header, |conn: ConnectionInfo| {
             let time_str = format_elapsed_time(conn.login_time);
-            shaped_text(time_str)
-                .size(TEXT_SIZE)
-                .style(muted_text_style)
-                .wrapping(Wrapping::Word)
+            row![
+                shaped_text(time_str)
+                    .size(TEXT_SIZE)
+                    .style(muted_text_style)
+                    .wrapping(Wrapping::Word),
+                Space::new().width(SCROLLBAR_PADDING),
+            ]
+            .align_y(Center)
         })
-        .width(TIME_COLUMN_WIDTH)
-        .align_x(Right);
+        .width(Length::Shrink);
 
         // Build the table
         let columns = [
@@ -563,20 +525,10 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
         let shared_color = deps.shared_color;
 
         // User column header
-        let user_sort_icon: Element<'static, Message> =
-            if deps.sort_column == TransferSortColumn::User {
-                let sort_icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                sort_icon
-                    .size(SORT_ICON_SIZE)
-                    .style(muted_text_style)
-                    .into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let user_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == TransferSortColumn::User,
+            deps.sort_ascending,
+        );
         let user_header_content: Element<'static, Message> = row![
             shaped_text(t("col-nickname"))
                 .size(TEXT_SIZE)
@@ -591,7 +543,7 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
         .into();
         let user_header: Element<'static, Message> = button(user_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::ConnectionMonitorTransferSortBy(
                 TransferSortColumn::User,
@@ -626,23 +578,13 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
                 build_transfer_context_menu(nickname_for_value.clone())
             })
         })
-        .width(Fill);
+        .width(Length::FillPortion(1));
 
         // IP Address column header
-        let ip_sort_icon: Element<'static, Message> = if deps.sort_column == TransferSortColumn::Ip
-        {
-            let sort_icon = if deps.sort_ascending {
-                icon::down_dir()
-            } else {
-                icon::up_dir()
-            };
-            sort_icon
-                .size(SORT_ICON_SIZE)
-                .style(muted_text_style)
-                .into()
-        } else {
-            Space::new().width(SORT_ICON_SIZE).into()
-        };
+        let ip_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == TransferSortColumn::Ip,
+            deps.sort_ascending,
+        );
         let ip_header_content: Element<'static, Message> = row![
             shaped_text(t("col-ip-address"))
                 .size(TEXT_SIZE)
@@ -657,7 +599,7 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
         .into();
         let ip_header: Element<'static, Message> = button(ip_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::ConnectionMonitorTransferSortBy(
                 TransferSortColumn::Ip,
@@ -678,23 +620,13 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
                 build_transfer_context_menu(ip_for_value.clone())
             })
         })
-        .width(Fill);
+        .width(Length::FillPortion(1));
 
         // Direction column header (use exchange icon instead of text)
-        let direction_sort_icon: Element<'static, Message> =
-            if deps.sort_column == TransferSortColumn::Direction {
-                let sort_icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                sort_icon
-                    .size(SORT_ICON_SIZE)
-                    .style(muted_text_style)
-                    .into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let direction_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == TransferSortColumn::Direction,
+            deps.sort_ascending,
+        );
         let direction_header_content: Element<'static, Message> = row![
             icon::exchange().size(TEXT_SIZE).style(muted_text_style),
             Space::new().width(SPACER_SIZE_MEDIUM),
@@ -704,7 +636,7 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
         .into();
         let direction_header: Element<'static, Message> = button(direction_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::ConnectionMonitorTransferSortBy(
                 TransferSortColumn::Direction,
@@ -721,23 +653,13 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
                 icon::upload().size(TEXT_SIZE)
             }
         })
-        .width(DIRECTION_COLUMN_WIDTH);
+        .width(Length::Shrink);
 
         // Path column header
-        let path_sort_icon: Element<'static, Message> =
-            if deps.sort_column == TransferSortColumn::Path {
-                let sort_icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                sort_icon
-                    .size(SORT_ICON_SIZE)
-                    .style(muted_text_style)
-                    .into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let path_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == TransferSortColumn::Path,
+            deps.sort_ascending,
+        );
         let path_header_content: Element<'static, Message> = row![
             shaped_text(t("col-path"))
                 .size(TEXT_SIZE)
@@ -752,7 +674,7 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
         .into();
         let path_header: Element<'static, Message> = button(path_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::ConnectionMonitorTransferSortBy(
                 TransferSortColumn::Path,
@@ -773,23 +695,13 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
                 build_transfer_context_menu(path_for_value.clone())
             })
         })
-        .width(Fill);
+        .width(Length::FillPortion(1));
 
         // Progress column header
-        let progress_sort_icon: Element<'static, Message> =
-            if deps.sort_column == TransferSortColumn::Progress {
-                let sort_icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                sort_icon
-                    .size(SORT_ICON_SIZE)
-                    .style(muted_text_style)
-                    .into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let progress_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == TransferSortColumn::Progress,
+            deps.sort_ascending,
+        );
         let progress_header_content: Element<'static, Message> = row![
             shaped_text(t("col-progress"))
                 .size(TEXT_SIZE)
@@ -804,7 +716,7 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
         .into();
         let progress_header: Element<'static, Message> = button(progress_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::ConnectionMonitorTransferSortBy(
                 TransferSortColumn::Progress,
@@ -833,23 +745,13 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
             .gap(TOOLTIP_GAP)
             .padding(TOOLTIP_PADDING)
         })
-        .width(Fill);
+        .width(Length::Shrink);
 
         // Time column header
-        let time_sort_icon: Element<'static, Message> =
-            if deps.sort_column == TransferSortColumn::Time {
-                let sort_icon = if deps.sort_ascending {
-                    icon::down_dir()
-                } else {
-                    icon::up_dir()
-                };
-                sort_icon
-                    .size(SORT_ICON_SIZE)
-                    .style(muted_text_style)
-                    .into()
-            } else {
-                Space::new().width(SORT_ICON_SIZE).into()
-            };
+        let time_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == TransferSortColumn::Time,
+            deps.sort_ascending,
+        );
         let time_header_content: Element<'static, Message> = row![
             shaped_text(t("col-time"))
                 .size(TEXT_SIZE)
@@ -859,27 +761,34 @@ fn lazy_transfer_table(deps: TransferTableDeps) -> Element<'static, Message> {
             Space::new().width(SORT_ICON_LEFT_MARGIN),
             time_sort_icon,
             Space::new().width(SORT_ICON_RIGHT_MARGIN),
+            // Trailing gap so the rightmost column doesn't abut the scrollbar.
+            Space::new().width(SCROLLBAR_PADDING),
         ]
         .align_y(Center)
         .into();
         let time_header: Element<'static, Message> = button(time_header_content)
             .padding(NO_SPACING)
-            .width(Fill)
+            .width(Length::Shrink)
             .style(transparent_icon_button_style)
             .on_press(Message::ConnectionMonitorTransferSortBy(
                 TransferSortColumn::Time,
             ))
             .into();
 
-        // Time column
+        // Time column. Trailing Space matches the header so the rightmost
+        // column doesn't abut the scrollbar.
         let time_column = table::column(time_header, |transfer: TransferInfo| {
             let time_str = format_elapsed_time(transfer.started_at);
-            shaped_text(time_str)
-                .size(TEXT_SIZE)
-                .style(muted_text_style)
-                .wrapping(Wrapping::Word)
+            row![
+                shaped_text(time_str)
+                    .size(TEXT_SIZE)
+                    .style(muted_text_style)
+                    .wrapping(Wrapping::Word),
+                Space::new().width(SCROLLBAR_PADDING),
+            ]
+            .align_y(Center)
         })
-        .width(Fill);
+        .width(Length::Shrink);
 
         // Build the table
         let columns = [

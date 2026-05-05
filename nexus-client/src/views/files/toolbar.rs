@@ -223,7 +223,7 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
                     .padding(TOOLBAR_BUTTON_PADDING)
                     .style(transparent_icon_button_style)
                     .on_press(Message::FileDownloadAll(state.current_path.to_string())),
-                container(shaped_text(t("tooltip-download-all")).size(TOOLTIP_TEXT_SIZE))
+                container(shaped_text(t("tooltip-files-download-all")).size(TOOLTIP_TEXT_SIZE))
                     .padding(TOOLTIP_BACKGROUND_PADDING)
                     .style(tooltip_container_style),
                 tooltip::Position::Bottom,

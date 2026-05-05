@@ -241,7 +241,7 @@ pub fn files_view<'a>(
                 .on_press(Message::FileTabNew)
                 .padding(HEADING_BUTTON_PADDING)
                 .style(transparent_icon_button_style),
-            container(shaped_text(t("tooltip-new-tab")).size(TOOLTIP_TEXT_SIZE))
+            container(shaped_text(t("tooltip-tab-new")).size(TOOLTIP_TEXT_SIZE))
                 .padding(TOOLTIP_BACKGROUND_PADDING)
                 .style(tooltip_container_style),
             tooltip::Position::Top,
