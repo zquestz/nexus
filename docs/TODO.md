@@ -146,6 +146,20 @@ tracker-advertised entry.
   on first successful query).
 - Stored in `~/.config/nexus/config.json` under
   `client_trackers: Vec<ClientTracker>`.
+- **Fingerprint normalization** — mirror the
+  `ServerBookmark.certificate_fingerprint` invariant from
+  `types/bookmark.rs`:
+  - `Some("")` and `Some(<whitespace>)` always collapse to `None` so
+    the stored representation is `None | Some(<trimmed>)`.
+  - Add a `normalize_tracker_fingerprint(Option<String>) -> Option<String>`
+    helper alongside `ClientTracker` (or share the existing helper if
+    the bookmark version is generalized first). Use it at every
+    mutation site: input handler, form save, TOFU pin commit on
+    successful first query, AcceptFingerprint accept path.
+  - Add `#[serde(default, deserialize_with = "deserialize_normalized_fingerprint")]`
+    to the field so hand-edited or pre-normalization configs collapse
+    empty strings to `None` on load. Stage 1 then never has to
+    disambiguate "empty string" from "no pin".
 
 **Header button:**
 
@@ -182,11 +196,32 @@ tracker-advertised entry.
   (tooltips "Edit", "Remove", "Refresh"); status text right-aligned.
 - **Search row**: full-width `text_input`, live filter (no submit
   step), placeholder "Search servers…", no magnifier button.
-- **Listing**: 3 sortable columns — Name (Fill), Description (Fill),
-  Users (fixed width, with sort-arrow space). Default sort Name asc
-  (matches wire order). Sort arrows use
-  `icon::down_dir()` / `icon::up_dir()` matching the files table.
-  No context menu in v1.
+- **Listing**: 3 sortable columns — Name, Description, Users. Default
+  sort Name asc (matches wire order). Right-click context menu
+  with three items, no separators (similar-weight actions, no
+  destructive item to set apart):
+  - **Connect** — same as left-clicking Name (opens Connect dialog
+    pre-filled per the click-to-connect section below).
+  - **Bookmark** — opens the Bookmark Add dialog pre-filled with
+    name / address / port / fingerprint from this entry. User
+    finishes filling and saves; this never opens Connect.
+  - **Copy URI** — copies a `nexus://` URI for this entry to the
+    clipboard. Shows the standard "copied to clipboard" toast
+    (terse subject-first form per existing locale convention).
+    Follows the project-wide table-width convention (CLAUDE.md "Table
+    Consistency"):
+  - All header buttons `.width(Length::Shrink)` so the sort icon hugs
+    the column-name text.
+  - Variable-content columns (Name, Description) use
+    `Length::FillPortion(1)` so they share leftover space.
+  - Fixed/short-content column (Users) uses `Length::Shrink`.
+  - **Users is rightmost** → trailing
+    `Space::new().width(SCROLLBAR_PADDING)` in both the header content
+    row AND the cell render closure so content doesn't abut the
+    scrollbar.
+  - Sort indicators via the shared
+    `views/helpers.rs::sort_icon_or_placeholder(is_active, is_ascending)`
+    helper — do NOT inline the icon-vs-placeholder match.
 
 **State variants on the toolbar row:**
 
@@ -229,12 +264,59 @@ stuck after a failed fetch).
 - Last-selected tracker remembered across panel close / reopen
   within the session (in-memory).
 
+**Cache structure:**
+
+- `HashMap<Uuid, Option<Result<Vec<ServerEntry>, String>>>` keyed by
+  `ClientTracker.id`.
+  - Outer `Option`: `None` while a fetch is in flight (drives the
+    `Loading…` status and disables `[Refresh]`); `Some(_)` once
+    settled.
+  - Inner `Result`: `Ok(entries)` on success, `Err(localized
+message)` on failure.
+- Removing a tracker drops its cache entry (and aborts any in-flight
+  display-update — see below).
+- Editing a tracker drops its cache entry (per the Edit section).
+
+**In-flight fetch behaviour:**
+
+- Switching trackers mid-fetch does **not** cancel the in-flight
+  query. The query completes and writes its result into the cache
+  for the originating tracker id. If the user switches back to that
+  tracker before / after the result lands, they see the populated
+  cache instantly with no re-fetch.
+- The currently-selected tracker is the source of truth for what's
+  displayed: a stale result writing into the cache for a different
+  tracker doesn't affect the visible list.
+- If the originating tracker was removed before the query
+  completed, the result is silently discarded (no cache entry to
+  write into).
+
+**Status text on tracker switch:**
+
+- Switching the dropdown shows the new tracker's cached state
+  immediately:
+  - Cached `Ok(entries)` → status reads `N servers`, table renders.
+  - Cached `Err(msg)` → status reads `Error: <msg>` in red, error
+    message replaces the table.
+  - No cache entry → status reads `Loading…` muted while the
+    auto-fetch runs.
+
+**After Add succeeds:**
+
+- Panel switches back to List mode with the newly-added tracker
+  selected in the dropdown. An auto-fetch fires (no cache entry
+  yet), status shows `Loading…`. Same applies after Add for the
+  first-ever tracker — the empty-state message is replaced by the
+  populated dropdown and a loading status.
+
 **Empty / error states:**
 
-- **No trackers configured**: empty-state message in the list area
-  pointing at the `[+]` button (matches how other list views
-  surface empty-state copy in the list area, not as a separate
-  empty-state CTA).
+- **No trackers configured**: empty-state copy reads simply
+  `No trackers configured.` in the list area. No CTA arrow / button
+  pointing at `[+]` — the `[+]` is right there in the title row,
+  the message is just a flat statement of fact. Matches how other
+  list views surface empty-state copy. New i18n key:
+  `empty-no-trackers-configured`, 13 locales.
 - **Tracker fetch failed**: localized error message in place of the
   table (transport, auth, rate-limit). Status text in the toolbar
   also shows the same error in red.
@@ -254,13 +336,38 @@ overlay).
 1. **List** — main view (toolbar + search + table).
 2. **Add** — full-panel form. Fields in tab order: Name → Address →
    Port (`NumberInput`, **skipped by Tab** per CLAUDE.md "UI
-   Quirks" note) → Password (secure) → Fingerprint. `Cancel` +
-   `Save` buttons. `is_submitting` guard. Validate-then-submit on
-   Enter.
+   Quirks" note) → Password (secure) → Fingerprint. Footer buttons
+   are `[Cancel] [Save]` — submit is **Save** (per the project-wide
+   button-verb convention; trackers are pointer-shaped at the title
+   level — title says "Add Tracker" — but the action button is the
+   universal "Save" used by every other form except File New
+   Directory). `is_submitting` guard. Validate-then-submit on
+   Enter. Submit-time validation:
+   - Name required (non-empty after trim).
+   - Address required (non-empty after trim).
+   - Port: always valid (`NumberInput<u16>`).
+   - Password: optional, no format validation.
+   - Fingerprint: optional. Trim, treat empty as unpinned. Non-empty
+     must pass `nexus_common::fingerprint::is_canonical_fingerprint`
+     — same validator the Phase A Connect/Bookmark forms use. On
+     failure, show `err-fingerprint-invalid` (i18n key already
+     exists in 13 locales).
 3. **Edit** — same fields as Add, all editable (including address
    and port — the user might want to point an existing entry at a
    different tracker without losing other state). Pre-populated
    with current values.
+   - **Trust the user.** Changing address/port doesn't auto-clear or
+     warn about the fingerprint pin. If the pin is now wrong for the
+     new host, the next fetch will surface a Stage 1 mismatch dialog
+     and the user can resolve it there. Same applies to other
+     edits — validation surfaces format errors; we don't second-guess
+     the user's intent.
+   - **Editing a tracker drops its cache entry** so a fresh query
+     fires on the next selection. Editing the password (gated
+     tracker), address/port (different host), or fingerprint
+     (different pin) all change the meaningful identity of the
+     tracker; the cached listing was for the old configuration and
+     should not survive.
 4. **ConfirmRemove** — confirmation view with the tracker's display
    name. `Cancel` + `Remove` buttons.
 5. **AcceptFingerprint** — Stage 1 TOFU mismatch dialog, mirroring
@@ -269,6 +376,12 @@ overlay).
    received fingerprints in monospace multiline form, `Cancel` +
    `Accept` buttons. Cancel returns to List with the mismatch error
    shown in the toolbar status text next to the pulldown.
+   - **Distinct message namespace** from the BBS-admin side. The
+     admin panel already has `Message::AcceptFingerprintConfirm` /
+     `…Cancel` for _server_ tracker registrations. The discovery
+     panel needs its own variants — e.g.
+     `Message::TrackerDiscoveryAcceptFingerprint*` — so dispatch
+     doesn't conflate the two flows. Don't reuse the admin keys.
 
 **Keyboard shortcuts:**
 
@@ -276,22 +389,31 @@ overlay).
   ConfirmRemove / AcceptFingerprint).
 - **Enter** on a text_input → validate-then-submit (handler routes
   to `Validate*` if incomplete, `*Pressed` if complete).
-- **Tab** → cycles between text inputs only; the Port `NumberInput`
-  is skipped (consumes Tab internally per CLAUDE.md UI Quirks).
+- **Tab** → cycles between text inputs only (Name → Address →
+  Password → Fingerprint → Name). The Port `NumberInput` is skipped
+  (consumes Tab internally per CLAUDE.md UI Quirks). The Cancel /
+  Save buttons are mouse-or-Enter only — Tab does not step into
+  them.
 
 **Click-to-connect from listing:**
 
 - Clicking the **Name** column on a server row opens the existing
   Connect dialog (`views/connection.rs`) with name / address /
   port / fingerprint pre-filled from the tracker entry.
-- The Add Bookmark checkbox in the Connect dialog defaults
-  **checked** when launched from a tracker entry (the user already
-  curated this from a directory; saving as a bookmark is the
-  expected default).
+- **Add Bookmark checkbox is NOT auto-checked.** Bookmarking is the
+  user's deliberate choice; opt-out (the user has to remember to
+  uncheck) is wrong UX. The user can tick the box themselves if
+  they want to save the entry as a bookmark.
 - The tracker-supplied fingerprint is a display aid only; the
   BBS-side two-stage TOFU runs from scratch when the user actually
   connects (per spec: "The listed fingerprint is a display aid,
   not a trust assertion").
+- **Plumbing**: a new `Message::OpenConnectFromTracker(ServerEntry)`
+  (or equivalent) writes the four pre-fill fields into
+  `ConnectionFormState` (via the existing field-change paths or a
+  dedicated pre-fill helper), then transitions to the Connect view.
+  Does NOT mutate `add_bookmark` — it stays at its `Default::default()`
+  value of `false`.
 
 **Network layer (`nexus-client/src/network/tracker_query.rs`):**
 
@@ -335,5 +457,38 @@ shared label is unambiguous in context.
   only.
 - No timer-based auto-refresh.
 - No persistent on-disk cache of fetched server lists.
-- No context menu on the listing (right-click → connect / copy
-  URI / save as bookmark) — possible future addition.
+- No automatic retry on fetch failure — user hits `[Refresh]`.
+
+**Implementation order:**
+
+Each step should compile and partially work before moving on; the
+panel becomes incrementally more useful as you go.
+
+1. **Config layer** — `ClientTracker` struct, `Vec<ClientTracker>`
+   in `Config`, serde with the normalize-on-deserialize pin.
+2. **Panel state** — `TrackerBrowserState` + `TrackerBrowserMode`
+   enum, cache `HashMap<Uuid, Option<Result<…>>>`.
+3. **List view shell** — toolbar (pulldown + Edit/Remove/Refresh +
+   status text), search row, listing table with the column-width
+   convention. No data flowing yet — render against a stubbed
+   empty cache.
+4. **Add / Edit / Remove flows** — full-panel forms, validation
+   (name + address required, fingerprint canonical-or-empty),
+   `is_submitting` guard, tab cycle, Save persists to config.
+5. **Network layer** — `nexus-client/src/network/tracker_query.rs`
+   one-shot `query_tracker(tracker, locale)`. Wire it to a
+   `Message::TrackerQueryResult { tracker_id, result }` handler
+   that writes into the cache.
+6. **Auto-fetch + cache wiring** — fetch on panel open / dropdown
+   change / Refresh; in-flight handling per the cache-structure
+   section above.
+7. **AcceptFingerprint mode** — Stage 1 mismatch dialog, accept
+   path commits the new pin and re-queries.
+8. **Click-to-connect + context menu** — Name click and "Connect"
+   menu item open Connect with pre-filled fields (no
+   `add_bookmark` change). "Bookmark" menu item opens the Bookmark
+   Add dialog pre-filled. "Copy URI" copies `nexus://` to
+   clipboard.
+9. **i18n keys** — 13 locales for everything new.
+10. **Docs** — new chapter under `docs/client/` covering the panel
+    from the user's perspective.
