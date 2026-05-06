@@ -5,7 +5,7 @@ use iced::widget::markdown;
 use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
-use crate::types::{ActivePanel, Message, PendingRequests};
+use crate::types::{ActivePanel, InputId, Message, PendingRequests};
 
 impl NexusApp {
     // ==================== Active Panel Helpers ====================
@@ -145,19 +145,66 @@ impl NexusApp {
     ///
     /// Transfers is a global panel (not per-connection) that shows all
     /// file transfers across all connections. It can be opened even when
-    /// not connected to any server.
+    /// not connected to any server. Clicking the toolbar button while
+    /// Transfers is already active is a no-op (matches the behavior of
+    /// every other toolbar panel — Settings / Broadcast / News / Files /
+    /// Connection Monitor / User Management).
     pub fn handle_toggle_transfers(&mut self) -> Task<Message> {
         if self.active_panel() == ActivePanel::Transfers {
-            self.handle_show_chat_view()
-        } else {
-            self.set_active_panel(ActivePanel::Transfers);
-            Task::none()
+            return Task::none();
         }
+        self.set_active_panel(ActivePanel::Transfers);
+        Task::none()
     }
 
     /// Close Transfers panel
     pub fn handle_close_transfers(&mut self) -> Task<Message> {
         self.handle_show_chat_view()
+    }
+
+    // ==================== Tracker Browser ====================
+
+    /// Toggle the tracker discovery panel.
+    ///
+    /// The tracker discovery panel is global (not per-connection) and
+    /// always available regardless of connection state — every user
+    /// manages their own client tracker list. Clicking the toolbar
+    /// button while the panel is already active is a no-op (matches
+    /// every other toolbar panel).
+    ///
+    /// On open, if no tracker is currently selected (first open in the
+    /// session, or the previously-selected tracker has been removed),
+    /// pick the alphabetically-first configured tracker so the panel
+    /// surfaces something immediately. Last-selected is preserved
+    /// across close/reopen within the session.
+    pub fn handle_toggle_tracker_browser(&mut self) -> Task<Message> {
+        if self.active_panel() == ActivePanel::TrackerBrowser {
+            return Task::none();
+        }
+        // Drop a stale selection (the row may have been removed
+        // while the panel was closed).
+        if let Some(id) = self.tracker_browser.selected_tracker
+            && self.config.get_tracker(id).is_none()
+        {
+            self.tracker_browser.selected_tracker = None;
+        }
+        if self.tracker_browser.selected_tracker.is_none()
+            && let Some(id) = self
+                .config
+                .client_trackers
+                .iter()
+                .min_by_key(|t| t.name.to_lowercase())
+                .map(|t| t.id)
+        {
+            self.tracker_browser.selected_tracker = Some(id);
+            self.tracker_browser.search_input.clear();
+        }
+        self.set_active_panel(ActivePanel::TrackerBrowser);
+        // Auto-focus the search input on open, mirroring the
+        // auto-focus convention used by other forms (Group Create
+        // → name, User Create → username, etc.).
+        self.focused_field = InputId::TrackerBrowserSearch;
+        iced::widget::operation::focus(iced::widget::Id::from(InputId::TrackerBrowserSearch))
     }
 
     // ==================== Sidebar Toggles ====================

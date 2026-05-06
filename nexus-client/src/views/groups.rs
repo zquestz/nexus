@@ -470,6 +470,7 @@ fn create_view<'a>(
     let name_input = text_input(&t("group-form-name"), &gm.name)
         .on_input(Message::GroupManagementNameChanged)
         .on_submit(submit_action)
+        .id(Id::from(InputId::CreateGroupName))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 

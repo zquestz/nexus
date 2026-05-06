@@ -600,32 +600,10 @@ pub fn add_tracker_view(state: &TrackerManagementState) -> Element<'_, Message> 
         .into(),
     );
 
-    // Fingerprint (optional)
-    let fingerprint_input = text_input(
-        &t("placeholder-tracker-fingerprint"),
-        &state.add_fingerprint,
-    )
-    .on_input(Message::AddTrackerFingerprintChanged)
-    .on_submit(submit_action.clone())
-    .id(Id::from(InputId::AddTrackerFingerprint))
-    .padding(INPUT_PADDING)
-    .size(TEXT_SIZE)
-    .font(MONOSPACE_FONT)
-    .width(Fill);
-    items.push(
-        row![
-            shaped_text(t("label-fingerprint")).size(TEXT_SIZE),
-            Space::new().width(ELEMENT_SPACING),
-            fingerprint_input
-        ]
-        .align_y(Center)
-        .into(),
-    );
-
     // Password (optional)
     let password_input = text_input(&t("placeholder-tracker-password"), &state.add_password)
         .on_input(Message::AddTrackerPasswordChanged)
-        .on_submit(submit_action)
+        .on_submit(submit_action.clone())
         .id(Id::from(InputId::AddTrackerPassword))
         .secure(true)
         .padding(INPUT_PADDING)
@@ -636,6 +614,29 @@ pub fn add_tracker_view(state: &TrackerManagementState) -> Element<'_, Message> 
             shaped_text(t("label-tracker-password")).size(TEXT_SIZE),
             Space::new().width(ELEMENT_SPACING),
             password_input
+        ]
+        .align_y(Center)
+        .into(),
+    );
+
+    // Fingerprint (optional). Last text input — consumes
+    // `submit_action`. Conventionally last across both tracker forms.
+    let fingerprint_input = text_input(
+        &t("placeholder-tracker-fingerprint"),
+        &state.add_fingerprint,
+    )
+    .on_input(Message::AddTrackerFingerprintChanged)
+    .on_submit(submit_action)
+    .id(Id::from(InputId::AddTrackerFingerprint))
+    .padding(INPUT_PADDING)
+    .size(TEXT_SIZE)
+    .font(MONOSPACE_FONT)
+    .width(Fill);
+    items.push(
+        row![
+            shaped_text(t("label-fingerprint")).size(TEXT_SIZE),
+            Space::new().width(ELEMENT_SPACING),
+            fingerprint_input
         ]
         .align_y(Center)
         .into(),
@@ -800,29 +801,10 @@ pub fn edit_tracker_view(state: &TrackerManagementState) -> Element<'_, Message>
         .into(),
     );
 
-    // Fingerprint (optional)
-    let fingerprint_input = text_input(&t("placeholder-tracker-fingerprint"), fingerprint)
-        .on_input(Message::EditTrackerFingerprintChanged)
-        .on_submit(submit_action.clone())
-        .id(Id::from(InputId::EditTrackerFingerprint))
-        .padding(INPUT_PADDING)
-        .size(TEXT_SIZE)
-        .font(MONOSPACE_FONT)
-        .width(Fill);
-    items.push(
-        row![
-            shaped_text(t("label-fingerprint")).size(TEXT_SIZE),
-            Space::new().width(ELEMENT_SPACING),
-            fingerprint_input
-        ]
-        .align_y(Center)
-        .into(),
-    );
-
     // Password (optional)
     let password_input = text_input(&t("placeholder-tracker-password"), password)
         .on_input(Message::EditTrackerPasswordChanged)
-        .on_submit(submit_action)
+        .on_submit(submit_action.clone())
         .id(Id::from(InputId::EditTrackerPassword))
         .secure(true)
         .padding(INPUT_PADDING)
@@ -833,6 +815,26 @@ pub fn edit_tracker_view(state: &TrackerManagementState) -> Element<'_, Message>
             shaped_text(t("label-tracker-password")).size(TEXT_SIZE),
             Space::new().width(ELEMENT_SPACING),
             password_input
+        ]
+        .align_y(Center)
+        .into(),
+    );
+
+    // Fingerprint (optional). Last text input — consumes
+    // `submit_action`. Conventionally last across both tracker forms.
+    let fingerprint_input = text_input(&t("placeholder-tracker-fingerprint"), fingerprint)
+        .on_input(Message::EditTrackerFingerprintChanged)
+        .on_submit(submit_action)
+        .id(Id::from(InputId::EditTrackerFingerprint))
+        .padding(INPUT_PADDING)
+        .size(TEXT_SIZE)
+        .font(MONOSPACE_FONT)
+        .width(Fill);
+    items.push(
+        row![
+            shaped_text(t("label-fingerprint")).size(TEXT_SIZE),
+            Space::new().width(ELEMENT_SPACING),
+            fingerprint_input
         ]
         .align_y(Center)
         .into(),

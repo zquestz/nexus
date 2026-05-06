@@ -6,7 +6,7 @@
 //! - ban_create only: Just ban option
 //! - Both: Radio buttons to choose kick or ban
 
-use iced::widget::{Column, Space, button, column, pick_list, radio, row, text_input};
+use iced::widget::{Column, Id, Space, button, column, pick_list, radio, row, text_input};
 use iced::{Center, Element, Fill};
 
 use super::constants::{PERMISSION_BAN_CREATE, PERMISSION_USER_KICK};
@@ -19,7 +19,7 @@ use crate::style::{
     panel_title, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{
-    BanDuration, DisconnectAction, DisconnectDialogState, Message, ServerConnection,
+    BanDuration, DisconnectAction, DisconnectDialogState, InputId, Message, ServerConnection,
 };
 
 // ============================================================================
@@ -107,6 +107,7 @@ pub fn disconnect_dialog_view<'a>(
 
     let reason_input = text_input(&t("disconnect-reason-placeholder"), &state.reason)
         .on_input(Message::DisconnectDialogReasonChanged)
+        .id(Id::from(InputId::DisconnectDialogReason))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 

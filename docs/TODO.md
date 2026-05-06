@@ -38,6 +38,29 @@ Features intentionally excluded with rationale.
 | DCC                  | Peer-to-peer adds complexity; server-mediated transfers work well                          |
 | Remote desktop       | Most servers are headless; out of scope for BBS software                                   |
 
+## Tech Debt
+
+### Case-insensitive IP uniqueness for bans / trusts
+
+`nexus-server/migrations/20260109013500_create_ip_bans.sql` and
+`nexus-server/migrations/20260110230700_create_ip_trusted.sql` declare
+`ip_address TEXT NOT NULL UNIQUE` (column-level, case-sensitive). The
+insert paths in `db/bans.rs` and `db/trusts.rs` bind the address as-typed,
+so `2001:DB8::1` and `2001:db8::1` can coexist as separate rows pointing
+at the same IPv6 host.
+
+SQLite has no `DROP CONSTRAINT`, so removing the column-level UNIQUE
+requires a full table rebuild: create new table → `INSERT OR IGNORE`
+the data with `LOWER(ip_address)` to drop any case-conflicting rows
+→ drop old → rename → recreate non-unique indexes. Pair the rebuild
+with a fresh `CREATE UNIQUE INDEX … ON …(LOWER(ip_address))` on the
+new table.
+
+Trackers had the same shape but was fixed in-place since the feature
+was unlaunched at the time (`(address, port)` → `(LOWER(address), port)`,
+plus updating the `ENDPOINT_FAILURE_MARKER` in `db/trackers.rs` to
+match the new expression-based-index error message format).
+
 ## Feature Specs
 
 ### File Previews

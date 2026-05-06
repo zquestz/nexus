@@ -188,8 +188,11 @@ pub const USER_LIST_SPACING: f32 = 5.0;
 // Dimensions
 // ============================================================================
 
-/// Maximum width for main content views (files, news, transfers, etc.)
-pub const CONTENT_MAX_WIDTH: f32 = 700.0;
+/// Maximum width for main content views (top-level panels and their
+/// sub-form dialogs). Includes room for the body's `SCROLLBAR_PADDING`
+/// gutters in patterns that have them (news, transfers) so all panels
+/// land at the same form width and right-side header buttons line up.
+pub const CONTENT_MAX_WIDTH: f32 = 724.0;
 
 /// Server list panel width
 pub const SERVER_LIST_PANEL_WIDTH: f32 = 220.0;

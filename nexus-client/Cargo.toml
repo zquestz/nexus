@@ -38,6 +38,12 @@ nexus-common = { path = "../nexus-common" }
 idna = "1"
 iced = { version = "0.14", features = ["advanced", "image", "lazy", "markdown", "svg", "tokio"] }
 iced_aw = { version = "0.13", features = ["context_menu", "number_input", "tabs"] }
+# Direct dep for `iced_runtime::task::widget(...)` — wraps a widget
+# `Operation` as a `Task` so handlers can query the actually-focused
+# input id (`find_focused`) at Tab time, not a stale local tracker.
+# Already pulled in transitively via `iced`; explicit dep just exposes
+# the un-re-exported helper.
+iced_runtime = "0.14"
 iced_toasts = { git = "https://github.com/zquestz/iced-toasts" }
 tokio = { version = "1.49", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }

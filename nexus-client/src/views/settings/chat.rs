@@ -1,6 +1,6 @@
 //! Chat settings tab (history, font size, timestamps, notifications, auto-away)
 
-use iced::widget::{Column, Space, checkbox, pick_list, row, text_input};
+use iced::widget::{Column, Id, Space, checkbox, pick_list, row, text_input};
 use iced::{Center, Element, Fill};
 use iced_aw::NumberInput;
 
@@ -9,7 +9,7 @@ use crate::i18n::t;
 use crate::style::{
     CHECKBOX_INDENT, ELEMENT_SPACING, INPUT_PADDING, SPACER_SIZE_MEDIUM, TEXT_SIZE, shaped_text,
 };
-use crate::types::Message;
+use crate::types::{InputId, Message};
 use crate::views::chat::TimestampSettings;
 
 /// Data needed to render the Chat settings tab
@@ -82,6 +82,7 @@ pub(super) fn chat_tab_content(data: ChatTabData<'_>) -> Element<'_, Message> {
     // Auto-away message input (disabled when auto-away is off)
     let auto_away_msg_label = shaped_text(t("label-auto-away-message")).size(TEXT_SIZE);
     let mut auto_away_msg_input = text_input("", data.auto_away_message)
+        .id(Id::from(InputId::SettingsAutoAwayMessage))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
     if data.auto_away_timeout.is_enabled() {

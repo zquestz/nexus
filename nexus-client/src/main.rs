@@ -306,6 +306,9 @@ struct NexusApp {
     /// Selected event type in Events tab (persisted across panel opens)
     selected_event_type: EventType,
 
+    /// Tracker discovery panel state (global — always visible, not per-connection)
+    tracker_browser: types::TrackerBrowserState,
+
     // -------------------------------------------------------------------------
     // Async / Transient
     // -------------------------------------------------------------------------
@@ -418,6 +421,7 @@ impl Default for NexusApp {
             settings_form: None,
             settings_tab: SettingsTab::default(),
             selected_event_type,
+            tracker_browser: types::TrackerBrowserState::default(),
             // Async / Transient
             fingerprint_mismatch_queue: VecDeque::new(),
             fingerprint_interception_queue: VecDeque::new(),
@@ -601,6 +605,7 @@ impl NexusApp {
             Message::NicknameChanged(nickname) => self.handle_nickname_changed(nickname),
             Message::FingerprintChanged(fp) => self.handle_fingerprint_changed(fp),
             Message::ConnectionFormTabPressed => self.handle_connection_form_tab_pressed(),
+            Message::ConnectionFormTabResolved(id) => self.handle_connection_form_tab_resolved(id),
 
             // Bookmark management
             Message::BookmarkAddressChanged(addr) => self.handle_bookmark_address_changed(addr),
@@ -633,6 +638,7 @@ impl NexusApp {
             Message::ShowAddBookmark => self.handle_show_add_bookmark(),
             Message::ShowEditBookmark(id) => self.handle_show_edit_bookmark(id),
             Message::BookmarkEditTabPressed => self.handle_bookmark_edit_tab_pressed(),
+            Message::BookmarkEditTabResolved(id) => self.handle_bookmark_edit_tab_resolved(id),
 
             // Certificate fingerprint
             Message::AcceptNewFingerprint => self.handle_accept_new_fingerprint(),
@@ -644,7 +650,7 @@ impl NexusApp {
 
             // Chat
             Message::ChatInputChanged(input) => self.handle_message_input_changed(input),
-            Message::ChatTabComplete => self.handle_chat_tab_complete(),
+            Message::ChatTabResolved(id) => self.handle_chat_tab_resolved(id),
             Message::ChatScrolled(viewport) => self.handle_chat_scrolled(viewport),
             Message::CloseChannelTab(channel) => self.handle_close_channel_tab(channel),
             Message::CloseUserMessageTab(nickname) => self.handle_close_user_message_tab(nickname),
@@ -728,9 +734,29 @@ impl NexusApp {
             Message::UserManagementCreateTabPressed => {
                 self.handle_user_management_create_tab_pressed()
             }
+            Message::UserManagementCreateTabResolved(id) => {
+                self.handle_user_management_create_tab_resolved(id)
+            }
             Message::UserManagementEditTabPressed => self.handle_user_management_edit_tab_pressed(),
+            Message::UserManagementEditTabResolved(id) => {
+                self.handle_user_management_edit_tab_resolved(id)
+            }
             Message::AddTrackerTabPressed => self.handle_add_tracker_tab_pressed(),
+            Message::AddTrackerTabResolved(id) => self.handle_add_tracker_tab_resolved(id),
             Message::EditTrackerTabPressed => self.handle_edit_tracker_tab_pressed(),
+            Message::EditTrackerTabResolved(id) => self.handle_edit_tracker_tab_resolved(id),
+            Message::GroupManagementCreateTabPressed => {
+                self.handle_group_management_create_tab_pressed()
+            }
+            Message::GroupManagementCreateTabResolved(id) => {
+                self.handle_group_management_create_tab_resolved(id)
+            }
+            Message::GroupManagementEditTabPressed => {
+                self.handle_group_management_edit_tab_pressed()
+            }
+            Message::GroupManagementEditTabResolved(id) => {
+                self.handle_group_management_edit_tab_resolved(id)
+            }
             Message::UserManagementSortBy(column) => self.handle_user_management_sort_by(column),
 
             // User management: Tab and group selection
@@ -867,6 +893,7 @@ impl NexusApp {
             Message::ProxyUsernameChanged(username) => self.handle_proxy_username_changed(username),
             Message::ProxyPasswordChanged(password) => self.handle_proxy_password_changed(password),
             Message::SettingsTabPressed => self.handle_settings_tab_pressed(),
+            Message::SettingsTabResolved(id) => self.handle_settings_tab_resolved(id),
             Message::BrowseDownloadPathPressed => self.handle_browse_download_path_pressed(),
             Message::DownloadPathSelected(path) => self.handle_download_path_selected(path),
             Message::QueueTransfersToggled(enabled) => self.handle_queue_transfers_toggled(enabled),
@@ -881,6 +908,65 @@ impl NexusApp {
             // Transfers
             Message::ToggleTransfers => self.handle_toggle_transfers(),
             Message::CloseTransfers => self.handle_close_transfers(),
+
+            // Tracker Browser
+            Message::ToggleTrackerBrowser => self.handle_toggle_tracker_browser(),
+            Message::TrackerBrowserSelectTracker(id) => {
+                self.handle_tracker_browser_select_tracker(id)
+            }
+            Message::TrackerBrowserSearchInputChanged(input) => {
+                self.handle_tracker_browser_search_input_changed(input)
+            }
+            Message::TrackerBrowserSortChanged(column) => {
+                self.handle_tracker_browser_sort_changed(column)
+            }
+            Message::TrackerBrowserShowAdd => self.handle_tracker_browser_show_add(),
+            Message::TrackerBrowserShowEdit => self.handle_tracker_browser_show_edit(),
+            Message::TrackerBrowserShowRemove => self.handle_tracker_browser_show_remove(),
+            Message::TrackerBrowserCancelMode => self.handle_tracker_browser_cancel_mode(),
+            Message::TrackerBrowserAddNameChanged(name) => {
+                self.handle_tracker_browser_add_name_changed(name)
+            }
+            Message::TrackerBrowserAddAddressChanged(addr) => {
+                self.handle_tracker_browser_add_address_changed(addr)
+            }
+            Message::TrackerBrowserAddPortChanged(port) => {
+                self.handle_tracker_browser_add_port_changed(port)
+            }
+            Message::TrackerBrowserAddPasswordChanged(pw) => {
+                self.handle_tracker_browser_add_password_changed(pw)
+            }
+            Message::TrackerBrowserAddFingerprintChanged(fp) => {
+                self.handle_tracker_browser_add_fingerprint_changed(fp)
+            }
+            Message::TrackerBrowserAddSubmit => self.handle_tracker_browser_add_submit(),
+            Message::TrackerBrowserValidateAdd => self.handle_tracker_browser_validate_add(),
+            Message::TrackerBrowserEditNameChanged(name) => {
+                self.handle_tracker_browser_edit_name_changed(name)
+            }
+            Message::TrackerBrowserEditAddressChanged(addr) => {
+                self.handle_tracker_browser_edit_address_changed(addr)
+            }
+            Message::TrackerBrowserEditPortChanged(port) => {
+                self.handle_tracker_browser_edit_port_changed(port)
+            }
+            Message::TrackerBrowserEditPasswordChanged(pw) => {
+                self.handle_tracker_browser_edit_password_changed(pw)
+            }
+            Message::TrackerBrowserEditFingerprintChanged(fp) => {
+                self.handle_tracker_browser_edit_fingerprint_changed(fp)
+            }
+            Message::TrackerBrowserEditSubmit => self.handle_tracker_browser_edit_submit(),
+            Message::TrackerBrowserValidateEdit => self.handle_tracker_browser_validate_edit(),
+            Message::TrackerBrowserRemoveConfirm => self.handle_tracker_browser_remove_confirm(),
+            Message::TrackerBrowserAddTabPressed => self.handle_tracker_browser_add_tab_pressed(),
+            Message::TrackerBrowserAddTabResolved(id) => {
+                self.handle_tracker_browser_add_tab_resolved(id)
+            }
+            Message::TrackerBrowserEditTabPressed => self.handle_tracker_browser_edit_tab_pressed(),
+            Message::TrackerBrowserEditTabResolved(id) => {
+                self.handle_tracker_browser_edit_tab_resolved(id)
+            }
 
             // Connection Monitor
             Message::ToggleConnectionMonitor => self.handle_toggle_connection_monitor(),
@@ -963,6 +1049,7 @@ impl NexusApp {
             Message::ShowServerInfo => self.handle_show_server_info(),
             Message::UpdateServerInfoPressed => self.handle_update_server_info_pressed(),
             Message::ServerInfoEditTabPressed => self.handle_server_info_edit_tab_pressed(),
+            Message::ServerInfoEditTabResolved(id) => self.handle_server_info_edit_tab_resolved(id),
 
             // Tracker management (Trackers tab inside Server Info)
             Message::TrackerManagementShowAdd => self.handle_tracker_management_show_add(),
@@ -1031,6 +1118,7 @@ impl NexusApp {
             Message::ChangePasswordCancelPressed => self.handle_change_password_cancel_pressed(),
             Message::ChangePasswordSavePressed => self.handle_change_password_save_pressed(),
             Message::ChangePasswordTabPressed => self.handle_change_password_tab_pressed(),
+            Message::ChangePasswordTabResolved(id) => self.handle_change_password_tab_resolved(id),
 
             // Network events (async results)
             Message::BookmarkConnectionResult {
@@ -1543,6 +1631,8 @@ impl NexusApp {
             active_connection: self.active_connection,
             bookmarks: &self.config.bookmarks,
             bookmark_errors: &self.bookmark_errors,
+            client_trackers: &self.config.client_trackers,
+            tracker_browser: &self.tracker_browser,
             connection_form: &self.connection_form,
             bookmark_edit: &self.bookmark_edit,
             message_input,

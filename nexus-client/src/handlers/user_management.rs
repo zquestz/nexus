@@ -889,6 +889,8 @@ impl NexusApp {
         {
             use crate::types::DisconnectDialogState;
             conn.disconnect_dialog = Some(DisconnectDialogState::new(nickname));
+            self.focused_field = InputId::DisconnectDialogReason;
+            return operation::focus(Id::from(InputId::DisconnectDialogReason));
         }
         Task::none()
     }
@@ -1180,16 +1182,18 @@ impl NexusApp {
     /// one directly, avoiding async `is_focused` race conditions with Iced's
     /// native Tab handling.
     pub fn handle_change_password_tab_pressed(&mut self) -> Task<Message> {
-        // Determine next field based on tracked focused field
-        let next_field = match self.focused_field {
-            InputId::ChangePasswordCurrent => InputId::ChangePasswordNew,
-            InputId::ChangePasswordNew => InputId::ChangePasswordConfirm,
-            InputId::ChangePasswordConfirm => InputId::ChangePasswordCurrent,
-            _ => InputId::ChangePasswordCurrent,
-        };
+        super::focus::dispatch_find_focused(Message::ChangePasswordTabResolved)
+    }
 
-        self.focused_field = next_field;
-        operation::focus(Id::from(next_field))
+    pub fn handle_change_password_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        const CYCLE: &[InputId] = &[
+            InputId::ChangePasswordCurrent,
+            InputId::ChangePasswordNew,
+            InputId::ChangePasswordConfirm,
+        ];
+        let next = super::focus::next_in_cycle(&focused, CYCLE);
+        self.focused_field = next;
+        operation::focus(Id::from(next))
     }
 
     /// Cancel password change and return to original panel
@@ -1345,38 +1349,28 @@ impl NexusApp {
 
     // ==================== User Management Tab Navigation ====================
 
-    /// Handle Tab pressed in user management create form
-    ///
-    /// Uses `focused_field` to determine the current field and move to the next
-    /// one directly, avoiding async `is_focused` race conditions with Iced's
-    /// native Tab handling.
+    /// Handle Tab pressed in user management Create form.
     pub fn handle_user_management_create_tab_pressed(&mut self) -> Task<Message> {
-        // Determine next field based on tracked focused field
-        let next_field = match self.focused_field {
-            InputId::AdminUsername => InputId::AdminPassword,
-            InputId::AdminPassword => InputId::AdminUsername,
-            _ => InputId::AdminUsername,
-        };
-
-        self.focused_field = next_field;
-        operation::focus(Id::from(next_field))
+        super::focus::dispatch_find_focused(Message::UserManagementCreateTabResolved)
     }
 
-    /// Handle Tab pressed in user management edit form
-    ///
-    /// Uses `focused_field` to determine the current field and move to the next
-    /// one directly, avoiding async `is_focused` race conditions with Iced's
-    /// native Tab handling.
-    pub fn handle_user_management_edit_tab_pressed(&mut self) -> Task<Message> {
-        // Determine next field based on tracked focused field
-        let next_field = match self.focused_field {
-            InputId::EditNewUsername => InputId::EditNewPassword,
-            InputId::EditNewPassword => InputId::EditNewUsername,
-            _ => InputId::EditNewUsername,
-        };
+    pub fn handle_user_management_create_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        const CYCLE: &[InputId] = &[InputId::AdminUsername, InputId::AdminPassword];
+        let next = super::focus::next_in_cycle(&focused, CYCLE);
+        self.focused_field = next;
+        operation::focus(Id::from(next))
+    }
 
-        self.focused_field = next_field;
-        operation::focus(Id::from(next_field))
+    /// Handle Tab pressed in user management Edit form.
+    pub fn handle_user_management_edit_tab_pressed(&mut self) -> Task<Message> {
+        super::focus::dispatch_find_focused(Message::UserManagementEditTabResolved)
+    }
+
+    pub fn handle_user_management_edit_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        const CYCLE: &[InputId] = &[InputId::EditNewUsername, InputId::EditNewPassword];
+        let next = super::focus::next_in_cycle(&focused, CYCLE);
+        self.focused_field = next;
+        operation::focus(Id::from(next))
     }
 
     /// Handle sort column click in the Users table

@@ -1014,18 +1014,19 @@ pub fn connection_monitor_view<'a>(
         .into()
     };
 
-    // Title row with refresh button on the right
-    // Add invisible spacer on the left to balance the button width for proper centering
+    // Title row with refresh button on the right.
+    // No leading/trailing `SCROLLBAR_PADDING` gutters — the body
+    // (table widgets inside tabs) reserves its scrollbar slot
+    // internally. Button lands at `form_right - 20`, matching the
+    // news/transfers buttons' inset.
     let button_width = ICON_SIZE + HEADING_BUTTON_PADDING.left + HEADING_BUTTON_PADDING.right;
     let title_row: Element<'_, Message> = row![
-        Space::new().width(SCROLLBAR_PADDING),
-        Space::new().width(button_width), // Balance the refresh button on the right
+        Space::new().width(button_width),
         shaped_text(t("panel-connection-monitor"))
             .size(TITLE_SIZE)
             .width(Fill)
             .align_x(Center),
         refresh_btn,
-        Space::new().width(SCROLLBAR_PADDING),
     ]
     .align_y(Center)
     .into();
@@ -1071,7 +1072,6 @@ pub fn connection_monitor_view<'a>(
         .text_size(TEXT_SIZE)
         .tab_label_padding(TAB_LABEL_PADDING);
 
-    // Build the form with max_width constraint
     let form = column![
         title_row,
         Space::new().height(SPACER_SIZE_LARGE - SPACER_SIZE_MEDIUM),

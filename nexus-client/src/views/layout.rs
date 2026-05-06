@@ -158,6 +158,10 @@ struct ServerContentContext<'a> {
     pub auto_away_timeout: crate::config::settings::AutoAwayTimeout,
     /// Auto-away message
     pub auto_away_message: &'a str,
+    /// Configured client trackers (for the tracker discovery panel)
+    pub client_trackers: &'a [crate::types::ClientTracker],
+    /// Tracker discovery panel state (always present, panel is global)
+    pub tracker_browser: &'a crate::types::TrackerBrowserState,
 }
 
 // ============================================================================
@@ -220,6 +224,7 @@ use super::{
     connection::connection_form_view,
     server_list::server_list_panel,
     settings::{SettingsViewData, settings_view},
+    tracker_browser::tracker_browser_view,
     user_list::user_list_panel,
     users::users_view,
 };
@@ -355,6 +360,8 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                 gpu_backend: config.gpu_backend,
                 auto_away_timeout: config.auto_away_timeout,
                 auto_away_message: config.auto_away_message,
+                client_trackers: config.client_trackers,
+                tracker_browser: config.tracker_browser,
             })
         } else if config.active_connection.is_some() {
             // Connection exists but couldn't get all required state
@@ -430,6 +437,13 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
                         .height(Fill)
                         .into()
                 }
+                ActivePanel::TrackerBrowser => stack![
+                    conn_form,
+                    tracker_browser_view(config.tracker_browser, config.client_trackers)
+                ]
+                .width(Fill)
+                .height(Fill)
+                .into(),
                 _ => conn_form,
             }
         };
@@ -726,6 +740,20 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
                     .gap(TOOLTIP_GAP)
                     .padding(TOOLTIP_PADDING)
                 },
+                // Tracker discovery (Trackers) button — global, always enabled
+                tooltip(
+                    button(icon::globe().size(TOOLBAR_ICON_SIZE))
+                        .on_press(Message::ToggleTrackerBrowser)
+                        .style(toolbar_button_style(
+                            active_panel == ActivePanel::TrackerBrowser,
+                        )),
+                    container(shaped_text(t("tooltip-tracker-browser")).size(TOOLTIP_TEXT_SIZE))
+                        .padding(TOOLTIP_BACKGROUND_PADDING)
+                        .style(tooltip_container_style),
+                    tooltip::Position::Bottom,
+                )
+                .gap(TOOLTIP_GAP)
+                .padding(TOOLTIP_PADDING),
                 // About button
                 tooltip(
                     button(icon::info_circled().size(TOOLBAR_ICON_SIZE))
@@ -999,6 +1027,13 @@ fn server_content_view<'a>(ctx: ServerContentContext<'a>) -> Element<'a, Message
             .width(Fill)
             .height(Fill)
             .into(),
+        ActivePanel::TrackerBrowser => stack![
+            chat,
+            tracker_browser_view(ctx.tracker_browser, ctx.client_trackers)
+        ]
+        .width(Fill)
+        .height(Fill)
+        .into(),
         ActivePanel::ConnectionMonitor => stack![
             chat,
             connection_monitor_view(ctx.conn, &ctx.conn.connection_monitor, ctx.theme.clone())

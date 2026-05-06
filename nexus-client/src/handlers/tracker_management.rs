@@ -621,28 +621,38 @@ impl NexusApp {
 
     /// Handle Tab pressed in the Add Tracker form.
     pub fn handle_add_tracker_tab_pressed(&mut self) -> Task<Message> {
-        let next_field = match self.focused_field {
-            InputId::AddTrackerName => InputId::AddTrackerAddress,
-            InputId::AddTrackerAddress => InputId::AddTrackerFingerprint,
-            InputId::AddTrackerFingerprint => InputId::AddTrackerPassword,
-            InputId::AddTrackerPassword => InputId::AddTrackerName,
-            _ => InputId::AddTrackerName,
-        };
-        self.focused_field = next_field;
-        operation::focus(Id::from(next_field))
+        super::focus::dispatch_find_focused(Message::AddTrackerTabResolved)
+    }
+
+    pub fn handle_add_tracker_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        // Fingerprint is conventionally last across both tracker
+        // forms (BBS-admin + client discovery).
+        const CYCLE: &[InputId] = &[
+            InputId::AddTrackerName,
+            InputId::AddTrackerAddress,
+            InputId::AddTrackerPassword,
+            InputId::AddTrackerFingerprint,
+        ];
+        let next = super::focus::next_in_cycle(&focused, CYCLE);
+        self.focused_field = next;
+        operation::focus(Id::from(next))
     }
 
     /// Handle Tab pressed in the Edit Tracker form.
     pub fn handle_edit_tracker_tab_pressed(&mut self) -> Task<Message> {
-        let next_field = match self.focused_field {
-            InputId::EditTrackerName => InputId::EditTrackerAddress,
-            InputId::EditTrackerAddress => InputId::EditTrackerFingerprint,
-            InputId::EditTrackerFingerprint => InputId::EditTrackerPassword,
-            InputId::EditTrackerPassword => InputId::EditTrackerName,
-            _ => InputId::EditTrackerName,
-        };
-        self.focused_field = next_field;
-        operation::focus(Id::from(next_field))
+        super::focus::dispatch_find_focused(Message::EditTrackerTabResolved)
+    }
+
+    pub fn handle_edit_tracker_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        const CYCLE: &[InputId] = &[
+            InputId::EditTrackerName,
+            InputId::EditTrackerAddress,
+            InputId::EditTrackerPassword,
+            InputId::EditTrackerFingerprint,
+        ];
+        let next = super::focus::next_in_cycle(&focused, CYCLE);
+        self.focused_field = next;
+        operation::focus(Id::from(next))
     }
 }
 

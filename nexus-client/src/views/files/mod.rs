@@ -37,8 +37,8 @@ use crate::i18n::t;
 use crate::icon;
 use crate::style::{
     CONTENT_MAX_WIDTH, CONTENT_PADDING, DROP_OVERLAY_ICON_SIZE, HEADING_BUTTON_PADDING, ICON_SIZE,
-    NO_SPACING, SCROLLBAR_PADDING, SMALL_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE,
-    TITLE_SIZE, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
+    NO_SPACING, SMALL_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
+    TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     content_background_style, drop_overlay_style, error_text_style, muted_text_style, shaped_text,
     shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
 };
@@ -251,18 +251,24 @@ pub fn files_view<'a>(
         .into()
     };
 
-    // Title row with new tab button on the right
-    // We add an invisible spacer on the left to balance the button width for proper centering
+    // Title row with new tab button on the right.
+    // Invisible spacer on the left balances the button width for
+    // geometric title centering.
+    //
+    // No leading/trailing `SCROLLBAR_PADDING` gutters — the body
+    // (table widget) reserves its scrollbar slot internally in the
+    // rightmost column, so the title doesn't need to inset to match.
+    // Without the gutters, the new-tab [+] sits at `form_right - 20`,
+    // aligning with the news/transfers right-side buttons (which also
+    // land at `form_right - 20` via 8px padding + 12px Space gutter).
     let button_width = ICON_SIZE + HEADING_BUTTON_PADDING.left + HEADING_BUTTON_PADDING.right;
     let title_row: Element<'_, Message> = row![
-        Space::new().width(SCROLLBAR_PADDING),
-        Space::new().width(button_width), // Balance the new tab button on the right
+        Space::new().width(button_width),
         shaped_text(t("files-panel-title"))
             .size(TITLE_SIZE)
             .width(Fill)
             .align_x(Center),
         new_tab_btn,
-        Space::new().width(SCROLLBAR_PADDING),
     ]
     .align_y(Center)
     .into();

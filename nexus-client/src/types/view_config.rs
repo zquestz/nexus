@@ -12,8 +12,8 @@ use crate::config::events::EventSettings;
 use crate::config::settings::{ChatHistoryRetention, ProxySettings};
 use crate::transfers::TransferManager;
 use crate::types::{
-    ActivePanel, BookmarkEditState, ConnectionFormState, ServerBookmark, ServerConnection,
-    SettingsFormState, UiState, UserManagementState,
+    ActivePanel, BookmarkEditState, ClientTracker, ConnectionFormState, ServerBookmark,
+    ServerConnection, SettingsFormState, TrackerBrowserState, UiState, UserManagementState,
 };
 use crate::voice::audio::AudioDevice;
 
@@ -60,6 +60,12 @@ pub struct ViewConfig<'a> {
 
     /// Per-bookmark connection errors (transient)
     pub bookmark_errors: &'a HashMap<Uuid, String>,
+
+    /// Configured client trackers (populated by the discovery panel)
+    pub client_trackers: &'a [ClientTracker],
+
+    /// Tracker discovery panel state (always present, panel is global)
+    pub tracker_browser: &'a TrackerBrowserState,
 
     /// Connection form state
     pub connection_form: &'a ConnectionFormState,

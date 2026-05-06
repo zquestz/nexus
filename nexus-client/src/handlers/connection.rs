@@ -422,6 +422,20 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Resolved focused id for chat-view Tab. If the chat input was
+    /// already focused, run nickname/channel/command completion. If
+    /// focus had wandered elsewhere (clicked on a chat row, sidebar,
+    /// etc.), refocus the chat input without manipulating its
+    /// contents.
+    pub fn handle_chat_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        if focused == Id::from(InputId::ChatInput) {
+            self.handle_chat_tab_complete()
+        } else {
+            self.focused_field = InputId::ChatInput;
+            operation::focus(Id::from(InputId::ChatInput))
+        }
+    }
+
     /// Handle Tab key for nickname completion in chat
     ///
     /// Behavior:
@@ -660,27 +674,26 @@ impl NexusApp {
 
     // ==================== Tab Navigation ====================
 
-    /// Handle Tab pressed in connection form
-    ///
-    /// Uses `focused_field` to determine the current field and move to the next
-    /// one directly, avoiding async `is_focused` race conditions with Iced's
-    /// native Tab handling.
+    /// Handle Tab pressed in connection form. Queries iced for the
+    /// actually-focused widget id and forwards to
+    /// [`Self::handle_connection_form_tab_resolved`] for cycling.
     pub fn handle_connection_form_tab_pressed(&mut self) -> Task<Message> {
-        // Determine next field based on tracked focused field
-        // Note: Port is skipped because NumberInput handles its own Tab key
-        let next_field = match self.focused_field {
-            InputId::ServerName => InputId::ServerAddress,
-            InputId::ServerAddress => InputId::Username,
-            InputId::Port => InputId::Username,
-            InputId::Username => InputId::Password,
-            InputId::Password => InputId::Nickname,
-            InputId::Nickname => InputId::Fingerprint,
-            InputId::Fingerprint => InputId::ServerName,
-            _ => InputId::ServerName,
-        };
+        super::focus::dispatch_find_focused(Message::ConnectionFormTabResolved)
+    }
 
-        self.focused_field = next_field;
-        operation::focus(Id::from(next_field))
+    pub fn handle_connection_form_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        // Note: Port is skipped because NumberInput handles its own Tab key.
+        const CYCLE: &[InputId] = &[
+            InputId::ServerName,
+            InputId::ServerAddress,
+            InputId::Username,
+            InputId::Password,
+            InputId::Nickname,
+            InputId::Fingerprint,
+        ];
+        let next = super::focus::next_in_cycle(&focused, CYCLE);
+        self.focused_field = next;
+        operation::focus(Id::from(next))
     }
 
     // ==================== Private Helpers ====================

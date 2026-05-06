@@ -478,6 +478,22 @@ impl NexusApp {
                         return self.update(Message::CancelFiles);
                     }
                     ActivePanel::Transfers => return self.update(Message::CloseTransfers),
+                    ActivePanel::TrackerBrowser => {
+                        // Escape priority on the discovery panel:
+                        //   1. In a sub-mode (Add / Edit / ConfirmRemove /
+                        //      AcceptFingerprint) → return to the list.
+                        //   2. On the list → close the panel.
+                        // Step 2 only reaches the list, but the sub-mode branch
+                        // is wired now so step 3+ doesn't have to retouch this.
+                        if !matches!(
+                            self.tracker_browser.mode,
+                            crate::types::TrackerBrowserMode::List
+                        ) {
+                            self.tracker_browser.reset_to_list();
+                            return Task::none();
+                        }
+                        return self.update(Message::ToggleTrackerBrowser);
+                    }
                     ActivePanel::ConnectionMonitor => {
                         return self.update(Message::CloseConnectionMonitor);
                     }
@@ -600,17 +616,27 @@ impl NexusApp {
             // On bookmark edit screen, check actual focus and cycle
             return self.update(Message::BookmarkEditTabPressed);
         } else if self.active_panel() == ActivePanel::UserManagement {
-            // On user management screen, handle Tab based on mode
+            // On user management screen, handle Tab based on mode.
             if let Some(conn_id) = self.active_connection
                 && let Some(conn) = self.connections.get(&conn_id)
             {
+                // Group sub-form (Create / Edit) takes precedence over
+                // the Users tab when active.
+                use crate::types::GroupManagementMode;
+                match &conn.user_management.group_management.mode {
+                    GroupManagementMode::Create => {
+                        return self.update(Message::GroupManagementCreateTabPressed);
+                    }
+                    GroupManagementMode::Edit { .. } => {
+                        return self.update(Message::GroupManagementEditTabPressed);
+                    }
+                    GroupManagementMode::List | GroupManagementMode::ConfirmDelete { .. } => {}
+                }
                 match &conn.user_management.mode {
                     UserManagementMode::Create => {
-                        // Create mode: Check actual focus and cycle
                         return self.update(Message::UserManagementCreateTabPressed);
                     }
                     UserManagementMode::Edit { .. } => {
-                        // Edit mode: Check actual focus and cycle
                         return self.update(Message::UserManagementEditTabPressed);
                     }
                     UserManagementMode::List | UserManagementMode::ConfirmDelete { .. } => {
@@ -641,33 +667,79 @@ impl NexusApp {
                 }
             }
         } else if self.active_panel() == ActivePanel::Files {
-            // Files panel: focus the appropriate input if a dialog is open
+            // Files panel: focus the appropriate input if a dialog is
+            // open; otherwise focus the search input. `operation::focus`
+            // is a no-op when the target id isn't currently rendered
+            // (e.g. user lacks `file_search` permission so the search
+            // input isn't in the widget tree), so this is safe to fire
+            // unconditionally.
             if let Some(conn_id) = self.active_connection
                 && let Some(conn) = self.connections.get(&conn_id)
             {
                 let tab = conn.files_management.active_tab();
                 if tab.pending_rename.is_some() {
-                    // Rename dialog: focus the name input
                     return operation::focus(Id::from(InputId::RenameName));
                 } else if tab.creating_directory {
-                    // New directory dialog: focus the name input
                     return operation::focus(Id::from(InputId::NewDirectoryName));
                 }
             }
+            return operation::focus(Id::from(InputId::FileSearchInput));
         } else if self.active_panel() == ActivePanel::Broadcast {
             // Broadcast screen only has one field, so focus stays
             self.focused_field = InputId::BroadcastMessage;
             return operation::focus(Id::from(InputId::BroadcastMessage));
         } else if self.active_panel() == ActivePanel::News {
-            // News panel uses text_editor which handles its own focus
-            // No Tab navigation needed
+            // News uses `text_editor` for the body; in Create / Edit
+            // mode, Tab refocuses it if focus has wandered (e.g. user
+            // clicked the image picker button or a news row). List /
+            // ConfirmDelete have no input to focus.
+            use crate::types::NewsManagementMode;
+            if let Some(conn_id) = self.active_connection
+                && let Some(conn) = self.connections.get(&conn_id)
+                && matches!(
+                    conn.news_management.mode,
+                    NewsManagementMode::Create | NewsManagementMode::Edit { .. }
+                )
+            {
+                return operation::focus(Id::from(InputId::NewsBody));
+            }
             return Task::none();
         } else if self.active_panel() == ActivePanel::Settings {
             // Settings panel: check actual focus and cycle through fields
             return self.update(Message::SettingsTabPressed);
+        } else if self.active_panel() == ActivePanel::TrackerBrowser {
+            // Tracker discovery panel: dispatch on sub-mode.
+            // ConfirmRemove / AcceptFingerprint have no text inputs.
+            match &self.tracker_browser.mode {
+                crate::types::TrackerBrowserMode::Add => {
+                    return self.update(Message::TrackerBrowserAddTabPressed);
+                }
+                crate::types::TrackerBrowserMode::Edit { .. } => {
+                    return self.update(Message::TrackerBrowserEditTabPressed);
+                }
+                crate::types::TrackerBrowserMode::List => {
+                    // List mode has a single text input (search). Tab
+                    // refocuses it regardless of where focus had
+                    // wandered.
+                    return operation::focus(Id::from(InputId::TrackerBrowserSearch));
+                }
+                _ => {}
+            }
         } else if self.active_connection.is_some() {
-            // In chat view, Tab triggers nickname completion
-            return self.update(Message::ChatTabComplete);
+            // Disconnect dialog (kick/ban modal) takes precedence
+            // over the chat view when open — Tab focuses the reason
+            // input.
+            if let Some(conn_id) = self.active_connection
+                && let Some(conn) = self.connections.get(&conn_id)
+                && conn.disconnect_dialog.is_some()
+            {
+                return operation::focus(Id::from(InputId::DisconnectDialogReason));
+            }
+            // In chat view: query iced for focused widget. The
+            // resolver picks between nickname tab-completion (when
+            // ChatInput is focused) and refocusing ChatInput (when
+            // focus has wandered to a non-input widget).
+            return super::focus::dispatch_find_focused(Message::ChatTabResolved);
         } else if self.active_connection.is_none() {
             // On connection screen, check actual focus and cycle
             return self.update(Message::ConnectionFormTabPressed);

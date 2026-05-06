@@ -1350,3 +1350,46 @@ permission-tracker_list = Tracker List
 permission-tracker_add = Tracker Add
 permission-tracker_edit = Tracker Edit
 permission-tracker_remove = Tracker Remove
+
+# =============================================================================
+# Tracker Discovery Panel (client-side, global; user-managed tracker list)
+# =============================================================================
+
+# Toolbar button + panel title
+tooltip-tracker-browser = Trackers
+title-trackers = Trackers
+
+# Toolbar action tooltips
+tooltip-tracker-edit = Edit Tracker
+tooltip-tracker-remove = Remove Tracker
+
+# Search input placeholder
+placeholder-tracker-search = Search servers…
+
+# Table column headers (Description and Users; Name reuses col-name)
+col-description = Description
+col-users = Users
+
+# Toolbar status text variants
+tracker-browser-status-loading = Loading…
+tracker-browser-status-servers = { $count } { $count ->
+    [one] server
+   *[other] servers
+}
+tracker-browser-status-error = Error: { $message }
+
+# List-area empty states
+empty-no-trackers-configured = No trackers configured.
+empty-tracker-no-servers = This tracker has no registered servers.
+
+# Remove confirmation (discovery-side — distinct from BBS-admin
+# `dialog-remove-tracker-body`, which mentions stopping a server
+# registration).
+dialog-remove-client-tracker-body = Are you sure you want to remove the tracker "{ $name }"? This will only remove it from your discovery list; you can add it back later.
+
+# Client-side dedup errors. Mirror the server-side trackers-table
+# unique-index rules: case-insensitive on name (LOWER(name)),
+# case-insensitive on address paired with exact port match
+# (LOWER(address), port).
+err-tracker-name-duplicate = A tracker named "{ $name }" already exists.
+err-tracker-address-duplicate = A tracker at this address and port already exists.

@@ -31,6 +31,8 @@ pub enum ActivePanel {
     Files,
     /// Transfers panel (download/upload progress, global)
     Transfers,
+    /// Tracker discovery panel (global, browse advertised servers)
+    TrackerBrowser,
 }
 
 /// UI visibility state for toggleable panels
@@ -171,6 +173,8 @@ pub enum InputId {
     BookmarkFingerprint,
     /// Settings panel: Nickname input
     SettingsNickname,
+    /// Settings panel (Chat tab): Auto-away message input
+    SettingsAutoAwayMessage,
     /// Settings panel: Proxy address input
     ProxyAddress,
     /// Settings panel: Proxy port input
@@ -205,8 +209,34 @@ pub enum InputId {
     EditTrackerFingerprint,
     /// Tracker management edit form: Password input
     EditTrackerPassword,
+    /// Group management create form: Name input
+    CreateGroupName,
     /// Group management edit form: Name input
     EditGroupName,
+    /// Disconnect dialog: reason input
+    DisconnectDialogReason,
+    /// Tracker discovery panel: Search input (toolbar)
+    TrackerBrowserSearch,
+    /// Tracker discovery panel: Add form Name input
+    TrackerBrowserAddName,
+    /// Tracker discovery panel: Add form Address input
+    TrackerBrowserAddAddress,
+    /// Tracker discovery panel: Add form Port input
+    TrackerBrowserAddPort,
+    /// Tracker discovery panel: Add form Password input
+    TrackerBrowserAddPassword,
+    /// Tracker discovery panel: Add form Fingerprint input
+    TrackerBrowserAddFingerprint,
+    /// Tracker discovery panel: Edit form Name input
+    TrackerBrowserEditName,
+    /// Tracker discovery panel: Edit form Address input
+    TrackerBrowserEditAddress,
+    /// Tracker discovery panel: Edit form Port input
+    TrackerBrowserEditPort,
+    /// Tracker discovery panel: Edit form Password input
+    TrackerBrowserEditPassword,
+    /// Tracker discovery panel: Edit form Fingerprint input
+    TrackerBrowserEditFingerprint,
 }
 
 impl From<InputId> for Id {
@@ -249,6 +279,7 @@ impl From<InputId> for Id {
             InputId::BookmarkNickname => "InputId::BookmarkNickname",
             InputId::BookmarkFingerprint => "InputId::BookmarkFingerprint",
             InputId::SettingsNickname => "InputId::SettingsNickname",
+            InputId::SettingsAutoAwayMessage => "InputId::SettingsAutoAwayMessage",
             InputId::ProxyAddress => "InputId::ProxyAddress",
             InputId::ProxyPort => "InputId::ProxyPort",
             InputId::ProxyUsername => "InputId::ProxyUsername",
@@ -266,7 +297,20 @@ impl From<InputId> for Id {
             InputId::EditTrackerPort => "InputId::EditTrackerPort",
             InputId::EditTrackerFingerprint => "InputId::EditTrackerFingerprint",
             InputId::EditTrackerPassword => "InputId::EditTrackerPassword",
+            InputId::CreateGroupName => "InputId::CreateGroupName",
             InputId::EditGroupName => "InputId::EditGroupName",
+            InputId::DisconnectDialogReason => "InputId::DisconnectDialogReason",
+            InputId::TrackerBrowserSearch => "InputId::TrackerBrowserSearch",
+            InputId::TrackerBrowserAddName => "InputId::TrackerBrowserAddName",
+            InputId::TrackerBrowserAddAddress => "InputId::TrackerBrowserAddAddress",
+            InputId::TrackerBrowserAddPort => "InputId::TrackerBrowserAddPort",
+            InputId::TrackerBrowserAddPassword => "InputId::TrackerBrowserAddPassword",
+            InputId::TrackerBrowserAddFingerprint => "InputId::TrackerBrowserAddFingerprint",
+            InputId::TrackerBrowserEditName => "InputId::TrackerBrowserEditName",
+            InputId::TrackerBrowserEditAddress => "InputId::TrackerBrowserEditAddress",
+            InputId::TrackerBrowserEditPort => "InputId::TrackerBrowserEditPort",
+            InputId::TrackerBrowserEditPassword => "InputId::TrackerBrowserEditPassword",
+            InputId::TrackerBrowserEditFingerprint => "InputId::TrackerBrowserEditFingerprint",
         })
     }
 }

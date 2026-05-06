@@ -11,8 +11,8 @@ use nexus_common::validators::PasswordStrength;
 use nexus_common::voice::VoiceQuality;
 
 use super::panel::{
-    FileSortColumn, GroupManagementSortColumn, SettingsTab, TabId, TrackerManagementSortColumn,
-    UserManagementSortColumn, UserManagementTab,
+    FileSortColumn, GroupManagementSortColumn, SettingsTab, TabId, TrackerBrowserSortColumn,
+    TrackerManagementSortColumn, UserManagementSortColumn, UserManagementTab,
 };
 use super::{ChatTab, NetworkConnection, ServerMessage};
 use crate::config::audio::{PttMode, PttReleaseDelay};
@@ -92,26 +92,56 @@ pub enum Message {
     ChangePasswordSavePressed,
     /// Password change: Tab pressed, move to next field
     ChangePasswordTabPressed,
-    /// Bookmark edit: Tab pressed, move to next field
+    /// Password change: result of `find_focused` query — carries the
+    /// id of the actually-focused widget for the resolver to advance.
+    ChangePasswordTabResolved(iced::widget::Id),
+    /// Bookmark Add/Edit: Tab pressed, move to next field
     BookmarkEditTabPressed,
+    /// Bookmark Add/Edit: resolved focused id from `find_focused`.
+    BookmarkEditTabResolved(iced::widget::Id),
     /// Connection form: Tab pressed, move to next field
     ConnectionFormTabPressed,
+    /// Connection form: resolved focused id from `find_focused`.
+    ConnectionFormTabResolved(iced::widget::Id),
     /// User management create: Tab pressed, move to next field
     UserManagementCreateTabPressed,
+    /// User management create: resolved focused id.
+    UserManagementCreateTabResolved(iced::widget::Id),
     /// User management edit: Tab pressed, move to next field
     UserManagementEditTabPressed,
-    /// Tracker add form: Tab pressed, move to next field
+    /// User management edit: resolved focused id.
+    UserManagementEditTabResolved(iced::widget::Id),
+    /// BBS-admin tracker Add form: Tab pressed, move to next field
     AddTrackerTabPressed,
-    /// Tracker edit form: Tab pressed, move to next field
+    /// BBS-admin tracker Add form: resolved focused id.
+    AddTrackerTabResolved(iced::widget::Id),
+    /// BBS-admin tracker Edit form: Tab pressed, move to next field
     EditTrackerTabPressed,
+    /// BBS-admin tracker Edit form: resolved focused id.
+    EditTrackerTabResolved(iced::widget::Id),
     /// Server info edit: Tab pressed, move to next field
     ServerInfoEditTabPressed,
+    /// Server info edit: resolved focused id.
+    ServerInfoEditTabResolved(iced::widget::Id),
     /// Settings panel: Tab pressed, move to next field
     SettingsTabPressed,
+    /// Settings panel: resolved focused id.
+    SettingsTabResolved(iced::widget::Id),
+    /// Group management create: Tab pressed
+    GroupManagementCreateTabPressed,
+    /// Group management create: resolved focused id.
+    GroupManagementCreateTabResolved(iced::widget::Id),
+    /// Group management edit: Tab pressed
+    GroupManagementEditTabPressed,
+    /// Group management edit: resolved focused id.
+    GroupManagementEditTabResolved(iced::widget::Id),
     /// Chat: Message input field changed
     ChatInputChanged(String),
-    /// Chat: Tab key pressed for nickname completion
-    ChatTabComplete,
+    /// Chat: result of the iced `find_focused` query for Tab. The
+    /// resolved handler decides between nickname tab-completion (when
+    /// chat input is already focused) and refocusing the chat input
+    /// (when focus has wandered to a non-input widget).
+    ChatTabResolved(iced::widget::Id),
     /// Chat scrollable: scroll position changed
     ChatScrolled(iced::widget::scrollable::Viewport),
     /// Close a channel tab (sends ChatLeave to server)
@@ -297,6 +327,72 @@ pub enum Message {
     ToggleTransfers,
     /// Transfers panel: Close button pressed
     CloseTransfers,
+    /// Toolbar: Toggle tracker discovery (Trackers) panel
+    ToggleTrackerBrowser,
+    /// Tracker browser: dropdown selection changed
+    TrackerBrowserSelectTracker(Uuid),
+    /// Tracker browser: search-row input changed
+    TrackerBrowserSearchInputChanged(String),
+    /// Tracker browser: sortable table column header clicked
+    TrackerBrowserSortChanged(TrackerBrowserSortColumn),
+    /// Tracker browser: [+] toolbar button — open Add form
+    TrackerBrowserShowAdd,
+    /// Tracker browser: Edit toolbar button — open Edit form for the
+    /// currently-selected tracker
+    TrackerBrowserShowEdit,
+    /// Tracker browser: Remove toolbar button — open ConfirmRemove
+    /// modal for the currently-selected tracker
+    TrackerBrowserShowRemove,
+    /// Tracker browser: Cancel from any sub-mode (Add / Edit /
+    /// ConfirmRemove). Resets to the list view.
+    TrackerBrowserCancelMode,
+    /// Tracker browser: Add form name field changed
+    TrackerBrowserAddNameChanged(String),
+    /// Tracker browser: Add form address field changed
+    TrackerBrowserAddAddressChanged(String),
+    /// Tracker browser: Add form port field changed
+    TrackerBrowserAddPortChanged(u16),
+    /// Tracker browser: Add form password field changed
+    TrackerBrowserAddPasswordChanged(String),
+    /// Tracker browser: Add form fingerprint field changed
+    TrackerBrowserAddFingerprintChanged(String),
+    /// Tracker browser: Add form submit (Save button or Enter on a
+    /// completed form). Validates, persists, returns to list.
+    TrackerBrowserAddSubmit,
+    /// Tracker browser: Add form validate-then-submit fallback.
+    /// Dispatched by Enter when the form is incomplete; surfaces a
+    /// localized error in the form-level banner.
+    TrackerBrowserValidateAdd,
+    /// Tracker browser: Edit form name field changed
+    TrackerBrowserEditNameChanged(String),
+    /// Tracker browser: Edit form address field changed
+    TrackerBrowserEditAddressChanged(String),
+    /// Tracker browser: Edit form port field changed
+    TrackerBrowserEditPortChanged(u16),
+    /// Tracker browser: Edit form password field changed
+    TrackerBrowserEditPasswordChanged(String),
+    /// Tracker browser: Edit form fingerprint field changed
+    TrackerBrowserEditFingerprintChanged(String),
+    /// Tracker browser: Edit form submit
+    TrackerBrowserEditSubmit,
+    /// Tracker browser: Edit form validate-then-submit fallback
+    TrackerBrowserValidateEdit,
+    /// Tracker browser: ConfirmRemove modal — confirm removal
+    TrackerBrowserRemoveConfirm,
+    /// Tracker browser: Tab pressed in the Add form. Advances focus
+    /// through the text inputs (Port `NumberInput` is skipped per
+    /// CLAUDE.md UI Quirks — it consumes Tab internally).
+    TrackerBrowserAddTabPressed,
+    /// Tracker browser: Tab pressed in the Edit form.
+    TrackerBrowserEditTabPressed,
+    /// Tracker browser: result of the iced `find_focused` operation
+    /// dispatched by `TrackerBrowserAddTabPressed`. Carries the id
+    /// of whichever widget was actually focused at Tab time, so the
+    /// cycle advances from the user's real focus rather than a
+    /// stale `focused_field` tracker.
+    TrackerBrowserAddTabResolved(iced::widget::Id),
+    /// Tracker browser: same as the Add variant, for the Edit form.
+    TrackerBrowserEditTabResolved(iced::widget::Id),
     /// Toolbar: Toggle Connection Monitor panel
     ToggleConnectionMonitor,
     /// Connection Monitor panel: Close button pressed

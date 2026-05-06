@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 3965295b186950ea2cf50a88ac95c4dc462d7da2970f34a16c0dd9ea2c1e2949
+// 26f54e834b0bcff1bee7959b8748d2f17a8cb415a2d51eb78ced3fce526bbc9d
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -112,6 +112,10 @@ pub fn folder_empty<'a>() -> Text<'a> {
 
 pub fn folder_root<'a>() -> Text<'a> {
     icon("\u{F0E8}")
+}
+
+pub fn globe<'a>() -> Text<'a> {
+    icon("\u{1F30E}")
 }
 
 pub fn headphones<'a>() -> Text<'a> {

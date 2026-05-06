@@ -64,15 +64,13 @@ pub fn is_transient_db_error(err: &sqlx::Error) -> bool {
     primary == SQLITE_BUSY_PRIMARY || primary == SQLITE_LOCKED_PRIMARY
 }
 
-// SQLite reports UNIQUE constraint violations with two distinct
-// message shapes:
-//   * Plain column-list indexes (e.g. `(address, port)`) →
-//     `"UNIQUE constraint failed: trackers.address, trackers.port"`
-//   * Expression-based indexes (e.g. `LOWER(name)`) →
-//     `"UNIQUE constraint failed: index 'idx_trackers_name_lower'"`
-// We probe for the first qualified column reference of the endpoint
-// pair, and for the expression-based index by name.
-const ENDPOINT_FAILURE_MARKER: &str = "trackers.address";
+// SQLite reports UNIQUE constraint violations on expression-based
+// indexes by index name:
+//   `"UNIQUE constraint failed: index '<index_name>'"`
+// Both the endpoint and name indexes are expression-based
+// (`LOWER(address), port` and `LOWER(name)` respectively), so we
+// probe by index name in either case.
+const ENDPOINT_FAILURE_MARKER: &str = "idx_trackers_endpoint";
 const NAME_LOWER_FAILURE_MARKER: &str = "idx_trackers_name_lower";
 
 /// Errors specific to the tracker DB layer.

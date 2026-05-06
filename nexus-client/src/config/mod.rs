@@ -3,6 +3,7 @@
 //! Configuration is split into:
 //! - `Settings` - User preferences (theme, font size, notifications)
 //! - `bookmarks` - Server bookmarks for quick connect
+//! - `client_trackers` - Trackers the user queries for server discovery
 
 pub mod audio;
 mod bookmarks;
@@ -10,15 +11,17 @@ pub mod events;
 mod persistence;
 pub mod settings;
 pub mod theme;
+mod trackers;
 
-use crate::types::ServerBookmark;
+use crate::types::{ClientTracker, ServerBookmark};
 use settings::Settings;
 
 // =============================================================================
 // Config
 // =============================================================================
 
-/// Application configuration containing settings and server bookmarks
+/// Application configuration containing settings, server bookmarks, and
+/// the user's tracker discovery list.
 ///
 /// Persisted to disk as JSON in the platform-specific configuration directory
 /// (e.g., ~/.config/nexus/config.json on Linux).
@@ -31,6 +34,13 @@ pub struct Config {
     /// Server bookmarks for quick connect
     #[serde(default)]
     pub bookmarks: Vec<ServerBookmark>,
+
+    /// User-managed list of trackers to query for server discovery.
+    /// Each entry carries its own TOFU pin and optional registration
+    /// password. See [`crate::types::ClientTracker`] for the field-level
+    /// invariants.
+    #[serde(default)]
+    pub client_trackers: Vec<ClientTracker>,
 }
 
 // =============================================================================
@@ -46,5 +56,6 @@ mod tests {
         let config = Config::default();
         // Only test Config-level defaults; Settings defaults are tested in settings.rs
         assert_eq!(config.bookmarks.len(), 0);
+        assert_eq!(config.client_trackers.len(), 0);
     }
 }

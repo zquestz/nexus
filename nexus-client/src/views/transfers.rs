@@ -557,7 +557,7 @@ pub fn transfers_view<'a>(manager: &'a TransferManager) -> Element<'a, Message> 
         bottom: CONTENT_PADDING,
         left: CONTENT_PADDING - SCROLLBAR_PADDING,
     })
-    .max_width(CONTENT_MAX_WIDTH + SCROLLBAR_PADDING * 2.0)
+    .max_width(CONTENT_MAX_WIDTH)
     .height(Fill);
 
     // Center the form horizontally

@@ -53,7 +53,7 @@ impl NexusApp {
         self.focus_settings_tab_field()
     }
 
-    /// Focus the appropriate input field for the current settings tab
+    /// Focus the appropriate input field for the current settings tab.
     fn focus_settings_tab_field(&mut self) -> Task<Message> {
         match self.settings_tab {
             SettingsTab::General => {
@@ -61,12 +61,24 @@ impl NexusApp {
                 operation::focus(Id::from(InputId::SettingsNickname))
             }
             SettingsTab::Chat => {
-                // Chat tab has no text input fields
-                Task::none()
+                // Auto-away message is the only text input. Focus it
+                // unconditionally; when auto-away is disabled the
+                // input has no `on_input` so typing is a no-op, which
+                // matches the user's visual cue (greyed-out input).
+                self.focused_field = InputId::SettingsAutoAwayMessage;
+                operation::focus(Id::from(InputId::SettingsAutoAwayMessage))
             }
             SettingsTab::Network => {
-                self.focused_field = InputId::ProxyAddress;
-                operation::focus(Id::from(InputId::ProxyAddress))
+                // Only focus the address input when the proxy is
+                // enabled — otherwise the field is rendered as
+                // disabled (no `on_input`) and focusing a non-
+                // editable field would be a confusing UX.
+                if self.config.settings.proxy.enabled {
+                    self.focused_field = InputId::ProxyAddress;
+                    operation::focus(Id::from(InputId::ProxyAddress))
+                } else {
+                    Task::none()
+                }
             }
             SettingsTab::Files => {
                 // Files tab has no text input fields (only browse button)
@@ -355,42 +367,44 @@ impl NexusApp {
     /// - Files tab: no focusable fields (only browse button)
     pub fn handle_settings_tab_pressed(&mut self) -> Task<Message> {
         match self.settings_tab {
-            SettingsTab::General => {
-                // General tab only has nickname field - focus it
-                self.focused_field = InputId::SettingsNickname;
-                operation::focus(Id::from(InputId::SettingsNickname))
-            }
-            SettingsTab::Chat => {
-                // Chat tab has no text input fields, just checkboxes and pickers
-                Task::none()
-            }
-            SettingsTab::Files => {
-                // Files tab has no text input fields, just a browse button
-                Task::none()
-            }
-            SettingsTab::Events => {
-                // Events tab has no text input fields, just pickers and checkboxes
-                Task::none()
-            }
-            SettingsTab::Audio => {
-                // Audio tab has no text input fields, just pickers and key capture
-                Task::none()
-            }
-            SettingsTab::Network => {
-                // Cycle through Network tab fields: address -> username -> password -> address
-                // (skips port because NumberInput handles its own Tab key)
-                let next_field = match self.focused_field {
-                    InputId::ProxyAddress => InputId::ProxyUsername,
-                    InputId::ProxyPort => InputId::ProxyUsername,
-                    InputId::ProxyUsername => InputId::ProxyPassword,
-                    InputId::ProxyPassword => InputId::ProxyAddress,
-                    _ => InputId::ProxyAddress,
-                };
-
-                self.focused_field = next_field;
-                operation::focus(Id::from(next_field))
+            // Tabs without text inputs — Tab is a no-op.
+            SettingsTab::Files | SettingsTab::Events | SettingsTab::Audio => Task::none(),
+            // Tabs with text inputs — query iced for the actually-
+            // focused widget id and let the resolved handler do the
+            // cycle (settings_tab scopes the cycle since only one tab
+            // is rendered at a time).
+            SettingsTab::General | SettingsTab::Chat | SettingsTab::Network => {
+                super::focus::dispatch_find_focused(Message::SettingsTabResolved)
             }
         }
+    }
+
+    pub fn handle_settings_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        let next = match self.settings_tab {
+            SettingsTab::General => {
+                // Single field — always focus the nickname input.
+                InputId::SettingsNickname
+            }
+            SettingsTab::Chat => {
+                // Single text input (auto-away message). Other Chat
+                // tab widgets are checkboxes / pickers / NumberInput.
+                InputId::SettingsAutoAwayMessage
+            }
+            SettingsTab::Network => {
+                // Skip Port (NumberInput handles its own Tab).
+                const CYCLE: &[InputId] = &[
+                    InputId::ProxyAddress,
+                    InputId::ProxyUsername,
+                    InputId::ProxyPassword,
+                ];
+                super::focus::next_in_cycle(&focused, CYCLE)
+            }
+            SettingsTab::Files | SettingsTab::Events | SettingsTab::Audio => {
+                return Task::none();
+            }
+        };
+        self.focused_field = next;
+        operation::focus(Id::from(next))
     }
 
     // ==================== Avatar ====================

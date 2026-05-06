@@ -607,26 +607,24 @@ impl NexusApp {
 
     // ==================== Tab Navigation ====================
 
-    /// Handle Tab pressed in server info edit form
-    ///
-    /// Uses `focused_field` to determine the current field and move to the next
-    /// one directly, avoiding async `is_focused` race conditions with Iced's
-    /// native Tab handling.
+    /// Handle Tab pressed in server info edit form.
     pub fn handle_server_info_edit_tab_pressed(&mut self) -> Task<Message> {
-        // Determine next field based on tracked focused field
-        // Tab cycle: Name → Description → PublicAddress → Auto-join → Persistent → Name
+        super::focus::dispatch_find_focused(Message::ServerInfoEditTabResolved)
+    }
+
+    pub fn handle_server_info_edit_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        // Tab cycle: Name → Description → PublicAddress → Auto-join → Persistent → Name.
         // NumberInput fields (connections, transfers, burst, rate, reindex) are
         // skipped because they consume Tab internally.
-        let next_field = match self.focused_field {
-            InputId::EditServerInfoName => InputId::EditServerInfoDescription,
-            InputId::EditServerInfoDescription => InputId::EditServerInfoPublicAddress,
-            InputId::EditServerInfoPublicAddress => InputId::EditServerInfoAutoJoinChannels,
-            InputId::EditServerInfoAutoJoinChannels => InputId::EditServerInfoPersistentChannels,
-            InputId::EditServerInfoPersistentChannels => InputId::EditServerInfoName,
-            _ => InputId::EditServerInfoName,
-        };
-
-        self.focused_field = next_field;
-        operation::focus(Id::from(next_field))
+        const CYCLE: &[InputId] = &[
+            InputId::EditServerInfoName,
+            InputId::EditServerInfoDescription,
+            InputId::EditServerInfoPublicAddress,
+            InputId::EditServerInfoAutoJoinChannels,
+            InputId::EditServerInfoPersistentChannels,
+        ];
+        let next = super::focus::next_in_cycle(&focused, CYCLE);
+        self.focused_field = next;
+        operation::focus(Id::from(next))
     }
 }

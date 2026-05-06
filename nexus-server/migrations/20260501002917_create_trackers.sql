@@ -11,5 +11,5 @@ CREATE TABLE IF NOT EXISTS trackers (
     updated_at INTEGER NOT NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_trackers_endpoint ON trackers(address, port);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_trackers_endpoint ON trackers(LOWER(address), port);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_trackers_name_lower ON trackers(LOWER(name));

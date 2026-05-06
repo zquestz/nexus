@@ -284,27 +284,29 @@ impl NexusApp {
 
     // ==================== Tab Navigation ====================
 
-    /// Handle Tab pressed in bookmark edit form
+    /// Handle Tab pressed in bookmark Add/Edit form.
     ///
-    /// Uses `focused_field` to determine the current field and move to the next
-    /// one directly, avoiding async `is_focused` race conditions with Iced's
-    /// native Tab handling.
+    /// Queries iced for the actually-focused widget at Tab time
+    /// (rather than the manual `focused_field` tracker), then advances
+    /// to the next input. The resolved id is forwarded to
+    /// [`Self::handle_bookmark_edit_tab_resolved`].
     pub fn handle_bookmark_edit_tab_pressed(&mut self) -> Task<Message> {
-        // Determine next field based on tracked focused field
-        // Note: Port is skipped because NumberInput handles its own Tab key
-        let next_field = match self.focused_field {
-            InputId::BookmarkName => InputId::BookmarkAddress,
-            InputId::BookmarkAddress => InputId::BookmarkUsername,
-            InputId::BookmarkPort => InputId::BookmarkUsername,
-            InputId::BookmarkUsername => InputId::BookmarkPassword,
-            InputId::BookmarkPassword => InputId::BookmarkNickname,
-            InputId::BookmarkNickname => InputId::BookmarkFingerprint,
-            InputId::BookmarkFingerprint => InputId::BookmarkName,
-            _ => InputId::BookmarkName,
-        };
+        super::focus::dispatch_find_focused(Message::BookmarkEditTabResolved)
+    }
 
-        self.focused_field = next_field;
-        operation::focus(Id::from(next_field))
+    pub fn handle_bookmark_edit_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        // Note: Port is skipped because NumberInput handles its own Tab key.
+        const CYCLE: &[InputId] = &[
+            InputId::BookmarkName,
+            InputId::BookmarkAddress,
+            InputId::BookmarkUsername,
+            InputId::BookmarkPassword,
+            InputId::BookmarkNickname,
+            InputId::BookmarkFingerprint,
+        ];
+        let next = super::focus::next_in_cycle(&focused, CYCLE);
+        self.focused_field = next;
+        operation::focus(Id::from(next))
     }
 
     // ==================== Private Helpers ====================

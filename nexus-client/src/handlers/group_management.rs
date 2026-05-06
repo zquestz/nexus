@@ -5,6 +5,7 @@
 //! the group dropdown in user create/edit forms.
 
 use iced::Task;
+use iced::widget::{Id, operation};
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, GroupNameError};
@@ -12,8 +13,8 @@ use nexus_common::validators::{self, GroupNameError};
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
 use crate::types::{
-    GroupManagementMode, GroupManagementSortColumn, Message, PendingRequests, ResponseRouting,
-    UserManagementMode, UserManagementTab,
+    GroupManagementMode, GroupManagementSortColumn, InputId, Message, PendingRequests,
+    ResponseRouting, UserManagementMode, UserManagementTab,
 };
 
 impl NexusApp {
@@ -197,7 +198,8 @@ impl NexusApp {
         };
 
         conn.user_management.group_management.enter_create_mode();
-        Task::none()
+        self.focused_field = InputId::CreateGroupName;
+        operation::focus(Id::from(InputId::CreateGroupName))
     }
 
     /// Handle edit button click on a group in the list
@@ -663,5 +665,34 @@ impl NexusApp {
             }
         }
         Task::none()
+    }
+
+    // ==================== Tab Navigation ====================
+
+    /// Tab in Group Create form. Single field, but Tab still queries
+    /// iced for the focused widget so click-and-Tab without typing
+    /// still routes back to the Name input rather than relying on a
+    /// stale tracker.
+    pub fn handle_group_management_create_tab_pressed(&mut self) -> Task<Message> {
+        super::focus::dispatch_find_focused(Message::GroupManagementCreateTabResolved)
+    }
+
+    pub fn handle_group_management_create_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        const CYCLE: &[InputId] = &[InputId::CreateGroupName];
+        let next = super::focus::next_in_cycle(&focused, CYCLE);
+        self.focused_field = next;
+        operation::focus(Id::from(next))
+    }
+
+    /// Tab in Group Edit form. Same shape as Group Create.
+    pub fn handle_group_management_edit_tab_pressed(&mut self) -> Task<Message> {
+        super::focus::dispatch_find_focused(Message::GroupManagementEditTabResolved)
+    }
+
+    pub fn handle_group_management_edit_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        const CYCLE: &[InputId] = &[InputId::EditGroupName];
+        let next = super::focus::next_in_cycle(&focused, CYCLE);
+        self.focused_field = next;
+        operation::focus(Id::from(next))
     }
 }

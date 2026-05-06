@@ -4678,6 +4678,7 @@ dependencies = [
  "iced",
  "iced_aw",
  "iced_fontello",
+ "iced_runtime",
  "iced_toasts",
  "identicon-rs",
  "idna",
