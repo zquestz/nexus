@@ -9,13 +9,22 @@ err-tracker-unauthorized = Wrong or missing password
 
 # Field validation (error_kind: invalid)
 err-tracker-fingerprint-invalid = Invalid certificate fingerprint format
-err-tracker-name-too-long = Server name is too long (max { $max_length } bytes)
-err-tracker-description-too-long = Server description is too long (max { $max_length } bytes)
+err-tracker-name-too-long = Server name is too long (max { $max_length } characters)
+err-tracker-name-empty = Server name cannot be empty
+err-tracker-name-contains-newlines = Server name cannot contain newlines
+err-tracker-name-invalid-characters = Server name contains invalid characters
+err-tracker-description-too-long = Server description is too long (max { $max_length } characters)
+err-tracker-description-contains-newlines = Server description cannot contain newlines
+err-tracker-description-invalid-characters = Server description contains invalid characters
 err-tracker-password-too-long = Password is too long (max { $max_length } bytes)
 err-tracker-address-too-long = Address is too long (max { $max_length } bytes)
 err-tracker-address-invalid = Invalid address
 err-tracker-version-too-long = Server version string is too long (max { $max_length } bytes)
+err-tracker-version-invalid = Invalid version (must be valid semver)
 err-tracker-locale-too-long = Locale code is too long (max { $max_length } bytes)
+err-tracker-locale-invalid = Locale contains invalid characters
+err-tracker-port-zero = Port cannot be zero
+err-tracker-websocket-port-zero = WebSocket port cannot be zero
 
 # Rate / capacity
 err-tracker-rate-limited = Rate limit exceeded; try again later

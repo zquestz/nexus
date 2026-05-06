@@ -199,6 +199,26 @@ Create a new user account.
 | `group_id`    | integer | No       | Group to assign the user to (null for no group)                          |
 | `revokes`     | array   | No       | Permissions to revoke from group (only with group)                       |
 
+**Field validation.** Each input field is enforced by a validator in
+`nexus-common/src/validators/`:
+
+- `username` — `validate_username`: non-empty, ≤32 characters; Unicode
+  letters or ASCII graphic characters only; rejects whitespace, control
+  characters, and the path-sensitive set `/ \ : . < > " | ? * #`.
+- `password` — `validate_password`: non-empty, ≤256 bytes, must meet
+  the server's configured `min_password_strength` (zxcvbn-scored,
+  username supplied as user input so passwords based on the username
+  are penalized).
+- `permissions` — `validate_permissions`: list bounded to
+  `PERMISSIONS_COUNT` (the total defined permission set); each entry
+  non-empty, ≤32 bytes, no newlines, no control characters. Format-only —
+  unrecognized permission names pass this validator and are rejected at
+  permission-parsing time downstream.
+- `revokes` — same rules as `permissions`.
+
+Validation failures send `UserCreateResponse { success: false, error }`
+with a translated error message.
+
 **Regular user:**
 
 ```json
@@ -377,6 +397,28 @@ Update an existing user account.
 | `remove_group`     | boolean | No       | Remove user from current group                          |
 | `revokes`          | array   | No       | Permissions to revoke from group                        |
 
+**Field validation.** Same rules as
+[`UserCreate`](#usercreate-client--server) for the matching fields:
+`username` (`validate_username`), `password`
+(`validate_password`), `permissions` and `revokes`
+(`validate_permissions`). `current_password` is not run through
+`validate_password` — it is verified directly against the stored
+hash via Argon2.
+
+`UserUpdate` is a partial update — omitted fields are unchanged.
+Two side effects of `permissions` worth knowing about:
+
+- **For admin requesters**, `permissions` (when present) fully
+  replaces the target's grant and revoke override rows.
+- **For non-admin requesters**, the handler runs a delegation merge:
+  it preserves any of the target's existing grants the requester
+  doesn't themselves hold (so a moderator can't remove perms only
+  an admin granted), then layers in the requested set.
+- **`permissions` clears revokes**: when `permissions` is present,
+  the handler deletes both grants and revokes for the target before
+  re-inserting. To preserve revoke overrides across an update, the
+  client must re-send them in `revokes` alongside `permissions`.
+
 Only include fields you want to change.
 
 **Change password (self):**
@@ -499,6 +541,24 @@ Disconnect a user from the server.
 | `nickname` | string | Yes      | Display name of user to kick               |
 | `reason`   | string | No       | Reason for the kick (shown to kicked user) |
 
+**Field validation.** Each input field is enforced by a validator in
+`nexus-common/src/validators/`:
+
+- `nickname` — `validate_nickname`: non-empty, ≤32 characters; Unicode
+  letters or ASCII graphic characters only; rejects whitespace,
+  control characters, and the path-sensitive set
+  `/ \ : . < > " | ? * #`.
+- `reason` (when present) — `validate_kick_reason`: ≤256 characters
+  (`MAX_KICK_REASON_LENGTH`), no control characters (newlines, tabs,
+  null bytes, etc. all rejected — the reason is rendered as a
+  single-line "kicked by X with reason: …" message rendered to the
+  kicked user). Empty / omitted is allowed. Aligned with
+  `MAX_IP_RULE_REASON_LENGTH` (ban/trust reasons) for consistency
+  across moderation-reason fields.
+
+Validation failures send `UserKickResponse { success: false, error }`
+with a translated error message.
+
 **Example:**
 
 ```json
@@ -544,8 +604,8 @@ Update server configuration.
 
 | Field                    | Type    | Required | Description                                                                     |
 | ------------------------ | ------- | -------- | ------------------------------------------------------------------------------- |
-| `name`                   | string  | No       | Server display name (1-64 bytes)                                                |
-| `description`            | string  | No       | Server description (0-512 bytes)                                                |
+| `name`                   | string  | No       | Server display name (1-64 characters)                                           |
+| `description`            | string  | No       | Server description (0-512 characters)                                           |
 | `public_address`         | string  | No       | Hostname or IP advertised for shareable `nexus://` URIs (empty string clears)   |
 | `max_connections_per_ip` | integer | No       | Max connections per IP                                                          |
 | `max_transfers_per_ip`   | integer | No       | Max transfers per IP                                                            |
@@ -556,6 +616,36 @@ Update server configuration.
 | `chat_burst_limit`       | integer | No       | Max messages in a burst before rate limiting (0 = capacity of 1)                |
 | `chat_rate_limit`        | integer | No       | Messages per minute rate limit (0 = flood protection disabled)                  |
 | `min_password_strength`  | integer | No       | Minimum password strength level (0=Weak, 1=Fair, 2=Good, 3=Strong, 4=Excellent) |
+
+**Field validation.** Each input field is enforced by a validator in
+`nexus-common/src/validators/`:
+
+- `name` — `validate_server_name`: non-empty after trim, ≤64 characters,
+  no newlines, no other control characters.
+- `description` — `validate_server_description`: ≤512 characters, no
+  newlines, no other control characters. Empty string is allowed
+  (clears the description).
+- `public_address` — `validate_public_address`: ≤253 bytes; accepts
+  DNS hostnames, IPv4 literals, bare IPv6 literals, and IDN (Unicode
+  or Punycode); rejects URL schemes, brackets, paths, userinfo,
+  whitespace, embedded ports, and IPv6 zone identifiers. Empty string
+  is allowed (clears the advertised address).
+- `image` — `validate_server_image`: ≤700 KB data URI, must be a
+  well-formed `data:image/<type>;base64,...` URI for one of the
+  allowed image types (PNG, JPEG, WebP, SVG). Empty string is
+  allowed (clears the image).
+- `persistent_channels` and `auto_join_channels` — each space-separated
+  channel name is run through `validate_channel`: non-empty, starts
+  with `#`, has at least one character after the prefix, ≤32
+  characters, no invalid characters.
+- `min_password_strength` — integer in the closed range 0-4
+  (`PasswordStrength::Weak` through `PasswordStrength::Excellent`).
+  Values outside the range are rejected.
+
+Other numeric fields (`max_connections_per_ip`, `max_transfers_per_ip`,
+`file_reindex_interval`, `chat_burst_limit`, `chat_rate_limit`) are
+bounded only by their integer type. `ServerInfoUpdate` is a partial
+update — omitted fields are unchanged.
 
 Only include fields you want to change.
 
@@ -827,8 +917,27 @@ registration task once the row is inserted (unless `enabled: false`).
 | `port`        | integer | Yes      | TCP port, 1-65535 (typically 7510)                                              |
 | `fingerprint` | string  | No       | Pinned cert fingerprint in canonical form. Omit to TOFU-pin on first connect    |
 | `password`    | string  | No       | Registration password (omit or empty for an open tracker)                       |
-| `name`        | string  | Yes      | Admin-supplied label (1-256 bytes; case-insensitively unique)                   |
+| `name`        | string  | Yes      | Admin-supplied label (1-64 characters; case-insensitively unique)               |
 | `enabled`     | boolean | Yes      | Whether the registration task should actively maintain a connection             |
+
+**Field validation.** Each input field is enforced by validators in
+`nexus-common/src/validators/`:
+
+- `address` — `validate_tracker_address` (delegates to
+  `validate_public_address`): non-empty after trim, ≤253 bytes; accepts
+  DNS hostnames, IPv4 literals, bare IPv6 literals, and IDN (Unicode
+  or Punycode); rejects URL schemes, brackets, paths, userinfo,
+  whitespace, embedded ports, and IPv6 zone identifiers.
+- `port` — must be non-zero (1-65535).
+- `fingerprint` — when present, must match the canonical 95-byte
+  uppercase form (32 hex bytes separated by colons), enforced by
+  `is_canonical_fingerprint`.
+- `password` — when present, ≤256 bytes.
+- `name` — `validate_tracker_name`: non-empty after trim, ≤64 characters,
+  no newlines, no other control characters.
+
+Validation failures send `TrackerAddResponse { success: false, error }`
+with a translated error message.
 
 **Example (open tracker, TOFU-pin on first connect):**
 
@@ -962,6 +1071,12 @@ required — `TrackerUpdate` is a full replacement, not a patch.
 | `password`    | string  | No       | Registration password (omit or empty for an open tracker)           |
 | `name`        | string  | Yes      | Admin-supplied label                                                |
 | `enabled`     | boolean | Yes      | Whether the registration task should actively maintain a connection |
+
+**Field validation.** Same rules as
+[`TrackerAdd`](#trackeradd-client--server) for the matching fields
+(`address`, `port`, `fingerprint`, `password`, `name`). Validation
+runs on every field — `TrackerUpdate` is a full replacement, not a
+patch.
 
 **Accept a new fingerprint after rotation:**
 
@@ -1381,8 +1496,8 @@ Users cannot:
 
 | Field                    | Rules                                                       |
 | ------------------------ | ----------------------------------------------------------- |
-| `name`                   | 1-64 bytes, no newlines, no control characters              |
-| `description`            | 0-512 bytes, no newlines, no control characters             |
+| `name`                   | 1-64 characters, no newlines, no control characters         |
+| `description`            | 0-512 characters, no newlines, no control characters        |
 | `image`                  | Max 700KB data URI, PNG/WebP/JPEG/SVG formats               |
 | `max_connections_per_ip` | Positive integer                                            |
 | `max_transfers_per_ip`   | Positive integer                                            |
@@ -1396,7 +1511,7 @@ Users cannot:
 | `port`        | 1-65535                                                                                                                                 |
 | `fingerprint` | When supplied: canonical form (32 uppercase hex bytes separated by colons, exactly 95 chars)                                            |
 | `password`    | 0-256 bytes (empty / omitted = open tracker)                                                                                            |
-| `name`        | 1-256 bytes (whitespace-only rejected); case-insensitively unique across all configured trackers                                        |
+| `name`        | 1-64 characters (whitespace-only rejected); case-insensitively unique across all configured trackers                                    |
 
 A server can have at most 64 configured trackers.
 
@@ -1463,8 +1578,8 @@ A server can have at most 64 configured trackers.
 | ------------------------------------------------------- | ------------------------------- |
 | Permission denied                                       | Non-admin attempted update      |
 | Server name cannot be empty                             | Empty name provided             |
-| Server name too long                                    | Exceeds 64 bytes                |
-| Description too long                                    | Exceeds 512 bytes               |
+| Server name too long                                    | Exceeds 64 characters           |
+| Description too long                                    | Exceeds 512 characters          |
 | Image too large                                         | Exceeds 700KB                   |
 | Invalid image format                                    | Not PNG/WebP/JPEG/SVG           |
 | Public address is too long                              | Exceeds 253 bytes               |
@@ -1502,7 +1617,7 @@ the first failing rule.
 | Tracker name cannot be empty                                   | Empty / whitespace-only name                                                                         |
 | Tracker name cannot contain newlines                           | Name has `\n` or `\r`                                                                                |
 | Tracker name contains invalid characters                       | Name has other control characters                                                                    |
-| Tracker name is too long                                       | Name exceeds 256 bytes                                                                               |
+| Tracker name is too long                                       | Name exceeds 64 characters                                                                           |
 | Another tracker is already configured at this address and port | `(address, port)` collides with an existing row                                                      |
 | Another tracker is already configured with this name           | Case-insensitive name collides with an existing row                                                  |
 | Tracker limit reached (max N)                                  | `TrackerAdd` would exceed the 64-row cap                                                             |

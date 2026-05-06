@@ -198,6 +198,13 @@ Request detailed information about a specific user.
 | ---------- | ------ | -------- | ----------------------------------- |
 | `nickname` | string | Yes      | Display name of the user to look up |
 
+**Field validation.** `nickname` is enforced by `validate_nickname` in
+`nexus-common/src/validators/`: non-empty, ≤32 characters; Unicode
+letters or ASCII graphic characters only; rejects whitespace, control
+characters, and the path-sensitive set `/ \ : . < > " | ? * #`.
+Validation failures send `UserInfoResponse { success: false, error }`
+with a translated error message.
+
 **Example:**
 
 ```json
@@ -507,9 +514,15 @@ Users can set an away status and/or a status message to indicate their availabil
 
 Set the user as away, optionally with a status message.
 
-| Field     | Type   | Required | Description                             |
-| --------- | ------ | -------- | --------------------------------------- |
-| `message` | string | No       | Optional status message (max 128 bytes) |
+| Field     | Type   | Required | Description                                  |
+| --------- | ------ | -------- | -------------------------------------------- |
+| `message` | string | No       | Optional status message (max 128 characters) |
+
+**Field validation.** `message` is enforced by `validate_status` in
+`nexus-common/src/validators/`: ≤128 characters, no newlines, no other
+control characters. Empty/null is allowed (away without a message).
+Validation failures send `UserAwayResponse { success: false, error }`
+with a translated error message.
 
 **Example (away with message):**
 
@@ -559,9 +572,15 @@ Response to `UserBack` request.
 
 Set or clear a status message without changing away state.
 
-| Field    | Type   | Required | Description                                   |
-| -------- | ------ | -------- | --------------------------------------------- |
-| `status` | string | No       | Status message (null to clear, max 128 bytes) |
+| Field    | Type   | Required | Description                                        |
+| -------- | ------ | -------- | -------------------------------------------------- |
+| `status` | string | No       | Status message (null to clear, max 128 characters) |
+
+**Field validation.** `status` is enforced by `validate_status` in
+`nexus-common/src/validators/`: ≤128 characters, no newlines, no other
+control characters. Empty/null is allowed (clears the status).
+Validation failures send `UserStatusResponse { success: false, error }`
+with a translated error message.
 
 **Example (set status):**
 
@@ -600,7 +619,7 @@ Response to `UserStatus` request.
 
 Status messages must:
 
-- Be 128 bytes or fewer
+- Be 128 characters or fewer
 - Not contain newlines
 - Not contain control characters
 

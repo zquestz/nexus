@@ -2,7 +2,10 @@
 //!
 //! Validates user status messages (used for both away messages and general status).
 
-/// Maximum length for status messages in bytes
+/// Maximum length for status messages in characters.
+///
+/// Counted as Unicode scalar values rather than bytes so non-ASCII users
+/// (CJK, Cyrillic, etc.) get the same effective capacity as ASCII users.
 pub const MAX_STATUS_LENGTH: usize = 128;
 
 /// Validation error for status messages
@@ -19,7 +22,7 @@ pub enum StatusError {
 /// Validate a status message
 ///
 /// Checks:
-/// - Does not exceed maximum length (128 bytes)
+/// - Does not exceed maximum length (128 characters)
 /// - No control characters (newlines reported separately)
 ///
 /// Note: Empty messages are allowed (to clear status).
@@ -28,7 +31,7 @@ pub enum StatusError {
 ///
 /// Returns a `StatusError` variant describing the validation failure.
 pub fn validate_status(message: &str) -> Result<(), StatusError> {
-    if message.len() > MAX_STATUS_LENGTH {
+    if message.chars().count() > MAX_STATUS_LENGTH {
         return Err(StatusError::TooLong);
     }
     for ch in message.chars() {
@@ -70,6 +73,12 @@ mod tests {
     fn test_too_long() {
         assert_eq!(
             validate_status(&"a".repeat(MAX_STATUS_LENGTH + 1)),
+            Err(StatusError::TooLong)
+        );
+        // Char-counted, not byte-counted: at limit accepted, over rejected.
+        assert!(validate_status(&"あ".repeat(MAX_STATUS_LENGTH)).is_ok());
+        assert_eq!(
+            validate_status(&"あ".repeat(MAX_STATUS_LENGTH + 1)),
             Err(StatusError::TooLong)
         );
     }

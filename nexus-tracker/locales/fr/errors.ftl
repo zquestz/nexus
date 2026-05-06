@@ -9,13 +9,22 @@ err-tracker-unauthorized = Mot de passe incorrect ou manquant
 
 # Validation des champs (error_kind: invalid)
 err-tracker-fingerprint-invalid = Format d'empreinte de certificat invalide
-err-tracker-name-too-long = Le nom du serveur est trop long (max { $max_length } octets)
-err-tracker-description-too-long = La description du serveur est trop longue (max { $max_length } octets)
+err-tracker-name-too-long = Le nom du serveur est trop long (max { $max_length } caractères)
+err-tracker-name-empty = Le nom du serveur ne peut pas être vide
+err-tracker-name-contains-newlines = Le nom du serveur ne peut pas contenir de sauts de ligne
+err-tracker-name-invalid-characters = Le nom du serveur contient des caractères invalides
+err-tracker-description-too-long = La description du serveur est trop longue (max { $max_length } caractères)
+err-tracker-description-contains-newlines = La description du serveur ne peut pas contenir de sauts de ligne
+err-tracker-description-invalid-characters = La description du serveur contient des caractères invalides
 err-tracker-password-too-long = Le mot de passe est trop long (max { $max_length } octets)
 err-tracker-address-too-long = L'adresse est trop longue (max { $max_length } octets)
 err-tracker-address-invalid = Adresse invalide
 err-tracker-version-too-long = La chaîne de version du serveur est trop longue (max { $max_length } octets)
+err-tracker-version-invalid = Version invalide (doit être un semver valide)
 err-tracker-locale-too-long = Le code de localisation est trop long (max { $max_length } octets)
+err-tracker-locale-invalid = La langue contient des caractères invalides
+err-tracker-port-zero = Le port ne peut pas être zéro
+err-tracker-websocket-port-zero = Le port WebSocket ne peut pas être zéro
 
 # Débit / capacité
 err-tracker-rate-limited = Limite de débit dépassée ; réessayez plus tard

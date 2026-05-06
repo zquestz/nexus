@@ -2,7 +2,11 @@
 //!
 //! Validates server name strings.
 
-/// Maximum length for server name in bytes
+/// Maximum length for server name in characters.
+///
+/// Counted as Unicode scalar values rather than bytes so non-ASCII server
+/// names (e.g. Japanese, Cyrillic) aren't penalized for their UTF-8 byte
+/// length.
 pub const MAX_SERVER_NAME_LENGTH: usize = 64;
 
 /// Validation error for server names
@@ -32,7 +36,7 @@ pub fn validate_server_name(name: &str) -> Result<(), ServerNameError> {
     if name.trim().is_empty() {
         return Err(ServerNameError::Empty);
     }
-    if name.len() > MAX_SERVER_NAME_LENGTH {
+    if name.chars().count() > MAX_SERVER_NAME_LENGTH {
         return Err(ServerNameError::TooLong);
     }
     for ch in name.chars() {
@@ -73,6 +77,12 @@ mod tests {
     fn test_too_long() {
         assert_eq!(
             validate_server_name(&"a".repeat(MAX_SERVER_NAME_LENGTH + 1)),
+            Err(ServerNameError::TooLong)
+        );
+        // Char-counted, not byte-counted: at limit accepted, over rejected.
+        assert!(validate_server_name(&"あ".repeat(MAX_SERVER_NAME_LENGTH)).is_ok());
+        assert_eq!(
+            validate_server_name(&"あ".repeat(MAX_SERVER_NAME_LENGTH + 1)),
             Err(ServerNameError::TooLong)
         );
     }

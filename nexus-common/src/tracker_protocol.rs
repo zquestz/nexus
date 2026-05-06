@@ -71,6 +71,12 @@ pub enum TrackerClientMessage {
         /// BCP-47 language tag for translated text in responses.
         #[serde(default = "default_locale")]
         locale: String,
+        /// Sender's `CARGO_PKG_VERSION`, used by the tracker to filter
+        /// the response to entries whose registered `version` is
+        /// semver-compatible with the requesting client. Required —
+        /// the tracker rejects requests with a missing, empty,
+        /// over-cap, or unparseable version.
+        version: String,
     },
     /// Register or refresh this server's entry.
     ///
@@ -177,10 +183,15 @@ pub enum TrackerServerMessage {
 impl std::fmt::Debug for TrackerClientMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TrackerClientMessage::TrackerServerList { password, locale } => f
+            TrackerClientMessage::TrackerServerList {
+                password,
+                locale,
+                version,
+            } => f
                 .debug_struct("TrackerServerList")
                 .field("password", &password.as_ref().map(|_| "<REDACTED>"))
                 .field("locale", locale)
+                .field("version", version)
                 .finish(),
             TrackerClientMessage::TrackerServerRegister {
                 password,
@@ -243,11 +254,13 @@ mod tests {
         let msg = TrackerClientMessage::TrackerServerList {
             password: Some("secret".to_string()),
             locale: "en".to_string(),
+            version: "0.8.2".to_string(),
         };
         let json = serde_json::to_string(&msg).expect("serialize");
         assert!(json.contains(r#""type":"TrackerServerList""#));
         assert!(json.contains(r#""password":"secret""#));
         assert!(json.contains(r#""locale":"en""#));
+        assert!(json.contains(r#""version":"0.8.2""#));
     }
 
     #[test]
@@ -308,6 +321,7 @@ mod tests {
         let msg = TrackerClientMessage::TrackerServerList {
             password: Some("super-secret".to_string()),
             locale: "en".to_string(),
+            version: "0.8.2".to_string(),
         };
         let debug = format!("{:?}", msg);
         assert!(!debug.contains("super-secret"));
@@ -317,15 +331,32 @@ mod tests {
     #[test]
     fn test_default_locale_on_deserialize() {
         // When `locale` is omitted, deserialization uses default "en".
-        let json = r#"{"type":"TrackerServerList"}"#;
+        // `version` is required, so the JSON must include it.
+        let json = r#"{"type":"TrackerServerList","version":"0.8.2"}"#;
         let msg: TrackerClientMessage = serde_json::from_str(json).expect("deserialize");
         match msg {
-            TrackerClientMessage::TrackerServerList { locale, password } => {
+            TrackerClientMessage::TrackerServerList {
+                locale,
+                password,
+                version,
+            } => {
                 assert_eq!(locale, "en");
                 assert!(password.is_none());
+                assert_eq!(version, "0.8.2");
             }
             _ => panic!("expected TrackerServerList"),
         }
+    }
+
+    #[test]
+    fn test_missing_version_fails_deserialize() {
+        // `version` is required — omitting it should cause deserialization
+        // to fail. This is intentional: a request without a version is a
+        // protocol violation, and falling through to "no filter" would
+        // silently weaken compat enforcement.
+        let json = r#"{"type":"TrackerServerList","locale":"en"}"#;
+        let result: Result<TrackerClientMessage, _> = serde_json::from_str(json);
+        assert!(result.is_err(), "missing version must fail to deserialize");
     }
 
     #[test]

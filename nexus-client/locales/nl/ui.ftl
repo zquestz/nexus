@@ -511,11 +511,19 @@ err-unexpected-login-response = Onverwachte aanmeldrespons
 err-server-omitted-nickname = Serverantwoord zonder bijnaam
 err-connection-closed = Verbinding gesloten
 err-could-not-determine-config-dir = Kan configuratiemap niet bepalen
-err-message-too-long = Bericht is te lang ({ $length } tekens, max { $max })
+err-message-too-long =
+    Bericht is te lang ({ $length } { $length ->
+        [one] teken
+       *[other] tekens
+    }, max { $max })
 err-send-failed = Kan bericht niet verzenden
 err-no-chat-permission = Je hebt geen toestemming om berichten te verzenden
 err-console-no-send = Gebruik /{ $join } om een kanaal te betreden of /{ $msg } om een bericht naar een gebruiker te sturen
-err-broadcast-too-long = Broadcast is te lang ({ $length } tekens, max { $max })
+err-broadcast-too-long =
+    Broadcast is te lang ({ $length } { $length ->
+        [one] teken
+       *[other] tekens
+    }, max { $max })
 err-broadcast-send-failed = Kan broadcast niet verzenden
 err-name-required = Bladwijzernaam is vereist
 err-address-required = Serveradres is vereist
@@ -557,21 +565,29 @@ password-strength-strong = Sterk
 password-strength-excellent = Uitstekend
 label-min-password-strength = Min. wachtwoord:
 
-err-topic-too-long = Onderwerp is te lang ({ $length } tekens, max { $max })
+err-topic-too-long =
+    Onderwerp is te lang ({ $length } { $length ->
+        [one] teken
+       *[other] tekens
+    }, max { $max })
 err-avatar-unsupported-type = Niet-ondersteund bestandstype. Gebruik PNG, WebP, JPEG of SVG.
 err-avatar-too-large = Avatar te groot. Maximale grootte is { $max_kb }KB.
 err-avatar-decode-failed = Kan avatar niet decoderen. Het bestand is mogelijk beschadigd.
 err-server-name-empty = Servernaam mag niet leeg zijn
-err-server-name-too-long = Servernaam is te lang (max { $max } bytes)
+err-server-name-too-long = Servernaam is te lang (max { $max } tekens)
 err-server-name-contains-newlines = Servernaam mag geen regelovergangen bevatten
 err-server-name-invalid-characters = Servernaam bevat ongeldige tekens
-err-status-too-long = Statusbericht is te lang (max { $max } bytes)
+err-status-too-long = Statusbericht is te lang (max { $max } tekens)
 err-status-contains-newlines = Statusbericht mag geen regelovergangen bevatten
 err-status-invalid-characters = Statusbericht bevat ongeldige tekens
+err-kick-reason-too-long = Kick-reden is te lang (max { $max } tekens)
+err-kick-reason-invalid-characters = Kick-reden bevat ongeldige tekens
+err-ban-reason-too-long = Ban-reden is te lang (max { $max } tekens)
+err-ban-reason-invalid-characters = Ban-reden bevat ongeldige tekens
 err-target-empty = Doel mag niet leeg zijn
-err-target-too-long = Doel is te lang (max { $max } bytes)
+err-target-too-long = Doel is te lang (max { $max } tekens)
 err-duration-too-long = Duur is te lang (max { $max } bytes)
-err-server-description-too-long = Beschrijving is te lang (max { $max } bytes)
+err-server-description-too-long = Beschrijving is te lang (max { $max } tekens)
 err-server-description-contains-newlines = Beschrijving mag geen regeleinden bevatten
 err-server-description-invalid-characters = Beschrijving bevat ongeldige tekens
 err-failed-send-update = Kan update niet verzenden: { $error }
@@ -589,7 +605,6 @@ err-failed-create-user = Kan gebruiker niet aanmaken: { $error }
 err-failed-delete-user = Kan gebruiker niet verwijderen: { $error }
 err-failed-update-user = Kan gebruiker niet bijwerken: { $error }
 err-failed-update-topic = Kan onderwerp niet bijwerken: { $error }
-err-message-too-long-details = { $error } ({ $length } tekens, max { $max })
 
 # Network connection errors (with parameters)
 err-invalid-address = Ongeldig adres '{ $address }': { $error }
@@ -797,7 +812,11 @@ err-public-address-invalid-format = Het openbare adres is geen geldige hostnaam 
 err-server-image-decode-failed = Kan afbeelding niet decoderen. Het bestand is mogelijk beschadigd.
 err-failed-read-image = Kan afbeelding niet lezen: { $error }
 err-news-empty = Bericht moet tekst of een afbeelding bevatten
-err-news-body-too-long = Inhoud is te lang ({ $length } tekens, maximaal { $max })
+err-news-body-too-long =
+    Inhoud is te lang ({ $length } { $length ->
+        [one] teken
+       *[other] tekens
+    }, maximaal { $max })
 err-news-body-invalid-characters = Inhoud bevat ongeldige controletekens
 err-news-image-decode-failed = Kan afbeelding niet decoderen. Het bestand is mogelijk beschadigd.
 
@@ -1278,7 +1297,7 @@ toast-tracker-fingerprint-accepted-name = Vingerafdruk geaccepteerd voor "{ $nam
 
 # Errors
 err-tracker-name-empty = Naam van tracker is verplicht
-err-tracker-name-too-long = Trackernaam is te lang (max { $max } bytes)
+err-tracker-name-too-long = Trackernaam is te lang (max { $max } tekens)
 err-tracker-name-contains-newlines = Naam van tracker mag geen regeleinden bevatten
 err-tracker-name-invalid-characters = Naam van tracker bevat ongeldige stuurtekens
 err-tracker-address-empty = Adres van tracker is verplicht

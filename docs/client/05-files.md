@@ -64,8 +64,8 @@ If you have the `file_search` permission, a search bar appears below the toolbar
 
 ### Search Requirements
 
-- Minimum 3 characters (after trimming whitespace)
-- Maximum 256 characters
+- Minimum 3 bytes (after trimming whitespace)
+- Maximum 256 bytes
 - No control characters allowed
 
 ### Search Results

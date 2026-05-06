@@ -12,7 +12,7 @@ err-nickname-required = Spitzname für gemeinsame Konten erforderlich
 err-nickname-too-long = Spitzname ist zu lang (max. { $max_length } Zeichen)
 
 # Abwesenheitsnachricht-Fehler
-err-status-too-long = Abwesenheitsnachricht ist zu lang (max. { $max_length } Bytes)
+err-status-too-long = Abwesenheitsnachricht ist zu lang (max. { $max_length } Zeichen)
 err-status-contains-newlines = Abwesenheitsnachricht darf keine Zeilenumbrüche enthalten
 err-status-invalid-characters = Abwesenheitsnachricht enthält ungültige Zeichen
 
@@ -128,11 +128,13 @@ err-username-invalid = Der Benutzername enthält ungültige Zeichen (Buchstaben,
 err-unknown-permission = Unbekannte Berechtigung: '{ $permission }'
 
 # Dynamische Fehlermeldungen (mit Parametern)
-err-broadcast-too-long = Nachricht zu lang (maximal { $max_length } Bytes)
-err-chat-too-long = Nachricht zu lang (maximal { $max_length } Bytes)
-err-topic-too-long = Das Thema darf { $max_length } Bytes nicht überschreiten
+err-broadcast-too-long = Nachricht zu lang (maximal { $max_length } Zeichen)
+err-chat-too-long = Nachricht zu lang (maximal { $max_length } Zeichen)
+err-topic-too-long = Das Thema darf { $max_length } Zeichen nicht überschreiten
 err-kicked-by = Sie wurden von { $username } hinausgeworfen
 err-kicked-by-reason = Sie wurden von { $username } hinausgeworfen: { $reason }
+err-kick-reason-too-long = Kick-Grund ist zu lang (maximal { $max_length } Zeichen)
+err-kick-reason-invalid-characters = Kick-Grund enthält ungültige Zeichen
 err-username-exists = Der Benutzername „{ $username }" existiert bereits
 err-user-not-found = Benutzer „{ $username }" nicht gefunden
 err-user-not-online = Benutzer „{ $username }" ist nicht online
@@ -150,10 +152,10 @@ err-permissions-invalid-characters = Der Berechtigungsname enthält ungültige Z
 # Server-Update-Fehler
 err-admin-required = Administratorrechte erforderlich
 err-server-name-empty = Der Servername darf nicht leer sein
-err-server-name-too-long = Der Servername ist zu lang (maximal { $max_length } Bytes)
+err-server-name-too-long = Der Servername ist zu lang (maximal { $max_length } Zeichen)
 err-server-name-contains-newlines = Der Servername darf keine Zeilenumbrüche enthalten
 err-server-name-invalid-characters = Der Servername enthält ungültige Zeichen
-err-server-description-too-long = Die Serverbeschreibung ist zu lang (maximal { $max_length } Bytes)
+err-server-description-too-long = Die Serverbeschreibung ist zu lang (maximal { $max_length } Zeichen)
 err-server-description-contains-newlines = Die Serverbeschreibung darf keine Zeilenumbrüche enthalten
 err-server-description-invalid-characters = Die Serverbeschreibung enthält ungültige Zeichen
 
@@ -175,7 +177,7 @@ err-public-address-invalid-format = Die öffentliche Adresse ist kein gültiger 
 
 # News-Fehler
 err-news-not-found = News-Eintrag #{ $id } nicht gefunden
-err-news-body-too-long = News-Text ist zu lang (maximal { $max_length } Bytes)
+err-news-body-too-long = News-Text ist zu lang (maximal { $max_length } Zeichen)
 err-news-body-invalid-characters = News-Text enthält ungültige Zeichen
 err-news-image-too-large = News-Bild ist zu groß (maximal 512KB)
 err-news-image-invalid-format = Ungültiges News-Bild-Format (muss eine Data-URI mit Base64-Kodierung sein)
@@ -185,12 +187,12 @@ err-cannot-edit-admin-news = Nur Administratoren können von Administratoren ers
 err-cannot-delete-admin-news = Nur Administratoren können von Administratoren erstellte Nachrichten löschen
 
 # File Area Errors
-err-file-path-too-long = Dateipfad ist zu lang (maximal { $max_length } Zeichen)
+err-file-path-too-long = Dateipfad ist zu lang (maximal { $max_length } Bytes)
 err-file-path-invalid = Dateipfad enthält ungültige Zeichen
 err-file-not-found = Datei oder Verzeichnis nicht gefunden
 err-file-not-directory = Pfad ist kein Verzeichnis
 err-dir-name-empty = Verzeichnisname darf nicht leer sein
-err-dir-name-too-long = Verzeichnisname ist zu lang (maximal { $max_length } Zeichen)
+err-dir-name-too-long = Verzeichnisname ist zu lang (maximal { $max_length } Bytes)
 err-dir-name-invalid = Verzeichnisname enthält ungültige Zeichen
 err-dir-already-exists = Eine Datei oder ein Verzeichnis mit diesem Namen existiert bereits
 err-dir-create-failed = Verzeichnis konnte nicht erstellt werden
@@ -243,7 +245,7 @@ err-banned-with-expiry = Sie wurden von diesem Server gesperrt (läuft ab in { $
 # File Search Errors
 err-search-query-empty = Suchanfrage darf nicht leer sein
 err-search-query-too-short = Suchanfrage ist zu kurz (mindestens { $min_length } Bytes)
-err-search-query-too-long = Suchanfrage ist zu lang (maximal { $max_length } Zeichen)
+err-search-query-too-long = Suchanfrage ist zu lang (maximal { $max_length } Bytes)
 err-search-query-invalid = Suchanfrage enthält ungültige Zeichen
 err-search-failed = Suche fehlgeschlagen
 # Trust System Errors
@@ -277,7 +279,7 @@ err-tracker-no-pending-fingerprint = Tracker hat keinen ausstehenden Fingerabdru
 err-tracker-name-invalid = Tracker-Name enthält ungültige Zeichen
 err-tracker-name-empty = Tracker-Name darf nicht leer sein
 err-tracker-name-contains-newlines = Tracker-Name darf keine Zeilenumbrüche enthalten
-err-tracker-name-too-long = Tracker-Name ist zu lang (max { $max_length } Bytes)
+err-tracker-name-too-long = Tracker-Name ist zu lang (max { $max_length } Zeichen)
 err-tracker-address-invalid = Ungültige Tracker-Adresse
 err-tracker-address-empty = Tracker-Adresse darf nicht leer sein
 err-tracker-address-too-long = Tracker-Adresse ist zu lang (maximal { $max_length } Bytes)

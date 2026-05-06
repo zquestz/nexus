@@ -383,7 +383,7 @@ impl NexusApp {
                 NewsBodyError::TooLong => t_args(
                     "err-news-body-too-long",
                     &[
-                        ("length", &body.len().to_string()),
+                        ("length", &body.chars().count().to_string()),
                         ("max", &validators::MAX_NEWS_BODY_LENGTH.to_string()),
                     ],
                 ),

@@ -572,9 +572,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_frame_reader_payload_exceeds_type_max() {
-        // ChatSend has a base limit of 1119 bytes, padded 20% to 1342
-        // Create a payload that claims to be 2000 bytes (well over limit)
-        let data = b"NX|8|ChatSend|a1b2c3d4e5f6|2000|";
+        // ChatSend has a base limit of 4287 bytes (`message` and `channel`
+        // are now char-counted, so each reserves 4× its char cap for the
+        // worst-case UTF-8 byte length). 4287 padded 20% = 5144.
+        // Create a payload that claims to be 8000 bytes (well over limit).
+        let data = b"NX|8|ChatSend|a1b2c3d4e5f6|8000|";
         let cursor = Cursor::new(data.as_slice());
         let buf_reader = BufReader::new(cursor);
         let mut reader = FrameReader::new(buf_reader);
@@ -584,8 +586,8 @@ mod tests {
             result,
             Err(FrameError::PayloadLengthExceedsTypeMax {
                 message_type,
-                length: 2000,
-                max: 1342  // 1119 * 1.2 = 1342
+                length: 8000,
+                max: 5144  // 4287 * 1.2 = 5144
             }) if message_type == "ChatSend"
         ));
     }

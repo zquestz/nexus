@@ -10,13 +10,22 @@ err-tracker-unauthorized = Wachtwoord onjuist of ontbrekend
 
 # Veldvalidatie (error_kind: invalid)
 err-tracker-fingerprint-invalid = Ongeldig formaat van certificaat-vingerafdruk
-err-tracker-name-too-long = Servernaam is te lang (max { $max_length } bytes)
-err-tracker-description-too-long = Serverbeschrijving is te lang (max { $max_length } bytes)
+err-tracker-name-too-long = Servernaam is te lang (max { $max_length } tekens)
+err-tracker-name-empty = De servernaam mag niet leeg zijn
+err-tracker-name-contains-newlines = De servernaam mag geen regeleinden bevatten
+err-tracker-name-invalid-characters = De servernaam bevat ongeldige tekens
+err-tracker-description-too-long = Serverbeschrijving is te lang (max { $max_length } tekens)
+err-tracker-description-contains-newlines = De serverbeschrijving mag geen regeleinden bevatten
+err-tracker-description-invalid-characters = De serverbeschrijving bevat ongeldige tekens
 err-tracker-password-too-long = Wachtwoord is te lang (max { $max_length } bytes)
 err-tracker-address-too-long = Adres is te lang (max { $max_length } bytes)
 err-tracker-address-invalid = Ongeldig adres
 err-tracker-version-too-long = Server-versietekenreeks is te lang (max { $max_length } bytes)
+err-tracker-version-invalid = Ongeldige versie (moet geldige semver zijn)
 err-tracker-locale-too-long = Localecode is te lang (max { $max_length } bytes)
+err-tracker-locale-invalid = De taal bevat ongeldige tekens
+err-tracker-port-zero = De poort mag niet nul zijn
+err-tracker-websocket-port-zero = De WebSocket-poort mag niet nul zijn
 
 # Snelheid / capaciteit
 err-tracker-rate-limited = Snelheidslimiet overschreden; probeer het later opnieuw

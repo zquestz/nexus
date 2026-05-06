@@ -34,9 +34,10 @@ use nexus_common::framing::FrameWriter;
 use nexus_common::io::send_tracker_server_message;
 use nexus_common::tracker_protocol::{ServerEntry, TrackerServerMessage};
 use nexus_common::validators::{
-    MAX_LOCALE_LENGTH, MAX_PASSWORD_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH,
-    MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH, MAX_VERSION_LENGTH, NormalizedAddress,
-    validate_and_classify_public_address,
+    MAX_PASSWORD_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH,
+    MAX_SERVER_NAME_LENGTH, MAX_VERSION_LENGTH, NormalizedAddress, ServerDescriptionError,
+    ServerNameError, VersionError, validate_and_classify_public_address,
+    validate_server_description, validate_server_name, validate_version,
 };
 use nexus_common::{
     ERROR_KIND_CAPACITY, ERROR_KIND_INVALID, ERROR_KIND_RATE_LIMITED, ERROR_KIND_UNAUTHORIZED,
@@ -44,22 +45,29 @@ use nexus_common::{
 
 use crate::auth::check_password;
 use crate::constants::{
-    ADDRESS_LOOKUP_TIMEOUT, DEFAULT_LOCALE, ERR_REGISTRY_MUTEX_POISONED, LOG_ADDRESS_DNS_TRANSIENT,
+    ADDRESS_LOOKUP_TIMEOUT, ERR_REGISTRY_MUTEX_POISONED, LOG_ADDRESS_DNS_TRANSIENT,
     LOG_AUTH_RATE_LIMITED, LOG_REFRESH_GHOST_ID, LOG_REFRESH_TOO_SOON, LOG_REGISTER_NEW,
     LOG_REGISTER_REFRESH, LOG_REGISTER_REJECTED, REASON_ADDRESS_BROADCAST,
     REASON_ADDRESS_DOCUMENTATION, REASON_ADDRESS_HOSTNAME_DNS_FAILED,
     REASON_ADDRESS_HOSTNAME_NO_MATCH, REASON_ADDRESS_HOSTNAME_NOT_FOUND, REASON_ADDRESS_INVALID,
     REASON_ADDRESS_IP_LITERAL_MISMATCH, REASON_ADDRESS_LINK_LOCAL, REASON_ADDRESS_LOOPBACK,
     REASON_ADDRESS_MULTICAST, REASON_ADDRESS_TOO_LONG, REASON_ADDRESS_UNSPECIFIED, REASON_CAPACITY,
-    REASON_DESCRIPTION_TOO_LONG, REASON_FINGERPRINT_INVALID, REASON_LOCALE_TOO_LONG,
-    REASON_NAME_TOO_LONG, REASON_PASSWORD_TOO_LONG, REASON_PER_IP_CAPACITY, REASON_RATE_LIMITED,
-    REASON_REFRESH_TOO_SOON, REASON_UNAUTHORIZED, REASON_VERSION_TOO_LONG,
+    REASON_DESCRIPTION_CONTAINS_NEWLINES, REASON_DESCRIPTION_INVALID_CHARACTERS,
+    REASON_DESCRIPTION_TOO_LONG, REASON_FINGERPRINT_INVALID, REASON_NAME_CONTAINS_NEWLINES,
+    REASON_NAME_EMPTY, REASON_NAME_INVALID_CHARACTERS, REASON_NAME_TOO_LONG,
+    REASON_PASSWORD_TOO_LONG, REASON_PER_IP_CAPACITY, REASON_PORT_ZERO, REASON_RATE_LIMITED,
+    REASON_REFRESH_TOO_SOON, REASON_UNAUTHORIZED, REASON_VERSION_INVALID, REASON_VERSION_TOO_LONG,
+    REASON_WEBSOCKET_PORT_ZERO,
 };
 use crate::errors::{
     err_tracker_address_invalid, err_tracker_address_too_long, err_tracker_capacity,
-    err_tracker_description_too_long, err_tracker_fingerprint_invalid, err_tracker_locale_too_long,
-    err_tracker_name_too_long, err_tracker_password_too_long, err_tracker_per_ip_capacity,
-    err_tracker_rate_limited, err_tracker_unauthorized, err_tracker_version_too_long,
+    err_tracker_description_contains_newlines, err_tracker_description_invalid_characters,
+    err_tracker_description_too_long, err_tracker_fingerprint_invalid,
+    err_tracker_name_contains_newlines, err_tracker_name_empty,
+    err_tracker_name_invalid_characters, err_tracker_name_too_long, err_tracker_password_too_long,
+    err_tracker_per_ip_capacity, err_tracker_port_zero, err_tracker_rate_limited,
+    err_tracker_unauthorized, err_tracker_version_invalid, err_tracker_version_too_long,
+    err_tracker_websocket_port_zero,
 };
 use crate::rate_limiter::RateCheck;
 use crate::registry::{ConnectionId, RegisterError};
@@ -347,15 +355,12 @@ where
     // Length and format validation. Use the request's locale for
     // translation when it's within bounds; fall back to DEFAULT_LOCALE
     // when the locale field itself is suspect.
-    if locale.len() > MAX_LOCALE_LENGTH {
-        reject(
-            writer,
-            peer_addr,
-            REASON_LOCALE_TOO_LONG,
-            ERROR_KIND_INVALID,
-            err_tracker_locale_too_long(DEFAULT_LOCALE, MAX_LOCALE_LENGTH),
-        )
-        .await?;
+    //
+    // Each field uses the full validator from `nexus_common::validators`
+    // (matching `nexus-server` server-info handling) — length-only
+    // checks would let empty / newline / control-char input through.
+    if let Some((reason, message)) = super::validate_locale(&locale) {
+        reject(writer, peer_addr, reason, ERROR_KIND_INVALID, message).await?;
         return Ok(ValidationOutcome::Rejected);
     }
     if let Some(p) = &password
@@ -371,28 +376,43 @@ where
         .await?;
         return Ok(ValidationOutcome::Rejected);
     }
-    if name.len() > MAX_SERVER_NAME_LENGTH {
-        reject(
-            writer,
-            peer_addr,
-            REASON_NAME_TOO_LONG,
-            ERROR_KIND_INVALID,
-            err_tracker_name_too_long(&locale, MAX_SERVER_NAME_LENGTH),
-        )
-        .await?;
+    if let Err(e) = validate_server_name(&name) {
+        let (reason, message) = match e {
+            ServerNameError::Empty => (REASON_NAME_EMPTY, err_tracker_name_empty(&locale)),
+            ServerNameError::TooLong => (
+                REASON_NAME_TOO_LONG,
+                err_tracker_name_too_long(&locale, MAX_SERVER_NAME_LENGTH),
+            ),
+            ServerNameError::ContainsNewlines => (
+                REASON_NAME_CONTAINS_NEWLINES,
+                err_tracker_name_contains_newlines(&locale),
+            ),
+            ServerNameError::InvalidCharacters => (
+                REASON_NAME_INVALID_CHARACTERS,
+                err_tracker_name_invalid_characters(&locale),
+            ),
+        };
+        reject(writer, peer_addr, reason, ERROR_KIND_INVALID, message).await?;
         return Ok(ValidationOutcome::Rejected);
     }
     if let Some(d) = &description
-        && d.len() > MAX_SERVER_DESCRIPTION_LENGTH
+        && let Err(e) = validate_server_description(d)
     {
-        reject(
-            writer,
-            peer_addr,
-            REASON_DESCRIPTION_TOO_LONG,
-            ERROR_KIND_INVALID,
-            err_tracker_description_too_long(&locale, MAX_SERVER_DESCRIPTION_LENGTH),
-        )
-        .await?;
+        let (reason, message) = match e {
+            ServerDescriptionError::TooLong => (
+                REASON_DESCRIPTION_TOO_LONG,
+                err_tracker_description_too_long(&locale, MAX_SERVER_DESCRIPTION_LENGTH),
+            ),
+            ServerDescriptionError::ContainsNewlines => (
+                REASON_DESCRIPTION_CONTAINS_NEWLINES,
+                err_tracker_description_contains_newlines(&locale),
+            ),
+            ServerDescriptionError::InvalidCharacters => (
+                REASON_DESCRIPTION_INVALID_CHARACTERS,
+                err_tracker_description_invalid_characters(&locale),
+            ),
+        };
+        reject(writer, peer_addr, reason, ERROR_KIND_INVALID, message).await?;
         return Ok(ValidationOutcome::Rejected);
     }
     if let Some(a) = &address
@@ -408,15 +428,23 @@ where
         .await?;
         return Ok(ValidationOutcome::Rejected);
     }
-    if version.len() > MAX_VERSION_LENGTH {
-        reject(
-            writer,
-            peer_addr,
-            REASON_VERSION_TOO_LONG,
-            ERROR_KIND_INVALID,
-            err_tracker_version_too_long(&locale, MAX_VERSION_LENGTH),
-        )
-        .await?;
+    // Full semver-shape validation: empty / over-cap / unparseable all
+    // reject. Distinct REASON_* and i18n keys for length vs format so
+    // operator logs can tell them apart and the registrant gets an
+    // actionable diagnostic. Keeps the by-construction guarantee that
+    // every entry the tracker stores has a parseable `version` — the
+    // listing-side compat filter relies on this.
+    if let Err(e) = validate_version(&version) {
+        let (reason, message) = match e {
+            VersionError::TooLong => (
+                REASON_VERSION_TOO_LONG,
+                err_tracker_version_too_long(&locale, MAX_VERSION_LENGTH),
+            ),
+            VersionError::Empty | VersionError::InvalidSemver => {
+                (REASON_VERSION_INVALID, err_tracker_version_invalid(&locale))
+            }
+        };
+        reject(writer, peer_addr, reason, ERROR_KIND_INVALID, message).await?;
         return Ok(ValidationOutcome::Rejected);
     }
     if !nexus_common::fingerprint::is_canonical_fingerprint(&fingerprint) {
@@ -426,6 +454,36 @@ where
             REASON_FINGERPRINT_INVALID,
             ERROR_KIND_INVALID,
             err_tracker_fingerprint_invalid(&locale),
+        )
+        .await?;
+        return Ok(ValidationOutcome::Rejected);
+    }
+    // Port 0 is reserved and not valid for an outbound BBS service.
+    // Rejecting at the tracker boundary keeps listings free of
+    // unreachable advertisements that clients would only discover
+    // by trying to connect.
+    if port == 0 {
+        reject(
+            writer,
+            peer_addr,
+            REASON_PORT_ZERO,
+            ERROR_KIND_INVALID,
+            err_tracker_port_zero(&locale),
+        )
+        .await?;
+        return Ok(ValidationOutcome::Rejected);
+    }
+    // `websocket_port` is optional, but when present it must be
+    // non-zero for the same reason as `port`.
+    if let Some(ws) = websocket_port
+        && ws == 0
+    {
+        reject(
+            writer,
+            peer_addr,
+            REASON_WEBSOCKET_PORT_ZERO,
+            ERROR_KIND_INVALID,
+            err_tracker_websocket_port_zero(&locale),
         )
         .await?;
         return Ok(ValidationOutcome::Rejected);
@@ -670,27 +728,9 @@ where
     Ok(())
 }
 
-/// Send a typed failure `TrackerServerRegisterResponse`.
-async fn send_failure<W>(
-    writer: &mut FrameWriter<W>,
-    error_kind: &str,
-    message: String,
-) -> io::Result<()>
-where
-    W: AsyncWrite + Unpin,
-{
-    let response = TrackerServerMessage::TrackerServerRegisterResponse {
-        success: false,
-        refresh_interval: None,
-        error: Some(message),
-        error_kind: Some(error_kind.to_string()),
-    };
-    send_tracker_server_message(writer, &response).await?;
-    Ok(())
-}
-
 /// Helper used by all rejection paths: log the rejection (with
-/// structured `reason`) and send the failure response.
+/// structured `reason`) and send the typed failure
+/// `TrackerServerRegisterResponse`.
 async fn reject<W>(
     writer: &mut FrameWriter<W>,
     peer_addr: SocketAddr,
@@ -702,7 +742,14 @@ where
     W: AsyncWrite + Unpin,
 {
     warn!(ip = %peer_addr.ip(), reason = %reason, "{}", LOG_REGISTER_REJECTED);
-    send_failure(writer, error_kind, error_msg).await
+    let response = TrackerServerMessage::TrackerServerRegisterResponse {
+        success: false,
+        refresh_interval: None,
+        error: Some(error_msg),
+        error_kind: Some(error_kind.to_string()),
+    };
+    send_tracker_server_message(writer, &response).await?;
+    Ok(())
 }
 
 #[cfg(test)]

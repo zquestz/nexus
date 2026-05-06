@@ -130,4 +130,62 @@ mod tests {
         let result = translate("xx", "button-cancel");
         assert_eq!(result, "Cancel");
     }
+
+    // Pinning the Fluent plural selector dispatch on the chars-counted
+    // length keys. The selector was added because flat strings rendered
+    // "1 characters" / "1 символов" — verify both singular forms fire
+    // and the [few] form fires for Russian numbers 2-4.
+    #[test]
+    fn test_message_too_long_singular_english() {
+        let result = translate_with_args(
+            "en",
+            "err-message-too-long",
+            &[("length", "1"), ("max", "200")],
+        );
+        assert!(result.contains("character"), "got: {result}");
+        assert!(!result.contains("characters"), "got: {result}");
+    }
+
+    #[test]
+    fn test_message_too_long_plural_english() {
+        let result = translate_with_args(
+            "en",
+            "err-message-too-long",
+            &[("length", "5"), ("max", "200")],
+        );
+        assert!(result.contains("characters"), "got: {result}");
+    }
+
+    #[test]
+    fn test_message_too_long_singular_russian() {
+        let result = translate_with_args(
+            "ru",
+            "err-message-too-long",
+            &[("length", "1"), ("max", "200")],
+        );
+        assert!(result.contains("символ"), "got: {result}");
+        assert!(!result.contains("символа"), "got: {result}");
+        assert!(!result.contains("символов"), "got: {result}");
+    }
+
+    #[test]
+    fn test_message_too_long_few_russian() {
+        let result = translate_with_args(
+            "ru",
+            "err-message-too-long",
+            &[("length", "3"), ("max", "200")],
+        );
+        assert!(result.contains("символа"), "got: {result}");
+        assert!(!result.contains("символов"), "got: {result}");
+    }
+
+    #[test]
+    fn test_message_too_long_other_russian() {
+        let result = translate_with_args(
+            "ru",
+            "err-message-too-long",
+            &[("length", "5"), ("max", "200")],
+        );
+        assert!(result.contains("символов"), "got: {result}");
+    }
 }

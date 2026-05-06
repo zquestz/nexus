@@ -12,7 +12,7 @@ err-nickname-required = Bijnaam vereist voor gedeelde accounts
 err-nickname-too-long = Bijnaam is te lang (max. { $max_length } tekens)
 
 # Afwezigheidsbericht-fouten
-err-status-too-long = Afwezigheidsbericht is te lang (max. { $max_length } bytes)
+err-status-too-long = Afwezigheidsbericht is te lang (max. { $max_length } tekens)
 err-status-contains-newlines = Afwezigheidsbericht mag geen regelovergangen bevatten
 err-status-invalid-characters = Afwezigheidsbericht bevat ongeldige tekens
 
@@ -125,14 +125,16 @@ err-username-invalid = De gebruikersnaam bevat ongeldige tekens (letters, cijfer
 err-unknown-permission = Onbekende machtiging: '{ $permission }'
 
 # Dynamische foutmeldingen (met parameters)
-err-broadcast-too-long = Bericht te lang (maximaal { $max_length } bytes)
-err-chat-too-long = Bericht te lang (maximaal { $max_length } bytes)
-err-topic-too-long = Het onderwerp mag niet meer dan { $max_length } bytes bevatten
+err-broadcast-too-long = Bericht te lang (maximaal { $max_length } tekens)
+err-chat-too-long = Bericht te lang (maximaal { $max_length } tekens)
+err-topic-too-long = Het onderwerp mag niet meer dan { $max_length } tekens bevatten
 err-version-major-mismatch = Incompatibele protocolversie: server is versie { $server_major }.x, client is versie { $client_major }.x
 err-version-client-too-new = Clientversie { $client_version } is nieuwer dan serverversie { $server_version }. Werk de server bij of gebruik een oudere client.
 err-version-minor-mismatch = Incompatibele protocolversie. Server: { $server_version }, Client: { $client_version }. Beide moeten dezelfde subversie gebruiken.
 err-kicked-by = U bent verwijderd door { $username }
 err-kicked-by-reason = U bent verwijderd door { $username }: { $reason }
+err-kick-reason-too-long = Kickreden is te lang (max { $max_length } tekens)
+err-kick-reason-invalid-characters = Kickreden bevat ongeldige tekens
 err-username-exists = De gebruikersnaam "{ $username }" bestaat al
 err-user-not-found = Gebruiker "{ $username }" niet gevonden
 err-user-not-online = Gebruiker "{ $username }" is niet online
@@ -150,10 +152,10 @@ err-permissions-invalid-characters = De machtigingsnaam bevat ongeldige tekens
 # Serverupdatefouten
 err-admin-required = Beheerdersrechten vereist
 err-server-name-empty = De servernaam mag niet leeg zijn
-err-server-name-too-long = De servernaam is te lang (maximaal { $max_length } bytes)
+err-server-name-too-long = De servernaam is te lang (maximaal { $max_length } tekens)
 err-server-name-contains-newlines = De servernaam mag geen regeleinden bevatten
 err-server-name-invalid-characters = De servernaam bevat ongeldige tekens
-err-server-description-too-long = De serverbeschrijving is te lang (maximaal { $max_length } bytes)
+err-server-description-too-long = De serverbeschrijving is te lang (maximaal { $max_length } tekens)
 err-server-description-contains-newlines = De serverbeschrijving mag geen regeleinden bevatten
 err-server-description-invalid-characters = De serverbeschrijving bevat ongeldige tekens
 
@@ -175,7 +177,7 @@ err-public-address-invalid-format = Het openbare adres is geen geldige hostnaam 
 
 # Nieuwsfouten
 err-news-not-found = Nieuwsbericht #{ $id } niet gevonden
-err-news-body-too-long = Nieuwstekst is te lang (maximaal { $max_length } bytes)
+err-news-body-too-long = Nieuwstekst is te lang (maximaal { $max_length } tekens)
 err-news-body-invalid-characters = Nieuwstekst bevat ongeldige tekens
 err-news-image-too-large = Nieuwsafbeelding is te groot (maximaal 512KB)
 err-news-image-invalid-format = Ongeldig nieuwsafbeeldingsformaat (moet een data-URI met base64-codering zijn)
@@ -185,12 +187,12 @@ err-cannot-edit-admin-news = Alleen beheerders kunnen nieuws bewerken dat door b
 err-cannot-delete-admin-news = Alleen beheerders kunnen nieuws verwijderen dat door beheerders is geplaatst
 
 # File Area Errors
-err-file-path-too-long = Bestandspad is te lang (maximaal { $max_length } tekens)
+err-file-path-too-long = Bestandspad is te lang (maximaal { $max_length } bytes)
 err-file-path-invalid = Bestandspad bevat ongeldige tekens
 err-file-not-found = Bestand of map niet gevonden
 err-file-not-directory = Pad is geen map
 err-dir-name-empty = Mapnaam mag niet leeg zijn
-err-dir-name-too-long = Mapnaam is te lang (maximaal { $max_length } tekens)
+err-dir-name-too-long = Mapnaam is te lang (maximaal { $max_length } bytes)
 err-dir-name-invalid = Mapnaam bevat ongeldige tekens
 err-dir-already-exists = Een bestand of map met deze naam bestaat al
 err-dir-create-failed = Map kon niet worden aangemaakt
@@ -243,7 +245,7 @@ err-banned-with-expiry = U bent verbannen van deze server (verloopt over { $rema
 # File Search Errors
 err-search-query-empty = Zoekopdracht mag niet leeg zijn
 err-search-query-too-short = Zoekopdracht is te kort (minimaal { $min_length } bytes)
-err-search-query-too-long = Zoekopdracht is te lang (maximaal { $max_length } tekens)
+err-search-query-too-long = Zoekopdracht is te lang (maximaal { $max_length } bytes)
 err-search-query-invalid = Zoekopdracht bevat ongeldige tekens
 err-search-failed = Zoekopdracht mislukt
 # Trust System Errors
@@ -277,7 +279,7 @@ err-tracker-no-pending-fingerprint = Tracker heeft geen openstaande vingerafdruk
 err-tracker-name-invalid = Trackernaam bevat ongeldige tekens
 err-tracker-name-empty = Trackernaam mag niet leeg zijn
 err-tracker-name-contains-newlines = Trackernaam mag geen regeleinden bevatten
-err-tracker-name-too-long = Trackernaam is te lang (max { $max_length } bytes)
+err-tracker-name-too-long = Trackernaam is te lang (max { $max_length } tekens)
 err-tracker-address-invalid = Ongeldig trackeradres
 err-tracker-address-empty = Trackeradres mag niet leeg zijn
 err-tracker-address-too-long = Trackeradres is te lang (maximaal { $max_length } bytes)

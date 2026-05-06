@@ -210,8 +210,20 @@ Create a new news item.
 
 | Field   | Type   | Required | Description                            |
 | ------- | ------ | -------- | -------------------------------------- |
-| `body`  | string | No       | Markdown content (max 4096 bytes)      |
+| `body`  | string | No       | Markdown content (max 4096 characters) |
 | `image` | string | No       | Image as data URI (max 700KB)          |
+
+**Field validation.** Each input field is enforced by a validator in
+`nexus-common/src/validators/`:
+
+- `body` — `validate_news_body`: ≤4096 characters, no control characters
+  except newline and tab.
+- `image` — `validate_news_image`: ≤700 KB data URI, must be a
+  well-formed `data:image/<type>;base64,...` URI for one of the
+  allowed image types (PNG, JPEG, WebP, SVG).
+
+Validation failures send `NewsCreateResponse { success: false, error }`
+with a translated error message.
 
 At least one of `body` or `image` must be provided.
 
@@ -328,6 +340,17 @@ Update an existing news item.
 | `id`    | integer | Yes      | News item ID          |
 | `body`  | string  | No       | New markdown content  |
 | `image` | string  | No       | New image as data URI |
+
+**Field validation.** Same rules as
+[`NewsCreate`](#newscreate-client--server) for the matching fields:
+`body` (`validate_news_body`) and `image` (`validate_news_image`).
+
+**Update semantics differ from other Update messages.** `NewsUpdate`
+does a full replacement of the news item's `body` and `image`
+columns: any field that's `null` or omitted is **cleared** on the
+underlying row. To keep a current value, the client must send it.
+This is intentional — news items are body+image records and "clear
+the body" is a meaningful edit.
 
 At least one of `body` or `image` must be provided after update.
 
@@ -496,7 +519,7 @@ Admins have all permissions automatically.
 
 | Rule             | Value                         | Error              |
 | ---------------- | ----------------------------- | ------------------ |
-| Max length       | 4096 bytes                    | Body too long      |
+| Max length       | 4096 characters               | Body too long      |
 | No control chars | Except `\n`, `\r`, `\t`       | Invalid characters |
 | Empty allowed    | Can be null if image provided | —                  |
 
@@ -542,7 +565,7 @@ News items are returned newest first (descending by creation date).
 | Not logged in                           | Sent before authentication       | Disconnected    |
 | Permission denied                       | Missing required permission      | Stays connected |
 | News item not found                     | Invalid ID                       | Stays connected |
-| Body too long                           | Exceeds 4096 bytes               | Stays connected |
+| Body too long                           | Exceeds 4096 characters          | Stays connected |
 | Invalid characters                      | Control characters in body       | Stays connected |
 | Image too large                         | Exceeds 700KB                    | Stays connected |
 | Invalid image format                    | Not PNG/WebP/JPEG/SVG            | Stays connected |

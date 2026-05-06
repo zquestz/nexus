@@ -4,7 +4,9 @@ use iced::Task;
 use iced::widget::{Id, operation};
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{self, PasswordError, UsernameError};
+use nexus_common::validators::{
+    self, BanReasonError, KickReasonError, PasswordError, UsernameError,
+};
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
@@ -959,6 +961,27 @@ impl NexusApp {
                         Some(dialog.reason.clone())
                     };
 
+                    // Pre-validate reason locally before sending
+                    if let Some(ref r) = reason
+                        && let Err(e) = validators::validate_kick_reason(r)
+                    {
+                        let error_msg = match e {
+                            KickReasonError::TooLong => t_args(
+                                "err-kick-reason-too-long",
+                                &[("max", &validators::MAX_KICK_REASON_LENGTH.to_string())],
+                            ),
+                            KickReasonError::InvalidCharacters => {
+                                t("err-kick-reason-invalid-characters")
+                            }
+                        };
+                        if let Some(conn) = self.connections.get_mut(&conn_id)
+                            && let Some(ref mut dialog) = conn.disconnect_dialog
+                        {
+                            dialog.error = Some(error_msg);
+                        }
+                        return Task::none();
+                    }
+
                     if let Err(e) = conn.send(ClientMessage::UserKick {
                         nickname: nickname.clone(),
                         reason,
@@ -979,6 +1002,27 @@ impl NexusApp {
                     } else {
                         Some(dialog.reason.clone())
                     };
+
+                    // Pre-validate reason locally before sending
+                    if let Some(ref r) = reason
+                        && let Err(e) = validators::validate_ban_reason(r)
+                    {
+                        let error_msg = match e {
+                            BanReasonError::TooLong => t_args(
+                                "err-ban-reason-too-long",
+                                &[("max", &validators::MAX_BAN_REASON_LENGTH.to_string())],
+                            ),
+                            BanReasonError::InvalidCharacters => {
+                                t("err-ban-reason-invalid-characters")
+                            }
+                        };
+                        if let Some(conn) = self.connections.get_mut(&conn_id)
+                            && let Some(ref mut dialog) = conn.disconnect_dialog
+                        {
+                            dialog.error = Some(error_msg);
+                        }
+                        return Task::none();
+                    }
 
                     if let Err(e) = conn.send(ClientMessage::BanCreate {
                         target: nickname.clone(),

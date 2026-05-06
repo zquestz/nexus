@@ -2,7 +2,10 @@
 //!
 //! Validates server description strings.
 
-/// Maximum length for server description in bytes
+/// Maximum length for server description in characters.
+///
+/// Counted as Unicode scalar values rather than bytes so non-ASCII users
+/// (CJK, Cyrillic, etc.) get the same effective capacity as ASCII users.
 pub const MAX_SERVER_DESCRIPTION_LENGTH: usize = 512;
 
 /// Validation error for server description
@@ -28,7 +31,7 @@ pub enum ServerDescriptionError {
 ///
 /// Returns a `ServerDescriptionError` variant describing the validation failure.
 pub fn validate_server_description(description: &str) -> Result<(), ServerDescriptionError> {
-    if description.len() > MAX_SERVER_DESCRIPTION_LENGTH {
+    if description.chars().count() > MAX_SERVER_DESCRIPTION_LENGTH {
         return Err(ServerDescriptionError::TooLong);
     }
     for ch in description.chars() {
@@ -66,6 +69,12 @@ mod tests {
     fn test_too_long() {
         assert_eq!(
             validate_server_description(&"a".repeat(MAX_SERVER_DESCRIPTION_LENGTH + 1)),
+            Err(ServerDescriptionError::TooLong)
+        );
+        // Char-counted, not byte-counted: at limit accepted, over rejected.
+        assert!(validate_server_description(&"あ".repeat(MAX_SERVER_DESCRIPTION_LENGTH)).is_ok());
+        assert_eq!(
+            validate_server_description(&"あ".repeat(MAX_SERVER_DESCRIPTION_LENGTH + 1)),
             Err(ServerDescriptionError::TooLong)
         );
     }

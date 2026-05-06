@@ -518,11 +518,21 @@ err-unexpected-login-response = Неожиданный ответ при вхо�
 err-server-omitted-nickname = Ответ сервера не содержит псевдоним
 err-connection-closed = Соединение закрыто
 err-could-not-determine-config-dir = Не удалось определить каталог конфигурации
-err-message-too-long = Сообщение слишком длинное ({ $length } символов, макс { $max })
+err-message-too-long =
+    Сообщение слишком длинное ({ $length } { $length ->
+        [one] символ
+        [few] символа
+       *[other] символов
+    }, макс { $max })
 err-send-failed = Не удалось отправить сообщение
 err-no-chat-permission = У вас нет разрешения отправлять сообщения
 err-console-no-send = Используйте /{ $join } для входа в канал или /{ $msg } для отправки сообщения пользователю
-err-broadcast-too-long = Объявление слишком длинное ({ $length } символов, макс { $max })
+err-broadcast-too-long =
+    Объявление слишком длинное ({ $length } { $length ->
+        [one] символ
+        [few] символа
+       *[other] символов
+    }, макс { $max })
 err-broadcast-send-failed = Не удалось отправить рассылку
 err-name-required = Требуется имя закладки
 err-address-required = Требуется адрес сервера
@@ -564,21 +574,30 @@ password-strength-strong = Сильный
 password-strength-excellent = Отличный
 label-min-password-strength = Мин. пароль:
 
-err-topic-too-long = Тема слишком длинная ({ $length } символов, макс { $max })
+err-topic-too-long =
+    Тема слишком длинная ({ $length } { $length ->
+        [one] символ
+        [few] символа
+       *[other] символов
+    }, макс { $max })
 err-avatar-unsupported-type = Неподдерживаемый тип файла. Используйте PNG, WebP, JPEG или SVG.
 err-avatar-too-large = Аватар слишком большой. Максимальный размер { $max_kb }КБ.
 err-avatar-decode-failed = Не удалось декодировать аватар. Возможно, файл повреждён.
 err-server-name-empty = Имя сервера не может быть пустым
-err-server-name-too-long = Название сервера слишком длинное (макс. { $max } байт)
+err-server-name-too-long = Название сервера слишком длинное (макс. { $max } символов)
 err-server-name-contains-newlines = Название сервера не может содержать переносы строк
 err-server-name-invalid-characters = Название сервера содержит недопустимые символы
-err-status-too-long = Сообщение статуса слишком длинное (макс. { $max } байт)
+err-status-too-long = Сообщение статуса слишком длинное (макс. { $max } символов)
 err-status-contains-newlines = Сообщение статуса не может содержать переносы строк
 err-status-invalid-characters = Сообщение статуса содержит недопустимые символы
+err-kick-reason-too-long = Причина кика слишком длинная (макс. { $max } символов)
+err-kick-reason-invalid-characters = Причина кика содержит недопустимые символы
+err-ban-reason-too-long = Причина бана слишком длинная (макс. { $max } символов)
+err-ban-reason-invalid-characters = Причина бана содержит недопустимые символы
 err-target-empty = Цель не может быть пустой
-err-target-too-long = Цель слишком длинная (максимум { $max } байт)
+err-target-too-long = Цель слишком длинная (максимум { $max } символов)
 err-duration-too-long = Продолжительность слишком длинная (максимум { $max } байт)
-err-server-description-too-long = Описание слишком длинное (макс. { $max } байт)
+err-server-description-too-long = Описание слишком длинное (макс. { $max } символов)
 err-server-description-contains-newlines = Описание не может содержать переносы строк
 err-server-description-invalid-characters = Описание содержит недопустимые символы
 err-failed-send-update = Не удалось отправить обновление: { $error }
@@ -596,7 +615,6 @@ err-failed-create-user = Не удалось создать пользовате
 err-failed-delete-user = Не удалось удалить пользователя: { $error }
 err-failed-update-user = Не удалось обновить пользователя: { $error }
 err-failed-update-topic = Не удалось обновить тему: { $error }
-err-message-too-long-details = { $error } ({ $length } символов, макс { $max })
 
 # Network connection errors (with parameters)
 err-invalid-address = Недопустимый адрес '{ $address }': { $error }
@@ -812,7 +830,12 @@ err-public-address-invalid-format = Публичный адрес не явля�
 err-server-image-decode-failed = Не удалось декодировать изображение. Возможно, файл повреждён.
 err-failed-read-image = Не удалось прочитать изображение: { $error }
 err-news-empty = Публикация должна содержать текст или изображение
-err-news-body-too-long = Содержимое слишком длинное ({ $length } символов, максимум { $max })
+err-news-body-too-long =
+    Содержимое слишком длинное ({ $length } { $length ->
+        [one] символ
+        [few] символа
+       *[other] символов
+    }, максимум { $max })
 err-news-body-invalid-characters = Содержимое содержит недопустимые управляющие символы
 err-news-image-decode-failed = Не удалось декодировать изображение. Возможно, файл повреждён.
 
@@ -1299,7 +1322,7 @@ toast-tracker-fingerprint-accepted-name = Отпечаток для «{ $name }�
 
 # Errors
 err-tracker-name-empty = Требуется имя трекера
-err-tracker-name-too-long = Имя трекера слишком длинное (макс { $max } байт)
+err-tracker-name-too-long = Имя трекера слишком длинное (макс { $max } символов)
 err-tracker-name-contains-newlines = Имя трекера не может содержать переносы строк
 err-tracker-name-invalid-characters = Имя трекера содержит недопустимые управляющие символы
 err-tracker-address-empty = Требуется адрес трекера

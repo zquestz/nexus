@@ -346,20 +346,55 @@ pub const REASON_REFRESH_TOO_SOON: &str = "refresh_too_soon";
 /// `locale` field exceeded `MAX_LOCALE_LENGTH`.
 pub const REASON_LOCALE_TOO_LONG: &str = "locale_too_long";
 
+/// `locale` field contained control characters. Distinct from
+/// `REASON_LOCALE_TOO_LONG` so operator logs separate length failures
+/// from format failures.
+pub const REASON_LOCALE_INVALID: &str = "locale_invalid";
+
 /// `password` field exceeded `MAX_PASSWORD_LENGTH`.
 pub const REASON_PASSWORD_TOO_LONG: &str = "password_too_long";
 
 /// `name` field exceeded `MAX_SERVER_NAME_LENGTH`.
 pub const REASON_NAME_TOO_LONG: &str = "name_too_long";
 
+/// `name` field was empty or whitespace-only.
+pub const REASON_NAME_EMPTY: &str = "name_empty";
+
+/// `name` field contained newline characters.
+pub const REASON_NAME_CONTAINS_NEWLINES: &str = "name_contains_newlines";
+
+/// `name` field contained non-newline control characters.
+pub const REASON_NAME_INVALID_CHARACTERS: &str = "name_invalid_characters";
+
 /// `description` field exceeded `MAX_SERVER_DESCRIPTION_LENGTH`.
 pub const REASON_DESCRIPTION_TOO_LONG: &str = "description_too_long";
+
+/// `description` field contained newline characters.
+pub const REASON_DESCRIPTION_CONTAINS_NEWLINES: &str = "description_contains_newlines";
+
+/// `description` field contained non-newline control characters.
+pub const REASON_DESCRIPTION_INVALID_CHARACTERS: &str = "description_invalid_characters";
 
 /// `address` field exceeded `MAX_PUBLIC_ADDRESS_LENGTH`.
 pub const REASON_ADDRESS_TOO_LONG: &str = "address_too_long";
 
 /// `version` field exceeded `MAX_VERSION_LENGTH`.
 pub const REASON_VERSION_TOO_LONG: &str = "version_too_long";
+
+/// `version` field was empty or did not parse as semver. Distinct
+/// from `REASON_VERSION_TOO_LONG` so operator logs separate length
+/// failures from format failures.
+pub const REASON_VERSION_INVALID: &str = "version_invalid";
+
+/// `port` field was zero. Port 0 is reserved and not valid for an
+/// outbound BBS service; rejecting at the tracker boundary keeps
+/// listings free of unreachable advertisements.
+pub const REASON_PORT_ZERO: &str = "port_zero";
+
+/// `websocket_port` field was set to zero. Same rationale as
+/// `REASON_PORT_ZERO` — distinct constant so operator logs identify
+/// which port failed.
+pub const REASON_WEBSOCKET_PORT_ZERO: &str = "websocket_port_zero";
 
 /// `fingerprint` field failed `is_canonical_fingerprint`.
 pub const REASON_FINGERPRINT_INVALID: &str = "fingerprint_invalid";
@@ -414,6 +449,15 @@ pub const LOG_LIST_RESPONSE: &str = "TrackerServerList: response sent";
 /// Log: TrackerServerList rejected for an operator-actionable reason.
 /// Paired with `ip = %peer_addr.ip(), reason = %short_str`.
 pub const LOG_LIST_REJECTED: &str = "TrackerServerList: rejected";
+
+/// Log: a stored entry's `version` field could not be parsed as
+/// semver during the compatibility filter pass and was silently
+/// dropped from the response. The registration-side `validate_version`
+/// gate makes this unreachable in normal operation; this log fires
+/// only if a buggy registrant slipped past that gate.
+/// Paired with `ip = %peer_addr.ip(), name = %entry.name, version = %entry.version`.
+pub const LOG_LIST_DROP_UNPARSEABLE_VERSION: &str =
+    "TrackerServerList: dropping entry with unparseable version";
 
 /// Log: peer sent the wrong message type for its locked role
 /// (TrackerServerList on a server connection, or TrackerServerRegister on a

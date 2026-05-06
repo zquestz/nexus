@@ -6,12 +6,13 @@ use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use nexus_common::protocol::ServerMessage;
-use nexus_common::validators::{self, NicknameError};
+use nexus_common::validators::{self, KickReasonError, NicknameError};
 
 use super::{
     HandlerContext, err_authentication, err_cannot_kick_admin, err_cannot_kick_self, err_database,
-    err_kicked_by, err_kicked_by_with_reason, err_nickname_empty, err_nickname_invalid,
-    err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
+    err_kick_reason_invalid_characters, err_kick_reason_too_long, err_kicked_by,
+    err_kicked_by_with_reason, err_nickname_empty, err_nickname_invalid, err_nickname_not_online,
+    err_nickname_too_long, err_not_logged_in, err_permission_denied,
     remove_user_with_voice_cleanup,
 };
 use crate::constants::{
@@ -67,6 +68,27 @@ where
                 err_nickname_too_long(ctx.locale, validators::MAX_NICKNAME_LENGTH)
             }
             NicknameError::InvalidCharacters => err_nickname_invalid(ctx.locale),
+        };
+        let response = ServerMessage::UserKickResponse {
+            success: false,
+            error: Some(error_msg),
+            nickname: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Validate optional reason. The reason gets formatted into the
+    // single-line "kicked by X with reason: …" message rendered to
+    // the kicked user, so we reject control characters (including
+    // newlines and tabs) and cap at MAX_KICK_REASON_LENGTH characters.
+    if let Some(ref r) = reason
+        && let Err(e) = validators::validate_kick_reason(r)
+    {
+        let error_msg = match e {
+            KickReasonError::TooLong => {
+                err_kick_reason_too_long(ctx.locale, validators::MAX_KICK_REASON_LENGTH)
+            }
+            KickReasonError::InvalidCharacters => err_kick_reason_invalid_characters(ctx.locale),
         };
         let response = ServerMessage::UserKickResponse {
             success: false,
@@ -724,6 +746,167 @@ mod tests {
                 assert_eq!(nickname, Some("Nick1".to_string()));
             }
             _ => panic!("Expected UserKickResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userkick_reason_too_long_rejected() {
+        let mut test_ctx = create_test_context().await;
+        let _kicker = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::UserKick],
+            false,
+        )
+        .await;
+        let _target = login_user(&mut test_ctx, "bob", "password", &[], false).await;
+
+        let long_reason = "a".repeat(validators::MAX_KICK_REASON_LENGTH + 1);
+        let result = handle_user_kick(
+            "bob".to_string(),
+            Some(long_reason),
+            Some(1),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserKickResponse {
+                success,
+                error,
+                nickname,
+            } => {
+                assert!(!success, "Kick with over-cap reason should fail");
+                assert!(
+                    error.unwrap_or_default().contains("too long"),
+                    "Error should mention too long"
+                );
+                assert!(nickname.is_none());
+            }
+            other => panic!("Expected UserKickResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userkick_reason_with_newline_rejected() {
+        let mut test_ctx = create_test_context().await;
+        let _kicker = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::UserKick],
+            false,
+        )
+        .await;
+        let _target = login_user(&mut test_ctx, "bob", "password", &[], false).await;
+
+        let result = handle_user_kick(
+            "bob".to_string(),
+            Some("first line\nsecond line".to_string()),
+            Some(1),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserKickResponse {
+                success,
+                error,
+                nickname,
+            } => {
+                assert!(!success, "Kick with newline in reason should fail");
+                assert!(
+                    error.unwrap_or_default().contains("invalid characters"),
+                    "Error should mention invalid characters"
+                );
+                assert!(nickname.is_none());
+            }
+            other => panic!("Expected UserKickResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userkick_reason_with_tab_rejected() {
+        let mut test_ctx = create_test_context().await;
+        let _kicker = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::UserKick],
+            false,
+        )
+        .await;
+        let _target = login_user(&mut test_ctx, "bob", "password", &[], false).await;
+
+        let result = handle_user_kick(
+            "bob".to_string(),
+            Some("violation:\tspamming".to_string()),
+            Some(1),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserKickResponse {
+                success,
+                error,
+                nickname,
+            } => {
+                assert!(!success, "Kick with tab in reason should fail");
+                assert!(
+                    error.unwrap_or_default().contains("invalid characters"),
+                    "Error should mention invalid characters"
+                );
+                assert!(nickname.is_none());
+            }
+            other => panic!("Expected UserKickResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userkick_reason_with_null_rejected() {
+        let mut test_ctx = create_test_context().await;
+        let _kicker = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::UserKick],
+            false,
+        )
+        .await;
+        let _target = login_user(&mut test_ctx, "bob", "password", &[], false).await;
+
+        let result = handle_user_kick(
+            "bob".to_string(),
+            Some("reason\0with-null".to_string()),
+            Some(1),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserKickResponse {
+                success,
+                error,
+                nickname,
+            } => {
+                assert!(!success, "Kick with null byte in reason should fail");
+                assert!(
+                    error.unwrap_or_default().contains("invalid characters"),
+                    "Error should mention invalid characters"
+                );
+                assert!(nickname.is_none());
+            }
+            other => panic!("Expected UserKickResponse, got {other:?}"),
         }
     }
 }

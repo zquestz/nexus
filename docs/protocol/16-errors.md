@@ -291,7 +291,7 @@ All human-readable error messages are translated **server-side** before being se
 | Error                           | Cause                          | Connection      |
 | ------------------------------- | ------------------------------ | --------------- |
 | Message cannot be empty         | Empty or whitespace message    | Varies          |
-| Message too long                | Exceeds 1024 bytes             | Varies          |
+| Message too long                | Exceeds 1024 characters        | Varies          |
 | Message cannot contain newlines | Contains `\n` or `\r`          | Varies          |
 | Invalid characters              | Contains control characters    | Varies          |
 | Username is empty               | Empty username                 | Stays connected |
@@ -362,7 +362,7 @@ The `command` field helps with debugging:
 
 ```json
 {
-  "message": "Message too long (max 1024 bytes)",
+  "message": "Message too long (max 1024 characters)",
   "command": "ChatSend"
 }
 ```

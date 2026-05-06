@@ -255,7 +255,7 @@ In both cases, no login credentials were sent — both stages run before authent
 
 ### "Search query is too long" error
 
-**Cause:** Search queries are limited to 256 characters.
+**Cause:** Search queries are limited to 256 bytes (note: some Unicode characters take multiple bytes).
 
 **Solution:** Use a shorter, more specific search query.
 

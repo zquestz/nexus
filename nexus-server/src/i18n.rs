@@ -198,7 +198,7 @@ mod tests {
         let result = t_args("en", "err-broadcast-too-long", &[("max_length", "1024")]);
         assert!(result.contains("Message too long"));
         assert!(result.contains("1024"));
-        assert!(result.contains("bytes"));
+        assert!(result.contains("characters"));
     }
 
     #[test]
@@ -206,7 +206,7 @@ mod tests {
         let result = t_args("es", "err-broadcast-too-long", &[("max_length", "1024")]);
         assert!(result.contains("Mensaje demasiado largo"));
         assert!(result.contains("1024"));
-        assert!(result.contains("bytes"));
+        assert!(result.contains("caracteres"));
     }
 
     #[test]
@@ -228,7 +228,7 @@ mod tests {
         let result = t_args("ja", "err-broadcast-too-long", &[("max_length", "1024")]);
         assert!(result.contains("メッセージが長すぎます"));
         assert!(result.contains("1024"));
-        assert!(result.contains("バイト"));
+        assert!(result.contains("文字"));
     }
 
     #[test]

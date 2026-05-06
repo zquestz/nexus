@@ -413,6 +413,20 @@ pub fn err_kicked_by_with_reason(locale: &str, username: &str, reason: &str) -> 
     )
 }
 
+/// Get translated "kick reason too long" error
+pub fn err_kick_reason_too_long(locale: &str, max_length: usize) -> String {
+    t_args(
+        locale,
+        "err-kick-reason-too-long",
+        &[("max_length", &max_length.to_string())],
+    )
+}
+
+/// Get translated "kick reason has invalid characters" error
+pub fn err_kick_reason_invalid_characters(locale: &str) -> String {
+    t(locale, "err-kick-reason-invalid-characters")
+}
+
 /// Get translated "locale invalid characters" error
 pub fn err_locale_invalid_characters(locale: &str) -> String {
     t(locale, "err-locale-invalid-characters")

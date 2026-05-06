@@ -12,7 +12,7 @@ err-nickname-required = 共有アカウントにはニックネームが必要�
 err-nickname-too-long = ニックネームが長すぎます（最大{ $max_length }文字）
 
 # 離席メッセージエラー
-err-status-too-long = 離席メッセージが長すぎます（最大{ $max_length }バイト）
+err-status-too-long = 離席メッセージが長すぎます（最大{ $max_length }文字）
 err-status-contains-newlines = 離席メッセージに改行を含めることはできません
 err-status-invalid-characters = 離席メッセージに無効な文字が含まれています
 
@@ -125,14 +125,16 @@ err-username-invalid = ユーザー名に無効な文字が含まれています
 err-unknown-permission = 不明な権限: '{ $permission }'
 
 # 動的エラーメッセージ（パラメータ付き）
-err-broadcast-too-long = メッセージが長すぎます（最大{ $max_length }バイト）
-err-chat-too-long = メッセージが長すぎます（最大{ $max_length }バイト）
-err-topic-too-long = トピックは{ $max_length }バイトを超えることはできません
+err-broadcast-too-long = メッセージが長すぎます（最大{ $max_length }文字）
+err-chat-too-long = メッセージが長すぎます（最大{ $max_length }文字）
+err-topic-too-long = トピックは{ $max_length }文字を超えることはできません
 err-version-major-mismatch = 互換性のないプロトコルバージョン：サーバーはバージョン{ $server_major }.x、クライアントはバージョン{ $client_major }.x
 err-version-client-too-new = クライアントバージョン{ $client_version }はサーバーバージョン{ $server_version }より新しいです。サーバーを更新するか、古いクライアントを使用してください。
 err-version-minor-mismatch = 互換性のないプロトコルバージョンです。サーバー: { $server_version }、クライアント: { $client_version }。両方とも同じマイナーバージョンを使用する必要があります。
 err-kicked-by = { $username }によってキックされました
 err-kicked-by-reason = { $username }によってキックされました: { $reason }
+err-kick-reason-too-long = キック理由が長すぎます（最大{ $max_length }文字）
+err-kick-reason-invalid-characters = キック理由に無効な文字が含まれています
 err-username-exists = ユーザー名「{ $username }」は既に存在します
 err-user-not-found = ユーザー「{ $username }」が見つかりません
 err-user-not-online = ユーザー「{ $username }」はオンラインではありません
@@ -150,10 +152,10 @@ err-permissions-invalid-characters = 権限名に無効な文字が含まれて�
 # サーバー更新エラー
 err-admin-required = 管理者権限が必要です
 err-server-name-empty = サーバー名を空にすることはできません
-err-server-name-too-long = サーバー名が長すぎます（最大{ $max_length }バイト）
+err-server-name-too-long = サーバー名が長すぎます（最大{ $max_length }文字）
 err-server-name-contains-newlines = サーバー名に改行を含めることはできません
 err-server-name-invalid-characters = サーバー名に無効な文字が含まれています
-err-server-description-too-long = サーバーの説明が長すぎます（最大{ $max_length }バイト）
+err-server-description-too-long = サーバーの説明が長すぎます（最大{ $max_length }文字）
 err-server-description-contains-newlines = サーバーの説明に改行を含めることはできません
 err-server-description-invalid-characters = サーバーの説明に無効な文字が含まれています
 
@@ -175,7 +177,7 @@ err-public-address-invalid-format = 公開アドレスは有効なホスト名�
 
 # ニュースエラー
 err-news-not-found = ニュース #{ $id } が見つかりません
-err-news-body-too-long = ニュース本文が長すぎます（最大{ $max_length }バイト）
+err-news-body-too-long = ニュース本文が長すぎます（最大{ $max_length }文字）
 err-news-body-invalid-characters = ニュース本文に無効な文字が含まれています
 err-news-image-too-large = ニュース画像が大きすぎます（最大512KB）
 err-news-image-invalid-format = ニュース画像の形式が無効です（base64エンコードのデータURIである必要があります）
@@ -185,12 +187,12 @@ err-cannot-edit-admin-news = 管理者が投稿したニュースを編集でき
 err-cannot-delete-admin-news = 管理者が投稿したニュースを削除できるのは管理者のみです
 
 # ファイルエリアエラー
-err-file-path-too-long = ファイルパスが長すぎます（最大{ $max_length }文字）
+err-file-path-too-long = ファイルパスが長すぎます（最大{ $max_length }バイト）
 err-file-path-invalid = ファイルパスに無効な文字が含まれています
 err-file-not-found = ファイルまたはディレクトリが見つかりません
 err-file-not-directory = パスはディレクトリではありません
 err-dir-name-empty = ディレクトリ名を空にすることはできません
-err-dir-name-too-long = ディレクトリ名が長すぎます（最大{ $max_length }文字）
+err-dir-name-too-long = ディレクトリ名が長すぎます（最大{ $max_length }バイト）
 err-dir-name-invalid = ディレクトリ名に無効な文字が含まれています
 err-dir-already-exists = その名前のファイルまたはディレクトリは既に存在します
 err-dir-create-failed = ディレクトリの作成に失敗しました
@@ -243,7 +245,7 @@ err-banned-with-expiry = このサーバーからBANされました（{ $remaini
 # File Search Errors
 err-search-query-empty = 検索クエリを空にすることはできません
 err-search-query-too-short = 検索クエリが短すぎます（最小{ $min_length }バイト）
-err-search-query-too-long = 検索クエリが長すぎます（最大{ $max_length }文字）
+err-search-query-too-long = 検索クエリが長すぎます（最大{ $max_length }バイト）
 err-search-query-invalid = 検索クエリに無効な文字が含まれています
 err-search-failed = 検索に失敗しました
 # Trust System Errors
@@ -277,7 +279,7 @@ err-tracker-no-pending-fingerprint = トラッカーには受け入れる保留�
 err-tracker-name-invalid = トラッカー名に無効な文字が含まれています
 err-tracker-name-empty = トラッカー名を空にすることはできません
 err-tracker-name-contains-newlines = トラッカー名に改行を含めることはできません
-err-tracker-name-too-long = トラッカー名が長すぎます (最大 { $max_length } バイト)
+err-tracker-name-too-long = トラッカー名が長すぎます (最大 { $max_length } 文字)
 err-tracker-address-invalid = 無効なトラッカーアドレスです
 err-tracker-address-empty = トラッカーアドレスを空にすることはできません
 err-tracker-address-too-long = トラッカーアドレスが長すぎます（最大{ $max_length }バイト）

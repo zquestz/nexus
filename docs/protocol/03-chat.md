@@ -109,6 +109,13 @@ Join or create a channel.
 | --------- | ------ | -------- | ------------------------------- |
 | `channel` | string | Yes      | Channel name (e.g., `#general`) |
 
+**Field validation.** `channel` is enforced by `validate_channel` in
+`nexus-common/src/validators/`: non-empty, must start with `#`, has at
+least one character after the prefix, ≤32 characters, no invalid
+characters (whitespace, control characters, additional `#`).
+Validation failures send `ChatJoinResponse { success: false, error }`
+with a translated error message.
+
 **Example:**
 
 ```json
@@ -164,6 +171,12 @@ Leave a channel.
 | Field     | Type   | Required | Description  |
 | --------- | ------ | -------- | ------------ |
 | `channel` | string | Yes      | Channel name |
+
+**Field validation.** Same rules as
+[`ChatJoin`](#chatjoin-client--server) for `channel`
+(`validate_channel`). Validation failures send
+`ChatLeaveResponse { success: false, error }` with a translated error
+message.
 
 **Example:**
 
@@ -265,6 +278,12 @@ Toggle secret mode on a channel.
 | `channel` | string  | Yes      | Channel name                       |
 | `secret`  | boolean | Yes      | Whether to make the channel secret |
 
+**Field validation.** Same rules as
+[`ChatJoin`](#chatjoin-client--server) for `channel`
+(`validate_channel`). Validation failures send
+`ChatSecretResponse { success: false, error }` with a translated error
+message.
+
 **Example:**
 
 ```json
@@ -297,9 +316,23 @@ Send a chat message to a channel.
 
 | Field     | Type   | Required | Description                                 |
 | --------- | ------ | -------- | ------------------------------------------- |
-| `message` | string | Yes      | Message content (1-1024 bytes)              |
+| `message` | string | Yes      | Message content (1-1024 characters)         |
 | `action`  | string | No       | Action type: `"Normal"` (default) or `"Me"` |
 | `channel` | string | Yes      | Target channel                              |
+
+**Field validation.** Each input field is enforced by a validator in
+`nexus-common/src/validators/`:
+
+- `message` — `validate_message`: non-empty after trim, ≤1024 characters,
+  no newlines, no other control characters. A failure here is treated
+  as a protocol violation and disconnects the connection.
+- `channel` — `validate_channel`: non-empty, must start with `#`, has
+  at least one character after the prefix, ≤32 characters, no invalid
+  characters (whitespace, control characters, additional `#`). A
+  failure here sends a generic `Error` message; the connection stays
+  open. (`ChatSend` has no typed `ChatSendResponse` — successful
+  sends fan out via `ChatReceive` broadcasts to other members, and a
+  per-send ack would be unreasonably chatty.)
 
 **Example:**
 
@@ -395,10 +428,23 @@ Broadcast to remaining channel members when a user leaves.
 
 Update a channel's topic.
 
-| Field     | Type   | Required | Description                             |
-| --------- | ------ | -------- | --------------------------------------- |
-| `topic`   | string | Yes      | New topic (0-256 bytes, empty to clear) |
-| `channel` | string | Yes      | Target channel                          |
+| Field     | Type   | Required | Description                                  |
+| --------- | ------ | -------- | -------------------------------------------- |
+| `topic`   | string | Yes      | New topic (0-256 characters, empty to clear) |
+| `channel` | string | Yes      | Target channel                               |
+
+**Field validation.** Each input field is enforced by a validator in
+`nexus-common/src/validators/`:
+
+- `topic` — `validate_chat_topic`: ≤256 characters, no newlines, no other
+  control characters. Empty string is allowed (clears the topic).
+- `channel` — `validate_channel`: non-empty, must start with `#`, has
+  at least one character after the prefix, ≤32 characters, no invalid
+  characters (whitespace, control characters, additional `#`).
+
+Validation failures send
+`ChatTopicUpdateResponse { success: false, error }` with a translated
+error message.
 
 **Set topic example:**
 
@@ -538,7 +584,7 @@ Channel names are more permissive than usernames. After the `#` prefix, most pri
 | Rule             | Value                            | Error                           |
 | ---------------- | -------------------------------- | ------------------------------- |
 | Not empty        | Must have non-whitespace content | Message cannot be empty         |
-| Max length       | 1024 bytes                       | Message too long                |
+| Max length       | 1024 characters                  | Message too long                |
 | No newlines      | `\n`, `\r` not allowed           | Message cannot contain newlines |
 | No control chars | No ASCII control characters      | Invalid characters              |
 
@@ -552,7 +598,7 @@ Unicode is fully supported, including:
 
 | Rule             | Value                       | Error                         |
 | ---------------- | --------------------------- | ----------------------------- |
-| Max length       | 256 bytes                   | Topic too long                |
+| Max length       | 256 characters              | Topic too long                |
 | No newlines      | `\n`, `\r` not allowed      | Topic cannot contain newlines |
 | No control chars | No ASCII control characters | Invalid characters            |
 | Empty allowed    | Empty string clears topic   | —                             |
@@ -651,7 +697,7 @@ Both settings are configurable by admins via `ServerInfoUpdate` and visible to a
 | ------------------------------- | ------------------------------------- | --------------- |
 | Not logged in                   | Sent before authentication            | Disconnected    |
 | Message cannot be empty         | Empty or whitespace-only              | Disconnected    |
-| Message too long                | Exceeds 1024 bytes                    | Disconnected    |
+| Message too long                | Exceeds 1024 characters               | Disconnected    |
 | Message cannot contain newlines | Contains `\n` or `\r`                 | Disconnected    |
 | Invalid characters              | Contains control characters           | Disconnected    |
 | Chat feature not enabled        | Missing `chat` feature                | Disconnected    |
@@ -665,7 +711,7 @@ Both settings are configurable by admins via `ServerInfoUpdate` and visible to a
 | Error                         | Cause                                 | Connection      |
 | ----------------------------- | ------------------------------------- | --------------- |
 | Not logged in                 | Sent before authentication            | Disconnected    |
-| Topic too long                | Exceeds 256 bytes                     | Stays connected |
+| Topic too long                | Exceeds 256 characters                | Stays connected |
 | Topic cannot contain newlines | Contains `\n` or `\r`                 | Stays connected |
 | Invalid characters            | Contains control characters           | Stays connected |
 | Permission denied             | Missing `chat_topic_edit` permission  | Stays connected |

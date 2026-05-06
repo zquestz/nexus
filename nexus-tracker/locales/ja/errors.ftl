@@ -10,13 +10,22 @@ err-tracker-unauthorized = パスワードが間違っているか、指定さ�
 
 # フィールド検証 (error_kind: invalid)
 err-tracker-fingerprint-invalid = 証明書のフィンガープリント形式が無効です
-err-tracker-name-too-long = サーバー名が長すぎます (最大 { $max_length } バイト)
-err-tracker-description-too-long = サーバーの説明が長すぎます (最大 { $max_length } バイト)
+err-tracker-name-too-long = サーバー名が長すぎます (最大 { $max_length } 文字)
+err-tracker-name-empty = サーバー名を空にすることはできません
+err-tracker-name-contains-newlines = サーバー名に改行を含めることはできません
+err-tracker-name-invalid-characters = サーバー名に無効な文字が含まれています
+err-tracker-description-too-long = サーバーの説明が長すぎます (最大 { $max_length } 文字)
+err-tracker-description-contains-newlines = サーバーの説明に改行を含めることはできません
+err-tracker-description-invalid-characters = サーバーの説明に無効な文字が含まれています
 err-tracker-password-too-long = パスワードが長すぎます (最大 { $max_length } バイト)
 err-tracker-address-too-long = アドレスが長すぎます (最大 { $max_length } バイト)
 err-tracker-address-invalid = 無効なアドレスです
 err-tracker-version-too-long = サーバーのバージョン文字列が長すぎます (最大 { $max_length } バイト)
+err-tracker-version-invalid = 無効なバージョンです (有効なsemverである必要があります)
 err-tracker-locale-too-long = ロケールコードが長すぎます (最大 { $max_length } バイト)
+err-tracker-locale-invalid = ロケールに無効な文字が含まれています
+err-tracker-port-zero = ポートを0にすることはできません
+err-tracker-websocket-port-zero = WebSocketポートを0にすることはできません
 
 # レート / 容量
 err-tracker-rate-limited = レート制限を超えました。後でもう一度お試しください

@@ -144,15 +144,35 @@ used for the initial registration and every refresh.
 | ---------------- | ------ | -------- | ---------------------------------------------------------------------------- |
 | `password`       | string | If gated | Registration password (omit if the tracker is open)                          |
 | `locale`         | string | No       | BCP-47 language tag for translated text in responses (default: `"en"`)       |
-| `name`           | string | Yes      | Server display name                                                          |
-| `description`    | string | No       | Free-form description                                                        |
+| `name`           | string | Yes      | Server display name (non-empty after trim, no newlines or control chars)     |
+| `description`    | string | No       | Free-form description (no newlines or control chars)                         |
 | `address`        | string | No       | Public hostname or IP; tracker uses the connecting IP if omitted (see below) |
-| `port`           | u16    | Yes      | BBS TCP port                                                                 |
-| `websocket_port` | u16    | No       | BBS WebSocket port (only if `--websocket` is enabled)                        |
-| `version`        | string | Yes      | Server software version (e.g., `"0.8.2"`)                                    |
+| `port`           | u16    | Yes      | BBS TCP port (must be non-zero)                                              |
+| `websocket_port` | u16    | No       | BBS WebSocket port (only if `--websocket` is enabled; must be non-zero)      |
+| `version`        | string | Yes      | Server software version, valid semver (e.g., `"0.8.2"`)                      |
 | `fingerprint`    | string | Yes      | TLS cert fingerprint, canonical form (see below)                             |
 | `user_count`     | u32    | Yes      | Distinct online users (matches the user list)                                |
 | `allows_guest`   | bool   | Yes      | Whether the guest account is enabled                                         |
+
+**Field validation.** Where a field is shared with the BBS protocol's
+`ServerInfoUpdate`, the tracker applies the same rule the BBS server
+applies — `name`, `description`, `locale`, and `version` reuse the
+validators in `nexus-common/src/validators/` (`validate_server_name`,
+`validate_server_description`, `validate_locale`, `validate_version`)
+verbatim, so a value that registers cleanly is also one the BBS server
+would have accepted on its own configuration. Tracker-specific rules:
+
+- `port` must be non-zero. `websocket_port`, when present, must be
+  non-zero.
+- `fingerprint` must match the canonical 95-byte uppercase form
+  (see Fingerprint format below).
+- `address`, when present, is validated by the tracker's
+  address-classification rules ([Address validation](#address-validation)
+  below).
+
+All validation failures land as
+`TrackerServerRegisterResponse { success: false, ... }` with
+`error_kind: "invalid"`.
 
 **`user_count` semantics.** Equals the count of entries the server would
 show in its user list. Multiple sessions of the same regular account
@@ -267,15 +287,19 @@ key.
 
 **Field length limits.** Tracker implementations MUST enforce the
 following maximum lengths, matching the limits used by `nexus-server`
-for analogous fields. All string lengths are measured in UTF-8 bytes
-(matching `str::len()` in the Rust reference implementation), not
-Unicode characters. Values exceeding the limit are rejected with
-`error_kind: invalid`.
+for analogous fields. The unit per field is listed in the table below
+— some fields are measured in **characters** (Unicode scalar values,
+matching `str::chars().count()` in the Rust reference implementation)
+so non-ASCII users aren't penalized for their UTF-8 byte length;
+others are measured in **bytes** (matching `str::len()`) where the
+underlying constraint is byte-based (DNS octet limits, ASCII-only
+identifiers, opaque hashes). Values exceeding the limit are rejected
+with `error_kind: invalid`.
 
 | Field         | Max length     | Source constant in `nexus-common`                      |
 | ------------- | -------------- | ------------------------------------------------------ |
-| `name`        | 64 bytes       | `MAX_SERVER_NAME_LENGTH`                               |
-| `description` | 512 bytes      | `MAX_SERVER_DESCRIPTION_LENGTH`                        |
+| `name`        | 64 characters  | `MAX_SERVER_NAME_LENGTH`                               |
+| `description` | 512 characters | `MAX_SERVER_DESCRIPTION_LENGTH`                        |
 | `password`    | 256 bytes      | `MAX_PASSWORD_LENGTH`                                  |
 | `address`     | 253 bytes      | `MAX_PUBLIC_ADDRESS_LENGTH` (RFC 1035 DNS octet limit) |
 | `version`     | 32 bytes       | `MAX_VERSION_LENGTH`                                   |
@@ -393,7 +417,7 @@ Client                                          Tracker
    │         HandshakeResponse { ..., fingerprint }│
    │ ◄─────────────────────────────────────────    │
    │                                               │
-   │  TrackerServerList { password? }              │
+   │  TrackerServerList { password?, version }     │
    │ ─────────────────────────────────────────►    │
    │                                               │
    │         TrackerServerListResponse {           │
@@ -421,19 +445,57 @@ follow-up message defined for this flow.
 | ---------- | ------ | -------- | ---------------------------------------------------------------------- |
 | `password` | string | If gated | Listing password (omit if the tracker is open)                         |
 | `locale`   | string | No       | BCP-47 language tag for translated text in responses (default: `"en"`) |
+| `version`  | string | Yes      | Sender's `CARGO_PKG_VERSION` for compat filtering (semver)             |
 
 `TrackerServerList` carries no filter, search, or pagination parameters in this
-version of the protocol. The tracker returns the full current set of
-registered servers; clients filter locally and may resort for views other
-than the default name ordering (see [`TrackerServerListResponse`](#trackerserverlistresponse)).
+version of the protocol — but the tracker filters the response set to entries
+the requesting client can actually speak with (see
+[Compatibility filter](#compatibility-filter) below). Beyond that, clients
+filter locally and may resort for views other than the default name ordering
+(see [`TrackerServerListResponse`](#trackerserverlistresponse)).
 
 **Example (open tracker):**
 
 ```json
 {
-  "locale": "en"
+  "locale": "en",
+  "version": "0.8.2"
 }
 ```
+
+**Field validation.** `locale` and `version` reuse the same validators
+the BBS server's input validation applies (`validate_locale`,
+`validate_version` from `nexus-common/src/validators/`); the rules are
+identical wherever those fields are accepted elsewhere in Nexus.
+`version`-specific rules and the post-validation filter behavior are
+detailed below.
+
+#### Compatibility filter
+
+The tracker validates `version` and uses it to filter `servers` to entries
+the requesting client can speak with. The same semver compatibility rule
+the BBS handshake uses (`nexus_common::version::check_compatibility`)
+applies — same major; pre-1.0 same minor; post-1.0 client minor ≤ server
+minor; patch ignored.
+
+- **Validation.** `version` is required. Empty / over-cap
+  (`MAX_VERSION_LENGTH`, 32 bytes) / unparseable as semver → typed
+  `TrackerServerListResponse` with `success: false`,
+  `error_kind: "invalid"`. A _missing_ `version` field is a
+  deserialization failure handled at the framing layer — the tracker
+  emits a generic `Error` message and closes the connection, same as
+  any required field on any message in the protocol. (List connections
+  always close after one response — see
+  [Client Listing](#client-listing) above — so the connection ends
+  regardless of success or failure.)
+- **Filtering.** On success, the tracker drops entries whose registered
+  `version` is not `Compatible` with the client's `version`. Entries whose
+  own `version` doesn't parse as semver are dropped silently with a
+  tracker-side log; the registration-side validator should already reject
+  those at register time, so this is defense-in-depth and is not expected
+  to fire in normal operation.
+- **No backstop on the client.** Trackers always filter; clients do not
+  re-filter the returned set.
 
 ### `TrackerServerListResponse`
 

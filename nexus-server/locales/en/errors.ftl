@@ -12,7 +12,7 @@ err-nickname-required = Nickname required for shared accounts
 err-nickname-too-long = Nickname is too long (max { $max_length } characters)
 
 # Away Message Errors
-err-status-too-long = Status message is too long (max { $max_length } bytes)
+err-status-too-long = Status message is too long (max { $max_length } characters)
 err-status-contains-newlines = Status message cannot contain newlines
 err-status-invalid-characters = Status message contains invalid characters
 
@@ -132,14 +132,16 @@ err-username-invalid = Username contains invalid characters (letters, numbers, a
 err-unknown-permission = Unknown permission: '{ $permission }'
 
 # Dynamic Error Messages (with parameters)
-err-broadcast-too-long = Message too long (max { $max_length } bytes)
-err-chat-too-long = Message too long (max { $max_length } bytes)
-err-topic-too-long = Topic cannot exceed { $max_length } bytes
+err-broadcast-too-long = Message too long (max { $max_length } characters)
+err-chat-too-long = Message too long (max { $max_length } characters)
+err-topic-too-long = Topic cannot exceed { $max_length } characters
 err-version-major-mismatch = Incompatible protocol version: server is version { $server_major }.x, client is version { $client_major }.x
 err-version-client-too-new = Client version { $client_version } is newer than server version { $server_version }. Please update the server or use an older client.
 err-version-minor-mismatch = Incompatible protocol version. Server: { $server_version }, Client: { $client_version }. Both must use the same minor version.
 err-kicked-by = You have been kicked by { $username }
 err-kicked-by-reason = You have been kicked by { $username }: { $reason }
+err-kick-reason-too-long = Kick reason is too long (max { $max_length } characters)
+err-kick-reason-invalid-characters = Kick reason contains invalid characters
 err-username-exists = Username '{ $username }' already exists
 err-user-not-found = User '{ $username }' not found
 err-user-not-online = User '{ $username }' is not online
@@ -151,10 +153,10 @@ err-username-too-long = Username is too long (max { $max_length } characters)
 # Server Update Errors
 err-admin-required = Admin privileges required
 err-server-name-empty = Server name cannot be empty
-err-server-name-too-long = Server name is too long (max { $max_length } bytes)
+err-server-name-too-long = Server name is too long (max { $max_length } characters)
 err-server-name-contains-newlines = Server name cannot contain newlines
 err-server-name-invalid-characters = Server name contains invalid characters
-err-server-description-too-long = Server description is too long (max { $max_length } bytes)
+err-server-description-too-long = Server description is too long (max { $max_length } characters)
 err-server-description-contains-newlines = Server description cannot contain newlines
 err-server-description-invalid-characters = Server description contains invalid characters
 err-server-image-too-large = Server image is too large (max 512KB)
@@ -174,7 +176,7 @@ err-invalid-password-strength = Invalid password strength value
 
 # News Errors
 err-news-not-found = News item #{ $id } not found
-err-news-body-too-long = News body is too long (max { $max_length } bytes)
+err-news-body-too-long = News body is too long (max { $max_length } characters)
 err-news-body-invalid-characters = News body contains invalid characters
 err-news-image-too-large = News image is too large (max 512KB)
 err-news-image-invalid-format = Invalid news image format (must be a data URI with base64 encoding)
@@ -184,12 +186,12 @@ err-cannot-edit-admin-news = Only admins can edit news posted by admins
 err-cannot-delete-admin-news = Only admins can delete news posted by admins
 
 # File Area Errors
-err-file-path-too-long = File path is too long (max { $max_length } characters)
+err-file-path-too-long = File path is too long (max { $max_length } bytes)
 err-file-path-invalid = File path contains invalid characters
 err-file-not-found = File or directory not found
 err-file-not-directory = Path is not a directory
 err-dir-name-empty = Directory name cannot be empty
-err-dir-name-too-long = Directory name is too long (max { $max_length } characters)
+err-dir-name-too-long = Directory name is too long (max { $max_length } bytes)
 err-dir-name-invalid = Directory name contains invalid characters
 err-dir-already-exists = A file or directory with that name already exists
 err-dir-create-failed = Failed to create directory
@@ -246,7 +248,7 @@ err-trust-not-found = No trusted entry found for '{ $target }'
 # File Search Errors
 err-search-query-empty = Search query cannot be empty
 err-search-query-too-short = Search query is too short (min { $min_length } bytes)
-err-search-query-too-long = Search query is too long (max { $max_length } characters)
+err-search-query-too-long = Search query is too long (max { $max_length } bytes)
 err-search-query-invalid = Search query contains invalid characters
 err-search-failed = Search failed
 
@@ -276,7 +278,7 @@ err-tracker-no-pending-fingerprint = Tracker has no pending fingerprint to accep
 err-tracker-name-invalid = Tracker name contains invalid characters
 err-tracker-name-empty = Tracker name cannot be empty
 err-tracker-name-contains-newlines = Tracker name cannot contain newlines
-err-tracker-name-too-long = Tracker name is too long (max { $max_length } bytes)
+err-tracker-name-too-long = Tracker name is too long (max { $max_length } characters)
 err-tracker-address-invalid = Invalid tracker address
 err-tracker-address-empty = Tracker address cannot be empty
 err-tracker-address-too-long = Tracker address is too long (max { $max_length } bytes)

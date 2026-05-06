@@ -12,7 +12,7 @@ err-nickname-required = 共享帳戶需要暱稱
 err-nickname-too-long = 暱稱太長（最多{ $max_length }個字元）
 
 # 離開訊息錯誤
-err-status-too-long = 離開訊息太長（最多{ $max_length }個位元組）
+err-status-too-long = 離開訊息太長（最多{ $max_length }個字元）
 err-status-contains-newlines = 離開訊息不能包含換行符
 err-status-invalid-characters = 離開訊息包含無效字元
 
@@ -125,14 +125,16 @@ err-username-invalid = 使用者名稱包含無效字元（允許字母、數字
 err-unknown-permission = 未知權限: '{ $permission }'
 
 # 動態錯誤訊息（帶參數）
-err-broadcast-too-long = 訊息太長（最多{ $max_length }個位元組）
-err-chat-too-long = 訊息太長（最多{ $max_length }個位元組）
-err-topic-too-long = 主題不能超過{ $max_length }個位元組
+err-broadcast-too-long = 訊息太長（最多{ $max_length }個字元）
+err-chat-too-long = 訊息太長（最多{ $max_length }個字元）
+err-topic-too-long = 主題不能超過{ $max_length }個字元
 err-version-major-mismatch = 不相容的協定版本：伺服器是版本{ $server_major }.x，客戶端是版本{ $client_major }.x
 err-version-client-too-new = 客戶端版本{ $client_version }比伺服器版本{ $server_version }更新。請更新伺服器或使用較舊的客戶端。
 err-version-minor-mismatch = 不相容的協定版本。伺服器: { $server_version }，客戶端: { $client_version }。雙方必須使用相同的次要版本。
 err-kicked-by = 您已被{ $username }踢出
 err-kicked-by-reason = 您已被{ $username }踢出: { $reason }
+err-kick-reason-too-long = 踢出原因過長（最多 { $max_length } 個字元）
+err-kick-reason-invalid-characters = 踢出原因包含無效字元
 err-username-exists = 使用者名稱「{ $username }」已存在
 err-user-not-found = 找不到使用者「{ $username }」
 err-user-not-online = 使用者「{ $username }」不在線上
@@ -150,10 +152,10 @@ err-permissions-invalid-characters = 權限名稱包含無效字元
 # 伺服器更新錯誤
 err-admin-required = 需要管理員權限
 err-server-name-empty = 伺服器名稱不能為空
-err-server-name-too-long = 伺服器名稱太長（最多{ $max_length }個位元組）
+err-server-name-too-long = 伺服器名稱太長（最多{ $max_length }個字元）
 err-server-name-contains-newlines = 伺服器名稱不能包含換行符號
 err-server-name-invalid-characters = 伺服器名稱包含無效字元
-err-server-description-too-long = 伺服器描述太長（最多{ $max_length }個位元組）
+err-server-description-too-long = 伺服器描述太長（最多{ $max_length }個字元）
 err-server-description-contains-newlines = 伺服器描述不能包含換行符號
 err-server-description-invalid-characters = 伺服器描述包含無效字元
 
@@ -175,7 +177,7 @@ err-public-address-invalid-format = 公開位址不是有效的主機名稱或IP
 
 # 新聞錯誤
 err-news-not-found = 找不到新聞 #{ $id }
-err-news-body-too-long = 新聞內容太長（最多{ $max_length }個位元組）
+err-news-body-too-long = 新聞內容太長（最多{ $max_length }個字元）
 err-news-body-invalid-characters = 新聞內容包含無效字元
 err-news-image-too-large = 新聞圖片太大（最大512KB）
 err-news-image-invalid-format = 新聞圖片格式無效（必須是base64編碼的資料URI）
@@ -185,12 +187,12 @@ err-cannot-edit-admin-news = 只有管理員可以編輯管理員發布的新聞
 err-cannot-delete-admin-news = 只有管理員可以刪除管理員發布的新聞
 
 # 檔案區域錯誤
-err-file-path-too-long = 檔案路徑過長（最多{ $max_length }個字元）
+err-file-path-too-long = 檔案路徑過長（最多{ $max_length }個位元組）
 err-file-path-invalid = 檔案路徑包含無效字元
 err-file-not-found = 檔案或目錄未找到
 err-file-not-directory = 路徑不是目錄
 err-dir-name-empty = 目錄名稱不能為空
-err-dir-name-too-long = 目錄名稱過長（最多{ $max_length }個字元）
+err-dir-name-too-long = 目錄名稱過長（最多{ $max_length }個位元組）
 err-dir-name-invalid = 目錄名稱包含無效字元
 err-dir-already-exists = 已存在同名的檔案或目錄
 err-dir-create-failed = 建立目錄失敗
@@ -243,7 +245,7 @@ err-banned-with-expiry = 您已被此伺服器封鎖（{ $remaining } 後解除�
 # File Search Errors
 err-search-query-empty = 搜尋查詢不能為空
 err-search-query-too-short = 搜尋查詢太短（最少 { $min_length } 個位元組）
-err-search-query-too-long = 搜尋查詢太長（最多 { $max_length } 個字元）
+err-search-query-too-long = 搜尋查詢太長（最多 { $max_length } 個位元組）
 err-search-query-invalid = 搜尋查詢包含無效字元
 err-search-failed = 搜尋失敗
 # Trust System Errors
@@ -277,7 +279,7 @@ err-tracker-no-pending-fingerprint = 追蹤器沒有待接受的指紋
 err-tracker-name-invalid = 追蹤器名稱包含無效字元
 err-tracker-name-empty = 追蹤器名稱不能為空
 err-tracker-name-contains-newlines = 追蹤器名稱不能包含換行符
-err-tracker-name-too-long = 追蹤器名稱過長 (最多 { $max_length } 位元組)
+err-tracker-name-too-long = 追蹤器名稱過長 (最多 { $max_length } 字元)
 err-tracker-address-invalid = 追蹤器位址無效
 err-tracker-address-empty = 追蹤器位址不能為空
 err-tracker-address-too-long = 追蹤器位址太長（最多{ $max_length }個位元組）

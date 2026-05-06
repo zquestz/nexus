@@ -514,11 +514,19 @@ err-unexpected-login-response = Unexpected login response
 err-server-omitted-nickname = Server response missing nickname
 err-connection-closed = Connection closed
 err-could-not-determine-config-dir = Could not determine config directory
-err-message-too-long = Message is too long ({ $length } characters, max { $max })
+err-message-too-long =
+    Message is too long ({ $length } { $length ->
+        [one] character
+       *[other] characters
+    }, max { $max })
 err-send-failed = Failed to send message
 err-no-chat-permission = You don't have permission to send messages
 err-console-no-send = Use /{ $join } to enter a channel or /{ $msg } to send a user message
-err-broadcast-too-long = Broadcast is too long ({ $length } characters, max { $max })
+err-broadcast-too-long =
+    Broadcast is too long ({ $length } { $length ->
+        [one] character
+       *[other] characters
+    }, max { $max })
 err-broadcast-send-failed = Failed to send broadcast
 err-name-required = Bookmark name is required
 err-address-required = Server address is required
@@ -560,21 +568,29 @@ password-strength-strong = Strong
 password-strength-excellent = Excellent
 label-min-password-strength = Min Password:
 
-err-topic-too-long = Topic is too long ({ $length } characters, max { $max })
+err-topic-too-long =
+    Topic is too long ({ $length } { $length ->
+        [one] character
+       *[other] characters
+    }, max { $max })
 err-avatar-unsupported-type = Unsupported file type. Use PNG, WebP, JPEG, or SVG.
 err-avatar-too-large = Avatar too large. Maximum size is { $max_kb }KB.
 err-avatar-decode-failed = Failed to decode avatar. The file may be corrupted.
 err-server-name-empty = Server name cannot be empty
-err-server-name-too-long = Server name is too long (max { $max } bytes)
+err-server-name-too-long = Server name is too long (max { $max } characters)
 err-server-name-contains-newlines = Server name cannot contain newlines
 err-server-name-invalid-characters = Server name contains invalid characters
-err-status-too-long = Status message is too long (max { $max } bytes)
+err-status-too-long = Status message is too long (max { $max } characters)
 err-status-contains-newlines = Status message cannot contain newlines
 err-status-invalid-characters = Status message contains invalid characters
+err-kick-reason-too-long = Kick reason is too long (max { $max } characters)
+err-kick-reason-invalid-characters = Kick reason contains invalid characters
+err-ban-reason-too-long = Ban reason is too long (max { $max } characters)
+err-ban-reason-invalid-characters = Ban reason contains invalid characters
 err-target-empty = Target cannot be empty
-err-target-too-long = Target is too long (max { $max } bytes)
+err-target-too-long = Target is too long (max { $max } characters)
 err-duration-too-long = Duration is too long (max { $max } bytes)
-err-server-description-too-long = Description is too long (max { $max } bytes)
+err-server-description-too-long = Description is too long (max { $max } characters)
 err-server-description-contains-newlines = Description cannot contain newlines
 err-server-description-invalid-characters = Description contains invalid characters
 err-failed-send-update = Failed to send update: { $error }
@@ -593,7 +609,11 @@ err-public-address-invalid-format = Public address is not a valid hostname or IP
 err-server-image-decode-failed = Failed to decode image. The file may be corrupted.
 err-failed-read-image = Failed to read image: { $error }
 err-news-empty = News post must have either body text or an image
-err-news-body-too-long = Body is too long ({ $length } characters, max { $max })
+err-news-body-too-long =
+    Body is too long ({ $length } { $length ->
+        [one] character
+       *[other] characters
+    }, max { $max })
 err-news-body-invalid-characters = Body contains invalid control characters
 err-news-image-decode-failed = Failed to decode image. The file may be corrupted.
 
@@ -632,7 +652,6 @@ err-failed-create-user = Failed to create user: { $error }
 err-failed-delete-user = Failed to delete user: { $error }
 err-failed-update-user = Failed to update user: { $error }
 err-failed-update-topic = Failed to update topic: { $error }
-err-message-too-long-details = { $error } ({ $length } characters, max { $max })
 
 # Network connection errors (with parameters)
 err-invalid-address = Invalid address '{ $address }': { $error }
@@ -1305,7 +1324,7 @@ toast-tracker-fingerprint-accepted-name = Fingerprint accepted for "{ $name }"
 
 # Errors
 err-tracker-name-empty = Tracker name is required
-err-tracker-name-too-long = Tracker name is too long (max { $max } bytes)
+err-tracker-name-too-long = Tracker name is too long (max { $max } characters)
 err-tracker-name-contains-newlines = Tracker name cannot contain newlines
 err-tracker-name-invalid-characters = Tracker name contains invalid control characters
 err-tracker-address-empty = Tracker address is required

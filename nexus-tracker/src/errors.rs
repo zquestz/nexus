@@ -41,6 +41,21 @@ pub fn err_tracker_name_too_long(locale: &str, max_length: usize) -> String {
     )
 }
 
+/// `name` was empty or whitespace-only.
+pub fn err_tracker_name_empty(locale: &str) -> String {
+    t(locale, "err-tracker-name-empty")
+}
+
+/// `name` contained newline characters.
+pub fn err_tracker_name_contains_newlines(locale: &str) -> String {
+    t(locale, "err-tracker-name-contains-newlines")
+}
+
+/// `name` contained non-newline control characters.
+pub fn err_tracker_name_invalid_characters(locale: &str) -> String {
+    t(locale, "err-tracker-name-invalid-characters")
+}
+
 /// `description` exceeded `MAX_SERVER_DESCRIPTION_LENGTH`.
 pub fn err_tracker_description_too_long(locale: &str, max_length: usize) -> String {
     t_args(
@@ -48,6 +63,16 @@ pub fn err_tracker_description_too_long(locale: &str, max_length: usize) -> Stri
         "err-tracker-description-too-long",
         &[("max_length", &max_length.to_string())],
     )
+}
+
+/// `description` contained newline characters.
+pub fn err_tracker_description_contains_newlines(locale: &str) -> String {
+    t(locale, "err-tracker-description-contains-newlines")
+}
+
+/// `description` contained non-newline control characters.
+pub fn err_tracker_description_invalid_characters(locale: &str) -> String {
+    t(locale, "err-tracker-description-invalid-characters")
 }
 
 /// `password` exceeded `MAX_PASSWORD_LENGTH`.
@@ -82,6 +107,14 @@ pub fn err_tracker_version_too_long(locale: &str, max_length: usize) -> String {
     )
 }
 
+/// `version` was empty, malformed, or did not parse as semver.
+/// Used by both `TrackerServerRegister` (validates the registering
+/// server's version) and `TrackerServerList` (validates the
+/// requesting client's version, used for compat filtering).
+pub fn err_tracker_version_invalid(locale: &str) -> String {
+    t(locale, "err-tracker-version-invalid")
+}
+
 /// `locale` exceeded `MAX_LOCALE_LENGTH`.
 pub fn err_tracker_locale_too_long(locale: &str, max_length: usize) -> String {
     t_args(
@@ -89,6 +122,23 @@ pub fn err_tracker_locale_too_long(locale: &str, max_length: usize) -> String {
         "err-tracker-locale-too-long",
         &[("max_length", &max_length.to_string())],
     )
+}
+
+/// `locale` contained control characters.
+pub fn err_tracker_locale_invalid(locale: &str) -> String {
+    t(locale, "err-tracker-locale-invalid")
+}
+
+/// `port` field was zero. The advertised BBS port must be non-zero
+/// for the entry to be reachable.
+pub fn err_tracker_port_zero(locale: &str) -> String {
+    t(locale, "err-tracker-port-zero")
+}
+
+/// `websocket_port` field was zero. When present, the WebSocket port
+/// must be non-zero for the same reason as `port`.
+pub fn err_tracker_websocket_port_zero(locale: &str) -> String {
+    t(locale, "err-tracker-websocket-port-zero")
 }
 
 // =============================================================================
@@ -185,12 +235,21 @@ mod tests {
             err_tracker_unauthorized("en"),
             err_tracker_fingerprint_invalid("en"),
             err_tracker_name_too_long("en", 64),
+            err_tracker_name_empty("en"),
+            err_tracker_name_contains_newlines("en"),
+            err_tracker_name_invalid_characters("en"),
             err_tracker_description_too_long("en", 512),
+            err_tracker_description_contains_newlines("en"),
+            err_tracker_description_invalid_characters("en"),
             err_tracker_password_too_long("en", 256),
             err_tracker_address_too_long("en", 253),
             err_tracker_address_invalid("en"),
             err_tracker_version_too_long("en", 32),
+            err_tracker_version_invalid("en"),
             err_tracker_locale_too_long("en", 16),
+            err_tracker_locale_invalid("en"),
+            err_tracker_port_zero("en"),
+            err_tracker_websocket_port_zero("en"),
             err_tracker_rate_limited("en"),
             err_tracker_capacity("en"),
             err_tracker_per_ip_capacity("en"),

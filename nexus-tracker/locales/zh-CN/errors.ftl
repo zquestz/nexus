@@ -9,13 +9,22 @@ err-tracker-unauthorized = 密码错误或缺失
 
 # 字段验证 (error_kind: invalid)
 err-tracker-fingerprint-invalid = 无效的证书指纹格式
-err-tracker-name-too-long = 服务器名称过长 (最多 { $max_length } 字节)
-err-tracker-description-too-long = 服务器描述过长 (最多 { $max_length } 字节)
+err-tracker-name-too-long = 服务器名称过长 (最多 { $max_length } 字符)
+err-tracker-name-empty = 服务器名称不能为空
+err-tracker-name-contains-newlines = 服务器名称不能包含换行符
+err-tracker-name-invalid-characters = 服务器名称包含无效字符
+err-tracker-description-too-long = 服务器描述过长 (最多 { $max_length } 字符)
+err-tracker-description-contains-newlines = 服务器描述不能包含换行符
+err-tracker-description-invalid-characters = 服务器描述包含无效字符
 err-tracker-password-too-long = 密码过长 (最多 { $max_length } 字节)
 err-tracker-address-too-long = 地址过长 (最多 { $max_length } 字节)
 err-tracker-address-invalid = 无效的地址
 err-tracker-version-too-long = 服务器版本字符串过长 (最多 { $max_length } 字节)
+err-tracker-version-invalid = 无效的版本 (必须是有效的 semver)
 err-tracker-locale-too-long = 区域代码过长 (最多 { $max_length } 字节)
+err-tracker-locale-invalid = 区域设置包含无效字符
+err-tracker-port-zero = 端口不能为零
+err-tracker-websocket-port-zero = WebSocket 端口不能为零
 
 # 速率 / 容量
 err-tracker-rate-limited = 超出速率限制；请稍后再试

@@ -12,7 +12,7 @@ err-nickname-required = 공유 계정에는 닉네임이 필요합니다
 err-nickname-too-long = 닉네임이 너무 깁니다 (최대 { $max_length }자)
 
 # 부재 메시지 오류
-err-status-too-long = 부재 메시지가 너무 깁니다 (최대 { $max_length } 바이트)
+err-status-too-long = 부재 메시지가 너무 깁니다 (최대 { $max_length }자)
 err-status-contains-newlines = 부재 메시지에는 줄 바꿈을 포함할 수 없습니다
 err-status-invalid-characters = 부재 메시지에 잘못된 문자가 포함되어 있습니다
 
@@ -125,14 +125,16 @@ err-username-invalid = 사용자 이름에 잘못된 문자가 포함되어 있�
 err-unknown-permission = 알 수 없는 권한: '{ $permission }'
 
 # 동적 오류 메시지 (매개변수 포함)
-err-broadcast-too-long = 메시지가 너무 깁니다 (최대 { $max_length } 바이트)
-err-chat-too-long = 메시지가 너무 깁니다 (최대 { $max_length } 바이트)
-err-topic-too-long = 주제는 { $max_length } 바이트를 초과할 수 없습니다
+err-broadcast-too-long = 메시지가 너무 깁니다 (최대 { $max_length }자)
+err-chat-too-long = 메시지가 너무 깁니다 (최대 { $max_length }자)
+err-topic-too-long = 주제는 { $max_length }자를 초과할 수 없습니다
 err-version-major-mismatch = 호환되지 않는 프로토콜 버전: 서버는 버전 { $server_major }.x, 클라이언트는 버전 { $client_major }.x입니다
 err-version-client-too-new = 클라이언트 버전 { $client_version }이(가) 서버 버전 { $server_version }보다 최신입니다. 서버를 업데이트하거나 이전 클라이언트를 사용하세요.
 err-version-minor-mismatch = 호환되지 않는 프로토콜 버전입니다. 서버: { $server_version }, 클라이언트: { $client_version }. 양쪽 모두 동일한 마이너 버전을 사용해야 합니다.
 err-kicked-by = { $username }에게 추방당했습니다
 err-kicked-by-reason = { $username }에게 추방당했습니다: { $reason }
+err-kick-reason-too-long = 추방 사유가 너무 깁니다 (최대 { $max_length }자)
+err-kick-reason-invalid-characters = 추방 사유에 잘못된 문자가 포함되어 있습니다
 err-username-exists = 사용자 이름 "{ $username }"이(가) 이미 존재합니다
 err-user-not-found = 사용자 "{ $username }"을(를) 찾을 수 없습니다
 err-user-not-online = 사용자 "{ $username }"이(가) 온라인 상태가 아닙니다
@@ -150,10 +152,10 @@ err-permissions-invalid-characters = 권한 이름에 잘못된 문자가 포함
 # 서버 업데이트 오류
 err-admin-required = 관리자 권한이 필요합니다
 err-server-name-empty = 서버 이름은 비어 있을 수 없습니다
-err-server-name-too-long = 서버 이름이 너무 깁니다 (최대 { $max_length } 바이트)
+err-server-name-too-long = 서버 이름이 너무 깁니다 (최대 { $max_length }자)
 err-server-name-contains-newlines = 서버 이름에 줄 바꿈을 포함할 수 없습니다
 err-server-name-invalid-characters = 서버 이름에 잘못된 문자가 포함되어 있습니다
-err-server-description-too-long = 서버 설명이 너무 깁니다 (최대 { $max_length } 바이트)
+err-server-description-too-long = 서버 설명이 너무 깁니다 (최대 { $max_length }자)
 err-server-description-contains-newlines = 서버 설명에 줄 바꿈을 포함할 수 없습니다
 err-server-description-invalid-characters = 서버 설명에 잘못된 문자가 포함되어 있습니다
 
@@ -175,7 +177,7 @@ err-public-address-invalid-format = 공개 주소가 유효한 호스트 이름 
 
 # 뉴스 오류
 err-news-not-found = 뉴스 #{ $id }을(를) 찾을 수 없습니다
-err-news-body-too-long = 뉴스 내용이 너무 깁니다 (최대 { $max_length } 바이트)
+err-news-body-too-long = 뉴스 내용이 너무 깁니다 (최대 { $max_length }자)
 err-news-body-invalid-characters = 뉴스 내용에 잘못된 문자가 포함되어 있습니다
 err-news-image-too-large = 뉴스 이미지가 너무 큽니다 (최대 512KB)
 err-news-image-invalid-format = 뉴스 이미지 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
@@ -185,12 +187,12 @@ err-cannot-edit-admin-news = 관리자가 게시한 뉴스는 관리자만 수�
 err-cannot-delete-admin-news = 관리자가 게시한 뉴스는 관리자만 삭제할 수 있습니다
 
 # 파일 영역 오류
-err-file-path-too-long = 파일 경로가 너무 깁니다 (최대 { $max_length }자)
+err-file-path-too-long = 파일 경로가 너무 깁니다 (최대 { $max_length } 바이트)
 err-file-path-invalid = 파일 경로에 잘못된 문자가 포함되어 있습니다
 err-file-not-found = 파일 또는 디렉토리를 찾을 수 없습니다
 err-file-not-directory = 경로가 디렉토리가 아닙니다
 err-dir-name-empty = 디렉토리 이름은 비워둘 수 없습니다
-err-dir-name-too-long = 디렉토리 이름이 너무 깁니다 (최대 { $max_length }자)
+err-dir-name-too-long = 디렉토리 이름이 너무 깁니다 (최대 { $max_length } 바이트)
 err-dir-name-invalid = 디렉토리 이름에 잘못된 문자가 포함되어 있습니다
 err-dir-already-exists = 해당 이름의 파일 또는 디렉토리가 이미 존재합니다
 err-dir-create-failed = 디렉토리 생성에 실패했습니다
@@ -243,7 +245,7 @@ err-banned-with-expiry = 이 서버에서 차단되었습니다 ({ $remaining } 
 # File Search Errors
 err-search-query-empty = 검색어를 입력해주세요
 err-search-query-too-short = 검색어가 너무 짧습니다 (최소 { $min_length } 바이트)
-err-search-query-too-long = 검색어가 너무 깁니다 (최대 { $max_length }자)
+err-search-query-too-long = 검색어가 너무 깁니다 (최대 { $max_length } 바이트)
 err-search-query-invalid = 검색어에 잘못된 문자가 포함되어 있습니다
 err-search-failed = 검색에 실패했습니다
 # Trust System Errors
@@ -277,7 +279,7 @@ err-tracker-no-pending-fingerprint = 트래커에 수락할 보류 중인 지문
 err-tracker-name-invalid = 트래커 이름에 잘못된 문자가 포함되어 있습니다
 err-tracker-name-empty = 트래커 이름은 비워둘 수 없습니다
 err-tracker-name-contains-newlines = 트래커 이름에 줄바꿈을 포함할 수 없습니다
-err-tracker-name-too-long = 트래커 이름이 너무 깁니다 (최대 { $max_length } 바이트)
+err-tracker-name-too-long = 트래커 이름이 너무 깁니다 (최대 { $max_length }자)
 err-tracker-address-invalid = 잘못된 트래커 주소입니다
 err-tracker-address-empty = 트래커 주소는 비워둘 수 없습니다
 err-tracker-address-too-long = 트래커 주소가 너무 깁니다 (최대 { $max_length } 바이트)

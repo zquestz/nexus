@@ -52,7 +52,7 @@ pub fn execute(
             MessageError::TooLong => t_args(
                 "err-message-too-long",
                 &[
-                    ("length", &message.len().to_string()),
+                    ("length", &message.chars().count().to_string()),
                     ("max", &validators::MAX_MESSAGE_LENGTH.to_string()),
                 ],
             ),

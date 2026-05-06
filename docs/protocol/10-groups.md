@@ -157,6 +157,21 @@ Create a new group.
 | `is_shared`   | boolean  | Yes      | Whether group is for shared accounts only |
 | `permissions` | string[] | Yes      | List of permission identifiers            |
 
+**Field validation.** Each input field is enforced by a validator in
+`nexus-common/src/validators/`:
+
+- `name` — `validate_group_name`: non-empty, ≤32 characters; Unicode
+  letters or ASCII graphic characters only; rejects whitespace, control
+  characters, and the path-sensitive set `/ \ : . < > " | ? * #`.
+- `permissions` — `validate_permissions`: list bounded to
+  `PERMISSIONS_COUNT` (the total defined permission set); each entry
+  non-empty, ≤32 bytes, no newlines, no control characters. Format-only —
+  unrecognized permission names pass this validator and are rejected at
+  permission-parsing time downstream.
+
+Validation failures send `GroupCreateResponse { success: false, error }`
+with a translated error message.
+
 **Example:**
 
 ```json
@@ -283,6 +298,13 @@ Update an existing group. Only provided fields are changed.
 | `name`        | string   | No       | New group name                         |
 | `is_shared`   | boolean  | No       | New shared status                      |
 | `permissions` | string[] | No       | New permission set (replaces existing) |
+
+**Field validation.** Same rules as
+[`GroupCreate`](#groupcreate-client--server) for the matching fields:
+`name` (`validate_group_name`) and `permissions`
+(`validate_permissions`). `GroupUpdate` is a partial update —
+omitted fields are unchanged. When `permissions` is present, it
+fully replaces the group's existing permission set.
 
 **Rename example:**
 

@@ -557,16 +557,20 @@ err-avatar-unsupported-type = 不支援的檔案類型。請使用PNG、WebP、J
 err-avatar-too-large = 頭像過大。最大大小為{ $max_kb }KB。
 err-avatar-decode-failed = 無法解碼頭像。檔案可能已損壞。
 err-server-name-empty = 伺服器名稱不能為空
-err-server-name-too-long = 伺服器名稱太長（最多 { $max } 個位元組）
+err-server-name-too-long = 伺服器名稱太長（最多 { $max } 個字元）
 err-server-name-contains-newlines = 伺服器名稱不能包含換行符
 err-server-name-invalid-characters = 伺服器名稱包含無效字元
-err-status-too-long = 狀態訊息太長（最多 { $max } 個位元組）
+err-status-too-long = 狀態訊息太長（最多 { $max } 個字元）
 err-status-contains-newlines = 狀態訊息不能包含換行符
 err-status-invalid-characters = 狀態訊息包含無效字元
+err-kick-reason-too-long = 踢出理由太長（最多 { $max } 個字元）
+err-kick-reason-invalid-characters = 踢出理由包含無效字元
+err-ban-reason-too-long = 封鎖理由太長（最多 { $max } 個字元）
+err-ban-reason-invalid-characters = 封鎖理由包含無效字元
 err-target-empty = 目標不能為空
-err-target-too-long = 目標過長（最多 { $max } 個位元組）
+err-target-too-long = 目標過長（最多 { $max } 個字元）
 err-duration-too-long = 時長過長（最多 { $max } 個位元組）
-err-server-description-too-long = 描述太長（最多 { $max } 個位元組）
+err-server-description-too-long = 描述太長（最多 { $max } 個字元）
 err-server-description-contains-newlines = 描述不能包含換行符
 err-server-description-invalid-characters = 描述包含無效字元
 err-failed-send-update = 傳送更新失敗：{ $error }
@@ -584,7 +588,6 @@ err-failed-create-user = 建立使用者失敗：{ $error }
 err-failed-delete-user = 刪除使用者失敗：{ $error }
 err-failed-update-user = 更新使用者失敗：{ $error }
 err-failed-update-topic = 更新主題失敗：{ $error }
-err-message-too-long-details = { $error }（{ $length }字元，最大{ $max }）
 
 # Network connection errors (with parameters)
 err-invalid-address = 無效位址 '{ $address }'：{ $error }
@@ -1231,7 +1234,7 @@ toast-tracker-fingerprint-accepted-name = 已接受「{ $name }」的指紋
 
 # Errors
 err-tracker-name-empty = 需要追蹤器名稱
-err-tracker-name-too-long = 追蹤器名稱過長（最多 { $max } 個位元組）
+err-tracker-name-too-long = 追蹤器名稱過長（最多 { $max } 個字元）
 err-tracker-name-contains-newlines = 追蹤器名稱不能包含換行字元
 err-tracker-name-invalid-characters = 追蹤器名稱包含無效的控制字元
 err-tracker-address-empty = 需要追蹤器位址

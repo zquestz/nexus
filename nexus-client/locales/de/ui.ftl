@@ -510,11 +510,19 @@ err-unexpected-login-response = Unerwartete Anmeldeantwort
 err-server-omitted-nickname = Antwort des Servers ohne Spitzname
 err-connection-closed = Verbindung geschlossen
 err-could-not-determine-config-dir = Konfigurationsverzeichnis konnte nicht ermittelt werden
-err-message-too-long = Nachricht ist zu lang ({ $length } Zeichen, max { $max })
+err-message-too-long =
+    Nachricht ist zu lang ({ $length } { $length ->
+        [one] Zeichen
+       *[other] Zeichen
+    }, max { $max })
 err-send-failed = Nachricht konnte nicht gesendet werden
 err-no-chat-permission = Sie haben keine Berechtigung, Nachrichten zu senden
 err-console-no-send = Verwenden Sie /{ $join }, um einem Kanal beizutreten, oder /{ $msg }, um eine Nachricht an einen Benutzer zu senden
-err-broadcast-too-long = Rundnachricht ist zu lang ({ $length } Zeichen, max { $max })
+err-broadcast-too-long =
+    Rundnachricht ist zu lang ({ $length } { $length ->
+        [one] Zeichen
+       *[other] Zeichen
+    }, max { $max })
 err-broadcast-send-failed = Rundnachricht konnte nicht gesendet werden
 err-name-required = Lesezeichenname ist erforderlich
 err-address-required = Serveradresse ist erforderlich
@@ -556,21 +564,29 @@ password-strength-strong = Stark
 password-strength-excellent = Ausgezeichnet
 label-min-password-strength = Min. Passwort:
 
-err-topic-too-long = Thema ist zu lang ({ $length } Zeichen, max { $max })
+err-topic-too-long =
+    Thema ist zu lang ({ $length } { $length ->
+        [one] Zeichen
+       *[other] Zeichen
+    }, max { $max })
 err-avatar-unsupported-type = Nicht unterstützter Dateityp. Verwenden Sie PNG, WebP, JPEG oder SVG.
 err-avatar-too-large = Avatar zu groß. Maximale Größe ist { $max_kb }KB.
 err-avatar-decode-failed = Avatar konnte nicht dekodiert werden. Die Datei ist möglicherweise beschädigt.
 err-server-name-empty = Servername darf nicht leer sein
-err-server-name-too-long = Servername ist zu lang (max. { $max } Bytes)
+err-server-name-too-long = Servername ist zu lang (max. { $max } Zeichen)
 err-server-name-contains-newlines = Servername darf keine Zeilenumbrüche enthalten
 err-server-name-invalid-characters = Servername enthält ungültige Zeichen
-err-status-too-long = Statusnachricht ist zu lang (max. { $max } Bytes)
+err-status-too-long = Statusnachricht ist zu lang (max. { $max } Zeichen)
 err-status-contains-newlines = Statusnachricht darf keine Zeilenumbrüche enthalten
 err-status-invalid-characters = Statusnachricht enthält ungültige Zeichen
+err-kick-reason-too-long = Kick-Grund ist zu lang (max. { $max } Zeichen)
+err-kick-reason-invalid-characters = Kick-Grund enthält ungültige Zeichen
+err-ban-reason-too-long = Bann-Grund ist zu lang (max. { $max } Zeichen)
+err-ban-reason-invalid-characters = Bann-Grund enthält ungültige Zeichen
 err-target-empty = Ziel darf nicht leer sein
-err-target-too-long = Ziel ist zu lang (maximal { $max } Bytes)
+err-target-too-long = Ziel ist zu lang (maximal { $max } Zeichen)
 err-duration-too-long = Dauer ist zu lang (maximal { $max } Bytes)
-err-server-description-too-long = Beschreibung ist zu lang (max. { $max } Bytes)
+err-server-description-too-long = Beschreibung ist zu lang (max. { $max } Zeichen)
 err-server-description-contains-newlines = Beschreibung darf keine Zeilenumbrüche enthalten
 err-server-description-invalid-characters = Beschreibung enthält ungültige Zeichen
 err-failed-send-update = Aktualisierung konnte nicht gesendet werden: { $error }
@@ -588,7 +604,6 @@ err-failed-create-user = Benutzer konnte nicht erstellt werden: { $error }
 err-failed-delete-user = Benutzer konnte nicht gelöscht werden: { $error }
 err-failed-update-user = Benutzer konnte nicht aktualisiert werden: { $error }
 err-failed-update-topic = Thema konnte nicht aktualisiert werden: { $error }
-err-message-too-long-details = { $error } ({ $length } Zeichen, max { $max })
 
 # Network connection errors (with parameters)
 err-invalid-address = Ungültige Adresse '{ $address }': { $error }
@@ -797,7 +812,11 @@ err-public-address-invalid-format = Die öffentliche Adresse ist kein gültiger 
 err-server-image-decode-failed = Bild konnte nicht dekodiert werden. Die Datei ist möglicherweise beschädigt.
 err-failed-read-image = Fehler beim Lesen des Bildes: { $error }
 err-news-empty = Der Beitrag muss Text oder ein Bild enthalten
-err-news-body-too-long = Der Inhalt ist zu lang ({ $length } Zeichen, maximal { $max })
+err-news-body-too-long =
+    Der Inhalt ist zu lang ({ $length } { $length ->
+        [one] Zeichen
+       *[other] Zeichen
+    }, maximal { $max })
 err-news-body-invalid-characters = Der Inhalt enthält ungültige Steuerzeichen
 err-news-image-decode-failed = Bild konnte nicht dekodiert werden. Die Datei ist möglicherweise beschädigt.
 
@@ -1281,7 +1300,7 @@ toast-tracker-fingerprint-accepted-name = Fingerabdruck für „{ $name }“ akz
 
 # Errors
 err-tracker-name-empty = Tracker-Name ist erforderlich
-err-tracker-name-too-long = Tracker-Name ist zu lang (max { $max } Bytes)
+err-tracker-name-too-long = Tracker-Name ist zu lang (max { $max } Zeichen)
 err-tracker-name-contains-newlines = Tracker-Name darf keine Zeilenumbrüche enthalten
 err-tracker-name-invalid-characters = Tracker-Name enthält ungültige Steuerzeichen
 err-tracker-address-empty = Tracker-Adresse ist erforderlich

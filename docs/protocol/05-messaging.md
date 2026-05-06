@@ -47,8 +47,20 @@ Send a message to another user.
 | Field         | Type   | Required | Description                                 |
 | ------------- | ------ | -------- | ------------------------------------------- |
 | `to_nickname` | string | Yes      | Display name of the recipient               |
-| `message`     | string | Yes      | Message content (1-1024 bytes)              |
+| `message`     | string | Yes      | Message content (1-1024 characters)         |
 | `action`      | string | No       | Action type: `"Normal"` (default) or `"Me"` |
+
+**Field validation.** Each input field is enforced by a validator in
+`nexus-common/src/validators/`:
+
+- `to_nickname` — `validate_nickname`: non-empty, ≤32 characters;
+  Unicode letters or ASCII graphic characters only; rejects whitespace,
+  control characters, and the path-sensitive set `/ \ : . < > " | ? * #`.
+- `message` — `validate_message`: non-empty after trim, ≤1024 characters,
+  no newlines, no other control characters.
+
+Validation failures send `UserMessageResponse { success: false, error }`
+with a translated error message.
 
 **Example:**
 
@@ -175,9 +187,14 @@ Delivered to the recipient when a user message is sent.
 
 Send a broadcast message to all connected users.
 
-| Field     | Type   | Required | Description                      |
-| --------- | ------ | -------- | -------------------------------- |
-| `message` | string | Yes      | Broadcast content (1-1024 bytes) |
+| Field     | Type   | Required | Description                           |
+| --------- | ------ | -------- | ------------------------------------- |
+| `message` | string | Yes      | Broadcast content (1-1024 characters) |
+
+**Field validation.** `message` is enforced by `validate_message` in
+`nexus-common/src/validators/`: non-empty after trim, ≤1024 characters, no
+newlines, no other control characters. A failure here is treated as a
+protocol violation and disconnects the connection.
 
 **Example:**
 
@@ -257,7 +274,7 @@ Both user messages and broadcasts use the same validation rules:
 | Rule             | Value                            | Error                           |
 | ---------------- | -------------------------------- | ------------------------------- |
 | Not empty        | Must have non-whitespace content | Message cannot be empty         |
-| Max length       | 1024 bytes                       | Message too long                |
+| Max length       | 1024 characters                  | Message too long                |
 | No newlines      | `\n`, `\r` not allowed           | Message cannot contain newlines |
 | No control chars | No ASCII control characters      | Invalid characters              |
 
@@ -309,7 +326,7 @@ Sending a message to yourself is not allowed. The server returns:
 | Nickname too long                 | Exceeds 32 characters             | Stays connected |
 | Invalid nickname                  | Contains invalid characters       | Stays connected |
 | Message cannot be empty           | Empty or whitespace-only message  | Stays connected |
-| Message too long                  | Exceeds 1024 bytes                | Stays connected |
+| Message too long                  | Exceeds 1024 characters           | Stays connected |
 | Message cannot contain newlines   | Contains `\n` or `\r`             | Stays connected |
 | Invalid characters                | Contains control characters       | Stays connected |
 | Cannot send a message to yourself | `to_nickname` matches sender      | Stays connected |
@@ -323,7 +340,7 @@ Sending a message to yourself is not allowed. The server returns:
 | Not logged in                   | Sent before authentication          | Disconnected    |
 | Authentication error            | Invalid session                     | Disconnected    |
 | Message cannot be empty         | Empty or whitespace-only message    | Disconnected    |
-| Message too long                | Exceeds 1024 bytes                  | Disconnected    |
+| Message too long                | Exceeds 1024 characters             | Disconnected    |
 | Message cannot contain newlines | Contains `\n` or `\r`               | Disconnected    |
 | Invalid characters              | Contains control characters         | Disconnected    |
 | Permission denied               | Missing `user_broadcast` permission | Stays connected |

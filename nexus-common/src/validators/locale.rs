@@ -19,7 +19,7 @@ pub enum LocaleError {
 /// Validate a locale string
 ///
 /// Checks:
-/// - Does not exceed maximum length (16 characters)
+/// - Does not exceed maximum length (16 bytes)
 /// - No control characters
 ///
 /// Note: Empty locale is allowed (will use server default).

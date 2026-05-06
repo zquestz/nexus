@@ -3,7 +3,10 @@
 //! Validates markdown content for news posts. Unlike chat messages,
 //! news body allows newlines and tabs for markdown formatting.
 
-/// Maximum length for news body in bytes
+/// Maximum length for news body in characters.
+///
+/// Counted as Unicode scalar values rather than bytes so non-ASCII users
+/// (CJK, Cyrillic, etc.) get the same effective capacity as ASCII users.
 pub const MAX_NEWS_BODY_LENGTH: usize = 4096;
 
 /// Validation error for news body
@@ -28,7 +31,7 @@ pub enum NewsBodyError {
 ///
 /// Returns a `NewsBodyError` variant describing the validation failure.
 pub fn validate_news_body(body: &str) -> Result<(), NewsBodyError> {
-    if body.len() > MAX_NEWS_BODY_LENGTH {
+    if body.chars().count() > MAX_NEWS_BODY_LENGTH {
         return Err(NewsBodyError::TooLong);
     }
 
@@ -63,6 +66,12 @@ mod tests {
     fn test_too_long() {
         assert_eq!(
             validate_news_body(&"a".repeat(MAX_NEWS_BODY_LENGTH + 1)),
+            Err(NewsBodyError::TooLong)
+        );
+        // Char-counted, not byte-counted: at limit accepted, over rejected.
+        assert!(validate_news_body(&"あ".repeat(MAX_NEWS_BODY_LENGTH)).is_ok());
+        assert_eq!(
+            validate_news_body(&"あ".repeat(MAX_NEWS_BODY_LENGTH + 1)),
             Err(NewsBodyError::TooLong)
         );
     }

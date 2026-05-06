@@ -22,7 +22,8 @@ pub enum VersionError {
 ///
 /// Checks:
 /// - Not empty
-/// - Does not exceed maximum length (32 characters)
+/// - Does not exceed maximum length (32 bytes — semver versions are
+///   ASCII so byte-counting is exact)
 /// - Valid semver format (via semver crate)
 ///
 /// # Returns

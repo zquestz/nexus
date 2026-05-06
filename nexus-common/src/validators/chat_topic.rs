@@ -2,7 +2,10 @@
 //!
 //! Validates chat topic strings.
 
-/// Maximum length for topics in bytes
+/// Maximum length for topics in characters.
+///
+/// Counted as Unicode scalar values rather than bytes so non-ASCII users
+/// (CJK, Cyrillic, etc.) get the same effective capacity as ASCII users.
 pub const MAX_CHAT_TOPIC_LENGTH: usize = 256;
 
 /// Validation error for topics
@@ -28,7 +31,7 @@ pub enum ChatTopicError {
 ///
 /// Returns a `ChatTopicError` variant describing the validation failure.
 pub fn validate_chat_topic(topic: &str) -> Result<(), ChatTopicError> {
-    if topic.len() > MAX_CHAT_TOPIC_LENGTH {
+    if topic.chars().count() > MAX_CHAT_TOPIC_LENGTH {
         return Err(ChatTopicError::TooLong);
     }
     for ch in topic.chars() {
@@ -66,6 +69,12 @@ mod tests {
     fn test_too_long() {
         assert_eq!(
             validate_chat_topic(&"a".repeat(MAX_CHAT_TOPIC_LENGTH + 1)),
+            Err(ChatTopicError::TooLong)
+        );
+        // Char-counted, not byte-counted: at limit accepted, over limit rejected.
+        assert!(validate_chat_topic(&"あ".repeat(MAX_CHAT_TOPIC_LENGTH)).is_ok());
+        assert_eq!(
+            validate_chat_topic(&"あ".repeat(MAX_CHAT_TOPIC_LENGTH + 1)),
             Err(ChatTopicError::TooLong)
         );
     }

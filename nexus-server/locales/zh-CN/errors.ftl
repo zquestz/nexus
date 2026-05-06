@@ -12,7 +12,7 @@ err-nickname-required = 共享账户需要昵称
 err-nickname-too-long = 昵称太长（最多{ $max_length }个字符）
 
 # 离开消息错误
-err-status-too-long = 离开消息太长（最多{ $max_length }个字节）
+err-status-too-long = 离开消息太长（最多{ $max_length }个字符）
 err-status-contains-newlines = 离开消息不能包含换行符
 err-status-invalid-characters = 离开消息包含无效字符
 
@@ -125,14 +125,16 @@ err-username-invalid = 用户名包含无效字符（允许字母、数字和符
 err-unknown-permission = 未知权限: '{ $permission }'
 
 # 动态错误消息（带参数）
-err-broadcast-too-long = 消息太长（最多{ $max_length }个字节）
-err-chat-too-long = 消息太长（最多{ $max_length }个字节）
-err-topic-too-long = 主题不能超过{ $max_length }个字节
+err-broadcast-too-long = 消息太长（最多{ $max_length }个字符）
+err-chat-too-long = 消息太长（最多{ $max_length }个字符）
+err-topic-too-long = 主题不能超过{ $max_length }个字符
 err-version-major-mismatch = 不兼容的协议版本：服务器是版本{ $server_major }.x，客户端是版本{ $client_major }.x
 err-version-client-too-new = 客户端版本{ $client_version }比服务器版本{ $server_version }更新。请更新服务器或使用旧版客户端。
 err-version-minor-mismatch = 不兼容的协议版本。服务器: { $server_version }，客户端: { $client_version }。双方必须使用相同的次要版本。
 err-kicked-by = 您已被{ $username }踢出
 err-kicked-by-reason = 您已被{ $username }踢出: { $reason }
+err-kick-reason-too-long = 踢出原因过长（最多 { $max_length } 个字符）
+err-kick-reason-invalid-characters = 踢出原因包含无效字符
 err-username-exists = 用户名"{ $username }"已存在
 err-user-not-found = 找不到用户"{ $username }"
 err-user-not-online = 用户"{ $username }"不在线
@@ -150,10 +152,10 @@ err-permissions-invalid-characters = 权限名称包含无效字符
 # 服务器更新错误
 err-admin-required = 需要管理员权限
 err-server-name-empty = 服务器名称不能为空
-err-server-name-too-long = 服务器名称太长（最多{ $max_length }个字节）
+err-server-name-too-long = 服务器名称太长（最多{ $max_length }个字符）
 err-server-name-contains-newlines = 服务器名称不能包含换行符
 err-server-name-invalid-characters = 服务器名称包含无效字符
-err-server-description-too-long = 服务器描述太长（最多{ $max_length }个字节）
+err-server-description-too-long = 服务器描述太长（最多{ $max_length }个字符）
 err-server-description-contains-newlines = 服务器描述不能包含换行符
 err-server-description-invalid-characters = 服务器描述包含无效字符
 
@@ -175,7 +177,7 @@ err-public-address-invalid-format = 公开地址不是有效的主机名或IP地
 
 # 新闻错误
 err-news-not-found = 新闻 #{ $id } 未找到
-err-news-body-too-long = 新闻内容太长（最多{ $max_length }个字节）
+err-news-body-too-long = 新闻内容太长（最多{ $max_length }个字符）
 err-news-body-invalid-characters = 新闻内容包含无效字符
 err-news-image-too-large = 新闻图片太大（最大512KB）
 err-news-image-invalid-format = 新闻图片格式无效（必须是base64编码的数据URI）
@@ -185,12 +187,12 @@ err-cannot-edit-admin-news = 只有管理员可以编辑管理员发布的新闻
 err-cannot-delete-admin-news = 只有管理员可以删除管理员发布的新闻
 
 # 文件区域错误
-err-file-path-too-long = 文件路径过长（最多{ $max_length }个字符）
+err-file-path-too-long = 文件路径过长（最多{ $max_length }个字节）
 err-file-path-invalid = 文件路径包含无效字符
 err-file-not-found = 文件或目录未找到
 err-file-not-directory = 路径不是目录
 err-dir-name-empty = 目录名称不能为空
-err-dir-name-too-long = 目录名称过长（最多{ $max_length }个字符）
+err-dir-name-too-long = 目录名称过长（最多{ $max_length }个字节）
 err-dir-name-invalid = 目录名称包含无效字符
 err-dir-already-exists = 同名文件或目录已存在
 err-dir-create-failed = 创建目录失败
@@ -243,7 +245,7 @@ err-banned-with-expiry = 您已被此服务器封禁（{ $remaining } 后解除�
 # File Search Errors
 err-search-query-empty = 搜索查询不能为空
 err-search-query-too-short = 搜索查询过短（最少 { $min_length } 个字节）
-err-search-query-too-long = 搜索查询过长（最多 { $max_length } 个字符）
+err-search-query-too-long = 搜索查询过长（最多 { $max_length } 个字节）
 err-search-query-invalid = 搜索查询包含无效字符
 err-search-failed = 搜索失败
 # Trust System Errors
@@ -277,7 +279,7 @@ err-tracker-no-pending-fingerprint = 追踪器没有待接受的指纹
 err-tracker-name-invalid = 追踪器名称包含无效字符
 err-tracker-name-empty = 追踪器名称不能为空
 err-tracker-name-contains-newlines = 追踪器名称不能包含换行符
-err-tracker-name-too-long = 追踪器名称过长 (最多 { $max_length } 字节)
+err-tracker-name-too-long = 追踪器名称过长 (最多 { $max_length } 字符)
 err-tracker-address-invalid = 追踪器地址无效
 err-tracker-address-empty = 追踪器地址不能为空
 err-tracker-address-too-long = 追踪器地址太长（最多{ $max_length }个字节）

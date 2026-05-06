@@ -2,7 +2,7 @@
 //!
 //! Validates username strings.
 
-/// Maximum length for usernames in bytes
+/// Maximum length for usernames in characters (Unicode scalar values).
 pub const MAX_USERNAME_LENGTH: usize = 32;
 
 /// Characters that are not allowed in usernames (path-sensitive + channel prefix)

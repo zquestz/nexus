@@ -208,9 +208,22 @@ where
     };
 
     match received.message {
-        TrackerClientMessage::TrackerServerList { password, locale } => {
-            handle_tracker_server_list(ListParams { password, locale }, state, writer, peer_addr)
-                .await?;
+        TrackerClientMessage::TrackerServerList {
+            password,
+            locale,
+            version,
+        } => {
+            handle_tracker_server_list(
+                ListParams {
+                    password,
+                    locale,
+                    version,
+                },
+                state,
+                writer,
+                peer_addr,
+            )
+            .await?;
             Ok(())
         }
         TrackerClientMessage::TrackerServerRegister {

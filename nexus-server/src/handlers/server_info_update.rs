@@ -35,6 +35,21 @@ use crate::constants::{
     LOG_SERVER_INFO_NOT_LOGGED_IN, LOG_SERVER_INFO_SUCCESS,
 };
 
+/// Send a failure-shaped `ServerInfoUpdateResponse` and return — used
+/// for every validation and DB-error path in this handler. Codifies
+/// the "typed responses over generic errors" convention from CLAUDE.md
+/// for a response shape that only carries `success` and `error`.
+async fn send_failure<W>(ctx: &mut HandlerContext<'_, W>, error: String) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    let response = ServerMessage::ServerInfoUpdateResponse {
+        success: false,
+        error: Some(error),
+    };
+    ctx.send_message(&response).await
+}
+
 /// Request parameters for ServerInfoUpdate command
 pub struct ServerInfoUpdateRequest {
     pub name: Option<String>,
@@ -80,7 +95,7 @@ where
     let Some(id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_NOT_LOGGED_IN);
         return ctx
-            .send_error(
+            .send_error_and_disconnect(
                 &err_not_logged_in(ctx.locale),
                 Some(HANDLER_SERVER_INFO_UPDATE),
             )
@@ -91,24 +106,14 @@ where
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
-            return ctx
-                .send_error(
-                    &err_authentication(ctx.locale),
-                    Some(HANDLER_SERVER_INFO_UPDATE),
-                )
-                .await;
+            return send_failure(ctx, err_authentication(ctx.locale)).await;
         }
     };
 
     // Admin-only - check if user is admin (before validation to not reveal validation rules)
     if !user.is_admin {
         warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_ADMIN_REQUIRED);
-        return ctx
-            .send_error(
-                &err_admin_required(ctx.locale),
-                Some(HANDLER_SERVER_INFO_UPDATE),
-            )
-            .await;
+        return send_failure(ctx, err_admin_required(ctx.locale)).await;
     }
 
     // Check that at least one field is being updated
@@ -125,12 +130,7 @@ where
         && chat_rate_limit.is_none()
         && min_password_strength.is_none()
     {
-        return ctx
-            .send_error(
-                &err_no_fields_to_update(ctx.locale),
-                Some(HANDLER_SERVER_INFO_UPDATE),
-            )
-            .await;
+        return send_failure(ctx, err_no_fields_to_update(ctx.locale)).await;
     }
 
     // Validate name if provided
@@ -145,9 +145,7 @@ where
             ServerNameError::ContainsNewlines => err_server_name_contains_newlines(ctx.locale),
             ServerNameError::InvalidCharacters => err_server_name_invalid_characters(ctx.locale),
         };
-        return ctx
-            .send_error(&error_msg, Some(HANDLER_SERVER_INFO_UPDATE))
-            .await;
+        return send_failure(ctx, error_msg).await;
     }
 
     // Validate description if provided
@@ -166,9 +164,7 @@ where
                 err_server_description_invalid_characters(ctx.locale)
             }
         };
-        return ctx
-            .send_error(&error_msg, Some(HANDLER_SERVER_INFO_UPDATE))
-            .await;
+        return send_failure(ctx, error_msg).await;
     }
 
     // Validate public_address if provided (empty string clears the advertised value)
@@ -194,9 +190,7 @@ where
             PublicAddressError::ContainsZoneId => err_public_address_contains_zone_id(ctx.locale),
             PublicAddressError::InvalidFormat => err_public_address_invalid_format(ctx.locale),
         };
-        return ctx
-            .send_error(&error_msg, Some(HANDLER_SERVER_INFO_UPDATE))
-            .await;
+        return send_failure(ctx, error_msg).await;
     }
 
     // Note: max_connections_per_ip and max_transfers_per_ip allow 0 (meaning unlimited)
@@ -212,9 +206,7 @@ where
             ServerImageError::InvalidFormat => err_server_image_invalid_format(ctx.locale),
             ServerImageError::UnsupportedType => err_server_image_unsupported_type(ctx.locale),
         };
-        return ctx
-            .send_error(&error_msg, Some(HANDLER_SERVER_INFO_UPDATE))
-            .await;
+        return send_failure(ctx, error_msg).await;
     }
 
     // Validate persistent_channels if provided
@@ -224,9 +216,7 @@ where
             if let Err(e) = validate_channel(name) {
                 let reason = channel_error_to_message(e, ctx.locale);
                 let error_msg = err_channel_list_invalid(ctx.locale, name, &reason);
-                return ctx
-                    .send_error(&error_msg, Some(HANDLER_SERVER_INFO_UPDATE))
-                    .await;
+                return send_failure(ctx, error_msg).await;
             }
         }
     }
@@ -238,9 +228,7 @@ where
             if let Err(e) = validate_channel(name) {
                 let reason = channel_error_to_message(e, ctx.locale);
                 let error_msg = err_channel_list_invalid(ctx.locale, name, &reason);
-                return ctx
-                    .send_error(&error_msg, Some(HANDLER_SERVER_INFO_UPDATE))
-                    .await;
+                return send_failure(ctx, error_msg).await;
             }
         }
     }
@@ -249,11 +237,7 @@ where
     if let Some(strength) = min_password_strength
         && strength > validators::PasswordStrength::Excellent.score()
     {
-        let response = ServerMessage::ServerInfoUpdateResponse {
-            success: false,
-            error: Some(err_invalid_password_strength(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
+        return send_failure(ctx, err_invalid_password_strength(ctx.locale)).await;
     }
 
     // Apply updates to database
@@ -261,35 +245,27 @@ where
         && let Err(e) = ctx.db.config.set_server_name(n).await
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_NAME);
-        return ctx
-            .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
-            .await;
+        return send_failure(ctx, err_database(ctx.locale)).await;
     }
 
     if let Some(ref d) = description
         && let Err(e) = ctx.db.config.set_server_description(d).await
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_DESC);
-        return ctx
-            .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
-            .await;
+        return send_failure(ctx, err_database(ctx.locale)).await;
     }
 
     if let Some(ref addr) = public_address
         && let Err(e) = ctx.db.config.set_public_address(addr).await
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_PUBLIC_ADDRESS);
-        return ctx
-            .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
-            .await;
+        return send_failure(ctx, err_database(ctx.locale)).await;
     }
 
     if let Some(max_conn) = max_connections_per_ip {
         if let Err(e) = ctx.db.config.set_max_connections_per_ip(max_conn).await {
             error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_CONNECTIONS);
-            return ctx
-                .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
-                .await;
+            return send_failure(ctx, err_database(ctx.locale)).await;
         }
         // Update the connection tracker limit dynamically
         ctx.connection_tracker
@@ -299,9 +275,7 @@ where
     if let Some(max_xfer) = max_transfers_per_ip {
         if let Err(e) = ctx.db.config.set_max_transfers_per_ip(max_xfer).await {
             error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_TRANSFERS);
-            return ctx
-                .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
-                .await;
+            return send_failure(ctx, err_database(ctx.locale)).await;
         }
         // Update the connection tracker limit dynamically
         ctx.connection_tracker
@@ -312,18 +286,14 @@ where
         && let Err(e) = ctx.db.config.set_server_image(img).await
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_IMAGE);
-        return ctx
-            .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
-            .await;
+        return send_failure(ctx, err_database(ctx.locale)).await;
     }
 
     if let Some(interval) = file_reindex_interval
         && let Err(e) = ctx.db.config.set_file_reindex_interval(interval).await
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_REINDEX);
-        return ctx
-            .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
-            .await;
+        return send_failure(ctx, err_database(ctx.locale)).await;
     }
     // Note: The timer task reads from config each cycle, so no runtime update needed
 
@@ -332,9 +302,7 @@ where
         // Save to config
         if let Err(e) = ctx.db.config.set_persistent_channels(channels_str).await {
             error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_PERSISTENT);
-            return ctx
-                .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
-                .await;
+            return send_failure(ctx, err_database(ctx.locale)).await;
         }
 
         // Parse new channel names
@@ -420,18 +388,14 @@ where
         && let Err(e) = ctx.db.config.set_auto_join_channels(channels_str).await
     {
         error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_AUTO_JOIN);
-        return ctx
-            .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
-            .await;
+        return send_failure(ctx, err_database(ctx.locale)).await;
     }
 
     // Handle chat_burst_limit update
     if let Some(burst) = chat_burst_limit {
         if let Err(e) = ctx.db.config.set_chat_burst_limit(burst).await {
             error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_CHAT_BURST);
-            return ctx
-                .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
-                .await;
+            return send_failure(ctx, err_database(ctx.locale)).await;
         }
         // Update the shared flood config dynamically
         ctx.flood_config.set_burst(burst);
@@ -441,9 +405,7 @@ where
     if let Some(rate) = chat_rate_limit {
         if let Err(e) = ctx.db.config.set_chat_rate_limit(rate).await {
             error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_CHAT_RATE);
-            return ctx
-                .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
-                .await;
+            return send_failure(ctx, err_database(ctx.locale)).await;
         }
         // Update the shared flood config dynamically
         ctx.flood_config.set_rate(rate);
@@ -454,9 +416,7 @@ where
         let strength = validators::PasswordStrength::from(score);
         if let Err(e) = ctx.db.config.set_min_password_strength(strength).await {
             error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_PASSWORD);
-            return ctx
-                .send_error(&err_database(ctx.locale), Some(HANDLER_SERVER_INFO_UPDATE))
-                .await;
+            return send_failure(ctx, err_database(ctx.locale)).await;
         }
     }
 
@@ -521,16 +481,8 @@ mod tests {
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
-        assert!(result.is_ok());
-
-        let response = read_server_message(&mut test_ctx).await;
-        match response {
-            ServerMessage::Error { message, command } => {
-                assert_eq!(message, err_not_logged_in(DEFAULT_TEST_LOCALE));
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
-            }
-            _ => panic!("Expected Error message, got {:?}", response),
-        }
+        // Should fail with disconnect
+        assert!(result.is_err(), "ServerInfoUpdate should require login");
     }
 
     #[tokio::test]
@@ -561,11 +513,14 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert_eq!(message, err_admin_required(DEFAULT_TEST_LOCALE));
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(
+                    error.as_deref(),
+                    Some(err_admin_required(DEFAULT_TEST_LOCALE).as_str())
+                );
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 
@@ -597,11 +552,14 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert_eq!(message, err_no_fields_to_update(DEFAULT_TEST_LOCALE));
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(
+                    error.as_deref(),
+                    Some(err_no_fields_to_update(DEFAULT_TEST_LOCALE).as_str())
+                );
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 
@@ -633,11 +591,14 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert_eq!(message, err_server_name_empty(DEFAULT_TEST_LOCALE));
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(
+                    error.as_deref(),
+                    Some(err_server_name_empty(DEFAULT_TEST_LOCALE).as_str())
+                );
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 
@@ -670,11 +631,15 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert!(message.contains(&validators::MAX_SERVER_NAME_LENGTH.to_string()));
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(
+                    error
+                        .unwrap_or_default()
+                        .contains(&validators::MAX_SERVER_NAME_LENGTH.to_string())
+                );
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 
@@ -707,11 +672,15 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert!(message.contains(&validators::MAX_SERVER_DESCRIPTION_LENGTH.to_string()));
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(
+                    error
+                        .unwrap_or_default()
+                        .contains(&validators::MAX_SERVER_DESCRIPTION_LENGTH.to_string())
+                );
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 
@@ -794,6 +763,87 @@ mod tests {
         // Verify name was saved
         let saved_name = test_ctx.db.config.get_server_name().await;
         assert_eq!(saved_name, "My Custom Server");
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_name_at_unicode_cap_passes() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Char-counted validator: a multi-byte string at exactly MAX_SERVER_NAME_LENGTH
+        // chars must pass even though its UTF-8 byte length is 4× larger.
+        let unicode_name = "🚀".repeat(validators::MAX_SERVER_NAME_LENGTH);
+        let request = ServerInfoUpdateRequest {
+            name: Some(unicode_name.clone()),
+            description: None,
+            public_address: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success, "Unicode name at char cap should pass: {:?}", error);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
+
+        let saved_name = test_ctx.db.config.get_server_name().await;
+        assert_eq!(saved_name, unicode_name);
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_name_unicode_over_cap_rejected() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Char-counted validator: MAX+1 chars must reject regardless of UTF-8
+        // byte length. Pins that the validator counts chars, not bytes.
+        let unicode_name = "🚀".repeat(validators::MAX_SERVER_NAME_LENGTH + 1);
+        let request = ServerInfoUpdateRequest {
+            name: Some(unicode_name),
+            description: None,
+            public_address: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(
+                    error
+                        .unwrap_or_default()
+                        .contains(&validators::MAX_SERVER_NAME_LENGTH.to_string())
+                );
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
+        }
     }
 
     #[tokio::test]
@@ -1154,11 +1204,15 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert!(message.contains(&validators::MAX_PUBLIC_ADDRESS_LENGTH.to_string()));
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(
+                    error
+                        .unwrap_or_default()
+                        .contains(&validators::MAX_PUBLIC_ADDRESS_LENGTH.to_string())
+                );
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 
@@ -1188,14 +1242,14 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
                 assert_eq!(
-                    message,
-                    err_public_address_contains_port(DEFAULT_TEST_LOCALE)
+                    error.as_deref(),
+                    Some(err_public_address_contains_port(DEFAULT_TEST_LOCALE).as_str())
                 );
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 
@@ -1328,11 +1382,14 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
-                assert_eq!(message, err_server_image_too_large(DEFAULT_TEST_LOCALE));
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(
+                    error.as_deref(),
+                    Some(err_server_image_too_large(DEFAULT_TEST_LOCALE).as_str())
+                );
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 
@@ -1367,14 +1424,14 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
                 assert_eq!(
-                    message,
-                    err_server_image_invalid_format(DEFAULT_TEST_LOCALE)
+                    error.as_deref(),
+                    Some(err_server_image_invalid_format(DEFAULT_TEST_LOCALE).as_str())
                 );
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 
@@ -1409,14 +1466,14 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
                 assert_eq!(
-                    message,
-                    err_server_image_unsupported_type(DEFAULT_TEST_LOCALE)
+                    error.as_deref(),
+                    Some(err_server_image_unsupported_type(DEFAULT_TEST_LOCALE).as_str())
                 );
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 
@@ -1574,14 +1631,14 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
                 assert!(
-                    message.contains("general"),
+                    error.unwrap_or_default().contains("general"),
                     "Error should mention the invalid channel"
                 );
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 
@@ -1654,14 +1711,14 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
                 assert!(
-                    message.contains("#"),
+                    error.unwrap_or_default().contains("#"),
                     "Error should mention the invalid channel"
                 );
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 
@@ -1695,15 +1752,15 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
                 // "channel" will fail because it doesn't start with #
                 assert!(
-                    message.contains("channel"),
+                    error.unwrap_or_default().contains("channel"),
                     "Error should mention the invalid channel"
                 );
-                assert_eq!(command, Some("ServerInfoUpdate".to_string()));
             }
-            _ => panic!("Expected Error message, got {:?}", response),
+            _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
     }
 

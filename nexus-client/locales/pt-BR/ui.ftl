@@ -516,11 +516,19 @@ err-unexpected-login-response = Resposta de login inesperada
 err-server-omitted-nickname = Resposta do servidor sem apelido
 err-connection-closed = Conexão fechada
 err-could-not-determine-config-dir = Não foi possível determinar o diretório de configuração
-err-message-too-long = Mensagem muito longa ({ $length } caracteres, máx { $max })
+err-message-too-long =
+    Mensagem muito longa ({ $length } { $length ->
+        [one] caractere
+       *[other] caracteres
+    }, máx { $max })
 err-send-failed = Falha ao enviar mensagem
 err-no-chat-permission = Você não tem permissão para enviar mensagens
 err-console-no-send = Use /{ $join } para entrar em um canal ou /{ $msg } para enviar uma mensagem a um usuário
-err-broadcast-too-long = Broadcast muito longo ({ $length } caracteres, máx { $max })
+err-broadcast-too-long =
+    Broadcast muito longo ({ $length } { $length ->
+        [one] caractere
+       *[other] caracteres
+    }, máx { $max })
 err-broadcast-send-failed = Falha ao enviar difusão
 err-name-required = O nome do favorito é obrigatório
 err-address-required = O endereço do servidor é obrigatório
@@ -562,21 +570,29 @@ password-strength-strong = Forte
 password-strength-excellent = Excelente
 label-min-password-strength = Senha mín.:
 
-err-topic-too-long = O tópico é muito longo ({ $length } caracteres, máx { $max })
+err-topic-too-long =
+    O tópico é muito longo ({ $length } { $length ->
+        [one] caractere
+       *[other] caracteres
+    }, máx { $max })
 err-avatar-unsupported-type = Tipo de arquivo não suportado. Use PNG, WebP, JPEG ou SVG.
 err-avatar-too-large = Ícone muito grande. O tamanho máximo é { $max_kb }KB.
 err-avatar-decode-failed = Falha ao decodificar a imagem. O arquivo pode estar corrompido.
 err-server-name-empty = O nome do servidor não pode estar vazio
-err-server-name-too-long = O nome do servidor é muito longo (máx { $max } bytes)
+err-server-name-too-long = O nome do servidor é muito longo (máx { $max } caracteres)
 err-server-name-contains-newlines = O nome do servidor não pode conter quebras de linha
 err-server-name-invalid-characters = O nome do servidor contém caracteres inválidos
-err-status-too-long = A mensagem de status é muito longa (máx { $max } bytes)
+err-status-too-long = A mensagem de status é muito longa (máx { $max } caracteres)
 err-status-contains-newlines = A mensagem de status não pode conter quebras de linha
 err-status-invalid-characters = A mensagem de status contém caracteres inválidos
+err-kick-reason-too-long = O motivo da expulsão é muito longo (máx { $max } caracteres)
+err-kick-reason-invalid-characters = O motivo da expulsão contém caracteres inválidos
+err-ban-reason-too-long = O motivo do banimento é muito longo (máx { $max } caracteres)
+err-ban-reason-invalid-characters = O motivo do banimento contém caracteres inválidos
 err-target-empty = O alvo não pode estar vazio
-err-target-too-long = O alvo é muito longo (máximo { $max } bytes)
+err-target-too-long = O alvo é muito longo (máximo { $max } caracteres)
 err-duration-too-long = A duração é muito longa (máximo { $max } bytes)
-err-server-description-too-long = A descrição é muito longa (máx { $max } bytes)
+err-server-description-too-long = A descrição é muito longa (máx { $max } caracteres)
 err-server-description-contains-newlines = A descrição não pode conter quebras de linha
 err-server-description-invalid-characters = A descrição contém caracteres inválidos
 err-failed-send-update = Falha ao enviar atualização: { $error }
@@ -594,7 +610,6 @@ err-failed-create-user = Falha ao criar usuário: { $error }
 err-failed-delete-user = Falha ao excluir usuário: { $error }
 err-failed-update-user = Falha ao atualizar usuário: { $error }
 err-failed-update-topic = Falha ao atualizar tópico: { $error }
-err-message-too-long-details = { $error } ({ $length } caracteres, máx { $max })
 
 # Network connection errors (with parameters)
 err-invalid-address = Endereço inválido '{ $address }': { $error }
@@ -802,7 +817,11 @@ err-public-address-invalid-format = O endereço público não é um nome de host
 err-server-image-decode-failed = Falha ao decodificar a imagem. O arquivo pode estar corrompido.
 err-failed-read-image = Falha ao ler a imagem: { $error }
 err-news-empty = A publicação deve ter texto ou uma imagem
-err-news-body-too-long = O conteúdo é muito longo ({ $length } caracteres, máximo { $max })
+err-news-body-too-long =
+    O conteúdo é muito longo ({ $length } { $length ->
+        [one] caractere
+       *[other] caracteres
+    }, máximo { $max })
 err-news-body-invalid-characters = O conteúdo contém caracteres de controle inválidos
 err-news-image-decode-failed = Falha ao decodificar a imagem. O arquivo pode estar corrompido.
 
@@ -1283,7 +1302,7 @@ toast-tracker-fingerprint-accepted-name = Impressão digital aceita para "{ $nam
 
 # Errors
 err-tracker-name-empty = Nome do tracker é obrigatório
-err-tracker-name-too-long = Nome do tracker é muito longo (máx { $max } bytes)
+err-tracker-name-too-long = Nome do tracker é muito longo (máx { $max } caracteres)
 err-tracker-name-contains-newlines = Nome do tracker não pode conter quebras de linha
 err-tracker-name-invalid-characters = Nome do tracker contém caracteres de controle inválidos
 err-tracker-address-empty = Endereço do tracker é obrigatório

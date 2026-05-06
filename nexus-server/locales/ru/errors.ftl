@@ -12,7 +12,7 @@ err-nickname-required = Псевдоним обязателен для общи�
 err-nickname-too-long = Псевдоним слишком длинный (макс. { $max_length } символов)
 
 # Ошибки сообщения об отсутствии
-err-status-too-long = Сообщение об отсутствии слишком длинное (макс. { $max_length } байт)
+err-status-too-long = Сообщение об отсутствии слишком длинное (макс. { $max_length } символов)
 err-status-contains-newlines = Сообщение об отсутствии не может содержать переносы строк
 err-status-invalid-characters = Сообщение об отсутствии содержит недопустимые символы
 
@@ -125,14 +125,16 @@ err-username-invalid = Имя пользователя содержит недо
 err-unknown-permission = Неизвестное разрешение: '{ $permission }'
 
 # Динамические сообщения об ошибках (с параметрами)
-err-broadcast-too-long = Сообщение слишком длинное (максимум { $max_length } байт)
-err-chat-too-long = Сообщение слишком длинное (максимум { $max_length } байт)
-err-topic-too-long = Тема не может превышать { $max_length } байт
+err-broadcast-too-long = Сообщение слишком длинное (максимум { $max_length } символов)
+err-chat-too-long = Сообщение слишком длинное (максимум { $max_length } символов)
+err-topic-too-long = Тема не может превышать { $max_length } символов
 err-version-major-mismatch = Несовместимая версия протокола: сервер версии { $server_major }.x, клиент версии { $client_major }.x
 err-version-client-too-new = Версия клиента { $client_version } новее версии сервера { $server_version }. Пожалуйста, обновите сервер или используйте более старый клиент.
 err-version-minor-mismatch = Несовместимая версия протокола. Сервер: { $server_version }, Клиент: { $client_version }. Обе стороны должны использовать одну и ту же минорную версию.
 err-kicked-by = Вы были выгнаны пользователем { $username }
 err-kicked-by-reason = Вы были выгнаны пользователем { $username }: { $reason }
+err-kick-reason-too-long = Причина кика слишком длинная (максимум { $max_length } символов)
+err-kick-reason-invalid-characters = Причина кика содержит недопустимые символы
 err-username-exists = Имя пользователя "{ $username }" уже существует
 err-user-not-found = Пользователь "{ $username }" не найден
 err-user-not-online = Пользователь "{ $username }" не в сети
@@ -150,10 +152,10 @@ err-permissions-invalid-characters = Название разрешения со�
 # Ошибки обновления сервера
 err-admin-required = Требуются права администратора
 err-server-name-empty = Имя сервера не может быть пустым
-err-server-name-too-long = Имя сервера слишком длинное (максимум { $max_length } байт)
+err-server-name-too-long = Имя сервера слишком длинное (максимум { $max_length } символов)
 err-server-name-contains-newlines = Имя сервера не может содержать переносы строк
 err-server-name-invalid-characters = Имя сервера содержит недопустимые символы
-err-server-description-too-long = Описание сервера слишком длинное (максимум { $max_length } байт)
+err-server-description-too-long = Описание сервера слишком длинное (максимум { $max_length } символов)
 err-server-description-contains-newlines = Описание сервера не может содержать переносы строк
 err-server-description-invalid-characters = Описание сервера содержит недопустимые символы
 
@@ -175,7 +177,7 @@ err-public-address-invalid-format = Публичный адрес не явля�
 
 # Ошибки новостей
 err-news-not-found = Новость #{ $id } не найдена
-err-news-body-too-long = Текст новости слишком длинный (максимум { $max_length } байт)
+err-news-body-too-long = Текст новости слишком длинный (максимум { $max_length } символов)
 err-news-body-invalid-characters = Текст новости содержит недопустимые символы
 err-news-image-too-large = Изображение новости слишком большое (максимум 512КБ)
 err-news-image-invalid-format = Недопустимый формат изображения новости (должен быть data URI с кодировкой base64)
@@ -185,12 +187,12 @@ err-cannot-edit-admin-news = Только администраторы могу�
 err-cannot-delete-admin-news = Только администраторы могут удалять новости, опубликованные администраторами
 
 # Ошибки файловой области
-err-file-path-too-long = Путь к файлу слишком длинный (максимум { $max_length } символов)
+err-file-path-too-long = Путь к файлу слишком длинный (максимум { $max_length } байт)
 err-file-path-invalid = Путь к файлу содержит недопустимые символы
 err-file-not-found = Файл или каталог не найден
 err-file-not-directory = Путь не является каталогом
 err-dir-name-empty = Имя каталога не может быть пустым
-err-dir-name-too-long = Имя каталога слишком длинное (максимум { $max_length } символов)
+err-dir-name-too-long = Имя каталога слишком длинное (максимум { $max_length } байт)
 err-dir-name-invalid = Имя каталога содержит недопустимые символы
 err-dir-already-exists = Файл или каталог с таким именем уже существует
 err-dir-create-failed = Не удалось создать каталог
@@ -243,7 +245,7 @@ err-banned-with-expiry = Вы заблокированы на этом серв�
 # File Search Errors
 err-search-query-empty = Поисковый запрос не может быть пустым
 err-search-query-too-short = Поисковый запрос слишком короткий (минимум { $min_length } байт)
-err-search-query-too-long = Поисковый запрос слишком длинный (максимум { $max_length } символов)
+err-search-query-too-long = Поисковый запрос слишком длинный (максимум { $max_length } байт)
 err-search-query-invalid = Поисковый запрос содержит недопустимые символы
 err-search-failed = Ошибка поиска
 # Trust System Errors
@@ -277,7 +279,7 @@ err-tracker-no-pending-fingerprint = У трекера нет ожидающег
 err-tracker-name-invalid = Имя трекера содержит недопустимые символы
 err-tracker-name-empty = Имя трекера не может быть пустым
 err-tracker-name-contains-newlines = Имя трекера не может содержать переносы строк
-err-tracker-name-too-long = Имя трекера слишком длинное (макс. { $max_length } байт)
+err-tracker-name-too-long = Имя трекера слишком длинное (макс. { $max_length } символов)
 err-tracker-address-invalid = Недопустимый адрес трекера
 err-tracker-address-empty = Адрес трекера не может быть пустым
 err-tracker-address-too-long = Адрес трекера слишком длинный (максимум { $max_length } байт)

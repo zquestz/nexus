@@ -34,6 +34,28 @@ Sent after successful handshake to authenticate.
 | `nickname` | string | No       | Display name for shared/guest accounts    |
 | `avatar`   | string | No       | Avatar as data URI (max 176KB)            |
 
+**Field validation.** Each input field is enforced by a validator in
+`nexus-common/src/validators/`. A failure here is treated as a
+protocol violation and disconnects the connection.
+
+- `username` — `validate_username`: non-empty, ≤32 characters; Unicode
+  letters or ASCII graphic characters only; rejects whitespace, control
+  characters, and the path-sensitive set `/ \ : . < > " | ? * #`. The
+  empty-string guest sentinel is normalized to `"guest"` before this
+  validator runs.
+- `password` — `validate_password_input`: ≤256 bytes (empty is allowed;
+  authentication itself decides whether an empty password is valid for
+  the requested account).
+- `locale` — `validate_locale`: ≤16 bytes, no control characters.
+  Empty is allowed (defaults to English).
+- `features` — `validate_features`: list ≤16 entries; each entry
+  non-empty, ≤32 bytes, no control characters.
+- `nickname` (when present, for shared/guest accounts) —
+  `validate_nickname`: same rules as `username`.
+- `avatar` (when present) — `validate_avatar`: ≤176 KB data URI, must
+  be a well-formed `data:image/<type>;base64,...` URI for one of the
+  allowed image types (PNG, JPEG, WebP, SVG).
+
 **Regular account example:**
 
 ```json

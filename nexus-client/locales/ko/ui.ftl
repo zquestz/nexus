@@ -557,16 +557,20 @@ err-avatar-unsupported-type = 지원되지 않는 파일 형식입니다. PNG, W
 err-avatar-too-large = 아바타가 너무 큽니다. 최대 크기는 { $max_kb }KB입니다.
 err-avatar-decode-failed = 아바타를 디코딩할 수 없습니다. 파일이 손상되었을 수 있습니다.
 err-server-name-empty = 서버 이름은 비워둘 수 없습니다
-err-server-name-too-long = 서버 이름이 너무 깁니다 (최대 { $max } 바이트)
+err-server-name-too-long = 서버 이름이 너무 깁니다 (최대 { $max }자)
 err-server-name-contains-newlines = 서버 이름에 줄바꿈을 포함할 수 없습니다
 err-server-name-invalid-characters = 서버 이름에 잘못된 문자가 포함되어 있습니다
-err-status-too-long = 상태 메시지가 너무 깁니다 (최대 { $max } 바이트)
+err-status-too-long = 상태 메시지가 너무 깁니다 (최대 { $max }자)
 err-status-contains-newlines = 상태 메시지에 줄바꿈을 포함할 수 없습니다
 err-status-invalid-characters = 상태 메시지에 잘못된 문자가 포함되어 있습니다
+err-kick-reason-too-long = 추방 사유가 너무 깁니다 (최대 { $max }자)
+err-kick-reason-invalid-characters = 추방 사유에 잘못된 문자가 포함되어 있습니다
+err-ban-reason-too-long = 차단 사유가 너무 깁니다 (최대 { $max }자)
+err-ban-reason-invalid-characters = 차단 사유에 잘못된 문자가 포함되어 있습니다
 err-target-empty = 대상은 비워둘 수 없습니다
-err-target-too-long = 대상이 너무 깁니다 (최대 { $max } 바이트)
+err-target-too-long = 대상이 너무 깁니다 (최대 { $max }자)
 err-duration-too-long = 기간이 너무 깁니다 (최대 { $max } 바이트)
-err-server-description-too-long = 설명이 너무 깁니다 (최대 { $max } 바이트)
+err-server-description-too-long = 설명이 너무 깁니다 (최대 { $max }자)
 err-server-description-contains-newlines = 설명에 줄바꿈을 포함할 수 없습니다
 err-server-description-invalid-characters = 설명에 잘못된 문자가 포함되어 있습니다
 err-failed-send-update = 업데이트 전송 실패: { $error }
@@ -584,7 +588,6 @@ err-failed-create-user = 사용자 생성 실패: { $error }
 err-failed-delete-user = 사용자 삭제 실패: { $error }
 err-failed-update-user = 사용자 업데이트 실패: { $error }
 err-failed-update-topic = 주제 업데이트 실패: { $error }
-err-message-too-long-details = { $error } ({ $length }자, 최대 { $max })
 
 # Network connection errors (with parameters)
 err-invalid-address = 잘못된 주소 '{ $address }': { $error }
@@ -1231,7 +1234,7 @@ toast-tracker-fingerprint-accepted-name = "{ $name }"의 지문이 수락되었�
 
 # Errors
 err-tracker-name-empty = 트래커 이름이 필요합니다
-err-tracker-name-too-long = 트래커 이름이 너무 깁니다 (최대 { $max } 바이트)
+err-tracker-name-too-long = 트래커 이름이 너무 깁니다 (최대 { $max }자)
 err-tracker-name-contains-newlines = 트래커 이름에 줄바꿈을 포함할 수 없습니다
 err-tracker-name-invalid-characters = 트래커 이름에 잘못된 제어 문자가 포함되어 있습니다
 err-tracker-address-empty = 트래커 주소가 필요합니다

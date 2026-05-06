@@ -498,6 +498,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
         &TrackerClientMessage::TrackerServerList {
             password: None,
             locale: "en".to_string(),
+            version: "0.8.2".to_string(),
         },
     )
     .await;
@@ -533,6 +534,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
         &TrackerClientMessage::TrackerServerList {
             password: None,
             locale: "en".to_string(),
+            version: "0.8.2".to_string(),
         },
     )
     .await;
@@ -711,6 +713,7 @@ async fn test_role_violation_on_server_connection_disconnects() {
         &TrackerClientMessage::TrackerServerList {
             password: None,
             locale: "en".to_string(),
+            version: "0.8.2".to_string(),
         },
     )
     .await;
@@ -1298,4 +1301,502 @@ async fn test_refresh_too_soon_rejected_and_disconnected() {
     drop(s_reader);
     drop(s_writer);
     wait_for_registry_len(&state, 0).await;
+}
+
+// =============================================================================
+// Compatibility filter (TrackerServerList)
+// =============================================================================
+
+/// Build a `TrackerServerRegister` with an explicit `version` (overriding
+/// `make_register`'s `"0.8.2"` default). Used by the compat-filter tests
+/// to plant entries at varying versions.
+fn make_register_with_version(name: &str, version: &str) -> TrackerClientMessage {
+    let mut msg = make_register(name, 0);
+    if let TrackerClientMessage::TrackerServerRegister {
+        version: ref mut v, ..
+    } = msg
+    {
+        *v = version.to_string();
+    }
+    msg
+}
+
+#[tokio::test]
+async fn test_register_rejects_malformed_version() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
+    // "garbage" is under MAX_VERSION_LENGTH but isn't valid semver.
+    // The pre-tightening handler accepted this because it only checked
+    // length; the post-tightening handler rejects with `error_kind: invalid`.
+    send_tracker_client(
+        &mut s_writer,
+        &make_register_with_version("Garbage Version BBS", "garbage"),
+    )
+    .await;
+    match read_tracker_server(&mut s_reader).await {
+        TrackerServerMessage::TrackerServerRegisterResponse {
+            success: false,
+            error_kind,
+            ..
+        } => assert_eq!(
+            error_kind.as_deref(),
+            Some("invalid"),
+            "malformed semver should be rejected with error_kind=invalid",
+        ),
+        other => panic!("expected typed register failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_list_rejects_malformed_client_version() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    let (mut c_reader, mut c_writer) = connect_and_handshake(server_addr).await;
+    send_tracker_client(
+        &mut c_writer,
+        &TrackerClientMessage::TrackerServerList {
+            password: None,
+            locale: "en".to_string(),
+            version: "not-semver".to_string(),
+        },
+    )
+    .await;
+    match read_tracker_server(&mut c_reader).await {
+        TrackerServerMessage::TrackerServerListResponse {
+            success: false,
+            error_kind,
+            servers,
+            ..
+        } => {
+            assert_eq!(
+                error_kind.as_deref(),
+                Some("invalid"),
+                "malformed client version must reject with error_kind=invalid",
+            );
+            assert!(servers.is_empty(), "failure path returns no entries");
+        }
+        other => panic!("expected typed list failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_list_filters_incompatible_versions() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    // Plant three BBSes at three different versions: 0.7.x (older
+    // minor), 0.8.x (matches the test client), and 0.9.x (newer
+    // minor). Pre-1.0, only same-minor is compatible per
+    // `check_compatibility`.
+    let registers = [
+        make_register_with_version("Old BBS", "0.7.5"),
+        make_register_with_version("Match BBS", "0.8.2"),
+        make_register_with_version("New BBS", "0.9.0"),
+    ];
+    let mut server_conns = Vec::new();
+    for msg in &registers {
+        let (mut s_reader, s_writer) = connect_and_handshake(server_addr).await;
+        let mut s_writer = s_writer;
+        send_tracker_client(&mut s_writer, msg).await;
+        match read_tracker_server(&mut s_reader).await {
+            TrackerServerMessage::TrackerServerRegisterResponse { success: true, .. } => {}
+            other => panic!("expected register success, got {other:?}"),
+        }
+        // Hold the connection open so the entry stays registered.
+        server_conns.push((s_reader, s_writer));
+    }
+
+    // Wait for all three entries to be registered.
+    wait_for_registry_len(&state, 3).await;
+
+    // Query as a 0.8.x client. Only "Match BBS" should come back.
+    let (mut c_reader, mut c_writer) = connect_and_handshake(server_addr).await;
+    send_tracker_client(
+        &mut c_writer,
+        &TrackerClientMessage::TrackerServerList {
+            password: None,
+            locale: "en".to_string(),
+            version: "0.8.2".to_string(),
+        },
+    )
+    .await;
+    match read_tracker_server(&mut c_reader).await {
+        TrackerServerMessage::TrackerServerListResponse {
+            success: true,
+            servers,
+            ..
+        } => {
+            assert_eq!(servers.len(), 1, "expected only same-minor entry to pass");
+            assert_eq!(servers[0].name, "Match BBS");
+            assert_eq!(servers[0].version, "0.8.2");
+        }
+        other => panic!("expected list success, got {other:?}"),
+    }
+}
+
+// =============================================================================
+// Field validation (TrackerServerRegister)
+// =============================================================================
+
+/// Build a `TrackerServerRegister` with a custom `name` (overriding
+/// `make_register`'s default). Used by field-validation tests.
+fn make_register_with_name(name: &str) -> TrackerClientMessage {
+    let mut msg = make_register("placeholder", 0);
+    if let TrackerClientMessage::TrackerServerRegister {
+        name: ref mut n, ..
+    } = msg
+    {
+        *n = name.to_string();
+    }
+    msg
+}
+
+/// Build a `TrackerServerRegister` with a custom `description`.
+fn make_register_with_description(description: Option<&str>) -> TrackerClientMessage {
+    let mut msg = make_register("Description Test BBS", 0);
+    if let TrackerClientMessage::TrackerServerRegister {
+        description: ref mut d,
+        ..
+    } = msg
+    {
+        *d = description.map(str::to_string);
+    }
+    msg
+}
+
+/// Build a `TrackerServerRegister` with a custom `port`.
+fn make_register_with_port(port: u16) -> TrackerClientMessage {
+    let mut msg = make_register("Port Test BBS", 0);
+    if let TrackerClientMessage::TrackerServerRegister {
+        port: ref mut p, ..
+    } = msg
+    {
+        *p = port;
+    }
+    msg
+}
+
+/// Build a `TrackerServerRegister` with an explicit `websocket_port`.
+fn make_register_with_websocket_port(websocket_port: Option<u16>) -> TrackerClientMessage {
+    let mut msg = make_register("WS Port Test BBS", 0);
+    if let TrackerClientMessage::TrackerServerRegister {
+        websocket_port: ref mut wp,
+        ..
+    } = msg
+    {
+        *wp = websocket_port;
+    }
+    msg
+}
+
+/// Build a `TrackerServerRegister` with an explicit `locale` field.
+fn make_register_with_locale(locale: &str) -> TrackerClientMessage {
+    let mut msg = make_register("Locale Test BBS", 0);
+    if let TrackerClientMessage::TrackerServerRegister {
+        locale: ref mut l, ..
+    } = msg
+    {
+        *l = locale.to_string();
+    }
+    msg
+}
+
+#[tokio::test]
+async fn test_register_rejects_empty_name() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
+    // Whitespace-only name passes the previous length-only check but is
+    // rejected by `validate_server_name` (Empty after trim).
+    send_tracker_client(&mut s_writer, &make_register_with_name("   ")).await;
+    match read_tracker_server(&mut s_reader).await {
+        TrackerServerMessage::TrackerServerRegisterResponse {
+            success: false,
+            error_kind,
+            ..
+        } => assert_eq!(
+            error_kind.as_deref(),
+            Some("invalid"),
+            "whitespace-only name should reject with error_kind=invalid",
+        ),
+        other => panic!("expected typed register failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_register_rejects_newline_in_description() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
+    // Embedded newline passes length but is rejected by
+    // `validate_server_description::ContainsNewlines`.
+    send_tracker_client(
+        &mut s_writer,
+        &make_register_with_description(Some("Line one\nLine two")),
+    )
+    .await;
+    match read_tracker_server(&mut s_reader).await {
+        TrackerServerMessage::TrackerServerRegisterResponse {
+            success: false,
+            error_kind,
+            ..
+        } => assert_eq!(
+            error_kind.as_deref(),
+            Some("invalid"),
+            "newline in description should reject with error_kind=invalid",
+        ),
+        other => panic!("expected typed register failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_register_rejects_port_zero() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
+    send_tracker_client(&mut s_writer, &make_register_with_port(0)).await;
+    match read_tracker_server(&mut s_reader).await {
+        TrackerServerMessage::TrackerServerRegisterResponse {
+            success: false,
+            error_kind,
+            ..
+        } => assert_eq!(
+            error_kind.as_deref(),
+            Some("invalid"),
+            "port 0 should reject with error_kind=invalid",
+        ),
+        other => panic!("expected typed register failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_register_rejects_websocket_port_zero() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
+    send_tracker_client(&mut s_writer, &make_register_with_websocket_port(Some(0))).await;
+    match read_tracker_server(&mut s_reader).await {
+        TrackerServerMessage::TrackerServerRegisterResponse {
+            success: false,
+            error_kind,
+            ..
+        } => assert_eq!(
+            error_kind.as_deref(),
+            Some("invalid"),
+            "websocket_port 0 should reject with error_kind=invalid",
+        ),
+        other => panic!("expected typed register failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_register_rejects_locale_with_control_char() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
+    // Embedded null byte passes length but is rejected by validate_locale
+    // (LocaleError::InvalidCharacters).
+    send_tracker_client(&mut s_writer, &make_register_with_locale("en\0US")).await;
+    match read_tracker_server(&mut s_reader).await {
+        TrackerServerMessage::TrackerServerRegisterResponse {
+            success: false,
+            error_kind,
+            ..
+        } => assert_eq!(
+            error_kind.as_deref(),
+            Some("invalid"),
+            "locale with control char should reject with error_kind=invalid",
+        ),
+        other => panic!("expected typed register failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_list_rejects_empty_client_version() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    let (mut c_reader, mut c_writer) = connect_and_handshake(server_addr).await;
+    // Empty version is rejected as a typed `TrackerServerListResponse`
+    // failure (separate from a missing `version` field, which would be
+    // a frame-level deserialization error).
+    send_tracker_client(
+        &mut c_writer,
+        &TrackerClientMessage::TrackerServerList {
+            password: None,
+            locale: "en".to_string(),
+            version: String::new(),
+        },
+    )
+    .await;
+    match read_tracker_server(&mut c_reader).await {
+        TrackerServerMessage::TrackerServerListResponse {
+            success: false,
+            error_kind,
+            servers,
+            ..
+        } => {
+            assert_eq!(
+                error_kind.as_deref(),
+                Some("invalid"),
+                "empty version should reject with error_kind=invalid",
+            );
+            assert!(servers.is_empty(), "failure path returns no entries");
+        }
+        other => panic!("expected typed list failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn test_list_rejects_over_cap_client_version() {
+    ensure_crypto_provider();
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let state = Arc::new(TrackerState::new(
+        Registry::new(0, 0),
+        None,
+        None,
+        300,
+        0,
+        0,
+        Duration::ZERO,
+    ));
+    let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
+
+    let (mut c_reader, mut c_writer) = connect_and_handshake(server_addr).await;
+    // A version string longer than `MAX_VERSION_LENGTH` (32 bytes) but
+    // still under the per-message frame cap. Validator should reject as
+    // `VersionError::TooLong` and the handler should produce a typed
+    // `TrackerServerListResponse` with `error_kind: "invalid"` —
+    // separate path from the "missing field" frame-level error and the
+    // "unparseable semver" path covered by other tests.
+    let over_cap_version = "0.8.2".to_string() + &"a".repeat(64);
+    send_tracker_client(
+        &mut c_writer,
+        &TrackerClientMessage::TrackerServerList {
+            password: None,
+            locale: "en".to_string(),
+            version: over_cap_version,
+        },
+    )
+    .await;
+    match read_tracker_server(&mut c_reader).await {
+        TrackerServerMessage::TrackerServerListResponse {
+            success: false,
+            error_kind,
+            servers,
+            ..
+        } => {
+            assert_eq!(
+                error_kind.as_deref(),
+                Some("invalid"),
+                "over-cap version should reject with error_kind=invalid",
+            );
+            assert!(servers.is_empty(), "failure path returns no entries");
+        }
+        other => panic!("expected typed list failure, got {other:?}"),
+    }
 }

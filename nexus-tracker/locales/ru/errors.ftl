@@ -9,13 +9,22 @@ err-tracker-unauthorized = Неверный или отсутствующий п
 
 # Валидация полей (error_kind: invalid)
 err-tracker-fingerprint-invalid = Неверный формат отпечатка сертификата
-err-tracker-name-too-long = Имя сервера слишком длинное (макс. { $max_length } байт)
-err-tracker-description-too-long = Описание сервера слишком длинное (макс. { $max_length } байт)
+err-tracker-name-too-long = Имя сервера слишком длинное (макс. { $max_length } символов)
+err-tracker-name-empty = Имя сервера не может быть пустым
+err-tracker-name-contains-newlines = Имя сервера не может содержать переносы строк
+err-tracker-name-invalid-characters = Имя сервера содержит недопустимые символы
+err-tracker-description-too-long = Описание сервера слишком длинное (макс. { $max_length } символов)
+err-tracker-description-contains-newlines = Описание сервера не может содержать переносы строк
+err-tracker-description-invalid-characters = Описание сервера содержит недопустимые символы
 err-tracker-password-too-long = Пароль слишком длинный (макс. { $max_length } байт)
 err-tracker-address-too-long = Адрес слишком длинный (макс. { $max_length } байт)
 err-tracker-address-invalid = Неверный адрес
 err-tracker-version-too-long = Строка версии сервера слишком длинная (макс. { $max_length } байт)
+err-tracker-version-invalid = Неверная версия (должна быть корректной semver)
 err-tracker-locale-too-long = Код локали слишком длинный (макс. { $max_length } байт)
+err-tracker-locale-invalid = Локаль содержит недопустимые символы
+err-tracker-port-zero = Порт не может быть нулевым
+err-tracker-websocket-port-zero = Порт WebSocket не может быть нулевым
 
 # Скорость / ёмкость
 err-tracker-rate-limited = Превышен лимит скорости; повторите попытку позже

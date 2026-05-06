@@ -65,7 +65,23 @@ Create or update a trusted IP entry. The target can be a nickname, IP address, o
 | ---------- | ------ | -------- | -------------------------------------------------- |
 | `target`   | string | Yes      | Nickname, IP address, or CIDR range                |
 | `duration` | string | No       | Duration: "10m", "4h", "7d", etc. Null = permanent |
-| `reason`   | string | No       | Reason/note for the trust entry (max 2048 chars)   |
+| `reason`   | string | No       | Reason/note for the trust entry (max 256 chars)    |
+
+**Field validation.** Each input field is enforced by a validator in
+`nexus-common/src/validators/`:
+
+- `target` — `validate_target`: non-empty, ≤64 characters. Length-only —
+  the semantic check (nickname lookup vs. IP/CIDR parse) happens in
+  the handler.
+- `duration` — `validate_duration`: bounded length cap; semantic
+  parsing of the `<number><unit>` form happens in the handler.
+- `reason` — `validate_trust_reason`: ≤256 characters, no control
+  characters (newlines, tabs, null bytes, and other control chars all
+  rejected — reasons are rendered into single-line displays in admin
+  tools). Empty/omitted is allowed.
+
+Validation failures send `TrustCreateResponse { success: false, error }`
+with a translated error message.
 
 **Target formats:**
 
@@ -146,6 +162,13 @@ Remove a trusted IP entry.
 | Field    | Type   | Required | Description                                    |
 | -------- | ------ | -------- | ---------------------------------------------- |
 | `target` | string | Yes      | Nickname, IP address, or CIDR range to untrust |
+
+**Field validation.** `target` is enforced by `validate_target` in
+`nexus-common/src/validators/`: non-empty, ≤64 characters. Length-only —
+the semantic check (nickname lookup vs. IP/CIDR parse) happens in the
+handler. Validation failures send
+`TrustDeleteResponse { success: false, error }` with a translated error
+message.
 
 **Target resolution:**
 
@@ -326,7 +349,7 @@ This allows updating the duration or reason of an existing trust entry.
 | ---------------------------- | ---------------------------------- |
 | `err-trust-invalid-target`   | Invalid IP address or CIDR format  |
 | `err-trust-invalid-duration` | Invalid duration format            |
-| `err-reason-too-long`        | Reason exceeds 2048 bytes          |
+| `err-reason-too-long`        | Reason exceeds 256 characters      |
 | `err-reason-invalid`         | Reason contains invalid characters |
 | `err-target-too-long`        | Target string too long             |
 

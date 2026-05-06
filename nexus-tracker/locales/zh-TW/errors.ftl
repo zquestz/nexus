@@ -9,13 +9,22 @@ err-tracker-unauthorized = 密碼錯誤或缺失
 
 # 欄位驗證 (error_kind: invalid)
 err-tracker-fingerprint-invalid = 無效的憑證指紋格式
-err-tracker-name-too-long = 伺服器名稱過長 (最多 { $max_length } 位元組)
-err-tracker-description-too-long = 伺服器描述過長 (最多 { $max_length } 位元組)
+err-tracker-name-too-long = 伺服器名稱過長 (最多 { $max_length } 字元)
+err-tracker-name-empty = 伺服器名稱不能為空
+err-tracker-name-contains-newlines = 伺服器名稱不能包含換行符號
+err-tracker-name-invalid-characters = 伺服器名稱包含無效字元
+err-tracker-description-too-long = 伺服器描述過長 (最多 { $max_length } 字元)
+err-tracker-description-contains-newlines = 伺服器描述不能包含換行符號
+err-tracker-description-invalid-characters = 伺服器描述包含無效字元
 err-tracker-password-too-long = 密碼過長 (最多 { $max_length } 位元組)
 err-tracker-address-too-long = 地址過長 (最多 { $max_length } 位元組)
 err-tracker-address-invalid = 無效的地址
 err-tracker-version-too-long = 伺服器版本字串過長 (最多 { $max_length } 位元組)
+err-tracker-version-invalid = 無效的版本 (必須為有效的 semver)
 err-tracker-locale-too-long = 地區代碼過長 (最多 { $max_length } 位元組)
+err-tracker-locale-invalid = 地區設定包含無效字元
+err-tracker-port-zero = 連接埠不能為零
+err-tracker-websocket-port-zero = WebSocket 連接埠不能為零
 
 # 速率 / 容量
 err-tracker-rate-limited = 超出速率限制；請稍後再試

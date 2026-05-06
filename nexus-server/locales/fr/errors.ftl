@@ -12,7 +12,7 @@ err-nickname-required = Pseudonyme requis pour les comptes partagés
 err-nickname-too-long = Le pseudonyme est trop long (max. { $max_length } caractères)
 
 # Erreurs de message d'absence
-err-status-too-long = Le message d'absence est trop long (max. { $max_length } octets)
+err-status-too-long = Le message d'absence est trop long (max. { $max_length } caractères)
 err-status-contains-newlines = Le message d'absence ne peut pas contenir de sauts de ligne
 err-status-invalid-characters = Le message d'absence contient des caractères invalides
 
@@ -125,14 +125,16 @@ err-username-invalid = Le nom d'utilisateur contient des caractères invalides (
 err-unknown-permission = Permission inconnue : '{ $permission }'
 
 # Messages d'erreur dynamiques (avec paramètres)
-err-broadcast-too-long = Message trop long (maximum { $max_length } octets)
-err-chat-too-long = Message trop long (maximum { $max_length } octets)
-err-topic-too-long = Le sujet ne peut pas dépasser { $max_length } octets
+err-broadcast-too-long = Message trop long (maximum { $max_length } caractères)
+err-chat-too-long = Message trop long (maximum { $max_length } caractères)
+err-topic-too-long = Le sujet ne peut pas dépasser { $max_length } caractères
 err-version-major-mismatch = Version de protocole incompatible : le serveur est en version { $server_major }.x, le client est en version { $client_major }.x
 err-version-client-too-new = La version du client { $client_version } est plus récente que la version du serveur { $server_version }. Veuillez mettre à jour le serveur ou utiliser un client plus ancien.
 err-version-minor-mismatch = Version de protocole incompatible. Serveur : { $server_version }, Client : { $client_version }. Les deux doivent utiliser la même version mineure.
 err-kicked-by = Vous avez été expulsé par { $username }
 err-kicked-by-reason = Vous avez été expulsé par { $username }: { $reason }
+err-kick-reason-too-long = Le motif de l'expulsion est trop long (max { $max_length } caractères)
+err-kick-reason-invalid-characters = Le motif de l'expulsion contient des caractères invalides
 err-username-exists = Le nom d'utilisateur « { $username } » existe déjà
 err-user-not-found = Utilisateur « { $username } » introuvable
 err-user-not-online = L'utilisateur « { $username } » n'est pas en ligne
@@ -150,10 +152,10 @@ err-permissions-invalid-characters = Le nom de la permission contient des caract
 # Erreurs de mise à jour du serveur
 err-admin-required = Privilèges d'administrateur requis
 err-server-name-empty = Le nom du serveur ne peut pas être vide
-err-server-name-too-long = Le nom du serveur est trop long (maximum { $max_length } octets)
+err-server-name-too-long = Le nom du serveur est trop long (maximum { $max_length } caractères)
 err-server-name-contains-newlines = Le nom du serveur ne peut pas contenir de sauts de ligne
 err-server-name-invalid-characters = Le nom du serveur contient des caractères invalides
-err-server-description-too-long = La description du serveur est trop longue (maximum { $max_length } octets)
+err-server-description-too-long = La description du serveur est trop longue (maximum { $max_length } caractères)
 err-server-description-contains-newlines = La description du serveur ne peut pas contenir de sauts de ligne
 err-server-description-invalid-characters = La description du serveur contient des caractères invalides
 
@@ -175,7 +177,7 @@ err-public-address-invalid-format = L'adresse publique n'est pas un nom d'hôte 
 
 # Erreurs de news
 err-news-not-found = Article #{ $id } introuvable
-err-news-body-too-long = Le contenu de l'article est trop long (maximum { $max_length } octets)
+err-news-body-too-long = Le contenu de l'article est trop long (maximum { $max_length } caractères)
 err-news-body-invalid-characters = Le contenu de l'article contient des caractères invalides
 err-news-image-too-large = L'image de l'article est trop grande (maximum 512 Ko)
 err-news-image-invalid-format = Format d'image de l'article invalide (doit être une URI de données avec encodage base64)
@@ -185,12 +187,12 @@ err-cannot-edit-admin-news = Seuls les administrateurs peuvent modifier les news
 err-cannot-delete-admin-news = Seuls les administrateurs peuvent supprimer les news publiées par des administrateurs
 
 # File Area Errors
-err-file-path-too-long = Le chemin du fichier est trop long (maximum { $max_length } caractères)
+err-file-path-too-long = Le chemin du fichier est trop long (maximum { $max_length } octets)
 err-file-path-invalid = Le chemin du fichier contient des caractères invalides
 err-file-not-found = Fichier ou répertoire non trouvé
 err-file-not-directory = Le chemin n'est pas un répertoire
 err-dir-name-empty = Le nom du répertoire ne peut pas être vide
-err-dir-name-too-long = Le nom du répertoire est trop long (maximum { $max_length } caractères)
+err-dir-name-too-long = Le nom du répertoire est trop long (maximum { $max_length } octets)
 err-dir-name-invalid = Le nom du répertoire contient des caractères invalides
 err-dir-already-exists = Un fichier ou répertoire avec ce nom existe déjà
 err-dir-create-failed = Échec de la création du répertoire
@@ -243,7 +245,7 @@ err-banned-with-expiry = Vous avez été banni de ce serveur (expire dans { $rem
 # File Search Errors
 err-search-query-empty = La requête de recherche ne peut pas être vide
 err-search-query-too-short = La requête de recherche est trop courte (min { $min_length } octets)
-err-search-query-too-long = La requête de recherche est trop longue (max { $max_length } caractères)
+err-search-query-too-long = La requête de recherche est trop longue (max { $max_length } octets)
 err-search-query-invalid = La requête de recherche contient des caractères invalides
 err-search-failed = La recherche a échoué
 # Trust System Errors
@@ -277,7 +279,7 @@ err-tracker-no-pending-fingerprint = Le tracker n'a aucune empreinte en attente 
 err-tracker-name-invalid = Le nom du tracker contient des caractères non valides
 err-tracker-name-empty = Le nom du tracker ne peut pas être vide
 err-tracker-name-contains-newlines = Le nom du tracker ne peut pas contenir de sauts de ligne
-err-tracker-name-too-long = Le nom du tracker est trop long (max { $max_length } octets)
+err-tracker-name-too-long = Le nom du tracker est trop long (max { $max_length } caractères)
 err-tracker-address-invalid = Adresse de tracker invalide
 err-tracker-address-empty = L'adresse du tracker ne peut pas être vide
 err-tracker-address-too-long = L'adresse du tracker est trop longue (maximum { $max_length } octets)

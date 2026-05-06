@@ -149,8 +149,8 @@ mod tests {
             "expected '64' in result, got: {result}"
         );
         assert!(
-            result.contains("bytes"),
-            "expected 'bytes' in result, got: {result}"
+            result.contains("characters"),
+            "expected 'characters' in result, got: {result}"
         );
     }
 

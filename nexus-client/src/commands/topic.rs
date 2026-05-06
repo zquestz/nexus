@@ -67,7 +67,7 @@ pub fn execute(
                 ChatTopicError::TooLong => t_args(
                     "err-topic-too-long",
                     &[
-                        ("length", &topic.len().to_string()),
+                        ("length", &topic.chars().count().to_string()),
                         ("max", &validators::MAX_CHAT_TOPIC_LENGTH.to_string()),
                     ],
                 ),

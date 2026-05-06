@@ -9,13 +9,13 @@ use crate::validators::{
     MAX_CHANNEL_LENGTH, MAX_CHANNELS_PER_USER, MAX_CHAT_TOPIC_LENGTH, MAX_COMMAND_LENGTH,
     MAX_DIR_NAME_LENGTH, MAX_DURATION_LENGTH, MAX_ERROR_KIND_LENGTH, MAX_ERROR_LENGTH,
     MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_FILE_PATH_LENGTH, MAX_GROUP_NAME_LENGTH,
-    MAX_LOCALE_LENGTH, MAX_LOG_LEVEL_LENGTH, MAX_MESSAGE_LENGTH, MAX_NEWS_ACTION_LENGTH,
-    MAX_NEWS_BODY_LENGTH, MAX_NEWS_IMAGE_DATA_URI_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH,
-    MAX_PERMISSION_LENGTH, MAX_PERSISTENT_CHANNELS_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH,
-    MAX_SEARCH_QUERY_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH,
-    MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH, MAX_TARGET_LENGTH, MAX_TRACKER_NAME_LENGTH,
-    MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH, SHA256_HEX_LENGTH,
-    TRANSFER_ID_LENGTH,
+    MAX_KICK_REASON_LENGTH, MAX_LOCALE_LENGTH, MAX_LOG_LEVEL_LENGTH, MAX_MESSAGE_LENGTH,
+    MAX_NEWS_ACTION_LENGTH, MAX_NEWS_BODY_LENGTH, MAX_NEWS_IMAGE_DATA_URI_LENGTH,
+    MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
+    MAX_PERSISTENT_CHANNELS_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH, MAX_SEARCH_QUERY_LENGTH,
+    MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH,
+    MAX_STATUS_LENGTH, MAX_TARGET_LENGTH, MAX_TRACKER_NAME_LENGTH, MAX_TRUST_REASON_LENGTH,
+    MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH, SHA256_HEX_LENGTH, TRANSFER_ID_LENGTH,
 };
 
 // =============================================================================
@@ -81,6 +81,20 @@ const fn json_string_field(key: &str, max_value_len: usize) -> usize {
     // , " key " : " value "
     // 1 + 1 + len + 1 + 1 + 1 + max + 1 = len + max + 6
     key.len() + max_value_len + 6
+}
+
+/// Size of a string field whose value is bounded by **character count**
+/// rather than byte count (e.g. fields validated by `validate_message`,
+/// `validate_server_name`, etc., which call `.chars().count()`).
+///
+/// Each Unicode scalar value can be up to 4 bytes of UTF-8, so the wire
+/// budget for a `max_chars`-bounded string is `4 * max_chars` bytes plus
+/// the JSON envelope overhead from `json_string_field`. Using this helper
+/// at field-budget sites makes the chars-vs-bytes intent explicit and
+/// keeps the framing layer from rejecting valid payloads from non-ASCII
+/// users (a 1024-char Japanese message is up to 4096 bytes).
+const fn json_string_chars_field(key: &str, max_chars: usize) -> usize {
+    json_string_field(key, max_chars * 4)
 }
 
 /// Size of a boolean field: `,"key":false`
@@ -206,6 +220,14 @@ const fn json_first_string_field(key: &str, max_value_len: usize) -> usize {
     key.len() + max_value_len + 5
 }
 
+/// Char-counted variant of `json_first_string_field` — first field in
+/// a nested object whose value is bounded by **character count**
+/// rather than byte count. See `json_string_chars_field` for the
+/// rationale (4× UTF-8 ceiling).
+const fn json_first_string_chars_field(key: &str, max_chars: usize) -> usize {
+    json_first_string_field(key, max_chars * 4)
+}
+
 /// Size of the first i64 field in a nested object (no leading comma): `"key":-9223372036854775808`
 const fn json_first_i64_field(key: &str) -> usize {
     key.len() + 3 + MAX_JSON_I64
@@ -254,14 +276,14 @@ const MAX_CREATED_DIR_PATH: usize = 4352;
 // Self-documenting message size calculations using JSON helpers
 // =============================================================================
 
-/// Login: {"type":"Login","username":"...32...","password":"...256...","features":["...64..."],"locale":"...10...","avatar":"...176000...","nickname":"...32..."}
+/// Login: {"type":"Login","username":"...32...","password":"...256...","features":["...64..."],"locale":"...16...","avatar":"...176000...","nickname":"...32..."}
 const LOGIN_SIZE: usize = json_type_base("Login")
-    + json_string_field("username", MAX_USERNAME_LENGTH)
+    + json_string_chars_field("username", MAX_USERNAME_LENGTH)
     + json_string_field("password", MAX_PASSWORD_LENGTH)
     + json_string_array_field("features", MAX_FEATURES_COUNT, MAX_FEATURE_LENGTH)
     + json_string_field("locale", MAX_LOCALE_LENGTH)
     + json_string_field("avatar", MAX_AVATAR_DATA_URI_LENGTH)
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH);
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
 // -----------------------------------------------------------------------------
 // Client messages - Chat
@@ -270,29 +292,29 @@ const LOGIN_SIZE: usize = json_type_base("Login")
 /// ChatSend: {"type":"ChatSend","message":"...1024...","action":"Normal","channel":"...32..."}
 /// Note: action is skipped when Normal (default), but we calculate worst case
 const CHAT_SEND_SIZE: usize = json_type_base("ChatSend")
-    + json_string_field("message", MAX_MESSAGE_LENGTH)
+    + json_string_chars_field("message", MAX_MESSAGE_LENGTH)
     + json_enum_field("action", MAX_ACTION_VARIANT)
-    + json_string_field("channel", MAX_CHANNEL_LENGTH);
+    + json_string_chars_field("channel", MAX_CHANNEL_LENGTH);
 
 /// ChatTopicUpdate: {"type":"ChatTopicUpdate","topic":"...256...","channel":"...32..."}
 const CHAT_TOPIC_UPDATE_SIZE: usize = json_type_base("ChatTopicUpdate")
-    + json_string_field("topic", MAX_CHAT_TOPIC_LENGTH)
-    + json_string_field("channel", MAX_CHANNEL_LENGTH);
+    + json_string_chars_field("topic", MAX_CHAT_TOPIC_LENGTH)
+    + json_string_chars_field("channel", MAX_CHANNEL_LENGTH);
 
 /// ChatJoin: {"type":"ChatJoin","channel":"...32..."}
 const CHAT_JOIN_SIZE: usize =
-    json_type_base("ChatJoin") + json_string_field("channel", MAX_CHANNEL_LENGTH);
+    json_type_base("ChatJoin") + json_string_chars_field("channel", MAX_CHANNEL_LENGTH);
 
 /// ChatLeave: {"type":"ChatLeave","channel":"...32..."}
 const CHAT_LEAVE_SIZE: usize =
-    json_type_base("ChatLeave") + json_string_field("channel", MAX_CHANNEL_LENGTH);
+    json_type_base("ChatLeave") + json_string_chars_field("channel", MAX_CHANNEL_LENGTH);
 
 /// ChatList: {"type":"ChatList"}
 const CHAT_LIST_SIZE: usize = json_type_base("ChatList");
 
 /// ChatSecret: {"type":"ChatSecret","channel":"...32...","secret":false}
 const CHAT_SECRET_SIZE: usize = json_type_base("ChatSecret")
-    + json_string_field("channel", MAX_CHANNEL_LENGTH)
+    + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
     + json_bool_field("secret");
 
 // -----------------------------------------------------------------------------
@@ -305,7 +327,7 @@ const HANDSHAKE_SIZE: usize =
 
 /// UserBroadcast: {"type":"UserBroadcast","message":"...1024..."}
 const USER_BROADCAST_SIZE: usize =
-    json_type_base("UserBroadcast") + json_string_field("message", MAX_MESSAGE_LENGTH);
+    json_type_base("UserBroadcast") + json_string_chars_field("message", MAX_MESSAGE_LENGTH);
 
 /// UserDelete: {"type":"UserDelete","id":i64}
 const USER_DELETE_SIZE: usize = json_type_base("UserDelete") + json_i64_field("id");
@@ -315,53 +337,53 @@ const USER_EDIT_SIZE: usize = json_type_base("UserEdit") + json_i64_field("id");
 
 /// UserInfo: {"type":"UserInfo","nickname":"...64..."}
 const USER_INFO_SIZE: usize =
-    json_type_base("UserInfo") + json_string_field("nickname", MAX_NICKNAME_LENGTH);
+    json_type_base("UserInfo") + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
-/// UserKick: {"type":"UserKick","nickname":"...64...","reason":"...2048..."}
+/// UserKick: {"type":"UserKick","nickname":"...32...","reason":"...256..."}
 const USER_KICK_SIZE: usize = json_type_base("UserKick")
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH)
-    + json_string_field("reason", MAX_BAN_REASON_LENGTH);
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("reason", MAX_KICK_REASON_LENGTH);
 
 /// UserList: {"type":"UserList","all":false}
 const USER_LIST_SIZE: usize = json_type_base("UserList") + json_bool_field("all");
 
 /// UserAway: {"type":"UserAway","message":"...128..."}
 const USER_AWAY_SIZE: usize =
-    json_type_base("UserAway") + json_string_field("message", MAX_STATUS_LENGTH);
+    json_type_base("UserAway") + json_string_chars_field("message", MAX_STATUS_LENGTH);
 
 /// UserBack: {"type":"UserBack"}
 const USER_BACK_SIZE: usize = json_type_base("UserBack");
 
 /// UserStatus: {"type":"UserStatus","status":"...128..."}
 const USER_STATUS_SIZE: usize =
-    json_type_base("UserStatus") + json_string_field("status", MAX_STATUS_LENGTH);
+    json_type_base("UserStatus") + json_string_chars_field("status", MAX_STATUS_LENGTH);
 
 // -----------------------------------------------------------------------------
 // Client messages - Ban/Trust
 // -----------------------------------------------------------------------------
 
-/// BanCreate: {"type":"BanCreate","target":"...64...","duration":"...10...","reason":"...2048..."}
+/// BanCreate: {"type":"BanCreate","target":"...64...","duration":"...10...","reason":"...256..."}
 const BAN_CREATE_SIZE: usize = json_type_base("BanCreate")
-    + json_string_field("target", MAX_TARGET_LENGTH)
+    + json_string_chars_field("target", MAX_TARGET_LENGTH)
     + json_string_field("duration", MAX_DURATION_LENGTH)
-    + json_string_field("reason", MAX_BAN_REASON_LENGTH);
+    + json_string_chars_field("reason", MAX_BAN_REASON_LENGTH);
 
-/// TrustCreate: {"type":"TrustCreate","target":"...64...","duration":"...10...","reason":"...2048..."}
+/// TrustCreate: {"type":"TrustCreate","target":"...64...","duration":"...10...","reason":"...256..."}
 const TRUST_CREATE_SIZE: usize = json_type_base("TrustCreate")
-    + json_string_field("target", MAX_TARGET_LENGTH)
+    + json_string_chars_field("target", MAX_TARGET_LENGTH)
     + json_string_field("duration", MAX_DURATION_LENGTH)
-    + json_string_field("reason", MAX_TRUST_REASON_LENGTH);
+    + json_string_chars_field("reason", MAX_TRUST_REASON_LENGTH);
 
 /// BanDelete: {"type":"BanDelete","target":"...64..."}
 const BAN_DELETE_SIZE: usize =
-    json_type_base("BanDelete") + json_string_field("target", MAX_TARGET_LENGTH);
+    json_type_base("BanDelete") + json_string_chars_field("target", MAX_TARGET_LENGTH);
 
 /// BanList: {"type":"BanList"}
 const BAN_LIST_SIZE: usize = json_type_base("BanList");
 
 /// TrustDelete: {"type":"TrustDelete","target":"...64..."}
 const TRUST_DELETE_SIZE: usize =
-    json_type_base("TrustDelete") + json_string_field("target", MAX_TARGET_LENGTH);
+    json_type_base("TrustDelete") + json_string_chars_field("target", MAX_TARGET_LENGTH);
 
 /// TrustList: {"type":"TrustList"}
 const TRUST_LIST_SIZE: usize = json_type_base("TrustList");
@@ -381,7 +403,7 @@ const NEWS_SHOW_SIZE: usize = json_type_base("NewsShow") + json_i64_field("id");
 
 /// NewsCreate: {"type":"NewsCreate","body":"...4096...","image":"...700000..."}
 const NEWS_CREATE_SIZE: usize = json_type_base("NewsCreate")
-    + json_string_field("body", MAX_NEWS_BODY_LENGTH)
+    + json_string_chars_field("body", MAX_NEWS_BODY_LENGTH)
     + json_string_field("image", MAX_NEWS_IMAGE_DATA_URI_LENGTH);
 
 /// NewsEdit: {"type":"NewsEdit","id":-9223372036854775808}
@@ -390,7 +412,7 @@ const NEWS_EDIT_SIZE: usize = json_type_base("NewsEdit") + json_i64_field("id");
 /// NewsUpdate: {"type":"NewsUpdate","id":-9223372036854775808,"body":"...4096...","image":"...700000..."}
 const NEWS_UPDATE_SIZE: usize = json_type_base("NewsUpdate")
     + json_i64_field("id")
-    + json_string_field("body", MAX_NEWS_BODY_LENGTH)
+    + json_string_chars_field("body", MAX_NEWS_BODY_LENGTH)
     + json_string_field("image", MAX_NEWS_IMAGE_DATA_URI_LENGTH);
 
 /// NewsDelete: {"type":"NewsDelete","id":-9223372036854775808}
@@ -471,7 +493,7 @@ const FILE_REINDEX_SIZE: usize = json_type_base("FileReindex");
 /// VoiceJoin: {"type":"VoiceJoin","target":"...32..."}
 /// Target is either "#channel" (max 32) or "nickname" (max 32)
 const VOICE_JOIN_SIZE: usize =
-    json_type_base("VoiceJoin") + json_string_field("target", MAX_CHANNEL_LENGTH);
+    json_type_base("VoiceJoin") + json_string_chars_field("target", MAX_CHANNEL_LENGTH);
 
 /// VoiceLeave: {"type":"VoiceLeave"}
 const VOICE_LEAVE_SIZE: usize = json_type_base("VoiceLeave");
@@ -519,8 +541,8 @@ const TRANSFER_COMPLETE_SIZE: usize = json_type_base("TransferComplete")
 const TRACKER_SERVER_REGISTER_SIZE: usize = json_type_base("TrackerServerRegister")
     + json_string_field("password", MAX_PASSWORD_LENGTH)
     + json_string_field("locale", MAX_LOCALE_LENGTH)
-    + json_string_field("name", MAX_SERVER_NAME_LENGTH)
-    + json_string_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
+    + json_string_chars_field("name", MAX_SERVER_NAME_LENGTH)
+    + json_string_chars_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
     + json_string_field("address", MAX_PUBLIC_ADDRESS_LENGTH)
     + json_u16_field("port")
     + json_u16_field("websocket_port")
@@ -532,7 +554,8 @@ const TRACKER_SERVER_REGISTER_SIZE: usize = json_type_base("TrackerServerRegiste
 /// TrackerServerList: client request for the current server listing.
 const TRACKER_SERVER_LIST_SIZE: usize = json_type_base("TrackerServerList")
     + json_string_field("password", MAX_PASSWORD_LENGTH)
-    + json_string_field("locale", MAX_LOCALE_LENGTH);
+    + json_string_field("locale", MAX_LOCALE_LENGTH)
+    + json_string_field("version", MAX_VERSION_LENGTH);
 
 /// TrackerServerRegisterResponse: tracker's reply to TrackerServerRegister.
 const TRACKER_SERVER_REGISTER_RESPONSE_SIZE: usize =
@@ -560,7 +583,7 @@ const UUID_STRING_LENGTH: usize = 36;
 const VOICE_JOIN_RESPONSE_SIZE: usize = json_type_base("VoiceJoinResponse")
     + json_bool_field("success")
     + json_string_field("token", UUID_STRING_LENGTH)
-    + json_string_field("target", MAX_CHANNEL_LENGTH)
+    + json_string_chars_field("target", MAX_CHANNEL_LENGTH)
     + json_string_array_field("participants", MAX_VOICE_PARTICIPANTS, MAX_NICKNAME_LENGTH)
     + json_string_field("error", MAX_ERROR_LENGTH);
 
@@ -571,13 +594,13 @@ const VOICE_LEAVE_RESPONSE_SIZE: usize = json_type_base("VoiceLeaveResponse")
 
 /// VoiceUserJoined: {"type":"VoiceUserJoined","nickname":"...32...","target":"...32..."}
 const VOICE_USER_JOINED_SIZE: usize = json_type_base("VoiceUserJoined")
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH)
-    + json_string_field("target", MAX_CHANNEL_LENGTH);
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("target", MAX_CHANNEL_LENGTH);
 
 /// VoiceUserLeft: {"type":"VoiceUserLeft","nickname":"...32...","target":"...32..."}
 const VOICE_USER_LEFT_SIZE: usize = json_type_base("VoiceUserLeft")
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH)
-    + json_string_field("target", MAX_CHANNEL_LENGTH);
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("target", MAX_CHANNEL_LENGTH);
 
 // -----------------------------------------------------------------------------
 // Server messages - Chat
@@ -586,33 +609,33 @@ const VOICE_USER_LEFT_SIZE: usize = json_type_base("VoiceUserLeft")
 /// ChatMessage: {"type":"ChatMessage","session_id":4294967295,"nickname":"...64...","is_admin":false,"is_shared":false,"message":"...1024...","action":"Normal","channel":"...32...","timestamp":18446744073709551615}
 const CHAT_MESSAGE_SIZE: usize = json_type_base("ChatMessage")
     + json_u32_field("session_id")
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH)
     + json_bool_field("is_admin")
     + json_bool_field("is_shared")
-    + json_string_field("message", MAX_MESSAGE_LENGTH)
+    + json_string_chars_field("message", MAX_MESSAGE_LENGTH)
     + json_enum_field("action", MAX_ACTION_VARIANT)
-    + json_string_field("channel", MAX_CHANNEL_LENGTH)
+    + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
     + json_u64_field("timestamp");
 
 /// ChatUpdated: {"type":"ChatUpdated","channel":"...32...","topic":"...256...","topic_set_by":"...64...","secret":false,"secret_set_by":"...64..."}
 const CHAT_UPDATED_SIZE: usize = json_type_base("ChatUpdated")
-    + json_string_field("channel", MAX_CHANNEL_LENGTH)
-    + json_string_field("topic", MAX_CHAT_TOPIC_LENGTH)
-    + json_string_field("topic_set_by", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
+    + json_string_chars_field("topic", MAX_CHAT_TOPIC_LENGTH)
+    + json_string_chars_field("topic_set_by", MAX_NICKNAME_LENGTH)
     + json_bool_field("secret")
-    + json_string_field("secret_set_by", MAX_NICKNAME_LENGTH);
+    + json_string_chars_field("secret_set_by", MAX_NICKNAME_LENGTH);
 
 /// ChatUserJoined: {"type":"ChatUserJoined","channel":"...32...","nickname":"...64...","is_admin":false,"is_shared":false}
 const CHAT_USER_JOINED_SIZE: usize = json_type_base("ChatUserJoined")
-    + json_string_field("channel", MAX_CHANNEL_LENGTH)
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH)
     + json_bool_field("is_admin")
     + json_bool_field("is_shared");
 
 /// ChatUserLeft: {"type":"ChatUserLeft","channel":"...32...","nickname":"...64..."}
 const CHAT_USER_LEFT_SIZE: usize = json_type_base("ChatUserLeft")
-    + json_string_field("channel", MAX_CHANNEL_LENGTH)
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH);
+    + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
 /// ChatSecretResponse: {"type":"ChatSecretResponse","success":false,"error":"...2048..."}
 const CHAT_SECRET_RESPONSE_SIZE: usize = json_type_base("ChatSecretResponse")
@@ -622,16 +645,16 @@ const CHAT_SECRET_RESPONSE_SIZE: usize = json_type_base("ChatSecretResponse")
 /// ChatLeaveResponse: {"type":"ChatLeaveResponse","success":false,"channel":"...32...","error":"...2048..."}
 const CHAT_LEAVE_RESPONSE_SIZE: usize = json_type_base("ChatLeaveResponse")
     + json_bool_field("success")
-    + json_string_field("channel", MAX_CHANNEL_LENGTH)
+    + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
     + json_string_field("error", MAX_ERROR_LENGTH);
 
 /// ChatJoinResponse: {"type":"ChatJoinResponse","success":false,"error":"...2048...","channel":"...32...","topic":"...256...","topic_set_by":"...32...","secret":false,"members":["...32..."],"voiced":["...32..."]}
 const CHAT_JOIN_RESPONSE_SIZE: usize = json_type_base("ChatJoinResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_field("channel", MAX_CHANNEL_LENGTH)
-    + json_string_field("topic", MAX_CHAT_TOPIC_LENGTH)
-    + json_string_field("topic_set_by", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
+    + json_string_chars_field("topic", MAX_CHAT_TOPIC_LENGTH)
+    + json_string_chars_field("topic_set_by", MAX_NICKNAME_LENGTH)
     + json_bool_field("secret")
     + json_string_array_field("members", MAX_CHANNEL_MEMBERS, MAX_NICKNAME_LENGTH)
     + json_string_array_field("voiced", MAX_CHANNEL_MEMBERS, MAX_NICKNAME_LENGTH);
@@ -667,61 +690,61 @@ const USER_CREATE_RESPONSE_SIZE: usize = json_type_base("UserCreateResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_i64_field("id")
-    + json_string_field("username", MAX_USERNAME_LENGTH);
+    + json_string_chars_field("username", MAX_USERNAME_LENGTH);
 
 /// UserDeleteResponse: {"type":"UserDeleteResponse","success":false,"error":"...2048...","username":"...32..."}
 const USER_DELETE_RESPONSE_SIZE: usize = json_type_base("UserDeleteResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_field("username", MAX_USERNAME_LENGTH);
+    + json_string_chars_field("username", MAX_USERNAME_LENGTH);
 
 /// UserUpdateResponse: {"type":"UserUpdateResponse","success":false,"error":"...2048...","id":i64,"username":"...32..."}
 const USER_UPDATE_RESPONSE_SIZE: usize = json_type_base("UserUpdateResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_i64_field("id")
-    + json_string_field("username", MAX_USERNAME_LENGTH);
+    + json_string_chars_field("username", MAX_USERNAME_LENGTH);
 
 /// UserKickResponse: {"type":"UserKickResponse","success":false,"error":"...2048...","nickname":"...32..."}
 const USER_KICK_RESPONSE_SIZE: usize = json_type_base("UserKickResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH);
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
 /// BanCreateResponse: {"type":"BanCreateResponse","success":false,"error":"...2048...","ips":["...45..."],"nickname":"...32..."}
 const BAN_CREATE_RESPONSE_SIZE: usize = json_type_base("BanCreateResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_string_array_field("ips", MAX_RESPONSE_IPS, MAX_IP_LENGTH)
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH);
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
 /// BanDeleteResponse: {"type":"BanDeleteResponse","success":false,"error":"...2048...","ips":["...45..."],"nickname":"...32..."}
 const BAN_DELETE_RESPONSE_SIZE: usize = json_type_base("BanDeleteResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_string_array_field("ips", MAX_RESPONSE_IPS, MAX_IP_LENGTH)
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH);
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
 /// TrustCreateResponse: {"type":"TrustCreateResponse","success":false,"error":"...2048...","ips":["...45..."],"nickname":"...32..."}
 const TRUST_CREATE_RESPONSE_SIZE: usize = json_type_base("TrustCreateResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_string_array_field("ips", MAX_RESPONSE_IPS, MAX_IP_LENGTH)
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH);
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
 /// TrustDeleteResponse: {"type":"TrustDeleteResponse","success":false,"error":"...2048...","ips":["...45..."],"nickname":"...32..."}
 const TRUST_DELETE_RESPONSE_SIZE: usize = json_type_base("TrustDeleteResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_string_array_field("ips", MAX_RESPONSE_IPS, MAX_IP_LENGTH)
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH);
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
 /// UserMessageResponse: {"type":"UserMessageResponse","success":false,"error":"...2048...","is_away":false,"status":"...128..."}
 const USER_MESSAGE_RESPONSE_SIZE: usize = json_type_base("UserMessageResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_bool_field("is_away")
-    + json_string_field("status", MAX_STATUS_LENGTH);
+    + json_string_chars_field("status", MAX_STATUS_LENGTH);
 
 /// Error: {"type":"Error","message":"...2048...","command":"...32..."}
 const ERROR_SIZE: usize = json_type_base("Error")
@@ -731,21 +754,21 @@ const ERROR_SIZE: usize = json_type_base("Error")
 /// ServerBroadcast: {"type":"ServerBroadcast","session_id":4294967295,"username":"...32...","message":"...1024..."}
 const SERVER_BROADCAST_SIZE: usize = json_type_base("ServerBroadcast")
     + json_u32_field("session_id")
-    + json_string_field("username", MAX_USERNAME_LENGTH)
-    + json_string_field("message", MAX_MESSAGE_LENGTH);
+    + json_string_chars_field("username", MAX_USERNAME_LENGTH)
+    + json_string_chars_field("message", MAX_MESSAGE_LENGTH);
 
 /// UserDisconnected: {"type":"UserDisconnected","session_id":4294967295,"nickname":"...64..."}
 const USER_DISCONNECTED_SIZE: usize = json_type_base("UserDisconnected")
     + json_u32_field("session_id")
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH);
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
 /// UserMessage (server): {"type":"UserMessage","from_nickname":"...64...","from_admin":false,"from_shared":false,"to_nickname":"...64...","message":"...1024...","action":"Normal","timestamp":18446744073709551615}
 const USER_MESSAGE_SIZE: usize = json_type_base("UserMessage")
-    + json_string_field("from_nickname", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("from_nickname", MAX_NICKNAME_LENGTH)
     + json_bool_field("from_admin")
     + json_bool_field("from_shared")
-    + json_string_field("to_nickname", MAX_NICKNAME_LENGTH)
-    + json_string_field("message", MAX_MESSAGE_LENGTH)
+    + json_string_chars_field("to_nickname", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("message", MAX_MESSAGE_LENGTH)
     + json_enum_field("action", MAX_ACTION_VARIANT)
     + json_u64_field("timestamp");
 
@@ -825,10 +848,10 @@ const FILE_CREATE_DIR_RESPONSE_SIZE: usize = json_type_base("FileCreateDirRespon
     + json_string_field("path", MAX_CREATED_DIR_PATH);
 
 /// UserInfo struct size (nested object in responses):
-/// {"id":i64,"username":"...32...","nickname":"...32...","login_time":i64,"is_admin":false,"is_shared":false,"session_ids":[u32,...],"locale":"...10...","avatar":"...176000...","is_away":false,"status":"...128...","group_id":i64,"group_name":"...32..."}
+/// {"id":i64,"username":"...32...","nickname":"...32...","login_time":i64,"is_admin":false,"is_shared":false,"session_ids":[u32,...],"locale":"...16...","avatar":"...176000...","is_away":false,"status":"...128...","group_id":i64,"group_name":"...32..."}
 const USER_INFO_STRUCT_SIZE: usize = json_first_i64_field("id")
-    + json_string_field("username", MAX_USERNAME_LENGTH)
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("username", MAX_USERNAME_LENGTH)
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH)
     + json_i64_field("login_time")
     + json_bool_field("is_admin")
     + json_bool_field("is_shared")
@@ -836,9 +859,9 @@ const USER_INFO_STRUCT_SIZE: usize = json_first_i64_field("id")
     + json_string_field("locale", MAX_LOCALE_LENGTH)
     + json_string_field("avatar", MAX_AVATAR_DATA_URI_LENGTH)
     + json_bool_field("is_away")
-    + json_string_field("status", MAX_STATUS_LENGTH)
+    + json_string_chars_field("status", MAX_STATUS_LENGTH)
     + json_i64_field("group_id")
-    + json_string_field("group_name", MAX_GROUP_NAME_LENGTH)
+    + json_string_chars_field("group_name", MAX_GROUP_NAME_LENGTH)
     + 2; // {} braces
 
 /// UserConnected: {"type":"UserConnected","user":{...}}
@@ -849,7 +872,7 @@ const USER_CONNECTED_SIZE: usize = json_type_base("UserConnected")
 
 /// UserUpdated: {"type":"UserUpdated","previous_username":"...32...","user":{...}}
 const USER_UPDATED_SIZE: usize = json_type_base("UserUpdated")
-    + json_string_field("previous_username", MAX_USERNAME_LENGTH)
+    + json_string_chars_field("previous_username", MAX_USERNAME_LENGTH)
     + json_object_field_start("user")
     + USER_INFO_STRUCT_SIZE
     + json_close();
@@ -857,8 +880,8 @@ const USER_UPDATED_SIZE: usize = json_type_base("UserUpdated")
 /// UserInfoDetailed struct size (nested object in UserInfoResponse):
 /// Has more fields than UserInfo: features, created_at, addresses, channels
 const USER_INFO_DETAILED_SIZE: usize = json_first_i64_field("id")
-    + json_string_field("username", MAX_USERNAME_LENGTH)
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("username", MAX_USERNAME_LENGTH)
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH)
     + json_i64_field("login_time")
     + json_bool_field("is_shared")
     + json_string_array_field("session_ids", MAX_SESSION_IDS, 10)
@@ -869,10 +892,10 @@ const USER_INFO_DETAILED_SIZE: usize = json_first_i64_field("id")
     + json_bool_field("is_admin")
     + json_string_array_field("addresses", MAX_ADDRESSES, MAX_IP_LENGTH)
     + json_bool_field("is_away")
-    + json_string_field("status", MAX_STATUS_LENGTH)
+    + json_string_chars_field("status", MAX_STATUS_LENGTH)
     + json_string_array_field("channels", MAX_CHANNELS_PER_USER, MAX_CHANNEL_LENGTH)
     + json_i64_field("group_id")
-    + json_string_field("group_name", MAX_GROUP_NAME_LENGTH)
+    + json_string_chars_field("group_name", MAX_GROUP_NAME_LENGTH)
     + 2; // {} braces
 
 /// UserInfoResponse: {"type":"UserInfoResponse","success":false,"error":"...2048...","user":{...}}
@@ -889,7 +912,7 @@ const MAX_GROUPS: usize = 50;
 /// GroupInfo struct size (nested object in responses):
 /// {"id":i64,"name":"...32...","is_shared":false,"member_count":u32,"permissions":["...32...",...]}
 const GROUP_INFO_STRUCT_SIZE: usize = json_first_i64_field("id")
-    + json_string_field("name", MAX_GROUP_NAME_LENGTH)
+    + json_string_chars_field("name", MAX_GROUP_NAME_LENGTH)
     + json_bool_field("is_shared")
     + json_u32_field("member_count")
     + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
@@ -897,28 +920,29 @@ const GROUP_INFO_STRUCT_SIZE: usize = json_first_i64_field("id")
 
 /// ServerInfo struct size (nested object in responses):
 /// {"name":"...64...","description":"...256...","public_address":"...253...","version":"...32...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","transfer_port":u16,"transfer_websocket_port":u16,"file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","chat_burst_limit":u32,"chat_rate_limit":u32,"min_password_strength":u8,"log_level":"...5..."}
-const SERVER_INFO_STRUCT_SIZE: usize = json_first_string_field("name", MAX_SERVER_NAME_LENGTH)
-    + json_string_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
-    + json_string_field("public_address", MAX_PUBLIC_ADDRESS_LENGTH)
-    + json_string_field("version", MAX_VERSION_LENGTH)
-    + json_u32_field("max_connections_per_ip")
-    + json_u32_field("max_transfers_per_ip")
-    + json_string_field("image", MAX_SERVER_IMAGE_DATA_URI_LENGTH)
-    + json_u16_field("transfer_port")
-    + json_u16_field("transfer_websocket_port")
-    + json_u32_field("file_reindex_interval")
-    + json_string_field("persistent_channels", MAX_PERSISTENT_CHANNELS_LENGTH)
-    + json_string_field("auto_join_channels", MAX_AUTO_JOIN_CHANNELS_LENGTH)
-    + json_u32_field("chat_burst_limit")
-    + json_u32_field("chat_rate_limit")
-    + json_u8_field("min_password_strength")
-    + json_string_field("log_level", MAX_LOG_LEVEL_LENGTH)
-    + 2; // {} braces
+const SERVER_INFO_STRUCT_SIZE: usize =
+    json_first_string_chars_field("name", MAX_SERVER_NAME_LENGTH)
+        + json_string_chars_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
+        + json_string_field("public_address", MAX_PUBLIC_ADDRESS_LENGTH)
+        + json_string_field("version", MAX_VERSION_LENGTH)
+        + json_u32_field("max_connections_per_ip")
+        + json_u32_field("max_transfers_per_ip")
+        + json_string_field("image", MAX_SERVER_IMAGE_DATA_URI_LENGTH)
+        + json_u16_field("transfer_port")
+        + json_u16_field("transfer_websocket_port")
+        + json_u32_field("file_reindex_interval")
+        + json_string_field("persistent_channels", MAX_PERSISTENT_CHANNELS_LENGTH)
+        + json_string_field("auto_join_channels", MAX_AUTO_JOIN_CHANNELS_LENGTH)
+        + json_u32_field("chat_burst_limit")
+        + json_u32_field("chat_rate_limit")
+        + json_u8_field("min_password_strength")
+        + json_string_field("log_level", MAX_LOG_LEVEL_LENGTH)
+        + 2; // {} braces
 
 /// ServerInfoUpdate: {"type":"ServerInfoUpdate","name":"...64...","description":"...256...","public_address":"...253...","max_connections_per_ip":u32,"max_transfers_per_ip":u32,"image":"...700000...","file_reindex_interval":u32,"persistent_channels":"...512...","auto_join_channels":"...512...","chat_burst_limit":u32,"chat_rate_limit":u32,"min_password_strength":u8}
 const SERVER_INFO_UPDATE_SIZE: usize = json_type_base("ServerInfoUpdate")
-    + json_string_field("name", MAX_SERVER_NAME_LENGTH)
-    + json_string_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
+    + json_string_chars_field("name", MAX_SERVER_NAME_LENGTH)
+    + json_string_chars_field("description", MAX_SERVER_DESCRIPTION_LENGTH)
     + json_string_field("public_address", MAX_PUBLIC_ADDRESS_LENGTH)
     + json_u32_field("max_connections_per_ip")
     + json_u32_field("max_transfers_per_ip")
@@ -939,9 +963,9 @@ const SERVER_INFO_UPDATED_SIZE: usize = json_type_base("ServerInfoUpdated")
 /// NewsItem nested object size:
 /// {"id":i64,"body":"...4096...","image":"...700000...","author":"...32...","author_is_admin":false,"created_at":"...30...","updated_at":"...30..."}
 const NEWS_ITEM_SIZE: usize = json_first_i64_field("id")
-    + json_string_field("body", MAX_NEWS_BODY_LENGTH)
+    + json_string_chars_field("body", MAX_NEWS_BODY_LENGTH)
     + json_string_field("image", MAX_NEWS_IMAGE_DATA_URI_LENGTH)
-    + json_string_field("author", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("author", MAX_NICKNAME_LENGTH)
     + json_bool_field("author_is_admin")
     + json_string_field("created_at", MAX_TIMESTAMP)
     + json_string_field("updated_at", MAX_TIMESTAMP)
@@ -1010,7 +1034,7 @@ const FILE_INFO_RESPONSE_SIZE: usize = json_type_base("FileInfoResponse")
 
 /// UserCreate: {"type":"UserCreate","username":"...32...","password":"...256...","is_admin":false,"is_shared":false,"enabled":false,"permissions":["...32...",...],"group_id":i64,"revokes":["...32...",...]}
 const USER_CREATE_SIZE: usize = json_type_base("UserCreate")
-    + json_string_field("username", MAX_USERNAME_LENGTH)
+    + json_string_chars_field("username", MAX_USERNAME_LENGTH)
     + json_string_field("password", MAX_PASSWORD_LENGTH)
     + json_bool_field("is_admin")
     + json_bool_field("is_shared")
@@ -1023,7 +1047,7 @@ const USER_CREATE_SIZE: usize = json_type_base("UserCreate")
 const USER_UPDATE_SIZE: usize = json_type_base("UserUpdate")
     + json_i64_field("id")
     + json_string_field("current_password", MAX_PASSWORD_LENGTH)
-    + json_string_field("username", MAX_USERNAME_LENGTH)
+    + json_string_chars_field("username", MAX_USERNAME_LENGTH)
     + json_string_field("password", MAX_PASSWORD_LENGTH)
     + json_bool_field("is_admin")
     + json_bool_field("enabled")
@@ -1037,13 +1061,13 @@ const USER_EDIT_RESPONSE_SIZE: usize = json_type_base("UserEditResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_i64_field("id")
-    + json_string_field("username", MAX_USERNAME_LENGTH)
+    + json_string_chars_field("username", MAX_USERNAME_LENGTH)
     + json_bool_field("is_admin")
     + json_bool_field("is_shared")
     + json_bool_field("enabled")
     + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
     + json_i64_field("group_id")
-    + json_string_field("group_name", MAX_GROUP_NAME_LENGTH)
+    + json_string_chars_field("group_name", MAX_GROUP_NAME_LENGTH)
     + json_string_array_field("group_permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
     + json_string_array_field("revoked_permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
     + json_object_field_start("available_groups") - 1 // -1 because array uses [ not {
@@ -1052,15 +1076,15 @@ const USER_EDIT_RESPONSE_SIZE: usize = json_type_base("UserEditResponse")
 
 /// ChannelJoinInfo nested object size (for LoginResponse channels array):
 /// {"channel":"...50...","topic":"...256...","topic_set_by":"...32...","secret":false,"members":["...32...",...]}
-const CHANNEL_JOIN_INFO_SIZE: usize = json_first_string_field("channel", MAX_CHANNEL_LENGTH)
-    + json_string_field("topic", MAX_CHAT_TOPIC_LENGTH)
-    + json_string_field("topic_set_by", MAX_NICKNAME_LENGTH)
+const CHANNEL_JOIN_INFO_SIZE: usize = json_first_string_chars_field("channel", MAX_CHANNEL_LENGTH)
+    + json_string_chars_field("topic", MAX_CHAT_TOPIC_LENGTH)
+    + json_string_chars_field("topic_set_by", MAX_NICKNAME_LENGTH)
     + json_bool_field("secret")
     + json_string_array_field("members", MAX_CHANNEL_MEMBERS, MAX_NICKNAME_LENGTH)
     + json_string_array_field("voiced", MAX_CHANNEL_MEMBERS, MAX_NICKNAME_LENGTH)
     + 2; // {} braces
 
-/// LoginResponse: {"type":"LoginResponse","success":false,"error":"...2048...","session_id":u32,"user_id":i64,"is_admin":false,"permissions":["...32...",...],"server_info":{...},"locale":"...10...","channels":[{...},...],"nickname":"...32...","group_id":i64,"group_name":"...32..."}
+/// LoginResponse: {"type":"LoginResponse","success":false,"error":"...2048...","session_id":u32,"user_id":i64,"is_admin":false,"permissions":["...32...",...],"server_info":{...},"locale":"...16...","channels":[{...},...],"nickname":"...32...","group_id":i64,"group_name":"...32..."}
 const LOGIN_RESPONSE_SIZE: usize = json_type_base("LoginResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
@@ -1076,9 +1100,9 @@ const LOGIN_RESPONSE_SIZE: usize = json_type_base("LoginResponse")
     + json_object_field_start("channels") - 1 // -1 because array uses [ not {
     + (MAX_AUTO_JOIN_CHANNELS_LENGTH * (CHANNEL_JOIN_INFO_SIZE + 1)) // +1 for comma between elements
     + json_close()
-    + json_string_field("nickname", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH)
     + json_i64_field("group_id")
-    + json_string_field("group_name", MAX_GROUP_NAME_LENGTH);
+    + json_string_chars_field("group_name", MAX_GROUP_NAME_LENGTH);
 
 /// PermissionsUpdated: {"type":"PermissionsUpdated","is_admin":false,"permissions":["...32...",...],"server_info":{...},"group_id":i64,"group_name":"...32..."}
 const PERMISSIONS_UPDATED_SIZE: usize = json_type_base("PermissionsUpdated")
@@ -1088,7 +1112,7 @@ const PERMISSIONS_UPDATED_SIZE: usize = json_type_base("PermissionsUpdated")
     + SERVER_INFO_STRUCT_SIZE
     + json_close()
     + json_i64_field("group_id")
-    + json_string_field("group_name", MAX_GROUP_NAME_LENGTH);
+    + json_string_chars_field("group_name", MAX_GROUP_NAME_LENGTH);
 
 // -----------------------------------------------------------------------------
 // Group client messages
@@ -1099,7 +1123,7 @@ const GROUP_LIST_SIZE: usize = json_type_base("GroupList");
 
 /// GroupCreate: {"type":"GroupCreate","name":"...32...","is_shared":false,"permissions":["...32...",...]}
 const GROUP_CREATE_SIZE: usize = json_type_base("GroupCreate")
-    + json_string_field("name", MAX_GROUP_NAME_LENGTH)
+    + json_string_chars_field("name", MAX_GROUP_NAME_LENGTH)
     + json_bool_field("is_shared")
     + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH);
 
@@ -1109,7 +1133,7 @@ const GROUP_EDIT_SIZE: usize = json_type_base("GroupEdit") + json_i64_field("id"
 /// GroupUpdate: {"type":"GroupUpdate","id":i64,"name":"...32...","is_shared":false,"permissions":["...32...",...]}
 const GROUP_UPDATE_SIZE: usize = json_type_base("GroupUpdate")
     + json_i64_field("id")
-    + json_string_field("name", MAX_GROUP_NAME_LENGTH)
+    + json_string_chars_field("name", MAX_GROUP_NAME_LENGTH)
     + json_bool_field("is_shared")
     + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH);
 
@@ -1124,13 +1148,13 @@ const GROUP_DELETE_SIZE: usize = json_type_base("GroupDelete") + json_i64_field(
 const TRACKER_ACCEPT_FINGERPRINT_SIZE: usize =
     json_type_base("TrackerAcceptFingerprint") + json_i64_field("id");
 
-/// TrackerAdd: {"type":"TrackerAdd","address":"...253...","port":u16,"fingerprint":"...95...","password":"...256...","name":"...256...","enabled":false}
+/// TrackerAdd: {"type":"TrackerAdd","address":"...253...","port":u16,"fingerprint":"...95...","password":"...256...","name":"...64...","enabled":false}
 const TRACKER_ADD_SIZE: usize = json_type_base("TrackerAdd")
     + json_string_field("address", MAX_PUBLIC_ADDRESS_LENGTH)
     + json_u16_field("port")
     + json_string_field("fingerprint", SHA256_FINGERPRINT_LENGTH)
     + json_string_field("password", MAX_PASSWORD_LENGTH)
-    + json_string_field("name", MAX_TRACKER_NAME_LENGTH)
+    + json_string_chars_field("name", MAX_TRACKER_NAME_LENGTH)
     + json_bool_field("enabled");
 
 /// TrackerEdit: {"type":"TrackerEdit","id":i64}
@@ -1142,14 +1166,14 @@ const TRACKER_LIST_SIZE: usize = json_type_base("TrackerList");
 /// TrackerRemove: {"type":"TrackerRemove","id":i64}
 const TRACKER_REMOVE_SIZE: usize = json_type_base("TrackerRemove") + json_i64_field("id");
 
-/// TrackerUpdate: {"type":"TrackerUpdate","id":i64,"address":"...253...","port":u16,"fingerprint":"...95...","password":"...256...","name":"...256...","enabled":false}
+/// TrackerUpdate: {"type":"TrackerUpdate","id":i64,"address":"...253...","port":u16,"fingerprint":"...95...","password":"...256...","name":"...64...","enabled":false}
 const TRACKER_UPDATE_SIZE: usize = json_type_base("TrackerUpdate")
     + json_i64_field("id")
     + json_string_field("address", MAX_PUBLIC_ADDRESS_LENGTH)
     + json_u16_field("port")
     + json_string_field("fingerprint", SHA256_FINGERPRINT_LENGTH)
     + json_string_field("password", MAX_PASSWORD_LENGTH)
-    + json_string_field("name", MAX_TRACKER_NAME_LENGTH)
+    + json_string_chars_field("name", MAX_TRACKER_NAME_LENGTH)
     + json_bool_field("enabled");
 
 // -----------------------------------------------------------------------------
@@ -1175,7 +1199,7 @@ const TRACKER_INFO_SIZE: usize = json_first_i64_field("id")
     + json_u16_field("port")
     + json_string_field("fingerprint", SHA256_FINGERPRINT_LENGTH)
     + json_string_field("password", MAX_PASSWORD_LENGTH)
-    + json_string_field("name", MAX_TRACKER_NAME_LENGTH)
+    + json_string_chars_field("name", MAX_TRACKER_NAME_LENGTH)
     + json_bool_field("enabled")
     + json_i64_field("created_at")
     + json_i64_field("updated_at")
@@ -1195,20 +1219,20 @@ const TRACKER_INFO_SIZE: usize = json_first_i64_field("id")
 /// tracker tasks both bound this in practice.
 pub const MAX_TRACKERS_PER_SERVER: usize = 64;
 
-/// TrackerAcceptFingerprintResponse: {"type":"TrackerAcceptFingerprintResponse","success":false,"error":"...2048...","id":i64,"name":"...256..."}
+/// TrackerAcceptFingerprintResponse: {"type":"TrackerAcceptFingerprintResponse","success":false,"error":"...2048...","id":i64,"name":"...64..."}
 const TRACKER_ACCEPT_FINGERPRINT_RESPONSE_SIZE: usize =
     json_type_base("TrackerAcceptFingerprintResponse")
         + json_bool_field("success")
         + json_string_field("error", MAX_ERROR_LENGTH)
         + json_i64_field("id")
-        + json_string_field("name", MAX_TRACKER_NAME_LENGTH);
+        + json_string_chars_field("name", MAX_TRACKER_NAME_LENGTH);
 
-/// TrackerAddResponse: {"type":"TrackerAddResponse","success":false,"error":"...2048...","id":i64,"name":"...256..."}
+/// TrackerAddResponse: {"type":"TrackerAddResponse","success":false,"error":"...2048...","id":i64,"name":"...64..."}
 const TRACKER_ADD_RESPONSE_SIZE: usize = json_type_base("TrackerAddResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_i64_field("id")
-    + json_string_field("name", MAX_TRACKER_NAME_LENGTH);
+    + json_string_chars_field("name", MAX_TRACKER_NAME_LENGTH);
 
 /// TrackerEditResponse: {"type":"TrackerEditResponse","success":false,"error":"...2048...","tracker":TrackerInfo}
 const TRACKER_EDIT_RESPONSE_SIZE: usize = json_type_base("TrackerEditResponse")
@@ -1222,18 +1246,18 @@ const TRACKER_LIST_RESPONSE_SIZE: usize = json_type_base("TrackerListResponse")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_object_array_field("trackers", MAX_TRACKERS_PER_SERVER, TRACKER_INFO_SIZE);
 
-/// TrackerRemoveResponse: {"type":"TrackerRemoveResponse","success":false,"error":"...2048...","name":"...256..."}
+/// TrackerRemoveResponse: {"type":"TrackerRemoveResponse","success":false,"error":"...2048...","name":"...64..."}
 const TRACKER_REMOVE_RESPONSE_SIZE: usize = json_type_base("TrackerRemoveResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
-    + json_string_field("name", MAX_TRACKER_NAME_LENGTH);
+    + json_string_chars_field("name", MAX_TRACKER_NAME_LENGTH);
 
-/// TrackerUpdateResponse: {"type":"TrackerUpdateResponse","success":false,"error":"...2048...","id":i64,"name":"...256..."}
+/// TrackerUpdateResponse: {"type":"TrackerUpdateResponse","success":false,"error":"...2048...","id":i64,"name":"...64..."}
 const TRACKER_UPDATE_RESPONSE_SIZE: usize = json_type_base("TrackerUpdateResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_i64_field("id")
-    + json_string_field("name", MAX_TRACKER_NAME_LENGTH);
+    + json_string_chars_field("name", MAX_TRACKER_NAME_LENGTH);
 
 // -----------------------------------------------------------------------------
 // Group server messages
@@ -1244,14 +1268,14 @@ const GROUP_CREATE_RESPONSE_SIZE: usize = json_type_base("GroupCreateResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_i64_field("id")
-    + json_string_field("name", MAX_GROUP_NAME_LENGTH);
+    + json_string_chars_field("name", MAX_GROUP_NAME_LENGTH);
 
 /// GroupEditResponse: {"type":"GroupEditResponse","success":false,"error":"...2048...","id":i64,"name":"...32...","is_shared":false,"permissions":["...32...",...],"member_count":u32}
 const GROUP_EDIT_RESPONSE_SIZE: usize = json_type_base("GroupEditResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_i64_field("id")
-    + json_string_field("name", MAX_GROUP_NAME_LENGTH)
+    + json_string_chars_field("name", MAX_GROUP_NAME_LENGTH)
     + json_bool_field("is_shared")
     + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
     + json_u32_field("member_count");
@@ -1261,14 +1285,14 @@ const GROUP_UPDATE_RESPONSE_SIZE: usize = json_type_base("GroupUpdateResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_i64_field("id")
-    + json_string_field("name", MAX_GROUP_NAME_LENGTH);
+    + json_string_chars_field("name", MAX_GROUP_NAME_LENGTH);
 
 /// GroupDeleteResponse: {"type":"GroupDeleteResponse","success":false,"error":"...2048...","id":i64,"name":"...32..."}
 const GROUP_DELETE_RESPONSE_SIZE: usize = json_type_base("GroupDeleteResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
     + json_i64_field("id")
-    + json_string_field("name", MAX_GROUP_NAME_LENGTH);
+    + json_string_chars_field("name", MAX_GROUP_NAME_LENGTH);
 
 // =============================================================================
 // Limit padding
@@ -1709,9 +1733,20 @@ mod tests {
         serde_json::to_string(msg).unwrap().len()
     }
 
-    /// Helper to create a string of given length
+    /// Helper to create a string of given byte length (ASCII fill).
     fn str_of_len(len: usize) -> String {
         "x".repeat(len)
+    }
+
+    /// Helper to create a string of `n` characters where each character
+    /// occupies 4 bytes of UTF-8 (worst case for chars-counted fields).
+    /// Used to stress-test that `json_string_chars_field`-budgeted
+    /// payloads still fit when filled with multi-byte text.
+    ///
+    /// `🚀` (U+1F680) encodes as 4 UTF-8 bytes — the maximum any
+    /// Unicode scalar value reaches.
+    fn unicode_str_of_len(chars: usize) -> String {
+        "\u{1F680}".repeat(chars)
     }
 
     // =========================================================================
@@ -2401,7 +2436,7 @@ mod tests {
     fn test_limit_user_kick() {
         let msg = ClientMessage::UserKick {
             nickname: str_of_len(MAX_NICKNAME_LENGTH),
-            reason: Some(str_of_len(MAX_BAN_REASON_LENGTH)),
+            reason: Some(str_of_len(MAX_KICK_REASON_LENGTH)),
         };
         assert!(
             json_size(&msg) <= max_payload_for_type("UserKick") as usize,
@@ -2509,7 +2544,7 @@ mod tests {
 
     #[test]
     fn test_limit_ban_create() {
-        // Max size: target (32 nickname) + duration (10) + reason (2048) + overhead
+        // Max size: target (32 nickname) + duration (10) + reason (256) + overhead
         let msg = ClientMessage::BanCreate {
             target: str_of_len(MAX_NICKNAME_LENGTH),
             duration: Some(str_of_len(10)),
@@ -3389,7 +3424,7 @@ mod tests {
 
     #[test]
     fn test_limit_trust_create() {
-        // Max size: target (32 nickname) + duration (10) + reason (2048) + overhead
+        // Max size: target (32 nickname) + duration (10) + reason (256) + overhead
         let msg = ClientMessage::TrustCreate {
             target: str_of_len(MAX_NICKNAME_LENGTH),
             duration: Some(str_of_len(10)),
@@ -3889,6 +3924,7 @@ mod tests {
         let msg = TrackerClientMessage::TrackerServerList {
             password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
             locale: str_of_len(MAX_LOCALE_LENGTH),
+            version: str_of_len(MAX_VERSION_LENGTH),
         };
         let size = json_size(&msg);
         let limit = max_payload_for_type("TrackerServerList") as usize;
@@ -4153,6 +4189,159 @@ mod tests {
             "TrackerRemoveResponse size {} exceeds limit {}",
             size,
             limit
+        );
+    }
+
+    // =========================================================================
+    // UTF-8 stress tests: chars-counted fields filled with 4-byte chars
+    // =========================================================================
+    //
+    // A field validated by `.chars().count()` can carry up to 4 bytes per
+    // character on the wire (worst-case UTF-8). The framing budget for
+    // these fields must use `json_string_chars_field`, not
+    // `json_string_field`, or a CJK / emoji payload at the validator cap
+    // will exceed the per-message limit. These tests fill char-counted
+    // fields with `\u{1F680}` (4-byte rocket emoji) and assert the
+    // payload still fits.
+    //
+    // The earlier sweep that switched 98 call sites would silently miss a
+    // single `json_string_field(..., MAX_X_LENGTH)` left over for a
+    // chars-counted constant; the ASCII-only `str_of_len` fixtures don't
+    // catch that. These tests do.
+
+    #[test]
+    fn test_limit_chat_send_utf8_stress() {
+        let msg = ClientMessage::ChatSend {
+            message: unicode_str_of_len(MAX_MESSAGE_LENGTH),
+            action: ChatAction::Normal,
+            channel: format!("#{}", unicode_str_of_len(MAX_CHANNEL_LENGTH - 1)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("ChatSend") as usize;
+        assert!(
+            size <= limit,
+            "ChatSend (UTF-8 stress) size {size} exceeds limit {limit}"
+        );
+    }
+
+    #[test]
+    fn test_limit_server_info_update_utf8_stress() {
+        let msg = ClientMessage::ServerInfoUpdate {
+            name: Some(unicode_str_of_len(MAX_SERVER_NAME_LENGTH)),
+            description: Some(unicode_str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
+            public_address: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("ServerInfoUpdate") as usize;
+        assert!(
+            size <= limit,
+            "ServerInfoUpdate (UTF-8 stress) size {size} exceeds limit {limit}"
+        );
+    }
+
+    #[test]
+    fn test_limit_user_kick_utf8_stress() {
+        let msg = ClientMessage::UserKick {
+            nickname: unicode_str_of_len(MAX_NICKNAME_LENGTH),
+            reason: Some(unicode_str_of_len(MAX_KICK_REASON_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("UserKick") as usize;
+        assert!(
+            size <= limit,
+            "UserKick (UTF-8 stress) size {size} exceeds limit {limit}"
+        );
+    }
+
+    #[test]
+    fn test_limit_ban_create_utf8_stress() {
+        let msg = ClientMessage::BanCreate {
+            target: unicode_str_of_len(MAX_TARGET_LENGTH),
+            duration: Some(str_of_len(MAX_DURATION_LENGTH)),
+            reason: Some(unicode_str_of_len(MAX_BAN_REASON_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("BanCreate") as usize;
+        assert!(
+            size <= limit,
+            "BanCreate (UTF-8 stress) size {size} exceeds limit {limit}"
+        );
+    }
+
+    #[test]
+    fn test_limit_tracker_server_register_utf8_stress() {
+        let msg = TrackerClientMessage::TrackerServerRegister {
+            password: None,
+            locale: "en".to_string(),
+            name: unicode_str_of_len(MAX_SERVER_NAME_LENGTH),
+            description: Some(unicode_str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
+            address: None,
+            port: u16::MAX,
+            websocket_port: Some(u16::MAX),
+            version: "0.8.2".to_string(),
+            fingerprint: str_of_len(SHA256_FINGERPRINT_LENGTH),
+            user_count: u32::MAX,
+            allows_guest: false,
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("TrackerServerRegister") as usize;
+        assert!(
+            size <= limit,
+            "TrackerServerRegister (UTF-8 stress) size {size} exceeds limit {limit}"
+        );
+    }
+
+    #[test]
+    fn test_limit_login_response_utf8_stress() {
+        // Regression test for the SERVER_INFO_STRUCT_SIZE bug: server
+        // name in the embedded ServerInfo used `json_first_string_field`
+        // (byte budget) for a chars-counted constant. A multi-byte server
+        // name at the cap blew the budget.
+        let msg = ServerMessage::LoginResponse {
+            success: true,
+            error: None,
+            session_id: Some(1),
+            user_id: Some(1),
+            is_admin: Some(false),
+            permissions: Some(vec![]),
+            server_info: Some(ServerInfo {
+                name: Some(unicode_str_of_len(MAX_SERVER_NAME_LENGTH)),
+                description: Some(unicode_str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
+                public_address: None,
+                version: Some("0.8.2".to_string()),
+                max_connections_per_ip: None,
+                max_transfers_per_ip: None,
+                image: None,
+                transfer_port: 0,
+                transfer_websocket_port: None,
+                file_reindex_interval: None,
+                persistent_channels: None,
+                auto_join_channels: None,
+                chat_burst_limit: None,
+                chat_rate_limit: None,
+                min_password_strength: None,
+                log_level: None,
+            }),
+            locale: Some("en".to_string()),
+            channels: Some(vec![]),
+            nickname: Some(unicode_str_of_len(MAX_NICKNAME_LENGTH)),
+            group_id: None,
+            group_name: Some(unicode_str_of_len(MAX_GROUP_NAME_LENGTH)),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("LoginResponse") as usize;
+        assert!(
+            size <= limit,
+            "LoginResponse (UTF-8 stress) size {size} exceeds limit {limit}"
         );
     }
 }

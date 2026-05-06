@@ -2,7 +2,10 @@
 //!
 //! Validates chat messages, broadcasts, and user messages.
 
-/// Maximum length for messages (chat, broadcast, user messages) in bytes
+/// Maximum length for messages (chat, broadcast, user messages) in characters.
+///
+/// Counted as Unicode scalar values rather than bytes so non-ASCII users
+/// (CJK, Cyrillic, etc.) get the same effective capacity as ASCII users.
 pub const MAX_MESSAGE_LENGTH: usize = 1024;
 
 /// Validation error for messages
@@ -32,7 +35,7 @@ pub fn validate_message(message: &str) -> Result<(), MessageError> {
     if message.trim().is_empty() {
         return Err(MessageError::Empty);
     }
-    if message.len() > MAX_MESSAGE_LENGTH {
+    if message.chars().count() > MAX_MESSAGE_LENGTH {
         return Err(MessageError::TooLong);
     }
     for ch in message.chars() {
@@ -68,6 +71,14 @@ mod tests {
     fn test_too_long() {
         assert_eq!(
             validate_message(&"a".repeat(MAX_MESSAGE_LENGTH + 1)),
+            Err(MessageError::TooLong)
+        );
+        // Length is counted in Unicode scalar values, not bytes:
+        // a multi-byte string at the char limit is valid…
+        assert!(validate_message(&"あ".repeat(MAX_MESSAGE_LENGTH)).is_ok());
+        // …but one over the char limit is rejected.
+        assert_eq!(
+            validate_message(&"あ".repeat(MAX_MESSAGE_LENGTH + 1)),
             Err(MessageError::TooLong)
         );
     }

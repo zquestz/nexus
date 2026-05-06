@@ -557,16 +557,20 @@ err-avatar-unsupported-type = サポートされていないファイル形式�
 err-avatar-too-large = アバターが大きすぎます。最大サイズは{ $max_kb }KBです。
 err-avatar-decode-failed = アバターのデコードに失敗しました。ファイルが破損している可能性があります。
 err-server-name-empty = サーバー名は空にできません
-err-server-name-too-long = サーバー名が長すぎます（最大 { $max } バイト）
+err-server-name-too-long = サーバー名が長すぎます（最大 { $max } 文字）
 err-server-name-contains-newlines = サーバー名に改行を含めることはできません
 err-server-name-invalid-characters = サーバー名に無効な文字が含まれています
-err-status-too-long = ステータスメッセージが長すぎます（最大 { $max } バイト）
+err-status-too-long = ステータスメッセージが長すぎます（最大 { $max } 文字）
 err-status-contains-newlines = ステータスメッセージに改行を含めることはできません
 err-status-invalid-characters = ステータスメッセージに無効な文字が含まれています
+err-kick-reason-too-long = キックの理由が長すぎます（最大 { $max } 文字）
+err-kick-reason-invalid-characters = キックの理由に無効な文字が含まれています
+err-ban-reason-too-long = BANの理由が長すぎます（最大 { $max } 文字）
+err-ban-reason-invalid-characters = BANの理由に無効な文字が含まれています
 err-target-empty = ターゲットは空にできません
-err-target-too-long = ターゲットが長すぎます（最大{ $max }バイト）
+err-target-too-long = ターゲットが長すぎます（最大{ $max }文字）
 err-duration-too-long = 期間が長すぎます（最大{ $max }バイト）
-err-server-description-too-long = 説明が長すぎます（最大 { $max } バイト）
+err-server-description-too-long = 説明が長すぎます（最大 { $max } 文字）
 err-server-description-contains-newlines = 説明に改行を含めることはできません
 err-server-description-invalid-characters = 説明に無効な文字が含まれています
 err-failed-send-update = 更新の送信に失敗しました: { $error }
@@ -584,7 +588,6 @@ err-failed-create-user = ユーザーの作成に失敗しました: { $error }
 err-failed-delete-user = ユーザーの削除に失敗しました: { $error }
 err-failed-update-user = ユーザーの更新に失敗しました: { $error }
 err-failed-update-topic = トピックの更新に失敗しました: { $error }
-err-message-too-long-details = { $error }（{ $length }文字、最大{ $max }）
 
 # Network connection errors (with parameters)
 err-invalid-address = 無効なアドレス '{ $address }': { $error }
@@ -1231,7 +1234,7 @@ toast-tracker-fingerprint-accepted-name = 「{ $name }」のフィンガープ�
 
 # Errors
 err-tracker-name-empty = トラッカー名を入力してください
-err-tracker-name-too-long = トラッカー名が長すぎます（最大 { $max } バイト）
+err-tracker-name-too-long = トラッカー名が長すぎます（最大 { $max } 文字）
 err-tracker-name-contains-newlines = トラッカー名に改行を含めることはできません
 err-tracker-name-invalid-characters = トラッカー名に無効な制御文字が含まれています
 err-tracker-address-empty = トラッカーアドレスを入力してください
