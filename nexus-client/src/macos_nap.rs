@@ -16,7 +16,9 @@
 //! Linux and Windows do not have an equivalent mechanism, so this
 //! module is macOS-only.
 
-use crate::constants::{ERR_NSPROCESSINFO_BEGIN_ACTIVITY_NIL, ERR_NSPROCESSINFO_CLASS_NOT_FOUND};
+use crate::constants::ERR_NSPROCESSINFO_CLASS_NOT_FOUND;
+#[cfg(debug_assertions)]
+use crate::constants::ERR_NSPROCESSINFO_BEGIN_ACTIVITY_NIL;
 use objc2::msg_send;
 use objc2::runtime::AnyObject;
 use objc2_foundation::NSString;

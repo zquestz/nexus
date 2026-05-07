@@ -16,9 +16,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use crate::constants::{
-    ERR_NSAPPLEEVENTMANAGER_CLASS_NOT_FOUND, ERR_NSAPPLEEVENTMANAGER_NOT_MAIN_THREAD,
-};
+use crate::constants::ERR_NSAPPLEEVENTMANAGER_CLASS_NOT_FOUND;
+#[cfg(debug_assertions)]
+use crate::constants::ERR_NSAPPLEEVENTMANAGER_NOT_MAIN_THREAD;
 use crossbeam_channel::{Receiver, Sender};
 use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
