@@ -1195,6 +1195,7 @@ tab-trackers = 트래커
 # Buttons
 button-remove = 제거
 button-accept-fingerprint = 수락
+menu-tracker-accept-fingerprint = 지문 수락
 
 # Columns
 col-status = 상태
@@ -1268,9 +1269,10 @@ placeholder-tracker-search = 서버 검색…
 col-description = 설명
 col-users = 사용자
 tracker-browser-status-loading = 로드 중…
-tracker-browser-status-servers = 전체 서버: { $count }
+tracker-browser-status-servers = 서버: { $count }
 empty-no-trackers-configured = 구성된 트래커가 없습니다.
 empty-tracker-no-servers = 이 트래커에는 등록된 서버가 없습니다.
+empty-tracker-no-matches = 검색과 일치하는 서버가 없습니다.
 dialog-remove-client-tracker-body = 트래커 "{ $name }"을(를) 제거하시겠습니까? 검색 목록에서만 제거되며, 나중에 다시 추가할 수 있습니다.
 err-tracker-query-stage1-mismatch = 트래커 인증서 지문이 저장된 고정 값과 일치하지 않습니다. 계속하려면 새 지문을 확인하고 수락하세요.
 err-tracker-query-stage2-intercepted = 트래커 연결이 TLS 프록시에 의해 가로채지고 있습니다.

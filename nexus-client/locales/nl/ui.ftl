@@ -1258,6 +1258,7 @@ tab-trackers = Trackers
 # Buttons
 button-remove = Verwijderen
 button-accept-fingerprint = Accepteren
+menu-tracker-accept-fingerprint = Vingerafdruk accepteren
 
 # Titles
 title-tracker-add = Tracker toevoegen
@@ -1331,9 +1332,10 @@ placeholder-tracker-search = Servers zoeken…
 col-description = Beschrijving
 col-users = Gebruikers
 tracker-browser-status-loading = Laden…
-tracker-browser-status-servers = Servers totaal: { $count }
+tracker-browser-status-servers = Servers: { $count }
 empty-no-trackers-configured = Geen trackers geconfigureerd.
 empty-tracker-no-servers = Deze tracker heeft geen geregistreerde servers.
+empty-tracker-no-matches = Geen servers komen overeen met je zoekopdracht.
 dialog-remove-client-tracker-body = Weet je zeker dat je tracker "{ $name }" wilt verwijderen? Hij wordt alleen uit je ontdekkingslijst verwijderd; je kunt hem later opnieuw toevoegen.
 err-tracker-query-stage1-mismatch = Vingerafdruk van trackercertificaat komt niet overeen met de vastgezette waarde. Controleer en accepteer de nieuwe vingerafdruk om door te gaan.
 err-tracker-query-stage2-intercepted = Trackerverbinding wordt onderschept door een TLS-proxy.

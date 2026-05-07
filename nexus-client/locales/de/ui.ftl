@@ -1261,6 +1261,7 @@ tab-trackers = Tracker
 # Buttons
 button-remove = Entfernen
 button-accept-fingerprint = Akzeptieren
+menu-tracker-accept-fingerprint = Fingerabdruck akzeptieren
 
 # Titles
 title-tracker-add = Tracker hinzufügen
@@ -1334,9 +1335,10 @@ placeholder-tracker-search = Server suchen…
 col-description = Beschreibung
 col-users = Benutzer
 tracker-browser-status-loading = Wird geladen…
-tracker-browser-status-servers = Server gesamt: { $count }
+tracker-browser-status-servers = Server: { $count }
 empty-no-trackers-configured = Keine Tracker konfiguriert.
 empty-tracker-no-servers = Dieser Tracker hat keine registrierten Server.
+empty-tracker-no-matches = Keine Server entsprechen deiner Suche.
 dialog-remove-client-tracker-body = Möchtest du den Tracker „{ $name }" wirklich entfernen? Damit wird er nur aus deiner Erkennungsliste entfernt; du kannst ihn später wieder hinzufügen.
 err-tracker-query-stage1-mismatch = Tracker-Zertifikats-Fingerabdruck stimmt nicht mit dem gespeicherten Wert überein. Prüfe und akzeptiere den neuen Fingerabdruck, um fortzufahren.
 err-tracker-query-stage2-intercepted = Tracker-Verbindung wird von einem TLS-Proxy abgefangen.

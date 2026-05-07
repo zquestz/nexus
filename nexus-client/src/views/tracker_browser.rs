@@ -27,12 +27,16 @@ use iced_aw::NumberInput;
 use nexus_common::tracker_protocol::ServerEntry;
 use uuid::Uuid;
 
+use super::fingerprint::format_fingerprint_multiline;
 use super::helpers::{sort_icon_or_placeholder, t_args};
-use super::layout::scrollable_panel;
+use super::layout::{scrollable_modal, scrollable_panel};
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, HEADING_BUTTON_PADDING,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING,
+    FINGERPRINT_SPACE_AFTER_LABEL, FINGERPRINT_SPACE_AFTER_SERVER_INFO,
+    FINGERPRINT_SPACE_AFTER_TITLE, FINGERPRINT_SPACE_AFTER_WARNING,
+    FINGERPRINT_SPACE_BEFORE_BUTTONS, FINGERPRINT_SPACE_BETWEEN_SECTIONS, HEADING_BUTTON_PADDING,
     ICON_SIZE, INPUT_PADDING, MONOSPACE_FONT, NO_SPACING, SCROLLBAR_PADDING, SEPARATOR_HEIGHT,
     SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
     TEXT_SIZE, TITLE_SIZE, TOOLBAR_BUTTON_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
@@ -115,6 +119,64 @@ impl Hash for ServerTableDeps {
         self.sort_column.hash(state);
         self.sort_ascending.hash(state);
     }
+}
+
+fn sort_entries(entries: &mut [ServerEntry], column: TrackerBrowserSortColumn, ascending: bool) {
+    entries.sort_by(|a, b| {
+        let cmp = match column {
+            TrackerBrowserSortColumn::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            TrackerBrowserSortColumn::Description => a
+                .description
+                .as_deref()
+                .unwrap_or("")
+                .to_lowercase()
+                .cmp(&b.description.as_deref().unwrap_or("").to_lowercase()),
+            TrackerBrowserSortColumn::Users => a.user_count.cmp(&b.user_count),
+        };
+        if ascending { cmp } else { cmp.reverse() }
+    });
+}
+
+/// Filter entries by query (case-insensitive substring match against
+/// name and description) and sort by the active column.
+///
+/// Empty / whitespace-only query → all entries, sorted.
+/// Non-empty query → two-pass relevance: name-substring matches first,
+/// then description-only matches; within each group the active column
+/// sort applies. Entries matching neither name nor description are
+/// dropped.
+fn filter_and_sort_entries(
+    entries: &[ServerEntry],
+    query: &str,
+    column: TrackerBrowserSortColumn,
+    ascending: bool,
+) -> Vec<ServerEntry> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        let mut all: Vec<ServerEntry> = entries.to_vec();
+        sort_entries(&mut all, column, ascending);
+        return all;
+    }
+    let needle = trimmed.to_lowercase();
+    let mut name_matches: Vec<ServerEntry> = Vec::new();
+    let mut desc_only: Vec<ServerEntry> = Vec::new();
+    for entry in entries {
+        if entry.name.to_lowercase().contains(&needle) {
+            name_matches.push(entry.clone());
+            continue;
+        }
+        if entry
+            .description
+            .as_deref()
+            .is_some_and(|d| d.to_lowercase().contains(&needle))
+        {
+            desc_only.push(entry.clone());
+        }
+    }
+    sort_entries(&mut name_matches, column, ascending);
+    sort_entries(&mut desc_only, column, ascending);
+    name_matches.extend(desc_only);
+    name_matches
 }
 
 fn lazy_server_table(deps: ServerTableDeps) -> Element<'static, Message> {
@@ -237,9 +299,14 @@ fn lazy_server_table(deps: ServerTableDeps) -> Element<'static, Message> {
 
 /// Render the right-aligned status text reflecting the cache state for
 /// the selected tracker. Empty when no tracker is selected; muted while
-/// loading; neutral on success (server count). Errors are rendered in a
-/// dedicated row under the panel title — see `error_row` below.
-fn toolbar_status<'a>(cache: Option<&'a TrackerCacheEntry>) -> Element<'a, Message> {
+/// loading; neutral on success (server count — reflects the *visible*
+/// count, i.e. post-filter, so it matches what the user sees in the
+/// table). Errors are rendered in a dedicated row under the panel
+/// title — see `error_row` below.
+fn toolbar_status<'a>(
+    cache: Option<&'a TrackerCacheEntry>,
+    filtered_count: Option<usize>,
+) -> Element<'a, Message> {
     let Some(entry) = cache else {
         return Space::new().into();
     };
@@ -249,9 +316,9 @@ fn toolbar_status<'a>(cache: Option<&'a TrackerCacheEntry>) -> Element<'a, Messa
             .style(muted_text_style)
             .into();
     }
-    if let Some(entries) = &entry.entries {
-        let count = entries.len().to_string();
-        let label = t_args("tracker-browser-status-servers", &[("count", &count)]);
+    if let Some(count) = filtered_count {
+        let count_str = count.to_string();
+        let label = t_args("tracker-browser-status-servers", &[("count", &count_str)]);
         return shaped_text(label).size(TEXT_SIZE).into();
     }
     Space::new().into()
@@ -272,6 +339,7 @@ fn toolbar_status<'a>(cache: Option<&'a TrackerCacheEntry>) -> Element<'a, Messa
 fn list_body<'a>(
     state: &'a TrackerBrowserState,
     selected_cache: Option<&'a TrackerCacheEntry>,
+    filtered: Option<Vec<ServerEntry>>,
 ) -> Element<'a, Message> {
     if state.selected_tracker.is_none() || selected_cache.is_none() {
         // No tracker selected, or no fetch has ever occurred for the
@@ -283,20 +351,29 @@ fn list_body<'a>(
     // safe — guard above
     let cache = selected_cache.expect("guarded above");
 
-    if let Some(entries) = &cache.entries {
-        if entries.is_empty() {
-            return container(
-                shaped_text(t("empty-tracker-no-servers"))
-                    .size(TEXT_SIZE)
-                    .style(muted_text_style),
-            )
-            .width(Fill)
-            .center_x(Fill)
-            .padding(SPACER_SIZE_SMALL)
-            .into();
+    if cache.entries.is_some() {
+        // `filtered` is `Some` whenever `cache.entries` is `Some` —
+        // they're computed together in `list_view`.
+        let filtered = filtered.expect("filtered Some when cache.entries Some");
+        if filtered.is_empty() {
+            // Two distinct empty messages:
+            //   - listing has zero entries → "this tracker has no
+            //     registered servers"
+            //   - listing has entries but search filtered all of them
+            //     out → "no matches"
+            let key = if state.search_input.trim().is_empty() {
+                "empty-tracker-no-servers"
+            } else {
+                "empty-tracker-no-matches"
+            };
+            return container(shaped_text(t(key)).size(TEXT_SIZE).style(muted_text_style))
+                .width(Fill)
+                .center_x(Fill)
+                .padding(SPACER_SIZE_SMALL)
+                .into();
         }
         let deps = ServerTableDeps {
-            entries: entries.clone(),
+            entries: filtered,
             sort_column: state.sort_column,
             sort_ascending: state.sort_ascending,
         };
@@ -333,12 +410,11 @@ pub fn tracker_browser_view<'a>(
     trackers: &'a [ClientTracker],
 ) -> Element<'a, Message> {
     match &state.mode {
-        TrackerBrowserMode::List | TrackerBrowserMode::AcceptFingerprint { .. } => {
-            list_view(state, trackers)
-        }
+        TrackerBrowserMode::List => list_view(state, trackers),
         TrackerBrowserMode::Add => add_tracker_view(state),
         TrackerBrowserMode::Edit { .. } => edit_tracker_view(state),
         TrackerBrowserMode::ConfirmRemove { .. } => remove_tracker_modal(state),
+        TrackerBrowserMode::AcceptFingerprint { .. } => accept_fingerprint_modal(state),
     }
 }
 
@@ -352,6 +428,20 @@ fn list_view<'a>(
         .selected_tracker
         .and_then(|id| options.iter().find(|o| o.id == id).cloned());
     let selected_cache = state.selected_tracker.and_then(|id| state.cache.get(&id));
+
+    // Compute the filtered + sorted view once and reuse it for both the
+    // toolbar count and the table body — keeps "Servers: N" honest
+    // against what the user actually sees.
+    let filtered: Option<Vec<ServerEntry>> =
+        selected_cache.and_then(|c| c.entries.as_ref()).map(|e| {
+            filter_and_sort_entries(
+                e,
+                &state.search_input,
+                state.sort_column,
+                state.sort_ascending,
+            )
+        });
+    let filtered_count = filtered.as_ref().map(|v| v.len());
 
     // -- Title row: news-style centered title with a balanced [+]
     // button on the right. The invisible spacer on the left equals the
@@ -479,7 +569,7 @@ fn list_view<'a>(
         remove_button,
         refresh_button,
         Space::new().width(Fill),
-        toolbar_status(selected_cache),
+        toolbar_status(selected_cache, filtered_count),
     ]
     .spacing(SPACER_SIZE_SMALL)
     .align_y(Center);
@@ -497,7 +587,7 @@ fn list_view<'a>(
     // Empty/loading text is top-aligned (mirrors users / groups
     // tab pattern) — no vertical centering.
     let body: Element<'a, Message> = if has_trackers {
-        list_body(state, selected_cache)
+        list_body(state, selected_cache, filtered)
     } else {
         container(
             shaped_text(t("empty-no-trackers-configured"))
@@ -530,20 +620,13 @@ fn list_view<'a>(
         .align_x(Center);
     if let Some(error) = selected_cache.and_then(|c| c.error.as_ref()) {
         form_column = form_column.push(
-            container(
-                shaped_text_wrapped(error.as_str())
-                    .size(TEXT_SIZE)
-                    .style(error_text_style),
-            )
-            .width(Fill)
-            .center_x(Fill)
-            .padding(iced::Padding {
-                top: NO_SPACING,
-                right: NO_SPACING,
-                bottom: SPACER_SIZE_MEDIUM,
-                left: NO_SPACING,
-            }),
+            shaped_text_wrapped(error.as_str())
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style),
         );
+        form_column = form_column.push(Space::new().height(SPACER_SIZE_MEDIUM));
     }
     let form = form_column
         .push(toolbar_row)
@@ -952,6 +1035,135 @@ fn remove_tracker_modal<'a>(state: &'a TrackerBrowserState) -> Element<'a, Messa
         .max_width(CONTENT_MAX_WIDTH);
 
     scrollable_panel(form)
+}
+
+// =============================================================================
+// AcceptFingerprint modal
+// =============================================================================
+
+/// Stage-1 TOFU mismatch dialog. Mirrors `views/trackers.rs::
+/// accept_fingerprint_modal` (the BBS-admin tracker panel) but bound
+/// to discovery-side messages (`TrackerBrowserAcceptFingerprint*`)
+/// so the two flows don't collide. Identity line + warning + expected
+/// vs received fingerprints in monospace + Cancel/Accept buttons.
+fn accept_fingerprint_modal<'a>(state: &'a TrackerBrowserState) -> Element<'a, Message> {
+    let TrackerBrowserMode::AcceptFingerprint {
+        name,
+        address,
+        port,
+        expected,
+        received,
+        ..
+    } = &state.mode
+    else {
+        return Space::new().into();
+    };
+
+    let title = panel_title(t("title-fingerprint-accept"));
+
+    let server_line_text = format!("{} - {}:{}", name, address, port);
+    let server_line = shaped_text(server_line_text).size(TEXT_SIZE);
+
+    let warning = shaped_text_wrapped(t("tracker-fingerprint-warning")).size(TEXT_SIZE);
+
+    let expected_label = shaped_text(t("label-expected-fingerprint")).size(TEXT_SIZE);
+    let expected_value: Element<'a, Message> = if let Some(fp) = expected.as_ref() {
+        shaped_text(format_fingerprint_multiline(fp))
+            .size(TEXT_SIZE)
+            .font(MONOSPACE_FONT)
+            .into()
+    } else {
+        shaped_text(t("label-fingerprint-unpinned"))
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into()
+    };
+
+    let received_label = shaped_text(t("label-received-fingerprint")).size(TEXT_SIZE);
+    let received_value = shaped_text(format_fingerprint_multiline(received))
+        .size(TEXT_SIZE)
+        .font(MONOSPACE_FONT);
+
+    let cancel_button = button(
+        shaped_text(t("button-cancel"))
+            .size(TEXT_SIZE)
+            .width(Length::Fill)
+            .center(),
+    )
+    .on_press(Message::TrackerBrowserAcceptFingerprintCancel)
+    .padding(BUTTON_PADDING)
+    .style(btn::secondary);
+
+    let accept_button = if !state.is_accept_fingerprint_submitting {
+        button(
+            shaped_text(t("button-accept-fingerprint"))
+                .size(TEXT_SIZE)
+                .width(Length::Fill)
+                .center(),
+        )
+        .on_press(Message::TrackerBrowserAcceptFingerprintConfirm)
+        .padding(BUTTON_PADDING)
+        .style(btn::danger)
+    } else {
+        button(
+            shaped_text(t("button-accept-fingerprint"))
+                .size(TEXT_SIZE)
+                .width(Length::Fill)
+                .center(),
+        )
+        .padding(BUTTON_PADDING)
+        .style(btn::danger)
+    };
+
+    let button_row = row![
+        Space::new().width(Length::Fill),
+        cancel_button,
+        accept_button
+    ]
+    .spacing(ELEMENT_SPACING);
+
+    let mut items: Vec<Element<'a, Message>> = vec![title.into()];
+
+    if let Some(err) = &state.accept_fingerprint_error {
+        items.push(
+            shaped_text_wrapped(err.clone())
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into(),
+        );
+        items.push(Space::new().height(SPACER_SIZE_SMALL).into());
+    } else {
+        items.push(Space::new().height(FINGERPRINT_SPACE_AFTER_TITLE).into());
+    }
+
+    items.extend([
+        server_line.into(),
+        Space::new()
+            .height(FINGERPRINT_SPACE_AFTER_SERVER_INFO)
+            .into(),
+        warning.into(),
+        Space::new().height(FINGERPRINT_SPACE_AFTER_WARNING).into(),
+        expected_label.into(),
+        Space::new().height(FINGERPRINT_SPACE_AFTER_LABEL).into(),
+        expected_value,
+        Space::new()
+            .height(FINGERPRINT_SPACE_BETWEEN_SECTIONS)
+            .into(),
+        received_label.into(),
+        Space::new().height(FINGERPRINT_SPACE_AFTER_LABEL).into(),
+        received_value.into(),
+        Space::new().height(FINGERPRINT_SPACE_BEFORE_BUTTONS).into(),
+        button_row.into(),
+    ]);
+
+    let dialog = Column::with_children(items)
+        .spacing(ELEMENT_SPACING)
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH);
+
+    scrollable_modal(dialog)
 }
 
 // =============================================================================

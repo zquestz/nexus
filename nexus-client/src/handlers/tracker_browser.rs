@@ -36,15 +36,19 @@ const TRACKER_BROWSER_EDIT_CYCLE: &[InputId] = &[
 ];
 
 impl NexusApp {
-    /// Dropdown selection changed. Updates the selected tracker and
-    /// resets the search input (per spec — search is selection-scoped).
+    /// Dropdown selection changed. Updates the selected tracker,
+    /// resets the search input (search is selection-scoped per
+    /// spec), and auto-fetches if the new selection has no cached
+    /// result yet. The cache is the source of truth: if entries are
+    /// already cached for the new selection, the user sees them
+    /// instantly with no re-fetch.
     pub fn handle_tracker_browser_select_tracker(&mut self, id: Uuid) -> Task<Message> {
         if self.tracker_browser.selected_tracker == Some(id) {
             return Task::none();
         }
         self.tracker_browser.selected_tracker = Some(id);
         self.tracker_browser.search_input.clear();
-        Task::none()
+        self.dispatch_tracker_query_if_uncached(id)
     }
 
     /// Search-row input changed. Live-filter only — no submit step.
@@ -203,6 +207,9 @@ impl NexusApp {
             Ok(()) => {
                 self.tracker_browser.selected_tracker = Some(new_id);
                 self.tracker_browser.reset_to_list();
+                // Auto-fetch the newly-added tracker — no cache entry
+                // exists yet, so this fires unconditionally.
+                return self.dispatch_tracker_query_if_uncached(new_id);
             }
             Err(error) => {
                 // Persistence failed — keep the form open so the user
@@ -337,9 +344,12 @@ impl NexusApp {
         match save_config(&self.config) {
             Ok(()) => {
                 // Drop the cache entry — meaningful identity may have
-                // changed. Step 5's auto-fetch will populate fresh.
+                // changed (address / password / pin all affect what
+                // the next query returns). Auto-fetch refreshes the
+                // view with the new identity's results.
                 self.tracker_browser.cache.remove(&id);
                 self.tracker_browser.reset_to_list();
+                return self.dispatch_tracker_query_if_uncached(id);
             }
             Err(error) => {
                 if let Some(orig) = original {
@@ -442,6 +452,13 @@ impl NexusApp {
                     self.tracker_browser.search_input.clear();
                 }
                 self.tracker_browser.reset_to_list();
+                // Auto-fetch the auto-selected neighbor (if any) when
+                // its cache entry is empty. No-op if the user already
+                // visited that tracker this session — they see the
+                // cached entries instantly.
+                if let Some(neighbor) = next_pick {
+                    return self.dispatch_tracker_query_if_uncached(neighbor);
+                }
             }
             Err(error) => {
                 if let (Some(index), Some(orig)) = (original_index, original) {
@@ -486,23 +503,26 @@ impl NexusApp {
     // Refresh + query result
     // =========================================================================
 
-    /// Refresh toolbar button — dispatch a one-shot `query_tracker`
-    /// for the currently selected tracker. No-op if no tracker is
-    /// selected or a query is already in flight (the view also
-    /// disables the button in those cases as a UI hint).
+    /// Refresh toolbar button — force a fresh query for the currently
+    /// selected tracker even if the cache already has a result.
+    /// No-op if no tracker is selected or a query is already in
+    /// flight (the view also disables the button while
+    /// `is_fetching`, but keyboard shortcuts could still re-enter).
     pub fn handle_tracker_browser_refresh(&mut self) -> Task<Message> {
         let Some(tracker_id) = self.tracker_browser.selected_tracker else {
             return Task::none();
         };
+        self.dispatch_tracker_query(tracker_id)
+    }
+
+    /// Build params and `Task::perform` a query for `tracker_id`.
+    /// Sets `is_fetching = true` and clears any prior `error` before
+    /// dispatching. No-op if the tracker config is missing or a
+    /// query is already in flight for this id (stale-drop guard).
+    fn dispatch_tracker_query(&mut self, tracker_id: Uuid) -> Task<Message> {
         let Some(tracker) = self.config.get_tracker(tracker_id).cloned() else {
             return Task::none();
         };
-
-        // Stale-drop guard at the dispatch site too: if a query is
-        // already in flight for this tracker, ignore the Refresh
-        // press. The view disables the button while `is_fetching` is
-        // true, but a keyboard shortcut or message-replay path could
-        // still re-enter here.
         let cache = self.tracker_browser.cache.entry(tracker_id).or_default();
         if cache.is_fetching {
             return Task::none();
@@ -525,6 +545,24 @@ impl NexusApp {
         })
     }
 
+    /// Auto-fetch trigger. Dispatches a query for `tracker_id` only
+    /// if the cache has no result yet — neither successful entries
+    /// nor a recorded error nor an in-flight request. Used by the
+    /// panel-open, dropdown-change, and post-mutation sites where
+    /// "fetch on demand if we don't already know" is the desired
+    /// semantic, distinct from the user-pressed Refresh which always
+    /// forces a fresh query.
+    pub(super) fn dispatch_tracker_query_if_uncached(&mut self, tracker_id: Uuid) -> Task<Message> {
+        let needs_fetch = match self.tracker_browser.cache.get(&tracker_id) {
+            None => true,
+            Some(e) => e.entries.is_none() && e.error.is_none() && !e.is_fetching,
+        };
+        if !needs_fetch {
+            return Task::none();
+        }
+        self.dispatch_tracker_query(tracker_id)
+    }
+
     /// Result of a `query_tracker` task. Stale results (cache entry
     /// no longer `is_fetching`) are dropped silently — see the
     /// concurrency-policy decision in step 5: a faster Refresh or a
@@ -543,6 +581,11 @@ impl NexusApp {
             return Task::none();
         }
         cache.is_fetching = false;
+
+        // Capture the Stage1Mismatch payload so we can transition the
+        // panel into `AcceptFingerprint` mode after the cache borrow
+        // is dropped. Other variants don't need post-match work.
+        let mut stage1_received: Option<String> = None;
 
         match result {
             Ok(TrackerQueryOk {
@@ -566,15 +609,104 @@ impl NexusApp {
                     let _ = save_config(&self.config);
                 }
             }
-            Err(TrackerQueryError::Stage1Mismatch { received, .. }) => {
+            Err(TrackerQueryError::Stage1Mismatch { received }) => {
                 cache.error = Some(t("err-tracker-query-stage1-mismatch"));
-                cache.pending_fingerprint = Some(received);
+                cache.pending_fingerprint = Some(received.clone());
+                stage1_received = Some(received);
             }
             Err(err) => {
                 cache.error = Some(translate_tracker_query_error(&err));
                 cache.pending_fingerprint = None;
             }
         }
+
+        // Auto-enter AcceptFingerprint mode when a Stage 1 mismatch
+        // lands for the currently-selected tracker. If the user
+        // switched to a different tracker mid-fetch, the cache keeps
+        // `pending_fingerprint` and the toolbar error; a Refresh
+        // would re-trigger the dialog from the same code path.
+        if let Some(received) = stage1_received
+            && self.tracker_browser.selected_tracker == Some(tracker_id)
+            && let Some(tracker) = self.config.get_tracker(tracker_id)
+        {
+            let expected = tracker.certificate_fingerprint.clone();
+            let name = tracker.name.clone();
+            let address = tracker.address.clone();
+            let port = tracker.port;
+            self.tracker_browser
+                .enter_accept_fingerprint_mode(tracker_id, name, address, port, expected, received);
+        }
+
+        Task::none()
+    }
+
+    // =========================================================================
+    // AcceptFingerprint
+    // =========================================================================
+
+    /// Accept the pending fingerprint: commit the observed value as
+    /// the new pin, drop the cache entry, return to List mode, and
+    /// dispatch a fresh forced query so the user immediately sees
+    /// the listing the new pin authorises.
+    pub fn handle_tracker_browser_accept_fingerprint_confirm(&mut self) -> Task<Message> {
+        if self.tracker_browser.is_accept_fingerprint_submitting {
+            return Task::none();
+        }
+
+        let TrackerBrowserMode::AcceptFingerprint { id, received, .. } = &self.tracker_browser.mode
+        else {
+            return Task::none();
+        };
+        let id = *id;
+        let new_pin = received.clone();
+
+        self.tracker_browser.is_accept_fingerprint_submitting = true;
+
+        // Commit the new pin to the tracker config row.
+        let Some(existing) = self.config.get_tracker(id).cloned() else {
+            // Tracker was removed between dialog open and Accept.
+            // Nothing to commit; bounce back to list.
+            self.tracker_browser.reset_to_list();
+            return Task::none();
+        };
+        let updated = ClientTracker {
+            certificate_fingerprint: Some(new_pin),
+            ..existing
+        };
+        self.config.update_tracker(id, updated);
+
+        if let Err(error) = save_config(&self.config) {
+            // Persist failed — keep the dialog open so the user can
+            // retry or cancel. The in-memory pin update is rolled
+            // back so memory stays consistent with disk.
+            if let Some(orig) = self.config.get_tracker(id).cloned() {
+                let restored = ClientTracker {
+                    certificate_fingerprint: existing.certificate_fingerprint,
+                    ..orig
+                };
+                self.config.update_tracker(id, restored);
+            }
+            self.tracker_browser.accept_fingerprint_error = Some(error);
+            self.tracker_browser.is_accept_fingerprint_submitting = false;
+            return Task::none();
+        }
+
+        // Pin committed. Drop the stale cache entry and re-query so
+        // the user sees the listing the new pin authorises.
+        self.tracker_browser.cache.remove(&id);
+        self.tracker_browser.reset_to_list();
+        self.dispatch_tracker_query(id)
+    }
+
+    /// Cancel the AcceptFingerprint dialog. Returns to the list view;
+    /// the cache's `pending_fingerprint` and toolbar error stay set
+    /// so the user can re-enter the dialog later via Refresh, or
+    /// remove the tracker if they don't want to accept.
+    pub fn handle_tracker_browser_accept_fingerprint_cancel(&mut self) -> Task<Message> {
+        if self.tracker_browser.is_accept_fingerprint_submitting {
+            return Task::none();
+        }
+        self.tracker_browser.reset_to_list();
         Task::none()
     }
 }

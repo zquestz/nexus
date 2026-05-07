@@ -1261,6 +1261,7 @@ tab-trackers = Tracker
 # Buttons
 button-remove = Rimuovi
 button-accept-fingerprint = Accetta
+menu-tracker-accept-fingerprint = Accetta impronta
 
 # Titles
 title-tracker-add = Aggiungi tracker
@@ -1334,9 +1335,10 @@ placeholder-tracker-search = Cerca server…
 col-description = Descrizione
 col-users = Utenti
 tracker-browser-status-loading = Caricamento…
-tracker-browser-status-servers = Server totali: { $count }
+tracker-browser-status-servers = Server: { $count }
 empty-no-trackers-configured = Nessun tracker configurato.
 empty-tracker-no-servers = Questo tracker non ha server registrati.
+empty-tracker-no-matches = Nessun server corrisponde alla tua ricerca.
 dialog-remove-client-tracker-body = Vuoi davvero rimuovere il tracker «{ $name }»? Verrà rimosso solo dal tuo elenco di scoperta; potrai aggiungerlo di nuovo in seguito.
 err-tracker-query-stage1-mismatch = L'impronta del certificato del tracker non corrisponde a quella fissata. Verifica e accetta la nuova impronta per continuare.
 err-tracker-query-stage2-intercepted = La connessione al tracker viene intercettata da un proxy TLS.

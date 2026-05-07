@@ -1195,6 +1195,7 @@ tab-trackers = トラッカー
 # Buttons
 button-remove = 削除
 button-accept-fingerprint = 受け入れる
+menu-tracker-accept-fingerprint = フィンガープリントを受け入れる
 
 # Columns
 col-status = 状態
@@ -1268,9 +1269,10 @@ placeholder-tracker-search = サーバーを検索…
 col-description = 説明
 col-users = ユーザー
 tracker-browser-status-loading = 読み込み中…
-tracker-browser-status-servers = サーバー合計: { $count }
+tracker-browser-status-servers = サーバー: { $count }
 empty-no-trackers-configured = トラッカーが設定されていません。
 empty-tracker-no-servers = このトラッカーには登録済みのサーバーがありません。
+empty-tracker-no-matches = 検索に一致するサーバーがありません。
 dialog-remove-client-tracker-body = トラッカー「{ $name }」を削除しますか？ディスカバリーリストから削除されるだけで、後で再度追加できます。
 err-tracker-query-stage1-mismatch = トラッカー証明書のフィンガープリントが保存された値と一致しません。続行するには新しいフィンガープリントを確認して承認してください。
 err-tracker-query-stage2-intercepted = トラッカーへの接続がTLSプロキシによって傍受されています。

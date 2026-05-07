@@ -397,6 +397,15 @@ pub enum Message {
     /// one-shot `query_tracker` for the currently selected tracker;
     /// disabled when no tracker is selected or a query is in flight.
     TrackerBrowserRefresh,
+    /// Tracker browser: AcceptFingerprint dialog Accept button.
+    /// Distinct from `Message::AcceptFingerprintConfirm` (BBS-admin
+    /// trackers panel) per the discovery-side namespace decision —
+    /// the two flows mutate different state and must not collide.
+    TrackerBrowserAcceptFingerprintConfirm,
+    /// Tracker browser: AcceptFingerprint dialog Cancel button.
+    /// Returns to the list view and surfaces the original Stage 1
+    /// mismatch error in the toolbar status row.
+    TrackerBrowserAcceptFingerprintCancel,
     /// Tracker browser: result of a `query_tracker` task. The handler
     /// drops the message silently if the cache entry is no longer
     /// `is_fetching` (stale-result-from-prior-query policy).

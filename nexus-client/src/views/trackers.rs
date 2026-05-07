@@ -172,7 +172,7 @@ fn build_tracker_context_menu(
 
     if has_pending_fingerprint && can_edit {
         items.push(
-            MenuButton::new(shaped_text(t("button-accept-fingerprint")).size(TEXT_SIZE))
+            MenuButton::new(shaped_text(t("menu-tracker-accept-fingerprint")).size(TEXT_SIZE))
                 .padding(CONTEXT_MENU_ITEM_PADDING)
                 .width(Fill)
                 .style(menu_button_style)

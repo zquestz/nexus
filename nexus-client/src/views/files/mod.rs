@@ -37,7 +37,7 @@ use crate::i18n::t;
 use crate::icon;
 use crate::style::{
     CONTENT_MAX_WIDTH, CONTENT_PADDING, DROP_OVERLAY_ICON_SIZE, HEADING_BUTTON_PADDING, ICON_SIZE,
-    NO_SPACING, SMALL_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
+    SMALL_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     content_background_style, drop_overlay_style, error_text_style, muted_text_style, shaped_text,
     shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
@@ -339,15 +339,12 @@ pub fn files_view<'a>(
             .into()
         } else if let Some(error) = &tab.search_error {
             // Search error state
-            container(
-                shaped_text_wrapped(error)
-                    .size(TEXT_SIZE)
-                    .style(error_text_style),
-            )
-            .width(Fill)
-            .center_x(Fill)
-            .padding(SPACER_SIZE_SMALL)
-            .into()
+            shaped_text_wrapped(error)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style)
+                .into()
         } else if let Some(results) = &tab.search_results {
             if results.is_empty() {
                 // No results
@@ -445,20 +442,13 @@ pub fn files_view<'a>(
     // Add error banner if present (between toolbar and search)
     if let Some(error) = &tab.error {
         form_column = form_column.push(
-            container(
-                shaped_text_wrapped(error)
-                    .size(TEXT_SIZE)
-                    .style(error_text_style),
-            )
-            .width(Fill)
-            .center_x(Fill)
-            .padding(iced::Padding {
-                top: NO_SPACING,
-                right: NO_SPACING,
-                bottom: SPACER_SIZE_MEDIUM,
-                left: NO_SPACING,
-            }),
+            shaped_text_wrapped(error)
+                .size(TEXT_SIZE)
+                .width(Fill)
+                .align_x(Center)
+                .style(error_text_style),
         );
+        form_column = form_column.push(Space::new().height(SPACER_SIZE_MEDIUM));
     }
 
     // Add search row if user has permission

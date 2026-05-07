@@ -971,6 +971,12 @@ impl NexusApp {
             Message::TrackerQueryResult { tracker_id, result } => {
                 self.handle_tracker_query_result(tracker_id, result)
             }
+            Message::TrackerBrowserAcceptFingerprintConfirm => {
+                self.handle_tracker_browser_accept_fingerprint_confirm()
+            }
+            Message::TrackerBrowserAcceptFingerprintCancel => {
+                self.handle_tracker_browser_accept_fingerprint_cancel()
+            }
 
             // Connection Monitor
             Message::ToggleConnectionMonitor => self.handle_toggle_connection_monitor(),

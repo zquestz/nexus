@@ -1263,6 +1263,7 @@ tab-trackers = Trackers
 # Buttons
 button-remove = Remover
 button-accept-fingerprint = Aceitar
+menu-tracker-accept-fingerprint = Aceitar impressão digital
 
 # Columns
 col-status = Status
@@ -1336,9 +1337,10 @@ placeholder-tracker-search = Buscar servidores…
 col-description = Descrição
 col-users = Usuários
 tracker-browser-status-loading = Carregando…
-tracker-browser-status-servers = Servidores no total: { $count }
+tracker-browser-status-servers = Servidores: { $count }
 empty-no-trackers-configured = Nenhum tracker configurado.
 empty-tracker-no-servers = Este tracker não tem servidores registrados.
+empty-tracker-no-matches = Nenhum servidor corresponde à sua busca.
 dialog-remove-client-tracker-body = Tem certeza de que deseja remover o tracker "{ $name }"? Ele será removido apenas da sua lista de descoberta; você pode adicioná-lo novamente mais tarde.
 err-tracker-query-stage1-mismatch = A impressão digital do certificado do tracker não corresponde à fixada. Revise e aceite a nova impressão digital para continuar.
 err-tracker-query-stage2-intercepted = A conexão com o tracker está sendo interceptada por um proxy TLS.

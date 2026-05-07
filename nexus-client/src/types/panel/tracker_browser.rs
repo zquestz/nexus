@@ -60,9 +60,7 @@ pub struct TrackerCacheEntry {
     /// Pending fingerprint observation from a Stage 1 mismatch.
     /// `None` in normal operation; `Some(fp)` after a mismatch,
     /// cleared by Accept (commits the new pin) or by the next
-    /// successful query. Read by the AcceptFingerprint dialog
-    /// landing in step 7; write-only for now.
-    #[allow(dead_code)]
+    /// successful query.
     pub pending_fingerprint: Option<String>,
 }
 
@@ -108,10 +106,10 @@ pub enum TrackerBrowserMode {
         name: String,
     },
     /// Stage-1 fingerprint mismatch reviewing dialog. Shown when a
-    /// query observes a fingerprint that differs from the row's pin.
-    /// Step 6 wires this; the variant is structurally part of the
-    /// enum now so handlers and views can pattern-match exhaustively.
-    #[allow(dead_code)] // Constructed by the network layer in step 6.
+    /// query observes a fingerprint that differs from the row's pin;
+    /// the user can Accept (commit the new pin and re-query) or
+    /// Cancel (return to the list view with the mismatch error
+    /// surfaced in the toolbar).
     AcceptFingerprint {
         /// Tracker id whose pin will be promoted on accept.
         id: Uuid,
@@ -223,18 +221,14 @@ pub struct TrackerBrowserState {
     pub form_error: Option<String>,
     /// Error displayed inside the Remove confirmation modal.
     pub remove_error: Option<String>,
-    /// Error displayed inside the AcceptFingerprint modal. Read by the
-    /// AcceptFingerprint subview that lands with the network layer;
-    /// write-only for now.
+    /// Error displayed inside the AcceptFingerprint modal.
     pub accept_fingerprint_error: Option<String>,
     /// Whether an Add/Edit submit is in flight (prevents double-submit).
     pub is_submitting: bool,
     /// Whether a Remove submit is in flight (separate so Remove can
     /// overlap with editing on different rows).
     pub is_remove_submitting: bool,
-    /// Whether an AcceptFingerprint submit is in flight. Gated on the
-    /// AcceptFingerprint dialog landing with the network layer;
-    /// write-only for now.
+    /// Whether an AcceptFingerprint submit is in flight.
     pub is_accept_fingerprint_submitting: bool,
 
     // ---- Add-form fields (persist across reopen of Add mode) ----
@@ -355,7 +349,6 @@ impl TrackerBrowserState {
 
     /// Enter the AcceptFingerprint modal with the values the network
     /// layer captured at Stage-1 mismatch time.
-    #[allow(dead_code)] // Wired up by the network layer in step 6.
     pub fn enter_accept_fingerprint_mode(
         &mut self,
         id: Uuid,

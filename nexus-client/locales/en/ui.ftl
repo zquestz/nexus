@@ -1291,6 +1291,7 @@ tab-trackers = Trackers
 # Buttons
 button-remove = Remove
 button-accept-fingerprint = Accept
+menu-tracker-accept-fingerprint = Accept Fingerprint
 
 # Titles
 title-tracker-add = Add Tracker
@@ -1389,11 +1390,12 @@ col-users = Users
 
 # Toolbar status text variants
 tracker-browser-status-loading = Loading…
-tracker-browser-status-servers = Total Servers: { $count }
+tracker-browser-status-servers = Servers: { $count }
 
 # List-area empty states
 empty-no-trackers-configured = No trackers configured.
 empty-tracker-no-servers = This tracker has no registered servers.
+empty-tracker-no-matches = No servers match your search.
 
 # Remove confirmation (discovery-side — distinct from BBS-admin
 # `dialog-remove-tracker-body`, which mentions stopping a server

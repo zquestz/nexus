@@ -210,7 +210,19 @@ impl NexusApp {
         // auto-focus convention used by other forms (Group Create
         // → name, User Create → username, etc.).
         self.focused_field = InputId::TrackerBrowserSearch;
-        iced::widget::operation::focus(iced::widget::Id::from(InputId::TrackerBrowserSearch))
+        let focus_task =
+            iced::widget::operation::focus(iced::widget::Id::from(InputId::TrackerBrowserSearch));
+
+        // Auto-fetch on panel open: if the selected tracker has no
+        // cached result yet, kick off a query in the background.
+        // No-op when the cache already holds a successful list or a
+        // prior error; user can hit Refresh to force a fresh fetch.
+        let fetch_task = match self.tracker_browser.selected_tracker {
+            Some(id) => self.dispatch_tracker_query_if_uncached(id),
+            None => Task::none(),
+        };
+
+        Task::batch([focus_task, fetch_task])
     }
 
     // ==================== Sidebar Toggles ====================

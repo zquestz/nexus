@@ -1195,6 +1195,7 @@ tab-trackers = 追蹤器
 # Buttons
 button-remove = 移除
 button-accept-fingerprint = 接受
+menu-tracker-accept-fingerprint = 接受指紋
 
 # Columns
 col-status = 狀態
@@ -1268,9 +1269,10 @@ placeholder-tracker-search = 搜尋伺服器…
 col-description = 描述
 col-users = 使用者
 tracker-browser-status-loading = 載入中…
-tracker-browser-status-servers = 伺服器總數：{ $count }
+tracker-browser-status-servers = 伺服器：{ $count }
 empty-no-trackers-configured = 尚未設定追蹤器。
 empty-tracker-no-servers = 此追蹤器沒有已註冊的伺服器。
+empty-tracker-no-matches = 沒有伺服器符合你的搜尋。
 dialog-remove-client-tracker-body = 確定要移除追蹤器「{ $name }」嗎？這只會將其從你的探索清單中移除；你可以稍後重新新增。
 err-tracker-query-stage1-mismatch = 追蹤器憑證指紋與已儲存的釘選值不符。請審視並接受新指紋以繼續。
 err-tracker-query-stage2-intercepted = 與追蹤器的連線正被 TLS 代理攔截。

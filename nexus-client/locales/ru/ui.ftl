@@ -1283,6 +1283,7 @@ tab-trackers = Трекеры
 # Buttons
 button-remove = Удалить
 button-accept-fingerprint = Принять
+menu-tracker-accept-fingerprint = Принять отпечаток
 
 # Columns
 col-status = Состояние
@@ -1356,9 +1357,10 @@ placeholder-tracker-search = Поиск серверов…
 col-description = Описание
 col-users = Пользователи
 tracker-browser-status-loading = Загрузка…
-tracker-browser-status-servers = Всего серверов: { $count }
+tracker-browser-status-servers = Серверы: { $count }
 empty-no-trackers-configured = Трекеры не настроены.
 empty-tracker-no-servers = На этом трекере нет зарегистрированных серверов.
+empty-tracker-no-matches = Нет серверов, соответствующих вашему поиску.
 dialog-remove-client-tracker-body = Удалить трекер «{ $name }»? Он будет удалён только из вашего списка обнаружения; вы сможете добавить его снова позже.
 err-tracker-query-stage1-mismatch = Отпечаток сертификата трекера не совпадает с закреплённым значением. Проверьте и примите новый отпечаток, чтобы продолжить.
 err-tracker-query-stage2-intercepted = Соединение с трекером перехватывается TLS-прокси.

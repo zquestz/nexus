@@ -337,6 +337,51 @@ impl NexusApp {
                     }
                 }
                 return Task::none();
+            } else if self.active_panel() == ActivePanel::TrackerBrowser {
+                // On the tracker discovery panel, dispatch based on
+                // what subview is open:
+                //   Add / Edit                  → Submit (or Validate
+                //                                  if the form is incomplete,
+                //                                  matching the form's
+                //                                  on_submit fallback).
+                //   ConfirmRemove               → RemoveConfirm.
+                //   AcceptFingerprint           → AcceptFingerprintConfirm.
+                //     (these modals have no text inputs, so the keyboard
+                //      handler is the only path that can fire their
+                //      primary action.)
+                //   List                        → no Enter action
+                //                                  (Escape closes the panel).
+                match &self.tracker_browser.mode {
+                    crate::types::TrackerBrowserMode::Add => {
+                        let can_submit = !self.tracker_browser.add_name.trim().is_empty()
+                            && !self.tracker_browser.add_address.trim().is_empty()
+                            && !self.tracker_browser.is_submitting;
+                        let msg = if can_submit {
+                            Message::TrackerBrowserAddSubmit
+                        } else {
+                            Message::TrackerBrowserValidateAdd
+                        };
+                        return self.update(msg);
+                    }
+                    crate::types::TrackerBrowserMode::Edit { name, address, .. } => {
+                        let can_submit = !name.trim().is_empty()
+                            && !address.trim().is_empty()
+                            && !self.tracker_browser.is_submitting;
+                        let msg = if can_submit {
+                            Message::TrackerBrowserEditSubmit
+                        } else {
+                            Message::TrackerBrowserValidateEdit
+                        };
+                        return self.update(msg);
+                    }
+                    crate::types::TrackerBrowserMode::ConfirmRemove { .. } => {
+                        return self.update(Message::TrackerBrowserRemoveConfirm);
+                    }
+                    crate::types::TrackerBrowserMode::AcceptFingerprint { .. } => {
+                        return self.update(Message::TrackerBrowserAcceptFingerprintConfirm);
+                    }
+                    crate::types::TrackerBrowserMode::List => {}
+                }
             } else if self.active_panel() == ActivePanel::News {
                 // On news screen, handle Enter based on mode
                 if let Some(conn_id) = self.active_connection

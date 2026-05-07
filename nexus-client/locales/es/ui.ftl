@@ -1259,6 +1259,7 @@ tab-trackers = Trackers
 # Buttons
 button-remove = Quitar
 button-accept-fingerprint = Aceptar
+menu-tracker-accept-fingerprint = Aceptar huella digital
 
 # Titles
 title-tracker-add = Agregar tracker
@@ -1332,9 +1333,10 @@ placeholder-tracker-search = Buscar servidores…
 col-description = Descripción
 col-users = Usuarios
 tracker-browser-status-loading = Cargando…
-tracker-browser-status-servers = Servidores totales: { $count }
+tracker-browser-status-servers = Servidores: { $count }
 empty-no-trackers-configured = No hay trackers configurados.
 empty-tracker-no-servers = Este tracker no tiene servidores registrados.
+empty-tracker-no-matches = Ningún servidor coincide con tu búsqueda.
 dialog-remove-client-tracker-body = ¿Seguro que quieres quitar el tracker «{ $name }»? Esto solo lo eliminará de tu lista de descubrimiento; puedes volver a agregarlo más tarde.
 err-tracker-query-stage1-mismatch = La huella del certificado del tracker no coincide con la anclada. Revisa y acepta la nueva huella para continuar.
 err-tracker-query-stage2-intercepted = La conexión con el tracker está siendo interceptada por un proxy TLS.
