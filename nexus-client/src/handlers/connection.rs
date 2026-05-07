@@ -78,6 +78,56 @@ impl NexusApp {
         Task::none()
     }
 
+    // ==================== Connection Form Lifecycle ====================
+
+    /// Open the global Connection form (server-list "+" entrypoint or any
+    /// future summon path that doesn't pre-fill from a tracker). Sets
+    /// `connect_origin` to the current effective `active_panel`; the
+    /// layout's modal-like gate then renders the form on top of
+    /// whatever else is visible. Cancel restores by clearing origin —
+    /// the underlying `active_panel` was never touched, so the prior
+    /// view comes back automatically.
+    ///
+    /// `clear()` runs first so a stale field / error / `is_connecting`
+    /// flag from a previous form session can't bleed into the new
+    /// summon. Mirrors `handle_open_connect_from_tracker`'s
+    /// clear-then-fill discipline.
+    ///
+    /// **Concurrent-state note:** the server-list "+" button lives in
+    /// the sidebar and is reachable while the bookmark editor is open.
+    /// Pressing "+" in that state sets `connect_origin` without
+    /// touching `bookmark_edit.mode`. Both states are simultaneously
+    /// set; the layout's gate ordering (`views/layout.rs`) renders the
+    /// connect form on top, and Cancel returns the user to the
+    /// bookmark editor (via the layout falling through).
+    ///
+    /// No-op if the form is already summoned (mirrors every other toggle
+    /// handler's idempotent re-press behaviour).
+    pub fn handle_open_connection_form(&mut self) -> Task<Message> {
+        if self.connection_form.connect_origin.is_some() {
+            return Task::none();
+        }
+        self.connection_form.clear();
+        self.connection_form.connect_origin = Some(self.active_panel());
+        Task::none()
+    }
+
+    /// Cancel the Connection form: wipe input fields and clear origin.
+    /// The layout falls back to whatever `active_panel` was before the
+    /// summon, automatically — no panel-restoration call needed.
+    ///
+    /// No-op when `connect_origin` is `None` (default-state form has no
+    /// return target — Cancel button is hidden in that case, and Escape
+    /// reaching here defensively does nothing).
+    pub fn handle_connection_form_cancel(&mut self) -> Task<Message> {
+        if self.connection_form.connect_origin.is_none() {
+            return Task::none();
+        }
+        self.connection_form.clear();
+        self.connection_form.connect_origin = None;
+        Task::none()
+    }
+
     // ==================== Connection Actions ====================
 
     /// Handle connect button press

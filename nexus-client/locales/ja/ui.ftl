@@ -276,6 +276,9 @@ tooltip-close = 閉じる
 tooltip-tab-new = 新しいタブ
 tooltip-tab-close = タブを閉じる
 tooltip-bookmark-create = ブックマークを作成
+tooltip-server-connect = サーバーに接続
+tooltip-server-public-yes = ゲストログイン可能
+tooltip-server-public-no = アカウントが必要
 tooltip-user-create = ユーザーを作成
 tooltip-group-create = グループ作成
 tooltip-news-create = 投稿を作成
@@ -593,6 +596,7 @@ err-failed-update-topic = トピックの更新に失敗しました: { $error }
 # Network connection errors (with parameters)
 err-invalid-address = 無効なアドレス '{ $address }': { $error }
 err-could-not-resolve = アドレス '{ $address }' を解決できませんでした
+err-dns-lookup-timeout = アドレス '{ $address }' のDNSルックアップがタイムアウトしました
 err-connection-timeout = { $seconds }秒後に接続がタイムアウトしました
 err-connection-failed = 接続に失敗しました: { $error }
 err-tls-handshake-failed = TLSハンドシェイクに失敗しました: { $error }
@@ -1196,6 +1200,9 @@ tab-trackers = トラッカー
 button-remove = 削除
 button-accept-fingerprint = 受け入れる
 menu-tracker-accept-fingerprint = フィンガープリントを受け入れる
+menu-tracker-connect = 接続
+menu-tracker-bookmark = ブックマーク
+menu-tracker-copy-uri = URIをコピー
 
 # Columns
 col-status = 状態
@@ -1243,6 +1250,9 @@ toast-tracker-removed-name = トラッカー「{ $name }」を削除しました
 toast-tracker-fingerprint-accepted = フィンガープリントを承認しました
 toast-tracker-fingerprint-stale = フィンガープリント確認は保留されていません
 toast-tracker-fingerprint-accepted-name = 「{ $name }」のフィンガープリントを承認しました
+toast-bookmark-added = ブックマークを追加しました
+toast-bookmark-already-exists = ブックマークは既に存在します
+toast-bookmark-save-failed = ブックマークの保存に失敗しました
 
 # Errors
 err-tracker-name-empty = トラッカー名を入力してください
@@ -1268,6 +1278,7 @@ tooltip-tracker-remove = トラッカーを削除
 placeholder-tracker-search = サーバーを検索…
 col-description = 説明
 col-users = ユーザー
+col-public = 公開
 tracker-browser-status-loading = 読み込み中…
 tracker-browser-status-servers = サーバー: { $count }
 empty-no-trackers-configured = トラッカーが設定されていません。

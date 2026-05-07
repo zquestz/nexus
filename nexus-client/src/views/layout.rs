@@ -293,10 +293,25 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
         hidden_panel()
     };
 
-    // Middle panel: Main content (bookmark editor, connection form, or active server view)
+    // Middle panel: Main content (connection form, bookmark editor, or active server view)
     // Wrapped with separators for consistent appearance
+    //
+    // Modal-like ordering: connection form on top of bookmark editor.
+    // If both are simultaneously summoned (bookmark edit + tracker click
+    // landing the connect form on the same frame), the connect form wins
+    // visually. Cancel from the connect form returns the user to whatever
+    // panel they were on — including, if applicable, the bookmark editor.
     let main_content: Element<'_, Message> = {
-        let content = if config.bookmark_edit.mode != BookmarkEditMode::None {
+        let content = if config.connection_form.connect_origin.is_some() {
+            // Connection form was summoned from somewhere (tracker click,
+            // server-list "+" entrypoint, or any future entrypoint). It
+            // overlays whatever else would render — same modal-like
+            // behaviour as `bookmark_edit`. The default-state form
+            // (no summon, app boot or post-disconnect-of-last) has
+            // `connect_origin == None` and is served by the bottom
+            // else-branch's fallthrough instead.
+            connection_form_view(config.connection_form)
+        } else if config.bookmark_edit.mode != BookmarkEditMode::None {
             bookmark_edit_view(config.bookmark_edit)
         } else if let Some(conn_id) = config.active_connection
             && let Some(conn) = config.connections.get(&conn_id)

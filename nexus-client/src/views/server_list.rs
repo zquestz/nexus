@@ -246,10 +246,35 @@ fn bookmarks_section<'a>(
     .gap(TOOLTIP_GAP)
     .padding(TOOLTIP_PADDING);
 
+    // "+" entrypoint for the global Connection form. plus_squared icon
+    // distinguishes "new server connection" from per-list HEADER add
+    // (plain plus) and TOOLBAR add (plus_circled) per the project-wide
+    // icon convention.
+    let connect_icon = container(icon::plus_squared().size(ICON_SIZE))
+        .width(ICON_SIZE)
+        .height(ICON_SIZE)
+        .align_x(alignment::Horizontal::Center)
+        .align_y(alignment::Vertical::Center);
+
+    let connect_btn = tooltip(
+        button(connect_icon)
+            .on_press(Message::OpenConnectionForm)
+            .padding(HEADING_BUTTON_PADDING)
+            .style(transparent_icon_button_style),
+        container(shaped_text(t("tooltip-server-connect")).size(TOOLTIP_TEXT_SIZE))
+            .padding(TOOLTIP_BACKGROUND_PADDING)
+            .style(tooltip_container_style),
+        tooltip::Position::Top,
+    )
+    .gap(TOOLTIP_GAP)
+    .padding(TOOLTIP_PADDING);
+
+    let footer_row = row![add_btn, connect_btn].spacing(SERVER_LIST_ITEM_SPACING);
+
     column![
         bookmarks_title,
         scrollable(bookmarks_column).height(Fill),
-        Element::from(add_btn),
+        Element::from(footer_row),
     ]
     .spacing(SERVER_LIST_SECTION_SPACING)
     .padding(iced::Padding {

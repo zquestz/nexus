@@ -90,29 +90,36 @@ pub async fn query_tracker(
     let mut writer = FrameWriter::new(write_half);
 
     // Phase 3: send Handshake. Tracker protocol version, not BBS.
-    send_client_message(
-        &mut writer,
-        &ClientMessage::Handshake {
-            version: TRACKER_PROTOCOL_VERSION.to_string(),
-        },
+    // Wrapped in a `TRACKER_RESPONSE_TIMEOUT` outer bound so a peer
+    // that accepted TLS but then blackholes our writes can't park the
+    // task indefinitely behind kernel TCP backpressure.
+    timeout(
+        TRACKER_RESPONSE_TIMEOUT,
+        send_client_message(
+            &mut writer,
+            &ClientMessage::Handshake {
+                version: TRACKER_PROTOCOL_VERSION.to_string(),
+            },
+        ),
     )
     .await
+    .map_err(|_| TrackerQueryError::Handshake("timeout sending Handshake".to_string()))?
     .map_err(|e| TrackerQueryError::Handshake(e.to_string()))?;
 
     // Phase 4: read HandshakeResponse with a tight per-call timeout.
-    let server_reported =
+    let (server_reported, server_version) =
         match timeout(TRACKER_RESPONSE_TIMEOUT, read_server_message(&mut reader)).await {
             Ok(Ok(Some(received))) => match received.message {
                 ServerMessage::HandshakeResponse {
                     success,
                     fingerprint,
+                    version,
                     error,
-                    ..
                 } => {
                     if !success {
                         return Err(TrackerQueryError::Handshake(error.unwrap_or_default()));
                     }
-                    fingerprint
+                    (fingerprint, version)
                 }
                 ServerMessage::Error { message, .. } => {
                     return Err(TrackerQueryError::Handshake(message));
@@ -150,27 +157,63 @@ pub async fn query_tracker(
         return Err(TrackerQueryError::Stage2Mismatch);
     }
 
+    // Trust-but-verify: the tracker's `success: true` indicates it
+    // already filtered for compat server-side, but a buggy tracker
+    // could erroneously accept us. Re-check the reported version
+    // against ours via the same `check_compatibility` rules the BBS
+    // handshake uses. Missing version is accepted (forward-compat
+    // with older trackers); unparseable rejects as MalformedResponse.
+    if let Some(reported) = server_version.as_deref() {
+        let server_v = nexus_common::version::Version::parse(reported).map_err(|e| {
+            TrackerQueryError::MalformedResponse(format!(
+                "unparseable tracker version \"{}\": {}",
+                reported, e
+            ))
+        })?;
+        let client_v = nexus_common::version::Version::parse(TRACKER_PROTOCOL_VERSION)
+            .expect("TRACKER_PROTOCOL_VERSION is a canonical semver constant");
+        let compat = nexus_common::version::check_compatibility(&server_v, &client_v);
+        if !compat.is_compatible() {
+            return Err(TrackerQueryError::Handshake(format!(
+                "incompatible tracker version {} (client {})",
+                reported, TRACKER_PROTOCOL_VERSION
+            )));
+        }
+    }
+
     // Phase 6: send TrackerServerList. Tracker closes after responding.
-    send_tracker_client_message(
-        &mut writer,
-        &TrackerClientMessage::TrackerServerList {
-            password: params.password.clone(),
-            locale: params.locale.clone(),
-            version: params.version.clone(),
-        },
+    // Same `TRACKER_RESPONSE_TIMEOUT` outer bound as Phase 3 — defense
+    // against a peer that stalls our send post-handshake.
+    timeout(
+        TRACKER_RESPONSE_TIMEOUT,
+        send_tracker_client_message(
+            &mut writer,
+            &TrackerClientMessage::TrackerServerList {
+                password: params.password.clone(),
+                locale: params.locale.clone(),
+                version: params.version.clone(),
+            },
+        ),
     )
     .await
+    .map_err(|_| TrackerQueryError::Protocol("timeout sending TrackerServerList".to_string()))?
     .map_err(|e| TrackerQueryError::Protocol(e.to_string()))?;
 
-    // Phase 7: read TrackerServerListResponse. Same response timeout
-    // is used for both the idle-before-frame and full-frame phases —
-    // the tracker side responds promptly or is wedged.
-    let response = read_tracker_server_message_with_full_timeout(
-        &mut reader,
-        Some(TRACKER_RESPONSE_TIMEOUT),
-        Some(TRACKER_RESPONSE_TIMEOUT),
+    // Phase 7: read TrackerServerListResponse. The inner method applies
+    // idle and frame timeouts in series (worst case 2× the constant);
+    // the outer wrap caps the whole leg at `TRACKER_RESPONSE_TIMEOUT`
+    // so the constant's name and behaviour line up. Mirrors the
+    // BBS-side server tracker task pattern.
+    let response = tokio::time::timeout(
+        TRACKER_RESPONSE_TIMEOUT,
+        read_tracker_server_message_with_full_timeout(
+            &mut reader,
+            Some(TRACKER_RESPONSE_TIMEOUT),
+            Some(TRACKER_RESPONSE_TIMEOUT),
+        ),
     )
     .await
+    .map_err(|_| TrackerQueryError::Protocol("timeout reading response".to_string()))?
     .map_err(|e| TrackerQueryError::Protocol(e.to_string()))?;
 
     match response {
@@ -179,10 +222,28 @@ pub async fn query_tracker(
                 success: true,
                 servers,
                 ..
-            } => Ok(TrackerQueryOk {
-                entries: servers,
-                observed_fingerprint: tls_observed,
-            }),
+            } => {
+                // Validate each entry's fingerprint shape on receipt —
+                // the protocol guarantees the canonical 95-byte uppercase
+                // form, but a buggy or hostile tracker could ship
+                // malformed values that would otherwise reach the UI
+                // (and the connect-form pre-fill) untouched. Reject the
+                // whole response on first non-canonical fingerprint
+                // since the tracker is definitionally broken at that
+                // point.
+                for entry in &servers {
+                    if !nexus_common::fingerprint::is_canonical_fingerprint(&entry.fingerprint) {
+                        return Err(TrackerQueryError::MalformedResponse(format!(
+                            "non-canonical fingerprint in entry \"{}\"",
+                            entry.name
+                        )));
+                    }
+                }
+                Ok(TrackerQueryOk {
+                    entries: servers,
+                    observed_fingerprint: tls_observed,
+                })
+            }
             TrackerServerMessage::TrackerServerListResponse {
                 success: false,
                 error,

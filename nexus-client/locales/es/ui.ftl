@@ -278,6 +278,9 @@ tooltip-close = Cerrar
 tooltip-tab-new = Nueva Pestaña
 tooltip-tab-close = Cerrar Pestaña
 tooltip-bookmark-create = Crear Marcador
+tooltip-server-connect = Conectar al Servidor
+tooltip-server-public-yes = Acceso de invitados activado
+tooltip-server-public-no = Cuenta requerida
 tooltip-user-create = Crear Usuario
 tooltip-group-create = Crear Grupo
 tooltip-news-create = Crear Publicación
@@ -611,6 +614,7 @@ err-failed-update-topic = Error al actualizar tema: { $error }
 # Network connection errors (with parameters)
 err-invalid-address = Dirección inválida '{ $address }': { $error }
 err-could-not-resolve = No se pudo resolver la dirección '{ $address }'
+err-dns-lookup-timeout = Tiempo de búsqueda DNS agotado para '{ $address }'
 err-connection-timeout = Tiempo de conexión agotado después de { $seconds } { $seconds ->
     [one] segundo
    *[other] segundos
@@ -1260,6 +1264,9 @@ tab-trackers = Trackers
 button-remove = Quitar
 button-accept-fingerprint = Aceptar
 menu-tracker-accept-fingerprint = Aceptar huella digital
+menu-tracker-connect = Conectar
+menu-tracker-bookmark = Marcador
+menu-tracker-copy-uri = Copiar URI
 
 # Titles
 title-tracker-add = Agregar tracker
@@ -1307,6 +1314,9 @@ toast-tracker-removed-name = Tracker «{ $name }» eliminado
 toast-tracker-fingerprint-accepted = Huella aceptada
 toast-tracker-fingerprint-stale = La revisión de huella ya no está pendiente
 toast-tracker-fingerprint-accepted-name = Huella aceptada para «{ $name }»
+toast-bookmark-added = Marcador agregado
+toast-bookmark-already-exists = El marcador ya existe
+toast-bookmark-save-failed = Error al guardar marcador
 
 # Errors
 err-tracker-name-empty = Se requiere el nombre del tracker
@@ -1332,6 +1342,7 @@ tooltip-tracker-remove = Quitar tracker
 placeholder-tracker-search = Buscar servidores…
 col-description = Descripción
 col-users = Usuarios
+col-public = Público
 tracker-browser-status-loading = Cargando…
 tracker-browser-status-servers = Servidores: { $count }
 empty-no-trackers-configured = No hay trackers configurados.

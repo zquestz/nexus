@@ -279,6 +279,9 @@ tooltip-close = Chiudi
 tooltip-tab-new = Nuova Scheda
 tooltip-tab-close = Chiudi Scheda
 tooltip-bookmark-create = Crea Segnalibro
+tooltip-server-connect = Connetti al server
+tooltip-server-public-yes = Accesso ospite abilitato
+tooltip-server-public-no = Account richiesto
 tooltip-user-create = Crea Utente
 tooltip-group-create = Crea Gruppo
 tooltip-news-create = Crea Pubblicazione
@@ -613,6 +616,7 @@ err-failed-update-topic = Impossibile aggiornare l'argomento: { $error }
 # Network connection errors (with parameters)
 err-invalid-address = Indirizzo non valido '{ $address }': { $error }
 err-could-not-resolve = Impossibile risolvere l'indirizzo '{ $address }'
+err-dns-lookup-timeout = Risoluzione DNS scaduta per '{ $address }'
 err-connection-timeout = Connessione scaduta dopo { $seconds } { $seconds ->
     [one] secondo
    *[other] secondi
@@ -1262,6 +1266,9 @@ tab-trackers = Tracker
 button-remove = Rimuovi
 button-accept-fingerprint = Accetta
 menu-tracker-accept-fingerprint = Accetta impronta
+menu-tracker-connect = Connetti
+menu-tracker-bookmark = Segnalibro
+menu-tracker-copy-uri = Copia URI
 
 # Titles
 title-tracker-add = Aggiungi tracker
@@ -1309,6 +1316,9 @@ toast-tracker-removed-name = Tracker «{ $name }» rimosso
 toast-tracker-fingerprint-accepted = Impronta accettata
 toast-tracker-fingerprint-stale = Verifica impronta non più in sospeso
 toast-tracker-fingerprint-accepted-name = Impronta accettata per «{ $name }»
+toast-bookmark-added = Segnalibro aggiunto
+toast-bookmark-already-exists = Segnalibro già esistente
+toast-bookmark-save-failed = Impossibile salvare il segnalibro
 
 # Errors
 err-tracker-name-empty = Il nome del tracker è obbligatorio
@@ -1334,6 +1344,7 @@ tooltip-tracker-remove = Rimuovi tracker
 placeholder-tracker-search = Cerca server…
 col-description = Descrizione
 col-users = Utenti
+col-public = Pubblico
 tracker-browser-status-loading = Caricamento…
 tracker-browser-status-servers = Server: { $count }
 empty-no-trackers-configured = Nessun tracker configurato.

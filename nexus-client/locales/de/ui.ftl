@@ -278,6 +278,9 @@ tooltip-close = Schließen
 tooltip-tab-new = Neuer Tab
 tooltip-tab-close = Tab schließen
 tooltip-bookmark-create = Lesezeichen erstellen
+tooltip-server-connect = Mit Server verbinden
+tooltip-server-public-yes = Gastzugang aktiviert
+tooltip-server-public-no = Konto erforderlich
 tooltip-user-create = Benutzer erstellen
 tooltip-group-create = Gruppe erstellen
 tooltip-news-create = Beitrag erstellen
@@ -609,6 +612,7 @@ err-failed-update-topic = Thema konnte nicht aktualisiert werden: { $error }
 # Network connection errors (with parameters)
 err-invalid-address = Ungültige Adresse '{ $address }': { $error }
 err-could-not-resolve = Adresse '{ $address }' konnte nicht aufgelöst werden
+err-dns-lookup-timeout = DNS-Auflösung für '{ $address }' hat das Zeitlimit überschritten
 err-connection-timeout = Verbindungszeitüberschreitung nach { $seconds } { $seconds ->
     [one] Sekunde
    *[other] Sekunden
@@ -1262,6 +1266,9 @@ tab-trackers = Tracker
 button-remove = Entfernen
 button-accept-fingerprint = Akzeptieren
 menu-tracker-accept-fingerprint = Fingerabdruck akzeptieren
+menu-tracker-connect = Verbinden
+menu-tracker-bookmark = Lesezeichen
+menu-tracker-copy-uri = URI kopieren
 
 # Titles
 title-tracker-add = Tracker hinzufügen
@@ -1309,6 +1316,9 @@ toast-tracker-removed-name = Tracker „{ $name }“ entfernt
 toast-tracker-fingerprint-accepted = Fingerabdruck akzeptiert
 toast-tracker-fingerprint-stale = Fingerabdruckprüfung nicht mehr ausstehend
 toast-tracker-fingerprint-accepted-name = Fingerabdruck für „{ $name }“ akzeptiert
+toast-bookmark-added = Lesezeichen hinzugefügt
+toast-bookmark-already-exists = Lesezeichen existiert bereits
+toast-bookmark-save-failed = Lesezeichen konnte nicht gespeichert werden
 
 # Errors
 err-tracker-name-empty = Tracker-Name ist erforderlich
@@ -1334,6 +1344,7 @@ tooltip-tracker-remove = Tracker entfernen
 placeholder-tracker-search = Server suchen…
 col-description = Beschreibung
 col-users = Benutzer
+col-public = Öffentlich
 tracker-browser-status-loading = Wird geladen…
 tracker-browser-status-servers = Server: { $count }
 empty-no-trackers-configured = Keine Tracker konfiguriert.

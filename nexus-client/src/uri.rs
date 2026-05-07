@@ -353,6 +353,45 @@ pub fn is_nexus_uri(s: &str) -> bool {
     s.starts_with("nexus://")
 }
 
+/// Format a `host:port` endpoint string for **display** purposes.
+///
+/// Brackets IPv6 hosts so the rendered string is unambiguous and
+/// parseable. Always includes the port (no default-port elision —
+/// callers wanting URI semantics should use [`build_share_uri`]).
+///
+/// Bracketing rules (mirror [`NexusUri::fmt`] exactly so a host that
+/// round-trips through this helper stays consistent with the URI form):
+///
+/// - Host already bracketed (`[host]`) → emit verbatim. Idempotent.
+/// - Host contains `:` and isn't bracketed → wrap as `[host]`. This
+///   covers raw IPv6 (`2001:db8::1`) and IPv6-with-zone-id
+///   (`fe80::1%eth0`).
+/// - Otherwise (IPv4, hostname, IDN Unicode form) → emit verbatim.
+///
+/// Examples:
+///
+/// ```ignore
+/// assert_eq!(format_endpoint("203.0.113.1", 7500), "203.0.113.1:7500");
+/// assert_eq!(format_endpoint("2001:db8::1", 7500), "[2001:db8::1]:7500");
+/// assert_eq!(format_endpoint("[2001:db8::1]", 7500), "[2001:db8::1]:7500");
+/// assert_eq!(format_endpoint("fe80::1%eth0", 7500), "[fe80::1%eth0]:7500");
+/// assert_eq!(format_endpoint("example.com", 7500), "example.com:7500");
+/// assert_eq!(format_endpoint("münchen.de", 7500), "münchen.de:7500");
+/// ```
+///
+/// **Display only.** Don't use for wire-shape strings handed to TLS /
+/// SOCKS5 / `to_socket_addrs` — those want the bare unbracketed host
+/// in a tuple `(host, port)` form.
+pub fn format_endpoint(address: &str, port: u16) -> String {
+    if address.starts_with('[') && address.ends_with(']') {
+        format!("{}:{}", address, port)
+    } else if address.contains(':') {
+        format!("[{}]:{}", address, port)
+    } else {
+        format!("{}:{}", address, port)
+    }
+}
+
 /// Build a shareable `nexus://` root URI for a connection.
 ///
 /// Prefers `public_address` advertised by the server; falls back to the
@@ -943,6 +982,94 @@ mod tests {
             assert_eq!(path, "Música/日本語 file.mp3");
         } else {
             panic!("Expected Files path");
+        }
+    }
+
+    // =========================================================================
+    // format_endpoint — display helper for `host:port` strings
+    // =========================================================================
+
+    #[test]
+    fn format_endpoint_ipv4_appends_port() {
+        assert_eq!(format_endpoint("203.0.113.1", 7500), "203.0.113.1:7500");
+    }
+
+    #[test]
+    fn format_endpoint_ipv4_default_port_still_emitted() {
+        // format_endpoint always includes the port — no default-elision
+        // (build_share_uri is the helper that drops default ports).
+        assert_eq!(format_endpoint("203.0.113.1", 7500), "203.0.113.1:7500");
+        assert_eq!(format_endpoint("203.0.113.1", 7600), "203.0.113.1:7600");
+    }
+
+    #[test]
+    fn format_endpoint_ipv6_brackets_unbracketed_host() {
+        assert_eq!(format_endpoint("2001:db8::1", 7500), "[2001:db8::1]:7500");
+        assert_eq!(format_endpoint("::1", 7500), "[::1]:7500");
+    }
+
+    #[test]
+    fn format_endpoint_ipv6_already_bracketed_is_idempotent() {
+        // A caller that pre-brackets the host shouldn't see double-wrapping.
+        assert_eq!(format_endpoint("[2001:db8::1]", 7500), "[2001:db8::1]:7500");
+        assert_eq!(format_endpoint("[::1]", 8080), "[::1]:8080");
+    }
+
+    #[test]
+    fn format_endpoint_ipv6_link_local_with_zone_id() {
+        // Yggdrasil / IPv6 mesh networks can present zone-identified
+        // addresses like fe80::1%eth0. The helper must bracket them
+        // because they contain `:` (and the `%zone` is still part of
+        // the host literal per RFC 6874).
+        assert_eq!(format_endpoint("fe80::1%eth0", 7500), "[fe80::1%eth0]:7500");
+    }
+
+    #[test]
+    fn format_endpoint_hostname_no_brackets() {
+        assert_eq!(format_endpoint("example.com", 7500), "example.com:7500");
+        assert_eq!(format_endpoint("a.b.c.d.example", 80), "a.b.c.d.example:80");
+    }
+
+    #[test]
+    fn format_endpoint_idn_unicode_host_no_brackets() {
+        // IDN hosts in Unicode form contain no `:`, so no brackets.
+        // The helper preserves Unicode verbatim — Punycode conversion
+        // is a separate concern (handled at connect time).
+        assert_eq!(format_endpoint("münchen.de", 7500), "münchen.de:7500");
+        assert_eq!(format_endpoint("日本.example", 7500), "日本.example:7500");
+    }
+
+    #[test]
+    fn format_endpoint_localhost() {
+        // `localhost` is a hostname literal — no brackets.
+        assert_eq!(format_endpoint("localhost", 7500), "localhost:7500");
+    }
+
+    #[test]
+    fn format_endpoint_max_port() {
+        // u16 max boundary.
+        assert_eq!(format_endpoint("example.com", 65535), "example.com:65535");
+        assert_eq!(format_endpoint("2001:db8::1", 65535), "[2001:db8::1]:65535");
+    }
+
+    #[test]
+    fn format_endpoint_round_trips_with_uri_format() {
+        // A host that goes through format_endpoint and the URI builder
+        // should produce consistent host treatment (both bracket IPv6
+        // identically, both leave hostnames alone).
+        for host in [
+            "203.0.113.1",
+            "example.com",
+            "2001:db8::1",
+            "[2001:db8::1]",
+            "münchen.de",
+        ] {
+            let endpoint = format_endpoint(host, 7600);
+            let uri = build_share_uri(None, host, 7600);
+            // The URI form is `nexus://` + the endpoint form (since
+            // both apply the same bracketing logic and the port 7600
+            // is non-default so it's emitted in both).
+            assert_eq!(uri, format!("nexus://{}", endpoint));
         }
     }
 }

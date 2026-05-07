@@ -5,6 +5,12 @@ use std::time::Duration;
 /// Connection timeout duration (30 seconds)
 pub const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// DNS resolution timeout (15 seconds). Mirrors the BBS-server
+/// tracker task's `DNS_LOOKUP_TIMEOUT` so client and server
+/// agree on what "wedged resolver" means in time. Bounds both
+/// the BBS connect path and the tracker query path.
+pub const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(15);
+
 /// Buffer size for the Iced stream channel
 pub const STREAM_CHANNEL_SIZE: usize = 100;
 

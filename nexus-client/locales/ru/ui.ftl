@@ -284,6 +284,9 @@ tooltip-close = Закрыть
 tooltip-tab-new = Новая вкладка
 tooltip-tab-close = Закрыть вкладку
 tooltip-bookmark-create = Создать закладку
+tooltip-server-connect = Подключение к серверу
+tooltip-server-public-yes = Гостевой доступ включён
+tooltip-server-public-no = Требуется учётная запись
 tooltip-user-create = Создать пользователя
 tooltip-group-create = Создать Группу
 tooltip-news-create = Создать публикацию
@@ -620,6 +623,7 @@ err-failed-update-topic = Не удалось обновить тему: { $erro
 # Network connection errors (with parameters)
 err-invalid-address = Недопустимый адрес '{ $address }': { $error }
 err-could-not-resolve = Не удалось разрешить адрес '{ $address }'
+err-dns-lookup-timeout = Время ожидания DNS-запроса истекло для '{ $address }'
 err-connection-timeout = Время ожидания подключения истекло через { $seconds } { $seconds ->
     [one] секунду
     [few] секунды
@@ -1284,6 +1288,9 @@ tab-trackers = Трекеры
 button-remove = Удалить
 button-accept-fingerprint = Принять
 menu-tracker-accept-fingerprint = Принять отпечаток
+menu-tracker-connect = Подключиться
+menu-tracker-bookmark = Закладка
+menu-tracker-copy-uri = Скопировать URI
 
 # Columns
 col-status = Состояние
@@ -1331,6 +1338,9 @@ toast-tracker-removed-name = Трекер «{ $name }» удалён
 toast-tracker-fingerprint-accepted = Отпечаток принят
 toast-tracker-fingerprint-stale = Проверка отпечатка больше не ожидает рассмотрения
 toast-tracker-fingerprint-accepted-name = Отпечаток для «{ $name }» принят
+toast-bookmark-added = Закладка добавлена
+toast-bookmark-already-exists = Закладка уже существует
+toast-bookmark-save-failed = Не удалось сохранить закладку
 
 # Errors
 err-tracker-name-empty = Требуется имя трекера
@@ -1356,6 +1366,7 @@ tooltip-tracker-remove = Удалить трекер
 placeholder-tracker-search = Поиск серверов…
 col-description = Описание
 col-users = Пользователи
+col-public = Публичный
 tracker-browser-status-loading = Загрузка…
 tracker-browser-status-servers = Серверы: { $count }
 empty-no-trackers-configured = Трекеры не настроены.

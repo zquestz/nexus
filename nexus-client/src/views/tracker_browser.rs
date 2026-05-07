@@ -33,21 +33,24 @@ use super::layout::{scrollable_modal, scrollable_panel};
 use crate::i18n::t;
 use crate::icon;
 use crate::style::{
-    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING,
+    BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, CONTEXT_MENU_ITEM_PADDING,
+    CONTEXT_MENU_MIN_WIDTH, CONTEXT_MENU_PADDING, CONTEXT_MENU_SEPARATOR_MARGIN, ELEMENT_SPACING,
     FINGERPRINT_SPACE_AFTER_LABEL, FINGERPRINT_SPACE_AFTER_SERVER_INFO,
     FINGERPRINT_SPACE_AFTER_TITLE, FINGERPRINT_SPACE_AFTER_WARNING,
     FINGERPRINT_SPACE_BEFORE_BUTTONS, FINGERPRINT_SPACE_BETWEEN_SECTIONS, HEADING_BUTTON_PADDING,
     ICON_SIZE, INPUT_PADDING, MONOSPACE_FONT, NO_SPACING, SCROLLBAR_PADDING, SEPARATOR_HEIGHT,
     SORT_ICON_LEFT_MARGIN, SORT_ICON_RIGHT_MARGIN, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL,
     TEXT_SIZE, TITLE_SIZE, TOOLBAR_BUTTON_PADDING, TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP,
-    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, content_background_style, disabled_icon_button_style,
-    error_text_style, muted_text_style, panel_title, shaped_text, shaped_text_wrapped,
-    tooltip_container_style, transparent_icon_button_style,
+    TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE, content_background_style, context_menu_container_style,
+    disabled_icon_button_style, error_text_style, menu_button_style, muted_text_style, panel_title,
+    shaped_text, shaped_text_wrapped, success_text_style, tooltip_container_style,
+    transparent_icon_button_style,
 };
 use crate::types::{
     ClientTracker, InputId, Message, TrackerBrowserMode, TrackerBrowserSortColumn,
     TrackerBrowserState, TrackerCacheEntry,
 };
+use crate::widgets::{LazyContextMenu, MenuButton};
 
 /// Approximate rendered height of an iced 0.14 `pick_list` with
 /// `text_size = TEXT_SIZE` and default padding. The toolbar row's
@@ -115,6 +118,7 @@ impl Hash for ServerTableDeps {
             e.name.hash(state);
             e.description.hash(state);
             e.user_count.hash(state);
+            e.allows_guest.hash(state);
         }
         self.sort_column.hash(state);
         self.sort_ascending.hash(state);
@@ -132,6 +136,7 @@ fn sort_entries(entries: &mut [ServerEntry], column: TrackerBrowserSortColumn, a
                 .to_lowercase()
                 .cmp(&b.description.as_deref().unwrap_or("").to_lowercase()),
             TrackerBrowserSortColumn::Users => a.user_count.cmp(&b.user_count),
+            TrackerBrowserSortColumn::Public => a.allows_guest.cmp(&b.allows_guest),
         };
         if ascending { cmp } else { cmp.reverse() }
     });
@@ -179,6 +184,58 @@ fn filter_and_sort_entries(
     name_matches
 }
 
+/// Build the row context menu for a tracker discovery entry. Three
+/// items, no separators (similar-weight actions, no destructive item
+/// to set apart):
+///   - Connect — same as left-clicking Name
+///   - Bookmark — direct-create with blank credentials
+///   - Copy URI — clipboard `nexus://address:port`
+fn build_row_context_menu(entry: ServerEntry) -> Element<'static, Message> {
+    let connect_msg = Message::OpenConnectFromTracker {
+        name: entry.name.clone(),
+        address: entry.address.clone(),
+        port: entry.port,
+        fingerprint: entry.fingerprint.clone(),
+    };
+    let bookmark_msg = Message::TrackerBrowserBookmarkRow {
+        name: entry.name,
+        address: entry.address.clone(),
+        port: entry.port,
+        fingerprint: entry.fingerprint,
+    };
+    let copy_uri_msg = Message::TrackerBrowserCopyRowUri {
+        address: entry.address,
+        port: entry.port,
+    };
+
+    let items: Vec<Element<'static, Message>> = vec![
+        MenuButton::new(shaped_text(t("menu-tracker-connect")).size(TEXT_SIZE))
+            .padding(CONTEXT_MENU_ITEM_PADDING)
+            .width(Fill)
+            .style(menu_button_style)
+            .on_press(connect_msg)
+            .into(),
+        MenuButton::new(shaped_text(t("menu-tracker-bookmark")).size(TEXT_SIZE))
+            .padding(CONTEXT_MENU_ITEM_PADDING)
+            .width(Fill)
+            .style(menu_button_style)
+            .on_press(bookmark_msg)
+            .into(),
+        MenuButton::new(shaped_text(t("menu-tracker-copy-uri")).size(TEXT_SIZE))
+            .padding(CONTEXT_MENU_ITEM_PADDING)
+            .width(Fill)
+            .style(menu_button_style)
+            .on_press(copy_uri_msg)
+            .into(),
+    ];
+
+    container(iced::widget::Column::with_children(items).spacing(CONTEXT_MENU_SEPARATOR_MARGIN))
+        .width(CONTEXT_MENU_MIN_WIDTH)
+        .padding(CONTEXT_MENU_PADDING)
+        .style(context_menu_container_style)
+        .into()
+}
+
 fn lazy_server_table(deps: ServerTableDeps) -> Element<'static, Message> {
     lazy(deps, |deps| {
         // Name header (sortable)
@@ -206,11 +263,34 @@ fn lazy_server_table(deps: ServerTableDeps) -> Element<'static, Message> {
             ))
             .into();
 
-        let name_column = table::column(name_header, |entry: ServerEntry| {
-            shaped_text(entry.name)
-                .size(TEXT_SIZE)
-                .wrapping(Wrapping::WordOrGlyph)
-        })
+        // Name cell is clickable: launches the Connect form pre-filled
+        // with this row's four fields. Style mirrors files-listing
+        // clickable filenames — transparent button background, hover
+        // colour from the theme, no underline. The cell is also
+        // wrapped in a `LazyContextMenu` exposing Connect / Bookmark /
+        // Copy URI on right-click.
+        let name_column = table::column(
+            name_header,
+            |entry: ServerEntry| -> Element<'static, Message> {
+                let label = shaped_text(entry.name.clone())
+                    .size(TEXT_SIZE)
+                    .wrapping(Wrapping::WordOrGlyph);
+                let connect_message = Message::OpenConnectFromTracker {
+                    name: entry.name.clone(),
+                    address: entry.address.clone(),
+                    port: entry.port,
+                    fingerprint: entry.fingerprint.clone(),
+                };
+                let cell: Element<'static, Message> = button(label)
+                    .padding(NO_SPACING)
+                    .style(transparent_icon_button_style)
+                    .on_press(connect_message)
+                    .into();
+                let menu_entry = entry.clone();
+                LazyContextMenu::new(cell, move || build_row_context_menu(menu_entry.clone()))
+                    .into()
+            },
+        )
         .width(Length::FillPortion(1));
 
         // Description header (sortable)
@@ -246,7 +326,9 @@ fn lazy_server_table(deps: ServerTableDeps) -> Element<'static, Message> {
         })
         .width(Length::FillPortion(2));
 
-        // Users header (sortable, rightmost — trailing scrollbar padding)
+        // Users header (sortable). Scrollbar padding lives on the
+        // rightmost column (Public, below) per the table-consistency
+        // convention.
         let users_sort_icon = sort_icon_or_placeholder(
             deps.sort_column == TrackerBrowserSortColumn::Users,
             deps.sort_ascending,
@@ -259,7 +341,6 @@ fn lazy_server_table(deps: ServerTableDeps) -> Element<'static, Message> {
             Space::new().width(SORT_ICON_LEFT_MARGIN),
             users_sort_icon,
             Space::new().width(SORT_ICON_RIGHT_MARGIN),
-            Space::new().width(SCROLLBAR_PADDING),
         ]
         .align_y(Center)
         .into();
@@ -273,15 +354,64 @@ fn lazy_server_table(deps: ServerTableDeps) -> Element<'static, Message> {
             .into();
 
         let users_column = table::column(users_header, |entry: ServerEntry| {
-            row![
-                shaped_text(entry.user_count.to_string()).size(TEXT_SIZE),
-                Space::new().width(SCROLLBAR_PADDING),
-            ]
-            .align_y(Center)
+            shaped_text(entry.user_count.to_string()).size(TEXT_SIZE)
         })
         .width(Length::Shrink);
 
-        let columns = [name_column, desc_column, users_column];
+        // Public header (sortable, rightmost — trailing scrollbar padding).
+        // Indicates whether the server allows guest login (`allows_guest`).
+        // Cell renders `icon::ok()` (✓ in success colour) for true,
+        // `icon::close()` (✕ in default colour) for false.
+        let public_sort_icon = sort_icon_or_placeholder(
+            deps.sort_column == TrackerBrowserSortColumn::Public,
+            deps.sort_ascending,
+        );
+        let public_header_content: Element<'static, Message> = row![
+            shaped_text(t("col-public"))
+                .size(TEXT_SIZE)
+                .wrapping(Wrapping::Word)
+                .style(muted_text_style),
+            Space::new().width(SORT_ICON_LEFT_MARGIN),
+            public_sort_icon,
+            Space::new().width(SORT_ICON_RIGHT_MARGIN),
+            Space::new().width(SCROLLBAR_PADDING),
+        ]
+        .align_y(Center)
+        .into();
+        let public_header: Element<'static, Message> = button(public_header_content)
+            .padding(NO_SPACING)
+            .width(Length::Shrink)
+            .style(transparent_icon_button_style)
+            .on_press(Message::TrackerBrowserSortChanged(
+                TrackerBrowserSortColumn::Public,
+            ))
+            .into();
+
+        let public_column = table::column(public_header, |entry: ServerEntry| {
+            let (glyph, tip_key): (iced::widget::Text<'static>, &'static str) =
+                if entry.allows_guest {
+                    (
+                        icon::ok().size(TEXT_SIZE).style(success_text_style),
+                        "tooltip-server-public-yes",
+                    )
+                } else {
+                    (icon::close().size(TEXT_SIZE), "tooltip-server-public-no")
+                };
+            let tipped: Element<'static, Message> = tooltip(
+                glyph,
+                container(shaped_text(t(tip_key)).size(TOOLTIP_TEXT_SIZE))
+                    .padding(TOOLTIP_BACKGROUND_PADDING)
+                    .style(tooltip_container_style),
+                tooltip::Position::Top,
+            )
+            .gap(TOOLTIP_GAP)
+            .padding(TOOLTIP_PADDING)
+            .into();
+            row![tipped, Space::new().width(SCROLLBAR_PADDING)].align_y(Center)
+        })
+        .width(Length::Shrink);
+
+        let columns = [name_column, desc_column, users_column, public_column];
 
         table(columns, deps.entries.clone())
             .width(Fill)
@@ -1061,7 +1191,7 @@ fn accept_fingerprint_modal<'a>(state: &'a TrackerBrowserState) -> Element<'a, M
 
     let title = panel_title(t("title-fingerprint-accept"));
 
-    let server_line_text = format!("{} - {}:{}", name, address, port);
+    let server_line_text = format!("{} - {}", name, crate::uri::format_endpoint(address, *port));
     let server_line = shaped_text(server_line_text).size(TEXT_SIZE);
 
     let warning = shaped_text_wrapped(t("tracker-fingerprint-warning")).size(TEXT_SIZE);
@@ -1208,5 +1338,175 @@ mod tests {
             name: "A".to_string(),
         };
         assert_eq!(a, b);
+    }
+
+    // =========================================================================
+    // sort_entries / filter_and_sort_entries
+    // =========================================================================
+
+    fn make_entry(name: &str, description: Option<&str>, user_count: u32) -> ServerEntry {
+        ServerEntry {
+            name: name.to_string(),
+            description: description.map(str::to_string),
+            address: "example.com".to_string(),
+            port: 7500,
+            websocket_port: None,
+            version: "0.8.0".to_string(),
+            fingerprint: String::new(),
+            user_count,
+            allows_guest: false,
+        }
+    }
+
+    #[test]
+    fn sort_entries_by_name_case_insensitive_ascending() {
+        let mut entries = vec![
+            make_entry("zeta", None, 0),
+            make_entry("Alpha", None, 0),
+            make_entry("beta", None, 0),
+        ];
+        sort_entries(&mut entries, TrackerBrowserSortColumn::Name, true);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["Alpha", "beta", "zeta"]);
+    }
+
+    #[test]
+    fn sort_entries_by_name_descending_reverses() {
+        let mut entries = vec![make_entry("a", None, 0), make_entry("b", None, 0)];
+        sort_entries(&mut entries, TrackerBrowserSortColumn::Name, false);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["b", "a"]);
+    }
+
+    #[test]
+    fn sort_entries_by_users_orders_numerically() {
+        let mut entries = vec![
+            make_entry("a", None, 100),
+            make_entry("b", None, 5),
+            make_entry("c", None, 50),
+        ];
+        sort_entries(&mut entries, TrackerBrowserSortColumn::Users, true);
+        let counts: Vec<u32> = entries.iter().map(|e| e.user_count).collect();
+        assert_eq!(counts, vec![5, 50, 100]);
+    }
+
+    #[test]
+    fn sort_entries_by_public_orders_by_allows_guest() {
+        let mut entries = vec![
+            ServerEntry {
+                allows_guest: true,
+                ..make_entry("a", None, 0)
+            },
+            ServerEntry {
+                allows_guest: false,
+                ..make_entry("b", None, 0)
+            },
+            ServerEntry {
+                allows_guest: true,
+                ..make_entry("c", None, 0)
+            },
+        ];
+        sort_entries(&mut entries, TrackerBrowserSortColumn::Public, true);
+        // Bool ordering: false < true. Ascending → "b" first, then a/c.
+        assert!(!entries[0].allows_guest);
+        assert!(entries[1].allows_guest);
+        assert!(entries[2].allows_guest);
+    }
+
+    #[test]
+    fn sort_entries_by_description_treats_missing_as_empty() {
+        let mut entries = vec![
+            make_entry("a", Some("zebras"), 0),
+            make_entry("b", None, 0),
+            make_entry("c", Some("apples"), 0),
+        ];
+        sort_entries(&mut entries, TrackerBrowserSortColumn::Description, true);
+        let names: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
+        // Empty description sorts first (lexicographically before any letter).
+        assert_eq!(names, vec!["b", "c", "a"]);
+    }
+
+    #[test]
+    fn filter_and_sort_empty_query_returns_all_sorted() {
+        let entries = vec![
+            make_entry("zulu", None, 0),
+            make_entry("alpha", None, 0),
+            make_entry("mike", None, 0),
+        ];
+        let out = filter_and_sort_entries(&entries, "", TrackerBrowserSortColumn::Name, true);
+        let names: Vec<&str> = out.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "mike", "zulu"]);
+    }
+
+    #[test]
+    fn filter_and_sort_whitespace_query_treated_as_empty() {
+        let entries = vec![make_entry("alpha", None, 0), make_entry("beta", None, 0)];
+        let out = filter_and_sort_entries(&entries, "   ", TrackerBrowserSortColumn::Name, true);
+        let names: Vec<&str> = out.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha", "beta"]);
+    }
+
+    #[test]
+    fn filter_and_sort_case_insensitive_unicode_match() {
+        // IDN safety: a CJK / Cyrillic / Latin-extended needle should
+        // case-fold via `to_lowercase()`, not ASCII-only helpers.
+        let entries = vec![
+            make_entry("München BBS", None, 0),
+            make_entry("Other", None, 0),
+        ];
+        let out =
+            filter_and_sort_entries(&entries, "MÜNCHEN", TrackerBrowserSortColumn::Name, true);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].name, "München BBS");
+    }
+
+    #[test]
+    fn filter_and_sort_name_match_precedes_description_only_match() {
+        let entries = vec![
+            make_entry("nothing relevant", Some("we host pizza here"), 0),
+            make_entry("pizza", Some("the best"), 0),
+            make_entry("other", None, 0),
+        ];
+        let out = filter_and_sort_entries(&entries, "pizza", TrackerBrowserSortColumn::Name, true);
+        let names: Vec<&str> = out.iter().map(|e| e.name.as_str()).collect();
+        // Name-substring hit "pizza" comes first; description-only hit
+        // "nothing relevant" comes after. "other" is dropped.
+        assert_eq!(names, vec!["pizza", "nothing relevant"]);
+    }
+
+    #[test]
+    fn filter_and_sort_description_only_match_surfaces() {
+        let entries = vec![
+            make_entry("Apple Server", Some("welcome to apple"), 0),
+            make_entry("Other", Some("an apple a day"), 0),
+            make_entry("Unrelated", None, 0),
+        ];
+        let out = filter_and_sort_entries(&entries, "apple", TrackerBrowserSortColumn::Name, true);
+        let names: Vec<&str> = out.iter().map(|e| e.name.as_str()).collect();
+        // Both name- and description-only matches surface; "Unrelated" dropped.
+        assert_eq!(names, vec!["Apple Server", "Other"]);
+    }
+
+    #[test]
+    fn filter_and_sort_no_match_returns_empty_vec() {
+        let entries = vec![make_entry("alpha", Some("beta"), 0)];
+        let out = filter_and_sort_entries(&entries, "gamma", TrackerBrowserSortColumn::Name, true);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn filter_and_sort_preserves_column_sort_within_each_match_group() {
+        let entries = vec![
+            make_entry("alpha pizza", None, 100),
+            make_entry("zeta pizza", None, 5),
+            make_entry("beta", Some("we serve pizza"), 50),
+            make_entry("yankee", Some("our pizza is great"), 200),
+        ];
+        let out = filter_and_sort_entries(&entries, "pizza", TrackerBrowserSortColumn::Users, true);
+        let names: Vec<&str> = out.iter().map(|e| e.name.as_str()).collect();
+        // Group A (name match): zeta(5) then alpha(100), users-asc.
+        // Group B (description match): beta(50) then yankee(200), users-asc.
+        // Concatenated: A then B.
+        assert_eq!(names, vec!["zeta pizza", "alpha pizza", "beta", "yankee"]);
     }
 }

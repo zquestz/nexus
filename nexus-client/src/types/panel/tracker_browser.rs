@@ -31,6 +31,10 @@ pub enum TrackerBrowserSortColumn {
     Description,
     /// Sort by reported user count.
     Users,
+    /// Sort by `allows_guest`. Boolean ordering (false < true), so
+    /// ascending = "account-required" first, descending = "guest
+    /// access enabled" first. The user toggles either way.
+    Public,
 }
 
 // =============================================================================

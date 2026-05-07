@@ -150,6 +150,28 @@ pub enum Message {
     CloseUserMessageTab(String),
     /// Connection form: Connect button pressed
     ConnectPressed,
+    /// Connection form: Cancel button (or Escape) pressed. Restores
+    /// `active_panel` to `connect_origin` if set, clears the form
+    /// fields, and clears origin. No-op when origin is `None`
+    /// (default-state form has no return target).
+    ConnectionFormCancel,
+    /// Open the global Connection form (server-list "+" entrypoint or
+    /// any future summon path that doesn't pre-fill from a tracker).
+    /// Captures the current active panel as `connect_origin` so Cancel
+    /// returns there.
+    OpenConnectionForm,
+    /// Open the global Connection form pre-filled from a tracker
+    /// discovery row (Name-cell click or context-menu Connect).
+    /// Origin is set to `TrackerBrowser` so Cancel returns to the
+    /// discovery panel. Only the four tracker-supplied fields are
+    /// passed; username / password / nickname / `add_bookmark` are
+    /// reset by the handler so a prior session can't leak in.
+    OpenConnectFromTracker {
+        name: String,
+        address: String,
+        port: u16,
+        fingerprint: String,
+    },
     /// Connect to a bookmark by ID
     ConnectToBookmark(Uuid),
     /// Network: Connection attempt completed (manual form connect).
@@ -411,6 +433,21 @@ pub enum Message {
     /// Returns to the list view and surfaces the original Stage 1
     /// mismatch error in the toolbar status row.
     TrackerBrowserAcceptFingerprintCancel,
+    /// Tracker browser: row context-menu "Bookmark" item. Directly
+    /// creates a `ServerBookmark` from the four tracker-supplied
+    /// fields with blank username / password / nickname. Runs the
+    /// existing `check_bookmark_dedup`; collisions and save failures
+    /// surface as toasts (no form opens).
+    TrackerBrowserBookmarkRow {
+        name: String,
+        address: String,
+        port: u16,
+        fingerprint: String,
+    },
+    /// Tracker browser: row context-menu "Copy URI" item. Builds
+    /// `nexus://{address}:{port}` and copies it to the clipboard.
+    /// Reuses the existing `toast-link-copied` toast.
+    TrackerBrowserCopyRowUri { address: String, port: u16 },
     /// Tracker browser: result of a `query_tracker` task. The handler
     /// drops the message silently if the cache entry is no longer
     /// `is_fetching` (stale-result-from-prior-query policy).

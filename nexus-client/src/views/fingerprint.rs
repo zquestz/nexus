@@ -37,13 +37,11 @@ pub fn fingerprint_mismatch_dialog<'a>(mismatch: &'a FingerprintMismatch) -> Ele
     // Bookmarks normally have a non-empty name (validated at edit time), but
     // a stage-1 mismatch followed by a concurrent bookmark deletion would
     // leave us with an empty name. Drop the leading "name -" in that race.
+    let endpoint = crate::uri::format_endpoint(&mismatch.server_address, mismatch.server_port);
     let server_line_text = if mismatch.bookmark_name.is_empty() {
-        format!("[{}]:{}", mismatch.server_address, mismatch.server_port)
+        endpoint
     } else {
-        format!(
-            "{} - [{}]:{}",
-            mismatch.bookmark_name, mismatch.server_address, mismatch.server_port
-        )
+        format!("{} - {}", mismatch.bookmark_name, endpoint)
     };
     let server_line = shaped_text(server_line_text).size(TEXT_SIZE);
 

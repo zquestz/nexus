@@ -276,6 +276,9 @@ tooltip-info = Info
 tooltip-message = Bericht
 tooltip-kick = Verwijderen
 tooltip-bookmark-create = Bladwijzer Aanmaken
+tooltip-server-connect = Verbinden met Server
+tooltip-server-public-yes = Gasttoegang ingeschakeld
+tooltip-server-public-no = Account vereist
 tooltip-close = Sluiten
 tooltip-tab-new = Nieuw Tabblad
 tooltip-tab-close = Tabblad Sluiten
@@ -610,6 +613,7 @@ err-failed-update-topic = Kan onderwerp niet bijwerken: { $error }
 # Network connection errors (with parameters)
 err-invalid-address = Ongeldig adres '{ $address }': { $error }
 err-could-not-resolve = Kan adres '{ $address }' niet oplossen
+err-dns-lookup-timeout = DNS-zoekopdracht verlopen voor '{ $address }'
 err-connection-timeout = Verbinding verlopen na { $seconds } { $seconds ->
     [one] seconde
    *[other] seconden
@@ -1259,6 +1263,9 @@ tab-trackers = Trackers
 button-remove = Verwijderen
 button-accept-fingerprint = Accepteren
 menu-tracker-accept-fingerprint = Vingerafdruk accepteren
+menu-tracker-connect = Verbinden
+menu-tracker-bookmark = Bladwijzer
+menu-tracker-copy-uri = URI kopiëren
 
 # Titles
 title-tracker-add = Tracker toevoegen
@@ -1306,6 +1313,9 @@ toast-tracker-removed-name = Tracker "{ $name }" verwijderd
 toast-tracker-fingerprint-accepted = Vingerafdruk geaccepteerd
 toast-tracker-fingerprint-stale = Vingerafdrukcontrole niet meer in behandeling
 toast-tracker-fingerprint-accepted-name = Vingerafdruk geaccepteerd voor "{ $name }"
+toast-bookmark-added = Bladwijzer toegevoegd
+toast-bookmark-already-exists = Bladwijzer bestaat al
+toast-bookmark-save-failed = Kan bladwijzer niet opslaan
 
 # Errors
 err-tracker-name-empty = Naam van tracker is verplicht
@@ -1331,6 +1341,7 @@ tooltip-tracker-remove = Tracker verwijderen
 placeholder-tracker-search = Servers zoeken…
 col-description = Beschrijving
 col-users = Gebruikers
+col-public = Openbaar
 tracker-browser-status-loading = Laden…
 tracker-browser-status-servers = Servers: { $count }
 empty-no-trackers-configured = Geen trackers geconfigureerd.

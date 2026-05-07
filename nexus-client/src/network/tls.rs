@@ -14,7 +14,7 @@ use tokio_socks::tcp::Socks5Stream;
 
 use nexus_common::{EXPECT_SNI_SERVER_NAME_VALID_DNS, LOCALHOST_HOSTNAME, SNI_SERVER_NAME};
 
-use super::constants::CONNECTION_TIMEOUT;
+use super::constants::{CONNECTION_TIMEOUT, DNS_LOOKUP_TIMEOUT};
 use super::types::{ConnectError, ProxyConfig, TlsStream};
 
 /// Global TLS connector (accepts any certificate, no hostname verification)
@@ -187,18 +187,38 @@ async fn establish_direct_connection(
         }
     })?;
 
-    // Use to_socket_addrs to support IPv6 zone identifiers (e.g., "fe80::1%eth0")
-    let mut addrs =
-        (resolved.as_str(), port)
+    // Use to_socket_addrs to support IPv6 zone identifiers (e.g.,
+    // "fe80::1%eth0"). It's a sync blocking call, so we hand it to a
+    // dedicated `spawn_blocking` worker and bound the wait with
+    // `DNS_LOOKUP_TIMEOUT` — a wedged system resolver otherwise hangs
+    // the connect (and the tracker query) indefinitely. Mirrors the
+    // BBS-server tracker task's `DNS_LOOKUP_TIMEOUT` pattern.
+    let resolved_clone = resolved.clone();
+    let lookup = tokio::task::spawn_blocking(move || {
+        (resolved_clone.as_str(), port)
             .to_socket_addrs()
-            .map_err(|e| ConnectError::InvalidAddress {
-                address: address.to_string(),
-                error: e.to_string(),
-            })?;
+            .map(|iter| iter.collect::<Vec<_>>())
+    });
+    let addrs = tokio::time::timeout(DNS_LOOKUP_TIMEOUT, lookup)
+        .await
+        .map_err(|_| ConnectError::DnsTimeout {
+            address: address.to_string(),
+        })?
+        .map_err(|e| ConnectError::InvalidAddress {
+            address: address.to_string(),
+            error: e.to_string(),
+        })?
+        .map_err(|e| ConnectError::InvalidAddress {
+            address: address.to_string(),
+            error: e.to_string(),
+        })?;
 
-    let socket_addr = addrs.next().ok_or_else(|| ConnectError::CouldNotResolve {
-        address: address.to_string(),
-    })?;
+    let socket_addr = addrs
+        .into_iter()
+        .next()
+        .ok_or_else(|| ConnectError::CouldNotResolve {
+            address: address.to_string(),
+        })?;
 
     // Establish TCP connection with timeout
     let tcp_stream = tokio::time::timeout(CONNECTION_TIMEOUT, TcpStream::connect(socket_addr))
@@ -208,13 +228,20 @@ async fn establish_direct_connection(
             error: e.to_string(),
         })?;
 
-    // Perform TLS handshake
-    let tls_stream = TLS_CONNECTOR
-        .connect(server_name, tcp_stream)
-        .await
-        .map_err(|e| ConnectError::TlsHandshake {
-            error: e.to_string(),
-        })?;
+    // Perform TLS handshake — bound by `CONNECTION_TIMEOUT` so a peer
+    // that completes TCP and stalls TLS (no ServerHello / mid-handshake
+    // wedge) can't park the await indefinitely. Without this, a hostile
+    // tracker compounds with the in-flight task leak: every leaked
+    // task holds a socket forever.
+    let tls_stream = tokio::time::timeout(
+        CONNECTION_TIMEOUT,
+        TLS_CONNECTOR.connect(server_name, tcp_stream),
+    )
+    .await
+    .map_err(|_| ConnectError::TlsHandshakeTimeout)?
+    .map_err(|e| ConnectError::TlsHandshake {
+        error: e.to_string(),
+    })?;
 
     // Wrap in our enum type
     let tls_stream = TlsStream::Direct(tls_stream);
@@ -266,13 +293,18 @@ async fn establish_proxied_connection(
         error: e.to_string(),
     })?;
 
-    // Perform TLS handshake through the SOCKS5 tunnel
-    let tls_stream = TLS_CONNECTOR
-        .connect(server_name, socks_stream)
-        .await
-        .map_err(|e| ConnectError::TlsHandshake {
-            error: e.to_string(),
-        })?;
+    // Perform TLS handshake through the SOCKS5 tunnel — same
+    // `CONNECTION_TIMEOUT` bound as the direct path; see the comment
+    // there.
+    let tls_stream = tokio::time::timeout(
+        CONNECTION_TIMEOUT,
+        TLS_CONNECTOR.connect(server_name, socks_stream),
+    )
+    .await
+    .map_err(|_| ConnectError::TlsHandshakeTimeout)?
+    .map_err(|e| ConnectError::TlsHandshake {
+        error: e.to_string(),
+    })?;
 
     // Wrap in our enum type
     let tls_stream = TlsStream::Proxied(tls_stream);

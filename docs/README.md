@@ -17,6 +17,7 @@ For users connecting to Nexus BBS servers.
 - [Connection Monitor](client/09-connection-monitor.md) — View active connections and transfers (admin)
 - [Server Info](client/10-server-info.md) — Server configuration and details
 - [Settings](client/11-settings.md) — Themes, sounds, notifications, and preferences
+- [Trackers](client/13-trackers.md) — Discovering servers via tracker daemons
 - [Troubleshooting](client/12-troubleshooting.md) — Common issues and solutions
 
 ## Server Admin Guide

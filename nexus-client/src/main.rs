@@ -587,6 +587,8 @@ impl NexusApp {
 
             // Connection management
             Message::ConnectPressed => self.handle_connect_pressed(),
+            Message::ConnectionFormCancel => self.handle_connection_form_cancel(),
+            Message::OpenConnectionForm => self.handle_open_connection_form(),
             Message::ConnectToBookmark(id) => self.handle_connect_to_bookmark(id),
             Message::DisconnectFromServer(connection_id) => {
                 self.handle_disconnect_from_server(connection_id)
@@ -977,6 +979,21 @@ impl NexusApp {
             }
             Message::TrackerBrowserAcceptFingerprintCancel => {
                 self.handle_tracker_browser_accept_fingerprint_cancel()
+            }
+            Message::OpenConnectFromTracker {
+                name,
+                address,
+                port,
+                fingerprint,
+            } => self.handle_open_connect_from_tracker(name, address, port, fingerprint),
+            Message::TrackerBrowserBookmarkRow {
+                name,
+                address,
+                port,
+                fingerprint,
+            } => self.handle_tracker_browser_bookmark_row(name, address, port, fingerprint),
+            Message::TrackerBrowserCopyRowUri { address, port } => {
+                self.handle_tracker_browser_copy_row_uri(address, port)
             }
 
             // Connection Monitor

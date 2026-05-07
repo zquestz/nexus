@@ -396,9 +396,13 @@ impl NexusApp {
             self.save_new_bookmark(ctx.connection_id, ctx.certificate_fingerprint);
         }
 
-        // Clear connection form for form connections
+        // Clear connection form for form connections. The new connection
+        // is added with `active_panel: None` (chat view) so the form is
+        // automatically replaced once the user lands on the new chat —
+        // no manual panel teardown required.
         if matches!(source, ConnectionSource::Manual) {
             self.connection_form.clear();
+            self.connection_form.connect_origin = None;
         }
 
         // Update tray icon state (Windows/Linux only)

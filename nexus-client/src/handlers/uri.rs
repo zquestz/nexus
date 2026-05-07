@@ -103,7 +103,7 @@ impl NexusApp {
                         String::new(),
                         String::new(),
                         self.config.settings.nickname.clone(),
-                        format!("{}:{}", uri.host, uri.port),
+                        crate::uri::format_endpoint(&uri.host, uri.port),
                         None,
                     )
                 }
@@ -137,7 +137,7 @@ impl NexusApp {
                         uri_user,
                         uri.password.clone().unwrap_or_default(),
                         self.config.settings.nickname.clone(),
-                        format!("{}:{}", uri.host, uri.port),
+                        crate::uri::format_endpoint(&uri.host, uri.port),
                         None,
                     )
                 }

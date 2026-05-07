@@ -17,7 +17,7 @@ use crate::network::{
     ProxyConfig, TrackerQueryError, TrackerQueryOk, TrackerQueryParams, query_tracker,
 };
 use crate::types::{
-    ClientTracker, InputId, Message, TrackerBrowserEditInit, TrackerBrowserMode,
+    ActivePanel, ClientTracker, InputId, Message, TrackerBrowserEditInit, TrackerBrowserMode,
     TrackerBrowserSortColumn, normalize_certificate_fingerprint,
 };
 
@@ -665,27 +665,31 @@ impl NexusApp {
         // Commit the new pin to the tracker config row.
         let Some(existing) = self.config.get_tracker(id).cloned() else {
             // Tracker was removed between dialog open and Accept.
-            // Nothing to commit; bounce back to list.
+            // Today this branch is unreachable: `handle_tracker_browser_remove_confirm`
+            // is the sole deletion path and it already drops its own
+            // cache entry. The defensive `cache.remove(&id)` here is a
+            // no-op in normal flow but cleans up correctly if a future
+            // deletion path lands without updating both sides.
+            self.tracker_browser.cache.remove(&id);
             self.tracker_browser.reset_to_list();
             return Task::none();
         };
+        // `existing` is cloned into `updated` so the original is still
+        // owned for the rollback path below. Restoring from the
+        // captured snapshot (rather than reading back the just-updated
+        // row and flipping a field) is more robust: any future field
+        // added to the Accept-time mutation gets rolled back too.
         let updated = ClientTracker {
             certificate_fingerprint: Some(new_pin),
-            ..existing
+            ..existing.clone()
         };
         self.config.update_tracker(id, updated);
 
         if let Err(error) = save_config(&self.config) {
             // Persist failed — keep the dialog open so the user can
-            // retry or cancel. The in-memory pin update is rolled
-            // back so memory stays consistent with disk.
-            if let Some(orig) = self.config.get_tracker(id).cloned() {
-                let restored = ClientTracker {
-                    certificate_fingerprint: existing.certificate_fingerprint,
-                    ..orig
-                };
-                self.config.update_tracker(id, restored);
-            }
+            // retry or cancel. Restore the in-memory row to the
+            // captured pre-update snapshot so memory matches disk.
+            self.config.update_tracker(id, existing);
             self.tracker_browser.accept_fingerprint_error = Some(error);
             self.tracker_browser.is_accept_fingerprint_submitting = false;
             return Task::none();
@@ -708,6 +712,122 @@ impl NexusApp {
         }
         self.tracker_browser.reset_to_list();
         Task::none()
+    }
+
+    // =========================================================================
+    // Click-to-connect from a tracker row
+    // =========================================================================
+
+    /// Pre-fill the global Connection form from a tracker discovery row.
+    /// Triggered by clicking the Name cell or the context-menu Connect
+    /// item.
+    ///
+    /// Form lifecycle:
+    ///   1. `clear()` wipes any prior session (fields, error,
+    ///      `is_connecting`, `add_bookmark`) so a previous Connect
+    ///      attempt can't leak into this one.
+    ///   2. The four tracker-supplied fields are written.
+    ///   3. `connect_origin = Some(TrackerBrowser)` triggers the
+    ///      layout's modal-like gate, rendering the form on top of the
+    ///      discovery panel. Cancel restores the discovery panel by
+    ///      clearing origin.
+    pub fn handle_open_connect_from_tracker(
+        &mut self,
+        name: String,
+        address: String,
+        port: u16,
+        fingerprint: String,
+    ) -> Task<Message> {
+        self.connection_form.clear();
+        self.connection_form.server_name = name;
+        self.connection_form.server_address = address;
+        self.connection_form.port = port;
+        // Normalize before storing — the protocol guarantees a canonical
+        // 95-byte uppercase form so trim is a no-op in practice, but
+        // this matches the bookmark-row path's defensive trim and means
+        // a malformed tracker can't desync the connect-form fingerprint
+        // and the canonical-form validator at submit time.
+        self.connection_form.fingerprint =
+            normalize_certificate_fingerprint(Some(fingerprint)).unwrap_or_default();
+        self.connection_form.connect_origin = Some(ActivePanel::TrackerBrowser);
+        Task::none()
+    }
+
+    // =========================================================================
+    // Row context-menu: Bookmark / Copy URI
+    // =========================================================================
+
+    /// Directly create a `ServerBookmark` from a tracker discovery row
+    /// (context-menu "Bookmark" item). Username / password / nickname
+    /// stay blank — the tracker only supplies discovery info, not
+    /// credentials. The user can edit the bookmark later to add them.
+    ///
+    /// Failure modes surface as toasts (no form opens):
+    ///   - Dedup collision (any field of the dedup tuple) → generic
+    ///     "Bookmark already exists" toast.
+    ///   - `save_config()` failure → roll back the in-memory entry
+    ///     and show "Failed to save bookmark".
+    ///   - Success → "Bookmark added" toast.
+    pub fn handle_tracker_browser_bookmark_row(
+        &mut self,
+        name: String,
+        address: String,
+        port: u16,
+        fingerprint: String,
+    ) -> Task<Message> {
+        // Reuse the bookmark form's dedup helper. The four tracker
+        // fields plus blank username / nickname form the lookup tuple,
+        // matching the convention of every other bookmark-create site.
+        if super::bookmarks::check_bookmark_dedup(
+            &name,
+            &address,
+            port,
+            "",
+            "",
+            &self.config.bookmarks,
+            None,
+        )
+        .is_some()
+        {
+            return Task::done(Message::ShowToast(t("toast-bookmark-already-exists")));
+        }
+
+        let bookmark = crate::types::ServerBookmark {
+            id: Uuid::new_v4(),
+            name,
+            address,
+            port,
+            username: String::new(),
+            password: String::new(),
+            nickname: String::new(),
+            auto_connect: false,
+            certificate_fingerprint: normalize_certificate_fingerprint(Some(fingerprint)),
+        };
+        let new_id = bookmark.id;
+        self.config.add_bookmark(bookmark);
+
+        if save_config(&self.config).is_err() {
+            // Roll back the in-memory insert so disk and memory stay in sync.
+            self.config.delete_bookmark(new_id);
+            return Task::done(Message::ShowToast(t("toast-bookmark-save-failed")));
+        }
+
+        Task::done(Message::ShowToast(t("toast-bookmark-added")))
+    }
+
+    /// Build a `nexus://address:port` URI for a tracker discovery row
+    /// and copy it to the clipboard. Routes through
+    /// `crate::uri::build_share_uri` so IPv6 hosts get bracketed and
+    /// the BBS-default port is dropped — same canonical share-URI
+    /// shape the Server Info panel uses. Reuses the existing
+    /// `toast-link-copied` toast (same action, same wording).
+    pub fn handle_tracker_browser_copy_row_uri(
+        &mut self,
+        address: String,
+        port: u16,
+    ) -> Task<Message> {
+        let uri = crate::uri::build_share_uri(None, &address, port);
+        iced::clipboard::write(uri).chain(Task::done(Message::ShowToast(t("toast-link-copied"))))
     }
 }
 
@@ -825,8 +945,16 @@ fn translate_tracker_query_error(err: &TrackerQueryError) -> String {
         //   something went wrong and the tracker isn't usable.
         TrackerQueryError::Connection(inner) => match inner {
             ConnectError::TlsHandshake { .. } => t("err-tracker-query-refused"),
-            ConnectError::InvalidAddress { .. }
+            // TLS handshake timeout falls in with "unreachable" rather
+            // than "refused": a peer that accepted TCP but never
+            // completed TLS isn't actively refusing — it's hung or
+            // network-dropped. "Refused" is reserved for the explicit
+            // TLS-layer error case (rate-limit / capacity), which DOES
+            // produce a peer-emitted alert.
+            ConnectError::TlsHandshakeTimeout
+            | ConnectError::InvalidAddress { .. }
             | ConnectError::CouldNotResolve { .. }
+            | ConnectError::DnsTimeout { .. }
             | ConnectError::TcpTimeout
             | ConnectError::TcpFailed { .. }
             | ConnectError::ProxyTimeout
@@ -955,5 +1083,139 @@ mod tests {
             )
             .is_none()
         );
+    }
+
+    // =========================================================================
+    // Copy URI: IPv6 bracketing via build_share_uri
+    // =========================================================================
+
+    #[test]
+    fn copy_row_uri_ipv4_uses_default_port_dropping() {
+        // BBS default port (7500) is dropped per build_share_uri convention.
+        let uri = crate::uri::build_share_uri(None, "203.0.113.1", 7500);
+        assert_eq!(uri, "nexus://203.0.113.1");
+    }
+
+    #[test]
+    fn copy_row_uri_ipv4_non_default_port_preserved() {
+        let uri = crate::uri::build_share_uri(None, "203.0.113.1", 7600);
+        assert_eq!(uri, "nexus://203.0.113.1:7600");
+    }
+
+    #[test]
+    fn copy_row_uri_ipv6_brackets_host() {
+        // IPv6 input must round-trip with brackets so the URI is parseable.
+        // This is the regression guard for a `format!("nexus://{}:{}", ...)`
+        // shape that would produce an ambiguous `nexus://2001:db8::1:7500`.
+        let uri = crate::uri::build_share_uri(None, "2001:db8::1", 7500);
+        // Default port dropped; brackets present.
+        assert_eq!(uri, "nexus://[2001:db8::1]");
+    }
+
+    #[test]
+    fn copy_row_uri_ipv6_with_non_default_port() {
+        let uri = crate::uri::build_share_uri(None, "2001:db8::1", 7600);
+        assert_eq!(uri, "nexus://[2001:db8::1]:7600");
+    }
+
+    // =========================================================================
+    // translate_tracker_query_error: per-variant rendering
+    // =========================================================================
+
+    #[test]
+    fn translate_stage1_mismatch_renders_localized() {
+        let err = TrackerQueryError::Stage1Mismatch {
+            received: "AA:BB".to_string(),
+        };
+        let s = translate_tracker_query_error(&err);
+        assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn translate_stage2_mismatch_renders_localized() {
+        let err = TrackerQueryError::Stage2Mismatch;
+        let s = translate_tracker_query_error(&err);
+        assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn translate_connection_tls_handshake_renders_refused() {
+        let err = TrackerQueryError::Connection(ConnectError::TlsHandshake {
+            error: "rate limit".to_string(),
+        });
+        let s = translate_tracker_query_error(&err);
+        // Refused branch — locale-keyed.
+        assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn translate_connection_tls_timeout_renders_unreachable() {
+        let err = TrackerQueryError::Connection(ConnectError::TlsHandshakeTimeout);
+        let s = translate_tracker_query_error(&err);
+        // Timeout falls in the unreachable group.
+        assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn translate_connection_tcp_failed_renders_unreachable() {
+        let err = TrackerQueryError::Connection(ConnectError::TcpFailed {
+            error: "refused".to_string(),
+        });
+        let s = translate_tracker_query_error(&err);
+        assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn translate_handshake_error_includes_arg() {
+        let err = TrackerQueryError::Handshake("server too old".to_string());
+        let s = translate_tracker_query_error(&err);
+        assert!(s.contains("server too old"));
+    }
+
+    #[test]
+    fn translate_protocol_error_includes_arg() {
+        let err = TrackerQueryError::Protocol("unexpected variant".to_string());
+        let s = translate_tracker_query_error(&err);
+        assert!(s.contains("unexpected variant"));
+    }
+
+    #[test]
+    fn translate_malformed_response_includes_arg() {
+        let err = TrackerQueryError::MalformedResponse("bad fingerprint".to_string());
+        let s = translate_tracker_query_error(&err);
+        assert!(s.contains("bad fingerprint"));
+    }
+
+    #[test]
+    fn translate_rejected_unauthorized_uses_kind_specific_key() {
+        let err = TrackerQueryError::Rejected {
+            kind: Some("unauthorized".to_string()),
+            message: "wrong password".to_string(),
+        };
+        let s = translate_tracker_query_error(&err);
+        // Kind-specific key — message arg is NOT interpolated.
+        assert!(!s.contains("wrong password"));
+        assert!(!s.is_empty());
+    }
+
+    #[test]
+    fn translate_rejected_unknown_kind_falls_back_to_message() {
+        let err = TrackerQueryError::Rejected {
+            kind: Some("future_kind".to_string()),
+            message: "explanatory text".to_string(),
+        };
+        let s = translate_tracker_query_error(&err);
+        // Fallback path interpolates the message.
+        assert!(s.contains("explanatory text"));
+    }
+
+    #[test]
+    fn translate_rejected_no_kind_falls_back_to_message() {
+        let err = TrackerQueryError::Rejected {
+            kind: None,
+            message: "generic rejection".to_string(),
+        };
+        let s = translate_tracker_query_error(&err);
+        assert!(s.contains("generic rejection"));
     }
 }

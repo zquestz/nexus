@@ -282,6 +282,9 @@ tooltip-close = Fechar
 tooltip-tab-new = Novo Separador
 tooltip-tab-close = Fechar Separador
 tooltip-bookmark-create = Criar Marcador
+tooltip-server-connect = Ligar ao Servidor
+tooltip-server-public-yes = Acesso de convidado ativado
+tooltip-server-public-no = Conta necessária
 tooltip-user-create = Criar Utilizador
 tooltip-group-create = Criar Grupo
 tooltip-news-create = Criar Publicação
@@ -614,6 +617,7 @@ err-failed-update-topic = Falha ao atualizar tópico: { $error }
 # Network connection errors (with parameters)
 err-invalid-address = Endereço inválido '{ $address }': { $error }
 err-could-not-resolve = Não foi possível resolver o endereço '{ $address }'
+err-dns-lookup-timeout = Tempo de consulta DNS esgotado para '{ $address }'
 err-connection-timeout = Tempo de ligação esgotado após { $seconds } { $seconds ->
     [one] segundo
    *[other] segundos
@@ -1263,6 +1267,9 @@ tab-trackers = Trackers
 button-remove = Remover
 button-accept-fingerprint = Aceitar
 menu-tracker-accept-fingerprint = Aceitar impressão digital
+menu-tracker-connect = Ligar
+menu-tracker-bookmark = Marcador
+menu-tracker-copy-uri = Copiar URI
 
 # Columns
 col-status = Estado
@@ -1310,6 +1317,9 @@ toast-tracker-removed-name = Tracker "{ $name }" removido
 toast-tracker-fingerprint-accepted = Impressão digital aceite
 toast-tracker-fingerprint-stale = Revisão de impressão digital já não está pendente
 toast-tracker-fingerprint-accepted-name = Impressão digital aceite para "{ $name }"
+toast-bookmark-added = Marcador adicionado
+toast-bookmark-already-exists = Marcador já existe
+toast-bookmark-save-failed = Falha ao guardar marcador
 
 # Errors
 err-tracker-name-empty = O nome do tracker é obrigatório
@@ -1335,6 +1345,7 @@ tooltip-tracker-remove = Remover Tracker
 placeholder-tracker-search = Pesquisar servidores…
 col-description = Descrição
 col-users = Utilizadores
+col-public = Público
 tracker-browser-status-loading = A carregar…
 tracker-browser-status-servers = Servidores: { $count }
 empty-no-trackers-configured = Nenhum tracker configurado.

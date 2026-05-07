@@ -276,6 +276,9 @@ tooltip-close = 关闭
 tooltip-tab-new = 新标签页
 tooltip-tab-close = 关闭标签页
 tooltip-bookmark-create = 创建书签
+tooltip-server-connect = 连接到服务器
+tooltip-server-public-yes = 允许访客登录
+tooltip-server-public-no = 需要账户
 tooltip-user-create = 创建用户
 tooltip-group-create = 创建群组
 tooltip-news-create = 创建帖子
@@ -594,6 +597,7 @@ err-failed-update-topic = 更新主题失败：{ $error }
 # Network connection errors (with parameters)
 err-invalid-address = 无效地址 '{ $address }'：{ $error }
 err-could-not-resolve = 无法解析地址 '{ $address }'
+err-dns-lookup-timeout = 地址 '{ $address }' 的 DNS 查询超时
 err-connection-timeout = 连接在 { $seconds } 秒后超时
 err-connection-failed = 连接失败：{ $error }
 err-tls-handshake-failed = TLS握手失败：{ $error }
@@ -1197,6 +1201,9 @@ tab-trackers = 追踪器
 button-remove = 移除
 button-accept-fingerprint = 接受
 menu-tracker-accept-fingerprint = 接受指纹
+menu-tracker-connect = 连接
+menu-tracker-bookmark = 书签
+menu-tracker-copy-uri = 复制 URI
 
 # Columns
 col-status = 状态
@@ -1244,6 +1251,9 @@ toast-tracker-removed-name = 已移除追踪器“{ $name }”
 toast-tracker-fingerprint-accepted = 指纹已接受
 toast-tracker-fingerprint-stale = 指纹审核已不再处于待处理状态
 toast-tracker-fingerprint-accepted-name = 已接受“{ $name }”的指纹
+toast-bookmark-added = 已添加书签
+toast-bookmark-already-exists = 书签已存在
+toast-bookmark-save-failed = 书签保存失败
 
 # Errors
 err-tracker-name-empty = 需要追踪器名称
@@ -1269,6 +1279,7 @@ tooltip-tracker-remove = 移除追踪器
 placeholder-tracker-search = 搜索服务器…
 col-description = 描述
 col-users = 用户
+col-public = 公开
 tracker-browser-status-loading = 加载中…
 tracker-browser-status-servers = 服务器：{ $count }
 empty-no-trackers-configured = 未配置追踪器。

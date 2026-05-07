@@ -1,6 +1,6 @@
 // Generated automatically by iced_fontello at build time.
 // Do not edit manually. Source: ../fonts/icons.toml
-// 26f54e834b0bcff1bee7959b8748d2f17a8cb415a2d51eb78ced3fce526bbc9d
+// 1c7c59df4762fde365365fc706e56cd0e01934b92d53e255fcb2b4d6febb7640
 use iced::Font;
 use iced::widget::{Text, text};
 
@@ -158,6 +158,10 @@ pub fn newspaper<'a>() -> Text<'a> {
     icon("\u{F1EA}")
 }
 
+pub fn ok<'a>() -> Text<'a> {
+    icon("\u{2713}")
+}
+
 pub fn paste<'a>() -> Text<'a> {
     icon("\u{F0EA}")
 }
@@ -176,6 +180,10 @@ pub fn plus<'a>() -> Text<'a> {
 
 pub fn plus_circled<'a>() -> Text<'a> {
     icon("\u{2795}")
+}
+
+pub fn plus_squared<'a>() -> Text<'a> {
+    icon("\u{F0FE}")
 }
 
 pub fn refresh<'a>() -> Text<'a> {

@@ -99,7 +99,7 @@ pub struct FingerprintMismatch {
     /// Server address (IP or hostname)
     pub server_address: String,
     /// Server port
-    pub server_port: String,
+    pub server_port: u16,
     /// What to dispatch on accept.
     pub retry_action: ReconnectAction,
 }

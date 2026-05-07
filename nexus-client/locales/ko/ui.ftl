@@ -276,6 +276,9 @@ tooltip-close = 닫기
 tooltip-tab-new = 새 탭
 tooltip-tab-close = 탭 닫기
 tooltip-bookmark-create = 북마크 생성
+tooltip-server-connect = 서버에 연결
+tooltip-server-public-yes = 게스트 로그인 허용
+tooltip-server-public-no = 계정 필요
 tooltip-user-create = 사용자 생성
 tooltip-group-create = 그룹 생성
 tooltip-news-create = 게시물 작성
@@ -593,6 +596,7 @@ err-failed-update-topic = 주제 업데이트 실패: { $error }
 # Network connection errors (with parameters)
 err-invalid-address = 잘못된 주소 '{ $address }': { $error }
 err-could-not-resolve = 주소 '{ $address }'를 확인할 수 없습니다
+err-dns-lookup-timeout = 주소 '{ $address }'의 DNS 조회 시간 초과
 err-connection-timeout = { $seconds }초 후 연결 시간 초과
 err-connection-failed = 연결 실패: { $error }
 err-tls-handshake-failed = TLS 핸드셰이크 실패: { $error }
@@ -1196,6 +1200,9 @@ tab-trackers = 트래커
 button-remove = 제거
 button-accept-fingerprint = 수락
 menu-tracker-accept-fingerprint = 지문 수락
+menu-tracker-connect = 연결
+menu-tracker-bookmark = 북마크
+menu-tracker-copy-uri = URI 복사
 
 # Columns
 col-status = 상태
@@ -1243,6 +1250,9 @@ toast-tracker-removed-name = 트래커 "{ $name }"이(가) 제거되었습니다
 toast-tracker-fingerprint-accepted = 지문이 수락되었습니다
 toast-tracker-fingerprint-stale = 지문 검토가 더 이상 보류 상태가 아닙니다
 toast-tracker-fingerprint-accepted-name = "{ $name }"의 지문이 수락되었습니다
+toast-bookmark-added = 북마크가 추가되었습니다
+toast-bookmark-already-exists = 북마크가 이미 존재합니다
+toast-bookmark-save-failed = 북마크 저장에 실패했습니다
 
 # Errors
 err-tracker-name-empty = 트래커 이름이 필요합니다
@@ -1268,6 +1278,7 @@ tooltip-tracker-remove = 트래커 제거
 placeholder-tracker-search = 서버 검색…
 col-description = 설명
 col-users = 사용자
+col-public = 공개
 tracker-browser-status-loading = 로드 중…
 tracker-browser-status-servers = 서버: { $count }
 empty-no-trackers-configured = 구성된 트래커가 없습니다.

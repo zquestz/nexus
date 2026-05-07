@@ -121,7 +121,7 @@ pub struct FingerprintMismatchDetails {
     /// Server address (IP or hostname)
     pub server_address: String,
     /// Server port
-    pub server_port: String,
+    pub server_port: u16,
 }
 
 /// Certificate fingerprint interception detected (TLS-observed vs server-reported mismatch)
@@ -132,7 +132,7 @@ pub struct FingerprintInterception {
     /// Server address for display
     pub server_address: String,
     /// Server port for display
-    pub server_port: String,
+    pub server_port: u16,
     /// Fingerprint observed during TLS handshake
     pub tls_fingerprint: String,
     /// Fingerprint reported by server in ServerInfo
@@ -167,6 +167,13 @@ pub enum ConnectError {
     /// Address resolved but to zero records. DNS knows nothing about
     /// this name.
     CouldNotResolve { address: String },
+    /// DNS resolution stalled past
+    /// [`super::constants::DNS_LOOKUP_TIMEOUT`]. The system resolver
+    /// is wedged or unreachable; user perceives it as "panel hangs
+    /// forever on a config that may or may not be valid". Distinct
+    /// from `CouldNotResolve` (resolver answered "no records") and
+    /// `InvalidAddress` (parse / IDN issue).
+    DnsTimeout { address: String },
     /// TCP `connect()` timed out (peer never SYN-ACK'd in
     /// [`super::constants::CONNECTION_TIMEOUT`]).
     TcpTimeout,
@@ -178,6 +185,14 @@ pub enum ConnectError {
     /// layer. Distinct from `TcpFailed` because the peer DID answer
     /// at the IP layer.
     TlsHandshake { error: String },
+    /// TLS handshake stalled past
+    /// [`super::constants::CONNECTION_TIMEOUT`] — peer accepted TCP
+    /// then never completed (or wedged mid-) the handshake. Distinct
+    /// from `TlsHandshake` so the renderer can surface the
+    /// timeout-specific i18n key (`err-connection-timeout`) rather
+    /// than embedding a magic "timeout" string in the generic
+    /// `TlsHandshake.error`.
+    TlsHandshakeTimeout,
     /// Cert chain extraction returned empty. Should not happen in
     /// practice — TLS handshake succeeded but rustls produced no
     /// peer certs.
@@ -214,6 +229,9 @@ impl ConnectError {
             ConnectError::CouldNotResolve { address } => {
                 t_args("err-could-not-resolve", &[("address", address)])
             }
+            ConnectError::DnsTimeout { address } => {
+                t_args("err-dns-lookup-timeout", &[("address", address)])
+            }
             ConnectError::TcpTimeout => t_args(
                 "err-connection-timeout",
                 &[("seconds", &CONNECTION_TIMEOUT.as_secs().to_string())],
@@ -224,6 +242,10 @@ impl ConnectError {
             ConnectError::TlsHandshake { error } => {
                 t_args("err-tls-handshake-failed", &[("error", error)])
             }
+            ConnectError::TlsHandshakeTimeout => t_args(
+                "err-connection-timeout",
+                &[("seconds", &CONNECTION_TIMEOUT.as_secs().to_string())],
+            ),
             ConnectError::NoCertificates => t("err-no-certificates-in-chain"),
             ConnectError::ProxyTimeout => t_args(
                 "err-proxy-connection-timeout",

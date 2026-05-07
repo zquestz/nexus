@@ -107,6 +107,13 @@ impl NexusApp {
         self.fingerprint_mismatch_queue.pop_front();
 
         if self.fingerprint_mismatch_queue.is_empty() {
+            // The unconditional write to `connection_form.error` is
+            // only meaningful for Manual / URI connect sources —
+            // bookmark-source mismatches route their error into
+            // `bookmark_errors` map via `handle_bookmark_connection_result`
+            // and never look at the form. Rejecting from a bookmark
+            // source still sets the form error, but it's harmless: the
+            // user isn't on the form view at that point.
             self.connection_form.error = Some(t("msg-connection-cancelled"));
         }
 

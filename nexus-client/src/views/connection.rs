@@ -1,5 +1,6 @@
 //! Connection form for new server connections
 
+use iced::widget::button as btn;
 use iced::widget::{Id, Space, button, checkbox, column, row, text, text_input};
 use iced::{Center, Element, Fill};
 use iced_aw::NumberInput;
@@ -91,6 +92,22 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         button(shaped_text(t("button-connect")).size(TEXT_SIZE)).padding(BUTTON_PADDING)
     };
 
+    // Cancel button is gated on `connect_origin` — only shown when the form
+    // was opened from somewhere we can return to (tracker click, server-list
+    // "+" entrypoint, etc.). The default-state form (app boot, post-disconnect
+    // of last connection) has `connect_origin = None` and renders Connect alone.
+    let cancel_button: Option<Element<'_, Message>> = if form.connect_origin.is_some() {
+        Some(
+            button(shaped_text(t("button-cancel")).size(TEXT_SIZE))
+                .on_press(Message::ConnectionFormCancel)
+                .padding(BUTTON_PADDING)
+                .style(btn::secondary)
+                .into(),
+        )
+    } else {
+        None
+    };
+
     let mut column_items: Vec<Element<'_, Message>> = vec![title.into()];
 
     // Show error if present (at top for visibility)
@@ -124,10 +141,16 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
             .text_shaping(text::Shaping::Advanced)
             .into(),
         Space::new().height(SPACER_SIZE_MEDIUM).into(),
-        row![Space::new().width(Fill), connect_button]
-            .spacing(ELEMENT_SPACING)
-            .into(),
     ]);
+
+    // Button row: Cancel (left, when origin present) + Connect (right).
+    // Project convention: [Cancel] [Save / Connect].
+    let button_row = if let Some(cancel) = cancel_button {
+        row![Space::new().width(Fill), cancel, connect_button]
+    } else {
+        row![Space::new().width(Fill), connect_button]
+    };
+    column_items.push(button_row.spacing(ELEMENT_SPACING).into());
 
     let content = column(column_items)
         .spacing(ELEMENT_SPACING)

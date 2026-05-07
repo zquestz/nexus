@@ -390,7 +390,7 @@ fn lazy_tracker_table(deps: TrackerTableDeps) -> Element<'static, Message> {
             let display = if tracker.port == DEFAULT_TRACKER_PORT {
                 tracker.address
             } else {
-                format!("{}:{}", tracker.address, tracker.port)
+                crate::uri::format_endpoint(&tracker.address, tracker.port)
             };
             row![
                 shaped_text(display)

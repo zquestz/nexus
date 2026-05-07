@@ -278,6 +278,9 @@ tooltip-close = Fermer
 tooltip-tab-new = Nouvel Onglet
 tooltip-tab-close = Fermer l'Onglet
 tooltip-bookmark-create = Créer un signet
+tooltip-server-connect = Connexion au serveur
+tooltip-server-public-yes = Accès invité activé
+tooltip-server-public-no = Compte requis
 tooltip-user-create = Créer un Utilisateur
 tooltip-group-create = Créer un Groupe
 tooltip-news-create = Créer une Publication
@@ -609,6 +612,7 @@ err-failed-update-topic = Échec de la mise à jour du sujet : { $error }
 # Network connection errors (with parameters)
 err-invalid-address = Adresse invalide '{ $address }' : { $error }
 err-could-not-resolve = Impossible de résoudre l'adresse '{ $address }'
+err-dns-lookup-timeout = Délai de résolution DNS dépassé pour '{ $address }'
 err-connection-timeout = Délai de connexion dépassé après { $seconds } { $seconds ->
     [one] seconde
    *[other] secondes
@@ -1258,6 +1262,9 @@ tab-trackers = Trackers
 button-remove = Retirer
 button-accept-fingerprint = Accepter
 menu-tracker-accept-fingerprint = Accepter l'empreinte
+menu-tracker-connect = Connecter
+menu-tracker-bookmark = Signet
+menu-tracker-copy-uri = Copier l'URI
 
 # Titles
 title-tracker-add = Ajouter un tracker
@@ -1305,6 +1312,9 @@ toast-tracker-removed-name = Tracker « { $name } » supprimé
 toast-tracker-fingerprint-accepted = Empreinte acceptée
 toast-tracker-fingerprint-stale = L'empreinte n'est plus en attente
 toast-tracker-fingerprint-accepted-name = Empreinte acceptée pour « { $name } »
+toast-bookmark-added = Signet ajouté
+toast-bookmark-already-exists = Le signet existe déjà
+toast-bookmark-save-failed = Échec de l'enregistrement du signet
 
 # Errors
 err-tracker-name-empty = Le nom du tracker est requis
@@ -1330,6 +1340,7 @@ tooltip-tracker-remove = Supprimer le tracker
 placeholder-tracker-search = Rechercher des serveurs…
 col-description = Description
 col-users = Utilisateurs
+col-public = Public
 tracker-browser-status-loading = Chargement…
 tracker-browser-status-servers = Serveurs : { $count }
 empty-no-trackers-configured = Aucun tracker configuré.

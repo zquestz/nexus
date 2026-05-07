@@ -565,9 +565,14 @@ const TRACKER_SERVER_REGISTER_RESPONSE_SIZE: usize =
         + json_string_field("error", MAX_ERROR_LENGTH)
         + json_string_field("error_kind", MAX_ERROR_KIND_LENGTH);
 
-// `TrackerServerListResponse` has no per-message-type payload limit — the tracker
-// is the trusted originator and is expected to be able to return its full
-// registered set in a single response. Set to 0 (unlimited) below.
+/// `TrackerServerListResponse` payload ceiling. The tracker is a
+/// user-trusted originator (TLS+TOFU pinned), so the cap is purely a
+/// defense-in-depth against a hostile or compromised tracker shipping
+/// arbitrary-sized payloads to OOM the client. Per-entry worst case is
+/// ~2KB at the field caps, so 16MB ≈ 8,000 entries — well above any
+/// realistic tracker. Clients filter / sort large lists in the panel,
+/// so the cap is the OOM ceiling, not a UX limit.
+const TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE: usize = 16 * 1024 * 1024;
 
 // -----------------------------------------------------------------------------
 // Server messages - Voice
@@ -1678,7 +1683,10 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
         "TrackerServerRegisterResponse",
         pad_limit(TRACKER_SERVER_REGISTER_RESPONSE_SIZE as u64),
     );
-    m.insert("TrackerServerListResponse", 0); // unlimited (tracker-trusted, full server set in one response)
+    m.insert(
+        "TrackerServerListResponse",
+        TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE as u64,
+    );
 
     m
 });
@@ -3955,9 +3963,16 @@ mod tests {
     }
 
     #[test]
-    fn test_limit_tracker_server_list_response_unlimited() {
-        // TrackerServerListResponse has no per-message-type limit (set to 0).
-        assert_eq!(max_payload_for_type("TrackerServerListResponse"), 0);
+    fn test_limit_tracker_server_list_response_capped_at_16mib() {
+        // TrackerServerListResponse cap: 16 MiB defense-in-depth ceiling
+        // (see TRACKER_SERVER_LIST_RESPONSE_MAX_SIZE in this module).
+        // Per-entry worst case is ~2 KiB at field caps, so the cap
+        // accommodates ~8,000 entries — well above any realistic
+        // tracker. Clients filter / sort large lists locally.
+        assert_eq!(
+            max_payload_for_type("TrackerServerListResponse"),
+            16 * 1024 * 1024,
+        );
     }
 
     // =========================================================================

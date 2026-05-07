@@ -283,6 +283,9 @@ tooltip-close = Fechar
 tooltip-tab-new = Nova Aba
 tooltip-tab-close = Fechar Aba
 tooltip-bookmark-create = Criar Favorito
+tooltip-server-connect = Conectar ao Servidor
+tooltip-server-public-yes = Acesso de convidado ativado
+tooltip-server-public-no = Conta necessária
 tooltip-user-create = Criar Usuário
 tooltip-group-create = Criar Grupo
 tooltip-news-create = Criar Publicação
@@ -615,6 +618,7 @@ err-failed-update-topic = Falha ao atualizar tópico: { $error }
 # Network connection errors (with parameters)
 err-invalid-address = Endereço inválido '{ $address }': { $error }
 err-could-not-resolve = Não foi possível resolver o endereço '{ $address }'
+err-dns-lookup-timeout = Tempo de consulta DNS esgotado para '{ $address }'
 err-connection-timeout = Tempo de conexão esgotado após { $seconds } { $seconds ->
     [one] segundo
    *[other] segundos
@@ -1264,6 +1268,9 @@ tab-trackers = Trackers
 button-remove = Remover
 button-accept-fingerprint = Aceitar
 menu-tracker-accept-fingerprint = Aceitar impressão digital
+menu-tracker-connect = Conectar
+menu-tracker-bookmark = Favorito
+menu-tracker-copy-uri = Copiar URI
 
 # Columns
 col-status = Status
@@ -1311,6 +1318,9 @@ toast-tracker-removed-name = Tracker "{ $name }" removido
 toast-tracker-fingerprint-accepted = Impressão digital aceita
 toast-tracker-fingerprint-stale = Revisão de impressão digital não está mais pendente
 toast-tracker-fingerprint-accepted-name = Impressão digital aceita para "{ $name }"
+toast-bookmark-added = Favorito adicionado
+toast-bookmark-already-exists = Favorito já existe
+toast-bookmark-save-failed = Falha ao salvar favorito
 
 # Errors
 err-tracker-name-empty = Nome do tracker é obrigatório
@@ -1336,6 +1346,7 @@ tooltip-tracker-remove = Remover Tracker
 placeholder-tracker-search = Buscar servidores…
 col-description = Descrição
 col-users = Usuários
+col-public = Público
 tracker-browser-status-loading = Carregando…
 tracker-browser-status-servers = Servidores: { $count }
 empty-no-trackers-configured = Nenhum tracker configurado.

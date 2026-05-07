@@ -276,6 +276,9 @@ tooltip-close = 關閉
 tooltip-tab-new = 新分頁
 tooltip-tab-close = 關閉分頁
 tooltip-bookmark-create = 建立書籤
+tooltip-server-connect = 連線至伺服器
+tooltip-server-public-yes = 允許訪客登入
+tooltip-server-public-no = 需要帳號
 tooltip-user-create = 建立使用者
 tooltip-group-create = 建立群組
 tooltip-news-create = 建立貼文
@@ -593,6 +596,7 @@ err-failed-update-topic = 更新主題失敗：{ $error }
 # Network connection errors (with parameters)
 err-invalid-address = 無效位址 '{ $address }'：{ $error }
 err-could-not-resolve = 無法解析位址 '{ $address }'
+err-dns-lookup-timeout = 位址 '{ $address }' 的 DNS 查詢逾時
 err-connection-timeout = 連線在 { $seconds } 秒後逾時
 err-connection-failed = 連線失敗：{ $error }
 err-tls-handshake-failed = TLS握手失敗：{ $error }
@@ -1196,6 +1200,9 @@ tab-trackers = 追蹤器
 button-remove = 移除
 button-accept-fingerprint = 接受
 menu-tracker-accept-fingerprint = 接受指紋
+menu-tracker-connect = 連線
+menu-tracker-bookmark = 書籤
+menu-tracker-copy-uri = 複製 URI
 
 # Columns
 col-status = 狀態
@@ -1243,6 +1250,9 @@ toast-tracker-removed-name = 已移除追蹤器「{ $name }」
 toast-tracker-fingerprint-accepted = 指紋已接受
 toast-tracker-fingerprint-stale = 指紋審核已不再處於待處理狀態
 toast-tracker-fingerprint-accepted-name = 已接受「{ $name }」的指紋
+toast-bookmark-added = 已新增書籤
+toast-bookmark-already-exists = 書籤已存在
+toast-bookmark-save-failed = 書籤儲存失敗
 
 # Errors
 err-tracker-name-empty = 需要追蹤器名稱
@@ -1268,6 +1278,7 @@ tooltip-tracker-remove = 移除追蹤器
 placeholder-tracker-search = 搜尋伺服器…
 col-description = 描述
 col-users = 使用者
+col-public = 公開
 tracker-browser-status-loading = 載入中…
 tracker-browser-status-servers = 伺服器：{ $count }
 empty-no-trackers-configured = 尚未設定追蹤器。

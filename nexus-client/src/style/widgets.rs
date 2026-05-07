@@ -321,6 +321,15 @@ pub fn muted_text_style(theme: &Theme) -> text::Style {
     }
 }
 
+/// Success text/icon style — uses theme success color. Used for
+/// affirmative indicators (e.g. the ✓ in the tracker discovery panel's
+/// Public column).
+pub fn success_text_style(theme: &Theme) -> text::Style {
+    text::Style {
+        color: Some(theme.extended_palette().success.base.color),
+    }
+}
+
 /// Text/icon style for uploadable folder icons (uses primary color like connected servers)
 pub fn upload_folder_style(theme: &Theme) -> text::Style {
     text::Style {

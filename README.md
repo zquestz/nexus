@@ -21,6 +21,7 @@ A modern BBS inspired by Hotline, KDX, Carracho, and Wired. Built for the [Yggdr
 - **Customization** — 30 themes, 13 languages, configurable UI
 - **System Tray** — Status icons, minimize to tray, quick actions (Windows/Linux)
 - **Connectivity** — Multi-server bookmarks, auto-connect, UPnP, IPv4/IPv6/Yggdrasil
+- **Discovery** — Optional tracker daemon and client browser to find Nexus servers across the network
 - **Deep Links** — `nexus://` URI scheme for direct links to servers, channels, and files, with an admin-advertised public address for clean shareable URIs
 - **WebSocket** — Optional WebSocket support for web-based clients (`--websocket`)
 

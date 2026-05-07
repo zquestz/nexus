@@ -284,6 +284,9 @@ tooltip-close = Close
 tooltip-tab-new = New Tab
 tooltip-tab-close = Close Tab
 tooltip-bookmark-create = Create Bookmark
+tooltip-server-connect = Connect to Server
+tooltip-server-public-yes = Guest access enabled
+tooltip-server-public-no = Account required
 tooltip-user-create = Create User
 tooltip-group-create = Create Group
 tooltip-news-create = Create News Post
@@ -665,6 +668,7 @@ err-failed-update-topic = Failed to update topic: { $error }
 # Network connection errors (with parameters)
 err-invalid-address = Invalid address '{ $address }': { $error }
 err-could-not-resolve = Could not resolve address '{ $address }'
+err-dns-lookup-timeout = DNS lookup timed out for '{ $address }'
 err-connection-timeout = Connection timed out after { $seconds } { $seconds ->
     [one] second
    *[other] seconds
@@ -1292,6 +1296,9 @@ tab-trackers = Trackers
 button-remove = Remove
 button-accept-fingerprint = Accept
 menu-tracker-accept-fingerprint = Accept Fingerprint
+menu-tracker-connect = Connect
+menu-tracker-bookmark = Bookmark
+menu-tracker-copy-uri = Copy URI
 
 # Titles
 title-tracker-add = Add Tracker
@@ -1339,6 +1346,9 @@ toast-tracker-removed-name = Tracker "{ $name }" removed
 toast-tracker-fingerprint-accepted = Fingerprint accepted
 toast-tracker-fingerprint-stale = Fingerprint review no longer pending
 toast-tracker-fingerprint-accepted-name = Fingerprint accepted for "{ $name }"
+toast-bookmark-added = Bookmark added
+toast-bookmark-already-exists = Bookmark already exists
+toast-bookmark-save-failed = Failed to save bookmark
 
 # Errors
 err-tracker-name-empty = Tracker name is required
@@ -1387,6 +1397,7 @@ placeholder-tracker-search = Search servers…
 # Table column headers (Description and Users; Name reuses col-name)
 col-description = Description
 col-users = Users
+col-public = Public
 
 # Toolbar status text variants
 tracker-browser-status-loading = Loading…

@@ -56,7 +56,7 @@ pub async fn connect_to_server(
                 expected: expected.clone(),
                 received: tls_fingerprint.clone(),
                 server_address: params.server_address.clone(),
-                server_port: params.port.to_string(),
+                server_port: params.port,
             },
         )));
     }
@@ -83,7 +83,7 @@ pub async fn connect_to_server(
                 // or matched-URI bookmark name as appropriate.
                 server_name: String::new(),
                 server_address: params.server_address.clone(),
-                server_port: params.port.to_string(),
+                server_port: params.port,
                 tls_fingerprint: tls_fingerprint.clone(),
                 server_fingerprint,
             },
@@ -154,8 +154,43 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<S
         ServerMessage::HandshakeResponse {
             success: true,
             fingerprint,
+            version,
             ..
-        } => Ok(fingerprint),
+        } => {
+            // Trust-but-verify: the server's `success: true` means it
+            // already filtered for compat, but a buggy server could
+            // erroneously accept us. Re-check the reported version
+            // against ours. Missing version is accepted (forward-compat
+            // with older servers); unparseable / incompatible reject
+            // before we expose credentials in `Login`.
+            if let Some(reported) = version.as_deref() {
+                let server_v = nexus_common::version::Version::parse(reported).map_err(|e| {
+                    t_args(
+                        "err-handshake-failed",
+                        &[(
+                            "error",
+                            &format!("unparseable server version \"{}\": {}", reported, e),
+                        )],
+                    )
+                })?;
+                let client_v = nexus_common::version::Version::parse(PROTOCOL_VERSION)
+                    .expect("PROTOCOL_VERSION is a canonical semver constant");
+                let compat = nexus_common::version::check_compatibility(&server_v, &client_v);
+                if !compat.is_compatible() {
+                    return Err(t_args(
+                        "err-handshake-failed",
+                        &[(
+                            "error",
+                            &format!(
+                                "incompatible server version {} (client {})",
+                                reported, PROTOCOL_VERSION
+                            ),
+                        )],
+                    ));
+                }
+            }
+            Ok(fingerprint)
+        }
         ServerMessage::HandshakeResponse {
             success: false,
             error,

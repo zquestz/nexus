@@ -423,7 +423,15 @@ impl NexusApp {
                 return self.update(Message::DisconnectDialogCancel);
             }
 
-            if self.bookmark_edit.mode != BookmarkEditMode::None {
+            if self.connection_form.connect_origin.is_some() {
+                // Connection form is summoned (tracker click, "+", etc.).
+                // Mirrors the layout's modal-like ordering — connect form
+                // sits on top of bookmark edit, so Escape dismisses connect
+                // form first. Default-state form has origin=None and falls
+                // through to the panel match below (Escape on disconnected
+                // fallthrough is a no-op via ActivePanel::None).
+                return self.update(Message::ConnectionFormCancel);
+            } else if self.bookmark_edit.mode != BookmarkEditMode::None {
                 // Cancel bookmark edit
                 return self.update(Message::CancelBookmarkEdit);
             } else {
