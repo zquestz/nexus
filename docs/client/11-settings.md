@@ -515,6 +515,6 @@ Check that you have write permission to the config directory:
 
 ## Next Steps
 
-- [Troubleshooting](12-troubleshooting.md) — Common issues and solutions
+- [Troubleshooting](13-troubleshooting.md) — Common issues and solutions
 - [Connections](02-connections.md) — Connection and bookmark settings
 - [Voice Chat](07-voice-chat.md) — Push-to-talk voice communication
