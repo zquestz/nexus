@@ -393,6 +393,17 @@ pub enum Message {
     TrackerBrowserAddTabResolved(iced::widget::Id),
     /// Tracker browser: same as the Add variant, for the Edit form.
     TrackerBrowserEditTabResolved(iced::widget::Id),
+    /// Tracker browser: Refresh toolbar button pressed. Dispatches a
+    /// one-shot `query_tracker` for the currently selected tracker;
+    /// disabled when no tracker is selected or a query is in flight.
+    TrackerBrowserRefresh,
+    /// Tracker browser: result of a `query_tracker` task. The handler
+    /// drops the message silently if the cache entry is no longer
+    /// `is_fetching` (stale-result-from-prior-query policy).
+    TrackerQueryResult {
+        tracker_id: Uuid,
+        result: Result<crate::network::TrackerQueryOk, crate::network::TrackerQueryError>,
+    },
     /// Toolbar: Toggle Connection Monitor panel
     ToggleConnectionMonitor,
     /// Connection Monitor panel: Close button pressed

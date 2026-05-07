@@ -97,8 +97,8 @@ impl NexusApp {
                 self.fingerprint_interception_queue.push_back(*details);
                 Task::none()
             }
-            Err(ConnectError::Other(error)) => {
-                self.connection_form.error = Some(error);
+            Err(other) => {
+                self.connection_form.error = Some(other.to_localized_string());
                 Task::none()
             }
         }
@@ -147,9 +147,10 @@ impl NexusApp {
                 self.fingerprint_interception_queue.push_back(*details);
                 Task::none()
             }
-            Err(ConnectError::Other(error)) => {
+            Err(other) => {
                 self.connecting_bookmarks.remove(&bookmark_id);
-                self.bookmark_errors.insert(bookmark_id, error);
+                self.bookmark_errors
+                    .insert(bookmark_id, other.to_localized_string());
                 Task::none()
             }
         }

@@ -55,11 +55,6 @@ pub const ERR_NSAPPLEEVENTMANAGER_CLASS_NOT_FOUND: &str = "NSAppleEventManager c
 /// broken.
 pub const ERR_RUSTLS_PROVIDER: &str = "failed to install rustls crypto provider";
 
-/// Panic message: parsing a hardcoded `SNI_SERVER_NAME` constant as a
-/// rustls server name failed. Programmer-error: the constant is
-/// hand-edited to be valid.
-pub const ERR_SNI_SERVER_NAME_INVALID: &str = "SNI_SERVER_NAME is valid";
-
 /// Panic message: the global `TRAY_RX` was accessed before the tray
 /// service initialized it. Programmer-error in the startup sequence.
 /// Linux-only — the Windows tray uses crossbeam channels, no static.
@@ -70,10 +65,6 @@ pub const ERR_TRAY_RX_UNINITIALIZED: &str = "TRAY_RX not initialized";
 /// `LanguageIdentifier`. Programmer-error: the constant is hand-edited
 /// to be valid.
 pub const ERR_DEFAULT_LOCALE_INVALID: &str = "DEFAULT_LOCALE is a valid locale";
-
-/// Panic message: parsing the literal `"localhost"` as a rustls DNS
-/// name failed. Programmer-error: `"localhost"` is RFC-valid.
-pub const ERR_LOCALHOST_INVALID_DNS: &str = "'localhost' is a valid DNS name";
 
 /// Panic message: HKDF-SHA256 expansion to a 32-byte output failed.
 /// Programmer-error: 32 bytes is well under the per-spec maximum

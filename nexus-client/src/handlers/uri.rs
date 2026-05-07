@@ -419,7 +419,8 @@ impl NexusApp {
                 self.fingerprint_interception_queue.push_back(*details);
                 Task::none()
             }
-            Err(ConnectError::Other(error)) => {
+            Err(other) => {
+                let error = other.to_localized_string();
                 // Show error in current connection's console if we have one
                 if let Some(conn_id) = self.active_connection {
                     if let Some(conn) = self.connections.get_mut(&conn_id) {

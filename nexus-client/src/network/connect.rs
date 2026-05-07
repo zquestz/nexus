@@ -38,11 +38,12 @@ use super::types::{
 pub async fn connect_to_server(
     params: ConnectionParams,
 ) -> Result<NetworkConnection, ConnectError> {
-    // Establish TCP+TLS connection and observe the server certificate fingerprint.
+    // Establish TCP+TLS connection and observe the server certificate
+    // fingerprint. `establish_connection` returns a typed
+    // `ConnectError` directly — propagate it so the BBS-side renderer
+    // can match each phase variant to its localized message.
     let (tls_stream, tls_fingerprint) =
-        establish_connection(&params.server_address, params.port, params.proxy.as_ref())
-            .await
-            .map_err(ConnectError::Other)?;
+        establish_connection(&params.server_address, params.port, params.proxy.as_ref()).await?;
 
     // Stage 1: TOFU check against bookmark's stored fingerprint, if any.
     // Both sides come from `nexus_common::fingerprint::format_certificate_fingerprint`

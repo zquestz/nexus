@@ -505,8 +505,7 @@ err-userlist-failed = Failed to refresh user list
 err-port-invalid = Port must be a valid number (1-65535)
 
 # Network connection errors
-err-no-peer-certificates = No peer certificates found
-err-no-certificates-in-chain = No certificates in chain
+err-no-certificates-in-chain = Server did not present a certificate.
 err-unexpected-handshake-response = Unexpected handshake response
 err-no-session-id = No session ID received
 err-login-failed = Login failed
@@ -639,7 +638,7 @@ err-group-not-empty-delete = Cannot delete group while users are assigned to it
 err-group-not-empty-modify = Cannot modify shared status while users are assigned to it
 
 # Proxy errors
-err-proxy-connection-failed = Failed to connect to proxy: { $error }
+err-proxy-connection-failed = Proxy connection failed: { $error }
 err-proxy-connection-timeout = Proxy connection timed out after { $seconds } { $seconds ->
     [one] second
    *[other] seconds
@@ -672,6 +671,14 @@ err-connection-timeout = Connection timed out after { $seconds } { $seconds ->
 }
 err-connection-failed = Connection failed: { $error }
 err-tls-handshake-failed = TLS handshake failed: { $error }
+# Fail-safe fall-through messages used when the FingerprintMismatch
+# or FingerprintInterception variants reach the generic
+# `ConnectError::to_localized_string` path. Both variants are
+# normally matched explicitly upstream and routed to dialogs
+# (`fingerprint-warning` / `fingerprint-interception-warning`); the
+# fall-through fires only if a future caller forgets to dispatch.
+err-fingerprint-mismatch = Server certificate fingerprint changed. Review and accept the new fingerprint to continue.
+err-fingerprint-interception = TLS interception detected. Server-reported fingerprint differs from observed.
 err-failed-send-handshake = Failed to send handshake: { $error }
 err-failed-read-handshake = Failed to read handshake response: { $error }
 err-handshake-failed = Handshake failed: { $error }
@@ -1382,11 +1389,7 @@ col-users = Users
 
 # Toolbar status text variants
 tracker-browser-status-loading = Loading…
-tracker-browser-status-servers = { $count } { $count ->
-    [one] server
-   *[other] servers
-}
-tracker-browser-status-error = Error: { $message }
+tracker-browser-status-servers = Total Servers: { $count }
 
 # List-area empty states
 empty-no-trackers-configured = No trackers configured.
@@ -1403,3 +1406,19 @@ dialog-remove-client-tracker-body = Are you sure you want to remove the tracker 
 # (LOWER(address), port).
 err-tracker-name-duplicate = A tracker named "{ $name }" already exists.
 err-tracker-address-duplicate = A tracker at this address and port already exists.
+
+# Tracker query (discovery-panel Refresh) errors. Surfaced inline in
+# the panel cache when a one-shot query fails. `stage1-mismatch` is
+# the only one that also routes to the AcceptFingerprint dialog flow.
+err-tracker-query-stage1-mismatch = Tracker certificate fingerprint does not match the saved pin. Review and accept the new fingerprint to continue.
+err-tracker-query-stage2-intercepted = Tracker connection is being intercepted by a TLS proxy.
+err-tracker-query-unreachable = Tracker unreachable: it may be down or the address may be wrong.
+err-tracker-query-refused = Tracker refused connection: it may be rate-limiting your IP or unavailable.
+err-tracker-query-handshake-failed = Tracker handshake failed: { $error }
+err-tracker-query-protocol-error = Tracker protocol error: { $error }
+err-tracker-query-malformed-response = Tracker response is malformed: { $error }
+err-tracker-query-unauthorized = Tracker rejected the request: incorrect or missing password.
+err-tracker-query-rate-limited = Tracker rejected the request: rate limit exceeded. Try again in a moment.
+err-tracker-query-capacity = Tracker rejected the request: at capacity. Try again later.
+err-tracker-query-invalid = Tracker rejected the request: invalid input.
+err-tracker-query-rejected = Tracker rejected the request: { $message }

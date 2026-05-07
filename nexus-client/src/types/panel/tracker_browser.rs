@@ -46,6 +46,9 @@ pub enum TrackerBrowserSortColumn {
 /// localized); cleared on next successful fetch. `is_fetching` is true
 /// while a query is in flight; gates Refresh-button enablement so
 /// repeated clicks don't pile up parallel queries.
+/// `pending_fingerprint` is set when a Stage 1 fingerprint mismatch
+/// is observed; the AcceptFingerprint dialog (step 7) reads it to
+/// drive the accept/reject prompt without re-querying.
 #[derive(Debug, Clone, Default)]
 pub struct TrackerCacheEntry {
     /// Last successful list of advertised servers from this tracker.
@@ -54,6 +57,13 @@ pub struct TrackerCacheEntry {
     pub error: Option<String>,
     /// Whether a query is currently in flight for this tracker.
     pub is_fetching: bool,
+    /// Pending fingerprint observation from a Stage 1 mismatch.
+    /// `None` in normal operation; `Some(fp)` after a mismatch,
+    /// cleared by Accept (commits the new pin) or by the next
+    /// successful query. Read by the AcceptFingerprint dialog
+    /// landing in step 7; write-only for now.
+    #[allow(dead_code)]
+    pub pending_fingerprint: Option<String>,
 }
 
 // =============================================================================

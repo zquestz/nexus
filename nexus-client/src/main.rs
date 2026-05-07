@@ -967,6 +967,10 @@ impl NexusApp {
             Message::TrackerBrowserEditTabResolved(id) => {
                 self.handle_tracker_browser_edit_tab_resolved(id)
             }
+            Message::TrackerBrowserRefresh => self.handle_tracker_browser_refresh(),
+            Message::TrackerQueryResult { tracker_id, result } => {
+                self.handle_tracker_query_result(tracker_id, result)
+            }
 
             // Connection Monitor
             Message::ToggleConnectionMonitor => self.handle_toggle_connection_monitor(),

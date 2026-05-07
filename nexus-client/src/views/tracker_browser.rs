@@ -182,7 +182,7 @@ fn lazy_server_table(deps: ServerTableDeps) -> Element<'static, Message> {
                 .wrapping(Wrapping::WordOrGlyph)
                 .style(muted_text_style)
         })
-        .width(Length::FillPortion(1));
+        .width(Length::FillPortion(2));
 
         // Users header (sortable, rightmost — trailing scrollbar padding)
         let users_sort_icon = sort_icon_or_placeholder(
@@ -237,7 +237,8 @@ fn lazy_server_table(deps: ServerTableDeps) -> Element<'static, Message> {
 
 /// Render the right-aligned status text reflecting the cache state for
 /// the selected tracker. Empty when no tracker is selected; muted while
-/// loading; danger-styled on error; neutral on success.
+/// loading; neutral on success (server count). Errors are rendered in a
+/// dedicated row under the panel title — see `error_row` below.
 fn toolbar_status<'a>(cache: Option<&'a TrackerCacheEntry>) -> Element<'a, Message> {
     let Some(entry) = cache else {
         return Space::new().into();
@@ -246,13 +247,6 @@ fn toolbar_status<'a>(cache: Option<&'a TrackerCacheEntry>) -> Element<'a, Messa
         return shaped_text(t("tracker-browser-status-loading"))
             .size(TEXT_SIZE)
             .style(muted_text_style)
-            .into();
-    }
-    if let Some(error) = &entry.error {
-        let msg = t_args("tracker-browser-status-error", &[("message", error)]);
-        return shaped_text_wrapped(msg)
-            .size(TEXT_SIZE)
-            .style(error_text_style)
             .into();
     }
     if let Some(entries) = &entry.entries {
@@ -468,8 +462,16 @@ fn list_view<'a>(
         "tooltip-tracker-remove",
         has_selection.then_some(Message::TrackerBrowserShowRemove),
     );
-    // Refresh stays disabled until step 5 wires the network layer.
-    let refresh_button = inline_btn(icon::refresh(), "tooltip-refresh", None);
+    // Refresh enabled when a tracker is selected and no query is in
+    // flight for it. The handler also stale-drops re-entered presses
+    // as a defense-in-depth, but the disabled visual is the primary
+    // UX signal.
+    let is_fetching = selected_cache.is_some_and(|c| c.is_fetching);
+    let refresh_button = inline_btn(
+        icon::refresh(),
+        "tooltip-refresh",
+        (has_selection && !is_fetching).then_some(Message::TrackerBrowserRefresh),
+    );
 
     let toolbar_row = row![
         dropdown,
@@ -516,17 +518,40 @@ fn list_view<'a>(
     // The body is wrapped in `container(...).height(Fill)` so it
     // absorbs the column's slack rather than spreading it across
     // the rows above.
-    let form = column![
-        title_row,
-        toolbar_row,
-        search_input,
-        container(body).width(Fill).height(Fill),
-    ]
-    .spacing(SPACER_SIZE_SMALL)
-    .align_x(Center)
-    .padding(CONTENT_PADDING)
-    .max_width(CONTENT_MAX_WIDTH)
-    .height(Fill);
+    //
+    // The error banner (when present) is conditionally pushed
+    // between title and toolbar, mirroring the files-view pattern:
+    // wrapped in a container with a `SPACER_SIZE_MEDIUM` bottom
+    // padding so there's clear breathing room before the toolbar
+    // row. Same row is omitted entirely when there's no error so
+    // there's no leftover spacer.
+    let mut form_column = column![title_row]
+        .spacing(SPACER_SIZE_SMALL)
+        .align_x(Center);
+    if let Some(error) = selected_cache.and_then(|c| c.error.as_ref()) {
+        form_column = form_column.push(
+            container(
+                shaped_text_wrapped(error.as_str())
+                    .size(TEXT_SIZE)
+                    .style(error_text_style),
+            )
+            .width(Fill)
+            .center_x(Fill)
+            .padding(iced::Padding {
+                top: NO_SPACING,
+                right: NO_SPACING,
+                bottom: SPACER_SIZE_MEDIUM,
+                left: NO_SPACING,
+            }),
+        );
+    }
+    let form = form_column
+        .push(toolbar_row)
+        .push(search_input)
+        .push(container(body).width(Fill).height(Fill))
+        .padding(CONTENT_PADDING)
+        .max_width(CONTENT_MAX_WIDTH)
+        .height(Fill);
 
     let centered_form = container(form).width(Fill).center_x(Fill);
 

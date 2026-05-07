@@ -16,12 +16,12 @@ use std::time::Duration;
 
 use argon2::password_hash::{SaltString, rand_core::OsRng};
 use argon2::{Argon2, PasswordHasher};
-use nexus_common::TRACKER_PROTOCOL_VERSION;
 use nexus_common::framing::{FrameError, FrameReader, FrameWriter, MessageId, RawFrame};
 use nexus_common::io::{read_server_message, send_client_message, tracker_client_message_type};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tracker_protocol::{TrackerClientMessage, TrackerServerMessage};
 use nexus_common::websocket::WebSocketAdapter;
+use nexus_common::{EXPECT_SNI_SERVER_NAME_VALID_DNS, SNI_SERVER_NAME, TRACKER_PROTOCOL_VERSION};
 use nexus_tracker::registry::Registry;
 use nexus_tracker::state::TrackerState;
 use tokio::io::{ReadHalf, WriteHalf};
@@ -150,7 +150,8 @@ async fn test_handshake_roundtrip_compatible_version() {
     // Client side
     let connector = build_test_client();
     let stream = TcpStream::connect(server_addr).await.expect("connect");
-    let server_name = ServerName::try_from("localhost").expect("server name");
+    let server_name =
+        ServerName::try_from(SNI_SERVER_NAME).expect(EXPECT_SNI_SERVER_NAME_VALID_DNS);
     let tls = connector
         .connect(server_name, stream)
         .await
@@ -206,7 +207,8 @@ async fn test_handshake_roundtrip_incompatible_major_version() {
 
     let connector = build_test_client();
     let stream = TcpStream::connect(server_addr).await.expect("connect");
-    let server_name = ServerName::try_from("localhost").expect("server name");
+    let server_name =
+        ServerName::try_from(SNI_SERVER_NAME).expect(EXPECT_SNI_SERVER_NAME_VALID_DNS);
     let tls = connector
         .connect(server_name, stream)
         .await
@@ -260,7 +262,8 @@ async fn test_non_handshake_first_message_yields_error() {
 
     let connector = build_test_client();
     let stream = TcpStream::connect(server_addr).await.expect("connect");
-    let server_name = ServerName::try_from("localhost").expect("server name");
+    let server_name =
+        ServerName::try_from(SNI_SERVER_NAME).expect(EXPECT_SNI_SERVER_NAME_VALID_DNS);
     let tls = connector
         .connect(server_name, stream)
         .await
@@ -360,7 +363,8 @@ async fn spawn_multi_tracker(
 async fn connect_and_handshake(server_addr: std::net::SocketAddr) -> (ClientReader, ClientWriter) {
     let connector = build_test_client();
     let stream = TcpStream::connect(server_addr).await.expect("connect");
-    let server_name = ServerName::try_from("localhost").expect("server name");
+    let server_name =
+        ServerName::try_from(SNI_SERVER_NAME).expect(EXPECT_SNI_SERVER_NAME_VALID_DNS);
     let tls = connector
         .connect(server_name, stream)
         .await
@@ -1000,7 +1004,8 @@ async fn test_websocket_handshake_register_list_roundtrip() {
     // path's.
     let connector = build_test_client();
     let tcp = TcpStream::connect(server_addr).await.expect("connect");
-    let server_name = ServerName::try_from("localhost").expect("server name");
+    let server_name =
+        ServerName::try_from(SNI_SERVER_NAME).expect(EXPECT_SNI_SERVER_NAME_VALID_DNS);
     let tls = connector
         .connect(server_name, tcp)
         .await
@@ -1242,7 +1247,8 @@ async fn test_connection_rate_limit_drops_excess_connections() {
     // the TLS handshake doesn't *succeed*.
     let connector = build_test_client();
     let stream = TcpStream::connect(server_addr).await.expect("tcp connect");
-    let server_name = ServerName::try_from("localhost").expect("server name");
+    let server_name =
+        ServerName::try_from(SNI_SERVER_NAME).expect(EXPECT_SNI_SERVER_NAME_VALID_DNS);
     let tls_result = connector.connect(server_name, stream).await;
     assert!(
         tls_result.is_err(),

@@ -12,11 +12,10 @@ use tokio_rustls::rustls::client::ClientConnection;
 use tokio_rustls::rustls::pki_types::ServerName;
 use tokio_socks::tcp::Socks5Stream;
 
-use crate::constants::ERR_LOCALHOST_INVALID_DNS;
-use crate::i18n::{t, t_args};
+use nexus_common::{EXPECT_SNI_SERVER_NAME_VALID_DNS, LOCALHOST_HOSTNAME, SNI_SERVER_NAME};
 
 use super::constants::CONNECTION_TIMEOUT;
-use super::types::{ProxyConfig, TlsStream};
+use super::types::{ConnectError, ProxyConfig, TlsStream};
 
 /// Global TLS connector (accepts any certificate, no hostname verification)
 pub(super) static TLS_CONNECTOR: Lazy<TlsConnector> = Lazy::new(|| {
@@ -122,20 +121,26 @@ pub fn get_certificate_fingerprint(session: &ClientConnection) -> Option<String>
     ))
 }
 
-/// Establish TLS connection to the server and return certificate fingerprint
+/// Establish TLS connection to the server and return certificate fingerprint.
 ///
 /// If a proxy configuration is provided, the connection will be tunneled through
 /// the SOCKS5 proxy. Otherwise, a direct connection is made.
 ///
 /// Localhost/loopback addresses bypass the proxy since proxying to localhost
 /// doesn't make sense (the proxy server can't reach your local machine).
+///
+/// Errors are returned typed by phase (TCP / TLS / proxy / fingerprint
+/// extraction) so callers can render phase-appropriate messages
+/// without parsing localized strings. The caller's renderer is
+/// responsible for converting the variant to a localized message.
 pub(crate) async fn establish_connection(
     address: &str,
     port: u16,
     proxy: Option<&ProxyConfig>,
-) -> Result<(TlsStream, String), String> {
+) -> Result<(TlsStream, String), ConnectError> {
     // Server name for TLS (doesn't matter - we accept any cert and disable SNI)
-    let server_name = ServerName::try_from("localhost").expect(ERR_LOCALHOST_INVALID_DNS);
+    let server_name =
+        ServerName::try_from(SNI_SERVER_NAME).expect(EXPECT_SNI_SERVER_NAME_VALID_DNS);
 
     // Bypass proxy for localhost/loopback and Yggdrasil addresses
     let use_proxy = proxy.filter(|_| !should_bypass_proxy(address));
@@ -160,7 +165,7 @@ pub(crate) async fn establish_connection(
 /// other than `"localhost"` (which require DNS to classify) return
 /// `false` — they'll be routed through the proxy normally.
 pub(crate) fn should_bypass_proxy(address: &str) -> bool {
-    if address.to_lowercase() == "localhost" {
+    if address.to_lowercase() == LOCALHOST_HOSTNAME {
         return true;
     }
     address::normalize_ip_literal(address)
@@ -168,59 +173,48 @@ pub(crate) fn should_bypass_proxy(address: &str) -> bool {
         .is_ok_and(address::is_proxy_bypassable)
 }
 
-/// Encode a hostname for DNS resolution, translating IDNA failures
-/// into a localized error message.
-///
-/// Thin wrapper around `nexus_common::address::resolve_host_for_connection`
-/// — that helper does the actual normalization (bracket strip, IP
-/// passthrough, zone-ID preservation, Punycode for Unicode); this
-/// version maps its `idna::Errors` into the translated client-facing
-/// "invalid address" string.
-fn resolve_host_for_connection(address: &str) -> Result<String, String> {
-    nexus_common::address::resolve_host_for_connection(address).map_err(|e| {
-        t_args(
-            "err-invalid-address",
-            &[("address", address), ("error", &e.to_string())],
-        )
-    })
-}
-
 /// Establish a direct TLS connection (no proxy)
 async fn establish_direct_connection(
     address: &str,
     port: u16,
     server_name: ServerName<'static>,
-) -> Result<(TlsStream, String), String> {
+) -> Result<(TlsStream, String), ConnectError> {
     // IDNA-encode Unicode hostnames before handing to the system resolver.
-    let resolved = resolve_host_for_connection(address)?;
-    // Use to_socket_addrs to support IPv6 zone identifiers (e.g., "fe80::1%eth0")
-    let mut addrs = (resolved.as_str(), port).to_socket_addrs().map_err(|e| {
-        t_args(
-            "err-invalid-address",
-            &[("address", address), ("error", &e.to_string())],
-        )
+    let resolved = nexus_common::address::resolve_host_for_connection(address).map_err(|e| {
+        ConnectError::InvalidAddress {
+            address: address.to_string(),
+            error: e.to_string(),
+        }
     })?;
 
-    let socket_addr = addrs
-        .next()
-        .ok_or_else(|| t_args("err-could-not-resolve", &[("address", address)]))?;
+    // Use to_socket_addrs to support IPv6 zone identifiers (e.g., "fe80::1%eth0")
+    let mut addrs =
+        (resolved.as_str(), port)
+            .to_socket_addrs()
+            .map_err(|e| ConnectError::InvalidAddress {
+                address: address.to_string(),
+                error: e.to_string(),
+            })?;
+
+    let socket_addr = addrs.next().ok_or_else(|| ConnectError::CouldNotResolve {
+        address: address.to_string(),
+    })?;
 
     // Establish TCP connection with timeout
     let tcp_stream = tokio::time::timeout(CONNECTION_TIMEOUT, TcpStream::connect(socket_addr))
         .await
-        .map_err(|_| {
-            t_args(
-                "err-connection-timeout",
-                &[("seconds", &CONNECTION_TIMEOUT.as_secs().to_string())],
-            )
-        })?
-        .map_err(|e| t_args("err-connection-failed", &[("error", &e.to_string())]))?;
+        .map_err(|_| ConnectError::TcpTimeout)?
+        .map_err(|e| ConnectError::TcpFailed {
+            error: e.to_string(),
+        })?;
 
     // Perform TLS handshake
     let tls_stream = TLS_CONNECTOR
         .connect(server_name, tcp_stream)
         .await
-        .map_err(|e| t_args("err-tls-handshake-failed", &[("error", &e.to_string())]))?;
+        .map_err(|e| ConnectError::TlsHandshake {
+            error: e.to_string(),
+        })?;
 
     // Wrap in our enum type
     let tls_stream = TlsStream::Direct(tls_stream);
@@ -237,10 +231,14 @@ async fn establish_proxied_connection(
     target_port: u16,
     proxy: &ProxyConfig,
     server_name: ServerName<'static>,
-) -> Result<(TlsStream, String), String> {
+) -> Result<(TlsStream, String), ConnectError> {
     let proxy_addr = format!("{}:{}", proxy.address, proxy.port);
     // IDNA-encode Unicode hostnames before sending over SOCKS5.
-    let resolved_target = resolve_host_for_connection(target_address)?;
+    let resolved_target = nexus_common::address::resolve_host_for_connection(target_address)
+        .map_err(|e| ConnectError::InvalidAddress {
+            address: target_address.to_string(),
+            error: e.to_string(),
+        })?;
 
     // Connect to the target through the SOCKS5 proxy with timeout
     let socks_stream = tokio::time::timeout(CONNECTION_TIMEOUT, async {
@@ -263,19 +261,18 @@ async fn establish_proxied_connection(
         }
     })
     .await
-    .map_err(|_| {
-        t_args(
-            "err-proxy-connection-timeout",
-            &[("seconds", &CONNECTION_TIMEOUT.as_secs().to_string())],
-        )
-    })?
-    .map_err(|e| t_args("err-proxy-connection-failed", &[("error", &e.to_string())]))?;
+    .map_err(|_| ConnectError::ProxyTimeout)?
+    .map_err(|e| ConnectError::ProxyFailed {
+        error: e.to_string(),
+    })?;
 
     // Perform TLS handshake through the SOCKS5 tunnel
     let tls_stream = TLS_CONNECTOR
         .connect(server_name, socks_stream)
         .await
-        .map_err(|e| t_args("err-tls-handshake-failed", &[("error", &e.to_string())]))?;
+        .map_err(|e| ConnectError::TlsHandshake {
+            error: e.to_string(),
+        })?;
 
     // Wrap in our enum type
     let tls_stream = TlsStream::Proxied(tls_stream);
@@ -286,15 +283,19 @@ async fn establish_proxied_connection(
     Ok((tls_stream, fingerprint))
 }
 
-/// Calculate SHA-256 fingerprint of the server's certificate
-fn calculate_certificate_fingerprint(tls_stream: &TlsStream) -> Result<String, String> {
+/// Calculate SHA-256 fingerprint of the server's certificate.
+/// Returns [`ConnectError::NoCertificates`] when the TLS session
+/// reports no peer certificates — should not happen in practice
+/// (the handshake succeeded, so rustls saw at least one) but rustls's
+/// API is `Option`-shaped so we handle the case explicitly.
+fn calculate_certificate_fingerprint(tls_stream: &TlsStream) -> Result<String, ConnectError> {
     let (_io, session) = tls_stream.get_ref();
     let certs = session
         .peer_certificates()
-        .ok_or_else(|| t("err-no-peer-certificates"))?;
+        .ok_or(ConnectError::NoCertificates)?;
 
     if certs.is_empty() {
-        return Err(t("err-no-certificates-in-chain"));
+        return Err(ConnectError::NoCertificates);
     }
 
     Ok(nexus_common::fingerprint::format_certificate_fingerprint(

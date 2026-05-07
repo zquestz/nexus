@@ -99,6 +99,29 @@ pub const TLS_HANDSHAKE_FAILED_PREFIX: &str = "TLS handshake failed: ";
 /// [`TLS_HANDSHAKE_FAILED_PREFIX`].
 pub const WS_HANDSHAKE_FAILED_PREFIX: &str = "WebSocket handshake failed: ";
 
+/// RFC 6761-defined loopback hostname. Used by hostname-comparison
+/// code paths (e.g. proxy-bypass detection) that need to recognize the
+/// user-typed literal `"localhost"` as referring to the local machine
+/// without a DNS lookup. Distinct in intent from [`SNI_SERVER_NAME`]
+/// even though both currently evaluate to the same string.
+pub const LOCALHOST_HOSTNAME: &str = "localhost";
+
+/// Sentinel `ServerName` value used by every TLS-client path in the
+/// workspace (BBS-port connect, transfer-port connect, tracker-task
+/// connect, and the client-side tracker query). The rustls config
+/// disables SNI (`enable_sni = false`) and we TOFU-pin certs via
+/// `AcceptAnyVerifier`, so the `ServerName` is purely internal —
+/// never sent on the wire and never compared against the cert. The
+/// literal `"localhost"` keeps the value uniform across paths and
+/// avoids per-host parsing (IPv6 brackets, IDN, zone IDs).
+pub const SNI_SERVER_NAME: &str = "localhost";
+
+/// `.expect()` message for `ServerName::try_from(SNI_SERVER_NAME)`.
+/// `SNI_SERVER_NAME` resolves to a structurally valid DNS name, so the
+/// parse never fails — but rustls's API returns `Result`, so callers
+/// `.expect` with this fixed-string contract proof.
+pub const EXPECT_SNI_SERVER_NAME_VALID_DNS: &str = "SNI_SERVER_NAME is a valid DNS name";
+
 /// Maximum time to wait for the TLS handshake to complete on accept.
 /// Slowloris defense: a peer that opens TCP and sends a partial
 /// ClientHello (or stops mid-handshake) would otherwise hold a

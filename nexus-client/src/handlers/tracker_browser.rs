@@ -1,8 +1,8 @@
 //! Tracker discovery panel input handlers.
 //!
 //! Covers list-view interactions (dropdown selection, search input,
-//! sort) and the Add / Edit / Remove sub-mode flows. Refresh and
-//! AcceptFingerprint land in step 5 / step 6.
+//! sort), the Add / Edit / Remove sub-mode flows, and the Refresh
+//! query path. AcceptFingerprint lands in step 7.
 
 use iced::Task;
 use iced::widget::{Id, operation};
@@ -11,7 +11,11 @@ use uuid::Uuid;
 use super::focus::{dispatch_find_focused, next_in_cycle};
 use crate::NexusApp;
 use crate::config::Config;
-use crate::i18n::{t, t_args};
+use crate::i18n::{get_locale, t, t_args};
+use crate::network::types::ConnectError;
+use crate::network::{
+    ProxyConfig, TrackerQueryError, TrackerQueryOk, TrackerQueryParams, query_tracker,
+};
 use crate::types::{
     ClientTracker, InputId, Message, TrackerBrowserEditInit, TrackerBrowserMode,
     TrackerBrowserSortColumn, normalize_certificate_fingerprint,
@@ -477,6 +481,102 @@ impl NexusApp {
         self.focused_field = next;
         operation::focus(Id::from(next))
     }
+
+    // =========================================================================
+    // Refresh + query result
+    // =========================================================================
+
+    /// Refresh toolbar button — dispatch a one-shot `query_tracker`
+    /// for the currently selected tracker. No-op if no tracker is
+    /// selected or a query is already in flight (the view also
+    /// disables the button in those cases as a UI hint).
+    pub fn handle_tracker_browser_refresh(&mut self) -> Task<Message> {
+        let Some(tracker_id) = self.tracker_browser.selected_tracker else {
+            return Task::none();
+        };
+        let Some(tracker) = self.config.get_tracker(tracker_id).cloned() else {
+            return Task::none();
+        };
+
+        // Stale-drop guard at the dispatch site too: if a query is
+        // already in flight for this tracker, ignore the Refresh
+        // press. The view disables the button while `is_fetching` is
+        // true, but a keyboard shortcut or message-replay path could
+        // still re-enter here.
+        let cache = self.tracker_browser.cache.entry(tracker_id).or_default();
+        if cache.is_fetching {
+            return Task::none();
+        }
+        cache.is_fetching = true;
+        cache.error = None;
+
+        let params = TrackerQueryParams {
+            address: tracker.address,
+            port: tracker.port,
+            password: tracker.password,
+            expected_fingerprint: tracker.certificate_fingerprint,
+            locale: get_locale().to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            proxy: build_proxy_config(&self.config),
+        };
+
+        Task::perform(query_tracker(params), move |result| {
+            Message::TrackerQueryResult { tracker_id, result }
+        })
+    }
+
+    /// Result of a `query_tracker` task. Stale results (cache entry
+    /// no longer `is_fetching`) are dropped silently — see the
+    /// concurrency-policy decision in step 5: a faster Refresh or a
+    /// dropdown change between dispatch and result invalidates the
+    /// in-flight query, and the cache is the source of truth for
+    /// "what the panel currently expects."
+    pub fn handle_tracker_query_result(
+        &mut self,
+        tracker_id: Uuid,
+        result: Result<TrackerQueryOk, TrackerQueryError>,
+    ) -> Task<Message> {
+        let Some(cache) = self.tracker_browser.cache.get_mut(&tracker_id) else {
+            return Task::none();
+        };
+        if !cache.is_fetching {
+            return Task::none();
+        }
+        cache.is_fetching = false;
+
+        match result {
+            Ok(TrackerQueryOk {
+                entries,
+                observed_fingerprint,
+            }) => {
+                cache.entries = Some(entries);
+                cache.error = None;
+                cache.pending_fingerprint = None;
+
+                // First-connect TOFU: if the configured tracker has no
+                // pin yet, commit the observed fingerprint. Save
+                // failure here logs but doesn't fail the query — the
+                // entries are already in the cache.
+                if let Some(stored) = self.config.get_tracker(tracker_id)
+                    && stored.certificate_fingerprint.is_none()
+                {
+                    let mut updated = stored.clone();
+                    updated.certificate_fingerprint = Some(observed_fingerprint);
+                    self.config.update_tracker(tracker_id, updated);
+                    let _ = save_config(&self.config);
+                }
+            }
+            Err(TrackerQueryError::Stage1Mismatch { received, .. }) => {
+                cache.error = Some(t("err-tracker-query-stage1-mismatch"));
+                cache.pending_fingerprint = Some(received);
+            }
+            Err(err) => {
+                cache.error = Some(translate_tracker_query_error(&err));
+                cache.pending_fingerprint = None;
+            }
+        }
+        Task::none()
+    }
 }
 
 // =============================================================================
@@ -558,6 +658,72 @@ pub(super) fn optional_string(value: &str) -> Option<String> {
 /// have a single error-handling path.
 fn save_config(config: &Config) -> Result<(), String> {
     config.save()
+}
+
+/// Build a `ProxyConfig` from the user's settings, or `None` when the
+/// proxy is disabled. Mirrors the `handle_connect_pressed` shape so
+/// tracker queries follow the same "respect global proxy" contract as
+/// BBS connections.
+fn build_proxy_config(config: &Config) -> Option<ProxyConfig> {
+    config.settings.proxy.enabled.then(|| ProxyConfig {
+        address: config.settings.proxy.address.clone(),
+        port: config.settings.proxy.port,
+        username: config.settings.proxy.username.clone(),
+        password: config.settings.proxy.password.clone(),
+    })
+}
+
+/// Translate a `TrackerQueryError` to a localized error string for
+/// display in the panel cache. `Stage1Mismatch` is handled by the
+/// caller (it routes to `pending_fingerprint`) and is not expected
+/// here — covered for exhaustiveness with the same message shape.
+fn translate_tracker_query_error(err: &TrackerQueryError) -> String {
+    match err {
+        TrackerQueryError::Stage1Mismatch { .. } => t("err-tracker-query-stage1-mismatch"),
+        TrackerQueryError::Stage2Mismatch => t("err-tracker-query-stage2-intercepted"),
+        // Phase-typed dispatch on the underlying ConnectError:
+        //
+        // - TCP-phase failures (refused, timeout, DNS) → "unreachable"
+        //   (tracker is down or address is wrong).
+        // - TLS-phase failure → "refused" (TCP succeeded then peer
+        //   dropped during handshake — typically rate-limit /
+        //   capacity / refusal).
+        // - Other variants (NoCertificates, post-connect Other) fall
+        //   through to "unreachable" as a fail-safe; both indicate
+        //   something went wrong and the tracker isn't usable.
+        TrackerQueryError::Connection(inner) => match inner {
+            ConnectError::TlsHandshake { .. } => t("err-tracker-query-refused"),
+            ConnectError::InvalidAddress { .. }
+            | ConnectError::CouldNotResolve { .. }
+            | ConnectError::TcpTimeout
+            | ConnectError::TcpFailed { .. }
+            | ConnectError::ProxyTimeout
+            | ConnectError::ProxyFailed { .. }
+            | ConnectError::NoCertificates
+            | ConnectError::FingerprintMismatch(_)
+            | ConnectError::FingerprintInterception(_)
+            | ConnectError::Other(_) => t("err-tracker-query-unreachable"),
+        },
+        TrackerQueryError::Handshake(e) => {
+            t_args("err-tracker-query-handshake-failed", &[("error", e)])
+        }
+        TrackerQueryError::Protocol(e) => {
+            t_args("err-tracker-query-protocol-error", &[("error", e)])
+        }
+        TrackerQueryError::MalformedResponse(e) => {
+            t_args("err-tracker-query-malformed-response", &[("error", e)])
+        }
+        TrackerQueryError::Rejected { kind, message } => match kind.as_deref() {
+            Some("unauthorized") => t("err-tracker-query-unauthorized"),
+            Some("rate_limited") => t("err-tracker-query-rate-limited"),
+            Some("capacity") => t("err-tracker-query-capacity"),
+            Some("invalid") => t("err-tracker-query-invalid"),
+            _ => t_args(
+                "err-tracker-query-rejected",
+                &[("message", message.as_str())],
+            ),
+        },
+    }
 }
 
 #[cfg(test)]

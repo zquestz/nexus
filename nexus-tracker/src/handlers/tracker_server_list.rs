@@ -20,7 +20,7 @@ use std::io;
 use std::net::SocketAddr;
 
 use tokio::io::AsyncWrite;
-use tracing::{info, warn};
+use tracing::{debug, warn};
 
 use nexus_common::framing::FrameWriter;
 use nexus_common::io::send_tracker_server_message;
@@ -175,7 +175,7 @@ where
         }
     });
 
-    info!(
+    debug!(
         ip = %peer_addr.ip(),
         count = servers.len(),
         total = total,

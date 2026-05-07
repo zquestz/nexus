@@ -28,8 +28,8 @@ use nexus_common::{
     ERROR_KIND_TRACKER_CONNECTION_LOST, ERROR_KIND_TRACKER_DB_FAILED,
     ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED, ERROR_KIND_TRACKER_FINGERPRINT_MISMATCH,
     ERROR_KIND_TRACKER_HANDSHAKE_FAILED, ERROR_KIND_TRACKER_PROTOCOL_ERROR,
-    ERROR_KIND_TRACKER_TLS_FAILED, TRACKER_PROTOCOL_VERSION, is_unrecoverable_error_kind,
-    is_valid_error_kind,
+    ERROR_KIND_TRACKER_TLS_FAILED, EXPECT_SNI_SERVER_NAME_VALID_DNS, SNI_SERVER_NAME,
+    TRACKER_PROTOCOL_VERSION, is_unrecoverable_error_kind, is_valid_error_kind,
 };
 use rand::RngExt;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -309,24 +309,14 @@ async fn attempt_connection_cycle(
         }
     };
 
-    // Phase 2: TLS handshake. The resolved host doubles as the
-    // `ServerName` rustls demands; SNI is off and we TOFU-pin the
-    // cert post-handshake, so the value is otherwise unobservable on
-    // the wire and uncompared against the cert.
-    let server_name = match ServerName::try_from(resolved_host.clone()) {
-        Ok(n) => n,
-        Err(e) => {
-            warn!(
-                id = record.id,
-                name = %record.name,
-                address = %record.address,
-                err = %e,
-                "{}", LOG_TRACKER_REGISTRATION_INVALID_HOST
-            );
-            set_status_error(status, ERROR_KIND_TRACKER_ADDRESS_INVALID);
-            return CycleOutcome::Unrecoverable;
-        }
-    };
+    // Phase 2: TLS handshake. SNI is disabled in the rustls config
+    // (`enable_sni = false`) and we TOFU-pin the cert post-handshake
+    // via `AcceptAnyVerifier`, so the `ServerName` value is purely
+    // internal — never sent on the wire and never compared against
+    // the cert. Use the literal `"localhost"` to match the BBS
+    // client's convention and avoid per-host parsing.
+    let server_name =
+        ServerName::try_from(SNI_SERVER_NAME).expect(EXPECT_SNI_SERVER_NAME_VALID_DNS);
     let tls = match TLS_CONNECTOR.connect(server_name, tcp).await {
         Ok(s) => s,
         Err(e) => {

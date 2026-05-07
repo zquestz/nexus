@@ -12,14 +12,13 @@ use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
 use tokio_socks::tcp::Socks5Stream;
 
-use nexus_common::PROTOCOL_VERSION;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::send_client_message;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
+use nexus_common::{EXPECT_SNI_SERVER_NAME_VALID_DNS, PROTOCOL_VERSION, SNI_SERVER_NAME};
 
 use super::streaming::read_message_with_timeout;
 use super::{CONNECTION_TIMEOUT, IDLE_TIMEOUT, TransferError};
-use crate::constants::ERR_SNI_SERVER_NAME_INVALID;
 use crate::network::ProxyConfig;
 use crate::types::ConnectionInfo;
 
@@ -28,17 +27,6 @@ type BoxedRead = Box<dyn AsyncRead + Unpin + Send>;
 
 /// Boxed async write half (type alias to reduce complexity)
 type BoxedWrite = Box<dyn AsyncWrite + Unpin + Send>;
-
-// =============================================================================
-// Constants
-// =============================================================================
-
-/// SNI server name for TLS connections
-///
-/// We use "localhost" since we disable hostname verification (we verify via
-/// certificate fingerprint instead). This is required by the TLS handshake
-/// but not used for actual verification.
-const SNI_SERVER_NAME: &str = "localhost";
 
 // =============================================================================
 // TLS Helpers
@@ -92,7 +80,7 @@ pub async fn connect_and_authenticate(
 
     let server_name = SNI_SERVER_NAME
         .try_into()
-        .expect(ERR_SNI_SERVER_NAME_INVALID);
+        .expect(EXPECT_SNI_SERVER_NAME_VALID_DNS);
 
     // Check if we should bypass proxy for this address (localhost, Yggdrasil)
     let use_proxy = proxy.filter(|_| !crate::network::tls::should_bypass_proxy(target_addr));
