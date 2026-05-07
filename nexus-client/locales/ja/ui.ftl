@@ -5,6 +5,7 @@
 # =============================================================================
 
 button-cancel = キャンセル
+button-ok = OK
 button-send = 送信
 button-delete = 削除
 button-connect = 接続
@@ -605,6 +606,8 @@ err-fingerprint-interception = TLSインターセプトが検出されました�
 err-failed-send-handshake = ハンドシェイクの送信に失敗しました: { $error }
 err-failed-read-handshake = ハンドシェイク応答の読み取りに失敗しました: { $error }
 err-handshake-failed = ハンドシェイクに失敗しました: { $error }
+err-server-version-unparseable = サーバーが解析できないバージョン「{ $version }」を返しました：{ $error }
+err-server-version-incompatible = サーバーのバージョンに互換性がありません { $server_version }（クライアント { $client_version }）
 err-failed-parse-handshake = ハンドシェイク応答の解析に失敗しました: { $error }
 err-failed-send-login = ログインの送信に失敗しました: { $error }
 err-failed-read-login = ログイン応答の読み取りに失敗しました: { $error }
@@ -712,6 +715,7 @@ cmd-window-arg-prev = 前
 cmd-window-arg-close = 閉じる
 cmd-window-list = 開いているタブ: { $tabs } ({ $count }個のタブ)
 cmd-window-close-server = サーバータブは閉じられません
+cmd-window-close-console = コンソールタブは閉じられません
 cmd-window-not-found = タブが見つかりません: { $name }
 cmd-serverinfo-desc = サーバー情報を表示
 cmd-serverinfo-usage = 使用法: /{ $command }
@@ -1292,6 +1296,8 @@ err-tracker-query-refused = トラッカーが接続を拒否しました：あ�
 err-tracker-query-handshake-failed = トラッカーのハンドシェイクに失敗しました：{ $error }
 err-tracker-query-protocol-error = トラッカーのプロトコルエラー：{ $error }
 err-tracker-query-malformed-response = トラッカーの応答が不正です：{ $error }
+err-tracker-version-unparseable = トラッカーが解析できないバージョン「{ $version }」を返しました：{ $error }
+err-tracker-version-incompatible = トラッカーのバージョンに互換性がありません { $server_version }（クライアント { $client_version }）
 err-tracker-query-unauthorized = トラッカーがリクエストを拒否しました：パスワードが間違っているか入力されていません。
 err-tracker-query-rate-limited = トラッカーがリクエストを拒否しました：レート制限を超えました。少し時間をおいて再試行してください。
 err-tracker-query-capacity = トラッカーがリクエストを拒否しました：容量に達しています。後で再試行してください。

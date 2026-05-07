@@ -5,6 +5,7 @@
 # =============================================================================
 
 button-cancel = Annuleren
+button-ok = OK
 button-send = Verzenden
 button-delete = Verwijderen
 button-connect = Verbinden
@@ -625,6 +626,8 @@ err-fingerprint-interception = TLS-onderschepping gedetecteerd. Door server gera
 err-failed-send-handshake = Kan handshake niet verzenden: { $error }
 err-failed-read-handshake = Kan handshake-respons niet lezen: { $error }
 err-handshake-failed = Handshake mislukt: { $error }
+err-server-version-unparseable = Server gaf een onleesbare versie "{ $version }" terug: { $error }
+err-server-version-incompatible = Incompatibele serverversie { $server_version } (client { $client_version })
 err-failed-parse-handshake = Kan handshake-respons niet verwerken: { $error }
 err-failed-send-login = Kan aanmelding niet verzenden: { $error }
 err-failed-read-login = Kan aanmeldrespons niet lezen: { $error }
@@ -753,6 +756,7 @@ cmd-window-list = Open tabbladen: { $tabs } ({ $count } { $count ->
    *[other] tabbladen
 })
 cmd-window-close-server = Kan het server-tabblad niet sluiten
+cmd-window-close-console = Kan het Console-tabblad niet sluiten
 cmd-window-not-found = Tabblad niet gevonden: { $name }
 cmd-serverinfo-desc = Serverinformatie tonen
 cmd-serverinfo-usage = Gebruik: /{ $command }
@@ -1355,6 +1359,8 @@ err-tracker-query-refused = Tracker heeft de verbinding geweigerd: hij beperkt m
 err-tracker-query-handshake-failed = Trackerhandshake mislukt: { $error }
 err-tracker-query-protocol-error = Trackerprotocolfout: { $error }
 err-tracker-query-malformed-response = Trackerantwoord is misvormd: { $error }
+err-tracker-version-unparseable = Tracker gaf een onleesbare versie "{ $version }" terug: { $error }
+err-tracker-version-incompatible = Incompatibele trackerversie { $server_version } (client { $client_version })
 err-tracker-query-unauthorized = Tracker heeft het verzoek geweigerd: wachtwoord onjuist of ontbreekt.
 err-tracker-query-rate-limited = Tracker heeft het verzoek geweigerd: aanroepfrequentielimiet overschreden. Probeer het zo opnieuw.
 err-tracker-query-capacity = Tracker heeft het verzoek geweigerd: capaciteit bereikt. Probeer het later opnieuw.

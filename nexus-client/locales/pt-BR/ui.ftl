@@ -5,6 +5,7 @@
 # =============================================================================
 
 button-cancel = Cancelar
+button-ok = OK
 button-send = Enviar
 button-delete = Excluir
 button-connect = Conectar
@@ -630,6 +631,8 @@ err-fingerprint-interception = Interceptação TLS detectada. A impressão digit
 err-failed-send-handshake = Falha ao enviar handshake: { $error }
 err-failed-read-handshake = Falha ao ler resposta do handshake: { $error }
 err-handshake-failed = Falha no handshake: { $error }
+err-server-version-unparseable = O servidor retornou uma versão ilegível "{ $version }": { $error }
+err-server-version-incompatible = Versão do servidor incompatível { $server_version } (cliente { $client_version })
 err-failed-parse-handshake = Falha ao analisar resposta do handshake: { $error }
 err-failed-send-login = Falha ao enviar login: { $error }
 err-failed-read-login = Falha ao ler resposta de login: { $error }
@@ -758,6 +761,7 @@ cmd-window-list = Abas abertas: { $tabs } ({ $count } { $count ->
    *[other] abas
 })
 cmd-window-close-server = Não é possível fechar a aba do servidor
+cmd-window-close-console = Não é possível fechar a aba do Console
 cmd-window-not-found = Aba não encontrada: { $name }
 cmd-serverinfo-desc = Mostrar informações do servidor
 cmd-serverinfo-usage = Uso: /{ $command }
@@ -1360,6 +1364,8 @@ err-tracker-query-refused = O tracker recusou a conexão: pode estar limitando a
 err-tracker-query-handshake-failed = Falha no handshake com o tracker: { $error }
 err-tracker-query-protocol-error = Erro de protocolo do tracker: { $error }
 err-tracker-query-malformed-response = A resposta do tracker está malformada: { $error }
+err-tracker-version-unparseable = O tracker retornou uma versão ilegível "{ $version }": { $error }
+err-tracker-version-incompatible = Versão do tracker incompatível { $server_version } (cliente { $client_version })
 err-tracker-query-unauthorized = O tracker rejeitou a requisição: senha incorreta ou ausente.
 err-tracker-query-rate-limited = O tracker rejeitou a requisição: limite de velocidade excedido. Tente novamente em um momento.
 err-tracker-query-capacity = O tracker rejeitou a requisição: sem capacidade. Tente novamente mais tarde.

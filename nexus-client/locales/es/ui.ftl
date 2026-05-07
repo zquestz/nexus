@@ -5,6 +5,7 @@
 # =============================================================================
 
 button-cancel = Cancelar
+button-ok = Aceptar
 button-send = Enviar
 button-delete = Eliminar
 button-connect = Conectar
@@ -626,6 +627,8 @@ err-fingerprint-interception = Interceptación TLS detectada. La huella reportad
 err-failed-send-handshake = Error al enviar handshake: { $error }
 err-failed-read-handshake = Error al leer respuesta del handshake: { $error }
 err-handshake-failed = Error en el handshake: { $error }
+err-server-version-unparseable = El servidor devolvió una versión no analizable «{ $version }»: { $error }
+err-server-version-incompatible = Versión del servidor incompatible { $server_version } (cliente { $client_version })
 err-failed-parse-handshake = Error al analizar respuesta del handshake: { $error }
 err-failed-send-login = Error al enviar inicio de sesión: { $error }
 err-failed-read-login = Error al leer respuesta de inicio de sesión: { $error }
@@ -754,6 +757,7 @@ cmd-window-list = Pestañas abiertas: { $tabs } ({ $count } { $count ->
    *[other] pestañas
 })
 cmd-window-close-server = No se puede cerrar la pestaña del servidor
+cmd-window-close-console = No se puede cerrar la pestaña de la Consola
 cmd-window-not-found = Pestaña no encontrada: { $name }
 cmd-serverinfo-desc = Mostrar información del servidor
 cmd-serverinfo-usage = Uso: /{ $command }
@@ -1356,6 +1360,8 @@ err-tracker-query-refused = El tracker rechazó la conexión: puede estar limita
 err-tracker-query-handshake-failed = Falló el handshake con el tracker: { $error }
 err-tracker-query-protocol-error = Error de protocolo del tracker: { $error }
 err-tracker-query-malformed-response = La respuesta del tracker está malformada: { $error }
+err-tracker-version-unparseable = El tracker devolvió una versión no analizable «{ $version }»: { $error }
+err-tracker-version-incompatible = Versión del tracker incompatible { $server_version } (cliente { $client_version })
 err-tracker-query-unauthorized = El tracker rechazó la solicitud: contraseña incorrecta o ausente.
 err-tracker-query-rate-limited = El tracker rechazó la solicitud: límite de velocidad excedido. Inténtalo de nuevo en un momento.
 err-tracker-query-capacity = El tracker rechazó la solicitud: sin capacidad. Inténtalo más tarde.

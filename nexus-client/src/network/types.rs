@@ -405,6 +405,20 @@ pub struct TrackerQueryParams {
     pub proxy: Option<ProxyConfig>,
 }
 
+impl std::fmt::Debug for TrackerQueryParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrackerQueryParams")
+            .field("address", &self.address)
+            .field("port", &self.port)
+            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .field("expected_fingerprint", &self.expected_fingerprint)
+            .field("locale", &self.locale)
+            .field("version", &self.version)
+            .field("proxy", &self.proxy)
+            .finish()
+    }
+}
+
 /// Successful tracker query result.
 #[derive(Debug, Clone)]
 pub struct TrackerQueryOk {

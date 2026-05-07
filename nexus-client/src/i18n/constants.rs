@@ -8,6 +8,7 @@
 pub(super) const ERR_ADD_RESOURCE: &str = "Failed to add resource to bundle";
 
 /// Error when translation key is missing
+#[cfg(debug_assertions)]
 pub(super) const ERR_MISSING_KEY: &str = "Missing translation key";
 
 /// Error when translation key is missing in English
@@ -17,9 +18,11 @@ pub(super) const ERR_MISSING_KEY_ENGLISH: &str = "Missing translation key in Eng
 pub(super) const ERR_PARSE_FTL: &str = "Failed to parse FTL file";
 
 /// Error when translation has formatting errors
+#[cfg(debug_assertions)]
 pub(super) const ERR_TRANSLATION_ERRORS: &str = "Translation errors for key";
 
 /// "for locale" - used in error messages
+#[cfg(debug_assertions)]
 pub(super) const MSG_FOR_LOCALE: &str = "for locale";
 
 // =============================================================================

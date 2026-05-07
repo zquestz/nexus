@@ -54,6 +54,16 @@ pub struct ListParams {
     pub version: String,
 }
 
+impl std::fmt::Debug for ListParams {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ListParams")
+            .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .field("locale", &self.locale)
+            .field("version", &self.version)
+            .finish()
+    }
+}
+
 /// Drive the `TrackerServerList` flow. Always sends exactly one
 /// `TrackerServerListResponse` to the wire.
 pub async fn handle_tracker_server_list<W>(

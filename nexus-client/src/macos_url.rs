@@ -103,6 +103,10 @@ impl UrlHandler {
 /// sends when a `nexus://` URL is opened (clicked in browser, Finder, etc.).
 pub fn install() {
     let Some(mtm) = MainThreadMarker::new() else {
+        // Platform-init programmer error — dev-only (stderr invisible
+        // in shipped GUI builds; this codepath is unreachable when
+        // install() is called from the documented site).
+        #[cfg(debug_assertions)]
         eprintln!("{}", ERR_NSAPPLEEVENTMANAGER_NOT_MAIN_THREAD);
         return;
     };

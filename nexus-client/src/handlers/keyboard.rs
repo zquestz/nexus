@@ -91,14 +91,20 @@ impl NexusApp {
                             "." => Some(".".to_string()),
                             "/" => Some("/".to_string()),
                             // Single character (letter or digit)
-                            _ if s.len() == 1 => {
-                                let ch = s.chars().next().unwrap();
-                                if ch.is_ascii_alphanumeric() {
+                            // Single-byte string (`s.len() == 1`). For
+                            // valid UTF-8 that means exactly one ASCII
+                            // char, but the `match` here doesn't rely
+                            // on that invariant: only the
+                            // alphanumeric-ASCII branch uppercases, and
+                            // any other shape (including the
+                            // never-actually-reachable empty string)
+                            // falls through to "emit s verbatim".
+                            _ if s.len() == 1 => match s.chars().next() {
+                                Some(ch) if ch.is_ascii_alphanumeric() => {
                                     Some(ch.to_ascii_uppercase().to_string())
-                                } else {
-                                    Some(s.to_string())
                                 }
-                            }
+                                _ => Some(s.to_string()),
+                            },
                             _ => None,
                         }
                     }
@@ -222,7 +228,19 @@ impl NexusApp {
             ..
         }) = event
         {
-            if self.bookmark_edit.mode != BookmarkEditMode::None {
+            if self.connection_form.connect_origin.is_some() {
+                // Connection form summoned (tracker click, server-list "+",
+                // etc.) overlays whatever else is visible. Enter focused
+                // outside a form input still submits when the required
+                // fields are present. Mirrors the bookmark-edit branch
+                // below; the per-input `on_submit` already handles Enter
+                // when an input is focused.
+                let can_connect = !self.connection_form.server_name.trim().is_empty()
+                    && !self.connection_form.server_address.trim().is_empty();
+                if can_connect {
+                    return self.update(Message::ConnectPressed);
+                }
+            } else if self.bookmark_edit.mode != BookmarkEditMode::None {
                 // On bookmark edit screen, try to save
                 let can_save = !self.bookmark_edit.bookmark.name.trim().is_empty()
                     && !self.bookmark_edit.bookmark.address.trim().is_empty();

@@ -112,14 +112,3 @@ pub const ERR_NSAPPLEEVENTMANAGER_NOT_MAIN_THREAD: &str =
 /// Format prefix for IPC errors logged to stderr. Composed as
 /// `format!("{}{}", ERR_IPC_PREFIX, e)` (trailing ": " included).
 pub const ERR_IPC_PREFIX: &str = "IPC error: ";
-
-/// Format prefix for sound-playback errors logged to stderr.
-pub const ERR_SOUND_PLAYBACK_PREFIX: &str = "Sound playback error: ";
-
-/// Format prefix for audio-stream errors logged to stderr (cpal
-/// stream callback `StreamError`).
-pub const ERR_AUDIO_STREAM_PREFIX: &str = "Audio stream error: ";
-
-/// Format prefix for transfer-hashing keepalive send failures (sender
-/// dropped before keepalive could be delivered).
-pub const ERR_HASH_KEEPALIVE_PREFIX: &str = "[HASH] Failed to send keepalive: ";

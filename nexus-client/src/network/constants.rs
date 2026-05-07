@@ -11,6 +11,13 @@ pub const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 /// the BBS connect path and the tracker query path.
 pub const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(15);
 
+/// BBS connect post-TLS read/send timeout (30 seconds). Bounds each
+/// individual handshake / login leg so a peer that completes TLS but
+/// then never reads or never replies can't park the connect task
+/// indefinitely. Mirrors the tracker-side `TRACKER_RESPONSE_TIMEOUT`
+/// so the two flows share a single liveness expectation.
+pub const BBS_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Buffer size for the Iced stream channel
 pub const STREAM_CHANNEL_SIZE: usize = 100;
 

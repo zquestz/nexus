@@ -10,7 +10,7 @@ use nexus_common::{DEFAULT_TRANSFER_PORT, PROTOCOL_VERSION};
 use crate::i18n::{DEFAULT_LOCALE, t, t_args};
 use crate::types::{ConnectionInfo, NetworkConnection};
 
-use super::constants::DEFAULT_FEATURES;
+use super::constants::{BBS_RESPONSE_TIMEOUT, DEFAULT_FEATURES};
 use super::stream::setup_communication_channels;
 use super::tls::establish_connection;
 use super::types::{
@@ -141,12 +141,23 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<S
     let handshake = ClientMessage::Handshake {
         version: PROTOCOL_VERSION.to_string(),
     };
-    send_client_message(writer, &handshake)
-        .await
-        .map_err(|e| t_args("err-failed-send-handshake", &[("error", &e.to_string())]))?;
+    // Wrap each post-TLS read/send in `BBS_RESPONSE_TIMEOUT` so a peer
+    // that completes TLS but then stalls on either side of the
+    // exchange (no read of our send, no reply to our read) can't park
+    // the task indefinitely. The framing layer's per-frame idle
+    // timeout only fires once a byte arrives; this outer wrap is the
+    // hard ceiling. Mirrors the tracker query flow's pattern.
+    tokio::time::timeout(
+        BBS_RESPONSE_TIMEOUT,
+        send_client_message(writer, &handshake),
+    )
+    .await
+    .map_err(|_| t("err-connection-closed"))?
+    .map_err(|e| t_args("err-failed-send-handshake", &[("error", &e.to_string())]))?;
 
-    let received = read_server_message(reader)
+    let received = tokio::time::timeout(BBS_RESPONSE_TIMEOUT, read_server_message(reader))
         .await
+        .map_err(|_| t("err-connection-closed"))?
         .map_err(|e| t_args("err-failed-read-handshake", &[("error", &e.to_string())]))?
         .ok_or_else(|| t("err-connection-closed"))?;
 
@@ -166,11 +177,8 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<S
             if let Some(reported) = version.as_deref() {
                 let server_v = nexus_common::version::Version::parse(reported).map_err(|e| {
                     t_args(
-                        "err-handshake-failed",
-                        &[(
-                            "error",
-                            &format!("unparseable server version \"{}\": {}", reported, e),
-                        )],
+                        "err-server-version-unparseable",
+                        &[("version", reported), ("error", &e.to_string())],
                     )
                 })?;
                 let client_v = nexus_common::version::Version::parse(PROTOCOL_VERSION)
@@ -178,14 +186,11 @@ async fn perform_handshake(reader: &mut Reader, writer: &mut Writer) -> Result<S
                 let compat = nexus_common::version::check_compatibility(&server_v, &client_v);
                 if !compat.is_compatible() {
                     return Err(t_args(
-                        "err-handshake-failed",
-                        &[(
-                            "error",
-                            &format!(
-                                "incompatible server version {} (client {})",
-                                reported, PROTOCOL_VERSION
-                            ),
-                        )],
+                        "err-server-version-incompatible",
+                        &[
+                            ("server_version", reported),
+                            ("client_version", PROTOCOL_VERSION),
+                        ],
                     ));
                 }
             }
@@ -221,12 +226,16 @@ async fn perform_login(
         avatar,
         nickname,
     };
-    send_client_message(writer, &login)
+    // Same `BBS_RESPONSE_TIMEOUT` wrap as `perform_handshake` — see
+    // the comment there for rationale.
+    tokio::time::timeout(BBS_RESPONSE_TIMEOUT, send_client_message(writer, &login))
         .await
+        .map_err(|_| t("err-connection-closed"))?
         .map_err(|e| t_args("err-failed-send-login", &[("error", &e.to_string())]))?;
 
-    let received = read_server_message(reader)
+    let received = tokio::time::timeout(BBS_RESPONSE_TIMEOUT, read_server_message(reader))
         .await
+        .map_err(|_| t("err-connection-closed"))?
         .map_err(|e| t_args("err-failed-read-login", &[("error", &e.to_string())]))?
         .ok_or_else(|| t("err-connection-closed"))?;
 

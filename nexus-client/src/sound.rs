@@ -13,7 +13,6 @@ use lewton::inside_ogg::OggStreamReader;
 use once_cell::sync::Lazy;
 
 use crate::config::events::SoundChoice;
-use crate::constants::{ERR_AUDIO_STREAM_PREFIX, ERR_SOUND_PLAYBACK_PREFIX};
 
 // =============================================================================
 // Embedded Sounds
@@ -75,10 +74,10 @@ fn ensure_audio_thread() -> bool {
 /// Run the audio thread - handles sound playback requests
 fn run_audio_thread(rx: mpsc::Receiver<SoundRequest>) {
     for request in rx {
-        // Play each sound request (blocking until complete)
-        if let Err(e) = play_sound_blocking(&request) {
-            eprintln!("{}{}", ERR_SOUND_PLAYBACK_PREFIX, e);
-        }
+        // Sound playback errors are silently dropped — the user
+        // already perceives "no sound" as the failure mode, and
+        // this is a GUI app where stderr is invisible.
+        let _ = play_sound_blocking(&request);
     }
 }
 
@@ -146,7 +145,11 @@ fn play_sound_blocking(request: &SoundRequest) -> Result<(), String> {
                     let _ = done_tx.send(());
                 }
             },
-            |err| eprintln!("{}{}", ERR_AUDIO_STREAM_PREFIX, err),
+            // Audio stream errors during playback (buffer underrun
+            // etc.) are silently dropped — transient and user-audible
+            // anyway as a glitch. Fatal errors propagate via the
+            // `done_tx` close path.
+            |_err| (),
             None,
         )
         .map_err(|e| format!("Failed to build output stream: {}", e))?;

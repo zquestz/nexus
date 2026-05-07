@@ -5,6 +5,7 @@
 # =============================================================================
 
 button-cancel = Abbrechen
+button-ok = OK
 button-send = Senden
 button-delete = Löschen
 button-connect = Verbinden
@@ -624,6 +625,8 @@ err-fingerprint-interception = TLS-Abfangen erkannt. Vom Server gemeldeter Finge
 err-failed-send-handshake = Handshake konnte nicht gesendet werden: { $error }
 err-failed-read-handshake = Handshake-Antwort konnte nicht gelesen werden: { $error }
 err-handshake-failed = Handshake fehlgeschlagen: { $error }
+err-server-version-unparseable = Der Server lieferte eine nicht analysierbare Version „{ $version }": { $error }
+err-server-version-incompatible = Inkompatible Serverversion { $server_version } (Client { $client_version })
 err-failed-parse-handshake = Handshake-Antwort konnte nicht analysiert werden: { $error }
 err-failed-send-login = Anmeldung konnte nicht gesendet werden: { $error }
 err-failed-read-login = Anmeldeantwort konnte nicht gelesen werden: { $error }
@@ -732,6 +735,7 @@ cmd-window-list = Offene Tabs: { $tabs } ({ $count } { $count ->
    *[other] Tabs
 })
 cmd-window-close-server = Server-Tab kann nicht geschlossen werden
+cmd-window-close-console = Konsolen-Tab kann nicht geschlossen werden
 cmd-window-not-found = Tab nicht gefunden: { $name }
 cmd-focus-desc = Server-Chat oder Nachrichtenfenster eines Benutzers fokussieren
 cmd-focus-usage = Verwendung: /{ $command } [benutzername]
@@ -1358,6 +1362,8 @@ err-tracker-query-refused = Tracker hat die Verbindung abgelehnt: Er begrenzt m�
 err-tracker-query-handshake-failed = Tracker-Handshake fehlgeschlagen: { $error }
 err-tracker-query-protocol-error = Tracker-Protokollfehler: { $error }
 err-tracker-query-malformed-response = Tracker-Antwort ist fehlerhaft: { $error }
+err-tracker-version-unparseable = Der Tracker lieferte eine nicht analysierbare Version „{ $version }": { $error }
+err-tracker-version-incompatible = Inkompatible Trackerversion { $server_version } (Client { $client_version })
 err-tracker-query-unauthorized = Tracker hat die Anfrage abgelehnt: falsches oder fehlendes Passwort.
 err-tracker-query-rate-limited = Tracker hat die Anfrage abgelehnt: Ratenlimit überschritten. Versuche es in einem Moment erneut.
 err-tracker-query-capacity = Tracker hat die Anfrage abgelehnt: Kapazität erschöpft. Versuche es später erneut.

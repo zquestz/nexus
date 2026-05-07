@@ -5,6 +5,7 @@
 # =============================================================================
 
 button-cancel = 取消
+button-ok = 确定
 button-send = 发送
 button-delete = 删除
 button-connect = 连接
@@ -606,6 +607,8 @@ err-fingerprint-interception = 检测到 TLS 拦截。服务器报告的指纹�
 err-failed-send-handshake = 发送握手失败：{ $error }
 err-failed-read-handshake = 读取握手响应失败：{ $error }
 err-handshake-failed = 握手失败：{ $error }
+err-server-version-unparseable = 服务器返回了无法解析的版本"{ $version }"：{ $error }
+err-server-version-incompatible = 服务器版本不兼容 { $server_version }（客户端 { $client_version }）
 err-failed-parse-handshake = 解析握手响应失败：{ $error }
 err-failed-send-login = 发送登录失败：{ $error }
 err-failed-read-login = 读取登录响应失败：{ $error }
@@ -713,6 +716,7 @@ cmd-window-arg-prev = 上一个
 cmd-window-arg-close = 关闭
 cmd-window-list = 打开的标签页：{ $tabs }（{ $count }个标签页）
 cmd-window-close-server = 无法关闭服务器标签页
+cmd-window-close-console = 无法关闭控制台标签页
 cmd-window-not-found = 未找到标签页：{ $name }
 cmd-serverinfo-desc = 显示服务器信息
 cmd-serverinfo-usage = 用法: /{ $command }
@@ -1293,6 +1297,8 @@ err-tracker-query-refused = 追踪器拒绝了连接：它可能正在对你的 
 err-tracker-query-handshake-failed = 追踪器握手失败：{ $error }
 err-tracker-query-protocol-error = 追踪器协议错误：{ $error }
 err-tracker-query-malformed-response = 追踪器响应格式错误：{ $error }
+err-tracker-version-unparseable = 追踪器返回了无法解析的版本"{ $version }"：{ $error }
+err-tracker-version-incompatible = 追踪器版本不兼容 { $server_version }（客户端 { $client_version }）
 err-tracker-query-unauthorized = 追踪器拒绝了请求：密码错误或缺失。
 err-tracker-query-rate-limited = 追踪器拒绝了请求：超出速率限制。请稍后重试。
 err-tracker-query-capacity = 追踪器拒绝了请求：容量已满。请稍后重试。

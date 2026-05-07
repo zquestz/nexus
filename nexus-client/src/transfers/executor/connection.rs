@@ -3,6 +3,7 @@
 //! Handles connecting to the transfer port (7501), TLS handshake,
 //! certificate fingerprint verification, and protocol authentication.
 
+use std::net::ToSocketAddrs;
 use std::sync::Arc;
 
 use tokio::io::{AsyncRead, AsyncWrite, BufReader, ReadHalf, WriteHalf};
@@ -12,6 +13,7 @@ use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
 use tokio_socks::tcp::Socks5Stream;
 
+use nexus_common::address::resolve_host_for_connection;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::send_client_message;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
@@ -19,7 +21,7 @@ use nexus_common::{EXPECT_SNI_SERVER_NAME_VALID_DNS, PROTOCOL_VERSION, SNI_SERVE
 
 use super::streaming::read_message_with_timeout;
 use super::{CONNECTION_TIMEOUT, IDLE_TIMEOUT, TransferError};
-use crate::network::ProxyConfig;
+use crate::network::{DNS_LOOKUP_TIMEOUT, ProxyConfig};
 use crate::types::ConnectionInfo;
 
 /// Boxed async read half (type alias to reduce complexity)
@@ -85,9 +87,22 @@ pub async fn connect_and_authenticate(
     // Check if we should bypass proxy for this address (localhost, Yggdrasil)
     let use_proxy = proxy.filter(|_| !crate::network::tls::should_bypass_proxy(target_addr));
 
+    // IDNA-encode the Unicode hostname before handing it to either
+    // the SOCKS5 proxy or the system resolver. Without this, an IDN
+    // bookmark (e.g. "münchen.de") connects fine on the BBS port
+    // (which already does this in `network/tls.rs`) but the matching
+    // transfer port silently fails to resolve. Punycode-encoded
+    // form is what every downstream consumer expects.
+    let resolved_target =
+        resolve_host_for_connection(target_addr).map_err(|_| TransferError::ConnectionError)?;
+
     // Connect and perform TLS handshake - either direct or through proxy
     let (read_half, write_half) = if let Some(proxy_config) = use_proxy {
-        // Proxied connection via SOCKS5
+        // Proxied connection via SOCKS5. The SOCKS5 server resolves
+        // the target itself, so we just hand it the (host, port) tuple
+        // — no client-side DNS lookup of the target. Proxy address
+        // resolution happens inside `Socks5Stream::connect`, bounded
+        // by the outer `CONNECTION_TIMEOUT` wrap.
         let proxy_addr = format!("{}:{}", proxy_config.address, proxy_config.port);
 
         let socks_stream = timeout(CONNECTION_TIMEOUT, async {
@@ -95,15 +110,18 @@ pub async fn connect_and_authenticate(
                 (Some(username), Some(password)) => {
                     Socks5Stream::connect_with_password(
                         proxy_addr.as_str(),
-                        (target_addr.as_str(), target_port),
+                        (resolved_target.as_str(), target_port),
                         username.as_str(),
                         password.as_str(),
                     )
                     .await
                 }
                 _ => {
-                    Socks5Stream::connect(proxy_addr.as_str(), (target_addr.as_str(), target_port))
-                        .await
+                    Socks5Stream::connect(
+                        proxy_addr.as_str(),
+                        (resolved_target.as_str(), target_port),
+                    )
+                    .await
                 }
             }
         })
@@ -121,10 +139,27 @@ pub async fn connect_and_authenticate(
 
         verify_and_split(tls_stream, &conn_info.certificate_fingerprint)?
     } else {
-        // Direct connection
-        let addr = format!("{}:{}", target_addr, target_port);
+        // Direct connection. Use `to_socket_addrs` (which supports
+        // IPv6 zone identifiers like `fe80::1%eth0`) wrapped in
+        // `spawn_blocking` + `DNS_LOOKUP_TIMEOUT` so a wedged
+        // resolver can't park the queued transfer indefinitely.
+        // Mirrors the BBS connect path's DNS handling.
+        let resolved_clone = resolved_target.clone();
+        let lookup = tokio::task::spawn_blocking(move || {
+            (resolved_clone.as_str(), target_port)
+                .to_socket_addrs()
+                .map(|iter| iter.collect::<Vec<_>>())
+        });
+        let socket_addr = timeout(DNS_LOOKUP_TIMEOUT, lookup)
+            .await
+            .map_err(|_| TransferError::ConnectionError)?
+            .map_err(|_| TransferError::ConnectionError)?
+            .map_err(|_| TransferError::ConnectionError)?
+            .into_iter()
+            .next()
+            .ok_or(TransferError::ConnectionError)?;
 
-        let tcp_stream = timeout(CONNECTION_TIMEOUT, TcpStream::connect(&addr))
+        let tcp_stream = timeout(CONNECTION_TIMEOUT, TcpStream::connect(socket_addr))
             .await
             .map_err(|_| TransferError::ConnectionError)?
             .map_err(|_| TransferError::ConnectionError)?;

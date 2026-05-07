@@ -5,6 +5,7 @@
 # =============================================================================
 
 button-cancel = Отмена
+button-ok = ОК
 button-send = Отправить
 button-delete = Удалить
 button-connect = Подключиться
@@ -636,6 +637,8 @@ err-fingerprint-interception = Обнаружен перехват TLS. Отпе
 err-failed-send-handshake = Не удалось отправить рукопожатие: { $error }
 err-failed-read-handshake = Не удалось прочитать ответ рукопожатия: { $error }
 err-handshake-failed = Ошибка рукопожатия: { $error }
+err-server-version-unparseable = Сервер вернул неразборчивую версию «{ $version }»: { $error }
+err-server-version-incompatible = Несовместимая версия сервера { $server_version } (клиент { $client_version })
 err-failed-parse-handshake = Не удалось разобрать ответ рукопожатия: { $error }
 err-failed-send-login = Не удалось отправить данные для входа: { $error }
 err-failed-read-login = Не удалось прочитать ответ при входе: { $error }
@@ -771,6 +774,7 @@ cmd-window-list = Открытые вкладки: { $tabs } ({ $count } { $coun
    *[other] вкладок
 })
 cmd-window-close-server = Невозможно закрыть вкладку сервера
+cmd-window-close-console = Невозможно закрыть вкладку консоли
 cmd-window-not-found = Вкладка не найдена: { $name }
 cmd-serverinfo-desc = Показать информацию о сервере
 cmd-serverinfo-usage = Использование: /{ $command }
@@ -1380,6 +1384,8 @@ err-tracker-query-refused = Трекер отклонил соединение: 
 err-tracker-query-handshake-failed = Не удалось выполнить рукопожатие с трекером: { $error }
 err-tracker-query-protocol-error = Ошибка протокола трекера: { $error }
 err-tracker-query-malformed-response = Ответ трекера некорректен: { $error }
+err-tracker-version-unparseable = Трекер вернул неразборчивую версию «{ $version }»: { $error }
+err-tracker-version-incompatible = Несовместимая версия трекера { $server_version } (клиент { $client_version })
 err-tracker-query-unauthorized = Трекер отклонил запрос: неверный или отсутствующий пароль.
 err-tracker-query-rate-limited = Трекер отклонил запрос: превышен лимит частоты. Повторите попытку через мгновение.
 err-tracker-query-capacity = Трекер отклонил запрос: достигнут предел вместимости. Повторите попытку позже.

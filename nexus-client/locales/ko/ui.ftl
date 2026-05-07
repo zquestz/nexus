@@ -5,6 +5,7 @@
 # =============================================================================
 
 button-cancel = 취소
+button-ok = 확인
 button-send = 보내기
 button-delete = 삭제
 button-connect = 연결
@@ -605,6 +606,8 @@ err-fingerprint-interception = TLS 가로채기가 감지되었습니다. 서버
 err-failed-send-handshake = 핸드셰이크 전송 실패: { $error }
 err-failed-read-handshake = 핸드셰이크 응답 읽기 실패: { $error }
 err-handshake-failed = 핸드셰이크 실패: { $error }
+err-server-version-unparseable = 서버가 분석할 수 없는 버전 "{ $version }"을(를) 반환했습니다: { $error }
+err-server-version-incompatible = 호환되지 않는 서버 버전 { $server_version } (클라이언트 { $client_version })
 err-failed-parse-handshake = 핸드셰이크 응답 구문 분석 실패: { $error }
 err-failed-send-login = 로그인 전송 실패: { $error }
 err-failed-read-login = 로그인 응답 읽기 실패: { $error }
@@ -712,6 +715,7 @@ cmd-window-arg-prev = 이전
 cmd-window-arg-close = 닫기
 cmd-window-list = 열린 탭: { $tabs } ({ $count }개 탭)
 cmd-window-close-server = 서버 탭은 닫을 수 없습니다
+cmd-window-close-console = 콘솔 탭은 닫을 수 없습니다
 cmd-window-not-found = 탭을 찾을 수 없습니다: { $name }
 cmd-serverinfo-desc = 서버 정보 표시
 cmd-serverinfo-usage = 사용법: /{ $command }
@@ -1292,6 +1296,8 @@ err-tracker-query-refused = 트래커가 연결을 거부했습니다: 당신의
 err-tracker-query-handshake-failed = 트래커 핸드셰이크에 실패했습니다: { $error }
 err-tracker-query-protocol-error = 트래커 프로토콜 오류: { $error }
 err-tracker-query-malformed-response = 트래커 응답 형식이 잘못되었습니다: { $error }
+err-tracker-version-unparseable = 트래커가 분석할 수 없는 버전 "{ $version }"을(를) 반환했습니다: { $error }
+err-tracker-version-incompatible = 호환되지 않는 트래커 버전 { $server_version } (클라이언트 { $client_version })
 err-tracker-query-unauthorized = 트래커가 요청을 거부했습니다: 비밀번호가 잘못되었거나 누락되었습니다.
 err-tracker-query-rate-limited = 트래커가 요청을 거부했습니다: 속도 제한을 초과했습니다. 잠시 후 다시 시도하세요.
 err-tracker-query-capacity = 트래커가 요청을 거부했습니다: 용량이 가득 찼습니다. 나중에 다시 시도하세요.

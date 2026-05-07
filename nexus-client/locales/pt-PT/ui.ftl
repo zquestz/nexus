@@ -5,6 +5,7 @@
 # =============================================================================
 
 button-cancel = Cancelar
+button-ok = OK
 button-send = Enviar
 button-delete = Eliminar
 button-connect = Ligar
@@ -629,6 +630,8 @@ err-fingerprint-interception = Interceção TLS detetada. A impressão digital c
 err-failed-send-handshake = Falha ao enviar handshake: { $error }
 err-failed-read-handshake = Falha ao ler resposta do handshake: { $error }
 err-handshake-failed = Falha no handshake: { $error }
+err-server-version-unparseable = O servidor devolveu uma versão ilegível "{ $version }": { $error }
+err-server-version-incompatible = Versão do servidor incompatível { $server_version } (cliente { $client_version })
 err-failed-parse-handshake = Falha ao analisar resposta do handshake: { $error }
 err-failed-send-login = Falha ao enviar autenticação: { $error }
 err-failed-read-login = Falha ao ler resposta de autenticação: { $error }
@@ -757,6 +760,7 @@ cmd-window-list = Separadores abertos: { $tabs } ({ $count } { $count ->
    *[other] separadores
 })
 cmd-window-close-server = Não é possível fechar o separador do servidor
+cmd-window-close-console = Não é possível fechar o separador da Consola
 cmd-window-not-found = Separador não encontrado: { $name }
 cmd-serverinfo-desc = Mostrar informações do servidor
 cmd-serverinfo-usage = Uso: /{ $command }
@@ -1359,6 +1363,8 @@ err-tracker-query-refused = O tracker recusou a ligação: pode estar a limitar 
 err-tracker-query-handshake-failed = Falha no handshake com o tracker: { $error }
 err-tracker-query-protocol-error = Erro de protocolo do tracker: { $error }
 err-tracker-query-malformed-response = A resposta do tracker está malformada: { $error }
+err-tracker-version-unparseable = O tracker devolveu uma versão ilegível "{ $version }": { $error }
+err-tracker-version-incompatible = Versão do tracker incompatível { $server_version } (cliente { $client_version })
 err-tracker-query-unauthorized = O tracker rejeitou o pedido: palavra-passe incorreta ou ausente.
 err-tracker-query-rate-limited = O tracker rejeitou o pedido: limite de velocidade excedido. Tente novamente daqui a um momento.
 err-tracker-query-capacity = O tracker rejeitou o pedido: sem capacidade. Tente novamente mais tarde.

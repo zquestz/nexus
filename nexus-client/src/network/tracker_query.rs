@@ -31,6 +31,7 @@ use tokio::time::timeout;
 
 use super::tls::establish_connection;
 use super::types::{TrackerQueryError, TrackerQueryOk, TrackerQueryParams};
+use crate::i18n::t_args;
 
 /// Read timeout for tracker handshake and list responses. Matches the
 /// BBS-server tracker task's `TRACKER_RESPONSE_TIMEOUT` so client and
@@ -165,18 +166,21 @@ pub async fn query_tracker(
     // with older trackers); unparseable rejects as MalformedResponse.
     if let Some(reported) = server_version.as_deref() {
         let server_v = nexus_common::version::Version::parse(reported).map_err(|e| {
-            TrackerQueryError::MalformedResponse(format!(
-                "unparseable tracker version \"{}\": {}",
-                reported, e
+            TrackerQueryError::MalformedResponse(t_args(
+                "err-tracker-version-unparseable",
+                &[("version", reported), ("error", &e.to_string())],
             ))
         })?;
         let client_v = nexus_common::version::Version::parse(TRACKER_PROTOCOL_VERSION)
             .expect("TRACKER_PROTOCOL_VERSION is a canonical semver constant");
         let compat = nexus_common::version::check_compatibility(&server_v, &client_v);
         if !compat.is_compatible() {
-            return Err(TrackerQueryError::Handshake(format!(
-                "incompatible tracker version {} (client {})",
-                reported, TRACKER_PROTOCOL_VERSION
+            return Err(TrackerQueryError::Handshake(t_args(
+                "err-tracker-version-incompatible",
+                &[
+                    ("server_version", reported),
+                    ("client_version", TRACKER_PROTOCOL_VERSION),
+                ],
             )));
         }
     }

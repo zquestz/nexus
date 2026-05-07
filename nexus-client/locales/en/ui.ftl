@@ -5,6 +5,7 @@
 # =============================================================================
 
 button-cancel = Cancel
+button-ok = OK
 button-send = Send
 button-delete = Delete
 button-connect = Connect
@@ -686,6 +687,8 @@ err-fingerprint-interception = TLS interception detected. Server-reported finger
 err-failed-send-handshake = Failed to send handshake: { $error }
 err-failed-read-handshake = Failed to read handshake response: { $error }
 err-handshake-failed = Handshake failed: { $error }
+err-server-version-unparseable = Server returned an unparseable version "{ $version }": { $error }
+err-server-version-incompatible = Incompatible server version { $server_version } (client { $client_version })
 err-failed-parse-handshake = Failed to parse handshake response: { $error }
 err-failed-send-login = Failed to send login: { $error }
 err-failed-read-login = Failed to read login response: { $error }
@@ -833,6 +836,7 @@ cmd-window-list = Open tabs: { $tabs } ({ $count } { $count ->
    *[other] tabs
 })
 cmd-window-close-server = Cannot close the server tab
+cmd-window-close-console = Cannot close the Console tab
 cmd-window-not-found = Tab not found: { $name }
 cmd-serverinfo-desc = Show server information
 cmd-serverinfo-usage = Usage: /{ $command }
@@ -1430,6 +1434,8 @@ err-tracker-query-refused = Tracker refused connection: it may be rate-limiting 
 err-tracker-query-handshake-failed = Tracker handshake failed: { $error }
 err-tracker-query-protocol-error = Tracker protocol error: { $error }
 err-tracker-query-malformed-response = Tracker response is malformed: { $error }
+err-tracker-version-unparseable = Tracker returned an unparseable version "{ $version }": { $error }
+err-tracker-version-incompatible = Incompatible tracker version { $server_version } (client { $client_version })
 err-tracker-query-unauthorized = Tracker rejected the request: incorrect or missing password.
 err-tracker-query-rate-limited = Tracker rejected the request: rate limit exceeded. Try again in a moment.
 err-tracker-query-capacity = Tracker rejected the request: at capacity. Try again later.

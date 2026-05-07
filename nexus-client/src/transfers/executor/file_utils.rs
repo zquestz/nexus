@@ -21,7 +21,6 @@ use nexus_common::io::send_client_message;
 use nexus_common::protocol::ClientMessage;
 
 use super::{PART_SUFFIX, TransferError};
-use crate::constants::ERR_HASH_KEEPALIVE_PREFIX;
 
 // =============================================================================
 // Local File Info (for uploads)
@@ -126,14 +125,16 @@ where
         hasher.update(&buffer[..bytes_read]);
         remaining -= bytes_read as u64;
 
-        // Send keepalive periodically to prevent server timeout
+        // Send keepalive periodically to prevent server timeout.
+        // Send failures here are silently dropped — the keepalive is
+        // best-effort, and the actual transfer body's error path
+        // surfaces any real connection problem to the user via the
+        // transfer status.
         if last_keepalive.elapsed() >= KEEPALIVE_INTERVAL {
             let msg = ClientMessage::FileHashing {
                 file: file_name.clone(),
             };
-            if let Err(e) = send_client_message(writer, &msg).await {
-                eprintln!("{}{:?}", ERR_HASH_KEEPALIVE_PREFIX, e);
-            }
+            let _ = send_client_message(writer, &msg).await;
             last_keepalive = Instant::now();
         }
     }

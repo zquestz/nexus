@@ -5,6 +5,7 @@
 # =============================================================================
 
 button-cancel = 取消
+button-ok = 確定
 button-send = 傳送
 button-delete = 刪除
 button-connect = 連線
@@ -605,6 +606,8 @@ err-fingerprint-interception = 偵測到 TLS 攔截。伺服器報告的指紋�
 err-failed-send-handshake = 傳送握手失敗：{ $error }
 err-failed-read-handshake = 讀取握手回應失敗：{ $error }
 err-handshake-failed = 握手失敗：{ $error }
+err-server-version-unparseable = 伺服器回傳了無法解析的版本「{ $version }」：{ $error }
+err-server-version-incompatible = 伺服器版本不相容 { $server_version }（用戶端 { $client_version }）
 err-failed-parse-handshake = 解析握手回應失敗：{ $error }
 err-failed-send-login = 傳送登入失敗：{ $error }
 err-failed-read-login = 讀取登入回應失敗：{ $error }
@@ -712,6 +715,7 @@ cmd-window-arg-prev = 上一個
 cmd-window-arg-close = 關閉
 cmd-window-list = 開啟的分頁：{ $tabs }（{ $count }個分頁）
 cmd-window-close-server = 無法關閉伺服器分頁
+cmd-window-close-console = 無法關閉主控台分頁
 cmd-window-not-found = 找不到分頁：{ $name }
 cmd-serverinfo-desc = 顯示伺服器資訊
 cmd-serverinfo-usage = 用法: /{ $command }
@@ -1292,6 +1296,8 @@ err-tracker-query-refused = 追蹤器拒絕了連線：可能正在對你的 IP 
 err-tracker-query-handshake-failed = 追蹤器握手失敗：{ $error }
 err-tracker-query-protocol-error = 追蹤器通訊協定錯誤：{ $error }
 err-tracker-query-malformed-response = 追蹤器回應格式錯誤：{ $error }
+err-tracker-version-unparseable = 追蹤器回傳了無法解析的版本「{ $version }」：{ $error }
+err-tracker-version-incompatible = 追蹤器版本不相容 { $server_version }（用戶端 { $client_version }）
 err-tracker-query-unauthorized = 追蹤器拒絕了請求：密碼錯誤或缺漏。
 err-tracker-query-rate-limited = 追蹤器拒絕了請求：超過速率限制。請稍後再試。
 err-tracker-query-capacity = 追蹤器拒絕了請求：容量已滿。請稍後再試。

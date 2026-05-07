@@ -5,6 +5,7 @@
 # =============================================================================
 
 button-cancel = Annuler
+button-ok = OK
 button-send = Envoyer
 button-delete = Supprimer
 button-connect = Connecter
@@ -624,6 +625,8 @@ err-fingerprint-interception = Interception TLS détectée. L'empreinte rapport�
 err-failed-send-handshake = Échec de l'envoi du handshake : { $error }
 err-failed-read-handshake = Échec de la lecture de la réponse du handshake : { $error }
 err-handshake-failed = Échec du handshake : { $error }
+err-server-version-unparseable = Le serveur a renvoyé une version non analysable « { $version } » : { $error }
+err-server-version-incompatible = Version du serveur incompatible { $server_version } (client { $client_version })
 err-failed-parse-handshake = Échec de l'analyse de la réponse du handshake : { $error }
 err-failed-send-login = Échec de l'envoi de la connexion : { $error }
 err-failed-read-login = Échec de la lecture de la réponse de connexion : { $error }
@@ -752,6 +755,7 @@ cmd-window-list = Onglets ouverts : { $tabs } ({ $count } { $count ->
    *[other] onglets
 })
 cmd-window-close-server = Impossible de fermer l'onglet serveur
+cmd-window-close-console = Impossible de fermer l'onglet Console
 cmd-window-not-found = Onglet non trouvé : { $name }
 cmd-serverinfo-desc = Afficher les informations du serveur
 cmd-serverinfo-usage = Utilisation: /{ $command }
@@ -1354,6 +1358,8 @@ err-tracker-query-refused = Le tracker a refusé la connexion : il limite peut-�
 err-tracker-query-handshake-failed = Échec de la négociation avec le tracker : { $error }
 err-tracker-query-protocol-error = Erreur de protocole du tracker : { $error }
 err-tracker-query-malformed-response = La réponse du tracker est mal formée : { $error }
+err-tracker-version-unparseable = Le tracker a renvoyé une version non analysable « { $version } » : { $error }
+err-tracker-version-incompatible = Version du tracker incompatible { $server_version } (client { $client_version })
 err-tracker-query-unauthorized = Le tracker a rejeté la requête : mot de passe incorrect ou manquant.
 err-tracker-query-rate-limited = Le tracker a rejeté la requête : limite de débit dépassée. Réessayez dans un instant.
 err-tracker-query-capacity = Le tracker a rejeté la requête : capacité atteinte. Réessayez plus tard.

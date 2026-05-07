@@ -72,6 +72,9 @@ pub fn disable_app_nap() {
             std::mem::forget(token);
         }
         None => {
+            // Platform-init diagnostic — dev-only (stderr invisible
+            // in shipped GUI builds).
+            #[cfg(debug_assertions)]
             eprintln!("{}", ERR_NSPROCESSINFO_BEGIN_ACTIVITY_NIL);
         }
     }
