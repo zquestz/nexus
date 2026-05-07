@@ -506,6 +506,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn duplicate_address_case_insensitive_rejected() {
+        let pool = create_test_db().await;
+        let db = TrackerDb::new(pool);
+
+        db.create(create_params("tracker.example.com", "First"))
+            .await
+            .expect("first create");
+
+        // Same address in different ASCII case must collide via the
+        // expression-based unique index on `(LOWER(address), port)`.
+        let err = db
+            .create(create_params("Tracker.Example.COM", "Second"))
+            .await
+            .expect_err("duplicate (address, port) case-insensitive must fail");
+        assert!(
+            matches!(err, TrackerDbError::EndpointDuplicate),
+            "expected EndpointDuplicate, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn same_address_different_port_allowed() {
         let pool = create_test_db().await;
         let db = TrackerDb::new(pool);

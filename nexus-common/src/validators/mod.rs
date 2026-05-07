@@ -9,6 +9,7 @@ mod ban_reason;
 mod channel;
 mod channel_list;
 mod chat_topic;
+mod connection_address;
 mod data_uri;
 mod dir_name;
 mod duration;
@@ -51,6 +52,7 @@ pub use channel_list::{
     validate_auto_join_channels, validate_channel_list, validate_persistent_channels,
 };
 pub use chat_topic::{ChatTopicError, MAX_CHAT_TOPIC_LENGTH, validate_chat_topic};
+pub use connection_address::{ConnectionAddressError, validate_connection_address};
 pub use data_uri::{ALLOWED_IMAGE_MIME_TYPES, DataUriError, validate_image_data_uri};
 pub use dir_name::{DirNameError, MAX_DIR_NAME_LENGTH, validate_dir_name};
 pub use duration::{DurationError, MAX_DURATION_LENGTH, validate_duration};

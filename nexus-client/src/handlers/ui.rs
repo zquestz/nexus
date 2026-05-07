@@ -188,6 +188,12 @@ impl NexusApp {
         {
             self.tracker_browser.selected_tracker = None;
         }
+        // `search_input` is cleared only when toggling open *and*
+        // auto-selecting a tracker (so the user lands on a meaningful
+        // selection rather than a filtered-out list). Toggling back
+        // open with an existing selection preserves the prior search
+        // term — different from the Remove path, which always clears
+        // because the row backing any active filter context is gone.
         if self.tracker_browser.selected_tracker.is_none()
             && let Some(id) = self
                 .config

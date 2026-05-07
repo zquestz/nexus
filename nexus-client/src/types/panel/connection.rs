@@ -68,7 +68,9 @@ impl std::fmt::Debug for ConnectionFormState {
 }
 
 impl ConnectionFormState {
-    /// Clear all form fields
+    /// Clear all form input fields. Lifecycle flags (`error`,
+    /// `is_connecting`, `add_bookmark`) are intentionally preserved —
+    /// callers manage those.
     pub fn clear(&mut self) {
         self.server_name.clear();
         self.server_address.clear();

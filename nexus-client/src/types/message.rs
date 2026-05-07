@@ -380,8 +380,8 @@ pub enum Message {
     /// Tracker browser: ConfirmRemove modal — confirm removal
     TrackerBrowserRemoveConfirm,
     /// Tracker browser: Tab pressed in the Add form. Advances focus
-    /// through the text inputs (Port `NumberInput` is skipped per
-    /// CLAUDE.md UI Quirks — it consumes Tab internally).
+    /// through the text inputs. Port is skipped because
+    /// `iced_aw::NumberInput` consumes Tab internally.
     TrackerBrowserAddTabPressed,
     /// Tracker browser: Tab pressed in the Edit form.
     TrackerBrowserEditTabPressed,

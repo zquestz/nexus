@@ -12,6 +12,7 @@ use crate::types::{
     ActivePanel, BookmarkEditMode, ChatTab, InputId, Message, NewsManagementMode, PendingRequests,
     ResponseRouting, TrackerManagementMode, UserManagementMode,
 };
+use crate::views::constants::PERMISSION_TRACKER_LIST;
 use crate::voice::ptt::build_hotkey_string;
 
 impl NexusApp {
@@ -655,15 +656,24 @@ impl NexusApp {
                 if conn.server_info_edit.is_some() {
                     return self.update(Message::ServerInfoEditTabPressed);
                 }
-                match &conn.tracker_management.mode {
-                    crate::types::TrackerManagementMode::Add => {
-                        return self.update(Message::AddTrackerTabPressed);
+                // Gate tracker-form Tab dispatches on `tracker_list` —
+                // the tab itself is hidden from `views/server_info.rs`
+                // when the perm is revoked mid-session, but the form's
+                // mode flag may still be `Add`/`Edit` until the next
+                // mode transition. Without the gate, Tab would fire
+                // focus-ops at widgets that aren't mounted (no-op but
+                // visibly inert).
+                if conn.has_permission(PERMISSION_TRACKER_LIST) {
+                    match &conn.tracker_management.mode {
+                        crate::types::TrackerManagementMode::Add => {
+                            return self.update(Message::AddTrackerTabPressed);
+                        }
+                        crate::types::TrackerManagementMode::Edit { .. } => {
+                            return self.update(Message::EditTrackerTabPressed);
+                        }
+                        // List / ConfirmRemove / AcceptFingerprint: no Tab cycling.
+                        _ => {}
                     }
-                    crate::types::TrackerManagementMode::Edit { .. } => {
-                        return self.update(Message::EditTrackerTabPressed);
-                    }
-                    // List / ConfirmRemove / AcceptFingerprint: no Tab cycling.
-                    _ => {}
                 }
             }
         } else if self.active_panel() == ActivePanel::Files {

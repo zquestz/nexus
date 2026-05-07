@@ -61,7 +61,7 @@ pub struct TrackerCacheEntry {
 // =============================================================================
 
 /// Current mode of the tracker discovery panel.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Clone, PartialEq, Default)]
 pub enum TrackerBrowserMode {
     /// Showing the toolbar + search + sortable server list.
     #[default]
@@ -72,9 +72,14 @@ pub enum TrackerBrowserMode {
     Edit {
         /// Stable client-tracker id being edited (the row's `Uuid`).
         id: Uuid,
-        /// Original display name, used for the form subtitle.
+        /// Display name captured at form-open; immutable for the life
+        /// of the Edit session. Used for the form subtitle so the
+        /// user always sees which row they came in to edit, even
+        /// after they've started changing `name`.
         original_name: String,
-        /// Editable name field.
+        /// Editable name field. May diverge from `original_name` as
+        /// the user types; the form submit replaces the row's name
+        /// with this value.
         name: String,
         /// Editable address field.
         address: String,
@@ -115,6 +120,54 @@ pub enum TrackerBrowserMode {
     },
 }
 
+impl std::fmt::Debug for TrackerBrowserMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::List => f.write_str("List"),
+            Self::Add => f.write_str("Add"),
+            Self::Edit {
+                id,
+                original_name,
+                name,
+                address,
+                port,
+                password: _,
+                fingerprint,
+            } => f
+                .debug_struct("Edit")
+                .field("id", id)
+                .field("original_name", original_name)
+                .field("name", name)
+                .field("address", address)
+                .field("port", port)
+                .field("password", &"[REDACTED]")
+                .field("fingerprint", fingerprint)
+                .finish(),
+            Self::ConfirmRemove { id, name } => f
+                .debug_struct("ConfirmRemove")
+                .field("id", id)
+                .field("name", name)
+                .finish(),
+            Self::AcceptFingerprint {
+                id,
+                name,
+                address,
+                port,
+                expected,
+                received,
+            } => f
+                .debug_struct("AcceptFingerprint")
+                .field("id", id)
+                .field("name", name)
+                .field("address", address)
+                .field("port", port)
+                .field("expected", expected)
+                .field("received", received)
+                .finish(),
+        }
+    }
+}
+
 // =============================================================================
 // State
 // =============================================================================
@@ -137,7 +190,7 @@ pub struct TrackerBrowserEditInit {
 /// simple for handlers that mutate one field at a time. They reset
 /// to defaults each time `enter_add_mode()` runs, so a Cancel + reopen
 /// starts the form fresh.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TrackerBrowserState {
     /// Current mode (list / add / edit / confirm remove / accept fingerprint).
     pub mode: TrackerBrowserMode,
@@ -160,14 +213,18 @@ pub struct TrackerBrowserState {
     pub form_error: Option<String>,
     /// Error displayed inside the Remove confirmation modal.
     pub remove_error: Option<String>,
-    /// Error displayed inside the AcceptFingerprint modal.
+    /// Error displayed inside the AcceptFingerprint modal. Read by the
+    /// AcceptFingerprint subview that lands with the network layer;
+    /// write-only for now.
     pub accept_fingerprint_error: Option<String>,
     /// Whether an Add/Edit submit is in flight (prevents double-submit).
     pub is_submitting: bool,
     /// Whether a Remove submit is in flight (separate so Remove can
     /// overlap with editing on different rows).
     pub is_remove_submitting: bool,
-    /// Whether an AcceptFingerprint submit is in flight.
+    /// Whether an AcceptFingerprint submit is in flight. Gated on the
+    /// AcceptFingerprint dialog landing with the network layer;
+    /// write-only for now.
     pub is_accept_fingerprint_submitting: bool,
 
     // ---- Add-form fields (persist across reopen of Add mode) ----
@@ -204,6 +261,33 @@ impl Default for TrackerBrowserState {
             add_password: String::new(),
             add_fingerprint: String::new(),
         }
+    }
+}
+
+impl std::fmt::Debug for TrackerBrowserState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrackerBrowserState")
+            .field("mode", &self.mode)
+            .field("selected_tracker", &self.selected_tracker)
+            .field("cache", &self.cache)
+            .field("search_input", &self.search_input)
+            .field("sort_column", &self.sort_column)
+            .field("sort_ascending", &self.sort_ascending)
+            .field("form_error", &self.form_error)
+            .field("remove_error", &self.remove_error)
+            .field("accept_fingerprint_error", &self.accept_fingerprint_error)
+            .field("is_submitting", &self.is_submitting)
+            .field("is_remove_submitting", &self.is_remove_submitting)
+            .field(
+                "is_accept_fingerprint_submitting",
+                &self.is_accept_fingerprint_submitting,
+            )
+            .field("add_name", &self.add_name)
+            .field("add_address", &self.add_address)
+            .field("add_port", &self.add_port)
+            .field("add_password", &"[REDACTED]")
+            .field("add_fingerprint", &self.add_fingerprint)
+            .finish()
     }
 }
 

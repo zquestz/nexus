@@ -8,8 +8,8 @@ use super::layout::scrollable_panel;
 use crate::i18n::t;
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, error_text_style, panel_title, shaped_text,
-    shaped_text_wrapped,
+    MONOSPACE_FONT, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, error_text_style,
+    panel_title, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{ConnectionFormState, InputId, Message};
 
@@ -79,6 +79,7 @@ pub fn connection_form_view(form: &ConnectionFormState) -> Element<'_, Message> 
         .on_input(Message::FingerprintChanged)
         .on_submit(Message::ConnectPressed)
         .id(Id::from(InputId::Fingerprint))
+        .font(MONOSPACE_FONT)
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE);
 

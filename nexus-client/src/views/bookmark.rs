@@ -9,8 +9,8 @@ use super::layout::scrollable_panel;
 use crate::i18n::{t, t_args};
 use crate::style::{
     BUTTON_PADDING, CONTENT_MAX_WIDTH, CONTENT_PADDING, ELEMENT_SPACING, INPUT_PADDING,
-    SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, error_text_style, panel_title, shaped_text,
-    shaped_text_wrapped,
+    MONOSPACE_FONT, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, error_text_style,
+    panel_title, shaped_text, shaped_text_wrapped,
 };
 use crate::types::{BookmarkEditMode, BookmarkEditState, InputId, Message};
 
@@ -134,6 +134,7 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         .on_input(Message::BookmarkFingerprintChanged)
         .on_submit(Message::SaveBookmark)
         .id(Id::from(InputId::BookmarkFingerprint))
+        .font(MONOSPACE_FONT)
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
         .into(),

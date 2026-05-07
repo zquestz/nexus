@@ -2,7 +2,6 @@
 
 use iced::Task;
 use iced::widget::{Id, operation, scrollable};
-use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, MessageError};
 
@@ -33,7 +32,6 @@ impl NexusApp {
     /// Handle password field change
     pub fn handle_password_changed(&mut self, password: String) -> Task<Message> {
         self.connection_form.password = password;
-        self.connection_form.error = None;
         self.focused_field = InputId::Password;
         Task::none()
     }
@@ -41,7 +39,6 @@ impl NexusApp {
     /// Handle port field change
     pub fn handle_port_changed(&mut self, port: u16) -> Task<Message> {
         self.connection_form.port = port;
-        self.connection_form.error = None;
         self.focused_field = InputId::Port;
         Task::none()
     }
@@ -49,7 +46,6 @@ impl NexusApp {
     /// Handle server address field change
     pub fn handle_server_address_changed(&mut self, addr: String) -> Task<Message> {
         self.connection_form.server_address = addr;
-        self.connection_form.error = None;
         self.focused_field = InputId::ServerAddress;
         Task::none()
     }
@@ -57,7 +53,6 @@ impl NexusApp {
     /// Handle server name field change
     pub fn handle_server_name_changed(&mut self, name: String) -> Task<Message> {
         self.connection_form.server_name = name;
-        self.connection_form.error = None;
         self.focused_field = InputId::ServerName;
         Task::none()
     }
@@ -65,7 +60,6 @@ impl NexusApp {
     /// Handle username field change
     pub fn handle_username_changed(&mut self, username: String) -> Task<Message> {
         self.connection_form.username = username;
-        self.connection_form.error = None;
         self.focused_field = InputId::Username;
         Task::none()
     }
@@ -73,7 +67,6 @@ impl NexusApp {
     /// Handle nickname field change
     pub fn handle_nickname_changed(&mut self, nickname: String) -> Task<Message> {
         self.connection_form.nickname = nickname;
-        self.connection_form.error = None;
         self.focused_field = InputId::Nickname;
         Task::none()
     }
@@ -81,7 +74,6 @@ impl NexusApp {
     /// Handle fingerprint pin field change
     pub fn handle_fingerprint_changed(&mut self, fingerprint: String) -> Task<Message> {
         self.connection_form.fingerprint = fingerprint;
-        self.connection_form.error = None;
         self.focused_field = InputId::Fingerprint;
         Task::none()
     }
@@ -94,23 +86,40 @@ impl NexusApp {
             return Task::none();
         }
 
-        // Validate required fields (on_submit fires even when form is incomplete)
-        if self.connection_form.server_name.trim().is_empty() {
-            self.connection_form.error = Some(t("err-name-required"));
-            return Task::none();
-        }
-        if self.connection_form.server_address.trim().is_empty() {
-            self.connection_form.error = Some(t("err-address-required"));
+        // Run full field-shape validation (required fields, address
+        // shape, optional username/nickname shape, password length cap,
+        // fingerprint canonical form). Shared with the bookmark form
+        // via `server_form_errors` so the two stay in lockstep.
+        if let Err(error) = super::server_form_errors::translate_server_form_errors(
+            &self.connection_form.server_name,
+            &self.connection_form.server_address,
+            &self.connection_form.username,
+            &self.connection_form.nickname,
+            &self.connection_form.password,
+            &self.connection_form.fingerprint,
+        ) {
+            self.connection_form.error = Some(error);
             return Task::none();
         }
 
-        // Optional fingerprint pin: empty/whitespace = unpinned, otherwise must
-        // match the canonical 95-char uppercase form. Trim is preserved on the
-        // form state below so the user sees the cleaned-up value if any other
-        // validation fails after this.
-        let trimmed_fingerprint = self.connection_form.fingerprint.trim();
-        if !trimmed_fingerprint.is_empty() && !is_canonical_fingerprint(trimmed_fingerprint) {
-            self.connection_form.error = Some(t("err-fingerprint-invalid"));
+        // If the user checked "Add bookmark", the connect path will
+        // auto-create a new bookmark on success. Validate the dedup
+        // contract upstream so a duplicate bookmark can't be created
+        // silently. On collision, the user can uncheck the box and
+        // retry — connecting and bookmarking are explicit user
+        // intents that shouldn't conflict.
+        if self.connection_form.add_bookmark
+            && let Some(error) = super::bookmarks::check_bookmark_dedup(
+                &self.connection_form.server_name,
+                &self.connection_form.server_address,
+                self.connection_form.port,
+                &self.connection_form.username,
+                &self.connection_form.nickname,
+                &self.config.bookmarks,
+                None,
+            )
+        {
+            self.connection_form.error = Some(error);
             return Task::none();
         }
 
@@ -124,7 +133,7 @@ impl NexusApp {
             self.connection_form.server_address.trim().to_string();
         self.connection_form.username = self.connection_form.username.trim().to_string();
         self.connection_form.nickname = self.connection_form.nickname.trim().to_string();
-        self.connection_form.fingerprint = trimmed_fingerprint.to_string();
+        self.connection_form.fingerprint = self.connection_form.fingerprint.trim().to_string();
 
         let port = self.connection_form.port;
 

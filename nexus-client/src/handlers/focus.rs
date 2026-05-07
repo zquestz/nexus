@@ -40,6 +40,10 @@ use crate::types::{InputId, Message};
 /// real `InputId`, so [`next_in_cycle`] naturally falls through to
 /// its `cycle[0]` default — i.e. Tab from a no-focus state lands on
 /// the first input of the active form.
+///
+/// Confirmed safe for iced 0.14 — no widget in this crate uses
+/// `Id::new("")` and iced's default-id assignment uses internal
+/// counters, not literal empties. Re-verify on iced upgrade.
 fn find_focused_or_sentinel() -> impl Operation<Id> {
     struct FindFocused {
         focused: Option<Id>,
@@ -91,4 +95,89 @@ pub fn next_in_cycle(focused: &Id, cycle: &[InputId]) -> InputId {
         }
     }
     cycle[0]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SAMPLE_CYCLE: &[InputId] = &[
+        InputId::TrackerBrowserAddName,
+        InputId::TrackerBrowserAddAddress,
+        InputId::TrackerBrowserAddPassword,
+        InputId::TrackerBrowserAddFingerprint,
+    ];
+
+    #[test]
+    fn advances_to_next_within_cycle() {
+        let focused = Id::from(InputId::TrackerBrowserAddName);
+        assert_eq!(
+            next_in_cycle(&focused, SAMPLE_CYCLE),
+            InputId::TrackerBrowserAddAddress
+        );
+    }
+
+    #[test]
+    fn advances_through_each_position() {
+        // Walking from each entry returns the entry that follows it.
+        for window in SAMPLE_CYCLE.windows(2) {
+            let focused = Id::from(window[0]);
+            assert_eq!(next_in_cycle(&focused, SAMPLE_CYCLE), window[1]);
+        }
+    }
+
+    #[test]
+    fn wraps_from_last_to_first() {
+        let focused = Id::from(InputId::TrackerBrowserAddFingerprint);
+        assert_eq!(
+            next_in_cycle(&focused, SAMPLE_CYCLE),
+            InputId::TrackerBrowserAddName
+        );
+    }
+
+    #[test]
+    fn unknown_id_falls_through_to_cycle_first() {
+        // Mimics focus on a widget outside this form's cycle (e.g. a
+        // NumberInput's internal text input, or a button).
+        let focused = Id::from(InputId::ServerName);
+        assert_eq!(
+            next_in_cycle(&focused, SAMPLE_CYCLE),
+            InputId::TrackerBrowserAddName
+        );
+    }
+
+    #[test]
+    fn sentinel_empty_id_falls_through_to_cycle_first() {
+        // The `find_focused_or_sentinel` operation substitutes
+        // `Id::new("")` when no widget is focused. The empty id
+        // doesn't match any `InputId`, so the cycle starts at index 0.
+        let focused = Id::new("");
+        assert_eq!(
+            next_in_cycle(&focused, SAMPLE_CYCLE),
+            InputId::TrackerBrowserAddName
+        );
+    }
+
+    #[test]
+    fn single_element_cycle_returns_self_on_match() {
+        // Length-1 cycle: focused matches the only entry, so wrap
+        // (i + 1) % 1 = 0 returns the same entry.
+        let cycle: &[InputId] = &[InputId::TrackerBrowserAddName];
+        let focused = Id::from(InputId::TrackerBrowserAddName);
+        assert_eq!(
+            next_in_cycle(&focused, cycle),
+            InputId::TrackerBrowserAddName
+        );
+    }
+
+    #[test]
+    fn single_element_cycle_returns_self_on_no_match() {
+        // Length-1 cycle: no match falls through to cycle[0].
+        let cycle: &[InputId] = &[InputId::TrackerBrowserAddName];
+        let focused = Id::from(InputId::ServerName);
+        assert_eq!(
+            next_in_cycle(&focused, cycle),
+            InputId::TrackerBrowserAddName
+        );
+    }
 }

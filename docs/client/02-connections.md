@@ -40,6 +40,48 @@ Bookmarks save server connection details for quick access. Each bookmark stores:
 2. Click the gear icon
 3. Click **Delete**
 
+### Validation Rules
+
+Bookmark and connection-form fields are validated client-side before
+the bookmark is saved or the connection is attempted:
+
+- **Server name** — required; up to 64 characters; spaces are allowed;
+  newlines and control characters are rejected.
+- **Server address** — required; must be a valid hostname or IP literal.
+  IPv6 brackets (`[::1]`) and zone identifiers (`fe80::1%eth0`) are
+  accepted. URL fragments are rejected: scheme prefixes (`https://`),
+  paths (`example.com/foo`), userinfo (`user@host`), and embedded port
+  suffixes (`example.com:7500`) all fail with a specific message.
+- **Username** — optional; up to 32 characters when set; rejects
+  whitespace, control characters, and the reserved set
+  `/ \ : . < > " | ? * #`.
+- **Nickname** — optional; same rules as username.
+- **Password** — optional; up to 256 bytes; otherwise unrestricted
+  (passphrases, control characters, and unicode are all permitted).
+- **Fingerprint** — optional; when set, must be the canonical 95-byte
+  uppercase hex form separated by colons.
+
+### Duplicate Detection
+
+Bookmarks are deduplicated on two keys, both case-insensitive:
+
+- **Name** — no two bookmarks may share a name.
+- **Endpoint tuple** — `(address, port, username, nickname)`. Two
+  bookmarks pointing to the same login _and_ the same display
+  identity are considered duplicates. Distinct nicknames against a
+  shared account remain distinct bookmarks.
+
+The duplicate check runs on Save and also when **Add to bookmarks** is
+checked on the connect form. If a duplicate would be created from the
+connect form, the connection is blocked and the error is shown — uncheck
+**Add to bookmarks** to connect without saving.
+
+### Validation Errors
+
+Validation errors persist until the next submit or cancel. Typing in a
+field does not clear the error banner — this gives you time to read
+what went wrong before continuing.
+
 ### Bookmark Order
 
 Bookmarks are sorted alphabetically by name.

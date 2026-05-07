@@ -2,7 +2,6 @@
 
 use iced::Task;
 use iced::widget::{Id, operation};
-use nexus_common::fingerprint::is_canonical_fingerprint;
 use uuid::Uuid;
 
 use crate::NexusApp;
@@ -18,7 +17,6 @@ impl NexusApp {
     /// Handle bookmark address field change
     pub fn handle_bookmark_address_changed(&mut self, addr: String) -> Task<Message> {
         self.bookmark_edit.bookmark.address = addr;
-        self.bookmark_edit.error = None;
         self.focused_field = InputId::BookmarkAddress;
         Task::none()
     }
@@ -32,7 +30,6 @@ impl NexusApp {
     /// Handle bookmark name field change
     pub fn handle_bookmark_name_changed(&mut self, name: String) -> Task<Message> {
         self.bookmark_edit.bookmark.name = name;
-        self.bookmark_edit.error = None;
         self.focused_field = InputId::BookmarkName;
         Task::none()
     }
@@ -40,7 +37,6 @@ impl NexusApp {
     /// Handle bookmark password field change
     pub fn handle_bookmark_password_changed(&mut self, password: String) -> Task<Message> {
         self.bookmark_edit.bookmark.password = password;
-        self.bookmark_edit.error = None;
         self.focused_field = InputId::BookmarkPassword;
         Task::none()
     }
@@ -48,7 +44,6 @@ impl NexusApp {
     /// Handle bookmark port field change
     pub fn handle_bookmark_port_changed(&mut self, port: u16) -> Task<Message> {
         self.bookmark_edit.bookmark.port = port;
-        self.bookmark_edit.error = None;
         self.focused_field = InputId::BookmarkPort;
         Task::none()
     }
@@ -56,7 +51,6 @@ impl NexusApp {
     /// Handle bookmark username field change
     pub fn handle_bookmark_username_changed(&mut self, username: String) -> Task<Message> {
         self.bookmark_edit.bookmark.username = username;
-        self.bookmark_edit.error = None;
         self.focused_field = InputId::BookmarkUsername;
         Task::none()
     }
@@ -64,7 +58,6 @@ impl NexusApp {
     /// Handle bookmark nickname field change
     pub fn handle_bookmark_nickname_changed(&mut self, nickname: String) -> Task<Message> {
         self.bookmark_edit.bookmark.nickname = nickname;
-        self.bookmark_edit.error = None;
         self.focused_field = InputId::BookmarkNickname;
         Task::none()
     }
@@ -78,7 +71,6 @@ impl NexusApp {
     pub fn handle_bookmark_fingerprint_changed(&mut self, fingerprint: String) -> Task<Message> {
         self.bookmark_edit.bookmark.certificate_fingerprint =
             normalize_certificate_fingerprint(Some(fingerprint));
-        self.bookmark_edit.error = None;
         self.focused_field = InputId::BookmarkFingerprint;
         Task::none()
     }
@@ -98,7 +90,36 @@ impl NexusApp {
             return Task::none();
         }
 
-        if let Some(error) = self.validate_bookmark() {
+        // Field-shape validation (required server name + address,
+        // address shape, optional username/nickname shape, password
+        // length, fingerprint canonical form). Shared with the
+        // connection form via `server_form_errors`.
+        let bookmark = &self.bookmark_edit.bookmark;
+        if let Err(error) = super::server_form_errors::translate_server_form_errors(
+            &bookmark.name,
+            &bookmark.address,
+            &bookmark.username,
+            &bookmark.nickname,
+            &bookmark.password,
+            bookmark.certificate_fingerprint.as_deref().unwrap_or(""),
+        ) {
+            self.bookmark_edit.error = Some(error);
+            return Task::none();
+        }
+
+        let edit_id = match self.bookmark_edit.mode {
+            BookmarkEditMode::Edit(id) => Some(id),
+            _ => None,
+        };
+        if let Some(error) = check_bookmark_dedup(
+            &bookmark.name,
+            &bookmark.address,
+            bookmark.port,
+            &bookmark.username,
+            &bookmark.nickname,
+            &self.config.bookmarks,
+            edit_id,
+        ) {
             self.bookmark_edit.error = Some(error);
             return Task::none();
         }
@@ -308,32 +329,56 @@ impl NexusApp {
         self.focused_field = next;
         operation::focus(Id::from(next))
     }
+}
 
-    // ==================== Private Helpers ====================
-
-    /// Validate bookmark fields
-    fn validate_bookmark(&self) -> Option<String> {
-        if self.bookmark_edit.bookmark.name.trim().is_empty() {
-            return Some(t("err-name-required"));
+/// Check whether a candidate bookmark would collide with the existing
+/// list. Returns the localized error string on collision, or `None`
+/// if the candidate is unique.
+///
+/// Comparison values are computed against the trimmed candidate using
+/// Unicode-aware case folding (matches the tracker form dedup
+/// pattern). The endpoint key is the
+/// `(address, port, username, nickname)` tuple so two bookmarks that
+/// resolve to the same login *and the same display identity* can't
+/// coexist — distinct nicknames against a shared account remain
+/// distinct bookmarks. Password is intentionally not part of the key.
+///
+/// `excluding_id` is `Some(id)` for Edit-mode submissions so the row
+/// being edited doesn't trip on itself.
+///
+/// Used by both `handle_save_bookmark` (Add/Edit form) and
+/// `handle_connect_pressed` (when "Add bookmark" is checked) so the
+/// auto-add path enforces the same dedup contract as the manual form.
+pub(super) fn check_bookmark_dedup(
+    name: &str,
+    address: &str,
+    port: u16,
+    username: &str,
+    nickname: &str,
+    existing: &[crate::types::ServerBookmark],
+    excluding_id: Option<Uuid>,
+) -> Option<String> {
+    let name_key = name.trim().to_lowercase();
+    let address_key = address.trim().to_lowercase();
+    let username_key = username.trim().to_lowercase();
+    let nickname_key = nickname.trim().to_lowercase();
+    for entry in existing {
+        if Some(entry.id) == excluding_id {
+            continue;
         }
-        if self.bookmark_edit.bookmark.address.trim().is_empty() {
-            return Some(t("err-address-required"));
+        if entry.name.trim().to_lowercase() == name_key {
+            return Some(t_args(
+                "err-bookmark-name-duplicate",
+                &[("name", name.trim())],
+            ));
         }
-        // Optional fingerprint pin: empty/None = unpinned, otherwise must
-        // match the canonical 95-char uppercase form. The handler stores
-        // empty input as None, so a `Some` here always has content.
-        if let Some(fp) = self
-            .bookmark_edit
-            .bookmark
-            .certificate_fingerprint
-            .as_deref()
+        if entry.address.trim().to_lowercase() == address_key
+            && entry.port == port
+            && entry.username.trim().to_lowercase() == username_key
+            && entry.nickname.trim().to_lowercase() == nickname_key
         {
-            let trimmed = fp.trim();
-            if !trimmed.is_empty() && !is_canonical_fingerprint(trimmed) {
-                return Some(t("err-fingerprint-invalid"));
-            }
+            return Some(t("err-bookmark-endpoint-duplicate"));
         }
-
-        None
     }
+    None
 }

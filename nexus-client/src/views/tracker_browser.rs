@@ -1,15 +1,17 @@
 //! Tracker discovery (Trackers) panel view.
 //!
-//! Step 2 lays down the list-view shell only:
-//!   - Title row ("Trackers" + Add button)
-//!   - Toolbar row (tracker pulldown + Edit/Remove/Refresh icons + status text)
-//!   - Search row
-//!   - List body dispatched per the cache state machine
+//! Mode dispatch happens in [`tracker_browser_view`]:
+//!   - `List` → list view (title row + toolbar + search + body)
+//!   - `Add` → [`add_tracker_view`]
+//!   - `Edit` → [`edit_tracker_view`]
+//!   - `ConfirmRemove` → [`remove_tracker_modal`]
+//!   - `AcceptFingerprint` → falls through to the list view; the
+//!     dedicated dialog lands with the network layer.
 //!
-//! Toolbar action buttons (Add / Edit / Remove / Refresh) are rendered
-//! disabled in step 2 — their handlers light up in step 3 (Add / Edit /
-//! Remove) and step 5 (Refresh). Sort, dropdown selection, and search
-//! input are functional now.
+//! In list mode the toolbar's `[+]` Add button is always enabled,
+//! Edit and Remove are conditionally enabled when a tracker is
+//! selected, and Refresh is disabled until the network layer lands.
+//! Sort, dropdown selection, and search input are fully wired.
 
 use std::hash::{Hash, Hasher};
 
@@ -38,6 +40,10 @@ use crate::style::{
     error_text_style, muted_text_style, panel_title, shaped_text, shaped_text_wrapped,
     tooltip_container_style, transparent_icon_button_style,
 };
+use crate::types::{
+    ClientTracker, InputId, Message, TrackerBrowserMode, TrackerBrowserSortColumn,
+    TrackerBrowserState, TrackerCacheEntry,
+};
 
 /// Approximate rendered height of an iced 0.14 `pick_list` with
 /// `text_size = TEXT_SIZE` and default padding. The toolbar row's
@@ -45,10 +51,6 @@ use crate::style::{
 /// `align_y(Vertical::Center)` so they align with the pulldown menu
 /// without forcing the row to grow Fill-height.
 const TOOLBAR_ROW_HEIGHT: f32 = 30.0;
-use crate::types::{
-    ClientTracker, InputId, Message, TrackerBrowserMode, TrackerBrowserSortColumn,
-    TrackerBrowserState, TrackerCacheEntry,
-};
 
 // =============================================================================
 // Dropdown option
@@ -278,9 +280,9 @@ fn list_body<'a>(
     selected_cache: Option<&'a TrackerCacheEntry>,
 ) -> Element<'a, Message> {
     if state.selected_tracker.is_none() || selected_cache.is_none() {
-        // Step-2 fallback when no fetch has ever occurred: show an
-        // empty area. Step 5 lights up the auto-fetch path that
-        // populates the cache on selection change.
+        // No tracker selected, or no fetch has ever occurred for the
+        // selected tracker — render an empty area. The network layer
+        // populates the cache on selection change once it lands.
         return Space::new().into();
     }
 
@@ -416,8 +418,9 @@ fn list_view<'a>(
         .align_y(Vertical::Center)
         .into();
 
-    // Edit / Remove / Refresh — all disabled in step 2 (step 3+).
-    // Built inline in the files-toolbar style:
+    // Edit and Remove are conditionally enabled when a tracker is
+    // selected; Refresh stays disabled until the network layer
+    // lands. Built inline in the files-toolbar style:
     // `button(icon.size(ICON_SIZE)).padding(TOOLBAR_BUTTON_PADDING)`,
     // so each click target sizes to the icon's natural width and the
     // visual gap between buttons matches the files toolbar exactly.
@@ -505,10 +508,10 @@ fn list_view<'a>(
         .into()
     };
 
-    // Files-style outer layout: symmetric padding + narrower
-    // max_width. The list widget reserves its own scrollbar gutter
-    // in the rightmost column, so the outer container doesn't need
-    // to leave room for one.
+    // Outer layout: symmetric `CONTENT_PADDING` + `CONTENT_MAX_WIDTH`,
+    // standard `scrollable_panel` wrap. The list widget reserves its
+    // own scrollbar gutter in the rightmost column, so the outer
+    // container doesn't need to leave room for one.
     //
     // The body is wrapped in `container(...).height(Fill)` so it
     // absorbs the column's slack rather than spreading it across

@@ -7,12 +7,7 @@
 
 use iced::Task;
 use iced::widget::{Id, operation};
-use nexus_common::fingerprint::is_canonical_fingerprint;
-use nexus_common::protocol::ClientMessage;
-use nexus_common::validators::{
-    self, MAX_PASSWORD_LENGTH, MAX_TRACKER_NAME_LENGTH, PublicAddressError, TrackerAddressError,
-    TrackerNameError,
-};
+use nexus_common::protocol::{ClientMessage, TrackerInfo};
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
@@ -257,23 +252,30 @@ impl NexusApp {
         let fingerprint = conn.tracker_management.add_fingerprint.clone();
         let password = conn.tracker_management.add_password.clone();
         let enabled = conn.tracker_management.add_enabled;
+        let existing = conn
+            .tracker_management
+            .all_trackers
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
 
         // Validate — same checks as Edit, surfaced through helper.
-        if let Err(err_msg) = validate_tracker_form(&name, &address, &fingerprint, &password) {
+        if let Err(err_msg) = validate_tracker_form(
+            &name,
+            &address,
+            port,
+            &fingerprint,
+            &password,
+            existing,
+            None,
+        ) {
             conn.tracker_management.form_error = Some(err_msg);
             return Task::none();
         }
 
-        let fingerprint_opt = if fingerprint.trim().is_empty() {
-            None
-        } else {
-            Some(fingerprint.trim().to_string())
-        };
-        let password_opt = if password.is_empty() {
-            None
-        } else {
-            Some(password)
-        };
+        let fingerprint_opt = super::tracker_browser::optional_string(&fingerprint);
+        let password_opt = super::tracker_browser::optional_string(&password);
 
         let msg = ClientMessage::TrackerAdd {
             address,
@@ -309,9 +311,19 @@ impl NexusApp {
         {
             let name = &conn.tracker_management.add_name;
             let address = &conn.tracker_management.add_address;
+            let port = conn.tracker_management.add_port;
             let fingerprint = &conn.tracker_management.add_fingerprint;
             let password = &conn.tracker_management.add_password;
-            if let Err(msg) = validate_tracker_form(name, address, fingerprint, password) {
+            let existing = conn
+                .tracker_management
+                .all_trackers
+                .as_ref()
+                .and_then(|r| r.as_ref().ok())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            if let Err(msg) =
+                validate_tracker_form(name, address, port, fingerprint, password, existing, None)
+            {
                 conn.tracker_management.form_error = Some(msg);
             }
         }
@@ -424,21 +436,28 @@ impl NexusApp {
                 _ => return Task::none(),
             };
 
-        if let Err(err_msg) = validate_tracker_form(&name, &address, &fingerprint, &password) {
+        let existing = conn
+            .tracker_management
+            .all_trackers
+            .as_ref()
+            .and_then(|r| r.as_ref().ok())
+            .map(Vec::as_slice)
+            .unwrap_or(&[]);
+        if let Err(err_msg) = validate_tracker_form(
+            &name,
+            &address,
+            port,
+            &fingerprint,
+            &password,
+            existing,
+            Some(id),
+        ) {
             conn.tracker_management.form_error = Some(err_msg);
             return Task::none();
         }
 
-        let fingerprint_opt = if fingerprint.trim().is_empty() {
-            None
-        } else {
-            Some(fingerprint.trim().to_string())
-        };
-        let password_opt = if password.is_empty() {
-            None
-        } else {
-            Some(password)
-        };
+        let fingerprint_opt = super::tracker_browser::optional_string(&fingerprint);
+        let password_opt = super::tracker_browser::optional_string(&password);
 
         let msg = ClientMessage::TrackerUpdate {
             id,
@@ -473,18 +492,37 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
             && let TrackerManagementMode::Edit {
+                id,
                 name,
                 address,
+                port,
                 fingerprint,
                 password,
                 ..
             } = &conn.tracker_management.mode
         {
+            let id = *id;
+            let port = *port;
             let name = name.clone();
             let address = address.clone();
             let fingerprint = fingerprint.clone();
             let password = password.clone();
-            if let Err(msg) = validate_tracker_form(&name, &address, &fingerprint, &password) {
+            let existing = conn
+                .tracker_management
+                .all_trackers
+                .as_ref()
+                .and_then(|r| r.as_ref().ok())
+                .map(Vec::as_slice)
+                .unwrap_or(&[]);
+            if let Err(msg) = validate_tracker_form(
+                &name,
+                &address,
+                port,
+                &fingerprint,
+                &password,
+                existing,
+                Some(id),
+            ) {
                 conn.tracker_management.form_error = Some(msg);
             }
         }
@@ -609,11 +647,11 @@ impl NexusApp {
     // ====================================================================
     //
     // Chain: Name → Address → Fingerprint → Password → wrap to Name.
-    // Port is intentionally excluded because `NumberInput` consumes
-    // the Tab key internally (see CLAUDE.md "UI Quirks") — including
-    // it would break tab navigation. The `enabled` checkbox is also
-    // excluded since checkboxes don't participate in text-input focus.
-    // Click into Port directly with the mouse.
+    // Port is intentionally excluded because `iced_aw::NumberInput`
+    // consumes the Tab key internally — including it would break
+    // tab navigation. The `enabled` checkbox is also excluded since
+    // checkboxes don't participate in text-input focus. Click into
+    // Port directly with the mouse.
     //
     // We track the focus directly via `focused_field` and advance to
     // the next field on Tab — same pattern as the User Management Tab
@@ -662,57 +700,158 @@ impl NexusApp {
 
 /// Validate the shared subset of the tracker Add/Edit form. Returns the
 /// translated error message on failure.
+///
+/// Field-shape checks run first; on success the new entry is then deduped
+/// against `existing` using Unicode-aware case folding (`to_lowercase`).
+/// This catches IDN collisions client-side that the server's
+/// `LOWER(address)` / `LOWER(name)` unique indexes miss — SQLite's
+/// `LOWER` is ASCII-only, so `MÜNCHEN.de` and `münchen.de` would
+/// otherwise both pass the index. `excluding_id` is `Some(id)` for Edit
+/// mode so a row doesn't trip on itself.
 fn validate_tracker_form(
     name: &str,
     address: &str,
+    port: u16,
     fingerprint: &str,
     password: &str,
+    existing: &[TrackerInfo],
+    excluding_id: Option<i64>,
 ) -> Result<(), String> {
-    if let Err(e) = validators::validate_tracker_name(name) {
-        return Err(match e {
-            TrackerNameError::Empty => t("err-tracker-name-empty"),
-            TrackerNameError::TooLong => t_args(
-                "err-tracker-name-too-long",
-                &[("max", &MAX_TRACKER_NAME_LENGTH.to_string())],
-            ),
-            TrackerNameError::ContainsNewlines => t("err-tracker-name-contains-newlines"),
-            TrackerNameError::InvalidCharacters => t("err-tracker-name-invalid-characters"),
-        });
-    }
+    super::tracker_form_errors::translate_tracker_field_errors(
+        name,
+        address,
+        fingerprint,
+        password,
+    )?;
 
-    if let Err(e) = validators::validate_tracker_address(address) {
-        return Err(match e {
-            TrackerAddressError::Empty => t("err-tracker-address-empty"),
-            TrackerAddressError::Invalid(inner) => match inner {
-                PublicAddressError::TooLong => t_args(
-                    "err-tracker-address-too-long",
-                    &[("max", &validators::MAX_PUBLIC_ADDRESS_LENGTH.to_string())],
-                ),
-                PublicAddressError::ContainsScheme => t("err-tracker-address-contains-scheme"),
-                PublicAddressError::ContainsBrackets => t("err-tracker-address-contains-brackets"),
-                PublicAddressError::ContainsPath => t("err-tracker-address-contains-path"),
-                PublicAddressError::ContainsUserinfo => t("err-tracker-address-contains-userinfo"),
-                PublicAddressError::ContainsWhitespace => {
-                    t("err-tracker-address-contains-whitespace")
-                }
-                PublicAddressError::ContainsPort => t("err-tracker-address-contains-port"),
-                PublicAddressError::ContainsZoneId => t("err-tracker-address-contains-zone-id"),
-                PublicAddressError::InvalidFormat => t("err-tracker-address-invalid-format"),
-            },
-        });
-    }
-
-    let fingerprint_trimmed = fingerprint.trim();
-    if !fingerprint_trimmed.is_empty() && !is_canonical_fingerprint(fingerprint_trimmed) {
-        return Err(t("err-tracker-fingerprint-invalid"));
-    }
-
-    if password.len() > MAX_PASSWORD_LENGTH {
-        return Err(t_args(
-            "err-tracker-password-too-long",
-            &[("max", &MAX_PASSWORD_LENGTH.to_string())],
-        ));
+    let name_key = name.trim().to_lowercase();
+    let address_key = address.trim().to_lowercase();
+    for entry in existing {
+        if Some(entry.id) == excluding_id {
+            continue;
+        }
+        if entry.name.trim().to_lowercase() == name_key {
+            return Err(t_args(
+                "err-tracker-name-duplicate",
+                &[("name", name.trim())],
+            ));
+        }
+        if entry.address.trim().to_lowercase() == address_key && entry.port == port {
+            return Err(t("err-tracker-address-duplicate"));
+        }
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tracker(id: i64, name: &str, address: &str, port: u16) -> TrackerInfo {
+        TrackerInfo {
+            id,
+            address: address.to_string(),
+            port,
+            fingerprint: None,
+            password: None,
+            name: name.to_string(),
+            enabled: true,
+            created_at: 0,
+            updated_at: 0,
+            connected: false,
+            last_connected_at: None,
+            last_attempted_at: None,
+            last_error: None,
+            last_error_kind: None,
+            pending_fingerprint: None,
+            refresh_interval: None,
+        }
+    }
+
+    #[test]
+    fn dedup_rejects_duplicate_name_case_insensitive() {
+        let existing = vec![tracker(1, "Public", "a.example.com", 7510)];
+        let err = validate_tracker_form("public", "b.example.com", 7510, "", "", &existing, None)
+            .expect_err("should reject duplicate name");
+        assert_eq!(
+            err,
+            t_args("err-tracker-name-duplicate", &[("name", "public")])
+        );
+    }
+
+    #[test]
+    fn dedup_rejects_duplicate_address_port_case_insensitive() {
+        let existing = vec![tracker(1, "First", "tracker.example.com", 7510)];
+        let err = validate_tracker_form(
+            "Second",
+            "Tracker.Example.COM",
+            7510,
+            "",
+            "",
+            &existing,
+            None,
+        )
+        .expect_err("should reject duplicate address+port");
+        assert_eq!(err, t("err-tracker-address-duplicate"));
+    }
+
+    #[test]
+    fn dedup_allows_same_address_different_port() {
+        let existing = vec![tracker(1, "First", "tracker.example.com", 7510)];
+        assert!(
+            validate_tracker_form(
+                "Second",
+                "tracker.example.com",
+                7520,
+                "",
+                "",
+                &existing,
+                None,
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn dedup_allows_different_address_same_port() {
+        let existing = vec![tracker(1, "First", "alpha.example.com", 7510)];
+        assert!(
+            validate_tracker_form("Second", "beta.example.com", 7510, "", "", &existing, None,)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn dedup_rejects_idn_address_unicode_case_fold() {
+        // SQLite's `LOWER()` is ASCII-only and would treat these as
+        // distinct. Client-side `to_lowercase()` is Unicode-aware and
+        // catches the IDN collision the server's index misses.
+        let existing = vec![tracker(1, "First", "MÜNCHEN.de", 7510)];
+        let err = validate_tracker_form("Second", "münchen.de", 7510, "", "", &existing, None)
+            .expect_err("should reject IDN duplicate");
+        assert_eq!(err, t("err-tracker-address-duplicate"));
+    }
+
+    #[test]
+    fn dedup_excludes_self_on_edit() {
+        let existing = vec![
+            tracker(1, "Public", "tracker.example.com", 7510),
+            tracker(2, "Other", "other.example.com", 7510),
+        ];
+        // Editing row id=1 to the same name+address+port must not
+        // trip on its own existing record.
+        assert!(
+            validate_tracker_form(
+                "Public",
+                "tracker.example.com",
+                7510,
+                "",
+                "",
+                &existing,
+                Some(1),
+            )
+            .is_ok()
+        );
+    }
 }

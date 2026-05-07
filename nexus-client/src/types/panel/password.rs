@@ -9,7 +9,7 @@ use super::super::ActivePanel;
 /// Password change form state (for User Info panel)
 ///
 /// Tracks the form fields when a user is changing their own password.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PasswordChangeState {
     /// Current password (required for verification)
     pub current_password: String,
@@ -23,6 +23,19 @@ pub struct PasswordChangeState {
     pub return_to_panel: Option<ActivePanel>,
     /// Whether a password change request is in flight
     pub is_submitting: bool,
+}
+
+impl std::fmt::Debug for PasswordChangeState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PasswordChangeState")
+            .field("current_password", &"[REDACTED]")
+            .field("new_password", &"[REDACTED]")
+            .field("confirm_password", &"[REDACTED]")
+            .field("error", &self.error)
+            .field("return_to_panel", &self.return_to_panel)
+            .field("is_submitting", &self.is_submitting)
+            .finish()
+    }
 }
 
 impl PasswordChangeState {

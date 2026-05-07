@@ -36,9 +36,9 @@ use crate::constants::{
 };
 
 /// Send a failure-shaped `ServerInfoUpdateResponse` and return — used
-/// for every validation and DB-error path in this handler. Codifies
-/// the "typed responses over generic errors" convention from CLAUDE.md
-/// for a response shape that only carries `success` and `error`.
+/// for every validation and DB-error path in this handler. Keeps the
+/// handler on the typed-response convention even though this response
+/// shape only carries `success` and `error`.
 async fn send_failure<W>(ctx: &mut HandlerContext<'_, W>, error: String) -> io::Result<()>
 where
     W: AsyncWrite + Unpin,

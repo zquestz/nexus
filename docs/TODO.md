@@ -2,21 +2,21 @@
 
 ## Implementation Order (Pre-Launch)
 
-| #   | Feature                     | Effort | Status  |
-| --- | --------------------------- | ------ | ------- |
-| 1   | Account groups              | Low    | ✅ Done |
-| 2   | Password strength           | Low    | ✅ Done |
-| 3   | Streaming hash transfers    | Medium | ✅ Done |
-| 4   | Boards                      | High   | Planned |
-| 5   | File previews               | Low    | Planned |
-| 6   | Tracker registration        | Medium | ✅ Done |
-| 7   | Tracker discovery           | Low    | Planned |
-| 8   | Speed limiting              | Medium | Planned |
-| 9   | Flood protection            | Low    | ✅ Done |
-| 10  | Server logs                 | Medium | ✅ Done |
-| 11  | Auto-away                   | Low    | ✅ Done |
-| 12  | Invite system               | Medium | Planned |
-| 13  | Certificate fingerprint pin | Low    | ✅ Done |
+| #   | Feature                     | Effort | Status                                |
+| --- | --------------------------- | ------ | ------------------------------------- |
+| 1   | Account groups              | Low    | ✅ Done                               |
+| 2   | Password strength           | Low    | ✅ Done                               |
+| 3   | Streaming hash transfers    | Medium | ✅ Done                               |
+| 4   | Boards                      | High   | Planned                               |
+| 5   | File previews               | Low    | Planned                               |
+| 6   | Tracker registration        | Medium | ✅ Done                               |
+| 7   | Tracker discovery           | Low    | 🟡 In progress (steps 1–4 of 10 done) |
+| 8   | Speed limiting              | Medium | Planned                               |
+| 9   | Flood protection            | Low    | ✅ Done                               |
+| 10  | Server logs                 | Medium | ✅ Done                               |
+| 11  | Auto-away                   | Low    | ✅ Done                               |
+| 12  | Invite system               | Medium | Planned                               |
+| 13  | Certificate fingerprint pin | Low    | ✅ Done                               |
 
 **Post-launch:** IRC gateway (if demand exists)
 
@@ -644,17 +644,28 @@ Fingerprint:
 Each step should compile and partially work before moving on; the
 panel becomes incrementally more useful as you go.
 
-1. **Config layer** — `ClientTracker` struct, `Vec<ClientTracker>`
-   in `Config`, serde with the normalize-on-deserialize pin.
-2. **Panel state** — `TrackerBrowserState` + `TrackerBrowserMode`
-   enum, cache `HashMap<Uuid, Option<Result<…>>>`.
-3. **List view shell** — toolbar (pulldown + Edit/Remove/Refresh +
+1. ✅ **Config layer** — `ClientTracker` struct, `Vec<ClientTracker>`
+   in `Config`, serde with the normalize-on-deserialize pin. Added
+   `Config::insert_tracker(index, tracker)` (clamps to len, never
+   panics) so the Remove rollback path can restore a row at its
+   original Vec position rather than appending to the end.
+2. ✅ **Panel state** — `TrackerBrowserState` + `TrackerBrowserMode`
+   enum, cache `HashMap<Uuid, Option<Result<…>>>`. Password fields
+   on the Mode and on the State have manual `Debug` impls that
+   redact via `[REDACTED]`.
+3. ✅ **List view shell** — toolbar (pulldown + Edit/Remove/Refresh +
    status text), search row, listing table with the column-width
-   convention. No data flowing yet — render against a stubbed
-   empty cache.
-4. **Add / Edit / Remove flows** — full-panel forms, validation
-   (name + address required, fingerprint canonical-or-empty),
-   `is_submitting` guard, tab cycle, Save persists to config.
+   convention. Renders against the stubbed empty cache; data flows
+   in step 5.
+4. ✅ **Add / Edit / Remove flows** — full-panel forms, full
+   field-shape validation via `handlers/tracker_form_errors.rs`
+   (shared with the BBS-admin tracker form), Unicode-aware dedup on
+   name (case-insensitive) and `(address, port)` (case-insensitive,
+   catches IDN collisions the server's ASCII `LOWER()` index
+   misses), `is_submitting` guard, Tab cycle, Save persists to
+   config with rollback-on-save-failure (Add: drop the new row;
+   Edit: restore the original; Remove: re-insert at original Vec
+   index via `Config::insert_tracker`).
 5. **Network layer** — `nexus-client/src/network/tracker_query.rs`
    one-shot `query_tracker(tracker, locale, version)`. The
    `version` arg is the client's own crate version (sent as the

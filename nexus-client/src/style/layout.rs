@@ -270,8 +270,11 @@ pub const NEWS_ITEM_SPACING: f32 = 3.0;
 /// Maximum news image file size in bytes (512KB)
 pub const NEWS_IMAGE_MAX_SIZE: usize = 512 * 1024;
 
-/// Maximum width to cache news images at (content width minus padding)
-/// CONTENT_MAX_WIDTH (700) - reduced padding (16) - INPUT_PADDING * 2 (16) = 668
+/// Maximum width to cache news images at — the rendered content
+/// width inside the news panel's body. Derived as the form's
+/// `CONTENT_MAX_WIDTH` minus the asymmetric outer padding on each
+/// side (`CONTENT_PADDING - SCROLLBAR_PADDING`) minus the inner
+/// `INPUT_PADDING` on each side.
 pub const NEWS_IMAGE_MAX_CACHE_WIDTH: u32 =
     (CONTENT_MAX_WIDTH - (CONTENT_PADDING - SCROLLBAR_PADDING) * 2.0 - INPUT_PADDING * 2.0) as u32;
 

@@ -6,11 +6,6 @@
 
 use iced::Task;
 use iced::widget::{Id, operation};
-use nexus_common::fingerprint::is_canonical_fingerprint;
-use nexus_common::validators::{
-    self, MAX_PASSWORD_LENGTH, MAX_TRACKER_NAME_LENGTH, PublicAddressError, TrackerAddressError,
-    TrackerNameError,
-};
 use uuid::Uuid;
 
 use super::focus::{dispatch_find_focused, next_in_cycle};
@@ -50,6 +45,7 @@ impl NexusApp {
 
     /// Search-row input changed. Live-filter only — no submit step.
     pub fn handle_tracker_browser_search_input_changed(&mut self, input: String) -> Task<Message> {
+        self.focused_field = InputId::TrackerBrowserSearch;
         self.tracker_browser.search_input = input;
         Task::none()
     }
@@ -394,7 +390,8 @@ impl NexusApp {
     // =========================================================================
 
     /// Confirm removal — deletes from config, drops cache entry,
-    /// clears the dropdown selection if it pointed at this row,
+    /// re-points the dropdown selection at the alphabetically-next
+    /// tracker (falling back to the previous if removing the last),
     /// persists, returns to list.
     pub fn handle_tracker_browser_remove_confirm(&mut self) -> Task<Message> {
         if self.tracker_browser.is_remove_submitting {
@@ -405,6 +402,31 @@ impl NexusApp {
         };
         let id = *id;
         self.tracker_browser.is_remove_submitting = true;
+
+        // If the deletion target is the currently-selected tracker,
+        // pre-compute its alphabetical neighbor so the dropdown lands
+        // on something sensible after the delete (rather than going
+        // empty until close/reopen). Try the next entry; fall back to
+        // the previous when removing the last one. Computed BEFORE
+        // delete so the full sorted list is still available.
+        let next_pick: Option<Uuid> = if self.tracker_browser.selected_tracker == Some(id) {
+            let mut sorted: Vec<&ClientTracker> = self.config.client_trackers.iter().collect();
+            sorted.sort_by_key(|t| t.name.to_lowercase());
+            sorted.iter().position(|t| t.id == id).and_then(|i| {
+                sorted
+                    .get(i + 1)
+                    .or_else(|| sorted.get(i.checked_sub(1)?))
+                    .map(|t| t.id)
+            })
+        } else {
+            None
+        };
+
+        // Capture both the row's value and its Vec index so a
+        // save-failure rollback can restore it at the same position
+        // rather than appending to the end (which would silently churn
+        // `config.json`'s on-disk order).
+        let original_index = self.config.client_trackers.iter().position(|t| t.id == id);
         let original = self.config.get_tracker(id).cloned();
         self.config.delete_tracker(id);
 
@@ -412,14 +434,14 @@ impl NexusApp {
             Ok(()) => {
                 self.tracker_browser.cache.remove(&id);
                 if self.tracker_browser.selected_tracker == Some(id) {
-                    self.tracker_browser.selected_tracker = None;
+                    self.tracker_browser.selected_tracker = next_pick;
                     self.tracker_browser.search_input.clear();
                 }
                 self.tracker_browser.reset_to_list();
             }
             Err(error) => {
-                if let Some(orig) = original {
-                    self.config.add_tracker(orig);
+                if let (Some(index), Some(orig)) = (original_index, original) {
+                    self.config.insert_tracker(index, orig);
                 }
                 self.tracker_browser.remove_error = Some(error);
                 self.tracker_browser.is_remove_submitting = false;
@@ -433,8 +455,8 @@ impl NexusApp {
     // =========================================================================
 
     /// Tab cycle in the Add form: Name → Address → Password →
-    /// Fingerprint → Name. Port (a `NumberInput`) is skipped — it
-    /// consumes Tab internally per CLAUDE.md UI Quirks.
+    /// Fingerprint → Name. Port (a `NumberInput`) is skipped because
+    /// `iced_aw::NumberInput` consumes Tab internally.
     pub fn handle_tracker_browser_add_tab_pressed(&mut self) -> Task<Message> {
         dispatch_find_focused(Message::TrackerBrowserAddTabResolved)
     }
@@ -483,50 +505,13 @@ fn validate_form(
     existing: &[ClientTracker],
     excluding_id: Option<Uuid>,
 ) -> Option<String> {
-    if let Err(e) = validators::validate_tracker_name(name) {
-        return Some(match e {
-            TrackerNameError::Empty => t("err-tracker-name-empty"),
-            TrackerNameError::TooLong => t_args(
-                "err-tracker-name-too-long",
-                &[("max", &MAX_TRACKER_NAME_LENGTH.to_string())],
-            ),
-            TrackerNameError::ContainsNewlines => t("err-tracker-name-contains-newlines"),
-            TrackerNameError::InvalidCharacters => t("err-tracker-name-invalid-characters"),
-        });
-    }
-
-    if let Err(e) = validators::validate_tracker_address(address) {
-        return Some(match e {
-            TrackerAddressError::Empty => t("err-tracker-address-empty"),
-            TrackerAddressError::Invalid(inner) => match inner {
-                PublicAddressError::TooLong => t_args(
-                    "err-tracker-address-too-long",
-                    &[("max", &validators::MAX_PUBLIC_ADDRESS_LENGTH.to_string())],
-                ),
-                PublicAddressError::ContainsScheme => t("err-tracker-address-contains-scheme"),
-                PublicAddressError::ContainsBrackets => t("err-tracker-address-contains-brackets"),
-                PublicAddressError::ContainsPath => t("err-tracker-address-contains-path"),
-                PublicAddressError::ContainsUserinfo => t("err-tracker-address-contains-userinfo"),
-                PublicAddressError::ContainsWhitespace => {
-                    t("err-tracker-address-contains-whitespace")
-                }
-                PublicAddressError::ContainsPort => t("err-tracker-address-contains-port"),
-                PublicAddressError::ContainsZoneId => t("err-tracker-address-contains-zone-id"),
-                PublicAddressError::InvalidFormat => t("err-tracker-address-invalid-format"),
-            },
-        });
-    }
-
-    let fingerprint_trimmed = fingerprint.trim();
-    if !fingerprint_trimmed.is_empty() && !is_canonical_fingerprint(fingerprint_trimmed) {
-        return Some(t("err-tracker-fingerprint-invalid"));
-    }
-
-    if password.len() > MAX_PASSWORD_LENGTH {
-        return Some(t_args(
-            "err-tracker-password-too-long",
-            &[("max", &MAX_PASSWORD_LENGTH.to_string())],
-        ));
+    if let Err(error) = super::tracker_form_errors::translate_tracker_field_errors(
+        name,
+        address,
+        fingerprint,
+        password,
+    ) {
+        return Some(error);
     }
 
     // -------------------- Dedup ----------------------
@@ -556,9 +541,11 @@ fn validate_form(
     None
 }
 
-/// Trim a freeform optional field (password); empty after trim
-/// collapses to `None` so the on-disk shape stays canonical.
-fn optional_string(value: &str) -> Option<String> {
+/// Trim a freeform optional field (password, fingerprint); empty
+/// after trim collapses to `None` so the on-disk / wire shape stays
+/// canonical. Shared with `tracker_management.rs` so both forms
+/// agree on what "the user left this empty" means.
+pub(super) fn optional_string(value: &str) -> Option<String> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         None
@@ -571,4 +558,104 @@ fn optional_string(value: &str) -> Option<String> {
 /// have a single error-handling path.
 fn save_config(config: &Config) -> Result<(), String> {
     config.save()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tracker(name: &str, address: &str, port: u16) -> ClientTracker {
+        ClientTracker {
+            id: Uuid::new_v4(),
+            name: name.to_string(),
+            address: address.to_string(),
+            port,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn dedup_rejects_duplicate_name_case_insensitive() {
+        let existing = vec![tracker("Public", "a.example.com", 7510)];
+        let err = validate_form("public", "b.example.com", 7510, "", "", &existing, None)
+            .expect("should reject duplicate name");
+        assert_eq!(
+            err,
+            t_args("err-tracker-name-duplicate", &[("name", "public")])
+        );
+    }
+
+    #[test]
+    fn dedup_rejects_duplicate_address_port_case_insensitive() {
+        let existing = vec![tracker("First", "tracker.example.com", 7510)];
+        let err = validate_form(
+            "Second",
+            "Tracker.Example.COM",
+            7510,
+            "",
+            "",
+            &existing,
+            None,
+        )
+        .expect("should reject duplicate address+port");
+        assert_eq!(err, t("err-tracker-address-duplicate"));
+    }
+
+    #[test]
+    fn dedup_allows_same_address_different_port() {
+        let existing = vec![tracker("First", "tracker.example.com", 7510)];
+        assert!(
+            validate_form(
+                "Second",
+                "tracker.example.com",
+                7520,
+                "",
+                "",
+                &existing,
+                None,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn dedup_allows_different_address_same_port() {
+        let existing = vec![tracker("First", "alpha.example.com", 7510)];
+        assert!(
+            validate_form("Second", "beta.example.com", 7510, "", "", &existing, None,).is_none()
+        );
+    }
+
+    #[test]
+    fn dedup_rejects_idn_address_unicode_case_fold() {
+        // SQLite's `LOWER()` is ASCII-only and would treat these as
+        // distinct. Client-side `to_lowercase()` is Unicode-aware and
+        // catches the IDN collision the server's index misses.
+        let existing = vec![tracker("First", "MÜNCHEN.de", 7510)];
+        let err = validate_form("Second", "münchen.de", 7510, "", "", &existing, None)
+            .expect("should reject IDN duplicate");
+        assert_eq!(err, t("err-tracker-address-duplicate"));
+    }
+
+    #[test]
+    fn dedup_excludes_self_on_edit() {
+        let mut existing = vec![tracker("Public", "tracker.example.com", 7510)];
+        let edit_id = existing[0].id;
+        // Add a second row so the loop has more than just self.
+        existing.push(tracker("Other", "other.example.com", 7510));
+        // Editing the row to the same name+address+port must not
+        // trip on its own existing record.
+        assert!(
+            validate_form(
+                "Public",
+                "tracker.example.com",
+                7510,
+                "",
+                "",
+                &existing,
+                Some(edit_id),
+            )
+            .is_none()
+        );
+    }
 }

@@ -305,11 +305,11 @@ fn server_info_display_view<'a>(
         items.push(buttons.into());
     }
 
-    // Settings-style outer wrap: symmetric `CONTENT_PADDING` and
-    // narrower `CONTENT_MAX_WIDTH`. The whole panel scrolls (no
-    // sticky header), so the 20px right padding provides a stable
-    // gutter wide enough for the scrollbar without overlapping
-    // content. Matches `views/settings/mod.rs` for consistency.
+    // Outer wrap: symmetric `CONTENT_PADDING` + `CONTENT_MAX_WIDTH`,
+    // whole panel scrolls as one unit. The 20px right padding
+    // provides a stable gutter wide enough for the scrollbar without
+    // overlapping content. Matches `views/settings/mod.rs` — both
+    // are header-less panels where the entire content scrolls.
     let content = Column::with_children(items)
         .spacing(ELEMENT_SPACING)
         .padding(CONTENT_PADDING)

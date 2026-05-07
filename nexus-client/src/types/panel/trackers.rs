@@ -30,7 +30,7 @@ pub enum TrackerManagementSortColumn {
 // =============================================================================
 
 /// Current mode of the Trackers tab.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Clone, PartialEq, Default)]
 pub enum TrackerManagementMode {
     /// Showing the sortable tracker list.
     #[default]
@@ -86,6 +86,58 @@ pub enum TrackerManagementMode {
     },
 }
 
+impl std::fmt::Debug for TrackerManagementMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::List => f.write_str("List"),
+            Self::Add => f.write_str("Add"),
+            Self::Edit {
+                id,
+                original_name,
+                last_error,
+                name,
+                address,
+                port,
+                fingerprint,
+                password: _,
+                enabled,
+            } => f
+                .debug_struct("Edit")
+                .field("id", id)
+                .field("original_name", original_name)
+                .field("last_error", last_error)
+                .field("name", name)
+                .field("address", address)
+                .field("port", port)
+                .field("fingerprint", fingerprint)
+                .field("password", &"[REDACTED]")
+                .field("enabled", enabled)
+                .finish(),
+            Self::ConfirmRemove { id, name } => f
+                .debug_struct("ConfirmRemove")
+                .field("id", id)
+                .field("name", name)
+                .finish(),
+            Self::AcceptFingerprint {
+                id,
+                name,
+                address,
+                port,
+                expected,
+                received,
+            } => f
+                .debug_struct("AcceptFingerprint")
+                .field("id", id)
+                .field("name", name)
+                .field("address", address)
+                .field("port", port)
+                .field("expected", expected)
+                .field("received", received)
+                .finish(),
+        }
+    }
+}
+
 // =============================================================================
 // Tracker Management State
 // =============================================================================
@@ -98,7 +150,7 @@ pub enum TrackerManagementMode {
 /// form's layout in `UserManagementState`). The fields are reset to
 /// defaults each time `enter_add_mode()` runs, so a Cancel-and-reopen
 /// starts the form fresh; any user input is discarded by the cancel.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TrackerManagementState {
     /// Current mode (list, add, edit, confirm remove, accept fingerprint).
     pub mode: TrackerManagementMode,
@@ -164,6 +216,33 @@ impl Default for TrackerManagementState {
             add_password: String::new(),
             add_enabled: true,
         }
+    }
+}
+
+impl std::fmt::Debug for TrackerManagementState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TrackerManagementState")
+            .field("mode", &self.mode)
+            .field("all_trackers", &self.all_trackers)
+            .field("list_error", &self.list_error)
+            .field("form_error", &self.form_error)
+            .field("remove_error", &self.remove_error)
+            .field("accept_fingerprint_error", &self.accept_fingerprint_error)
+            .field("is_submitting", &self.is_submitting)
+            .field("is_remove_submitting", &self.is_remove_submitting)
+            .field(
+                "is_accept_fingerprint_submitting",
+                &self.is_accept_fingerprint_submitting,
+            )
+            .field("sort_column", &self.sort_column)
+            .field("sort_ascending", &self.sort_ascending)
+            .field("add_name", &self.add_name)
+            .field("add_address", &self.add_address)
+            .field("add_port", &self.add_port)
+            .field("add_fingerprint", &self.add_fingerprint)
+            .field("add_password", &"[REDACTED]")
+            .field("add_enabled", &self.add_enabled)
+            .finish()
     }
 }
 

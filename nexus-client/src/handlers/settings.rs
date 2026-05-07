@@ -54,6 +54,12 @@ impl NexusApp {
     }
 
     /// Focus the appropriate input field for the current settings tab.
+    ///
+    /// Tabs whose text input is conditionally rendered (Chat's
+    /// auto-away message, Network's proxy fields) only focus when
+    /// the relevant feature is enabled — iced declines to focus a
+    /// disabled (no `on_input`) input, but skipping the dispatch
+    /// keeps the open path consistent with the Tab-resolved path.
     fn focus_settings_tab_field(&mut self) -> Task<Message> {
         match self.settings_tab {
             SettingsTab::General => {
@@ -61,18 +67,14 @@ impl NexusApp {
                 operation::focus(Id::from(InputId::SettingsNickname))
             }
             SettingsTab::Chat => {
-                // Auto-away message is the only text input. Focus it
-                // unconditionally; when auto-away is disabled the
-                // input has no `on_input` so typing is a no-op, which
-                // matches the user's visual cue (greyed-out input).
-                self.focused_field = InputId::SettingsAutoAwayMessage;
-                operation::focus(Id::from(InputId::SettingsAutoAwayMessage))
+                if self.config.settings.auto_away_timeout.is_enabled() {
+                    self.focused_field = InputId::SettingsAutoAwayMessage;
+                    operation::focus(Id::from(InputId::SettingsAutoAwayMessage))
+                } else {
+                    Task::none()
+                }
             }
             SettingsTab::Network => {
-                // Only focus the address input when the proxy is
-                // enabled — otherwise the field is rendered as
-                // disabled (no `on_input`) and focusing a non-
-                // editable field would be a confusing UX.
                 if self.config.settings.proxy.enabled {
                     self.focused_field = InputId::ProxyAddress;
                     operation::focus(Id::from(InputId::ProxyAddress))
@@ -386,12 +388,22 @@ impl NexusApp {
                 InputId::SettingsNickname
             }
             SettingsTab::Chat => {
-                // Single text input (auto-away message). Other Chat
-                // tab widgets are checkboxes / pickers / NumberInput.
+                // Single text input (auto-away message). Skip when
+                // auto-away is disabled — the input is non-editable
+                // and the open-path skips it for the same reason.
+                if !self.config.settings.auto_away_timeout.is_enabled() {
+                    return Task::none();
+                }
                 InputId::SettingsAutoAwayMessage
             }
             SettingsTab::Network => {
                 // Skip Port (NumberInput handles its own Tab).
+                // Skip the whole cycle when proxy is disabled — the
+                // inputs are non-editable and the open-path skips
+                // them for the same reason.
+                if !self.config.settings.proxy.enabled {
+                    return Task::none();
+                }
                 const CYCLE: &[InputId] = &[
                     InputId::ProxyAddress,
                     InputId::ProxyUsername,
