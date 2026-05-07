@@ -329,6 +329,11 @@ pub enum Message {
     CloseTransfers,
     /// Toolbar: Toggle tracker discovery (Trackers) panel
     ToggleTrackerBrowser,
+    /// Tracker browser: unconditionally close the panel (Escape on the
+    /// list mode). Distinct from `ToggleTrackerBrowser` which no-ops
+    /// when the panel is already active — matching the toolbar-button
+    /// idiom but wrong for keyboard cancel.
+    CloseTrackerBrowser,
     /// Tracker browser: dropdown selection changed
     TrackerBrowserSelectTracker(Uuid),
     /// Tracker browser: search-row input changed

@@ -225,6 +225,14 @@ impl NexusApp {
         Task::batch([focus_task, fetch_task])
     }
 
+    /// Close the tracker discovery panel unconditionally. Used by
+    /// Escape on the list mode — `ToggleTrackerBrowser` no-ops when
+    /// the panel is already active, which is correct for the toolbar
+    /// button but wrong for keyboard cancel.
+    pub fn handle_close_tracker_browser(&mut self) -> Task<Message> {
+        self.handle_show_chat_view()
+    }
+
     // ==================== Sidebar Toggles ====================
 
     /// Toggle bookmarks sidebar visibility

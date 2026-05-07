@@ -538,7 +538,7 @@ impl NexusApp {
                             self.tracker_browser.reset_to_list();
                             return Task::none();
                         }
-                        return self.update(Message::ToggleTrackerBrowser);
+                        return self.update(Message::CloseTrackerBrowser);
                     }
                     ActivePanel::ConnectionMonitor => {
                         return self.update(Message::CloseConnectionMonitor);

@@ -911,6 +911,7 @@ impl NexusApp {
 
             // Tracker Browser
             Message::ToggleTrackerBrowser => self.handle_toggle_tracker_browser(),
+            Message::CloseTrackerBrowser => self.handle_close_tracker_browser(),
             Message::TrackerBrowserSelectTracker(id) => {
                 self.handle_tracker_browser_select_tracker(id)
             }

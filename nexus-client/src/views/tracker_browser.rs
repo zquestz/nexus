@@ -447,7 +447,7 @@ fn list_view<'a>(
     // button on the right. The invisible spacer on the left equals the
     // button's rendered width so the title sits geometrically centered
     // even with the action icon next to it.
-    let add_icon = container(icon::plus_circled().size(ICON_SIZE))
+    let add_icon = container(icon::plus().size(ICON_SIZE))
         .width(ICON_SIZE)
         .height(ICON_SIZE)
         .align_x(iced::alignment::Horizontal::Center)
