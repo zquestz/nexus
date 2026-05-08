@@ -458,10 +458,10 @@ impl NexusApp {
     /// Called once at startup to set up initial state and generate tasks for
     /// focusing the input field and auto-connecting to bookmarks.
     fn new() -> (Self, Task<Message>) {
-        #[cfg(not(target_os = "macos"))]
+        // Always `mut` — `focus_field` (used below for the startup
+        // ServerName auto-focus) requires `&mut self` on every platform.
+        // The tray-init block below only runs on non-macOS.
         let mut app = Self::default();
-        #[cfg(target_os = "macos")]
-        let app = Self::default();
 
         // Initialize tray icon on startup if setting is enabled (Windows/Linux only)
         #[cfg(not(target_os = "macos"))]
