@@ -1,7 +1,6 @@
 //! File navigation handlers (navigate, refresh, toggle root/hidden)
 
 use iced::Task;
-use iced::widget::{Id, operation};
 
 use crate::NexusApp;
 use crate::types::{ActivePanel, InputId, Message};
@@ -46,10 +45,7 @@ impl NexusApp {
 
         // Focus search input if user has permission
         if has_search {
-            Task::batch([
-                fetch_task,
-                operation::focus(Id::from(InputId::FileSearchInput)),
-            ])
+            Task::batch([fetch_task, self.focus_field(InputId::FileSearchInput)])
         } else {
             fetch_task
         }

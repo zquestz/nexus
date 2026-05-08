@@ -1,7 +1,7 @@
 //! User management handlers
 
 use iced::Task;
-use iced::widget::{Id, operation};
+use iced::widget::Id;
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{
@@ -136,8 +136,7 @@ impl NexusApp {
         };
 
         conn.user_management.enter_create_mode();
-        self.focused_field = InputId::AdminUsername;
-        operation::focus(Id::from(InputId::AdminUsername))
+        self.focus_field(InputId::AdminUsername)
     }
 
     /// Refresh the users list (Users tab toolbar refresh button).
@@ -889,8 +888,7 @@ impl NexusApp {
         {
             use crate::types::DisconnectDialogState;
             conn.disconnect_dialog = Some(DisconnectDialogState::new(nickname));
-            self.focused_field = InputId::DisconnectDialogReason;
-            return operation::focus(Id::from(InputId::DisconnectDialogReason));
+            return self.focus_field(InputId::DisconnectDialogReason);
         }
         Task::none()
     }
@@ -1104,6 +1102,71 @@ impl NexusApp {
 
     // ==================== Password Change ====================
 
+    /// Run client-side validation on the password change form. Returns
+    /// `Some((focus_target, error_message))` for the first failing
+    /// rule, or `None` if the form passes. Shared between
+    /// `handle_change_password_save_pressed` and
+    /// `handle_validate_change_password` so both paths surface the
+    /// same error and focus the same problem field.
+    fn validate_change_password_form(&self) -> Option<(InputId, String)> {
+        let conn_id = self.active_connection?;
+        let conn = self.connections.get(&conn_id)?;
+        let state = conn.password_change_state.as_ref()?;
+        if state.current_password.is_empty() {
+            return Some((
+                InputId::ChangePasswordCurrent,
+                t("err-current-password-required"),
+            ));
+        }
+        if state.new_password.is_empty() {
+            return Some((InputId::ChangePasswordNew, t("err-new-password-required")));
+        }
+        if state.confirm_password.is_empty() {
+            return Some((
+                InputId::ChangePasswordConfirm,
+                t("err-confirm-password-required"),
+            ));
+        }
+        if state.new_password != state.confirm_password {
+            return Some((InputId::ChangePasswordNew, t("err-passwords-do-not-match")));
+        }
+        let min_strength = conn.min_password_strength;
+        let username = conn.connection_info.username.as_str();
+        if let Err(e) =
+            validators::validate_password(&state.new_password, min_strength, &[username])
+        {
+            let msg = match e {
+                PasswordError::Empty => t("err-new-password-required"),
+                PasswordError::TooLong => t_args(
+                    "err-password-too-long",
+                    &[("max", &validators::MAX_PASSWORD_LENGTH.to_string())],
+                ),
+                PasswordError::TooWeak { required, .. } => t_args(
+                    "err-password-too-weak",
+                    &[("required", &required.score().to_string())],
+                ),
+            };
+            return Some((InputId::ChangePasswordNew, msg));
+        }
+        None
+    }
+
+    /// Validate the password change form (Enter when can_save is false).
+    /// Sets the form-level error and focuses the failing field, mirroring
+    /// the early-bail behaviour of `handle_change_password_save_pressed`.
+    pub fn handle_validate_change_password(&mut self) -> Task<Message> {
+        let Some((focus_target, err_msg)) = self.validate_change_password_form() else {
+            return Task::none();
+        };
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(state) = &mut conn.password_change_state
+        {
+            state.error = Some(err_msg);
+        }
+        self.focus_field(focus_target)
+    }
+
     /// Enter password change mode - opens as its own panel
     pub fn handle_change_password_pressed(&mut self) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
@@ -1118,8 +1181,7 @@ impl NexusApp {
         conn.active_panel = ActivePanel::ChangePassword;
 
         // Focus the current password field and track it
-        self.focused_field = InputId::ChangePasswordCurrent;
-        operation::focus(Id::from(InputId::ChangePasswordCurrent))
+        self.focus_field(InputId::ChangePasswordCurrent)
     }
 
     /// Handle current password field change
@@ -1192,8 +1254,7 @@ impl NexusApp {
             InputId::ChangePasswordConfirm,
         ];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
 
     /// Cancel password change and return to original panel
@@ -1223,89 +1284,42 @@ impl NexusApp {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
+
+        // Double-submit gate. Bare read so the borrow ends here.
+        let is_submitting = self
+            .connections
+            .get(&conn_id)
+            .and_then(|conn| conn.password_change_state.as_ref())
+            .is_some_and(|state| state.is_submitting);
+        if is_submitting {
+            return Task::none();
+        }
+
+        // Field-shape + match + strength validation. Shared with
+        // `handle_validate_change_password` so the validate-then-submit
+        // path produces the same error as actually submitting. Run
+        // before cloning passwords so we don't pay the clone cost on
+        // the failure path.
+        if let Some((focus_target, err_msg)) = self.validate_change_password_form() {
+            if let Some(conn) = self.connections.get_mut(&conn_id)
+                && let Some(state) = &mut conn.password_change_state
+            {
+                state.error = Some(err_msg);
+            }
+            return self.focus_field(focus_target);
+        }
+
         let Some(conn) = self.connections.get_mut(&conn_id) else {
             return Task::none();
         };
 
-        // Prevent double-submit
-        if conn
-            .password_change_state
-            .as_ref()
-            .is_some_and(|s| s.is_submitting)
-        {
+        // Validation passed — capture the values we need to send. The
+        // wire payload only carries `current` and `new`.
+        let Some(state_ref) = &conn.password_change_state else {
             return Task::none();
-        }
-
-        // Get form values
-        let (current_password, new_password, confirm_password) =
-            if let Some(state) = &conn.password_change_state {
-                (
-                    state.current_password.clone(),
-                    state.new_password.clone(),
-                    state.confirm_password.clone(),
-                )
-            } else {
-                return Task::none();
-            };
-
-        // Validate: current password required
-        if current_password.is_empty() {
-            if let Some(state) = &mut conn.password_change_state {
-                state.error = Some(t("err-current-password-required"));
-            }
-            self.focused_field = InputId::ChangePasswordCurrent;
-            return operation::focus(Id::from(InputId::ChangePasswordCurrent));
-        }
-
-        // Validate: new password required
-        if new_password.is_empty() {
-            if let Some(state) = &mut conn.password_change_state {
-                state.error = Some(t("err-new-password-required"));
-            }
-            self.focused_field = InputId::ChangePasswordNew;
-            return operation::focus(Id::from(InputId::ChangePasswordNew));
-        }
-
-        // Validate: confirm password required
-        if confirm_password.is_empty() {
-            if let Some(state) = &mut conn.password_change_state {
-                state.error = Some(t("err-confirm-password-required"));
-            }
-            self.focused_field = InputId::ChangePasswordConfirm;
-            return operation::focus(Id::from(InputId::ChangePasswordConfirm));
-        }
-
-        // Validate: passwords must match
-        if new_password != confirm_password {
-            if let Some(state) = &mut conn.password_change_state {
-                state.error = Some(t("err-passwords-do-not-match"));
-            }
-            self.focused_field = InputId::ChangePasswordNew;
-            return operation::focus(Id::from(InputId::ChangePasswordNew));
-        }
-
-        // Validate: new password format
-        let min_strength = conn.min_password_strength;
-        let username = &conn.connection_info.username;
-        if let Err(e) =
-            validators::validate_password(&new_password, min_strength, &[username.as_str()])
-        {
-            if let Some(state) = &mut conn.password_change_state {
-                state.error = Some(match e {
-                    PasswordError::Empty => t("err-new-password-required"),
-                    PasswordError::TooLong => t_args(
-                        "err-password-too-long",
-                        &[("max", &validators::MAX_PASSWORD_LENGTH.to_string())],
-                    ),
-                    PasswordError::TooWeak { required, .. } => t_args(
-                        "err-password-too-weak",
-                        &[("required", &required.score().to_string())],
-                    ),
-                });
-            }
-            self.focused_field = InputId::ChangePasswordNew;
-            return operation::focus(Id::from(InputId::ChangePasswordNew));
-        }
+        };
+        let current_password = state_ref.current_password.clone();
+        let new_password = state_ref.new_password.clone();
 
         // Get user ID for the request
         let user_id = conn.user_id.unwrap_or(0);
@@ -1357,8 +1371,7 @@ impl NexusApp {
     pub fn handle_user_management_create_tab_resolved(&mut self, focused: Id) -> Task<Message> {
         const CYCLE: &[InputId] = &[InputId::AdminUsername, InputId::AdminPassword];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
 
     /// Handle Tab pressed in user management Edit form.
@@ -1369,8 +1382,7 @@ impl NexusApp {
     pub fn handle_user_management_edit_tab_resolved(&mut self, focused: Id) -> Task<Message> {
         const CYCLE: &[InputId] = &[InputId::EditNewUsername, InputId::EditNewPassword];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
 
     /// Handle sort column click in the Users table

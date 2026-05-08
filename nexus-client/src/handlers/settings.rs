@@ -10,7 +10,7 @@ use nexus_common::validators;
 use std::time::Instant;
 
 use iced::Task;
-use iced::widget::{Id, operation};
+use iced::widget::Id;
 use nexus_common::voice::VoiceQuality;
 use rfd::AsyncFileDialog;
 
@@ -62,22 +62,17 @@ impl NexusApp {
     /// keeps the open path consistent with the Tab-resolved path.
     fn focus_settings_tab_field(&mut self) -> Task<Message> {
         match self.settings_tab {
-            SettingsTab::General => {
-                self.focused_field = InputId::SettingsNickname;
-                operation::focus(Id::from(InputId::SettingsNickname))
-            }
+            SettingsTab::General => self.focus_field(InputId::SettingsNickname),
             SettingsTab::Chat => {
                 if self.config.settings.auto_away_timeout.is_enabled() {
-                    self.focused_field = InputId::SettingsAutoAwayMessage;
-                    operation::focus(Id::from(InputId::SettingsAutoAwayMessage))
+                    self.focus_field(InputId::SettingsAutoAwayMessage)
                 } else {
                     Task::none()
                 }
             }
             SettingsTab::Network => {
                 if self.config.settings.proxy.enabled {
-                    self.focused_field = InputId::ProxyAddress;
-                    operation::focus(Id::from(InputId::ProxyAddress))
+                    self.focus_field(InputId::ProxyAddress)
                 } else {
                     Task::none()
                 }
@@ -415,8 +410,7 @@ impl NexusApp {
                 return Task::none();
             }
         };
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
 
     // ==================== Avatar ====================

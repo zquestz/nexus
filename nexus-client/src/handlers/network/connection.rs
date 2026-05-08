@@ -1,7 +1,6 @@
 //! Connection result handlers
 
 use iced::Task;
-use iced::widget::{Id, operation};
 use nexus_common::protocol::{ChannelJoinInfo, ClientMessage};
 use uuid::Uuid;
 
@@ -230,6 +229,14 @@ impl NexusApp {
             // Update tray icon state (Windows/Linux only)
             #[cfg(not(target_os = "macos"))]
             self.update_tray_state();
+
+            // Same disconnected-default-state focus rule as
+            // `handle_disconnect_from_server`: if the layout now shows
+            // the connection form as its fallback, auto-focus the
+            // first field.
+            if self.active_connection.is_none() && self.active_panel() == ActivePanel::None {
+                return self.focus_field(InputId::ServerName);
+            }
         }
         Task::none()
     }
@@ -396,20 +403,21 @@ impl NexusApp {
             self.save_new_bookmark(ctx.connection_id, ctx.certificate_fingerprint);
         }
 
-        // Clear connection form for form connections. The new connection
-        // is added with `active_panel: None` (chat view) so the form is
-        // automatically replaced once the user lands on the new chat —
-        // no manual panel teardown required.
-        if matches!(source, ConnectionSource::Manual) {
-            self.connection_form.clear();
-            self.connection_form.connect_origin = None;
-        }
+        // Connection succeeded — dismiss both layout-level overlays
+        // unconditionally. Pre-overlay-refactor this only fired for
+        // `ConnectionSource::Manual` (and only cleared the connection
+        // form), which left both overlays summoned over the new chat
+        // for Bookmark / URI / Reconnect sources. The user's intent
+        // on a successful connection is "go to the chat I just
+        // connected to," so any overlay is stale.
+        self.dismiss_connection_form();
+        self.dismiss_bookmark_edit();
 
         // Update tray icon state (Windows/Linux only)
         #[cfg(not(target_os = "macos"))]
         self.update_tray_state();
 
-        operation::focus(Id::from(InputId::ChatInput))
+        self.focus_field(InputId::ChatInput)
     }
 
     /// Report a connection error to the appropriate place based on source

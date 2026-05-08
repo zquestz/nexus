@@ -1,7 +1,7 @@
 //! News panel handlers
 
 use iced::Task;
-use iced::widget::{Id, operation, text_editor};
+use iced::widget::text_editor;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, NewsBodyError};
 use rfd::AsyncFileDialog;
@@ -109,7 +109,7 @@ impl NexusApp {
             .insert(conn_id, text_editor::Content::new());
 
         // Focus the text editor
-        operation::focus(Id::from(InputId::NewsBody))
+        self.focus_field(InputId::NewsBody)
     }
 
     /// Handle edit button click on a news item
@@ -490,6 +490,6 @@ impl NexusApp {
         self.news_body_content.insert(connection_id, content);
 
         // Focus the text editor
-        operation::focus(Id::from(InputId::NewsBody))
+        self.focus_field(InputId::NewsBody)
     }
 }

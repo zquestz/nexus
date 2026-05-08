@@ -25,6 +25,12 @@ impl NexusApp {
     ///
     /// When connected, stores in the connection (all panels are per-connection).
     /// When not connected, stores in ui_state (only Settings/About make sense).
+    ///
+    /// A panel switch is also a navigation gesture, so any layout-level
+    /// overlay (Connection Form, Bookmark Editor) gets dismissed —
+    /// every other editor in the codebase lives inside a panel and is
+    /// implicitly closed by a panel switch; the two layout overlays
+    /// match that behaviour here.
     pub fn set_active_panel(&mut self, panel: ActivePanel) {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
@@ -34,6 +40,8 @@ impl NexusApp {
             // Not connected - only Settings/About/None make sense
             self.ui_state.active_panel = panel;
         }
+        self.dismiss_connection_form();
+        self.dismiss_bookmark_edit();
     }
 
     // ==================== About ====================
@@ -209,9 +217,7 @@ impl NexusApp {
         // Auto-focus the search input on open, mirroring the
         // auto-focus convention used by other forms (Group Create
         // → name, User Create → username, etc.).
-        self.focused_field = InputId::TrackerBrowserSearch;
-        let focus_task =
-            iced::widget::operation::focus(iced::widget::Id::from(InputId::TrackerBrowserSearch));
+        let focus_task = self.focus_field(InputId::TrackerBrowserSearch);
 
         // Auto-fetch on panel open: if the selected tracker has no
         // cached result yet, kick off a query in the background.

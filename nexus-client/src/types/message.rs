@@ -647,8 +647,14 @@ pub enum Message {
     UserMessageIconClicked(String),
     /// Connection form: Username field changed
     UsernameChanged(String),
+    /// Bookmark editor: Validate add/edit form (on Enter when form incomplete)
+    ValidateBookmarkEdit,
     /// Broadcast: Validate broadcast form (on Enter when empty)
     ValidateBroadcast,
+    /// Change password: Validate the form (on Enter when form incomplete)
+    ValidateChangePassword,
+    /// Connection form: Validate the form (on Enter when form incomplete)
+    ValidateConnectionForm,
     /// Group management: Validate create group form (on Enter when form incomplete)
     ValidateGroupManagementCreate,
     /// Group management: Validate edit group form (on Enter when form incomplete)

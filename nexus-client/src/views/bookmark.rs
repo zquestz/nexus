@@ -43,6 +43,15 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
         && !state.bookmark.address.trim().is_empty()
         && !state.is_submitting;
 
+    // Per-input on_submit: complete form submits; incomplete dispatches
+    // Validate so the form-level error banner shows instead of silently
+    // no-op'ing. Mirrors the keyboard.rs Enter fallback.
+    let submit_action = if can_save {
+        Message::SaveBookmark
+    } else {
+        Message::ValidateBookmarkEdit
+    };
+
     let mut column_items: Vec<Element<'_, Message>> = vec![panel_title(dialog_title).into()];
 
     // Show error if present
@@ -63,14 +72,14 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
     column_items.extend([
         text_input(&t("placeholder-server-name"), &state.bookmark.name)
             .on_input(Message::BookmarkNameChanged)
-            .on_submit(Message::SaveBookmark)
+            .on_submit(submit_action.clone())
             .id(Id::from(InputId::BookmarkName))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
             .into(),
         text_input(&t("placeholder-server-address"), &state.bookmark.address)
             .on_input(Message::BookmarkAddressChanged)
-            .on_submit(Message::SaveBookmark)
+            .on_submit(submit_action.clone())
             .id(Id::from(InputId::BookmarkAddress))
             .padding(INPUT_PADDING)
             .size(TEXT_SIZE)
@@ -97,7 +106,7 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
             &state.bookmark.username,
         )
         .on_input(Message::BookmarkUsernameChanged)
-        .on_submit(Message::SaveBookmark)
+        .on_submit(submit_action.clone())
         .id(Id::from(InputId::BookmarkUsername))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
@@ -107,7 +116,7 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
             &state.bookmark.password,
         )
         .on_input(Message::BookmarkPasswordChanged)
-        .on_submit(Message::SaveBookmark)
+        .on_submit(submit_action.clone())
         .id(Id::from(InputId::BookmarkPassword))
         .secure(true)
         .padding(INPUT_PADDING)
@@ -118,7 +127,7 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
             &state.bookmark.nickname,
         )
         .on_input(Message::BookmarkNicknameChanged)
-        .on_submit(Message::SaveBookmark)
+        .on_submit(submit_action.clone())
         .id(Id::from(InputId::BookmarkNickname))
         .padding(INPUT_PADDING)
         .size(TEXT_SIZE)
@@ -132,7 +141,7 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
                 .unwrap_or(""),
         )
         .on_input(Message::BookmarkFingerprintChanged)
-        .on_submit(Message::SaveBookmark)
+        .on_submit(submit_action.clone())
         .id(Id::from(InputId::BookmarkFingerprint))
         .font(MONOSPACE_FONT)
         .padding(INPUT_PADDING)

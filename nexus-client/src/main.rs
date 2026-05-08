@@ -41,7 +41,7 @@ use once_cell::sync::Lazy;
 
 use uuid::Uuid;
 
-use iced::widget::{Id, operation, text_editor};
+use iced::widget::text_editor;
 use iced::{Element, Subscription, Task, Theme};
 use iced_toasts::{ToastContainer, ToastLevel, toast, toast_container};
 
@@ -486,7 +486,7 @@ impl NexusApp {
 
         // Check for startup URI
         let startup_uri = STARTUP_URI.lock().unwrap().take();
-        let mut tasks: Vec<Task<Message>> = vec![operation::focus(Id::from(InputId::ServerName))];
+        let mut tasks: Vec<Task<Message>> = vec![app.focus_field(InputId::ServerName)];
 
         if let Some(uri_str) = startup_uri {
             if let Ok(parsed_uri) = uri::parse(&uri_str) {
@@ -637,6 +637,8 @@ impl NexusApp {
                 Task::none()
             }
             Message::SaveBookmark => self.handle_save_bookmark(),
+            Message::ValidateBookmarkEdit => self.handle_validate_bookmark_edit(),
+            Message::ValidateConnectionForm => self.handle_validate_connection_form(),
             Message::ShowAddBookmark => self.handle_show_add_bookmark(),
             Message::ShowEditBookmark(id) => self.handle_show_edit_bookmark(id),
             Message::BookmarkEditTabPressed => self.handle_bookmark_edit_tab_pressed(),
@@ -1145,6 +1147,7 @@ impl NexusApp {
             }
             Message::ChangePasswordCancelPressed => self.handle_change_password_cancel_pressed(),
             Message::ChangePasswordSavePressed => self.handle_change_password_save_pressed(),
+            Message::ValidateChangePassword => self.handle_validate_change_password(),
             Message::ChangePasswordTabPressed => self.handle_change_password_tab_pressed(),
             Message::ChangePasswordTabResolved(id) => self.handle_change_password_tab_resolved(id),
 

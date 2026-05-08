@@ -5,7 +5,7 @@
 //! query path. AcceptFingerprint lands in step 7.
 
 use iced::Task;
-use iced::widget::{Id, operation};
+use iced::widget::Id;
 use uuid::Uuid;
 
 use super::focus::{dispatch_find_focused, next_in_cycle};
@@ -82,8 +82,7 @@ impl NexusApp {
     /// [+] toolbar button — open the Add subview and focus the Name field.
     pub fn handle_tracker_browser_show_add(&mut self) -> Task<Message> {
         self.tracker_browser.enter_add_mode();
-        self.focused_field = InputId::TrackerBrowserAddName;
-        operation::focus(Id::from(InputId::TrackerBrowserAddName))
+        self.focus_field(InputId::TrackerBrowserAddName)
     }
 
     /// Edit toolbar button — open the Edit subview pre-populated from
@@ -104,8 +103,7 @@ impl NexusApp {
                 password: t.password.clone(),
                 fingerprint: t.certificate_fingerprint.clone(),
             });
-        self.focused_field = InputId::TrackerBrowserEditName;
-        operation::focus(Id::from(InputId::TrackerBrowserEditName))
+        self.focus_field(InputId::TrackerBrowserEditName)
     }
 
     /// Remove toolbar button — open the ConfirmRemove modal for the
@@ -484,8 +482,7 @@ impl NexusApp {
 
     pub fn handle_tracker_browser_add_tab_resolved(&mut self, focused: Id) -> Task<Message> {
         let next = next_in_cycle(&focused, TRACKER_BROWSER_ADD_CYCLE);
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
 
     /// Tab cycle in the Edit form. Same shape as Add.
@@ -495,8 +492,7 @@ impl NexusApp {
 
     pub fn handle_tracker_browser_edit_tab_resolved(&mut self, focused: Id) -> Task<Message> {
         let next = next_in_cycle(&focused, TRACKER_BROWSER_EDIT_CYCLE);
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
 
     // =========================================================================
@@ -750,7 +746,13 @@ impl NexusApp {
         self.connection_form.fingerprint =
             normalize_certificate_fingerprint(Some(fingerprint)).unwrap_or_default();
         self.connection_form.connect_origin = Some(ActivePanel::TrackerBrowser);
-        Task::none()
+        // Close any other layout-level overlay so only the connection
+        // form is visible. Mirrors `handle_open_connection_form`.
+        self.dismiss_bookmark_edit();
+        // Auto-focus the first field. Same rule as the manual `+` summon
+        // — first field, no guessing — even though name / address /
+        // port / fingerprint arrive pre-filled from the tracker row.
+        self.focus_field(InputId::ServerName)
     }
 
     // =========================================================================

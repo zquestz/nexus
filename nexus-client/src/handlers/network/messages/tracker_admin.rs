@@ -7,7 +7,6 @@
 //! state) or from a stray request (in which case it surfaces in chat).
 
 use iced::Task;
-use iced::widget::{Id, operation};
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::{ClientMessage, TrackerInfo};
 
@@ -139,8 +138,7 @@ impl NexusApp {
                     enabled: info.enabled,
                     last_error: info.last_error,
                 });
-                self.focused_field = InputId::EditTrackerName;
-                return operation::focus(Id::from(InputId::EditTrackerName));
+                return self.focus_field(InputId::EditTrackerName);
             } else {
                 // Success but no payload — treat as fetch failure so the
                 // user sees something in the banner instead of an empty form.

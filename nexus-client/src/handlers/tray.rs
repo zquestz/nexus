@@ -5,7 +5,6 @@
 use std::time::Duration;
 
 use iced::Task;
-use iced::widget::{Id, operation};
 
 use crate::NexusApp;
 use crate::i18n::t;
@@ -319,11 +318,12 @@ impl NexusApp {
     /// `iced::window::run` executes on the window-owning thread, satisfying
     /// `SetFocus`'s thread affinity requirement.
     pub fn handle_tray_restore_focus(&mut self, id: iced::window::Id) -> Task<Message> {
-        let widget_focus = if self.active_panel() == ActivePanel::None {
-            operation::focus(Id::from(InputId::ChatInput))
+        let target = if self.active_panel() == ActivePanel::None {
+            InputId::ChatInput
         } else {
-            operation::focus(Id::from(self.focused_field))
+            self.focused_field
         };
+        let widget_focus = self.focus_field(target);
 
         // On Windows, gain_focus brings the window to the foreground via
         // SetForegroundWindow, then SetFocus resets the keyboard input chain

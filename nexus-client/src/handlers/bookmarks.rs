@@ -1,7 +1,7 @@
 //! Bookmark management
 
 use iced::Task;
-use iced::widget::{Id, operation};
+use iced::widget::Id;
 use uuid::Uuid;
 
 use crate::NexusApp;
@@ -77,11 +77,41 @@ impl NexusApp {
 
     // ==================== Dialog Actions ====================
 
+    /// Close the bookmark editor overlay. Wipes the dialog state so
+    /// re-opening starts fresh.
+    ///
+    /// Used by:
+    ///   - `set_active_panel` — every panel switch dismisses overlays.
+    ///   - `handle_successful_connection` — connection completed,
+    ///     overlay no longer relevant.
+    ///   - `handle_open_connection_form` /
+    ///     `handle_open_connect_from_tracker` — connection form is
+    ///     the new gesture; close the bookmark editor so the
+    ///     connection form is the only overlay visible.
+    ///
+    /// Does NOT touch `focused_field`. Callers know what's being
+    /// shown next and set focus via `focus_field` afterward. A
+    /// blanket reset here would be wrong — there's no single right
+    /// target across all callers.
+    pub(crate) fn dismiss_bookmark_edit(&mut self) {
+        self.bookmark_edit = BookmarkEditState::default();
+    }
+
     /// Cancel bookmark editing and close the dialog
     pub fn handle_cancel_bookmark_edit(&mut self) -> Task<Message> {
         self.bookmark_edit = BookmarkEditState::default();
         // Restore chat scroll position when closing bookmark editor
         self.scroll_chat_if_visible(false)
+    }
+
+    /// Validate the bookmark form (Enter when can_save is false).
+    /// Sets the form-level error so the user sees what's wrong
+    /// without trying to submit.
+    pub fn handle_validate_bookmark_edit(&mut self) -> Task<Message> {
+        if let Some(error) = validate_bookmark_form(&self.bookmark_edit, &self.config.bookmarks) {
+            self.bookmark_edit.error = Some(error);
+        }
+        Task::none()
     }
 
     /// Save the current bookmark (add or update)
@@ -90,36 +120,11 @@ impl NexusApp {
             return Task::none();
         }
 
-        // Field-shape validation (required server name + address,
-        // address shape, optional username/nickname shape, password
-        // length, fingerprint canonical form). Shared with the
-        // connection form via `server_form_errors`.
-        let bookmark = &self.bookmark_edit.bookmark;
-        if let Err(error) = super::server_form_errors::translate_server_form_errors(
-            &bookmark.name,
-            &bookmark.address,
-            &bookmark.username,
-            &bookmark.nickname,
-            &bookmark.password,
-            bookmark.certificate_fingerprint.as_deref().unwrap_or(""),
-        ) {
-            self.bookmark_edit.error = Some(error);
-            return Task::none();
-        }
-
-        let edit_id = match self.bookmark_edit.mode {
-            BookmarkEditMode::Edit(id) => Some(id),
-            _ => None,
-        };
-        if let Some(error) = check_bookmark_dedup(
-            &bookmark.name,
-            &bookmark.address,
-            bookmark.port,
-            &bookmark.username,
-            &bookmark.nickname,
-            &self.config.bookmarks,
-            edit_id,
-        ) {
+        // Field-shape + dedup validation. Shared with
+        // `handle_validate_bookmark_edit` so the validate-then-submit
+        // path produces the same error as actually submitting an
+        // invalid form.
+        if let Some(error) = validate_bookmark_form(&self.bookmark_edit, &self.config.bookmarks) {
             self.bookmark_edit.error = Some(error);
             return Task::none();
         }
@@ -173,7 +178,28 @@ impl NexusApp {
     ///
     /// If there's an active connection, pre-fills the form with connection data.
     /// Otherwise, shows an empty form.
+    ///
+    /// No-op if the form is already in Add mode — re-pressing the
+    /// "Add bookmark" button while typing into a fresh Add form is
+    /// almost always an accidental double-click; wiping in-flight
+    /// state would surprise the user. Edit mode is a different
+    /// gesture (clicked a row's pencil) and is allowed to switch
+    /// into Add — same as clicking a different row's pencil while
+    /// editing switches the Edit target.
     pub fn handle_show_add_bookmark(&mut self) -> Task<Message> {
+        if matches!(self.bookmark_edit.mode, BookmarkEditMode::Add) {
+            // Refocus the first field — clicking the "Add bookmark"
+            // button itself moves iced focus off the currently-focused
+            // input, so a literal `Task::none()` would leave the
+            // cursor stranded on the button. First-field is
+            // deterministic regardless of whether the user got to
+            // their previous field via Tab or via click.
+            return self.focus_field(InputId::BookmarkName);
+        }
+        // Close the connection form if it was summoned — the user
+        // picked a different overlay; same principle as a toolbar
+        // panel switch dismissing both overlays.
+        self.dismiss_connection_form();
         self.bookmark_edit = BookmarkEditState::default();
         self.bookmark_edit.mode = BookmarkEditMode::Add;
 
@@ -195,21 +221,25 @@ impl NexusApp {
             );
         }
 
-        self.focused_field = InputId::BookmarkName;
-        operation::focus(Id::from(InputId::BookmarkName))
+        self.focus_field(InputId::BookmarkName)
     }
 
     /// Show the edit bookmark dialog for a specific bookmark
     pub fn handle_show_edit_bookmark(&mut self, id: Uuid) -> Task<Message> {
-        if let Some(bookmark) = self.config.get_bookmark(id) {
+        // `cloned()` releases the `&self.config` borrow before
+        // `dismiss_connection_form` and the subsequent `&mut self`
+        // writes need it.
+        if let Some(bookmark) = self.config.get_bookmark(id).cloned() {
+            // Close the connection form if it was summoned — the
+            // user picked a different overlay.
+            self.dismiss_connection_form();
             self.bookmark_edit.mode = BookmarkEditMode::Edit(id);
-            self.bookmark_edit.bookmark = bookmark.clone();
-            self.focused_field = InputId::BookmarkName;
+            self.bookmark_edit.bookmark = bookmark;
 
             // Move any connection error to the edit dialog (acknowledges and clears it)
             self.bookmark_edit.error = self.bookmark_errors.remove(&id);
 
-            return operation::focus(Id::from(InputId::BookmarkName));
+            return self.focus_field(InputId::BookmarkName);
         }
         Task::none()
     }
@@ -326,9 +356,45 @@ impl NexusApp {
             InputId::BookmarkFingerprint,
         ];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
+}
+
+/// Run client-side validation on the bookmark form. Returns the first
+/// localized error encountered (field-shape error first, then dedup
+/// collision), or `None` if the form passes both gates.
+///
+/// Shared between `handle_save_bookmark` and
+/// `handle_validate_bookmark_edit` so the validate-then-submit path
+/// surfaces the same error the actual submit would produce.
+fn validate_bookmark_form(
+    state: &crate::types::BookmarkEditState,
+    bookmarks: &[crate::types::ServerBookmark],
+) -> Option<String> {
+    let bookmark = &state.bookmark;
+    if let Err(error) = super::server_form_errors::translate_server_form_errors(
+        &bookmark.name,
+        &bookmark.address,
+        &bookmark.username,
+        &bookmark.nickname,
+        &bookmark.password,
+        bookmark.certificate_fingerprint.as_deref().unwrap_or(""),
+    ) {
+        return Some(error);
+    }
+    let edit_id = match state.mode {
+        BookmarkEditMode::Edit(id) => Some(id),
+        _ => None,
+    };
+    check_bookmark_dedup(
+        &bookmark.name,
+        &bookmark.address,
+        bookmark.port,
+        &bookmark.username,
+        &bookmark.nickname,
+        bookmarks,
+        edit_id,
+    )
 }
 
 /// Check whether a candidate bookmark would collide with the existing

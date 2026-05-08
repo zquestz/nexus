@@ -21,12 +21,28 @@
 //! handler that calls these helpers.
 
 use iced::Task;
-use iced::widget::Id;
+use iced::widget::{Id, operation};
 use iced_runtime::core::Rectangle;
 use iced_runtime::core::widget::operation::{Focusable, Operation, Outcome};
 use iced_runtime::task as runtime_task;
 
+use crate::NexusApp;
 use crate::types::{InputId, Message};
+
+impl NexusApp {
+    /// Set `focused_field` and dispatch the iced focus operation as a
+    /// `Task`. Always use this instead of writing the two lines by
+    /// hand — the pair (in-memory tracker + iced focus op) is easy to
+    /// half-do, and drifting them apart breaks tray-restore /
+    /// minimize-restore (the saved `focused_field` no longer matches
+    /// what the user's eye sees) and silently mis-targets the next
+    /// Tab cycle (which falls back to `focused_field` when iced's
+    /// own focus query returns the empty-id sentinel).
+    pub(crate) fn focus_field(&mut self, id: InputId) -> Task<Message> {
+        self.focused_field = id;
+        operation::focus(Id::from(id))
+    }
+}
 
 /// Variant of iced's `find_focused` that **always** produces an
 /// `Outcome::Some(Id)`. Iced's built-in version returns

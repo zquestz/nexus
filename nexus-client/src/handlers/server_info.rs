@@ -1,7 +1,7 @@
 //! Server info edit handlers
 
 use iced::Task;
-use iced::widget::{Id, operation};
+use iced::widget::Id;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{
     self, MAX_PUBLIC_ADDRESS_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_NAME_LENGTH,
@@ -66,7 +66,7 @@ impl NexusApp {
         }));
 
         // Focus the name input
-        operation::focus(Id::from(InputId::EditServerInfoName))
+        self.focus_field(InputId::EditServerInfoName)
     }
 
     /// Cancel server info edit mode
@@ -624,7 +624,6 @@ impl NexusApp {
             InputId::EditServerInfoPersistentChannels,
         ];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
 }

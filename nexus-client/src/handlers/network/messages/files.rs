@@ -3,7 +3,7 @@
 use crate::i18n::{t, t_args};
 use crate::types::ChatMessage;
 
-use iced::widget::{Id, scrollable};
+use iced::widget::scrollable;
 use iced::{Task, widget::operation};
 use nexus_common::ErrorKind;
 use nexus_common::framing::MessageId;
@@ -187,12 +187,19 @@ impl NexusApp {
                 None,
             )
         } else {
-            // Show error in dialog (re-lookup tab)
-            if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+            // Show error in dialog (re-lookup tab). Split the tab
+            // mutation from the focus dispatch so the `conn` borrow
+            // is released before `self.focus_field` runs.
+            let dialog_open = if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
                 tab.is_create_dir_submitting = false;
                 tab.new_directory_error = error;
+                true
+            } else {
+                false
+            };
+            if dialog_open {
                 // Focus the input field so user can retry
-                operation::focus(Id::from(InputId::NewDirectoryName))
+                self.focus_field(InputId::NewDirectoryName)
             } else {
                 Task::none()
             }
@@ -360,12 +367,19 @@ impl NexusApp {
                 None,
             )
         } else {
-            // Show error in the rename dialog (re-lookup tab)
-            if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
+            // Show error in the rename dialog (re-lookup tab). Split
+            // the tab mutation from the focus dispatch so the `conn`
+            // borrow is released before `self.focus_field` runs.
+            let dialog_open = if let Some(tab) = conn.files_management.tab_by_id_mut(tab_id) {
                 tab.is_rename_submitting = false;
                 tab.rename_error = error;
+                true
+            } else {
+                false
+            };
+            if dialog_open {
                 // Focus the input field so user can retry
-                operation::focus(Id::from(InputId::RenameName))
+                self.focus_field(InputId::RenameName)
             } else {
                 Task::none()
             }

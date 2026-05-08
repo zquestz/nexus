@@ -39,7 +39,7 @@ pub use error_kind::{
 };
 
 /// Version information for the Nexus BBS protocol
-pub const PROTOCOL_VERSION: &str = "0.8.2";
+pub const PROTOCOL_VERSION: &str = "0.8.3";
 
 /// Version information for the Nexus tracker protocol
 ///

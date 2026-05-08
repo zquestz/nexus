@@ -42,7 +42,7 @@ pub struct ServerEntry {
     /// BBS WebSocket port (when the server has WebSocket enabled).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub websocket_port: Option<u16>,
-    /// Server software version (e.g., `"0.8.2"`).
+    /// Server software version (e.g., `"0.8.3"`).
     pub version: String,
     /// TLS certificate fingerprint, canonical form (32 uppercase hex bytes
     /// separated by colons, 95 bytes total).
@@ -104,7 +104,7 @@ pub enum TrackerClientMessage {
         /// BBS WebSocket port (when the server has WebSocket enabled).
         #[serde(default, skip_serializing_if = "Option::is_none")]
         websocket_port: Option<u16>,
-        /// Server software version (e.g., `"0.8.2"`).
+        /// Server software version (e.g., `"0.8.3"`).
         version: String,
         /// TLS certificate fingerprint, canonical form (32 uppercase hex
         /// bytes separated by colons, 95 bytes total). The tracker MUST
@@ -237,7 +237,7 @@ mod tests {
             address: Some("bbs.example.com".to_string()),
             port: 7500,
             websocket_port: Some(7502),
-            version: "0.8.2".to_string(),
+            version: "0.8.3".to_string(),
             fingerprint: "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99".to_string(),
             user_count: 12,
             allows_guest: true,
@@ -254,13 +254,13 @@ mod tests {
         let msg = TrackerClientMessage::TrackerServerList {
             password: Some("secret".to_string()),
             locale: "en".to_string(),
-            version: "0.8.2".to_string(),
+            version: "0.8.3".to_string(),
         };
         let json = serde_json::to_string(&msg).expect("serialize");
         assert!(json.contains(r#""type":"TrackerServerList""#));
         assert!(json.contains(r#""password":"secret""#));
         assert!(json.contains(r#""locale":"en""#));
-        assert!(json.contains(r#""version":"0.8.2""#));
+        assert!(json.contains(r#""version":"0.8.3""#));
     }
 
     #[test]
@@ -321,7 +321,7 @@ mod tests {
         let msg = TrackerClientMessage::TrackerServerList {
             password: Some("super-secret".to_string()),
             locale: "en".to_string(),
-            version: "0.8.2".to_string(),
+            version: "0.8.3".to_string(),
         };
         let debug = format!("{:?}", msg);
         assert!(!debug.contains("super-secret"));
@@ -332,7 +332,7 @@ mod tests {
     fn test_default_locale_on_deserialize() {
         // When `locale` is omitted, deserialization uses default "en".
         // `version` is required, so the JSON must include it.
-        let json = r#"{"type":"TrackerServerList","version":"0.8.2"}"#;
+        let json = r#"{"type":"TrackerServerList","version":"0.8.3"}"#;
         let msg: TrackerClientMessage = serde_json::from_str(json).expect("deserialize");
         match msg {
             TrackerClientMessage::TrackerServerList {
@@ -342,7 +342,7 @@ mod tests {
             } => {
                 assert_eq!(locale, "en");
                 assert!(password.is_none());
-                assert_eq!(version, "0.8.2");
+                assert_eq!(version, "0.8.3");
             }
             _ => panic!("expected TrackerServerList"),
         }
@@ -367,7 +367,7 @@ mod tests {
             address: "192.0.2.1".to_string(),
             port: 7500,
             websocket_port: None,
-            version: "0.8.2".to_string(),
+            version: "0.8.3".to_string(),
             fingerprint: "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99".to_string(),
             user_count: 0,
             allows_guest: false,

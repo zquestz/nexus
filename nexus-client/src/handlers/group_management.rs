@@ -5,7 +5,7 @@
 //! the group dropdown in user create/edit forms.
 
 use iced::Task;
-use iced::widget::{Id, operation};
+use iced::widget::Id;
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, GroupNameError};
@@ -163,7 +163,7 @@ impl NexusApp {
 
     /// Handle cancel in the group management sub-panel
     ///
-    /// In Create/Edit mode: returns to List mode.
+    /// In Create/Edit/ConfirmDelete mode: returns to List mode.
     /// In List mode: does nothing (CancelUserManagement handles closing the panel).
     pub fn handle_cancel_group_management(&mut self) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
@@ -174,12 +174,17 @@ impl NexusApp {
         };
 
         match &conn.user_management.group_management.mode {
-            GroupManagementMode::Create | GroupManagementMode::Edit { .. } => {
+            GroupManagementMode::Create
+            | GroupManagementMode::Edit { .. }
+            | GroupManagementMode::ConfirmDelete { .. } => {
+                // Escape from any sub-mode dismisses the form / dialog
+                // and returns to the Groups list. Mirrors User
+                // ConfirmDelete's reset behaviour at the parent
+                // `handle_cancel_user_management`.
                 conn.user_management.group_management.reset_to_list();
             }
-            GroupManagementMode::List | GroupManagementMode::ConfirmDelete { .. } => {
-                // List: do nothing (parent panel handles close)
-                // ConfirmDelete: modal handles its own cancel
+            GroupManagementMode::List => {
+                // List: parent panel handles close
             }
         }
 
@@ -198,8 +203,7 @@ impl NexusApp {
         };
 
         conn.user_management.group_management.enter_create_mode();
-        self.focused_field = InputId::CreateGroupName;
-        operation::focus(Id::from(InputId::CreateGroupName))
+        self.focus_field(InputId::CreateGroupName)
     }
 
     /// Handle edit button click on a group in the list
@@ -680,8 +684,7 @@ impl NexusApp {
     pub fn handle_group_management_create_tab_resolved(&mut self, focused: Id) -> Task<Message> {
         const CYCLE: &[InputId] = &[InputId::CreateGroupName];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
 
     /// Tab in Group Edit form. Same shape as Group Create.
@@ -692,7 +695,6 @@ impl NexusApp {
     pub fn handle_group_management_edit_tab_resolved(&mut self, focused: Id) -> Task<Message> {
         const CYCLE: &[InputId] = &[InputId::EditGroupName];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
 }

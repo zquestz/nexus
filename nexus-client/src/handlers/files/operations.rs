@@ -1,7 +1,6 @@
 //! File operation handlers (delete, info, rename, clipboard, overwrite, sort)
 
 use iced::Task;
-use iced::widget::{Id, operation};
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators;
 
@@ -162,7 +161,7 @@ impl NexusApp {
         tab.is_rename_submitting = false;
 
         // Focus the name input field
-        operation::focus(Id::from(InputId::RenameName))
+        self.focus_field(InputId::RenameName)
     }
 
     /// Handle rename name input change
@@ -187,6 +186,9 @@ impl NexusApp {
         tab.rename_name = name;
         tab.rename_error = validation_error;
 
+        // Track focus for tray-restore, matching the `*_changed`
+        // convention used by every other form's input handlers.
+        self.focused_field = InputId::RenameName;
         Task::none()
     }
 

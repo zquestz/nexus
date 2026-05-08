@@ -148,12 +148,25 @@ pub fn password_change_view<'a>(
         content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
     }
 
+    // Per-input on_submit: complete form submits; incomplete dispatches
+    // Validate so the form-level error banner surfaces instead of
+    // silently no-op'ing. Mirrors the keyboard.rs Enter fallback.
+    let can_save = !state.current_password.is_empty()
+        && !state.new_password.is_empty()
+        && !state.confirm_password.is_empty()
+        && !state.is_submitting;
+    let submit_action = if can_save {
+        Message::ChangePasswordSavePressed
+    } else {
+        Message::ValidateChangePassword
+    };
+
     // Current password field
     let current_password_input =
         text_input(&t("placeholder-current-password"), &state.current_password)
             .id(Id::from(InputId::ChangePasswordCurrent))
             .on_input(Message::ChangePasswordCurrentChanged)
-            .on_submit(Message::ChangePasswordSavePressed)
+            .on_submit(submit_action.clone())
             .secure(true)
             .padding(BUTTON_PADDING)
             .width(Fill);
@@ -163,7 +176,7 @@ pub fn password_change_view<'a>(
     let new_password_input = text_input(&t("placeholder-new-password"), &state.new_password)
         .id(Id::from(InputId::ChangePasswordNew))
         .on_input(Message::ChangePasswordNewChanged)
-        .on_submit(Message::ChangePasswordSavePressed)
+        .on_submit(submit_action.clone())
         .secure(true)
         .padding(BUTTON_PADDING)
         .width(Fill);
@@ -179,19 +192,13 @@ pub fn password_change_view<'a>(
         text_input(&t("placeholder-confirm-password"), &state.confirm_password)
             .id(Id::from(InputId::ChangePasswordConfirm))
             .on_input(Message::ChangePasswordConfirmChanged)
-            .on_submit(Message::ChangePasswordSavePressed)
+            .on_submit(submit_action)
             .secure(true)
             .padding(BUTTON_PADDING)
             .width(Fill);
     content = content.push(confirm_password_input);
 
     content = content.push(Space::new().height(SPACER_SIZE_MEDIUM));
-
-    // Check if all fields are filled for enabling Save button
-    let can_save = !state.current_password.is_empty()
-        && !state.new_password.is_empty()
-        && !state.confirm_password.is_empty()
-        && !state.is_submitting;
 
     // Buttons row
     let save_button = button(shaped_text(t("button-save")).size(TEXT_SIZE)).padding(BUTTON_PADDING);

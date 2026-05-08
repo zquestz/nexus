@@ -1,7 +1,6 @@
 //! User administration response handlers
 
 use iced::Task;
-use iced::widget::{Id, operation};
 use nexus_common::framing::MessageId;
 
 use crate::NexusApp;
@@ -176,8 +175,7 @@ impl NexusApp {
                     group_permissions: data.group_permissions.unwrap_or_default(),
                     revoked_permissions: data.revoked_permissions.unwrap_or_default(),
                 });
-                self.focused_field = InputId::EditNewUsername;
-                return operation::focus(Id::from(InputId::EditNewUsername));
+                return self.focus_field(InputId::EditNewUsername);
             }
         } else {
             // On error, show in the appropriate place
@@ -270,7 +268,7 @@ impl NexusApp {
                 state.confirm_password.clear();
             }
             // Focus the current password field again
-            return Task::batch([operation::focus(Id::from(InputId::ChangePasswordCurrent))]);
+            return self.focus_field(InputId::ChangePasswordCurrent);
         } else if matches!(routing, Some(ResponseRouting::UserManagementUpdateResult)) {
             // Show error in edit form
             if let Some(conn) = self.connections.get_mut(&connection_id) {

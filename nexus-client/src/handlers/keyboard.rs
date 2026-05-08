@@ -1,7 +1,6 @@
 //! Keyboard and window event handling
 
 use iced::keyboard::{self, key};
-use iced::widget::{Id, operation};
 use iced::window;
 use iced::{Event, Task};
 
@@ -9,8 +8,9 @@ use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
 use crate::types::{
-    ActivePanel, BookmarkEditMode, ChatTab, InputId, Message, NewsManagementMode, PendingRequests,
-    ResponseRouting, TrackerManagementMode, UserManagementMode,
+    ActivePanel, BookmarkEditMode, ChatTab, GroupManagementMode, InputId, Message,
+    NewsManagementMode, PendingRequests, ResponseRouting, TrackerManagementMode,
+    UserManagementMode,
 };
 use crate::views::constants::PERMISSION_TRACKER_LIST;
 use crate::voice::ptt::build_hotkey_string;
@@ -228,62 +228,144 @@ impl NexusApp {
             ..
         }) = event
         {
+            // Disconnect dialog (kick/ban modal) takes precedence —
+            // matches the Escape priority for the disconnect dialog
+            // further below. The per-input `on_submit` on the reason
+            // field already handles Enter while typing; this
+            // fallback covers focus outside the input (e.g., user
+            // clicked a radio button).
+            let disconnect_dialog_open = self
+                .active_connection
+                .and_then(|id| self.connections.get(&id))
+                .is_some_and(|conn| conn.disconnect_dialog.is_some());
+            if disconnect_dialog_open {
+                return self.update(Message::DisconnectDialogSubmit);
+            }
+
             if self.connection_form.connect_origin.is_some() {
                 // Connection form summoned (tracker click, server-list "+",
-                // etc.) overlays whatever else is visible. Enter focused
-                // outside a form input still submits when the required
-                // fields are present. Mirrors the bookmark-edit branch
-                // below; the per-input `on_submit` already handles Enter
-                // when an input is focused.
+                // etc.) overlays whatever else is visible — validate-then-
+                // submit. Empty required fields surface the form-level
+                // error banner via `ValidateConnectionForm`. Mirrors the
+                // per-input `on_submit` in `views/connection.rs`.
                 let can_connect = !self.connection_form.server_name.trim().is_empty()
-                    && !self.connection_form.server_address.trim().is_empty();
-                if can_connect {
-                    return self.update(Message::ConnectPressed);
-                }
+                    && !self.connection_form.server_address.trim().is_empty()
+                    && !self.connection_form.is_connecting;
+                let msg = if can_connect {
+                    Message::ConnectPressed
+                } else {
+                    Message::ValidateConnectionForm
+                };
+                return self.update(msg);
             } else if self.bookmark_edit.mode != BookmarkEditMode::None {
-                // On bookmark edit screen, try to save
-                let can_save = !self.bookmark_edit.bookmark.name.trim().is_empty()
-                    && !self.bookmark_edit.bookmark.address.trim().is_empty();
-                if can_save {
-                    return self.update(Message::SaveBookmark);
+                // Bookmark editor's confirm-delete modal takes
+                // priority — Enter inside it confirms the deletion
+                // (matches the project-wide "modal IS the safety;
+                // Enter confirms" rule for destructive dialogs).
+                if self.bookmark_edit.confirm_delete
+                    && let BookmarkEditMode::Edit(id) = self.bookmark_edit.mode
+                {
+                    return self.update(Message::ConfirmDeleteBookmark(id));
                 }
+                // Otherwise validate-then-submit on the form.
+                // Empty required fields surface the form-level error
+                // banner via `ValidateBookmarkEdit` rather than
+                // silently no-op'ing.
+                let can_save = !self.bookmark_edit.bookmark.name.trim().is_empty()
+                    && !self.bookmark_edit.bookmark.address.trim().is_empty()
+                    && !self.bookmark_edit.is_submitting;
+                let msg = if can_save {
+                    Message::SaveBookmark
+                } else {
+                    Message::ValidateBookmarkEdit
+                };
+                return self.update(msg);
             } else if self.active_panel() == ActivePanel::UserManagement {
-                // On user management screen, handle Enter based on mode
+                // On user management screen, handle Enter based on mode.
+                // Group sub-form takes precedence over the Users tab —
+                // mirrors the Tab dispatch ordering in
+                // `handle_tab_navigation`. Each form follows the
+                // validate-then-submit pattern: a complete form
+                // submits, an incomplete form dispatches its
+                // `Validate*` message so the form-level error banner
+                // shows up rather than silently no-op'ing.
                 if let Some(conn_id) = self.active_connection
                     && let Some(conn) = self.connections.get(&conn_id)
                 {
+                    match &conn.user_management.group_management.mode {
+                        GroupManagementMode::Create => {
+                            let can_create =
+                                !conn.user_management.group_management.name.trim().is_empty()
+                                    && !conn.user_management.group_management.is_submitting;
+                            let msg = if can_create {
+                                Message::GroupManagementCreatePressed
+                            } else {
+                                Message::ValidateGroupManagementCreate
+                            };
+                            return self.update(msg);
+                        }
+                        GroupManagementMode::Edit { new_name, .. } => {
+                            let can_save = !new_name.trim().is_empty()
+                                && !conn.user_management.group_management.is_submitting;
+                            let msg = if can_save {
+                                Message::GroupManagementUpdatePressed
+                            } else {
+                                Message::ValidateGroupManagementEdit
+                            };
+                            return self.update(msg);
+                        }
+                        GroupManagementMode::ConfirmDelete { .. } => {
+                            return self.update(Message::GroupManagementConfirmDelete);
+                        }
+                        GroupManagementMode::List => {}
+                    }
                     match &conn.user_management.mode {
                         UserManagementMode::Create => {
-                            // Create mode: Submit create request
                             let can_create = !conn.user_management.username.trim().is_empty()
-                                && !conn.user_management.password.trim().is_empty();
-                            if can_create {
-                                return self.update(Message::UserManagementCreatePressed);
-                            }
+                                && !conn.user_management.password.trim().is_empty()
+                                && !conn.user_management.is_submitting;
+                            let msg = if can_create {
+                                Message::UserManagementCreatePressed
+                            } else {
+                                Message::ValidateUserManagementCreate
+                            };
+                            return self.update(msg);
                         }
                         UserManagementMode::Edit { new_username, .. } => {
-                            // Edit mode: Submit update
-                            if !new_username.trim().is_empty() {
-                                return self.update(Message::UserManagementUpdatePressed);
-                            }
+                            let can_save = !new_username.trim().is_empty()
+                                && !conn.user_management.is_submitting;
+                            let msg = if can_save {
+                                Message::UserManagementUpdatePressed
+                            } else {
+                                Message::ValidateUserManagementEdit
+                            };
+                            return self.update(msg);
                         }
                         UserManagementMode::List => {
                             // List mode: No Enter action (use Escape to close)
                         }
                         UserManagementMode::ConfirmDelete { .. } => {
-                            // ConfirmDelete: No Enter action (user must click button)
+                            // The modal itself is the safety check —
+                            // Enter inside it confirms (matches Tracker
+                            // ConfirmRemove convention).
+                            return self.update(Message::UserManagementConfirmDelete);
                         }
                     }
                 }
             } else if self.active_panel() == ActivePanel::Broadcast {
-                // On broadcast screen, try to send broadcast
+                // On broadcast screen, try to send broadcast.
+                // Validate-then-submit: empty input dispatches
+                // `ValidateBroadcast` so the form-level error banner
+                // surfaces rather than silently no-op'ing.
                 if let Some(conn_id) = self.active_connection
                     && let Some(conn) = self.connections.get(&conn_id)
                 {
-                    let can_send = !conn.broadcast_message.trim().is_empty();
-                    if can_send {
-                        return self.update(Message::SendBroadcastPressed);
-                    }
+                    let msg = if !conn.broadcast_message.trim().is_empty() {
+                        Message::SendBroadcastPressed
+                    } else {
+                        Message::ValidateBroadcast
+                    };
+                    return self.update(msg);
                 }
             } else if self.active_panel() == ActivePanel::Settings {
                 // On settings screen, save settings
@@ -342,19 +424,30 @@ impl NexusApp {
                 // On user info screen, close the panel
                 return self.update(Message::CloseUserInfo);
             } else if self.active_panel() == ActivePanel::ChangePassword {
-                // On change password screen, submit if all fields are filled
-                if let Some(conn_id) = self.active_connection
-                    && let Some(conn) = self.connections.get(&conn_id)
-                    && let Some(state) = &conn.password_change_state
-                {
-                    let can_save = !state.current_password.is_empty()
-                        && !state.new_password.is_empty()
-                        && !state.confirm_password.is_empty();
-                    if can_save {
-                        return self.update(Message::ChangePasswordSavePressed);
-                    }
+                // Validate-then-submit. Empty fields / mismatched
+                // passwords / weak passwords surface the form-level
+                // error banner via `ValidateChangePassword` rather
+                // than silently no-op'ing.
+                let (can_save, is_submitting) = self
+                    .active_connection
+                    .and_then(|id| self.connections.get(&id))
+                    .and_then(|conn| conn.password_change_state.as_ref())
+                    .map(|state| {
+                        let can = !state.current_password.is_empty()
+                            && !state.new_password.is_empty()
+                            && !state.confirm_password.is_empty();
+                        (can, state.is_submitting)
+                    })
+                    .unwrap_or((false, false));
+                if is_submitting {
+                    return Task::none();
                 }
-                return Task::none();
+                let msg = if can_save {
+                    Message::ChangePasswordSavePressed
+                } else {
+                    Message::ValidateChangePassword
+                };
+                return self.update(msg);
             } else if self.active_panel() == ActivePanel::TrackerBrowser {
                 // On the tracker discovery panel, dispatch based on
                 // what subview is open:
@@ -414,17 +507,46 @@ impl NexusApp {
                             // List mode: No Enter action (use Escape to close)
                         }
                         NewsManagementMode::ConfirmDelete { .. } => {
-                            // ConfirmDelete: No Enter action (user must click button)
+                            // The modal itself is the safety check —
+                            // Enter inside it confirms.
+                            return self.update(Message::NewsConfirmDelete);
                         }
                     }
                 }
-            } else if self.active_connection.is_none() {
-                // On connection screen, try to connect
-                let can_connect = !self.connection_form.server_name.trim().is_empty()
-                    && !self.connection_form.server_address.trim().is_empty();
-                if can_connect {
-                    return self.update(Message::ConnectPressed);
+            } else if self.active_panel() == ActivePanel::Files {
+                // Files panel — modal confirms (overwrite / delete) take
+                // priority over the input dialogs (rename / create dir).
+                // Mirrors the Escape cascade ordering. Confirm-delete
+                // and overwrite-confirm are destructive; we follow the
+                // project rule that the modal itself is the safety
+                // check, so Enter inside it confirms.
+                if let Some(conn_id) = self.active_connection
+                    && let Some(conn) = self.connections.get(&conn_id)
+                {
+                    let tab = conn.files_management.active_tab();
+                    if tab.pending_overwrite.is_some() {
+                        return self.update(Message::FileOverwriteConfirm);
+                    } else if tab.pending_delete.is_some() {
+                        return self.update(Message::FileConfirmDelete);
+                    } else if tab.pending_rename.is_some() {
+                        return self.update(Message::FileRenameSubmit);
+                    } else if tab.creating_directory {
+                        return self.update(Message::FileNewDirectorySubmit);
+                    }
                 }
+            } else if self.active_connection.is_none() {
+                // Disconnected default state — connection form is the
+                // layout fallback. Same validate-then-submit pattern
+                // as the summoned overlay branch above.
+                let can_connect = !self.connection_form.server_name.trim().is_empty()
+                    && !self.connection_form.server_address.trim().is_empty()
+                    && !self.connection_form.is_connecting;
+                let msg = if can_connect {
+                    Message::ConnectPressed
+                } else {
+                    Message::ValidateConnectionForm
+                };
+                return self.update(msg);
             }
         }
         // Handle Escape key
@@ -450,7 +572,14 @@ impl NexusApp {
                 // fallthrough is a no-op via ActivePanel::None).
                 return self.update(Message::ConnectionFormCancel);
             } else if self.bookmark_edit.mode != BookmarkEditMode::None {
-                // Cancel bookmark edit
+                // If the confirm-delete modal is open, Escape closes
+                // just the modal (matches the uniform "Escape cancels
+                // the modal, not the form behind it" pattern). Only
+                // an Escape in the editor with no modal active
+                // dismisses the editor itself.
+                if self.bookmark_edit.confirm_delete {
+                    return self.update(Message::CancelDeleteBookmark);
+                }
                 return self.update(Message::CancelBookmarkEdit);
             } else {
                 // Cancel active panel
@@ -684,7 +813,16 @@ impl NexusApp {
 
     /// Handle Tab key navigation across different screens
     pub fn handle_tab_navigation(&mut self) -> Task<Message> {
-        if self.bookmark_edit.mode != BookmarkEditMode::None {
+        if self.connection_form.connect_origin.is_some() {
+            // Connection form summoned (tracker click, server-list "+",
+            // etc.) overlays whatever else is visible. Mirrors the
+            // layout's modal-like ordering — connect form sits on top
+            // of bookmark edit and every panel, so Tab cycles its
+            // fields ahead of any other tab handler. Default-state
+            // form has origin=None and falls through to the
+            // `active_connection.is_none()` branch below.
+            return self.update(Message::ConnectionFormTabPressed);
+        } else if self.bookmark_edit.mode != BookmarkEditMode::None {
             // On bookmark edit screen, check actual focus and cycle
             return self.update(Message::BookmarkEditTabPressed);
         } else if self.active_panel() == ActivePanel::UserManagement {
@@ -694,7 +832,6 @@ impl NexusApp {
             {
                 // Group sub-form (Create / Edit) takes precedence over
                 // the Users tab when active.
-                use crate::types::GroupManagementMode;
                 match &conn.user_management.group_management.mode {
                     GroupManagementMode::Create => {
                         return self.update(Message::GroupManagementCreateTabPressed);
@@ -754,35 +891,43 @@ impl NexusApp {
             // (e.g. user lacks `file_search` permission so the search
             // input isn't in the widget tree), so this is safe to fire
             // unconditionally.
-            if let Some(conn_id) = self.active_connection
+            // Compute the focus target while the `conn` borrow is
+            // alive, then drop it and dispatch the focus through
+            // `focus_field` so the in-memory tracker stays in sync.
+            let target = if let Some(conn_id) = self.active_connection
                 && let Some(conn) = self.connections.get(&conn_id)
             {
                 let tab = conn.files_management.active_tab();
                 if tab.pending_rename.is_some() {
-                    return operation::focus(Id::from(InputId::RenameName));
+                    InputId::RenameName
                 } else if tab.creating_directory {
-                    return operation::focus(Id::from(InputId::NewDirectoryName));
+                    InputId::NewDirectoryName
+                } else {
+                    InputId::FileSearchInput
                 }
-            }
-            return operation::focus(Id::from(InputId::FileSearchInput));
+            } else {
+                InputId::FileSearchInput
+            };
+            return self.focus_field(target);
         } else if self.active_panel() == ActivePanel::Broadcast {
             // Broadcast screen only has one field, so focus stays
-            self.focused_field = InputId::BroadcastMessage;
-            return operation::focus(Id::from(InputId::BroadcastMessage));
+            return self.focus_field(InputId::BroadcastMessage);
         } else if self.active_panel() == ActivePanel::News {
             // News uses `text_editor` for the body; in Create / Edit
             // mode, Tab refocuses it if focus has wandered (e.g. user
             // clicked the image picker button or a news row). List /
             // ConfirmDelete have no input to focus.
-            use crate::types::NewsManagementMode;
-            if let Some(conn_id) = self.active_connection
-                && let Some(conn) = self.connections.get(&conn_id)
-                && matches!(
-                    conn.news_management.mode,
-                    NewsManagementMode::Create | NewsManagementMode::Edit { .. }
-                )
-            {
-                return operation::focus(Id::from(InputId::NewsBody));
+            let in_create_or_edit = self
+                .active_connection
+                .and_then(|id| self.connections.get(&id))
+                .is_some_and(|conn| {
+                    matches!(
+                        conn.news_management.mode,
+                        NewsManagementMode::Create | NewsManagementMode::Edit { .. }
+                    )
+                });
+            if in_create_or_edit {
+                return self.focus_field(InputId::NewsBody);
             }
             return Task::none();
         } else if self.active_panel() == ActivePanel::Settings {
@@ -802,7 +947,7 @@ impl NexusApp {
                     // List mode has a single text input (search). Tab
                     // refocuses it regardless of where focus had
                     // wandered.
-                    return operation::focus(Id::from(InputId::TrackerBrowserSearch));
+                    return self.focus_field(InputId::TrackerBrowserSearch);
                 }
                 _ => {}
             }
@@ -810,11 +955,12 @@ impl NexusApp {
             // Disconnect dialog (kick/ban modal) takes precedence
             // over the chat view when open — Tab focuses the reason
             // input.
-            if let Some(conn_id) = self.active_connection
-                && let Some(conn) = self.connections.get(&conn_id)
-                && conn.disconnect_dialog.is_some()
-            {
-                return operation::focus(Id::from(InputId::DisconnectDialogReason));
+            let dialog_open = self
+                .active_connection
+                .and_then(|id| self.connections.get(&id))
+                .is_some_and(|conn| conn.disconnect_dialog.is_some());
+            if dialog_open {
+                return self.focus_field(InputId::DisconnectDialogReason);
             }
             // In chat view: query iced for focused widget. The
             // resolver picks between nickname tab-completion (when

@@ -84,32 +84,82 @@ impl NexusApp {
     /// future summon path that doesn't pre-fill from a tracker). Sets
     /// `connect_origin` to the current effective `active_panel`; the
     /// layout's modal-like gate then renders the form on top of
-    /// whatever else is visible. Cancel restores by clearing origin —
-    /// the underlying `active_panel` was never touched, so the prior
-    /// view comes back automatically.
+    /// whatever panel was visible. Cancel restores by clearing origin —
+    /// the underlying `active_panel` was never touched, so the panel
+    /// underneath comes back automatically. (The bookmark editor, if
+    /// it was open, was already dismissed by this handler — see the
+    /// cross-overlay block below — so it does NOT come back on cancel.)
     ///
     /// `clear()` runs first so a stale field / error / `is_connecting`
     /// flag from a previous form session can't bleed into the new
     /// summon. Mirrors `handle_open_connect_from_tracker`'s
     /// clear-then-fill discipline.
     ///
-    /// **Concurrent-state note:** the server-list "+" button lives in
-    /// the sidebar and is reachable while the bookmark editor is open.
-    /// Pressing "+" in that state sets `connect_origin` without
-    /// touching `bookmark_edit.mode`. Both states are simultaneously
-    /// set; the layout's gate ordering (`views/layout.rs`) renders the
-    /// connect form on top, and Cancel returns the user to the
-    /// bookmark editor (via the layout falling through).
+    /// **Cross-overlay dismissal:** if the bookmark editor is open
+    /// when "+" is pressed, the user's intent is "connect now, not
+    /// edit a bookmark." `dismiss_bookmark_edit` closes the editor
+    /// so the connection form is the only overlay visible. Same
+    /// principle as clicking a different toolbar button — the new
+    /// gesture wins.
     ///
     /// No-op if the form is already summoned (mirrors every other toggle
     /// handler's idempotent re-press behaviour).
     pub fn handle_open_connection_form(&mut self) -> Task<Message> {
-        if self.connection_form.connect_origin.is_some() {
-            return Task::none();
+        // No-op when the form is already visible. Two cases:
+        //   1. `connect_origin.is_some()` — form is summoned (overlay).
+        //   2. Disconnected default state — no active connection and no
+        //      panel: the layout falls through to render the connection
+        //      form as the home view. Re-pressing the "+" while typing
+        //      into that fallback would wipe in-flight data, same
+        //      footgun as the Bookmark Add re-press.
+        //
+        // Refocus the first field rather than returning `Task::none()`
+        // — clicking the "+" button itself moves iced focus off the
+        // currently-focused input, so a literal no-op leaves the
+        // cursor stranded on the button. We always send focus back
+        // to the first field rather than the last-tracked one
+        // because `focused_field` is only updated on Tab-cycle and
+        // per-field `*_changed` events; a click into a field
+        // doesn't touch it, so "restore last tracked" only works
+        // for Tab users. First-field is deterministic for everyone.
+        let already_visible = self.connection_form.connect_origin.is_some()
+            || (self.active_connection.is_none() && self.active_panel() == ActivePanel::None);
+        if already_visible {
+            return self.focus_field(InputId::ServerName);
         }
         self.connection_form.clear();
         self.connection_form.connect_origin = Some(self.active_panel());
-        Task::none()
+        // Close any other layout-level overlay so only the connection
+        // form is visible. `dismiss_bookmark_edit` only resets the
+        // bookmark editor's state — it doesn't touch the connection
+        // form fields we just set above.
+        self.dismiss_bookmark_edit();
+        // Auto-focus the first field — paired with `focused_field` via
+        // `focus_field` so tray-restore / Tab-cycle fallbacks land on
+        // the same id.
+        self.focus_field(InputId::ServerName)
+    }
+
+    /// Close the connection form overlay. Wipes any in-flight typing
+    /// and clears `connect_origin` so the layout falls back to whatever
+    /// was visible before the summon.
+    ///
+    /// Used by:
+    ///   - `set_active_panel` — every panel switch dismisses overlays.
+    ///   - `handle_successful_connection` — connection completed,
+    ///     overlay no longer relevant.
+    ///   - `handle_show_add_bookmark` / `handle_show_edit_bookmark` —
+    ///     bookmark editor is the new gesture; close the connection
+    ///     form so the editor is the only overlay visible.
+    ///
+    /// Does NOT touch `focused_field`. Callers know what's being
+    /// shown next (the panel they're switching to, the chat after a
+    /// connect, the bookmark editor they're opening) and set focus
+    /// via `focus_field` afterward. A blanket reset here would be
+    /// wrong — there's no single right target across all callers.
+    pub(crate) fn dismiss_connection_form(&mut self) {
+        self.connection_form.clear();
+        self.connection_form.connect_origin = None;
     }
 
     /// Cancel the Connection form: wipe input fields and clear origin.
@@ -130,44 +180,28 @@ impl NexusApp {
 
     // ==================== Connection Actions ====================
 
+    /// Validate the connection form (Enter when can_connect is false).
+    /// Sets the form-level error so the user sees what's wrong without
+    /// trying to connect. Mirrors `handle_validate_bookmark_edit`.
+    pub fn handle_validate_connection_form(&mut self) -> Task<Message> {
+        if let Some(error) = validate_connection_form(&self.connection_form, &self.config.bookmarks)
+        {
+            self.connection_form.error = Some(error);
+        }
+        Task::none()
+    }
+
     /// Handle connect button press
     pub fn handle_connect_pressed(&mut self) -> Task<Message> {
         if self.connection_form.is_connecting {
             return Task::none();
         }
 
-        // Run full field-shape validation (required fields, address
-        // shape, optional username/nickname shape, password length cap,
-        // fingerprint canonical form). Shared with the bookmark form
-        // via `server_form_errors` so the two stay in lockstep.
-        if let Err(error) = super::server_form_errors::translate_server_form_errors(
-            &self.connection_form.server_name,
-            &self.connection_form.server_address,
-            &self.connection_form.username,
-            &self.connection_form.nickname,
-            &self.connection_form.password,
-            &self.connection_form.fingerprint,
-        ) {
-            self.connection_form.error = Some(error);
-            return Task::none();
-        }
-
-        // If the user checked "Add bookmark", the connect path will
-        // auto-create a new bookmark on success. Validate the dedup
-        // contract upstream so a duplicate bookmark can't be created
-        // silently. On collision, the user can uncheck the box and
-        // retry — connecting and bookmarking are explicit user
-        // intents that shouldn't conflict.
-        if self.connection_form.add_bookmark
-            && let Some(error) = super::bookmarks::check_bookmark_dedup(
-                &self.connection_form.server_name,
-                &self.connection_form.server_address,
-                self.connection_form.port,
-                &self.connection_form.username,
-                &self.connection_form.nickname,
-                &self.config.bookmarks,
-                None,
-            )
+        // Field-shape + (optional) bookmark-dedup validation. Shared
+        // with `handle_validate_connection_form` so the
+        // validate-then-submit path produces the same error as
+        // actually connecting on an invalid form.
+        if let Some(error) = validate_connection_form(&self.connection_form, &self.config.bookmarks)
         {
             self.connection_form.error = Some(error);
             return Task::none();
@@ -294,6 +328,14 @@ impl NexusApp {
             // Update tray icon state (Windows/Linux only)
             #[cfg(not(target_os = "macos"))]
             self.update_tray_state();
+
+            // If we just landed on the disconnected default state (no
+            // active connection, no panel), the layout falls back to
+            // the connection form. Auto-focus its first field so the
+            // user can start typing a new connection immediately.
+            if self.active_connection.is_none() && self.active_panel() == ActivePanel::None {
+                return self.focus_field(InputId::ServerName);
+            }
         }
         Task::none()
     }
@@ -317,8 +359,11 @@ impl NexusApp {
     /// Use this for background events (e.g., incoming messages) that shouldn't
     /// close panels or steal focus from panel input fields.
     ///
-    /// If `focus` is true, also focuses the chat input field.
-    pub fn scroll_chat_if_visible(&self, focus: bool) -> Task<Message> {
+    /// If `focus` is true, also focuses the chat input field. Takes
+    /// `&mut self` so the focus path can route through `focus_field`,
+    /// keeping the in-memory `focused_field` tracker and the iced
+    /// focus op in lockstep.
+    pub fn scroll_chat_if_visible(&mut self, focus: bool) -> Task<Message> {
         // Don't scroll or steal focus if a panel is open
         if self.active_panel() != ActivePanel::None {
             return Task::none();
@@ -344,13 +389,11 @@ impl NexusApp {
             }
         };
 
+        let snap = operation::snap_to(ScrollableId::ChatMessages, scroll_offset);
         if focus {
-            Task::batch([
-                operation::snap_to(ScrollableId::ChatMessages, scroll_offset),
-                operation::focus(Id::from(InputId::ChatInput)),
-            ])
+            Task::batch([snap, self.focus_field(InputId::ChatInput)])
         } else {
-            operation::snap_to(ScrollableId::ChatMessages, scroll_offset)
+            snap
         }
     }
 
@@ -490,8 +533,7 @@ impl NexusApp {
         if focused == Id::from(InputId::ChatInput) {
             self.handle_chat_tab_complete()
         } else {
-            self.focused_field = InputId::ChatInput;
-            operation::focus(Id::from(InputId::ChatInput))
+            self.focus_field(InputId::ChatInput)
         }
     }
 
@@ -525,8 +567,7 @@ impl NexusApp {
 
         // If input is empty, just focus the field
         if conn.message_input.is_empty() {
-            self.focused_field = InputId::ChatInput;
-            return operation::focus(Id::from(InputId::ChatInput));
+            return self.focus_field(InputId::ChatInput);
         }
 
         // Determine completion type based on input context
@@ -558,8 +599,7 @@ impl NexusApp {
 
         // Case 3: Nickname completion - default
         if word.is_empty() {
-            self.focused_field = InputId::ChatInput;
-            return operation::focus(Id::from(InputId::ChatInput));
+            return self.focus_field(InputId::ChatInput);
         }
 
         if let Some(matches) = complete_nickname(word, &conn.online_users, |u| &u.nickname) {
@@ -751,8 +791,7 @@ impl NexusApp {
             InputId::Fingerprint,
         ];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
 
     // ==================== Private Helpers ====================
@@ -761,4 +800,44 @@ impl NexusApp {
     fn add_chat_error(&mut self, connection_id: usize, message: String) -> Task<Message> {
         self.add_active_tab_message(connection_id, ChatMessage::error(message))
     }
+}
+
+/// Run client-side validation on the connection form. Returns the first
+/// localized error encountered (field-shape error first, then bookmark
+/// dedup if "Add bookmark" is checked), or `None` if the form passes.
+///
+/// Shared between `handle_connect_pressed` and
+/// `handle_validate_connection_form` so the validate-then-submit path
+/// surfaces the same error the actual connect attempt would produce.
+fn validate_connection_form(
+    form: &crate::types::ConnectionFormState,
+    bookmarks: &[crate::types::ServerBookmark],
+) -> Option<String> {
+    if let Err(error) = super::server_form_errors::translate_server_form_errors(
+        &form.server_name,
+        &form.server_address,
+        &form.username,
+        &form.nickname,
+        &form.password,
+        &form.fingerprint,
+    ) {
+        return Some(error);
+    }
+    // If the user checked "Add bookmark", the connect path will
+    // auto-create a new bookmark on success. Validate the dedup
+    // contract upstream so a duplicate bookmark can't be created
+    // silently — on collision, surface the same error the bookmark
+    // form would.
+    if form.add_bookmark {
+        return super::bookmarks::check_bookmark_dedup(
+            &form.server_name,
+            &form.server_address,
+            form.port,
+            &form.username,
+            &form.nickname,
+            bookmarks,
+            None,
+        );
+    }
+    None
 }

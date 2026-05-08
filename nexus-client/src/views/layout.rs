@@ -296,11 +296,13 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
     // Middle panel: Main content (connection form, bookmark editor, or active server view)
     // Wrapped with separators for consistent appearance
     //
-    // Modal-like ordering: connection form on top of bookmark editor.
-    // If both are simultaneously summoned (bookmark edit + tracker click
-    // landing the connect form on the same frame), the connect form wins
-    // visually. Cancel from the connect form returns the user to whatever
-    // panel they were on — including, if applicable, the bookmark editor.
+    // Mutual-exclusion rule: opening either layout-level overlay
+    // dismisses the other (see `dismiss_connection_form` /
+    // `dismiss_bookmark_edit`), so both should never be summoned
+    // simultaneously in normal flow. The z-ordering below (connect
+    // form first) is defensive against a transient race where both
+    // states might be set in the same frame; the dismissal path
+    // makes that unreachable today.
     let main_content: Element<'_, Message> = {
         let content = if config.connection_form.connect_origin.is_some() {
             // Connection form was summoned from somewhere (tracker click,

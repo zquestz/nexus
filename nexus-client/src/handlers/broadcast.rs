@@ -1,7 +1,6 @@
 //! Broadcast message handlers
 
 use iced::Task;
-use iced::widget::{Id, operation};
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, MessageError};
 
@@ -39,7 +38,7 @@ impl NexusApp {
         }
 
         self.set_active_panel(ActivePanel::Broadcast);
-        operation::focus(Id::from(InputId::BroadcastMessage))
+        self.focus_field(InputId::BroadcastMessage)
     }
 
     // ==================== Form Handlers ====================

@@ -6,7 +6,7 @@
 //! double-submit guards.
 
 use iced::Task;
-use iced::widget::{Id, operation};
+use iced::widget::Id;
 use nexus_common::protocol::{ClientMessage, TrackerInfo};
 
 use crate::NexusApp;
@@ -30,8 +30,7 @@ impl NexusApp {
             return Task::none();
         };
         conn.tracker_management.enter_add_mode();
-        self.focused_field = InputId::AddTrackerName;
-        operation::focus(Id::from(InputId::AddTrackerName))
+        self.focus_field(InputId::AddTrackerName)
     }
 
     /// Refresh the tracker list (toolbar refresh button).
@@ -672,8 +671,7 @@ impl NexusApp {
             InputId::AddTrackerFingerprint,
         ];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
 
     /// Handle Tab pressed in the Edit Tracker form.
@@ -689,8 +687,7 @@ impl NexusApp {
             InputId::EditTrackerFingerprint,
         ];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
-        self.focused_field = next;
-        operation::focus(Id::from(next))
+        self.focus_field(next)
     }
 }
 

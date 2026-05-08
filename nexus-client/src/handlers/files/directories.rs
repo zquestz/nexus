@@ -1,7 +1,6 @@
 //! Directory creation handlers
 
 use iced::Task;
-use iced::widget::{Id, operation};
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self};
 
@@ -24,7 +23,7 @@ impl NexusApp {
             .open_new_directory_dialog();
 
         // Focus the name input field
-        operation::focus(Id::from(InputId::NewDirectoryName))
+        self.focus_field(InputId::NewDirectoryName)
     }
 
     /// Handle new directory name input change
@@ -49,6 +48,9 @@ impl NexusApp {
         tab.new_directory_name = name;
         tab.new_directory_error = validation_error;
 
+        // Track focus for tray-restore, matching the `*_changed`
+        // convention used by every other form's input handlers.
+        self.focused_field = InputId::NewDirectoryName;
         Task::none()
     }
 
