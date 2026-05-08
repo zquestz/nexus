@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: default
+  labels:
+    service: nexus-trackerd
+    version: 0.1.0
+  name: nexus-trackerd
+spec:
+  strategy:
+    type: Recreate
+  replicas: 1
+  selector:
+    matchLabels:
+      service: nexus-trackerd
+  template:
+    metadata:
+      labels:
+        service: nexus-trackerd
+    spec:
+      securityContext:
+        # Chown the persistent volume to gid 1000 on mount so the
+        # daemon (running as nexus-tracker:1000) can chmod its data
+        # directory to 0o700. Without this, a freshly-formatted ext4
+        # PD comes up root:root and the daemon's chmod fails EPERM.
+        fsGroup: 1000
+      containers:
+        - image: ghcr.io/zquestz/nexus-trackerd:latest
+          imagePullPolicy: Always
+          name: nexus-trackerd
+          env:
+            - name: NEXUS_TRACKER_WEBSOCKET
+              value: "1"
+          volumeMounts:
+            - mountPath: /home/nexus-tracker/.local/share/nexus-trackerd
+              name: nexus-tracker-data
+          resources:
+            requests:
+              memory: "64Mi"
+          ports:
+            - name: ssl
+              containerPort: 7510
+            - name: wss
+              containerPort: 7511
+      restartPolicy: Always
+      volumes:
+        - name: nexus-tracker-data
+          gcePersistentDisk:
+            pdName: nexus-tracker-data
+            fsType: ext4

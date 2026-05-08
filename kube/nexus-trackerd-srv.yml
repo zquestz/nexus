@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexus-trackerd
+  namespace: default
+  annotations:
+    cloud.google.com/network-tier: Standard
+spec:
+  ports:
+    - name: ssl
+      port: 7510
+      targetPort: 7510
+      protocol: TCP
+    - name: wss
+      port: 7511
+      targetPort: 7511
+      protocol: TCP
+  selector:
+    service: nexus-trackerd
+  type: LoadBalancer
+  loadBalancerIP: 35.209.186.110
+  externalTrafficPolicy: Local
