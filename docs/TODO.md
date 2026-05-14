@@ -287,8 +287,12 @@ The scheduler maintains two internal registries:
 - New **"Bandwidth"** section in the Server Info admin panel — present in **both** the Config display tab and the edit form.
 - Section order in Server Info: General (special, first) → Bandwidth (B) → Chat → … (alphabetical after General).
 - Fields: `Max outbound (Mbps)` (float, 0 = unlimited), `Scheduler chunk size (bytes)` (integer, default 8192).
-- User create + user edit forms: `Bandwidth weight` number field + "Inherit from group" checkbox (checkbox hidden if user has no group). Disabled for non-admins where the widget supports it.
-- Group create + group edit forms: `Bandwidth weight` number field, default 1. Disabled for non-admins where the widget supports it.
+- User create + user edit forms: directly **under the Group dropdown row**, add a `Bandwidth weight` number field plus an "Inherit from group" checkbox.
+  - No group assigned → "Inherit from group" hidden; the number field is the user's own weight (defaults to system default).
+  - Group assigned, Inherit checked → number field disabled, shows the group's weight greyed; save sends "inherit" (null override).
+  - Group assigned, Inherit unchecked → number field enabled, **bold when it differs from the group's weight** (same visual rule as the permission overrides above it).
+  - Disabled for non-admins where the widget supports it.
+- Group create + group edit forms: between **Shared** and **Permissions**, add a single `Bandwidth weight` number field, default 1. Disabled for non-admins where the widget supports it.
 - Not shown in user list, user info, user management table, or any non-edit surface.
 
 **Permissions**
