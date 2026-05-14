@@ -4,7 +4,7 @@ metadata:
   namespace: default
   labels:
     service: nexus-trackerd
-    version: 0.1.0
+    version: 0.1.1
   name: nexus-trackerd
 spec:
   strategy:

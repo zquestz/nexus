@@ -1,9 +1,7 @@
 //! Handler for BanCreate command
 
 use std::io;
-use std::net::IpAddr;
 
-use ipnet::IpNet;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
@@ -19,7 +17,7 @@ use super::{
 };
 use crate::constants::*;
 use crate::db::Permission;
-use crate::ip_rule_cache::parse_ip_or_cidr;
+use crate::ip_rule_cache::{canonicalize_target, parse_ip_or_cidr};
 use crate::users::UserManager;
 use crate::users::manager::DisconnectedSession;
 
@@ -134,7 +132,7 @@ where
     };
 
     // Resolve target to IP address(es) or CIDR range
-    let (targets_to_ban, nickname_annotation, is_cidr) = match resolve_target(
+    let (targets_to_ban, nickname_annotation, is_range) = match resolve_target(
         &target,
         &requesting_user.username,
         ctx,
@@ -174,7 +172,7 @@ where
 
     // Check if any of the IPs/ranges have an admin connected
     // (this applies to all bans - by nickname, IP, or CIDR)
-    if is_cidr {
+    if is_range {
         // For CIDR ranges, check if any admin's IP falls within the range
         if let Some(net) = parse_ip_or_cidr(&targets_to_ban[0])
             && ctx.user_manager.is_admin_connected_in_range(&net).await
@@ -207,7 +205,7 @@ where
     // Check if we'd be banning our own IP (always check, even when banning by nickname,
     // because the target user might share our IP)
     let our_ip = ctx.peer_addr.ip();
-    let would_ban_self = if is_cidr {
+    let would_ban_self = if is_range {
         // For CIDR, check if our IP falls within the range
         parse_ip_or_cidr(&targets_to_ban[0])
             .map(|net| net.contains(&our_ip))
@@ -269,7 +267,7 @@ where
     // Clean up voice sessions before disconnecting users
     // This ensures users are properly removed from voice and other participants are notified.
     // Note: Trusted IPs are skipped - they won't be disconnected.
-    if is_cidr {
+    if is_range {
         if let Some(net) = parse_ip_or_cidr(&banned_targets[0]) {
             cleanup_voice_for_range(
                 ctx.user_manager,
@@ -306,7 +304,7 @@ where
     // Disconnect affected sessions and broadcast UserDisconnected to other clients
     // Note: Trusted IPs are skipped - they should remain connected even if banned
     // because trust bypasses ban checks on reconnection.
-    if is_cidr {
+    if is_range {
         // For CIDR ranges, disconnect all sessions whose IP falls within the range
         if let Some(net) = parse_ip_or_cidr(&banned_targets[0]) {
             let disconnected = ctx
@@ -409,10 +407,14 @@ enum TargetResolutionError {
 
 /// Resolve a target string to IP address(es) or CIDR range
 ///
-/// Returns (list of targets, optional nickname annotation, is_cidr)
-/// - For nicknames: returns list of IPs, nickname, false
-/// - For single IP: returns list with one IP, None, false
-/// - For CIDR: returns list with the CIDR string, None, true
+/// IP / CIDR targets are returned in their canonical lowercase form via
+/// `canonicalize_target` so the stored / cached / response strings match
+/// regardless of admin-typed casing or host-bits-set CIDRs.
+///
+/// Returns (list of targets, optional nickname annotation, is_range)
+/// - For nicknames: returns list of IPs (each canonical from `peer_addr.ip().to_string()`), session nickname, false
+/// - For single IP: returns canonical bare-IP form, None, false
+/// - For CIDR: returns canonical CIDR (`network/prefix`), None, true
 async fn resolve_target<W>(
     target: &str,
     requesting_username: &str,
@@ -439,26 +441,10 @@ where
         return Ok((ips, Some(session.nickname.clone()), false));
     }
 
-    // Try parsing as CIDR range (e.g., "192.168.1.0/24")
-    if let Ok(net) = target.parse::<IpNet>() {
-        // Check if it's actually a range (prefix length < max)
-        let is_range = match net {
-            IpNet::V4(v4) => v4.prefix_len() < 32,
-            IpNet::V6(v6) => v6.prefix_len() < 128,
-        };
-
-        if is_range {
-            // Return the CIDR notation (normalized)
-            return Ok((vec![net.to_string()], None, true));
-        } else {
-            // It's a single IP written as /32 or /128, treat as single IP
-            return Ok((vec![net.addr().to_string()], None, false));
-        }
-    }
-
-    // Try parsing as single IP address
-    if let Ok(ip) = target.parse::<IpAddr>() {
-        return Ok((vec![ip.to_string()], None, false));
+    // Try parsing as IP or CIDR. `canonicalize_target` returns the precomputed
+    // `is_range` flag so we don't redo the prefix-length match here.
+    if let Some((canonical, _net, is_range)) = canonicalize_target(target) {
+        return Ok((vec![canonical], None, is_range));
     }
 
     // Target is neither online nickname, CIDR, nor valid IP
@@ -1552,5 +1538,95 @@ mod tests {
             rx3.try_recv().is_err(),
             "Transfer outside range should not receive ban signal"
         );
+    }
+
+    #[tokio::test]
+    async fn test_bancreate_cidr_host_bits_canonicalized() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Admin types a CIDR with host bits set; expect it to be stored as the
+        // zeroed network address so two admins can't end up with duplicate rows.
+        let result = handle_ban_create(
+            "192.168.1.5/24".to_string(),
+            None,
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        if let ServerMessage::BanCreateResponse { success, ips, .. } = response {
+            assert!(success);
+            let ips = ips.unwrap();
+            assert_eq!(ips, vec!["192.168.1.0/24".to_string()]);
+        } else {
+            panic!("Expected BanCreateResponse, got: {:?}", response);
+        }
+
+        // Re-banning the canonical form upserts the same row, not a new one
+        let result = handle_ban_create(
+            "192.168.1.0/24".to_string(),
+            None,
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let _ = read_server_message(&mut test_ctx).await;
+
+        let bans = test_ctx.db.bans.list_active_bans().await.unwrap();
+        assert_eq!(bans.len(), 1);
+        assert_eq!(bans[0].ip_address, "192.168.1.0/24");
+    }
+
+    #[tokio::test]
+    async fn test_bancreate_ipv6_uppercase_canonicalized() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Admin types an IPv6 address using uppercase hex
+        let result = handle_ban_create(
+            "2001:DB8::1".to_string(),
+            None,
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        if let ServerMessage::BanCreateResponse { success, ips, .. } = response {
+            assert!(success);
+            let ips = ips.unwrap();
+            assert_eq!(ips.len(), 1);
+            // Response echoes the canonical form, not what the admin typed
+            assert_eq!(ips[0], "2001:db8::1");
+        } else {
+            panic!("Expected BanCreateResponse, got: {:?}", response);
+        }
+
+        // Ban is stored under canonical form
+        assert!(test_ctx.db.bans.is_ip_banned("2001:db8::1").await.unwrap());
+
+        // Re-banning with the lowercase form upserts the same row, not a new one
+        let result = handle_ban_create(
+            "2001:db8::1".to_string(),
+            None,
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let _ = read_server_message(&mut test_ctx).await;
+
+        let bans = test_ctx.db.bans.list_active_bans().await.unwrap();
+        assert_eq!(bans.len(), 1);
     }
 }

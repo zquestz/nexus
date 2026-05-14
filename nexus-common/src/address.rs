@@ -11,7 +11,7 @@
 //! `is_multicast`, and the IPv6 equivalents) are used directly via
 //! `std`.
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use ipnet::{Ipv4Net, Ipv6Net};
 
@@ -267,6 +267,33 @@ pub fn resolve_host_for_connection(address: &str) -> Result<String, idna::Errors
         return Ok(bare.to_string());
     }
     idna::domain_to_ascii(bare)
+}
+
+// =============================================================================
+// IPv4-mapped IPv6 normalization
+// =============================================================================
+
+/// Fold an IPv4-mapped IPv6 address (`::ffff:0:0/96`) to its IPv4 form.
+///
+/// Returns the address unchanged for any other input. This is the canonical
+/// form used by both daemons so a single client appearing as IPv4 vs
+/// IPv6-mapped IPv4 is treated as one identity across rate limiters, ban
+/// caches, and string comparisons. Uses `std::net::Ipv6Addr::to_ipv4_mapped`,
+/// which checks the `::ffff:0:0/96` pattern directly.
+#[must_use]
+pub fn normalize_ip(ip: IpAddr) -> IpAddr {
+    match ip {
+        IpAddr::V4(_) => ip,
+        IpAddr::V6(v6) => v6.to_ipv4_mapped().map_or(ip, IpAddr::V4),
+    }
+}
+
+/// Apply [`normalize_ip`] to the IP portion of a `SocketAddr`, preserving the
+/// port. Intended to be called once just after `TcpListener::accept()` so
+/// every downstream consumer of the address sees a single canonical form.
+#[must_use]
+pub fn normalize_socket_addr(addr: SocketAddr) -> SocketAddr {
+    SocketAddr::new(normalize_ip(addr.ip()), addr.port())
 }
 
 #[cfg(test)]
@@ -668,5 +695,53 @@ mod tests {
             let direct: IpAddr = bare.parse().expect("bare form must parse");
             assert_eq!(normalized, direct, "case: {decorated}");
         }
+    }
+
+    #[test]
+    fn normalize_ip_folds_ipv4_mapped() {
+        let mapped: IpAddr = "::ffff:192.168.1.1".parse().unwrap();
+        let folded = normalize_ip(mapped);
+        assert_eq!(folded, IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
+
+        // Hex spelling of the same address normalizes identically (Rust's
+        // parser already collapses ::ffff:c0a8:101 → ::ffff:192.168.1.1).
+        let mapped_hex: IpAddr = "::ffff:c0a8:101".parse().unwrap();
+        assert_eq!(
+            normalize_ip(mapped_hex),
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1))
+        );
+
+        // Plain IPv4 is unchanged.
+        let v4: IpAddr = "10.0.0.1".parse().unwrap();
+        assert_eq!(normalize_ip(v4), v4);
+
+        // Non-mapped IPv6 is unchanged.
+        let v6: IpAddr = "2001:db8::1".parse().unwrap();
+        assert_eq!(normalize_ip(v6), v6);
+
+        // IPv4-mapped range starts at ::ffff:0:0/96; the all-zeros host inside
+        // it folds to 0.0.0.0.
+        let mapped_zero: IpAddr = "::ffff:0.0.0.0".parse().unwrap();
+        assert_eq!(normalize_ip(mapped_zero), IpAddr::V4(Ipv4Addr::UNSPECIFIED));
+
+        // An address that sits OUTSIDE `::ffff:0:0/96` — even one that shares
+        // the same lower 32 bits — must not fold. `::1:ffff:0:0` has a `1` bit
+        // 80 from the top, so it's outside the IPv4-mapped prefix.
+        let not_mapped: IpAddr = "::1:ffff:0:0".parse().unwrap();
+        assert_eq!(normalize_ip(not_mapped), not_mapped);
+    }
+
+    #[test]
+    fn normalize_socket_addr_preserves_port() {
+        let mapped: SocketAddr = "[::ffff:192.168.1.1]:7500".parse().unwrap();
+        let normalized = normalize_socket_addr(mapped);
+        assert_eq!(normalized.ip(), IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
+        assert_eq!(normalized.port(), 7500);
+
+        let v4: SocketAddr = "10.0.0.1:7500".parse().unwrap();
+        assert_eq!(normalize_socket_addr(v4), v4);
+
+        let v6: SocketAddr = "[2001:db8::1]:7500".parse().unwrap();
+        assert_eq!(normalize_socket_addr(v6), v6);
     }
 }

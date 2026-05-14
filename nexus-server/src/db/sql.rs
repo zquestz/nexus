@@ -501,11 +501,11 @@ pub const SQL_UPSERT_BAN: &str = "
 /// **Parameters:**
 /// 1. `ip_address: &str` - IP address to look up
 ///
-/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+/// **Returns:** `(ip_address, nickname, reason, created_by, created_at, expires_at)`
 ///
 /// **Note:** Returns the ban even if expired. Used internally after upsert.
 pub const SQL_SELECT_BAN_BY_IP_UNFILTERED: &str = "
-    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    SELECT ip_address, nickname, reason, created_by, created_at, expires_at
     FROM ip_bans
     WHERE ip_address = ?";
 
@@ -543,11 +543,11 @@ pub const SQL_COUNT_BANS_BY_NICKNAME: &str = "SELECT COUNT(*) FROM ip_bans WHERE
 /// **Parameters:**
 /// 1. `now: i64` - Current Unix timestamp
 ///
-/// **Returns:** Multiple rows of `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+/// **Returns:** Multiple rows of `(ip_address, nickname, reason, created_by, created_at, expires_at)`
 ///
 /// **Note:** Results are sorted by creation time (newest first).
 pub const SQL_SELECT_ACTIVE_BANS: &str = "
-    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    SELECT ip_address, nickname, reason, created_by, created_at, expires_at
     FROM ip_bans
     WHERE expires_at IS NULL OR expires_at > ?
     ORDER BY created_at DESC";
@@ -591,9 +591,9 @@ pub const SQL_UPSERT_TRUST: &str = "
 /// **Parameters:**
 /// 1. `ip_address: &str` - IP address to look up
 ///
-/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+/// **Returns:** `(ip_address, nickname, reason, created_by, created_at, expires_at)`
 pub const SQL_SELECT_TRUST_BY_IP_UNFILTERED: &str = "
-    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    SELECT ip_address, nickname, reason, created_by, created_at, expires_at
     FROM ip_trusted
     WHERE ip_address = ?";
 
@@ -626,10 +626,10 @@ pub const SQL_COUNT_TRUSTS_BY_NICKNAME: &str = "SELECT COUNT(*) FROM ip_trusted 
 /// **Parameters:**
 /// 1. `now: i64` - Current Unix timestamp
 ///
-/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+/// **Returns:** `(ip_address, nickname, reason, created_by, created_at, expires_at)`
 /// Results are sorted by creation time (newest first).
 pub const SQL_SELECT_ACTIVE_TRUSTS: &str = "
-    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    SELECT ip_address, nickname, reason, created_by, created_at, expires_at
     FROM ip_trusted
     WHERE expires_at IS NULL OR expires_at > ?
     ORDER BY created_at DESC";
@@ -863,14 +863,14 @@ pub const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
 /// 1. `ip_address: &str` - IP address to look up
 /// 2. `now: i64` - Current Unix timestamp
 ///
-/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+/// **Returns:** `(ip_address, nickname, reason, created_by, created_at, expires_at)`
 ///
 /// **Note:** Only returns bans that are either permanent (expires_at IS NULL)
 /// or not yet expired (expires_at > now).
 /// Used in tests only — production code uses the in-memory BanCache.
 #[cfg(test)]
 pub const SQL_SELECT_BAN_BY_IP: &str = "
-    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    SELECT ip_address, nickname, reason, created_by, created_at, expires_at
     FROM ip_bans
     WHERE ip_address = ?
     AND (expires_at IS NULL OR expires_at > ?)";
@@ -881,12 +881,12 @@ pub const SQL_SELECT_BAN_BY_IP: &str = "
 /// 1. `ip_address: &str` - IP address to look up
 /// 2. `now: i64` - Current Unix timestamp
 ///
-/// **Returns:** `(id, ip_address, nickname, reason, created_by, created_at, expires_at)`
+/// **Returns:** `(ip_address, nickname, reason, created_by, created_at, expires_at)`
 ///
 /// **Note:** Used in tests only — production code uses the in-memory TrustCache.
 #[cfg(test)]
 pub const SQL_SELECT_TRUST_BY_IP: &str = "
-    SELECT id, ip_address, nickname, reason, created_by, created_at, expires_at
+    SELECT ip_address, nickname, reason, created_by, created_at, expires_at
     FROM ip_trusted
     WHERE ip_address = ?
     AND (expires_at IS NULL OR expires_at > ?)";

@@ -1,7 +1,7 @@
 # Nexus BBS
 
 [![CI](https://github.com/zquestz/nexus/workflows/CI/badge.svg)](https://github.com/zquestz/nexus/actions)
-[![Version](https://img.shields.io/badge/version-0.8.3-blue.svg)](https://github.com/zquestz/nexus)
+[![Version](https://img.shields.io/badge/version-0.8.4-blue.svg)](https://github.com/zquestz/nexus)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-orange.svg)](https://www.rust-lang.org/)
 
@@ -50,7 +50,7 @@ Pre-built binaries are available on the [Releases](https://github.com/zquestz/ne
 
 ### Tracker
 
-The tracker is an optional discovery daemon that maintains a list of registered Nexus servers. It is versioned independently from the BBS server and client (current tracker version: **0.1.0**).
+The tracker is an optional discovery daemon that maintains a list of registered Nexus servers. It is versioned independently from the BBS server and client (current tracker version: **0.1.1**).
 
 | Platform | Download                                            |
 | -------- | --------------------------------------------------- |

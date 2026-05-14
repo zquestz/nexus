@@ -368,6 +368,16 @@ This allows updating the duration or reason of an existing trust entry.
 - Expired trust entries are cleaned up lazily (on next cache access after expiry)
 - Unlike bans, trusting yourself or admins is allowed (harmless operation)
 
+### Storage canonicalization
+
+The server canonicalizes inputs before storing them, so responses echo the canonical form (which may differ from what the admin typed):
+
+- **IPv6 case-fold:** `2001:DB8::1` → `2001:db8::1`
+- **CIDR host bits cleared bitwise** (any prefix length, not just octet-aligned): `192.168.1.5/24` → `192.168.1.0/24`, `192.168.1.250/28` → `192.168.1.240/28`, `10.20.30.45/19` → `10.20.0.0/19`. Same for IPv6: `2001:db8::5/127` → `2001:db8::4/127`.
+- **Single-host CIDR collapsed to bare IP:** `192.168.1.100/32` → `192.168.1.100`, `2001:db8::1/128` → `2001:db8::1`
+- **IPv4-mapped IPv6 folded to IPv4** when the CIDR fits entirely within the mapped `/96` (prefix ≥ 96): `::ffff:192.168.1.0/120` → `192.168.1.0/24`. Single hosts also fold: `::ffff:192.168.1.1` → `192.168.1.1`. CIDRs with prefix < 96 span non-mapped IPv6 too and stay as IPv6.
+- **Nickname annotation lowercased:** lookups by nickname are case-insensitive — admin typing `Alice` matches a trust annotated for `alice` and vice versa.
+
 ## Next Step
 
 See [16-errors.md](16-errors.md) for general error handling.

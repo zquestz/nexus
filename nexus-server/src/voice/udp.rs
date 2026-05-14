@@ -34,6 +34,7 @@ use tokio::sync::RwLock;
 
 use webrtc_util::conn::{Conn, Listener};
 
+use nexus_common::address::normalize_socket_addr;
 use nexus_common::voice::{
     MAX_VOICE_PACKET_SIZE, RelayedVoicePacket, VOICE_SESSION_TIMEOUT_SECS, VoiceMessageType,
     VoicePacket,
@@ -117,6 +118,10 @@ impl VoiceUdpServer {
         loop {
             match self.listener.accept().await {
                 Ok((conn, remote_addr)) => {
+                    // Fold IPv4-mapped IPv6 to IPv4 at the boundary so the
+                    // session-exists lookup keys match the form registered
+                    // via the TCP path (which also normalizes at accept).
+                    let remote_addr = normalize_socket_addr(remote_addr);
                     // Check IP ban before processing (trust bypasses ban)
                     let should_allow = {
                         let cache = self.ip_rule_cache.read().expect(ERR_IP_CACHE_POISONED);

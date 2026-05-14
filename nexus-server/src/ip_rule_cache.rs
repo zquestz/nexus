@@ -18,13 +18,17 @@
 //! }
 //! ```
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
+
+use nexus_common::address::normalize_ip;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use iprange::IpRange;
 
-use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
+use crate::constants::{
+    ERR_IPV4_PREFIX_FROM_MAPPED, ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK, ERR_TARGET_NOT_CANONICAL,
+};
 use crate::db::bans::BanRecord;
 use crate::db::trusts::TrustRecord;
 
@@ -111,8 +115,10 @@ impl IpRuleCache {
     ///
     /// This version handles lazy expiry rebuild internally.
     ///
-    /// IPv4-mapped IPv6 addresses (e.g., `::ffff:192.168.1.100`) are automatically
-    /// normalized to IPv4 before checking.
+    /// Accept-time `normalize_socket_addr` (in `main.rs`) is the primary funnel:
+    /// peer addresses are folded from IPv4-mapped IPv6 (`::ffff:1.2.3.4`) to
+    /// IPv4 before reaching the cache. This call repeats the fold as
+    /// defense-in-depth for any future caller that bypasses the accept path.
     pub fn should_allow(&mut self, ip: IpAddr) -> bool {
         self.maybe_rebuild_on_expiry();
         self.should_allow_read_only(ip)
@@ -127,8 +133,10 @@ impl IpRuleCache {
     /// This version does NOT check for expiry rebuild. Call `needs_rebuild()`
     /// separately and use `rebuild_if_needed()` if true.
     ///
-    /// IPv4-mapped IPv6 addresses (e.g., `::ffff:192.168.1.100`) are automatically
-    /// normalized to IPv4 before checking.
+    /// Accept-time `normalize_socket_addr` (in `main.rs`) is the primary funnel:
+    /// peer addresses are folded from IPv4-mapped IPv6 (`::ffff:1.2.3.4`) to
+    /// IPv4 before reaching the cache. This call repeats the fold as
+    /// defense-in-depth for any future caller that bypasses the accept path.
     pub fn should_allow_read_only(&self, ip: IpAddr) -> bool {
         if self.is_trusted_read_only(ip) {
             return true;
@@ -141,8 +149,10 @@ impl IpRuleCache {
     /// Returns true if the IP matches any non-expired trust entry.
     /// This version handles lazy expiry rebuild internally.
     ///
-    /// IPv4-mapped IPv6 addresses (e.g., `::ffff:192.168.1.100`) are automatically
-    /// normalized to IPv4 before checking.
+    /// Accept-time `normalize_socket_addr` (in `main.rs`) is the primary funnel:
+    /// peer addresses are folded from IPv4-mapped IPv6 (`::ffff:1.2.3.4`) to
+    /// IPv4 before reaching the cache. This call repeats the fold as
+    /// defense-in-depth for any future caller that bypasses the accept path.
     #[cfg(test)]
     pub fn is_trusted(&mut self, ip: IpAddr) -> bool {
         self.maybe_rebuild_on_expiry();
@@ -154,8 +164,10 @@ impl IpRuleCache {
     /// Returns true if the IP matches any non-expired trust entry.
     /// This version does NOT check for expiry rebuild.
     ///
-    /// IPv4-mapped IPv6 addresses (e.g., `::ffff:192.168.1.100`) are automatically
-    /// normalized to IPv4 before checking.
+    /// Accept-time `normalize_socket_addr` (in `main.rs`) is the primary funnel:
+    /// peer addresses are folded from IPv4-mapped IPv6 (`::ffff:1.2.3.4`) to
+    /// IPv4 before reaching the cache. This call repeats the fold as
+    /// defense-in-depth for any future caller that bypasses the accept path.
     pub fn is_trusted_read_only(&self, ip: IpAddr) -> bool {
         // Normalize IPv4-mapped IPv6 addresses to IPv4
         let ip = normalize_ip(ip);
@@ -171,8 +183,10 @@ impl IpRuleCache {
     /// Returns true if the IP matches any non-expired ban entry.
     /// This version handles lazy expiry rebuild internally.
     ///
-    /// IPv4-mapped IPv6 addresses (e.g., `::ffff:192.168.1.100`) are automatically
-    /// normalized to IPv4 before checking.
+    /// Accept-time `normalize_socket_addr` (in `main.rs`) is the primary funnel:
+    /// peer addresses are folded from IPv4-mapped IPv6 (`::ffff:1.2.3.4`) to
+    /// IPv4 before reaching the cache. This call repeats the fold as
+    /// defense-in-depth for any future caller that bypasses the accept path.
     #[cfg(test)]
     pub fn is_banned(&mut self, ip: IpAddr) -> bool {
         self.maybe_rebuild_on_expiry();
@@ -184,8 +198,10 @@ impl IpRuleCache {
     /// Returns true if the IP matches any non-expired ban entry.
     /// This version does NOT check for expiry rebuild.
     ///
-    /// IPv4-mapped IPv6 addresses (e.g., `::ffff:192.168.1.100`) are automatically
-    /// normalized to IPv4 before checking.
+    /// Accept-time `normalize_socket_addr` (in `main.rs`) is the primary funnel:
+    /// peer addresses are folded from IPv4-mapped IPv6 (`::ffff:1.2.3.4`) to
+    /// IPv4 before reaching the cache. This call repeats the fold as
+    /// defense-in-depth for any future caller that bypasses the accept path.
     pub fn is_banned_read_only(&self, ip: IpAddr) -> bool {
         // Normalize IPv4-mapped IPv6 addresses to IPv4
         let ip = normalize_ip(ip);
@@ -224,6 +240,7 @@ impl IpRuleCache {
     /// The `ip_or_cidr` should be a valid IP address or CIDR notation.
     /// Returns true if successfully added, false if parsing failed.
     pub fn add_trust(&mut self, ip_or_cidr: &str, expires_at: Option<i64>) -> bool {
+        assert_canonical_target(ip_or_cidr);
         let Some(net) = parse_ip_or_cidr(ip_or_cidr) else {
             return false;
         };
@@ -296,6 +313,7 @@ impl IpRuleCache {
     /// The `ip_or_cidr` should be a valid IP address or CIDR notation.
     /// Returns true if successfully added, false if parsing failed.
     pub fn add_ban(&mut self, ip_or_cidr: &str, expires_at: Option<i64>) -> bool {
+        assert_canonical_target(ip_or_cidr);
         let Some(net) = parse_ip_or_cidr(ip_or_cidr) else {
             return false;
         };
@@ -455,6 +473,15 @@ fn is_contained_by(entry_net: &IpNet, range_net: &IpNet) -> bool {
     }
 }
 
+/// Whether `net` represents a multi-host CIDR range (prefix below the max
+/// for its address family) rather than a single host.
+pub fn is_cidr_range(net: IpNet) -> bool {
+    match net {
+        IpNet::V4(v4) => v4.prefix_len() < 32,
+        IpNet::V6(v6) => v6.prefix_len() < 128,
+    }
+}
+
 /// Parse an IP address or CIDR notation into an IpNet
 ///
 /// Single IPs are converted to /32 (IPv4) or /128 (IPv6).
@@ -475,38 +502,76 @@ pub fn parse_ip_or_cidr(s: &str) -> Option<IpNet> {
     None
 }
 
-/// Normalize an IP address, converting IPv4-mapped IPv6 to IPv4
+/// Debug-assert that `ip_or_cidr` is already in canonical form (as produced
+/// by [`canonicalize_target`]).
 ///
-/// This ensures that rules for `192.168.1.100` also match connections that
-/// appear as `::ffff:192.168.1.100` (which can happen when the server binds
-/// to `::` and receives IPv4 connections).
-fn normalize_ip(ip: IpAddr) -> IpAddr {
-    match ip {
-        IpAddr::V6(v6) => {
-            if let Some(v4) = to_ipv4_mapped(&v6) {
-                IpAddr::V4(v4)
-            } else {
-                ip
-            }
-        }
-        _ => ip,
-    }
+/// The handler layer is the single funnel that canonicalizes user input before
+/// it reaches the cache or DB. This assertion documents that contract and
+/// fires in test/debug builds if a future caller forgets — the cache's
+/// `add_*` methods and the DB's `create_or_update_*` methods both rely on
+/// stored strings being canonical for dedup and round-trip removal to work.
+/// Zero cost in release builds.
+#[track_caller]
+pub fn assert_canonical_target(ip_or_cidr: &str) {
+    debug_assert_eq!(
+        canonicalize_target(ip_or_cidr)
+            .map(|(c, _, _)| c)
+            .as_deref(),
+        Some(ip_or_cidr),
+        "{}",
+        ERR_TARGET_NOT_CANONICAL,
+    );
 }
 
-/// Extract IPv4 address from an IPv4-mapped IPv6 address
+/// Canonicalize an IP or CIDR string and return the parsed `IpNet` plus a
+/// precomputed `is_range` flag.
 ///
-/// Returns `Some(Ipv4Addr)` if the address is in the `::ffff:0:0/96` range,
-/// `None` otherwise.
-fn to_ipv4_mapped(v6: &Ipv6Addr) -> Option<Ipv4Addr> {
-    let octets = v6.octets();
-    // Check for ::ffff:x.x.x.x pattern (bytes 0-9 are 0, bytes 10-11 are 0xff)
-    if octets[0..10] == [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] && octets[10] == 0xff && octets[11] == 0xff {
-        Some(Ipv4Addr::new(
-            octets[12], octets[13], octets[14], octets[15],
-        ))
+/// Returns `Some((canonical, net, is_range))` for any parseable IP or CIDR
+/// input:
+/// - Bare IPs and `/32` / `/128` collapse to a bare-IP canonical form.
+/// - True CIDR ranges keep their prefix and zero the host bits, so
+///   `192.168.1.5/24` canonicalizes to `192.168.1.0/24`.
+/// - IPv4-mapped IPv6 (`::ffff:0:0/96`) folds to IPv4 whenever the result is
+///   representable: `::ffff:192.168.1.0/120` → `192.168.1.0/24`. CIDRs with
+///   prefix < 96 span both mapped and non-mapped IPv6 space and stay as
+///   IPv6 (no clean IPv4 equivalent).
+///
+/// The returned `net` matches `canonical` by construction (no re-parsing
+/// required) and `is_range` matches [`is_cidr_range`]`(net)` — both are
+/// returned to save callers a redundant match.
+///
+/// Returns `None` for unparseable input. The canonical form is what gets
+/// stored in the `ip_bans` / `ip_trusted` tables and echoed back to admins.
+pub fn canonicalize_target(s: &str) -> Option<(String, IpNet, bool)> {
+    // `trunc` zeroes any host bits so the returned `IpNet` matches the
+    // canonical string by construction (no-op for /32 and /128).
+    let net = fold_ipv4_mapped(parse_ip_or_cidr(s)?).trunc();
+    let is_range = is_cidr_range(net);
+    let canonical = if is_range {
+        net.to_string()
     } else {
-        None
+        net.addr().to_string()
+    };
+    Some((canonical, net, is_range))
+}
+
+/// Fold an IPv4-mapped IPv6 `IpNet` (`::ffff:0:0/96`) to its IPv4 equivalent
+/// when the CIDR sits entirely within the mapped range (IPv6 prefix ≥ 96).
+///
+/// Returns the input unchanged when the address isn't IPv4-mapped, when the
+/// IPv6 prefix is < 96 (which would span both mapped and non-mapped IPv6
+/// space and has no clean IPv4 CIDR equivalent), or when the input is
+/// already IPv4. Bare IPs reach this via `parse_ip_or_cidr` wrapping them as
+/// `/128`, so the bare and CIDR cases share one fold path.
+fn fold_ipv4_mapped(net: IpNet) -> IpNet {
+    if let IpNet::V6(v6) = net
+        && v6.prefix_len() >= 96
+        && let Some(v4) = v6.addr().to_ipv4_mapped()
+    {
+        let v4_prefix = v6.prefix_len() - 96;
+        return IpNet::V4(Ipv4Net::new(v4, v4_prefix).expect(ERR_IPV4_PREFIX_FROM_MAPPED));
     }
+    net
 }
 
 /// Get current Unix timestamp in seconds
@@ -554,6 +619,98 @@ mod tests {
         assert!(parse_ip_or_cidr("not-an-ip").is_none());
         assert!(parse_ip_or_cidr("").is_none());
         assert!(parse_ip_or_cidr("192.168.1.0/33").is_none()); // Invalid prefix
+    }
+
+    #[test]
+    fn test_canonicalize_target_normalizes_shorthand() {
+        // (input, expected_canonical, expected_is_range)
+        let cases: &[(&str, &str, bool)] = &[
+            // IPv6 case fold
+            ("2001:DB8::1", "2001:db8::1", false),
+            // IPv6 leading-zero octet
+            ("2001:0db8::1", "2001:db8::1", false),
+            // IPv6 fully expanded with leading zeros
+            (
+                "2001:0db8:0000:0000:0000:0000:0000:0001",
+                "2001:db8::1",
+                false,
+            ),
+            // IPv4 CIDR with host bits set zeroes to the network address
+            ("192.168.1.5/24", "192.168.1.0/24", true),
+            // Non-octet-aligned IPv4 CIDR: host bits cleared bitwise
+            ("192.168.1.5/26", "192.168.1.0/26", true),
+            ("192.168.1.250/28", "192.168.1.240/28", true),
+            // /19 cuts into the 3rd octet
+            ("10.20.30.45/19", "10.20.0.0/19", true),
+            // IPv6 CIDR with host bits set zeroes likewise (and folds case)
+            ("2001:DB8::5/32", "2001:db8::/32", true),
+            // Non-hextet-aligned IPv6 CIDR
+            ("2001:db8::5/127", "2001:db8::4/127", true),
+            // /32 and /128 collapse to bare IP
+            ("192.168.1.100/32", "192.168.1.100", false),
+            ("2001:db8::1/128", "2001:db8::1", false),
+            // IPv4-mapped IPv6 (single host) folds to bare IPv4
+            ("::ffff:192.168.1.1", "192.168.1.1", false),
+            ("::ffff:c0a8:101", "192.168.1.1", false),
+            // IPv4-mapped IPv6 CIDR (prefix >= 96) folds to IPv4 CIDR
+            ("::ffff:192.168.1.0/120", "192.168.1.0/24", true),
+            // IPv4-mapped IPv6 CIDR with host bits set zeroes via network()
+            ("::ffff:192.168.1.5/120", "192.168.1.0/24", true),
+            // IPv4-mapped IPv6 CIDR at the /96 boundary covers all of IPv4
+            ("::ffff:0.0.0.0/96", "0.0.0.0/0", true),
+            // IPv4-mapped IPv6 CIDR with prefix < 96 spans non-mapped space —
+            // stays as IPv6 CIDR (no clean IPv4 equivalent)
+            ("::ffff:0:0/95", "::fffe:0:0/95", true),
+            // Plain IPv4 round-trips unchanged
+            ("10.0.0.1", "10.0.0.1", false),
+        ];
+        for &(input, expected, expected_is_range) in cases {
+            let Some((canonical, net, is_range)) = canonicalize_target(input) else {
+                panic!("canonicalize_target({input:?}) returned None");
+            };
+            assert_eq!(canonical, expected, "canonical for {input:?}");
+            assert_eq!(is_range, expected_is_range, "is_range for {input:?}");
+            // The returned IpNet must round-trip with the canonical string and
+            // agree with the standalone `is_cidr_range` helper.
+            assert_eq!(parse_ip_or_cidr(&canonical), Some(net), "net for {input:?}");
+            assert_eq!(is_cidr_range(net), is_range, "is_cidr_range for {input:?}");
+        }
+
+        // Unparseable inputs return None
+        for input in ["not-an-ip", "", "192.168.1.0/33", "192.168.1"] {
+            assert!(
+                canonicalize_target(input).is_none(),
+                "canonicalize_target({input:?}) should be None"
+            );
+        }
+    }
+
+    #[test]
+    fn test_assert_canonical_target_passes_for_canonical_inputs() {
+        // Smoke: assertion is silent for inputs that round-trip through
+        // canonicalize_target. No `#[should_panic]` — these must all pass.
+        assert_canonical_target("192.168.1.1");
+        assert_canonical_target("2001:db8::1");
+        assert_canonical_target("192.168.1.0/24");
+        assert_canonical_target("2001:db8::/32");
+    }
+
+    #[test]
+    #[should_panic(expected = "ip_or_cidr must be canonical")]
+    fn test_add_ban_panics_on_non_canonical_input() {
+        // Uppercase IPv6 isn't canonical; the cache trusts callers to have
+        // run input through `canonicalize_target` first. The debug_assert
+        // catches a future caller that skips the funnel.
+        let mut cache = IpRuleCache::new();
+        cache.add_ban("2001:DB8::1", None);
+    }
+
+    #[test]
+    #[should_panic(expected = "ip_or_cidr must be canonical")]
+    fn test_add_trust_panics_on_non_canonical_input() {
+        // CIDR with host bits set isn't canonical; same contract as add_ban.
+        let mut cache = IpRuleCache::new();
+        cache.add_trust("192.168.1.5/24", None);
     }
 
     // =========================================================================
@@ -902,7 +1059,6 @@ mod tests {
 
         let ban_records = vec![
             BanRecord {
-                id: 1,
                 ip_address: "192.168.1.100".to_string(),
                 nickname: None,
                 reason: None,
@@ -911,7 +1067,6 @@ mod tests {
                 expires_at: None,
             },
             BanRecord {
-                id: 2,
                 ip_address: "10.0.0.0/8".to_string(),
                 nickname: Some("spammer".to_string()),
                 reason: Some("flooding".to_string()),
@@ -922,7 +1077,6 @@ mod tests {
         ];
 
         let trust_records = vec![TrustRecord {
-            id: 1,
             ip_address: "172.16.0.0/12".to_string(),
             nickname: None,
             reason: Some("office network".to_string()),

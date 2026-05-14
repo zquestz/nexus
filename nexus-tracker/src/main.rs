@@ -8,6 +8,7 @@ use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
 
+use nexus_common::address::normalize_socket_addr;
 use nexus_common::logging::{self, LogInitParams};
 use nexus_common::tls;
 use nexus_tracker::{
@@ -396,6 +397,10 @@ async fn run_tcp_accepts(
     loop {
         match listener.accept().await {
             Ok((stream, peer_addr)) => {
+                // Fold IPv4-mapped IPv6 at the boundary so rate limiters and
+                // the registry key uniformly on the IPv4 form for dual-stack
+                // peers.
+                let peer_addr = normalize_socket_addr(peer_addr);
                 let acceptor = tls_acceptor.clone();
                 let fingerprint = fingerprint.clone();
                 let state = Arc::clone(&state);
@@ -437,6 +442,7 @@ async fn run_optional_ws_accepts(
     loop {
         match listener.accept().await {
             Ok((stream, peer_addr)) => {
+                let peer_addr = normalize_socket_addr(peer_addr);
                 let acceptor = tls_acceptor.clone();
                 let fingerprint = fingerprint.clone();
                 let state = Arc::clone(&state);

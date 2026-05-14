@@ -1,9 +1,7 @@
 //! Handler for BanDelete command
 
 use std::io;
-use std::net::IpAddr;
 
-use ipnet::IpNet;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
@@ -16,6 +14,7 @@ use super::{
 };
 use crate::constants::*;
 use crate::db::Permission;
+use crate::ip_rule_cache::canonicalize_target;
 
 /// Handle BanDelete command
 ///
@@ -102,7 +101,9 @@ where
                     success: true,
                     error: None,
                     ips: Some(deleted_ips),
-                    nickname: Some(target),
+                    // Echo the canonical lowercase form the DB stores, not the
+                    // admin-typed casing, for consistency with `ban_create`.
+                    nickname: Some(target.to_lowercase()),
                 };
                 return ctx.send_message(&response).await;
             }
@@ -119,101 +120,38 @@ where
         }
     }
 
-    // Try to parse as CIDR range
-    if let Ok(net) = target.parse::<IpNet>() {
-        // Check if it's actually a range (prefix length < max)
-        let is_range = match net {
-            IpNet::V4(v4) => v4.prefix_len() < 32,
-            IpNet::V6(v6) => v6.prefix_len() < 128,
+    // Canonicalize the IP/CIDR shape once and dispatch on `is_range`. Bare-IP
+    // and `/32` / `/128` inputs collapse to a single bare-IP form; CIDRs with
+    // host bits set zero them and uppercase-hex IPv6 folds to lowercase. The
+    // returned `net` and `is_range` are computed by `canonicalize_target` and
+    // used directly — no re-parse.
+    let Some((canonical, net, is_range)) = canonicalize_target(&target) else {
+        // Target is neither a nickname annotation, CIDR, nor valid IP
+        let response = ServerMessage::BanDeleteResponse {
+            success: false,
+            error: Some(err_ban_not_found(ctx.locale, &target)),
+            ips: None,
+            nickname: None,
         };
+        return ctx.send_message(&response).await;
+    };
 
-        if is_range {
-            // For CIDR ranges, delete the range itself AND any contained entries
-            let mut all_deleted = Vec::new();
+    if is_range {
+        // For CIDR ranges, delete the range itself AND any contained entries
+        let mut all_deleted = Vec::new();
 
-            // First, try to delete the exact CIDR entry
-            let cidr_str = net.to_string();
-            if let Ok(true) = ctx.db.bans.delete_ban_by_ip(&cidr_str).await {
-                all_deleted.push(cidr_str.clone());
-            }
-
-            // Then, delete any entries contained within this range
-            match ctx.db.bans.delete_bans_in_range(&net).await {
-                Ok(deleted) => {
-                    all_deleted.extend(deleted);
-                }
-                Err(e) => {
-                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, err = %e, "{}", LOG_BAN_DELETE_DB_ERROR_CIDR);
-                    let response = ServerMessage::BanDeleteResponse {
-                        success: false,
-                        error: Some(super::err_database(ctx.locale)),
-                        ips: None,
-                        nickname: None,
-                    };
-                    return ctx.send_message(&response).await;
-                }
-            }
-
-            if all_deleted.is_empty() {
-                let response = ServerMessage::BanDeleteResponse {
-                    success: false,
-                    error: Some(err_ban_not_found(ctx.locale, &target)),
-                    ips: None,
-                    nickname: None,
-                };
-                return ctx.send_message(&response).await;
-            }
-
-            // Update cache - remove the CIDR and all contained entries
-            {
-                let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
-                cache.remove_bans_contained_by(&net.to_string());
-                // Also remove the exact CIDR entry if it existed
-                cache.remove_ban(&net.to_string());
-            }
-
-            info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_BAN_DELETE_SUCCESS);
-            let response = ServerMessage::BanDeleteResponse {
-                success: true,
-                error: None,
-                ips: Some(all_deleted),
-                nickname: None,
-            };
-            return ctx.send_message(&response).await;
+        // First, try to delete the exact CIDR entry
+        if let Ok(true) = ctx.db.bans.delete_ban_by_ip(&canonical).await {
+            all_deleted.push(canonical.clone());
         }
-    }
 
-    // Try to parse as single IP address
-    if target.parse::<IpAddr>().is_ok() {
-        match ctx.db.bans.delete_ban_by_ip(&target).await {
-            Ok(true) => {
-                // Update cache
-                {
-                    let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
-                    cache.remove_ban(&target);
-                }
-
-                info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_BAN_DELETE_SUCCESS);
-                let response = ServerMessage::BanDeleteResponse {
-                    success: true,
-                    error: None,
-                    ips: Some(vec![target]),
-                    nickname: None,
-                };
-                return ctx.send_message(&response).await;
-            }
-            Ok(false) => {
-                // No ban found for this IP
-                let response = ServerMessage::BanDeleteResponse {
-                    success: false,
-                    error: Some(err_ban_not_found(ctx.locale, &target)),
-                    ips: None,
-                    nickname: None,
-                };
-                return ctx.send_message(&response).await;
+        // Then, delete any entries contained within this range
+        match ctx.db.bans.delete_bans_in_range(&net).await {
+            Ok(deleted) => {
+                all_deleted.extend(deleted);
             }
             Err(e) => {
-                error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, err = %e, "{}", LOG_BAN_DELETE_DB_ERROR_IP);
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, err = %e, "{}", LOG_BAN_DELETE_DB_ERROR_CIDR);
                 let response = ServerMessage::BanDeleteResponse {
                     success: false,
                     error: Some(super::err_database(ctx.locale)),
@@ -223,16 +161,74 @@ where
                 return ctx.send_message(&response).await;
             }
         }
+
+        if all_deleted.is_empty() {
+            let response = ServerMessage::BanDeleteResponse {
+                success: false,
+                error: Some(err_ban_not_found(ctx.locale, &target)),
+                ips: None,
+                nickname: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+
+        // Update cache - remove the CIDR and all contained entries
+        {
+            let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
+            cache.remove_bans_contained_by(&canonical);
+            // Also remove the exact CIDR entry if it existed
+            cache.remove_ban(&canonical);
+        }
+
+        info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_BAN_DELETE_SUCCESS);
+        let response = ServerMessage::BanDeleteResponse {
+            success: true,
+            error: None,
+            ips: Some(all_deleted),
+            nickname: None,
+        };
+        return ctx.send_message(&response).await;
     }
 
-    // Target is neither a nickname with bans, CIDR, nor valid IP
-    let response = ServerMessage::BanDeleteResponse {
-        success: false,
-        error: Some(err_ban_not_found(ctx.locale, &target)),
-        ips: None,
-        nickname: None,
-    };
-    ctx.send_message(&response).await
+    // Single-IP branch (canonical is a bare IP)
+    match ctx.db.bans.delete_ban_by_ip(&canonical).await {
+        Ok(true) => {
+            // Update cache
+            {
+                let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
+                cache.remove_ban(&canonical);
+            }
+
+            info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_BAN_DELETE_SUCCESS);
+            let response = ServerMessage::BanDeleteResponse {
+                success: true,
+                error: None,
+                ips: Some(vec![canonical]),
+                nickname: None,
+            };
+            ctx.send_message(&response).await
+        }
+        Ok(false) => {
+            // No ban found for this IP
+            let response = ServerMessage::BanDeleteResponse {
+                success: false,
+                error: Some(err_ban_not_found(ctx.locale, &target)),
+                ips: None,
+                nickname: None,
+            };
+            ctx.send_message(&response).await
+        }
+        Err(e) => {
+            error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, err = %e, "{}", LOG_BAN_DELETE_DB_ERROR_IP);
+            let response = ServerMessage::BanDeleteResponse {
+                success: false,
+                error: Some(super::err_database(ctx.locale)),
+                ips: None,
+                nickname: None,
+            };
+            ctx.send_message(&response).await
+        }
+    }
 }
 
 #[cfg(test)]
@@ -546,5 +542,121 @@ mod tests {
         } else {
             panic!("Expected BanDeleteResponse, got: {:?}", response);
         }
+    }
+
+    #[tokio::test]
+    async fn test_bandelete_cidr_with_host_bits_finds_canonical_row() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Ban stored in canonical CIDR form (network address, zeroed host bits)
+        test_ctx
+            .db
+            .bans
+            .create_or_update_ban("192.168.1.0/24", None, None, "admin", None)
+            .await
+            .unwrap();
+        {
+            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            cache.add_ban("192.168.1.0/24", None);
+        }
+
+        // Admin types the CIDR with host bits set
+        let result = handle_ban_delete(
+            "192.168.1.5/24".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        if let ServerMessage::BanDeleteResponse { success, ips, .. } = response {
+            assert!(success);
+            let ips = ips.unwrap();
+            // Exact-match canonical delete path returns the canonical CIDR
+            assert!(ips.contains(&"192.168.1.0/24".to_string()));
+        } else {
+            panic!("Expected BanDeleteResponse, got: {:?}", response);
+        }
+
+        assert!(!test_ctx.db.bans.ban_exists("192.168.1.0/24").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_bandelete_slash32_finds_bare_ip() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Ban stored as a bare IPv4 (the canonical form a /32 collapses to)
+        test_ctx
+            .db
+            .bans
+            .create_or_update_ban("192.168.1.100", None, None, "admin", None)
+            .await
+            .unwrap();
+        {
+            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            cache.add_ban("192.168.1.100", None);
+        }
+
+        // Admin types the /32 form — should still find and delete the bare-IP row
+        let result = handle_ban_delete(
+            "192.168.1.100/32".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        if let ServerMessage::BanDeleteResponse { success, ips, .. } = response {
+            assert!(success);
+            let ips = ips.unwrap();
+            assert_eq!(ips, vec!["192.168.1.100".to_string()]);
+        } else {
+            panic!("Expected BanDeleteResponse, got: {:?}", response);
+        }
+
+        assert!(!test_ctx.db.bans.ban_exists("192.168.1.100").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_bandelete_finds_ban_with_uppercase_input() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Ban stored in canonical lowercase form
+        test_ctx
+            .db
+            .bans
+            .create_or_update_ban("2001:db8::1", None, None, "admin", None)
+            .await
+            .unwrap();
+        {
+            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            cache.add_ban("2001:db8::1", None);
+        }
+
+        // Admin types the uppercase form to delete it
+        let result = handle_ban_delete(
+            "2001:DB8::1".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        if let ServerMessage::BanDeleteResponse { success, ips, .. } = response {
+            assert!(success);
+            let ips = ips.unwrap();
+            assert_eq!(ips, vec!["2001:db8::1".to_string()]);
+        } else {
+            panic!("Expected BanDeleteResponse, got: {:?}", response);
+        }
+
+        assert!(!test_ctx.db.bans.ban_exists("2001:db8::1").await.unwrap());
     }
 }

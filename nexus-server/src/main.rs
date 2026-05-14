@@ -38,6 +38,7 @@ use constants::*;
 use files::FileIndex;
 use flood::FloodConfig;
 use ip_rule_cache::IpRuleCache;
+use nexus_common::address::normalize_socket_addr;
 use nexus_common::logging::{self, LogInitParams, LogLevel};
 use transfers::{TransferParams, TransferRegistry};
 use users::UserManager;
@@ -391,6 +392,10 @@ async fn main() {
             loop {
                 match listener.accept().await {
                     Ok((socket, peer_addr)) => {
+                        // Fold IPv4-mapped IPv6 to IPv4 once at the boundary so
+                        // everything downstream (session storage, peer_addr
+                        // comparisons, connection tracker, cache) sees one form.
+                        let peer_addr = normalize_socket_addr(peer_addr);
                         // Check connection limit before accepting
                         let connection_guard = match connection_tracker.try_acquire(peer_addr.ip()) {
                             Some(guard) => guard,
@@ -475,6 +480,7 @@ async fn main() {
             loop {
                 match transfer_listener.accept().await {
                     Ok((socket, peer_addr)) => {
+                        let peer_addr = normalize_socket_addr(peer_addr);
                         // Check transfer connection limit before accepting
                         let transfer_guard = match connection_tracker.try_acquire_transfer(peer_addr.ip()) {
                             Some(guard) => guard,
@@ -553,6 +559,7 @@ async fn main() {
             loop {
                 match ws_listener.accept().await {
                     Ok((socket, peer_addr)) => {
+                        let peer_addr = normalize_socket_addr(peer_addr);
                         // Check connection limit before accepting (same limit as TCP)
                         let connection_guard = match connection_tracker.try_acquire(peer_addr.ip()) {
                             Some(guard) => guard,
@@ -631,6 +638,7 @@ async fn main() {
             loop {
                 match ws_transfer_listener.accept().await {
                     Ok((socket, peer_addr)) => {
+                        let peer_addr = normalize_socket_addr(peer_addr);
                         // Check transfer connection limit before accepting (same limit as TCP)
                         let transfer_guard = match connection_tracker.try_acquire_transfer(peer_addr.ip()) {
                             Some(guard) => guard,

@@ -57,7 +57,7 @@ Most installs need to touch at least these fields:
 - **`metadata.namespace`** — defaults to `default`; change in both files.
 - **`spec.template.spec.containers[0].image`** — defaults to
   `ghcr.io/zquestz/nexus-trackerd:latest`. Pin a specific version
-  (`:0.1.0`) for reproducible deploys.
+  (`:0.1.1`) for reproducible deploys.
 - **`loadBalancerIP`** in the Service — set to your reserved address or
   delete the line.
 - **Volume backend** — the deployment uses `gcePersistentDisk` (GKE

@@ -149,7 +149,7 @@ used for the initial registration and every refresh.
 | `address`        | string | No       | Public hostname or IP; tracker uses the connecting IP if omitted (see below) |
 | `port`           | u16    | Yes      | BBS TCP port (must be non-zero)                                              |
 | `websocket_port` | u16    | No       | BBS WebSocket port (only if `--websocket` is enabled; must be non-zero)      |
-| `version`        | string | Yes      | Server software version, valid semver (e.g., `"0.8.3"`)                      |
+| `version`        | string | Yes      | Server software version, valid semver (e.g., `"0.8.4"`)                      |
 | `fingerprint`    | string | Yes      | TLS cert fingerprint, canonical form (see below)                             |
 | `user_count`     | u32    | Yes      | Distinct online users (matches the user list)                                |
 | `allows_guest`   | bool   | Yes      | Whether the guest account is enabled                                         |
@@ -319,7 +319,7 @@ ranges of their declared types.
   "address": "bbs.example.com",
   "port": 7500,
   "websocket_port": 7502,
-  "version": "0.8.3",
+  "version": "0.8.4",
   "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
   "user_count": 12,
   "allows_guest": true
@@ -459,7 +459,7 @@ filter locally and may resort for views other than the default name ordering
 ```json
 {
   "locale": "en",
-  "version": "0.8.3"
+  "version": "0.8.4"
 }
 ```
 
@@ -546,7 +546,7 @@ registration omitted `address`, the connecting-IP substitution.
 | `address`        | string | Yes      | Public hostname or IP (validated registrant input, or peer-IP substitution) |
 | `port`           | u16    | Yes      | BBS TCP port                                                                |
 | `websocket_port` | u16    | No       | BBS WebSocket port (if the server has `--websocket`)                        |
-| `version`        | string | Yes      | Server software version (e.g., `"0.8.3"`)                                   |
+| `version`        | string | Yes      | Server software version (e.g., `"0.8.4"`)                                   |
 | `fingerprint`    | string | Yes      | TLS cert fingerprint, canonical form                                        |
 | `user_count`     | u32    | Yes      | Distinct online users (matches the user list)                               |
 | `allows_guest`   | bool   | Yes      | Whether the guest account is enabled                                        |
@@ -567,7 +567,7 @@ first connect to a server discovered via a tracker.
       "address": "bbs.example.com",
       "port": 7500,
       "websocket_port": 7502,
-      "version": "0.8.3",
+      "version": "0.8.4",
       "fingerprint": "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99",
       "user_count": 12,
       "allows_guest": true
@@ -576,7 +576,7 @@ first connect to a server discovered via a tracker.
       "name": "Other BBS",
       "address": "other.example.com",
       "port": 7500,
-      "version": "0.8.3",
+      "version": "0.8.4",
       "fingerprint": "11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00",
       "user_count": 3,
       "allows_guest": false

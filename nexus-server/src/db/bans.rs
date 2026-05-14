@@ -8,15 +8,23 @@ use sqlx::sqlite::SqlitePool;
 
 use crate::constants::{ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK, ERR_VALID_IP_PREFIX};
 use crate::db::sql;
+use crate::ip_rule_cache::assert_canonical_target;
 
 /// A ban record from the database
 #[derive(Debug, Clone)]
 pub struct BanRecord {
-    #[allow(dead_code)]
-    pub id: i64,
+    /// Canonical lowercase IP address or CIDR (network address with host bits
+    /// zeroed for ranges). Produced by `canonicalize_target` at the handler
+    /// boundary before storage.
     pub ip_address: String,
+    /// Optional nickname annotation. Stored in canonical lowercase by
+    /// `create_or_update_ban` so case-insensitive lookups
+    /// (`has_bans_for_nickname`, `delete_bans_by_nickname`) round-trip
+    /// regardless of admin-typed casing.
     pub nickname: Option<String>,
     pub reason: Option<String>,
+    /// Admin username, preserved as-typed. Display-only; never used in
+    /// `WHERE` predicates.
     pub created_by: String,
     pub created_at: i64,
     pub expires_at: Option<i64>,
@@ -24,7 +32,6 @@ pub struct BanRecord {
 
 /// Row type for ban queries
 type BanRow = (
-    i64,
     String,
     Option<String>,
     Option<String>,
@@ -36,13 +43,12 @@ type BanRow = (
 impl From<BanRow> for BanRecord {
     fn from(row: BanRow) -> Self {
         Self {
-            id: row.0,
-            ip_address: row.1,
-            nickname: row.2,
-            reason: row.3,
-            created_by: row.4,
-            created_at: row.5,
-            expires_at: row.6,
+            ip_address: row.0,
+            nickname: row.1,
+            reason: row.2,
+            created_by: row.3,
+            created_at: row.4,
+            expires_at: row.5,
         }
     }
 }
@@ -69,7 +75,12 @@ impl BanDb {
 
     /// Create or update an IP ban (upsert)
     ///
-    /// If the IP already exists, all fields are updated.
+    /// If the IP already exists, all fields are updated. The `nickname`
+    /// annotation is lowercased to its canonical form so case-insensitive
+    /// lookups (`has_bans_for_nickname`, `delete_bans_by_nickname`)
+    /// round-trip cleanly. `created_by` is preserved as-typed since it's a
+    /// display-only field.
+    ///
     /// Returns the created/updated ban record.
     pub async fn create_or_update_ban(
         &self,
@@ -79,11 +90,13 @@ impl BanDb {
         created_by: &str,
         expires_at: Option<i64>,
     ) -> Result<BanRecord, sqlx::Error> {
+        assert_canonical_target(ip_address);
         let now = Self::now();
+        let nickname_lower = nickname.map(str::to_lowercase);
 
         sqlx::query(sql::SQL_UPSERT_BAN)
             .bind(ip_address)
-            .bind(nickname)
+            .bind(nickname_lower.as_deref())
             .bind(reason)
             .bind(created_by)
             .bind(now)
@@ -170,14 +183,18 @@ impl BanDb {
 
     /// Delete all bans with a given nickname annotation
     ///
-    /// Returns the list of IP addresses that were unbanned.
+    /// Lookup is case-insensitive: the supplied nickname is lowercased to
+    /// match the stored form. Returns the list of IP addresses that were
+    /// unbanned.
     pub async fn delete_bans_by_nickname(
         &self,
         nickname: &str,
     ) -> Result<Vec<String>, sqlx::Error> {
+        let nickname_lower = nickname.to_lowercase();
+
         // First, get the IPs we're about to delete
         let rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_IPS_BY_NICKNAME)
-            .bind(nickname)
+            .bind(&nickname_lower)
             .fetch_all(&self.pool)
             .await?;
 
@@ -186,7 +203,7 @@ impl BanDb {
         if !ips.is_empty() {
             // Delete the bans
             sqlx::query(sql::SQL_DELETE_BANS_BY_NICKNAME)
-                .bind(nickname)
+                .bind(&nickname_lower)
                 .execute(&self.pool)
                 .await?;
         }
@@ -195,9 +212,12 @@ impl BanDb {
     }
 
     /// Check if any bans exist with a given nickname annotation
+    ///
+    /// Lookup is case-insensitive: the supplied nickname is lowercased to
+    /// match the stored form.
     pub async fn has_bans_for_nickname(&self, nickname: &str) -> Result<bool, sqlx::Error> {
         let row: (i64,) = sqlx::query_as(sql::SQL_COUNT_BANS_BY_NICKNAME)
-            .bind(nickname)
+            .bind(nickname.to_lowercase())
             .fetch_one(&self.pool)
             .await?;
 
@@ -468,6 +488,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_bans_by_nickname_is_case_insensitive() {
+        let pool = create_test_db().await;
+        let db = BanDb::new(pool);
+
+        // Mixed-case nickname at write time is lowered to canonical form
+        let record = db
+            .create_or_update_ban("192.168.1.100", Some("Spammer"), None, "Admin", None)
+            .await
+            .expect("create ban");
+        assert_eq!(record.nickname, Some("spammer".to_string()));
+        // created_by is display-only; preserved as-typed
+        assert_eq!(record.created_by, "Admin");
+
+        // Lookup / delete with arbitrary case still finds the row
+        assert!(db.has_bans_for_nickname("spammer").await.unwrap());
+        assert!(db.has_bans_for_nickname("SPAMMER").await.unwrap());
+
+        let deleted = db.delete_bans_by_nickname("Spammer").await.unwrap();
+        assert_eq!(deleted, vec!["192.168.1.100".to_string()]);
+        assert!(!db.has_bans_for_nickname("spammer").await.unwrap());
+    }
+
+    #[tokio::test]
     async fn test_list_active_bans() {
         let pool = create_test_db().await;
         let db = BanDb::new(pool);
@@ -523,5 +566,18 @@ mod tests {
         // Permanent and future bans should still exist
         let bans = db.list_active_bans().await.unwrap();
         assert_eq!(bans.len(), 2);
+    }
+
+    #[tokio::test]
+    #[should_panic(expected = "ip_or_cidr must be canonical")]
+    async fn test_create_or_update_ban_panics_on_non_canonical_ip() {
+        // Handler is the canonicalization funnel; the DB trusts its callers
+        // to pre-canonicalize. The debug_assert catches a future caller that
+        // skips that funnel.
+        let pool = create_test_db().await;
+        let db = BanDb::new(pool);
+        let _ = db
+            .create_or_update_ban("2001:DB8::1", None, None, "admin", None)
+            .await;
     }
 }

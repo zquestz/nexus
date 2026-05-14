@@ -28,6 +28,7 @@ use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
 use crate::users::user::NewSessionParams;
 use crate::voice::VoiceRegistry;
+use nexus_common::address::normalize_socket_addr;
 
 /// Default locale for tests
 pub const DEFAULT_TEST_LOCALE: &str = "en";
@@ -185,8 +186,11 @@ pub async fn create_test_context() -> TestContext {
     // Connect client
     let client_handle = tokio::spawn(async move { TcpStream::connect(addr).await.unwrap() });
 
-    // Accept connection
+    // Accept connection. Mirror the production accept loops: fold any
+    // IPv4-mapped IPv6 peer_addr at the boundary so session state in tests
+    // matches what production can produce.
     let (server_stream, peer_addr) = listener.accept().await.unwrap();
+    let peer_addr = normalize_socket_addr(peer_addr);
     let (_read_half, write_half) = server_stream.into_split();
     let frame_writer = FrameWriter::new(write_half);
 
@@ -304,8 +308,11 @@ pub async fn login_user_from_ip(
         .await
         .unwrap();
 
-    // Parse the IP into a SocketAddr
+    // Parse the IP into a SocketAddr, then fold IPv4-mapped IPv6 just like
+    // production's accept loops do. This keeps test sessions in states that
+    // production can actually produce.
     let addr: SocketAddr = format!("{}:12345", ip).parse().expect("valid IP address");
+    let addr = normalize_socket_addr(addr);
 
     // Add user to UserManager with custom address
     test_ctx

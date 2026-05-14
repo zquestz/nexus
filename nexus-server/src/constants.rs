@@ -501,6 +501,20 @@ pub const ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK: &str =
 /// constructing the prefix from a known-valid IP.
 pub const ERR_VALID_IP_PREFIX: &str = "valid prefix";
 
+/// Debug-assert message: a string reached the cache or DB write boundary
+/// without being canonicalized via `canonicalize_target` first. The handler
+/// layer is the single funnel for IP canonicalization; this assertion
+/// catches future callers that skip it in test/debug builds.
+pub const ERR_TARGET_NOT_CANONICAL: &str =
+    "ip_or_cidr must be canonical (use canonicalize_target at the handler boundary)";
+
+/// Panic message: `Ipv4Net::new(addr, prefix)` failed when constructing a
+/// folded IPv4 CIDR from an IPv4-mapped IPv6 CIDR. Used by
+/// `ip_rule_cache::fold_ipv4_mapped`, which only ever passes a prefix in
+/// `[0, 32]` (derived from an IPv6 prefix in `[96, 128]`), so this is
+/// structurally impossible.
+pub const ERR_IPV4_PREFIX_FROM_MAPPED: &str = "ipv6 prefix - 96 yields IPv4 prefix in [0, 32]";
+
 /// Panic message: a code path expected the `sessions` collection to be
 /// non-empty (e.g., we just confirmed the user has at least one active
 /// session in the line above). Used by `users::manager::helpers`.

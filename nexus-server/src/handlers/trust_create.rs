@@ -1,7 +1,6 @@
 //! Handler for TrustCreate command
 
 use std::io;
-use std::net::IpAddr;
 
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
@@ -18,7 +17,7 @@ use super::{
     err_trust_invalid_target,
 };
 use crate::db::Permission;
-use crate::ip_rule_cache::parse_ip_or_cidr;
+use crate::ip_rule_cache::canonicalize_target;
 use crate::users::UserManager;
 
 /// Handle TrustCreate command
@@ -131,8 +130,10 @@ where
         }
     };
 
-    // Resolve target to IP address(es) or CIDR range
-    let (targets_to_trust, nickname_annotation, _is_cidr) =
+    // Resolve target to IP address(es) or CIDR range. The third tuple field is
+    // is_range, which the trust path doesn't branch on (unlike ban_create), so
+    // it's discarded.
+    let (targets_to_trust, nickname_annotation, _) =
         match resolve_target(&target, ctx.user_manager).await {
             Ok(result) => result,
             Err(TargetResolutionError::InvalidTarget) => {
@@ -203,29 +204,26 @@ enum TargetResolutionError {
 
 /// Resolve a target string to IP addresses
 ///
-/// Returns (IPs to trust, optional nickname annotation, is_cidr)
+/// Returns (IPs to trust, optional nickname annotation, is_range).
+/// IP / CIDR targets are returned in their canonical lowercase form so that
+/// `2001:DB8::1` and `2001:db8::1` cannot create separate rows pointing at
+/// the same host. For online-nickname targets, the annotation is the
+/// session's canonical nickname (not the admin-typed form), matching
+/// `ban_create::resolve_target` so admin response display stays consistent.
 async fn resolve_target(
     target: &str,
     user_manager: &UserManager,
 ) -> Result<(Vec<String>, Option<String>, bool), TargetResolutionError> {
     // First, check if target is an online user's nickname
-    let ips = user_manager.get_ips_for_nickname(target).await;
-    if !ips.is_empty() {
-        return Ok((ips, Some(target.to_string()), false));
+    if let Some(session) = user_manager.get_session_by_nickname(target).await {
+        let ips = user_manager.get_ips_for_nickname(target).await;
+        return Ok((ips, Some(session.nickname.clone()), false));
     }
 
-    // Try to parse as CIDR range
-    if let Some(net) = parse_ip_or_cidr(target) {
-        let is_cidr = match net {
-            ipnet::IpNet::V4(v4) => v4.prefix_len() < 32,
-            ipnet::IpNet::V6(v6) => v6.prefix_len() < 128,
-        };
-        return Ok((vec![target.to_string()], None, is_cidr));
-    }
-
-    // Try to parse as single IP address
-    if target.parse::<IpAddr>().is_ok() {
-        return Ok((vec![target.to_string()], None, false));
+    // Then try IP or CIDR. `canonicalize_target` returns the precomputed
+    // `is_range` flag so we don't redo the prefix-length match here.
+    if let Some((canonical, _net, is_range)) = canonicalize_target(target) {
+        return Ok((vec![canonical], None, is_range));
     }
 
     Err(TargetResolutionError::InvalidTarget)
@@ -531,5 +529,59 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn test_trustcreate_ipv6_uppercase_canonicalized() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Admin types an IPv6 address using uppercase hex
+        let result = handle_trust_create(
+            "2001:DB8::1".to_string(),
+            None,
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        if let ServerMessage::TrustCreateResponse { success, ips, .. } = response {
+            assert!(success);
+            let ips = ips.unwrap();
+            assert_eq!(ips.len(), 1);
+            // Response echoes the canonical form, not what the admin typed
+            assert_eq!(ips[0], "2001:db8::1");
+        } else {
+            panic!("Expected TrustCreateResponse, got: {:?}", response);
+        }
+
+        // Trust is stored under canonical form
+        assert!(
+            test_ctx
+                .db
+                .trusts
+                .is_ip_trusted("2001:db8::1")
+                .await
+                .unwrap()
+        );
+
+        // Re-trusting with the lowercase form upserts the same row, not a new one
+        let result = handle_trust_create(
+            "2001:db8::1".to_string(),
+            None,
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let _ = read_server_message(&mut test_ctx).await;
+
+        let trusts = test_ctx.db.trusts.list_active_trusts().await.unwrap();
+        assert_eq!(trusts.len(), 1);
     }
 }
