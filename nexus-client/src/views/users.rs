@@ -308,6 +308,10 @@ fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
             let can_edit_this = can_edit && !is_self && (is_admin || !user.is_admin);
             let can_delete_this =
                 can_delete && !is_self && !is_guest && (is_admin || !user.is_admin);
+            // Own row gets a Change Password menu item. The `is_self`
+            // guard on can_edit_this/can_delete_this means those flags are
+            // false here, so the menu only carries this one item.
+            let can_change_own_password = is_self;
 
             let username_color = if user.is_admin {
                 Some(admin_color)
@@ -332,19 +336,30 @@ fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
                         username_for_menu.clone(),
                     ))
                     .into()
+            } else if can_change_own_password {
+                // Own row uses the same clickable-text style so the hover
+                // affordance matches other editable rows; clicking opens the
+                // Change Password dialog (symmetric with Edit on other rows).
+                button(text_widget)
+                    .padding(NO_SPACING)
+                    .width(Fill)
+                    .style(clickable_text_style(username_color))
+                    .on_press(Message::ChangePasswordPressed)
+                    .into()
             } else if let Some(color) = username_color {
                 text_widget.color(color).into()
             } else {
                 text_widget.into()
             };
 
-            if can_edit_this || can_delete_this {
+            if can_edit_this || can_delete_this || can_change_own_password {
                 LazyContextMenu::new(content, move || {
                     build_user_context_menu(
                         user_id,
                         username_for_menu.clone(),
                         can_edit_this,
                         can_delete_this,
+                        can_change_own_password,
                     )
                 })
                 .into()
@@ -410,12 +425,14 @@ fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
     .into()
 }
 
-/// Build a context menu for a user row (edit / delete actions).
+/// Build a context menu for a user row (edit / delete on other rows, change
+/// own password on own row).
 fn build_user_context_menu(
     user_id: i64,
     username: String,
     can_edit_this: bool,
     can_delete_this: bool,
+    can_change_own_password: bool,
 ) -> Element<'static, Message> {
     let mut menu_items: Vec<Element<'_, Message>> = vec![];
 
@@ -454,6 +471,17 @@ fn build_user_context_menu(
                     user_id,
                     username.clone(),
                 ))
+                .into(),
+        );
+    }
+
+    if can_change_own_password {
+        menu_items.push(
+            MenuButton::new(shaped_text(t("button-change-password")).size(TEXT_SIZE))
+                .padding(CONTEXT_MENU_ITEM_PADDING)
+                .width(Fill)
+                .style(menu_button_style)
+                .on_press(Message::ChangePasswordPressed)
                 .into(),
         );
     }

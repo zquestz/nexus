@@ -39,10 +39,13 @@ Admin usernames are shown in red, shared account usernames in muted text, and re
 
 Right-click a username to access the context menu:
 
-| Action     | Description             | Permission Required |
-| ---------- | ----------------------- | ------------------- |
-| **Edit**   | Open the user edit form | `user_edit`         |
-| **Delete** | Delete the account      | `user_delete`       |
+| Action              | Description                             | Permission Required |
+| ------------------- | --------------------------------------- | ------------------- |
+| **Edit**            | Open the user edit form                 | `user_edit`         |
+| **Delete**          | Delete the account                      | `user_delete`       |
+| **Change Password** | Change your own password (own row only) | None                |
+
+Clicking a username opens the Edit form (requires `user_edit`); your own username opens the Change Password dialog instead.
 
 ### Creating Users
 
