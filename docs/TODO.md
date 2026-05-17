@@ -2,20 +2,20 @@
 
 ## Implementation Order (Pre-Launch)
 
-| #   | Feature                     | Effort | Status  |
-| --- | --------------------------- | ------ | ------- |
-| 1   | Account groups              | Low    | ✅ Done |
-| 2   | Password strength           | Low    | ✅ Done |
-| 3   | Streaming hash transfers    | Medium | ✅ Done |
-| 4   | Boards                      | High   | Planned |
-| 5   | File previews               | Low    | Planned |
-| 6   | Tracker registration        | Medium | ✅ Done |
-| 7   | Tracker discovery           | Low    | ✅ Done |
-| 8   | Speed limiting              | Medium | Planned |
-| 9   | Flood protection            | Low    | ✅ Done |
-| 10  | Server logs                 | Medium | ✅ Done |
-| 11  | Auto-away                   | Low    | ✅ Done |
-| 12  | Certificate fingerprint pin | Low    | ✅ Done |
+| #   | Feature                     | Effort | Status                      |
+| --- | --------------------------- | ------ | --------------------------- |
+| 1   | Account groups              | Low    | ✅ Done                     |
+| 2   | Password strength           | Low    | ✅ Done                     |
+| 3   | Streaming hash transfers    | Medium | ✅ Done                     |
+| 4   | Boards                      | High   | Planned                     |
+| 5   | File previews               | Low    | Planned                     |
+| 6   | Tracker registration        | Medium | ✅ Done                     |
+| 7   | Tracker discovery           | Low    | ✅ Done                     |
+| 8   | Speed limiting              | Medium | Phase 1 ✅, Phase 2 planned |
+| 9   | Flood protection            | Low    | ✅ Done                     |
+| 10  | Server logs                 | Medium | ✅ Done                     |
+| 11  | Auto-away                   | Low    | ✅ Done                     |
+| 12  | Certificate fingerprint pin | Low    | ✅ Done                     |
 
 ## Decided Against
 
@@ -314,8 +314,16 @@ The scheduler maintains two internal registries:
 
 **Implementation phasing (two PRs)**
 
-1. **Schema + plumbing (small, safe).** DB migration, protocol additions, UI for weight, new Bandwidth section in Server Info (`max_outbound_rate` and `scheduler_chunk_size` fields), resolution helper cached on `UserSession`. Values are stored and settable but inert until phase 2 lands.
+1. ✅ **DONE** — Schema + plumbing (small, safe). DB migration, protocol additions, UI for weight, new Bandwidth section in Server Info (`max_outbound_rate` and `scheduler_chunk_size` fields), resolution helper cached on `UserSession`. Values are stored and settable but inert until phase 2 lands.
 2. **Scheduler + cap (the big one).** New `nexus-server/src/scheduler/` module hosting WF2Q+ state + dispatch task. Wire all four accept loops, voice UDP exempt, LAN bypass at accept, migration of every `frame_writer.send` and transfer write to the `ConnectionWriter` API. Scheduler consumes the config values phase 1 made available.
+
+**What Phase 1 delivered (for the Phase 2 implementer)**
+
+- **Shared resolver**: `nexus_common::validators::resolve_bandwidth_weight(user_override: Option<u16>, group_weight: Option<u16>, is_admin: bool) -> u16` is the single source of truth for the precedence rule (per-user override > admin default > group inherit > system default). Phase 2's scheduler should call this when it needs to resolve at startup or in tests, rather than re-implementing the cascade.
+- **Session cache**: `UserSession.bandwidth_weight: AtomicU16` (plain `AtomicU16`, not `Arc<AtomicU16>` — Phase 1 dropped the Arc so the scheduler's per-dispatch read is one pointer chase rather than two). Cloning a `UserSession` snapshots the atomic value; live updates flow only through `UserManager::update_bandwidth_weight`, which fans out to every session of the matching `user_id`. Multi-session invariant: every session of a given `user_id` holds the same value.
+- **Typed update returns**: `db::UpdateUserResult::Updated { account: UserAccount, resolved_bandwidth_weight: u16 }` and `db::UpdateGroupResult { group: GroupRecord, inheriting_member_ids: Vec<i64> }`. The resolved value is computed inside the same transaction as the write — no torn states, no follow-up read. Cache refreshes consume these directly, and any new code path that writes to bandwidth-relevant fields should follow the same shape.
+- **DB clamp**: `db::util::clamp_db_bandwidth_weight(i64) -> u16` defends against corrupt rows and emits `warn!(raw, clamped, ...)` (constant `LOG_BANDWIDTH_WEIGHT_CLAMPED`) when it fires. Under normal operation it's the identity function.
+- **Login disconnect**: `handle_login` disconnects with `err_database` if `get_resolved_bandwidth_weight` fails — seeding the session cache with a wrong value would silently demote/promote the user. Phase 2 should treat its own startup-time resolution failures the same way.
 
 **Out of scope**
 
