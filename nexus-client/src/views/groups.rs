@@ -12,8 +12,10 @@ use iced::widget::{
     text_input,
 };
 use iced::{Center, Element, Fill, Length};
+use iced_aw::NumberInput;
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::GroupInfo;
+use nexus_common::validators::MIN_BANDWIDTH_WEIGHT;
 
 use super::constants::{PERMISSION_GROUP_CREATE, PERMISSION_GROUP_DELETE, PERMISSION_GROUP_EDIT};
 use super::helpers::{sort_icon_or_placeholder, t_args, tab_toolbar_icon_button};
@@ -55,6 +57,8 @@ struct EditGroupContext<'a> {
     member_count: u32,
     /// Permissions list with enabled state
     permissions: &'a [(String, bool)],
+    /// Bandwidth weight for the scheduler (1..=65535)
+    bandwidth_weight: u16,
     /// Whether a submit request is in flight
     is_submitting: bool,
 }
@@ -481,6 +485,26 @@ fn create_view<'a>(
         .size(TEXT_SIZE)
         .text_shaping(text::Shaping::Advanced);
 
+    // Bandwidth weight (1..=u16::MAX). Sits between Shared and Permissions.
+    // The server enforces a delegation rule: non-admins can set it only
+    // at or below their own resolved weight; admins bypass.
+    let bandwidth_label = shaped_text(t("label-bandwidth-weight")).size(TEXT_SIZE);
+    let bandwidth_input: Element<'a, Message> = NumberInput::new(
+        &gm.bandwidth_weight,
+        MIN_BANDWIDTH_WEIGHT..=u16::MAX,
+        Message::GroupManagementBandwidthWeightChanged,
+    )
+    .id(Id::from(InputId::CreateGroupBandwidthWeight))
+    .padding(INPUT_PADDING)
+    .into();
+    let bandwidth_row: Element<'a, Message> = row![
+        bandwidth_label,
+        Space::new().width(ELEMENT_SPACING),
+        bandwidth_input,
+    ]
+    .align_y(Center)
+    .into();
+
     let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
     let permissions_row = build_group_permission_columns(
         &gm.permissions,
@@ -522,6 +546,7 @@ fn create_view<'a>(
     items.extend([
         name_input.into(),
         shared_checkbox.into(),
+        bandwidth_row,
         Space::new().height(SPACER_SIZE_SMALL).into(),
         permissions_title.into(),
         permissions_row,
@@ -584,6 +609,24 @@ fn edit_view(ctx: EditGroupContext<'_>) -> Element<'_, Message> {
             .text_shaping(text::Shaping::Advanced)
     };
 
+    // Bandwidth weight (1..=u16::MAX) — same shape as the create form.
+    let bandwidth_label = shaped_text(t("label-bandwidth-weight")).size(TEXT_SIZE);
+    let bandwidth_input: Element<'_, Message> = NumberInput::new(
+        &ctx.bandwidth_weight,
+        MIN_BANDWIDTH_WEIGHT..=u16::MAX,
+        Message::GroupManagementEditBandwidthWeightChanged,
+    )
+    .id(Id::from(InputId::EditGroupBandwidthWeight))
+    .padding(INPUT_PADDING)
+    .into();
+    let bandwidth_row: Element<'_, Message> = row![
+        bandwidth_label,
+        Space::new().width(ELEMENT_SPACING),
+        bandwidth_input,
+    ]
+    .align_y(Center)
+    .into();
+
     let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
     let permissions_row = build_group_permission_columns(
         ctx.permissions,
@@ -625,6 +668,7 @@ fn edit_view(ctx: EditGroupContext<'_>) -> Element<'_, Message> {
     items.extend([
         name_input.into(),
         shared_checkbox.into(),
+        bandwidth_row,
         Space::new().height(SPACER_SIZE_SMALL).into(),
         permissions_title.into(),
         permissions_row,
@@ -732,6 +776,8 @@ pub fn group_form_view<'a>(
             is_shared,
             member_count,
             permissions,
+            bandwidth_weight,
+            original_bandwidth_weight: _,
         } => edit_view(EditGroupContext {
             conn,
             edit_error: user_management.group_management.edit_error.as_ref(),
@@ -740,6 +786,7 @@ pub fn group_form_view<'a>(
             is_shared: *is_shared,
             member_count: *member_count,
             permissions,
+            bandwidth_weight: *bandwidth_weight,
             is_submitting: user_management.group_management.is_submitting,
         }),
         GroupManagementMode::ConfirmDelete { id: _, name } => confirm_delete_modal(

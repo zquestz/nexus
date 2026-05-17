@@ -20,6 +20,7 @@ pub struct GroupEditResponseData {
     pub is_shared: Option<bool>,
     pub permissions: Option<Vec<String>>,
     pub member_count: Option<u32>,
+    pub bandwidth_weight: Option<u16>,
 }
 
 impl NexusApp {
@@ -142,6 +143,8 @@ impl NexusApp {
                     data.is_shared.unwrap_or(false),
                     data.member_count.unwrap_or(0),
                     data.permissions.unwrap_or_default(),
+                    data.bandwidth_weight
+                        .unwrap_or(nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT),
                 );
                 return self.focus_field(InputId::EditGroupName);
             }

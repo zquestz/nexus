@@ -460,6 +460,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -608,6 +609,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -686,6 +688,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -759,6 +762,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();

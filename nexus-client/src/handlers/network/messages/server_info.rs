@@ -35,6 +35,7 @@ impl NexusApp {
         conn.public_address = server_info.public_address.filter(|s| !s.is_empty());
         conn.server_version = server_info.version;
         conn.max_connections_per_ip = server_info.max_connections_per_ip;
+        conn.max_outbound_rate = server_info.max_outbound_rate;
         conn.max_transfers_per_ip = server_info.max_transfers_per_ip;
         conn.file_reindex_interval = server_info.file_reindex_interval;
         conn.persistent_channels = server_info.persistent_channels;
@@ -45,6 +46,7 @@ impl NexusApp {
             conn.min_password_strength = PasswordStrength::from(score);
         }
         conn.log_level = server_info.log_level;
+        conn.scheduler_chunk_size = server_info.scheduler_chunk_size;
         // Image needs special handling for decoding
         if let Some(image) = server_info.image {
             conn.cached_server_image = if image.is_empty() {

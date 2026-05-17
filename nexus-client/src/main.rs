@@ -770,8 +770,20 @@ impl NexusApp {
             Message::UserManagementGroupSelected(group_id) => {
                 self.handle_user_management_group_selected(group_id)
             }
+            Message::UserManagementBandwidthWeightChanged(weight) => {
+                self.handle_user_management_bandwidth_weight_changed(weight)
+            }
+            Message::UserManagementInheritBandwidthWeightToggled(inherit) => {
+                self.handle_user_management_inherit_bandwidth_weight_toggled(inherit)
+            }
             Message::UserManagementEditGroupSelected(group_id) => {
                 self.handle_user_management_edit_group_selected(group_id)
+            }
+            Message::UserManagementEditBandwidthWeightChanged(weight) => {
+                self.handle_user_management_edit_bandwidth_weight_changed(weight)
+            }
+            Message::UserManagementEditInheritBandwidthWeightToggled(inherit) => {
+                self.handle_user_management_edit_inherit_bandwidth_weight_toggled(inherit)
             }
             Message::UserManagementRefreshUsers => self.handle_user_management_refresh_users(),
             Message::UserManagementRefreshGroups => self.handle_user_management_refresh_groups(),
@@ -781,6 +793,9 @@ impl NexusApp {
             Message::GroupManagementShowCreate => self.handle_group_management_show_create(),
             Message::GroupManagementNameChanged(name) => {
                 self.handle_group_management_name_changed(name)
+            }
+            Message::GroupManagementBandwidthWeightChanged(weight) => {
+                self.handle_group_management_bandwidth_weight_changed(weight)
             }
             Message::GroupManagementIsSharedToggled(is_shared) => {
                 self.handle_group_management_is_shared_toggled(is_shared)
@@ -799,6 +814,9 @@ impl NexusApp {
             Message::GroupManagementCancelDelete => self.handle_group_management_cancel_delete(),
             Message::GroupManagementEditNameChanged(name) => {
                 self.handle_group_management_edit_name_changed(name)
+            }
+            Message::GroupManagementEditBandwidthWeightChanged(weight) => {
+                self.handle_group_management_edit_bandwidth_weight_changed(weight)
             }
             Message::GroupManagementEditIsSharedToggled(is_shared) => {
                 self.handle_group_management_edit_is_shared_toggled(is_shared)
@@ -1054,6 +1072,12 @@ impl NexusApp {
             }
             Message::EditServerInfoMaxTransfersChanged(max_transfers) => {
                 self.handle_edit_server_info_max_transfers_changed(max_transfers)
+            }
+            Message::EditServerInfoMaxOutboundRateChanged(input) => {
+                self.handle_edit_server_info_max_outbound_rate_changed(input)
+            }
+            Message::EditServerInfoSchedulerChunkSizeChanged(size) => {
+                self.handle_edit_server_info_scheduler_chunk_size_changed(size)
             }
             Message::EditServerInfoFileReindexIntervalChanged(interval) => {
                 self.handle_edit_server_info_file_reindex_interval_changed(interval)

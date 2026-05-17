@@ -1398,3 +1398,13 @@ err-tracker-update-failed = Не удалось обновить трекер
 err-tracker-remove-failed = Не удалось удалить трекер
 err-tracker-accept-fingerprint-failed = Не удалось принять отпечаток
 err-tracker-edit-no-payload = Сервер не вернул сведения о трекере
+
+label-bandwidth-section = Пропускная способность
+label-bandwidth-weight = Вес пропускной способности:
+label-chat-section = Чат
+label-files-section = Файлы
+label-general-section = Общие
+label-inherit-bandwidth-weight = Наследовать вес пропускной способности
+label-max-outbound-rate = Макс. исходящий (Мбит/с):
+label-unlimited = Без ограничения
+label-scheduler-chunk-size = Размер блока планировщика (байт):

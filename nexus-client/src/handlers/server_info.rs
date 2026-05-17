@@ -58,11 +58,13 @@ impl NexusApp {
             file_reindex_interval: conn.file_reindex_interval,
             image: &conn.server_image,
             max_connections_per_ip: conn.max_connections_per_ip,
+            max_outbound_rate: conn.max_outbound_rate,
             max_transfers_per_ip: conn.max_transfers_per_ip,
             min_password_strength: conn.min_password_strength,
             name: conn.server_name.as_deref(),
             persistent_channels: conn.persistent_channels.as_deref(),
             public_address: conn.public_address.as_deref(),
+            scheduler_chunk_size: conn.scheduler_chunk_size,
         }));
 
         // Focus the name input
@@ -190,11 +192,13 @@ impl NexusApp {
             file_reindex_interval: conn.file_reindex_interval,
             image: &conn.server_image,
             max_connections_per_ip: conn.max_connections_per_ip,
+            max_outbound_rate: conn.max_outbound_rate,
             max_transfers_per_ip: conn.max_transfers_per_ip,
             min_password_strength: conn.min_password_strength,
             name: conn.server_name.as_deref(),
             persistent_channels: conn.persistent_channels.as_deref(),
             public_address: conn.public_address.as_deref(),
+            scheduler_chunk_size: conn.scheduler_chunk_size,
         }) {
             // No changes, just close the edit view
             conn.server_info_edit = None;
@@ -283,6 +287,23 @@ impl NexusApp {
                 None
             };
 
+        // Bandwidth section: convert the Mbps NumberInput value to
+        // bytes/sec; only send when it differs from the stored connection
+        // value (0 = unlimited).
+        let new_bytes_per_sec = edit_state.max_outbound_rate_bytes_per_sec();
+        let max_outbound_rate = if new_bytes_per_sec != conn.max_outbound_rate.unwrap_or(0) {
+            Some(new_bytes_per_sec)
+        } else {
+            None
+        };
+
+        // Scheduler chunk size: bytes Option<u32>; send when changed.
+        let scheduler_chunk_size = if edit_state.scheduler_chunk_size != conn.scheduler_chunk_size {
+            edit_state.scheduler_chunk_size
+        } else {
+            None
+        };
+
         let msg = ClientMessage::ServerInfoUpdate {
             name,
             description,
@@ -296,6 +317,8 @@ impl NexusApp {
             chat_burst_limit,
             chat_rate_limit,
             min_password_strength,
+            max_outbound_rate,
+            scheduler_chunk_size,
         };
 
         // Mark as submitting to prevent double-submit
@@ -418,6 +441,37 @@ impl NexusApp {
             && let Some(edit_state) = &mut conn.server_info_edit
         {
             edit_state.max_transfers_per_ip = Some(max_transfers);
+        }
+        Task::none()
+    }
+
+    /// Handle server info max outbound rate (Mbps, NumberInput<f64>) field
+    /// change. NumberInput already constrains to the configured bounds, so
+    /// we just store the new value; conversion to bytes/sec happens at save
+    /// time via `ServerInfoEditState::max_outbound_rate_bytes_per_sec`.
+    pub fn handle_edit_server_info_max_outbound_rate_changed(
+        &mut self,
+        mbps: f64,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(edit_state) = &mut conn.server_info_edit
+        {
+            edit_state.max_outbound_rate_mbps = mbps;
+        }
+        Task::none()
+    }
+
+    /// Handle server info scheduler chunk size (bytes) field change.
+    pub fn handle_edit_server_info_scheduler_chunk_size_changed(
+        &mut self,
+        size: Option<u32>,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(edit_state) = &mut conn.server_info_edit
+        {
+            edit_state.scheduler_chunk_size = size;
         }
         Task::none()
     }
@@ -613,9 +667,10 @@ impl NexusApp {
     }
 
     pub fn handle_server_info_edit_tab_resolved(&mut self, focused: Id) -> Task<Message> {
-        // Tab cycle: Name → Description → PublicAddress → Auto-join → Persistent → Name.
-        // NumberInput fields (connections, transfers, burst, rate, reindex) are
-        // skipped because they consume Tab internally.
+        // Tab cycle: Name → Description → PublicAddress → Auto-join →
+        // Persistent → Name. NumberInput fields (connections, transfers,
+        // burst, rate, reindex, scheduler chunk size, max outbound rate)
+        // are skipped because they consume Tab internally.
         const CYCLE: &[InputId] = &[
             InputId::EditServerInfoName,
             InputId::EditServerInfoDescription,

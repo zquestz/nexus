@@ -303,10 +303,11 @@ If `voice_listen` is revoked while in voice:
 
 ## Server State
 
-Voice state is in-memory only (not persisted to database):
-
-- `VoiceRegistry` — Maps tokens and session IDs to voice sessions
-- `VoiceSession` — Token, nickname, username, target, join time, UDP address
+Voice state is ephemeral — sessions do not persist across server
+restarts. For each active session the server tracks the voice token,
+the joined target (channel or user-message conversation), the
+participant's nickname and username, the join time, and the UDP
+address the participant's DTLS connection is bound to.
 
 On TCP disconnect:
 

@@ -293,4 +293,102 @@ mod tests {
             "expected '64' in result, got: {result}"
         );
     }
+
+    // =========================================================================
+    // Catches the "added a key in EN but forgot to translate" mistake at test
+    // time, and the "renamed an EN key but the other locales still carry the
+    // old name" mistake too.
+    // =========================================================================
+
+    /// Read a Fluent `.ftl` file and return the set of top-level message
+    /// keys defined in it. Uses the real `fluent_syntax::parser` so any
+    /// Fluent feature (multi-line values, message attributes, term refs,
+    /// etc.) is handled correctly.
+    fn collect_keys_in_ftl(path: &std::path::Path) -> std::collections::HashSet<String> {
+        use fluent_syntax::ast::Entry;
+        let content = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+        let resource = fluent_syntax::parser::parse(content.as_str()).unwrap_or_else(|(r, _)| r);
+        resource
+            .body
+            .into_iter()
+            .filter_map(|entry| match entry {
+                Entry::Message(msg) => Some(msg.id.name.to_string()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// All non-EN locale codes the tracker supports. Mirrors the file
+    /// names under `nexus-tracker/locales/` (excluding `en`).
+    const NON_EN_LOCALES: &[&str] = &[
+        "es", "fr", "de", "it", "nl", "pt-BR", "pt-PT", "ru", "ja", "zh-CN", "zh-TW", "ko",
+    ];
+
+    fn locale_errors_path(locale: &str) -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("locales")
+            .join(locale)
+            .join("errors.ftl")
+    }
+
+    #[test]
+    fn every_en_key_exists_in_all_locales() {
+        let en_keys = collect_keys_in_ftl(&locale_errors_path("en"));
+        assert!(
+            !en_keys.is_empty(),
+            "en/errors.ftl scanner found zero keys — path or parser likely broken"
+        );
+
+        let mut report: Vec<String> = Vec::new();
+        for locale in NON_EN_LOCALES {
+            let locale_keys = collect_keys_in_ftl(&locale_errors_path(locale));
+            let mut missing: Vec<&String> = en_keys.difference(&locale_keys).collect();
+            missing.sort();
+            if !missing.is_empty() {
+                report.push(format!(
+                    "[{}] missing {} key(s): {:#?}",
+                    locale,
+                    missing.len(),
+                    missing
+                ));
+            }
+        }
+
+        assert!(
+            report.is_empty(),
+            "Locales missing keys present in en/errors.ftl. Translate the \
+             missing keys (or remove them from EN if intentional):\n\n{}",
+            report.join("\n\n"),
+        );
+    }
+
+    #[test]
+    fn no_orphan_keys_in_non_en_locales() {
+        let en_keys = collect_keys_in_ftl(&locale_errors_path("en"));
+        assert!(!en_keys.is_empty());
+
+        let mut report: Vec<String> = Vec::new();
+        for locale in NON_EN_LOCALES {
+            let locale_keys = collect_keys_in_ftl(&locale_errors_path(locale));
+            let mut orphans: Vec<&String> = locale_keys.difference(&en_keys).collect();
+            orphans.sort();
+            if !orphans.is_empty() {
+                report.push(format!(
+                    "[{}] {} orphan key(s) (in this locale but not in EN): {:#?}",
+                    locale,
+                    orphans.len(),
+                    orphans
+                ));
+            }
+        }
+
+        assert!(
+            report.is_empty(),
+            "Non-EN locales carry keys not present in en/errors.ftl. \
+             These are leftovers from a rename or removal — drop them \
+             from the locale file:\n\n{}",
+            report.join("\n\n"),
+        );
+    }
 }

@@ -1,4 +1,4 @@
-# 追蹤器錯誤訊息 (v0.1.0)
+# 追蹤器錯誤訊息
 #
 # 所有鍵都使用 `err-tracker-*` 前綴，使其與 nexus-server 的本地化命名空間
 # 隔離。這些鍵與 `nexus-tracker/src/errors.rs` 中的 `err_tracker_*`

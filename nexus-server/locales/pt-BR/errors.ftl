@@ -18,7 +18,7 @@ err-status-invalid-characters = A mensagem de ausência contém caracteres invá
 
 # Erros de contas compartilhadas
 err-shared-cannot-be-admin = Contas compartilhadas não podem ser administradores
-err-shared-cannot-change-password = Não é possível alterar a senha de uma conta compartilhada
+err-shared-cannot-self-edit = Contas compartilhadas não podem editar a si mesmas
 err-shared-invalid-permissions = Contas compartilhadas não podem ter estas permissões: { $permissions }
 err-shared-message-requires-nickname = Contas compartilhadas só podem receber mensagens pelo apelido
 err-shared-kick-requires-nickname = Contas compartilhadas só podem ser expulsas pelo apelido
@@ -74,6 +74,7 @@ err-cannot-edit-self = Você não pode editar a si mesmo
 err-current-password-required = A senha atual é necessária para alterar sua senha
 err-current-password-incorrect = A senha atual está incorreta
 err-cannot-create-admin = Apenas administradores podem criar usuários administradores
+err-admin-cannot-have-group = Não é possível atribuir usuários administradores a um grupo
 err-cannot-kick-self = Você não pode expulsar a si mesmo
 err-cannot-kick-admin = Não é possível expulsar usuários administradores
 err-cannot-delete-admin = Apenas administradores podem excluir usuários administradores
@@ -319,3 +320,16 @@ err-flood-warning = Mensagem limitada (aviso { $violation } de { $max_violations
    *[other] segundos
 }. Continuar enviando mensagens resultará em desconexão.
 err-flood-disconnect = Desconectado: limite de velocidade do chat excedido.
+
+# Bandwidth Errors
+err-bandwidth-weight-delegation = Não é possível conceder um peso da largura de banda acima do seu
+err-bandwidth-weight-inherit-would-elevate = Não é possível herdar um peso da largura de banda acima do seu
+err-bandwidth-weight-zero = O peso da largura de banda deve ser pelo menos { $min }
+err-bandwidth-chunk-size-too-small = O tamanho do bloco do agendador deve ser pelo menos { $min } { $min ->
+    [one] byte
+   *[other] bytes
+}
+err-bandwidth-chunk-size-too-large = O tamanho do bloco do agendador deve ser no máximo { $max } { $max ->
+    [one] byte
+   *[other] bytes
+}

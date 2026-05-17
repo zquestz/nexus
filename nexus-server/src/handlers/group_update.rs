@@ -2,19 +2,24 @@
 
 use std::collections::HashSet;
 use std::io;
+use std::sync::atomic::Ordering;
 
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ServerMessage;
-use nexus_common::validators::{self, GroupNameError, PermissionsError};
+use nexus_common::validators::{
+    self, BandwidthWeightError, GroupNameError, MIN_BANDWIDTH_WEIGHT, PermissionsError,
+    validate_bandwidth_weight,
+};
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, ServerInfoOptions, ServerInfoValues, build_server_info, err_authentication,
-    err_database, err_group_already_exists, err_group_name_empty, err_group_name_invalid,
+    err_bandwidth_weight_delegation, err_bandwidth_weight_zero, err_database,
+    err_group_already_exists, err_group_name_empty, err_group_name_invalid,
     err_group_name_too_long, err_group_no_fields, err_group_not_empty_modify, err_group_not_found,
     err_group_shared_permission, err_not_logged_in, err_permission_denied,
     err_permissions_contains_newlines, err_permissions_empty_permission,
@@ -24,6 +29,7 @@ use super::{
 use crate::constants::*;
 use crate::db::{Permission, Permissions};
 use crate::users::manager::UserManager;
+use crate::users::user::UserSession;
 use crate::voice::send_voice_leave_notifications;
 
 /// Handle a group update request
@@ -32,6 +38,7 @@ pub async fn handle_group_update<W>(
     name: Option<String>,
     is_shared: Option<bool>,
     permissions: Option<Vec<String>>,
+    bandwidth_weight: Option<u16>,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -72,7 +79,8 @@ where
     }
 
     // If all optional fields are None, there's nothing to update
-    if name.is_none() && is_shared.is_none() && permissions.is_none() {
+    if name.is_none() && is_shared.is_none() && permissions.is_none() && bandwidth_weight.is_none()
+    {
         let response = ServerMessage::GroupUpdateResponse {
             success: false,
             id: None,
@@ -264,83 +272,161 @@ where
 
     // Capture old state for diff detection
     let old_name = group.name.clone();
+    let old_bandwidth_weight = group.bandwidth_weight;
     let old_permissions: HashSet<Permission> = current_permissions.into_iter().collect();
 
     let final_permissions: Permissions = Permissions::from(final_permissions_vec.as_slice());
+
+    // Bandwidth weight delegation: a non-admin updating a group can set
+    // its weight only at or below their own resolved bandwidth weight.
+    // Admins bypass.
+    if !requesting_user.is_admin
+        && let Some(w) = bandwidth_weight
+        && w > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
+    {
+        let response = ServerMessage::GroupUpdateResponse {
+            success: false,
+            id: None,
+            name: None,
+            error: Some(err_bandwidth_weight_delegation(ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
+    }
+    if let Some(w) = bandwidth_weight
+        && let Err(BandwidthWeightError::Zero) = validate_bandwidth_weight(w)
+    {
+        let response = ServerMessage::GroupUpdateResponse {
+            success: false,
+            id: None,
+            name: None,
+            error: Some(err_bandwidth_weight_zero(ctx.locale, MIN_BANDWIDTH_WEIGHT)),
+        };
+        return ctx.send_message(&response).await;
+    }
+    let final_bandwidth_weight = bandwidth_weight.unwrap_or(group.bandwidth_weight);
 
     // Update group in database
     match ctx
         .db
         .groups
-        .update_group(id, &final_name, final_is_shared, &final_permissions)
+        .update_group(
+            id,
+            &final_name,
+            final_is_shared,
+            &final_permissions,
+            final_bandwidth_weight,
+        )
         .await
     {
-        Ok(Some(_)) => {
-            info!(user = %requesting_user.username, ip = %ctx.peer_addr, group = %final_name, "{}", LOG_GROUP_UPDATE_SUCCESS);
+        Ok(Some(crate::db::UpdateGroupResult {
+            group: updated_group,
+            inheriting_member_ids,
+        })) => {
+            // Source of truth for everything below is `updated_group` —
+            // the row state from the same tx as the write — not the
+            // `final_*` values we asked it to write.
+            info!(user = %requesting_user.username, ip = %ctx.peer_addr, group = %updated_group.name, "{}", LOG_GROUP_UPDATE_SUCCESS);
             let response = ServerMessage::GroupUpdateResponse {
                 success: true,
-                id: Some(id),
-                name: Some(final_name.clone()),
+                id: Some(updated_group.id),
+                name: Some(updated_group.name.clone()),
                 error: None,
             };
             ctx.send_message(&response).await?;
 
             // === Cascade to member sessions ===
 
-            let name_changed = old_name != final_name;
+            let name_changed = old_name != updated_group.name;
             let new_permissions: HashSet<Permission> = final_permissions.iter().copied().collect();
             let permissions_changed = old_permissions != new_permissions;
+            let bandwidth_weight_changed = old_bandwidth_weight != updated_group.bandwidth_weight;
 
-            // Name change cascade: update cached group_name on all member sessions,
-            // then broadcast UserUpdated so other clients' user lists reflect the new name
-            if name_changed {
-                ctx.user_manager.update_group_name(id, &final_name).await;
+            // Cascade scope: when the group's bandwidth weight changes,
+            // only members whose effective weight is sourced from the group
+            // (NULL override) actually move. Override-holders stay pinned
+            // to their own value — broadcasting "your bandwidth changed"
+            // for them would be both wasteful and a lie. The set comes
+            // directly from `update_group` (computed inside the same tx
+            // as the write), so the membership matches the row state we
+            // just committed.
+            let inheriting_set: HashSet<i64> = if bandwidth_weight_changed {
+                inheriting_member_ids.into_iter().collect()
+            } else {
+                HashSet::new()
+            };
 
-                // Broadcast UserUpdated for each online member.
-                // update_group_name already updated session caches, so the helper
-                // functions will pick up the new group_name automatically.
-                let member_sessions = ctx.user_manager.get_sessions_by_group_id(id).await;
+            // Single fetch of member sessions for both the cache refresh
+            // and the broadcast. Empty when no field-level cascade is
+            // needed; the permissions cascade below re-fetches its own
+            // snapshot because it consumes fresh `permissions` rows that
+            // the bandwidth/name path doesn't touch, and it walks the
+            // members independently to emit `PermissionsUpdated` rather
+            // than `UserUpdated`.
+            let member_sessions = if bandwidth_weight_changed || name_changed {
+                ctx.user_manager.get_sessions_by_group_id(id).await
+            } else {
+                Vec::new()
+            };
 
-                // Deduplicate: shared accounts broadcast per-session (unique nicknames),
-                // regular accounts aggregate all sessions into one UserInfo.
-                let mut seen_usernames: HashSet<String> = HashSet::new();
+            // Bandwidth cache refresh: the new resolved value for an
+            // inheriting member IS the new group weight — no per-user
+            // re-resolution needed. Walking `member_sessions` (vs
+            // `inheriting_set` directly) keeps the work scoped to
+            // *online* inheriting members; offline members have no
+            // session cache to refresh. The `seen_user_ids` dedup
+            // matters because `update_bandwidth_weight` fans out to
+            // every session of `user_id` in one call — without dedup,
+            // a multi-session user would trigger that fan-out once per
+            // session.
+            //
+            // Race window with concurrent `UserUpdate`: `inheriting_set`
+            // is bound to the group tx, but this fan-out runs after
+            // commit. If a `UserUpdate` sets a per-user override on
+            // member X between our commit and this fan-out, X is no
+            // longer truly inheriting but we still write
+            // `updated_group.bandwidth_weight` to X's cache — briefly
+            // poisoning it with the old (now-incorrect) value. The
+            // window is bounded by the gap between the two `await`
+            // points (microseconds in practice); the `UserUpdate`
+            // handler's own cache-refresh path then overwrites X with
+            // the correct resolved value. Bandwidth is advisory for
+            // fairness, not a correctness invariant, so the brief stale
+            // window is acceptable. Eliminating it would require
+            // re-resolving every inheriting member inside the tx (N
+            // extra reads); accept the eventual consistency instead.
+            if bandwidth_weight_changed {
+                let mut seen_user_ids: HashSet<i64> = HashSet::new();
                 for session in &member_sessions {
-                    if session.is_shared {
-                        // Shared account: each session is a distinct identity
-                        let user_info = UserManager::build_user_info_from_session(session);
-
-                        let user_updated = ServerMessage::UserUpdated {
-                            previous_username: session.username.clone(),
-                            user: user_info,
-                        };
+                    if inheriting_set.contains(&session.user_id)
+                        && seen_user_ids.insert(session.user_id)
+                    {
                         ctx.user_manager
-                            .broadcast_to_permission(user_updated, Permission::UserList)
+                            .update_bandwidth_weight(
+                                session.user_id,
+                                updated_group.bandwidth_weight,
+                            )
                             .await;
-                    } else {
-                        // Regular account: aggregate all sessions, skip duplicates
-                        let username_lower = session.username.to_lowercase();
-                        if !seen_usernames.insert(username_lower) {
-                            continue;
-                        }
-
-                        let all_sessions = ctx
-                            .user_manager
-                            .get_sessions_by_username(&session.username)
-                            .await;
-
-                        if let Some(user_info) =
-                            UserManager::build_aggregated_user_info(&all_sessions)
-                        {
-                            let user_updated = ServerMessage::UserUpdated {
-                                previous_username: session.username.clone(),
-                                user: user_info,
-                            };
-                            ctx.user_manager
-                                .broadcast_to_permission(user_updated, Permission::UserList)
-                                .await;
-                        }
                     }
                 }
+            }
+
+            if name_changed {
+                // Update cached group_name on all member sessions; the broadcast
+                // helper reads group_name straight from the session cache.
+                ctx.user_manager
+                    .update_group_name(id, &updated_group.name)
+                    .await;
+            }
+
+            // Single UserUpdated broadcast per affected user:
+            // - name_changed → every member (group_name shifted for all)
+            // - bandwidth_weight_changed → only inheriting members
+            //   (override-holders' effective value didn't move).
+            if name_changed || !inheriting_set.is_empty() {
+                broadcast_user_updated_for_members(ctx, &member_sessions, |session| {
+                    name_changed || inheriting_set.contains(&session.user_id)
+                })
+                .await;
             }
 
             // Permission change cascade: re-resolve effective permissions for each
@@ -367,17 +453,14 @@ where
                     min_password_strength: config.min_password_strength.score(),
                     chat_burst_limit: config.chat_burst_limit,
                     chat_rate_limit: config.chat_rate_limit,
+                    max_outbound_rate: config.max_outbound_rate,
+                    scheduler_chunk_size: config.scheduler_chunk_size,
                 };
 
                 // Deduplicate by user_id (regular accounts may have multiple sessions)
                 let mut seen_user_ids: HashSet<i64> = HashSet::new();
                 for session in &member_sessions {
                     if !seen_user_ids.insert(session.user_id) {
-                        continue;
-                    }
-
-                    // Admins bypass permission resolution — skip cascade
-                    if session.is_admin {
                         continue;
                     }
 
@@ -432,7 +515,7 @@ where
                         permissions: permission_strings,
                         server_info,
                         group_id: Some(id),
-                        group_name: Some(final_name.clone()),
+                        group_name: Some(updated_group.name.clone()),
                     };
 
                     ctx.user_manager
@@ -517,6 +600,56 @@ where
     }
 }
 
+/// Fan out one `UserUpdated` per affected member to everyone with
+/// `Permission::UserList`. Shared accounts broadcast per-session (each
+/// session is a distinct identity with its own nickname); regular accounts
+/// dedup by username and broadcast an aggregated `UserInfo`. `should_emit`
+/// decides which members participate — typically a predicate built from the
+/// trigger flags (name change, bandwidth change set).
+async fn broadcast_user_updated_for_members<W, F>(
+    ctx: &HandlerContext<'_, W>,
+    member_sessions: &[UserSession],
+    should_emit: F,
+) where
+    W: AsyncWrite + Unpin,
+    F: Fn(&UserSession) -> bool,
+{
+    let mut seen_usernames: HashSet<String> = HashSet::new();
+    for session in member_sessions {
+        if !should_emit(session) {
+            continue;
+        }
+        if session.is_shared {
+            let user_info = UserManager::build_user_info_from_session(session);
+            let user_updated = ServerMessage::UserUpdated {
+                previous_username: session.username.clone(),
+                user: user_info,
+            };
+            ctx.user_manager
+                .broadcast_to_permission(user_updated, Permission::UserList)
+                .await;
+        } else {
+            let username_lower = session.username.to_lowercase();
+            if !seen_usernames.insert(username_lower) {
+                continue;
+            }
+            let all_sessions = ctx
+                .user_manager
+                .get_sessions_by_username(&session.username)
+                .await;
+            if let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) {
+                let user_updated = ServerMessage::UserUpdated {
+                    previous_username: session.username.clone(),
+                    user: user_info,
+                };
+                ctx.user_manager
+                    .broadcast_to_permission(user_updated, Permission::UserList)
+                    .await;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::Instant;
@@ -532,6 +665,7 @@ mod tests {
         let result = handle_group_update(
             1,
             Some("NewName".to_string()),
+            None,
             None,
             None,
             None,
@@ -552,6 +686,7 @@ mod tests {
         let result = handle_group_update(
             1,
             Some("NewName".to_string()),
+            None,
             None,
             None,
             Some(session_id),
@@ -588,6 +723,7 @@ mod tests {
             Some("NewName".to_string()),
             None,
             None,
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -619,6 +755,7 @@ mod tests {
 
         let result = handle_group_update(
             1,
+            None,
             None,
             None,
             None,
@@ -655,13 +792,14 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("OldName", false, &Permissions::new())
+            .create_group("OldName", false, &Permissions::new(), 1)
             .await
             .expect("Failed to create group");
 
         let result = handle_group_update(
             group.id,
             Some("NewName".to_string()),
+            None,
             None,
             None,
             Some(session_id),
@@ -714,14 +852,14 @@ mod tests {
         let _group_a = test_ctx
             .db
             .groups
-            .create_group("GroupA", false, &Permissions::new())
+            .create_group("GroupA", false, &Permissions::new(), 1)
             .await
             .expect("Failed to create GroupA");
 
         let group_b = test_ctx
             .db
             .groups
-            .create_group("GroupB", false, &Permissions::new())
+            .create_group("GroupB", false, &Permissions::new(), 1)
             .await
             .expect("Failed to create GroupB");
 
@@ -729,6 +867,7 @@ mod tests {
         let result = handle_group_update(
             group_b.id,
             Some("GroupA".to_string()),
+            None,
             None,
             None,
             Some(session_id),
@@ -768,7 +907,12 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .expect("Failed to create group");
 
@@ -778,6 +922,7 @@ mod tests {
             None,
             None,
             Some(vec!["chat_send".to_string(), "user_kick".to_string()]),
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -825,7 +970,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &Permissions::new())
+            .create_group("Staff", false, &Permissions::new(), 1)
             .await
             .expect("Failed to create group");
 
@@ -842,6 +987,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("Failed to create member");
@@ -851,6 +997,7 @@ mod tests {
             group.id,
             None,
             Some(true),
+            None,
             None,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -885,7 +1032,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &Permissions::new())
+            .create_group("Staff", false, &Permissions::new(), 1)
             .await
             .expect("Failed to create group");
 
@@ -894,6 +1041,7 @@ mod tests {
             group.id,
             None,
             Some(true),
+            None,
             None,
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -935,7 +1083,12 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &Permissions::from(&[Permission::UserKick]))
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::UserKick]),
+                1,
+            )
             .await
             .expect("Failed to create group");
 
@@ -945,6 +1098,7 @@ mod tests {
             None,
             Some(true),
             Some(vec!["user_kick".to_string()]),
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -975,7 +1129,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &Permissions::new())
+            .create_group("Staff", false, &Permissions::new(), 1)
             .await
             .expect("Failed to create group");
 
@@ -985,6 +1139,7 @@ mod tests {
             Some("Moderators".to_string()),
             None,
             Some(vec!["user_kick".to_string(), "ban_create".to_string()]),
+            None,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -1046,7 +1201,12 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .expect("Failed to create group");
 
@@ -1056,6 +1216,7 @@ mod tests {
             None,
             None,
             Some(vec!["chat_send".to_string(), "user_kick".to_string()]),
+            None,
             Some(editor_session),
             &mut test_ctx.handler_context(),
         )
@@ -1104,7 +1265,12 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .expect("Failed to create group");
 
@@ -1114,6 +1280,7 @@ mod tests {
             None,
             None,
             Some(vec!["chat_send".to_string(), "user_list".to_string()]),
+            None,
             Some(editor_session),
             &mut test_ctx.handler_context(),
         )
@@ -1163,6 +1330,7 @@ mod tests {
                 "Staff",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
             )
             .await
             .expect("Failed to create group");
@@ -1174,6 +1342,7 @@ mod tests {
             None,
             None,
             Some(vec!["chat_send".to_string()]),
+            None,
             Some(editor_session),
             &mut test_ctx.handler_context(),
         )
@@ -1231,6 +1400,7 @@ mod tests {
                     Permission::UserList,
                     Permission::UserKick,
                 ]),
+                1,
             )
             .await
             .expect("Failed to create group");
@@ -1242,6 +1412,7 @@ mod tests {
             None,
             None,
             Some(vec!["chat_send".to_string()]),
+            None,
             Some(editor_session),
             &mut test_ctx.handler_context(),
         )
@@ -1285,7 +1456,12 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .expect("Failed to create group");
 
@@ -1302,6 +1478,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1335,6 +1512,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await
@@ -1346,6 +1524,7 @@ mod tests {
             None,
             None,
             Some(vec!["chat_send".to_string(), "user_kick".to_string()]),
+            None,
             Some(admin_session),
             &mut test_ctx.handler_context(),
         )
@@ -1418,7 +1597,12 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .expect("Failed to create group");
 
@@ -1435,6 +1619,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1468,6 +1653,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await
@@ -1477,6 +1663,7 @@ mod tests {
         let result = handle_group_update(
             group.id,
             Some("Moderators".to_string()),
+            None,
             None,
             None,
             Some(admin_session),
@@ -1535,7 +1722,12 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .expect("Failed to create group");
 
@@ -1553,6 +1745,7 @@ mod tests {
                 permissions: &bob_perms,
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1563,6 +1756,7 @@ mod tests {
             None,
             None,
             Some(vec!["chat_send".to_string(), "user_kick".to_string()]),
+            None,
             Some(admin_session),
             &mut test_ctx.handler_context(),
         )
@@ -1585,93 +1779,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_group_update_permission_cascade_skips_admin_members() {
-        let mut test_ctx = create_test_context().await;
-
-        // Login as admin
-        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
-
-        // Create a group with chat_send
-        let group = test_ctx
-            .db
-            .groups
-            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
-            .await
-            .expect("Failed to create group");
-
-        // Create an admin user assigned to the group
-        let mut admin_perms = db::Permissions::new();
-        admin_perms.permissions.insert(db::Permission::ChatSend);
-        let admin_member = test_ctx
-            .db
-            .users
-            .create_user(db::CreateUserParams {
-                username: "adminbob",
-                hashed_password: "hash",
-                is_admin: true,
-                is_shared: false,
-                enabled: true,
-                permissions: &admin_perms,
-                group_id: Some(group.id),
-                revokes: &[],
-            })
-            .await
-            .unwrap();
-
-        // Add admin member to UserManager
-        let _admin_bob_session = test_ctx
-            .user_manager
-            .add_user(crate::users::user::NewSessionParams {
-                session_id: 0,
-                user_id: admin_member.id,
-                username: "adminbob".to_string(),
-                is_admin: true,
-                is_shared: false,
-                permissions: admin_perms.permissions.clone(),
-                address: test_ctx.peer_addr,
-                created_at: 0,
-                tx: test_ctx.tx.clone(),
-                features: vec![],
-                locale: DEFAULT_TEST_LOCALE.to_string(),
-                avatar: None,
-                nickname: "adminbob".to_string(),
-                is_away: false,
-                status: None,
-                group_id: Some(group.id),
-                group_name: Some("Staff".to_string()),
-                last_activity: Instant::now(),
-            })
-            .await
-            .unwrap();
-
-        // Update group permissions
-        let result = handle_group_update(
-            group.id,
-            None,
-            None,
-            Some(vec!["chat_send".to_string(), "user_kick".to_string()]),
-            Some(admin_session),
-            &mut test_ctx.handler_context(),
-        )
-        .await;
-
-        assert!(result.is_ok());
-
-        // Read GroupUpdateResponse
-        let response = read_server_message(&mut test_ctx).await;
-        match response {
-            ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
-            _ => panic!("Expected GroupUpdateResponse"),
-        }
-
-        // Admin members are skipped — no PermissionsUpdated
-        assert!(
-            test_ctx.rx.try_recv().is_err(),
-            "Admin members should be skipped in permission cascade"
-        );
-    }
-
-    #[tokio::test]
     async fn test_group_update_voice_listen_revoked_kicks_from_voice() {
         let mut test_ctx = create_test_context().await;
 
@@ -1686,6 +1793,7 @@ mod tests {
                 "Listeners",
                 false,
                 &Permissions::from(&[Permission::VoiceListen, Permission::ChatSend]),
+                1,
             )
             .await
             .expect("Failed to create group");
@@ -1703,6 +1811,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1736,6 +1845,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Listeners".to_string()),
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await
@@ -1761,6 +1871,7 @@ mod tests {
             None,
             None,
             Some(vec!["chat_send".to_string()]),
+            None,
             Some(admin_session),
             &mut test_ctx.handler_context(),
         )
@@ -1797,6 +1908,7 @@ mod tests {
                 "Staff",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
             )
             .await
             .expect("Failed to create group");
@@ -1819,6 +1931,7 @@ mod tests {
                 permissions: &bob_perms,
                 group_id: Some(group.id),
                 revokes: &[db::Permission::UserKick],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1847,6 +1960,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await
@@ -1861,6 +1975,7 @@ mod tests {
             None,
             None,
             Some(vec!["chat_send".to_string(), "ban_create".to_string()]),
+            None,
             Some(admin_session),
             &mut test_ctx.handler_context(),
         )
@@ -1919,6 +2034,7 @@ mod tests {
                 "Staff",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
             )
             .await
             .expect("Failed to create group");
@@ -1939,6 +2055,7 @@ mod tests {
                 permissions: &bob_perms,
                 group_id: Some(group.id),
                 revokes: &[db::Permission::UserKick],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1966,6 +2083,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await
@@ -1980,6 +2098,7 @@ mod tests {
             None,
             None,
             Some(vec!["chat_send".to_string()]),
+            None,
             Some(admin_session),
             &mut test_ctx.handler_context(),
         )
@@ -2021,7 +2140,12 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .expect("Failed to create group");
 
@@ -2038,6 +2162,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2071,6 +2196,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await
@@ -2082,6 +2208,7 @@ mod tests {
             Some("Moderators".to_string()),
             None,
             Some(vec!["chat_send".to_string(), "user_kick".to_string()]),
+            None,
             Some(admin_session),
             &mut test_ctx.handler_context(),
         )
@@ -2155,7 +2282,12 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("Staff", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .expect("Failed to create group");
 
@@ -2172,6 +2304,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2205,6 +2338,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await
@@ -2216,6 +2350,7 @@ mod tests {
             Some("Staff".to_string()),
             None,
             Some(vec!["chat_send".to_string()]),
+            None,
             Some(admin_session),
             &mut test_ctx.handler_context(),
         )
@@ -2234,6 +2369,510 @@ mod tests {
         assert!(
             test_ctx.rx.try_recv().is_err(),
             "No cascade when name and permissions are unchanged"
+        );
+    }
+
+    /// Set up a non-admin "editor" with resolved bandwidth weight = `weight`.
+    async fn setup_editor_with_weight(
+        test_ctx: &mut crate::handlers::testing::TestContext,
+        weight: u16,
+    ) -> u32 {
+        let editor_group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Editors",
+                false,
+                &crate::db::Permissions::from(&[crate::db::Permission::GroupEdit]),
+                weight,
+            )
+            .await
+            .unwrap();
+        let editor_session = login_user(
+            test_ctx,
+            "editor",
+            "password",
+            &[crate::db::Permission::GroupEdit],
+            false,
+        )
+        .await;
+        let admin_session = login_user(test_ctx, "admin", "password", &[], true).await;
+        let editor = test_ctx
+            .db
+            .users
+            .get_user_by_username("editor")
+            .await
+            .unwrap()
+            .unwrap();
+        crate::handlers::user_update::handle_user_update(
+            crate::handlers::user_update::UserUpdateRequest {
+                id: editor.id,
+                current_password: None,
+                username: None,
+                password: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                group_id: Some(editor_group.id),
+                remove_group: None,
+                revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
+                session_id: Some(admin_session),
+            },
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let _ = read_server_message(test_ctx).await;
+        editor_session
+    }
+
+    #[tokio::test]
+    async fn test_groupupdate_non_admin_can_set_lower_weight() {
+        let mut test_ctx = create_test_context().await;
+        let editor_session = setup_editor_with_weight(&mut test_ctx, 25).await;
+
+        // Create a target group at weight 5 (initial).
+        let target = test_ctx
+            .db
+            .groups
+            .create_group("Helpers", false, &crate::db::Permissions::new(), 5)
+            .await
+            .unwrap();
+
+        // Editor bumps target's weight to 20 (≤ editor's 25): delegation OK.
+        let result = handle_group_update(
+            target.id,
+            None,
+            None,
+            None,
+            Some(20),
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(success, "delegation-OK weight should succeed: {:?}", error);
+            }
+            _ => panic!("Expected GroupUpdateResponse"),
+        }
+        // Drain any cascade messages.
+        while test_ctx.rx.try_recv().is_ok() {}
+    }
+
+    #[tokio::test]
+    async fn test_groupupdate_non_admin_cannot_set_higher_weight() {
+        let mut test_ctx = create_test_context().await;
+        let editor_session = setup_editor_with_weight(&mut test_ctx, 25).await;
+
+        let target = test_ctx
+            .db
+            .groups
+            .create_group("Helpers", false, &crate::db::Permissions::new(), 5)
+            .await
+            .unwrap();
+
+        // Editor tries to bump target to 100 (> editor's 25): delegation rejects.
+        let result = handle_group_update(
+            target.id,
+            None,
+            None,
+            None,
+            Some(100),
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(
+                    error.unwrap(),
+                    crate::handlers::err_bandwidth_weight_delegation(
+                        crate::handlers::testing::DEFAULT_TEST_LOCALE
+                    )
+                );
+            }
+            _ => panic!("Expected GroupUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_groupupdate_admin_bypasses_delegation() {
+        let mut test_ctx = create_test_context().await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let target = test_ctx
+            .db
+            .groups
+            .create_group("Helpers", false, &crate::db::Permissions::new(), 5)
+            .await
+            .unwrap();
+
+        // Admin bumps target's weight to a value far above any non-admin's reach.
+        let result = handle_group_update(
+            target.id,
+            None,
+            None,
+            None,
+            Some(10_000),
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(success, "admin bypass should succeed: {:?}", error);
+            }
+            _ => panic!("Expected GroupUpdateResponse"),
+        }
+        // Drain any cascade messages.
+        while test_ctx.rx.try_recv().is_ok() {}
+    }
+
+    /// Regression: changing a group's bandwidth_weight must broadcast
+    /// `UserUpdated` for each inheriting online member so other clients'
+    /// user lists reflect the new effective weight. Without the broadcast,
+    /// the cache refresh would update the server side but leave peers stale.
+    #[tokio::test]
+    async fn test_group_update_bandwidth_cascade_sends_user_updated() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Group starts at weight 5; bob inherits it.
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                5,
+            )
+            .await
+            .expect("Failed to create group");
+
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let bob_effective = test_ctx
+            .db
+            .users
+            .get_user_permissions(bob.id)
+            .await
+            .unwrap();
+        // Grant UserList so bob can receive the broadcast on his own tx.
+        let mut bob_session_perms = bob_effective.permissions.clone();
+        bob_session_perms.insert(db::Permission::UserList);
+        let bob_session = test_ctx
+            .user_manager
+            .add_user(crate::users::user::NewSessionParams {
+                session_id: 0,
+                user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: bob_session_perms,
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: Some(group.id),
+                group_name: Some("Staff".to_string()),
+                bandwidth_weight: 5,
+                last_activity: Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        // Bump group weight to 12.
+        let result = handle_group_update(
+            group.id,
+            None,
+            None,
+            None,
+            Some(12),
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        // GroupUpdateResponse first.
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
+            other => panic!("Expected GroupUpdateResponse, got {:?}", other),
+        }
+
+        // Then the cascaded UserUpdated for bob.
+        let (msg, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("Should receive UserUpdated broadcast");
+        match msg {
+            ServerMessage::UserUpdated {
+                previous_username,
+                user,
+            } => {
+                assert_eq!(previous_username, "bob");
+                assert_eq!(user.username, "bob");
+                assert_eq!(user.bandwidth_weight, Some(12));
+            }
+            other => panic!("Expected UserUpdated, got {:?}", other),
+        }
+
+        // Session cache reflects the new weight.
+        let updated_bob = test_ctx
+            .user_manager
+            .get_user_by_session_id(bob_session)
+            .await
+            .unwrap();
+        assert_eq!(
+            updated_bob
+                .bandwidth_weight
+                .load(std::sync::atomic::Ordering::Relaxed),
+            12
+        );
+    }
+
+    /// Regression: when a single GroupUpdate changes BOTH name and
+    /// bandwidth_weight, the cascade must emit exactly one `UserUpdated`
+    /// call per affected user — not one per changed field. Two broadcasts
+    /// would fan out to every UserList-holder for the same delta.
+    #[tokio::test]
+    async fn test_group_update_name_and_bandwidth_one_broadcast_per_member() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                5,
+            )
+            .await
+            .unwrap();
+
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let bob_effective = test_ctx
+            .db
+            .users
+            .get_user_permissions(bob.id)
+            .await
+            .unwrap();
+        let mut bob_session_perms = bob_effective.permissions.clone();
+        bob_session_perms.insert(db::Permission::UserList);
+        let _ = test_ctx
+            .user_manager
+            .add_user(crate::users::user::NewSessionParams {
+                session_id: 0,
+                user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: bob_session_perms,
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: Some(group.id),
+                group_name: Some("Staff".to_string()),
+                bandwidth_weight: 5,
+                last_activity: Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        // Change name AND bandwidth in the same call.
+        let result = handle_group_update(
+            group.id,
+            Some("Moderators".to_string()),
+            None,
+            None,
+            Some(12),
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
+            other => panic!("Expected GroupUpdateResponse, got {:?}", other),
+        }
+
+        // Drain UserUpdated messages and count. Bob's tx is shared with admin's
+        // (same `test_ctx.tx`), and `broadcast_to_permission` sends per-session.
+        // A single consolidated broadcast → 2 messages (admin via admin bypass,
+        // bob via explicit UserList). The pre-fix two-loop version sent 4.
+        let mut user_updated_count = 0;
+        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+            match msg {
+                ServerMessage::UserUpdated { user, .. } if user.username == "bob" => {
+                    assert_eq!(user.group_name, Some("Moderators".to_string()));
+                    assert_eq!(user.bandwidth_weight, Some(12));
+                    user_updated_count += 1;
+                }
+                other => panic!("Unexpected message in queue: {:?}", other),
+            }
+        }
+        assert_eq!(
+            user_updated_count, 2,
+            "Combined name+bandwidth cascade must emit one broadcast per affected user (one fan-out × 2 listeners on the shared tx = 2), not one per changed field (would be 4)"
+        );
+    }
+
+    /// Regression companion to the broadcast test: when the group's weight
+    /// change resolves to the same effective value for every member (because
+    /// they all have higher own overrides), no `UserUpdated` should fire.
+    #[tokio::test]
+    async fn test_group_update_bandwidth_no_broadcast_when_override_wins() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                5,
+            )
+            .await
+            .unwrap();
+
+        // bob has his own override at 100, so changing group weight from 5
+        // to 12 leaves his effective weight at 100.
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+                bandwidth_weight: Some(100),
+            })
+            .await
+            .unwrap();
+
+        let bob_effective = test_ctx
+            .db
+            .users
+            .get_user_permissions(bob.id)
+            .await
+            .unwrap();
+        let mut bob_session_perms = bob_effective.permissions.clone();
+        bob_session_perms.insert(db::Permission::UserList);
+        let _ = test_ctx
+            .user_manager
+            .add_user(crate::users::user::NewSessionParams {
+                session_id: 0,
+                user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: bob_session_perms,
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: Some(group.id),
+                group_name: Some("Staff".to_string()),
+                bandwidth_weight: 100,
+                last_activity: Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        let result = handle_group_update(
+            group.id,
+            None,
+            None,
+            None,
+            Some(12),
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
+            other => panic!("Expected GroupUpdateResponse, got {:?}", other),
+        }
+
+        assert!(
+            test_ctx.rx.try_recv().is_err(),
+            "No UserUpdated broadcast when every member's resolved weight is unchanged"
         );
     }
 }

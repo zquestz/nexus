@@ -310,6 +310,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await
@@ -350,6 +351,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await

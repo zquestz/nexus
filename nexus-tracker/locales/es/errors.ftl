@@ -1,4 +1,4 @@
-# Mensajes de error del rastreador (v0.1.0)
+# Mensajes de error del rastreador
 #
 # Todas las claves usan el prefijo `err-tracker-*` para mantenerlas aisladas
 # del espacio de nombres de localización de nexus-server. Las claves

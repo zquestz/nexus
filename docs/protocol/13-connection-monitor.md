@@ -100,7 +100,7 @@ Response containing all active connections.
 | Field        | Type     | Description                                         |
 | ------------ | -------- | --------------------------------------------------- |
 | `nickname`   | `string` | Display name (equals username for regular accounts) |
-| `username`   | `string` | Account username (database key)                     |
+| `username`   | `string` | Account username (account identifier)               |
 | `ip`         | `string` | Remote IP address (IPv4 or IPv6)                    |
 | `port`       | `u16`    | Remote port number                                  |
 | `login_time` | `i64`    | Unix timestamp when session logged in               |

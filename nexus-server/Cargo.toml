@@ -42,6 +42,7 @@ webrtc-util = "0.17"
 [dev-dependencies]
 tempfile = "3.20"
 rcgen = "0.14"
+fluent-syntax = "0.12"
 
 [lib]
 name = "nexus_server"

@@ -18,7 +18,7 @@ err-status-invalid-characters = Il messaggio di assenza contiene caratteri non v
 
 # Errori account condivisi
 err-shared-cannot-be-admin = Gli account condivisi non possono essere amministratori
-err-shared-cannot-change-password = Impossibile cambiare la password di un account condiviso
+err-shared-cannot-self-edit = Gli account condivisi non possono modificarsi
 err-shared-invalid-permissions = Gli account condivisi non possono avere questi permessi: { $permissions }
 err-shared-message-requires-nickname = Gli account condivisi possono ricevere messaggi solo tramite nickname
 err-shared-kick-requires-nickname = Gli account condivisi possono essere espulsi solo tramite nickname
@@ -74,6 +74,7 @@ err-cannot-edit-self = Non puoi modificare te stesso
 err-current-password-required = La password attuale è richiesta per cambiare la password
 err-current-password-incorrect = La password attuale non è corretta
 err-cannot-create-admin = Solo gli amministratori possono creare utenti amministratori
+err-admin-cannot-have-group = Impossibile assegnare utenti amministratori a un gruppo
 err-cannot-kick-self = Non puoi espellere te stesso
 err-cannot-kick-admin = Impossibile espellere utenti amministratori
 err-cannot-delete-admin = Solo gli amministratori possono eliminare utenti amministratori
@@ -319,3 +320,16 @@ err-flood-warning = Messaggio limitato (avviso { $violation } di { $max_violatio
    *[other] secondi
 }. Continuare a inviare messaggi comporterà la disconnessione.
 err-flood-disconnect = Disconnesso: limite di velocità chat superato.
+
+# Bandwidth Errors
+err-bandwidth-weight-delegation = Impossibile concedere un peso della larghezza di banda superiore al proprio
+err-bandwidth-weight-inherit-would-elevate = Impossibile ereditare un peso della larghezza di banda superiore al proprio
+err-bandwidth-weight-zero = Il peso della larghezza di banda deve essere almeno { $min }
+err-bandwidth-chunk-size-too-small = La dimensione del blocco dello scheduler deve essere almeno { $min } { $min ->
+    [one] byte
+   *[other] byte
+}
+err-bandwidth-chunk-size-too-large = La dimensione del blocco dello scheduler deve essere al massimo { $max } { $max ->
+    [one] byte
+   *[other] byte
+}

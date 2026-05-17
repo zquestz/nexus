@@ -18,7 +18,7 @@ err-status-invalid-characters = Сообщение об отсутствии с�
 
 # Ошибки общих учетных записей
 err-shared-cannot-be-admin = Общие учетные записи не могут быть администраторами
-err-shared-cannot-change-password = Невозможно изменить пароль общей учетной записи
+err-shared-cannot-self-edit = Общие учетные записи не могут редактировать сами себя
 err-shared-invalid-permissions = Общие учетные записи не могут иметь эти разрешения: { $permissions }
 err-shared-message-requires-nickname = Общим учетным записям можно отправлять сообщения только по никнейму
 err-shared-kick-requires-nickname = Общие учетные записи можно кикнуть только по никнейму
@@ -74,6 +74,7 @@ err-cannot-edit-self = Вы не можете редактировать себ�
 err-current-password-required = Для изменения пароля требуется текущий пароль
 err-current-password-incorrect = Текущий пароль неверен
 err-cannot-create-admin = Только администраторы могут создавать пользователей-администраторов
+err-admin-cannot-have-group = Невозможно назначить пользователей-администраторов в группу
 err-cannot-kick-self = Вы не можете выгнать себя
 err-cannot-kick-admin = Невозможно выгнать пользователей-администраторов
 err-cannot-delete-admin = Только администраторы могут удалять пользователей-администраторов
@@ -320,3 +321,18 @@ err-flood-warning = Сообщение ограничено (предупреж�
    *[other] секунд
 }. Продолжение приведёт к отключению.
 err-flood-disconnect = Отключено: превышен лимит скорости чата.
+
+# Bandwidth Errors
+err-bandwidth-weight-delegation = Нельзя предоставить вес пропускной способности выше собственного
+err-bandwidth-weight-inherit-would-elevate = Нельзя унаследовать вес пропускной способности выше собственного
+err-bandwidth-weight-zero = Вес пропускной способности должен быть не менее { $min }
+err-bandwidth-chunk-size-too-small = Размер блока планировщика должен быть не менее { $min } { $min ->
+    [one] байт
+    [few] байта
+   *[other] байт
+}
+err-bandwidth-chunk-size-too-large = Размер блока планировщика должен быть не более { $max } { $max ->
+    [one] байт
+    [few] байта
+   *[other] байт
+}

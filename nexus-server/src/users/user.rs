@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicU16;
 
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::ServerMessage;
@@ -35,12 +36,14 @@ pub struct NewSessionParams {
     pub group_id: Option<i64>,
     /// Group name (if user belongs to a group)
     pub group_name: Option<String>,
+    /// Resolved effective bandwidth weight at session creation.
+    pub bandwidth_weight: u16,
     /// Last meaningful activity time (for idle tracking)
     pub last_activity: std::time::Instant,
 }
 
 /// Represents a logged-in user session
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct UserSession {
     /// Session ID (unique identifier for this connection)
     pub session_id: u32,
@@ -82,8 +85,55 @@ pub struct UserSession {
     pub group_id: Option<i64>,
     /// Group name (if user belongs to a group)
     pub group_name: Option<String>,
+    /// Live cache of this user's resolved effective bandwidth weight. The
+    /// scheduler reads this on every dispatch — lock-free `Relaxed` is fine,
+    /// the value is advisory for fairness (not a correctness invariant).
+    ///
+    /// Multi-session invariant: every session of a given `user_id` holds
+    /// the same value, kept in lockstep by `UserManager::update_bandwidth_weight`
+    /// fanning out the new value to every session in a single pass. The
+    /// atomic is **not** shared between sessions (each `UserSession` owns
+    /// its own); the convergence is by value, not by memory. Readers that
+    /// aggregate across sessions of one user can read any one session.
+    pub bandwidth_weight: AtomicU16,
     /// Last meaningful activity time (for idle tracking, excludes passive messages like Ping/UserAway)
     pub last_activity: std::time::Instant,
+}
+
+// Manual `Clone` impl: `AtomicU16` doesn't derive `Clone` (cloning an
+// atomic isn't atomic). The clone snapshots the current value into a
+// fresh atomic, so the clone is independent of the original — subsequent
+// writes through `update_bandwidth_weight` don't propagate to the clone.
+// This matches every caller's intent (queries return snapshots; live
+// updates flow through the manager lock).
+impl Clone for UserSession {
+    fn clone(&self) -> Self {
+        Self {
+            session_id: self.session_id,
+            user_id: self.user_id,
+            username: self.username.clone(),
+            is_admin: self.is_admin,
+            is_shared: self.is_shared,
+            permissions: self.permissions.clone(),
+            address: self.address,
+            created_at: self.created_at,
+            login_time: self.login_time,
+            tx: self.tx.clone(),
+            features: self.features.clone(),
+            locale: self.locale.clone(),
+            avatar: self.avatar.clone(),
+            nickname: self.nickname.clone(),
+            is_away: self.is_away,
+            status: self.status.clone(),
+            group_id: self.group_id,
+            group_name: self.group_name.clone(),
+            bandwidth_weight: AtomicU16::new(
+                self.bandwidth_weight
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            last_activity: self.last_activity,
+        }
+    }
 }
 
 impl UserSession {
@@ -108,6 +158,7 @@ impl UserSession {
             status: params.status,
             group_id: params.group_id,
             group_name: params.group_name,
+            bandwidth_weight: AtomicU16::new(params.bandwidth_weight),
             last_activity: params.last_activity,
         }
     }

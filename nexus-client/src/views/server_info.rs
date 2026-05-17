@@ -25,7 +25,10 @@ use iced::widget::{
 };
 use iced::{Center, Element, Fill, Length, Theme};
 use iced_aw::{NumberInput, TabLabel, Tabs};
-use nexus_common::validators::PasswordStrength;
+use nexus_common::validators::{
+    DEFAULT_BANDWIDTH_CHUNK_SIZE, MAX_BANDWIDTH_CHUNK_SIZE, MIN_BANDWIDTH_CHUNK_SIZE,
+    PasswordStrength,
+};
 
 use super::constants::PERMISSION_TRACKER_LIST;
 use super::helpers::t_args;
@@ -42,6 +45,7 @@ use crate::style::{
 };
 use crate::types::{
     InputId, Message, ServerConnection, ServerInfoEditState, ServerInfoTab, TrackerManagementState,
+    format_bytes_per_sec_as_mbps,
 };
 
 /// Render the server info panel.
@@ -102,6 +106,8 @@ fn build_display_data(conn: &ServerConnection) -> DisplayFields {
         connection_address: conn.connection_info.address.clone(),
         connection_port: conn.connection_info.port,
         public_address: conn.public_address.clone(),
+        max_outbound_rate: conn.max_outbound_rate,
+        scheduler_chunk_size: conn.scheduler_chunk_size,
     }
 }
 
@@ -125,6 +131,8 @@ struct DisplayFields {
     connection_address: String,
     connection_port: u16,
     public_address: Option<String>,
+    max_outbound_rate: Option<u64>,
+    scheduler_chunk_size: Option<u32>,
 }
 
 /// Render the server info display view (Config + Trackers tabs).
@@ -333,6 +341,7 @@ fn server_info_display_view<'a>(
 /// Within a section, rows are alphabetical.
 fn config_tab_body(data: &DisplayFields) -> Element<'static, Message> {
     let mut general_rows: Vec<Element<'static, Message>> = Vec::new();
+    let mut bandwidth_rows: Vec<Element<'static, Message>> = Vec::new();
     let mut chat_rows: Vec<Element<'static, Message>> = Vec::new();
     let mut files_rows: Vec<Element<'static, Message>> = Vec::new();
 
@@ -363,6 +372,25 @@ fn config_tab_body(data: &DisplayFields) -> Element<'static, Message> {
     }
     if let Some(version) = &data.version {
         general_rows.push(config_row(t("label-version-short"), version.clone()));
+    }
+
+    // -- Bandwidth (alphabetical within the section) --
+    // `max_outbound_rate` is visible to all (like chat_rate_limit);
+    // `scheduler_chunk_size` is admin-only and the server already sends
+    // `None` for non-admins, so the if-let naturally hides it.
+    if let Some(bytes_per_sec) = data.max_outbound_rate {
+        let value = if bytes_per_sec == 0 {
+            t("label-unlimited")
+        } else {
+            format_bytes_per_sec_as_mbps(bytes_per_sec)
+        };
+        bandwidth_rows.push(config_row(t("label-max-outbound-rate"), value));
+    }
+    if let Some(chunk) = data.scheduler_chunk_size {
+        bandwidth_rows.push(config_row(
+            t("label-scheduler-chunk-size"),
+            chunk.to_string(),
+        ));
     }
 
     // -- Chat (alphabetical) --
@@ -408,10 +436,11 @@ fn config_tab_body(data: &DisplayFields) -> Element<'static, Message> {
     // the outer wrapper's spacer to give the topmost heading the
     // breathing room it needs from the tab bar's hard bottom edge,
     // while between sections a single MEDIUM gap is enough.
-    let sections: [(&str, Vec<Element<'static, Message>>); 3] = [
-        ("tab-general", general_rows),
-        ("tab-chat", chat_rows),
-        ("tab-files", files_rows),
+    let sections: [(&str, Vec<Element<'static, Message>>); 4] = [
+        ("label-general-section", general_rows),
+        ("label-bandwidth-section", bandwidth_rows),
+        ("label-chat-section", chat_rows),
+        ("label-files-section", files_rows),
     ];
     let mut items: Vec<Element<'static, Message>> = Vec::new();
     for (heading_key, rows) in sections {
@@ -588,7 +617,7 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
 
     // General subheading
     form_items.push(
-        shaped_text(t("tab-general"))
+        shaped_text(t("label-general-section"))
             .size(TEXT_SIZE)
             .style(muted_text_style)
             .into(),
@@ -655,9 +684,63 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
 
     form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
 
+    // Bandwidth subheading + section
+    form_items.push(
+        shaped_text(t("label-bandwidth-section"))
+            .size(TEXT_SIZE)
+            .style(muted_text_style)
+            .into(),
+    );
+
+    // Max outbound rate (Mbps, NumberInput<f64>; stepper of 1.0, users can
+    // type fractional values directly. 0.0 means unlimited.)
+    let outbound_label = shaped_text(t("label-max-outbound-rate")).size(TEXT_SIZE);
+    let outbound_input: Element<'static, Message> = NumberInput::new(
+        &edit_state.max_outbound_rate_mbps,
+        0.0..=f64::MAX,
+        Message::EditServerInfoMaxOutboundRateChanged,
+    )
+    .id(Id::from(InputId::EditServerInfoMaxOutboundRate))
+    .padding(INPUT_PADDING)
+    .into();
+    form_items.push(
+        row![
+            outbound_label,
+            Space::new().width(ELEMENT_SPACING),
+            outbound_input
+        ]
+        .align_y(Center)
+        .into(),
+    );
+
+    // Scheduler chunk size (bytes, NumberInput; bounds from validators)
+    let chunk_label = shaped_text(t("label-scheduler-chunk-size")).size(TEXT_SIZE);
+    let chunk_value = edit_state
+        .scheduler_chunk_size
+        .unwrap_or(DEFAULT_BANDWIDTH_CHUNK_SIZE);
+    let chunk_input: Element<'static, Message> = NumberInput::new(
+        &chunk_value,
+        MIN_BANDWIDTH_CHUNK_SIZE..=MAX_BANDWIDTH_CHUNK_SIZE,
+        |v| Message::EditServerInfoSchedulerChunkSizeChanged(Some(v)),
+    )
+    .id(Id::from(InputId::EditServerInfoSchedulerChunkSize))
+    .padding(INPUT_PADDING)
+    .into();
+    form_items.push(
+        row![
+            chunk_label,
+            Space::new().width(ELEMENT_SPACING),
+            chunk_input
+        ]
+        .align_y(Center)
+        .into(),
+    );
+
+    form_items.push(Space::new().height(SPACER_SIZE_MEDIUM).into());
+
     // Chat subheading
     form_items.push(
-        shaped_text(t("tab-chat"))
+        shaped_text(t("label-chat-section"))
             .size(TEXT_SIZE)
             .style(muted_text_style)
             .into(),
@@ -747,7 +830,7 @@ fn server_info_edit_view(edit_state: &ServerInfoEditState) -> Element<'static, M
 
     // Files subheading
     form_items.push(
-        shaped_text(t("tab-files"))
+        shaped_text(t("label-files-section"))
             .size(TEXT_SIZE)
             .style(muted_text_style)
             .into(),

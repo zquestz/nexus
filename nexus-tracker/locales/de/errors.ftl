@@ -1,4 +1,4 @@
-# Tracker-Fehlermeldungen (v0.1.0)
+# Tracker-Fehlermeldungen
 #
 # Alle Schlüssel verwenden das Präfix `err-tracker-*`, um sie vom
 # Lokalisierungs-Namensraum von nexus-server zu isolieren. Die Schlüssel

@@ -2,6 +2,8 @@
 
 Account groups provide permission templates for users. A group defines a base set of permissions that all members inherit, with optional per-user grant and revoke overrides.
 
+Admin users are never group members. See [09-admin.md](09-admin.md) (Admin XOR group invariant) for the constraint as enforced through `UserCreate` and `UserUpdate`.
+
 ## Flow
 
 ### Listing Groups
@@ -151,26 +153,30 @@ Response containing all groups with their details.
 
 Create a new group.
 
-| Field         | Type     | Required | Description                               |
-| ------------- | -------- | -------- | ----------------------------------------- |
-| `name`        | string   | Yes      | Group name (max 32 characters)            |
-| `is_shared`   | boolean  | Yes      | Whether group is for shared accounts only |
-| `permissions` | string[] | Yes      | List of permission identifiers            |
+| Field              | Type     | Required | Description                                                                                                  |
+| ------------------ | -------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `name`             | string   | Yes      | Group name (max 32 characters)                                                                               |
+| `is_shared`        | boolean  | Yes      | Whether group is for shared accounts only                                                                    |
+| `permissions`      | string[] | Yes      | List of permission identifiers                                                                               |
+| `bandwidth_weight` | integer  | No       | Group bandwidth weight (1..=65535). Omitted on the wire defaults to 1. Subject to the delegation rule below. |
 
-**Field validation.** Each input field is enforced by a validator in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `name` — `validate_group_name`: non-empty, ≤32 characters; Unicode
-  letters or ASCII graphic characters only; rejects whitespace, control
-  characters, and the path-sensitive set `/ \ : . < > " | ? * #`.
-- `permissions` — `validate_permissions`: list bounded to
-  `PERMISSIONS_COUNT` (the total defined permission set); each entry
-  non-empty, ≤32 bytes, no newlines, no control characters. Format-only —
-  unrecognized permission names pass this validator and are rejected at
-  permission-parsing time downstream.
+- `name`: non-empty, ≤32 characters; Unicode letters or ASCII graphic
+  characters only; rejects whitespace, control characters, and the
+  path-sensitive set `/ \ : . < > " | ? * #`.
+- `permissions`: list bounded to the total defined permission set;
+  each entry non-empty, ≤32 bytes, no newlines, no control
+  characters. Format-only — unrecognized permission names pass this
+  check and are rejected at the next validation stage.
+- `bandwidth_weight`: must be in the range 1..=65535.
+
+**Bandwidth weight delegation.** Non-admins can create a group with a
+`bandwidth_weight` only at or below their own current resolved
+bandwidth weight. Admins bypass.
 
 Validation failures send `GroupCreateResponse { success: false, error }`
-with a translated error message.
+with an error message.
 
 **Example:**
 
@@ -249,15 +255,16 @@ Request a group's data for editing.
 
 Response containing the group's current data for editing.
 
-| Field          | Type     | Required   | Description                   |
-| -------------- | -------- | ---------- | ----------------------------- |
-| `success`      | boolean  | Yes        | Whether the request succeeded |
-| `error`        | string   | If failure | Error message                 |
-| `id`           | integer  | If success | Group ID                      |
-| `name`         | string   | If success | Group name                    |
-| `is_shared`    | boolean  | If success | Whether group is shared       |
-| `permissions`  | string[] | If success | Group's base permission set   |
-| `member_count` | integer  | If success | Number of users in this group |
+| Field              | Type     | Required   | Description                          |
+| ------------------ | -------- | ---------- | ------------------------------------ |
+| `success`          | boolean  | Yes        | Whether the request succeeded        |
+| `error`            | string   | If failure | Error message                        |
+| `id`               | integer  | If success | Group ID                             |
+| `name`             | string   | If success | Group name                           |
+| `is_shared`        | boolean  | If success | Whether group is shared              |
+| `permissions`      | string[] | If success | Group's base permission set          |
+| `member_count`     | integer  | If success | Number of users in this group        |
+| `bandwidth_weight` | integer  | If success | Group's bandwidth weight (1..=65535) |
 
 **Success example:**
 
@@ -292,19 +299,24 @@ Response containing the group's current data for editing.
 
 Update an existing group. Only provided fields are changed.
 
-| Field         | Type     | Required | Description                            |
-| ------------- | -------- | -------- | -------------------------------------- |
-| `id`          | integer  | Yes      | Group ID                               |
-| `name`        | string   | No       | New group name                         |
-| `is_shared`   | boolean  | No       | New shared status                      |
-| `permissions` | string[] | No       | New permission set (replaces existing) |
+| Field              | Type     | Required | Description                                                                   |
+| ------------------ | -------- | -------- | ----------------------------------------------------------------------------- |
+| `id`               | integer  | Yes      | Group ID                                                                      |
+| `name`             | string   | No       | New group name                                                                |
+| `is_shared`        | boolean  | No       | New shared status                                                             |
+| `permissions`      | string[] | No       | New permission set (replaces existing)                                        |
+| `bandwidth_weight` | integer  | No       | New group bandwidth weight (1..=65535). Subject to the delegation rule below. |
 
 **Field validation.** Same rules as
-[`GroupCreate`](#groupcreate-client--server) for the matching fields:
-`name` (`validate_group_name`) and `permissions`
-(`validate_permissions`). `GroupUpdate` is a partial update —
-omitted fields are unchanged. When `permissions` is present, it
-fully replaces the group's existing permission set.
+[`GroupCreate`](#groupcreate-client--server) for `name`,
+`permissions`, and `bandwidth_weight` (range 1..=65535).
+`GroupUpdate` is a partial update — omitted fields are unchanged.
+When `permissions` is present, it fully replaces the group's
+existing permission set.
+
+**Bandwidth weight delegation.** Non-admins can set `bandwidth_weight`
+only to a value at or below their own current resolved bandwidth
+weight. Admins bypass.
 
 **Rename example:**
 
@@ -430,13 +442,14 @@ Response after deleting a group.
 
 ### GroupInfo
 
-| Field          | Type     | Description                          |
-| -------------- | -------- | ------------------------------------ |
-| `id`           | integer  | Unique group ID                      |
-| `name`         | string   | Group name                           |
-| `is_shared`    | boolean  | Whether group is for shared accounts |
-| `member_count` | integer  | Number of users assigned to group    |
-| `permissions`  | string[] | Base permission set for the group    |
+| Field              | Type     | Description                                                                        |
+| ------------------ | -------- | ---------------------------------------------------------------------------------- |
+| `id`               | integer  | Unique group ID                                                                    |
+| `name`             | string   | Group name                                                                         |
+| `is_shared`        | boolean  | Whether group is for shared accounts                                               |
+| `member_count`     | integer  | Number of users assigned to group                                                  |
+| `permissions`      | string[] | Base permission set for the group                                                  |
+| `bandwidth_weight` | integer  | Group bandwidth weight (1..=65535); inherited by members with no per-user override |
 
 ## Permissions
 
@@ -488,13 +501,13 @@ if user.is_admin:
     → all permissions (admin bypasses everything)
 
 elif user.group_id is not None:
-    base    = group permissions (from group_permissions table)
-    grants  = user_permissions WHERE override_type = 'grant'
-    revokes = user_permissions WHERE override_type = 'revoke'
+    base      = group's permission set
+    grants    = user's grant overrides
+    revokes   = user's revoke overrides
     effective = (base ∪ grants) − revokes
 
 else:
-    → user_permissions WHERE override_type = 'grant' (legacy behavior)
+    → user's grant overrides (legacy behavior)
 ```
 
 The client never resolves permissions locally. `LoginResponse` and `PermissionsUpdated` always send the resolved effective set as a flat list.
@@ -503,12 +516,11 @@ The client never resolves permissions locally. `LoginResponse` and `PermissionsU
 
 When a group's permissions are updated via `GroupUpdate`, the server:
 
-1. Updates the group's base permission set in the database
-2. Resolves new effective permissions for every member of the group
-3. Updates the in-memory session cache for all online members
-4. Broadcasts `PermissionsUpdated` to each affected online member with their new effective set
+1. Updates the group's base permission set.
+2. Resolves new effective permissions for every member of the group.
+3. Broadcasts `PermissionsUpdated` to each affected online member with their new effective set.
 
-This ensures that permission changes take effect immediately for all group members without requiring re-login.
+Online members see the new permissions immediately without needing to re-login.
 
 If a permission change causes side effects (e.g., losing `voice_listen` while in a voice session), those effects are applied as part of the cascade.
 
@@ -526,30 +538,31 @@ When a user's group assignment changes, the server cleans up overrides:
 
 ### Common Errors
 
-| Error                             | Cause                                           | Connection      |
-| --------------------------------- | ----------------------------------------------- | --------------- |
-| Not logged in                     | Sent before authentication                      | Disconnected    |
-| Permission denied                 | Missing required permission                     | Stays connected |
-| Group not found                   | Invalid group ID                                | Stays connected |
-| Group name cannot be empty        | Empty name string                               | Stays connected |
-| Group name exceeds maximum length | Name exceeds 32 characters                      | Stays connected |
-| Group name contains invalid chars | Control characters or invalid input             | Stays connected |
-| A group with this name exists     | Duplicate name (case-insensitive)               | Stays connected |
-| Shared mismatch                   | Shared account ↔ non-shared group or vice versa | Stays connected |
-| Shared permission violation       | Non-shared permission in shared group           | Stays connected |
-| Cannot delete with members        | Group still has users assigned                  | Stays connected |
-| Cannot modify shared status       | Toggling `is_shared` while group has members    | Stays connected |
+| Error                                          | Cause                                                                         | Connection      |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- | --------------- |
+| Not logged in                                  | Sent before authentication                                                    | Disconnected    |
+| Permission denied                              | Missing required permission                                                   | Stays connected |
+| Group not found                                | Invalid group ID                                                              | Stays connected |
+| Group name cannot be empty                     | Empty name string                                                             | Stays connected |
+| Group name exceeds maximum length              | Name exceeds 32 characters                                                    | Stays connected |
+| Group name contains invalid chars              | Control characters or invalid input                                           | Stays connected |
+| A group with this name exists                  | Duplicate name (case-insensitive)                                             | Stays connected |
+| Shared mismatch                                | Shared account ↔ non-shared group or vice versa                               | Stays connected |
+| Shared permission violation                    | Non-shared permission in shared group                                         | Stays connected |
+| Cannot delete with members                     | Group still has users assigned                                                | Stays connected |
+| Cannot modify shared status                    | Toggling `is_shared` while group has members                                  | Stays connected |
+| Cannot grant a bandwidth weight above your own | Non-admin set `bandwidth_weight` above their own resolved weight (delegation) | Stays connected |
+| Bandwidth weight must be at least N            | `bandwidth_weight` below the minimum (1)                                      | Stays connected |
 
 ## Notes
 
-- Groups are persisted in the database and survive server restart
-- Group names are unique (case-insensitive, using `LOWER()` index)
+- Groups are persistent and survive server restart
+- Group names are unique, case-insensitive
 - One group per user — no multi-group membership
 - No group hierarchy or inheritance between groups
 - Deleting a group requires removing all members first (server rejects if `member_count > 0`)
-- Group rename updates the cached group name on all online member sessions and broadcasts `UserUpdated` so other clients' user lists reflect the change
-- Integer foreign key (`group_id`) means renames don't break user references
-- Schema uses `ON DELETE SET NULL` as a safety net, but the server enforces empty membership before deletion
+- Group rename broadcasts `UserUpdated` to all clients so user lists reflect the change immediately
+- Renaming a group does not affect existing membership (group membership is identity-based, not name-based)
 
 ## Next Step
 

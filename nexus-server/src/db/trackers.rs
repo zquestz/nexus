@@ -64,14 +64,14 @@ pub fn is_transient_db_error(err: &sqlx::Error) -> bool {
     primary == SQLITE_BUSY_PRIMARY || primary == SQLITE_LOCKED_PRIMARY
 }
 
-// SQLite reports UNIQUE constraint violations on expression-based
-// indexes by index name:
-//   `"UNIQUE constraint failed: index '<index_name>'"`
-// Both the endpoint and name indexes are expression-based
-// (`LOWER(address), port` and `LOWER(name)` respectively), so we
-// probe by index name in either case.
-const ENDPOINT_FAILURE_MARKER: &str = "idx_trackers_endpoint";
-const NAME_LOWER_FAILURE_MARKER: &str = "idx_trackers_name_lower";
+// SQLite reports UNIQUE constraint violations on column-based indexes
+// by table-qualified column list:
+//   `"UNIQUE constraint failed: trackers.address, trackers.port"` (compound)
+//   `"UNIQUE constraint failed: trackers.name"` (single)
+// The endpoint marker uses the full pair so a future schema adding
+// another UNIQUE involving `address` alone won't false-match.
+const ENDPOINT_FAILURE_MARKER: &str = "trackers.address, trackers.port";
+const NAME_DUPLICATE_MARKER: &str = "trackers.name";
 
 /// Errors specific to the tracker DB layer.
 ///
@@ -85,7 +85,7 @@ pub enum TrackerDbError {
     /// Another row already owns the `(address, port)` endpoint.
     EndpointDuplicate,
     /// Another row already uses this name (case-insensitive collision
-    /// on `LOWER(name)`).
+    /// via the column's `COLLATE NOCASE`).
     NameDuplicate,
     /// The configured-trackers row cap was already reached. Returned
     /// by `create()` when the atomic-insert WHERE clause matched zero
@@ -130,7 +130,7 @@ impl From<sqlx::Error> for TrackerDbError {
             if msg.contains(ENDPOINT_FAILURE_MARKER) {
                 return Self::EndpointDuplicate;
             }
-            if msg.contains(NAME_LOWER_FAILURE_MARKER) {
+            if msg.contains(NAME_DUPLICATE_MARKER) {
                 return Self::NameDuplicate;
             }
         }
@@ -515,7 +515,7 @@ mod tests {
             .expect("first create");
 
         // Same address in different ASCII case must collide via the
-        // expression-based unique index on `(LOWER(address), port)`.
+        // compound unique index on `(address, port)` (address is COLLATE NOCASE).
         let err = db
             .create(create_params("Tracker.Example.COM", "Second"))
             .await

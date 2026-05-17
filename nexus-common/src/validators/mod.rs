@@ -6,6 +6,8 @@
 
 mod avatar;
 mod ban_reason;
+mod bandwidth_chunk_size;
+mod bandwidth_weight;
 mod channel;
 mod channel_list;
 mod chat_topic;
@@ -42,6 +44,14 @@ mod version;
 
 pub use avatar::{AvatarError, MAX_AVATAR_DATA_URI_LENGTH, validate_avatar};
 pub use ban_reason::{BanReasonError, MAX_BAN_REASON_LENGTH, validate_ban_reason};
+pub use bandwidth_chunk_size::{
+    BandwidthChunkSizeError, DEFAULT_BANDWIDTH_CHUNK_SIZE, MAX_BANDWIDTH_CHUNK_SIZE,
+    MIN_BANDWIDTH_CHUNK_SIZE, validate_bandwidth_chunk_size,
+};
+pub use bandwidth_weight::{
+    BandwidthWeightError, DEFAULT_ADMIN_BANDWIDTH_WEIGHT, DEFAULT_BANDWIDTH_WEIGHT,
+    MIN_BANDWIDTH_WEIGHT, resolve_bandwidth_weight, validate_bandwidth_weight,
+};
 pub use channel::{
     CHANNEL_PREFIX, ChannelError, DEFAULT_CHANNEL, MAX_CHANNEL_LENGTH, MAX_CHANNELS_PER_USER,
     MIN_CHANNEL_LENGTH, validate_channel,

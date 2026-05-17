@@ -92,6 +92,12 @@ pub const ERR_SERVER_DESC_NEWLINES: &str = "Server description cannot contain ne
 /// Error when server description contains invalid characters
 pub const ERR_SERVER_DESC_INVALID_CHARS: &str = "Server description contains invalid characters";
 
+/// Error prefix when scheduler chunk size is below the minimum (format with the limit).
+pub const ERR_SCHEDULER_CHUNK_SIZE_TOO_SMALL: &str = "scheduler chunk size must be ≥";
+
+/// Error prefix when scheduler chunk size is above the maximum (format with the limit).
+pub const ERR_SCHEDULER_CHUNK_SIZE_TOO_LARGE: &str = "scheduler chunk size must be ≤";
+
 /// Error when server image is too large
 pub const ERR_SERVER_IMAGE_TOO_LARGE: &str = "Server image is too large";
 
@@ -223,6 +229,15 @@ pub const CONFIG_KEY_CHAT_RATE_LIMIT: &str = "chat_rate_limit";
 
 /// Default chat rate limit (messages per minute, 0 = disabled)
 pub const DEFAULT_CHAT_RATE_LIMIT: u32 = 20;
+
+/// Config key for the outbound bandwidth cap (bytes/sec; 0 = unlimited).
+pub const CONFIG_KEY_MAX_OUTBOUND_RATE: &str = "max_outbound_rate";
+
+/// Default outbound bandwidth cap in bytes/sec (0 = unlimited).
+pub const DEFAULT_MAX_OUTBOUND_RATE: u64 = 0;
+
+/// Config key for the WF2Q+ scheduler chunk size in bytes.
+pub const CONFIG_KEY_SCHEDULER_CHUNK_SIZE: &str = "scheduler_chunk_size";
 
 /// Maximum number of concurrent database connections in the pool
 ///
@@ -721,6 +736,24 @@ pub const LOG_FLOOD_LIMITED: &str = "Chat rate limited";
 /// Log: flood disconnect
 pub const LOG_FLOOD_DISCONNECT: &str = "Disconnected for repeated flood violations";
 
+// --- Bandwidth Weight Resolution ---
+// Login seeds the session cache by resolving bandwidth_weight from the DB.
+// UserUpdate / GroupUpdate get the resolved value from their respective
+// update returns (in-tx) and don't need a follow-up resolve. UserInfo /
+// UserList read from the session cache. So this log line only fires from
+// login.rs, where a DB error here disconnects the client.
+pub const LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED: &str =
+    "Failed to resolve bandwidth weight from database";
+
+// Fired when `clamp_db_bandwidth_weight` actually clamps a DB row value
+// outside [MIN_BANDWIDTH_WEIGHT, u16::MAX] back into range. All writer
+// paths validate, so under normal operation this never fires. When it
+// does, the row was corrupted via an out-of-band path (hand-edit,
+// restored-without-revalidation backup, etc.) — operators should
+// investigate the source.
+pub const LOG_BANDWIDTH_WEIGHT_CLAMPED: &str =
+    "Bandwidth weight read from DB was outside valid range and was clamped";
+
 // --- Handler: Ban ---
 pub const LOG_BAN_CREATE_NOT_LOGGED_IN: &str = "BanCreate: not logged in";
 pub const LOG_BAN_CREATE_PERMISSION_DENIED: &str = "BanCreate: permission denied";
@@ -1060,6 +1093,10 @@ pub const LOG_SERVER_INFO_DB_CHAT_RATE: &str =
     "ServerInfoUpdate: database error setting chat_rate_limit";
 pub const LOG_SERVER_INFO_DB_PASSWORD: &str =
     "ServerInfoUpdate: database error setting min_password_strength";
+pub const LOG_SERVER_INFO_DB_MAX_OUTBOUND_RATE: &str =
+    "ServerInfoUpdate: database error setting max_outbound_rate";
+pub const LOG_SERVER_INFO_DB_SCHEDULER_CHUNK_SIZE: &str =
+    "ServerInfoUpdate: database error setting scheduler_chunk_size";
 pub const LOG_SERVER_INFO_CHANNEL_CREATE_FAILED: &str =
     "ServerInfoUpdate: failed to create channel settings";
 pub const LOG_SERVER_INFO_CHANNEL_DELETE_FAILED: &str =

@@ -1310,3 +1310,13 @@ err-tracker-update-failed = 트래커 업데이트에 실패했습니다
 err-tracker-remove-failed = 트래커 제거에 실패했습니다
 err-tracker-accept-fingerprint-failed = 지문 수락에 실패했습니다
 err-tracker-edit-no-payload = 서버가 트래커 세부 정보를 반환하지 않았습니다
+
+label-bandwidth-section = 대역폭
+label-bandwidth-weight = 대역폭 가중치:
+label-chat-section = 채팅
+label-files-section = 파일
+label-general-section = 일반
+label-inherit-bandwidth-weight = 대역폭 가중치 상속
+label-max-outbound-rate = 최대 송신 (Mbps):
+label-unlimited = 무제한
+label-scheduler-chunk-size = 스케줄러 청크 크기 (바이트):

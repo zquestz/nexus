@@ -18,7 +18,7 @@ err-status-invalid-characters = 부재 메시지에 잘못된 문자가 포함�
 
 # 공유 계정 오류
 err-shared-cannot-be-admin = 공유 계정은 관리자가 될 수 없습니다
-err-shared-cannot-change-password = 공유 계정의 비밀번호는 변경할 수 없습니다
+err-shared-cannot-self-edit = 공유 계정은 자신을 편집할 수 없습니다
 err-shared-invalid-permissions = 공유 계정은 다음 권한을 가질 수 없습니다: { $permissions }
 err-shared-message-requires-nickname = 공유 계정은 닉네임으로만 메시지를 받을 수 있습니다
 err-shared-kick-requires-nickname = 공유 계정은 닉네임으로만 추방할 수 있습니다
@@ -74,6 +74,7 @@ err-cannot-edit-self = 자신을 편집할 수 없습니다
 err-current-password-required = 비밀번호를 변경하려면 현재 비밀번호가 필요합니다
 err-current-password-incorrect = 현재 비밀번호가 올바르지 않습니다
 err-cannot-create-admin = 관리자만 관리자 사용자를 만들 수 있습니다
+err-admin-cannot-have-group = 관리자 사용자를 그룹에 할당할 수 없습니다
 err-cannot-kick-self = 자기 자신을 추방할 수 없습니다
 err-cannot-kick-admin = 관리자 사용자를 추방할 수 없습니다
 err-cannot-delete-admin = 관리자만 관리자 사용자를 삭제할 수 있습니다
@@ -316,3 +317,10 @@ err-tracker-unknown = 트래커가 알 수 없는 오류를 보고했습니다
 # Flood Protection Errors
 err-flood-warning = 메시지가 제한되었습니다 (경고 { $violation }/{ $max_violations }). { $seconds }초 후에 다시 보낼 수 있습니다. 계속하면 연결이 끊어집니다.
 err-flood-disconnect = 연결 끊김: 채팅 속도 제한 초과.
+
+# Bandwidth Errors
+err-bandwidth-weight-delegation = 자신보다 높은 대역폭 가중치를 부여할 수 없습니다
+err-bandwidth-weight-inherit-would-elevate = 자신보다 높은 대역폭 가중치를 상속할 수 없습니다
+err-bandwidth-weight-zero = 대역폭 가중치는 최소 { $min } 이상이어야 합니다
+err-bandwidth-chunk-size-too-small = 스케줄러 청크 크기는 최소 { $min } 바이트 이상이어야 합니다
+err-bandwidth-chunk-size-too-large = 스케줄러 청크 크기는 최대 { $max } 바이트 이하여야 합니다

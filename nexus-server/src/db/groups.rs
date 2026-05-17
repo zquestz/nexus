@@ -11,6 +11,7 @@ use sqlx::sqlite::SqlitePool;
 
 use crate::db::permissions::{Permission, Permissions};
 use crate::db::sql;
+use crate::db::util::clamp_db_bandwidth_weight;
 
 /// A group record from the database
 #[derive(Debug, Clone)]
@@ -18,10 +19,29 @@ pub struct GroupRecord {
     pub id: i64,
     pub name: String,
     pub is_shared: bool,
+    pub bandwidth_weight: u16,
 }
 
-/// Row type for group queries
-type GroupRow = (i64, String, bool);
+/// Outcome of `update_group`: the updated group record plus the IDs
+/// of members whose effective bandwidth weight is sourced from this
+/// group (members with a NULL per-user override).
+///
+/// The cascade is scoped to inheriting members on purpose: when a
+/// group's bandwidth weight changes, override-holders' effective
+/// weights don't move (their override still wins), so they need no
+/// cache write and no broadcast. Returning only the inheriting set
+/// lets the handler do an O(inheriting) cascade instead of O(all
+/// members) plus per-member re-resolution.
+#[derive(Debug, Clone)]
+pub struct UpdateGroupResult {
+    pub group: GroupRecord,
+    pub inheriting_member_ids: Vec<i64>,
+}
+
+/// Row type for group queries (matches `SQL_SELECT_GROUP_*`).
+/// SQLite returns `bandwidth_weight` as `i64`; the validator bounds
+/// (1..=65535) guarantee the cast back to `u16` is lossless.
+type GroupRow = (i64, String, bool, i64);
 
 impl From<GroupRow> for GroupRecord {
     fn from(row: GroupRow) -> Self {
@@ -29,6 +49,7 @@ impl From<GroupRow> for GroupRecord {
             id: row.0,
             name: row.1,
             is_shared: row.2,
+            bandwidth_weight: clamp_db_bandwidth_weight(row.3),
         }
     }
 }
@@ -143,6 +164,7 @@ impl GroupDb {
                 id: g.id,
                 name: g.name,
                 is_shared: g.is_shared,
+                bandwidth_weight: g.bandwidth_weight,
             })
             .collect())
     }
@@ -188,9 +210,16 @@ impl GroupDb {
         name: &str,
         is_shared: bool,
         permissions: &Permissions,
+        bandwidth_weight: u16,
     ) -> Result<GroupRecord, sqlx::Error> {
         // Validate group name (failsafe - handlers should also validate)
         if let Err(e) = validators::validate_group_name(name) {
+            return Err(sqlx::Error::Protocol(format!("{:?}", e)));
+        }
+
+        // Defense-in-depth: bandwidth weight is u16 (max 65535) but the
+        // validator rejects 0.
+        if let Err(e) = validators::validate_bandwidth_weight(bandwidth_weight) {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
@@ -199,6 +228,7 @@ impl GroupDb {
         let result = sqlx::query(sql::SQL_INSERT_GROUP)
             .bind(name)
             .bind(is_shared)
+            .bind(i64::from(bandwidth_weight))
             .execute(&mut *tx)
             .await?;
 
@@ -212,12 +242,27 @@ impl GroupDb {
             id: group_id,
             name: name.to_string(),
             is_shared,
+            bandwidth_weight,
         })
     }
 
     /// Update a group's name, shared status, and permissions
     ///
-    /// Returns the updated group record, or `None` if the group doesn't exist.
+    /// Returns the updated group record alongside the IDs of members
+    /// whose effective bandwidth weight is sourced from this group (i.e.
+    /// members with no per-user override), or `None` if the group
+    /// doesn't exist.
+    ///
+    /// `inheriting_member_ids` lets callers cascade a group's weight
+    /// change only to the sessions actually affected. Override-holders
+    /// are intentionally excluded: their resolved weight doesn't shift
+    /// when the group's weight changes, so emitting cache writes or
+    /// broadcasts for them would be both wasteful and incorrect (it
+    /// would imply their value changed when it didn't).
+    ///
+    /// The member-id query runs inside the same transaction as the
+    /// group UPDATE so the membership snapshot the cascade uses matches
+    /// the row state the write just committed.
     ///
     /// # Errors
     ///
@@ -229,9 +274,16 @@ impl GroupDb {
         name: &str,
         is_shared: bool,
         permissions: &Permissions,
-    ) -> Result<Option<GroupRecord>, sqlx::Error> {
+        bandwidth_weight: u16,
+    ) -> Result<Option<UpdateGroupResult>, sqlx::Error> {
         // Validate group name (failsafe - handlers should also validate)
         if let Err(e) = validators::validate_group_name(name) {
+            return Err(sqlx::Error::Protocol(format!("{:?}", e)));
+        }
+
+        // Defense-in-depth: bandwidth weight is u16 (max 65535) but the
+        // validator rejects 0.
+        if let Err(e) = validators::validate_bandwidth_weight(bandwidth_weight) {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
@@ -240,6 +292,7 @@ impl GroupDb {
         let result = sqlx::query(sql::SQL_UPDATE_GROUP)
             .bind(name)
             .bind(is_shared)
+            .bind(i64::from(bandwidth_weight))
             .bind(id)
             .bind(is_shared) // Duplicate: atomic shared-toggle check (is_shared = ?)
             .bind(id) // Duplicate: member-count subquery (group_id = ?)
@@ -253,12 +306,26 @@ impl GroupDb {
 
         Self::set_permissions_in_tx(&mut tx, id, permissions).await?;
 
+        // In-transaction cascade snapshot: pull the inheriting members (NULL override)
+        // inside the tx so the caller's cache/broadcast set matches the
+        // group state we're about to commit.
+        let inheriting_rows: Vec<(i64,)> = sqlx::query_as(sql::SQL_SELECT_GROUP_INHERITING_MEMBERS)
+            .bind(id)
+            .fetch_all(&mut *tx)
+            .await?;
+        let inheriting_member_ids: Vec<i64> =
+            inheriting_rows.into_iter().map(|(uid,)| uid).collect();
+
         tx.commit().await?;
 
-        Ok(Some(GroupRecord {
-            id,
-            name: name.to_string(),
-            is_shared,
+        Ok(Some(UpdateGroupResult {
+            group: GroupRecord {
+                id,
+                name: name.to_string(),
+                is_shared,
+                bandwidth_weight,
+            },
+            inheriting_member_ids,
         }))
     }
 
@@ -299,6 +366,7 @@ mod tests {
                 "Moderators",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -318,6 +386,7 @@ mod tests {
                 "SharedUsers",
                 true,
                 &Permissions::from(&[Permission::ChatSend, Permission::ChatReceive]),
+                1,
             )
             .await
             .unwrap();
@@ -332,7 +401,7 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("Empty", false, &Permissions::new())
+            .create_group("Empty", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -346,13 +415,13 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         group_db
-            .create_group("Admins", false, &Permissions::new())
+            .create_group("Admins", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
         // Same name (exact case) should fail
         let result = group_db
-            .create_group("Admins", false, &Permissions::new())
+            .create_group("Admins", false, &Permissions::new(), 1)
             .await;
         assert!(result.is_err());
     }
@@ -363,18 +432,18 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         group_db
-            .create_group("Admins", false, &Permissions::new())
+            .create_group("Admins", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
         // Different case should also fail (case-insensitive unique index)
         let result = group_db
-            .create_group("admins", false, &Permissions::new())
+            .create_group("admins", false, &Permissions::new(), 1)
             .await;
         assert!(result.is_err());
 
         let result = group_db
-            .create_group("ADMINS", false, &Permissions::new())
+            .create_group("ADMINS", false, &Permissions::new(), 1)
             .await;
         assert!(result.is_err());
     }
@@ -385,12 +454,14 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         // Empty name
-        let result = group_db.create_group("", false, &Permissions::new()).await;
+        let result = group_db
+            .create_group("", false, &Permissions::new(), 1)
+            .await;
         assert!(result.is_err());
 
         // Name with forbidden characters
         let result = group_db
-            .create_group("bad/name", false, &Permissions::new())
+            .create_group("bad/name", false, &Permissions::new(), 1)
             .await;
         assert!(result.is_err());
     }
@@ -405,7 +476,7 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let created = group_db
-            .create_group("TestGroup", false, &Permissions::new())
+            .create_group("TestGroup", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -441,15 +512,15 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         group_db
-            .create_group("Zebra", false, &Permissions::new())
+            .create_group("Zebra", false, &Permissions::new(), 1)
             .await
             .unwrap();
         group_db
-            .create_group("alpha", false, &Permissions::new())
+            .create_group("alpha", false, &Permissions::new(), 1)
             .await
             .unwrap();
         group_db
-            .create_group("Mods", true, &Permissions::new())
+            .create_group("Mods", true, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -475,6 +546,7 @@ mod tests {
                     Permission::ChatSend,
                     Permission::BanCreate,
                 ]),
+                1,
             )
             .await
             .unwrap();
@@ -506,7 +578,7 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("Empty", false, &Permissions::new())
+            .create_group("Empty", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -521,7 +593,7 @@ mod tests {
         let user_db = crate::db::UserDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Team", false, &Permissions::new())
+            .create_group("Team", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -536,6 +608,7 @@ mod tests {
                 permissions: &crate::db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -549,6 +622,7 @@ mod tests {
                 permissions: &crate::db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -585,6 +659,7 @@ mod tests {
                 "OldName",
                 false,
                 &Permissions::from(&[Permission::ChatSend]),
+                1,
             )
             .await
             .unwrap();
@@ -595,13 +670,14 @@ mod tests {
                 "NewName",
                 false,
                 &Permissions::from(&[Permission::ChatSend]),
+                1,
             )
             .await
             .unwrap()
             .unwrap();
 
-        assert_eq!(updated.name, "NewName");
-        assert!(!updated.is_shared);
+        assert_eq!(updated.group.name, "NewName");
+        assert!(!updated.group.is_shared);
     }
 
     #[tokio::test]
@@ -610,18 +686,18 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("Flex", false, &Permissions::new())
+            .create_group("Flex", false, &Permissions::new(), 1)
             .await
             .unwrap();
         assert!(!group.is_shared);
 
         let updated = group_db
-            .update_group(group.id, "Flex", true, &Permissions::new())
+            .update_group(group.id, "Flex", true, &Permissions::new(), 1)
             .await
             .unwrap()
             .unwrap();
 
-        assert!(updated.is_shared);
+        assert!(updated.group.is_shared);
     }
 
     #[tokio::test]
@@ -630,7 +706,12 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("Mods", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Mods",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .unwrap();
 
@@ -644,6 +725,7 @@ mod tests {
                 "Mods",
                 false,
                 &Permissions::from(&[Permission::UserKick, Permission::BanCreate]),
+                1,
             )
             .await
             .unwrap();
@@ -665,12 +747,13 @@ mod tests {
                 "Mods",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
 
         group_db
-            .update_group(group.id, "Mods", false, &Permissions::new())
+            .update_group(group.id, "Mods", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -684,7 +767,7 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let result = group_db
-            .update_group(99999, "Ghost", false, &Permissions::new())
+            .update_group(99999, "Ghost", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -697,17 +780,17 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         group_db
-            .create_group("GroupA", false, &Permissions::new())
+            .create_group("GroupA", false, &Permissions::new(), 1)
             .await
             .unwrap();
         let group_b = group_db
-            .create_group("GroupB", false, &Permissions::new())
+            .create_group("GroupB", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
         // Try to rename GroupB to GroupA
         let result = group_db
-            .update_group(group_b.id, "GroupA", false, &Permissions::new())
+            .update_group(group_b.id, "GroupA", false, &Permissions::new(), 1)
             .await;
         assert!(result.is_err());
     }
@@ -718,17 +801,17 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         group_db
-            .create_group("GroupA", false, &Permissions::new())
+            .create_group("GroupA", false, &Permissions::new(), 1)
             .await
             .unwrap();
         let group_b = group_db
-            .create_group("GroupB", false, &Permissions::new())
+            .create_group("GroupB", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
         // Try to rename GroupB to "groupa" (case-insensitive conflict)
         let result = group_db
-            .update_group(group_b.id, "groupa", false, &Permissions::new())
+            .update_group(group_b.id, "groupa", false, &Permissions::new(), 1)
             .await;
         assert!(result.is_err());
     }
@@ -739,7 +822,7 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("MyGroup", false, &Permissions::new())
+            .create_group("MyGroup", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -750,12 +833,13 @@ mod tests {
                 "MyGroup",
                 false,
                 &Permissions::from(&[Permission::ChatSend]),
+                1,
             )
             .await
             .unwrap()
             .unwrap();
 
-        assert_eq!(updated.name, "MyGroup");
+        assert_eq!(updated.group.name, "MyGroup");
     }
 
     #[tokio::test]
@@ -764,18 +848,18 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("mygroup", false, &Permissions::new())
+            .create_group("mygroup", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
         // Changing case of own name should succeed (same row, no conflict)
         let updated = group_db
-            .update_group(group.id, "MyGroup", false, &Permissions::new())
+            .update_group(group.id, "MyGroup", false, &Permissions::new(), 1)
             .await
             .unwrap()
             .unwrap();
 
-        assert_eq!(updated.name, "MyGroup");
+        assert_eq!(updated.group.name, "MyGroup");
     }
 
     #[tokio::test]
@@ -784,19 +868,19 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("Valid", false, &Permissions::new())
+            .create_group("Valid", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
         // Empty name
         let result = group_db
-            .update_group(group.id, "", false, &Permissions::new())
+            .update_group(group.id, "", false, &Permissions::new(), 1)
             .await;
         assert!(result.is_err());
 
         // Forbidden characters
         let result = group_db
-            .update_group(group.id, "bad/name", false, &Permissions::new())
+            .update_group(group.id, "bad/name", false, &Permissions::new(), 1)
             .await;
         assert!(result.is_err());
     }
@@ -815,6 +899,7 @@ mod tests {
                 "ToDelete",
                 false,
                 &Permissions::from(&[Permission::ChatSend]),
+                1,
             )
             .await
             .unwrap();
@@ -846,7 +931,7 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group = group_db
-            .create_group("Once", false, &Permissions::new())
+            .create_group("Once", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -864,7 +949,7 @@ mod tests {
         let user_db = crate::db::UserDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Busy", false, &Permissions::new())
+            .create_group("Busy", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -879,6 +964,7 @@ mod tests {
                 permissions: &crate::db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -913,7 +999,7 @@ mod tests {
         let user_db = crate::db::UserDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Temp", false, &Permissions::new())
+            .create_group("Temp", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -927,6 +1013,7 @@ mod tests {
                 permissions: &crate::db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -956,7 +1043,12 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let group_a = group_db
-            .create_group("GroupA", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "GroupA",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .unwrap();
         let group_b = group_db
@@ -964,6 +1056,7 @@ mod tests {
                 "GroupB",
                 true,
                 &Permissions::from(&[Permission::FileDownload, Permission::FileList]),
+                1,
             )
             .await
             .unwrap();
@@ -985,5 +1078,265 @@ mod tests {
             perms_b_after,
             vec![Permission::FileDownload, Permission::FileList]
         );
+    }
+
+    // ========================================================================
+    // Bandwidth Weight Tests
+    // ========================================================================
+
+    #[tokio::test]
+    async fn test_create_group_with_custom_bandwidth_weight() {
+        let pool = create_test_db().await;
+        let group_db = GroupDb::new(pool);
+
+        let group = group_db
+            .create_group("VIP", false, &Permissions::new(), 100)
+            .await
+            .unwrap();
+        assert_eq!(group.bandwidth_weight, 100);
+
+        let fetched = group_db.get_group_by_id(group.id).await.unwrap().unwrap();
+        assert_eq!(fetched.bandwidth_weight, 100);
+    }
+
+    #[tokio::test]
+    async fn test_update_group_changes_bandwidth_weight() {
+        let pool = create_test_db().await;
+        let group_db = GroupDb::new(pool);
+
+        let group = group_db
+            .create_group("Mods", false, &Permissions::new(), 1)
+            .await
+            .unwrap();
+
+        let updated = group_db
+            .update_group(group.id, "Mods", false, &Permissions::new(), 42)
+            .await
+            .unwrap();
+        assert!(updated.is_some());
+        assert_eq!(updated.unwrap().group.bandwidth_weight, 42);
+
+        let fetched = group_db.get_group_by_id(group.id).await.unwrap().unwrap();
+        assert_eq!(fetched.bandwidth_weight, 42);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_groups_with_details_includes_bandwidth_weight() {
+        let pool = create_test_db().await;
+        let group_db = GroupDb::new(pool);
+
+        group_db
+            .create_group("Alpha", false, &Permissions::new(), 5)
+            .await
+            .unwrap();
+        group_db
+            .create_group("Beta", false, &Permissions::new(), 50)
+            .await
+            .unwrap();
+
+        let groups = group_db.get_all_groups_with_details().await.unwrap();
+        // Sorted alphabetically by `get_all_groups`.
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].name, "Alpha");
+        assert_eq!(groups[0].bandwidth_weight, 5);
+        assert_eq!(groups[1].name, "Beta");
+        assert_eq!(groups[1].bandwidth_weight, 50);
+    }
+
+    // ========================================================================
+    // In-transaction contract: update_group returns the inheriting members snapshot
+    // captured inside the same transaction as the write.
+    //
+    // These tests pin which members appear in `inheriting_member_ids`:
+    // only users with a NULL `bandwidth_weight` override. Override-holders
+    // are excluded — their effective weight doesn't move when the group's
+    // weight changes, so cascading to them would be incorrect.
+    // ========================================================================
+
+    /// Helper: create a non-admin user assigned to `group_id` with the
+    /// given override (None = inheriting).
+    async fn make_group_member(
+        user_db: &crate::db::UserDb,
+        username: &str,
+        group_id: i64,
+        bandwidth_weight: Option<u16>,
+    ) -> i64 {
+        user_db
+            .create_user(crate::db::CreateUserParams {
+                username,
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group_id),
+                revokes: &[],
+                bandwidth_weight,
+            })
+            .await
+            .unwrap()
+            .id
+    }
+
+    /// Mixed-membership group: only the NULL-override member is reported
+    /// as inheriting; the user with an explicit override is excluded.
+    #[tokio::test]
+    async fn test_update_group_inheriting_members_excludes_override_holders() {
+        let pool = create_test_db().await;
+        let group_db = GroupDb::new(pool.clone());
+        let user_db = crate::db::UserDb::new(pool);
+
+        let group = group_db
+            .create_group("Tier1", false, &Permissions::new(), 10)
+            .await
+            .unwrap();
+        let inheriter_id = make_group_member(&user_db, "alice", group.id, None).await;
+        let _override_id = make_group_member(&user_db, "bob", group.id, Some(200)).await;
+
+        let result = group_db
+            .update_group(group.id, "Tier1", false, &Permissions::new(), 20)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            result.inheriting_member_ids,
+            vec![inheriter_id],
+            "only the NULL-override member should be reported as inheriting"
+        );
+    }
+
+    /// All-override group: nobody inherits, so the set is empty.
+    /// Cascade caller should write zero session caches and emit zero
+    /// `UserUpdated`s for the bandwidth-change trigger.
+    #[tokio::test]
+    async fn test_update_group_inheriting_members_empty_when_all_override() {
+        let pool = create_test_db().await;
+        let group_db = GroupDb::new(pool.clone());
+        let user_db = crate::db::UserDb::new(pool);
+
+        let group = group_db
+            .create_group("Tier1", false, &Permissions::new(), 10)
+            .await
+            .unwrap();
+        make_group_member(&user_db, "alice", group.id, Some(100)).await;
+        make_group_member(&user_db, "bob", group.id, Some(200)).await;
+
+        let result = group_db
+            .update_group(group.id, "Tier1", false, &Permissions::new(), 50)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(
+            result.inheriting_member_ids.is_empty(),
+            "all-override membership should produce an empty inheriting set"
+        );
+    }
+
+    /// All-inheriting group: every member appears in the set.
+    #[tokio::test]
+    async fn test_update_group_inheriting_members_includes_all_when_no_overrides() {
+        let pool = create_test_db().await;
+        let group_db = GroupDb::new(pool.clone());
+        let user_db = crate::db::UserDb::new(pool);
+
+        let group = group_db
+            .create_group("Tier1", false, &Permissions::new(), 10)
+            .await
+            .unwrap();
+        let a_id = make_group_member(&user_db, "alice", group.id, None).await;
+        let b_id = make_group_member(&user_db, "bob", group.id, None).await;
+
+        let result = group_db
+            .update_group(group.id, "Tier1", false, &Permissions::new(), 50)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let mut returned = result.inheriting_member_ids;
+        returned.sort();
+        let mut expected = vec![a_id, b_id];
+        expected.sort();
+        assert_eq!(returned, expected);
+    }
+
+    /// Empty group: no members at all → empty set, regardless of weight
+    /// change. Verifies the cascade snapshot doesn't surface phantom
+    /// rows on a row-less SELECT.
+    #[tokio::test]
+    async fn test_update_group_inheriting_members_empty_for_empty_group() {
+        let pool = create_test_db().await;
+        let group_db = GroupDb::new(pool);
+
+        let group = group_db
+            .create_group("Empty", false, &Permissions::new(), 10)
+            .await
+            .unwrap();
+
+        let result = group_db
+            .update_group(group.id, "Empty", false, &Permissions::new(), 99)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert!(result.inheriting_member_ids.is_empty());
+    }
+
+    /// Source-of-truth contract: the `group` field of `UpdateGroupResult`
+    /// reflects what was actually written, including the new weight.
+    /// Pins the invariant the production handler depends on (line
+    /// `updated_group.bandwidth_weight` drives the inheriting-member
+    /// cache write).
+    #[tokio::test]
+    async fn test_update_group_returns_group_record_matching_written_state() {
+        let pool = create_test_db().await;
+        let group_db = GroupDb::new(pool);
+
+        let group = group_db
+            .create_group("Tier1", false, &Permissions::new(), 10)
+            .await
+            .unwrap();
+
+        let result = group_db
+            .update_group(group.id, "Renamed", true, &Permissions::new(), 42)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(result.group.id, group.id);
+        assert_eq!(result.group.name, "Renamed");
+        assert!(result.group.is_shared);
+        assert_eq!(result.group.bandwidth_weight, 42);
+    }
+
+    /// Pins the contract that `DEFAULT_BANDWIDTH_WEIGHT` is the value
+    /// the system default actually flows through as. Most tests use
+    /// literal `1` for fixture concreteness (fixed values, not
+    /// "the current default"); this one anchors the constant so a
+    /// future bump of the default surfaces as a test failure here
+    /// rather than as silent divergence between fixtures and
+    /// production state.
+    #[tokio::test]
+    async fn test_create_group_with_default_bandwidth_weight() {
+        use nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT;
+
+        let pool = create_test_db().await;
+        let group_db = GroupDb::new(pool);
+
+        let group = group_db
+            .create_group(
+                "Default",
+                false,
+                &Permissions::new(),
+                DEFAULT_BANDWIDTH_WEIGHT,
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(group.bandwidth_weight, DEFAULT_BANDWIDTH_WEIGHT);
+
+        let fetched = group_db.get_group_by_id(group.id).await.unwrap().unwrap();
+        assert_eq!(fetched.bandwidth_weight, DEFAULT_BANDWIDTH_WEIGHT);
     }
 }

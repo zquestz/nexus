@@ -40,6 +40,7 @@ async fn test_multi_session_partial_disconnect() {
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -172,6 +173,7 @@ async fn test_broadcast_respects_user_list_permission() {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -190,6 +192,7 @@ async fn test_broadcast_respects_user_list_permission() {
             permissions: &perms_with,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -206,6 +209,7 @@ async fn test_broadcast_respects_user_list_permission() {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -249,6 +253,7 @@ async fn test_broadcast_respects_user_list_permission() {
                     status: None,
                     group_id: None,
                     group_name: None,
+                    bandwidth_weight: None,
                 },
             },
             None, // Don't exclude anyone
@@ -311,6 +316,7 @@ async fn test_broadcast_excludes_specified_session() {
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -325,6 +331,7 @@ async fn test_broadcast_excludes_specified_session() {
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -360,6 +367,7 @@ async fn test_broadcast_excludes_specified_session() {
                     status: None,
                     group_id: None,
                     group_name: None,
+                    bandwidth_weight: None,
                 },
             },
             Some(session_id1), // Exclude session 1
@@ -412,6 +420,7 @@ async fn test_broadcast_to_feature_excludes_specified_session() {
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -426,6 +435,7 @@ async fn test_broadcast_to_feature_excludes_specified_session() {
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -505,6 +515,7 @@ async fn test_broadcast_detects_closed_channels() {
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -519,6 +530,7 @@ async fn test_broadcast_detects_closed_channels() {
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();

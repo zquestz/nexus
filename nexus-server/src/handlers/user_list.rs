@@ -26,6 +26,7 @@ struct UserAggregateData {
     status: Option<String>,
     group_id: Option<i64>,
     group_name: Option<String>,
+    bandwidth_weight: u16,
     user_id: i64,
     most_recent_activity: std::time::Instant,
 }
@@ -33,6 +34,7 @@ struct UserAggregateData {
 use tokio::io::AsyncWrite;
 
 use nexus_common::protocol::{ServerMessage, UserInfo};
+use nexus_common::validators::resolve_bandwidth_weight;
 
 use super::{
     HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
@@ -102,24 +104,28 @@ where
             }
         };
 
-        // Fetch all groups for O(1) name lookup
-        let group_name_map: HashMap<i64, String> = ctx
+        // Fetch all groups once for O(1) lookup of name + weight (avoids N+1).
+        let group_map: HashMap<i64, (String, u16)> = ctx
             .db
             .groups
             .get_all_groups()
             .await
             .unwrap_or_default()
             .into_iter()
-            .map(|g| (g.id, g.name))
+            .map(|g| (g.id, (g.name, g.bandwidth_weight)))
             .collect();
 
         // Convert to UserInfo and sort by username (nickname == username for accounts)
         let mut user_infos: Vec<UserInfo> = db_users
             .into_iter()
             .map(|db_user| {
-                let group_name = db_user
-                    .group_id
-                    .and_then(|gid| group_name_map.get(&gid).cloned());
+                let group_entry = db_user.group_id.and_then(|gid| group_map.get(&gid));
+                let group_name = group_entry.map(|(name, _)| name.clone());
+                let resolved_weight = resolve_bandwidth_weight(
+                    db_user.bandwidth_weight,
+                    group_entry.map(|(_, w)| *w),
+                    db_user.is_admin,
+                );
                 UserInfo {
                     id: db_user.id,
                     nickname: db_user.username.clone(), // For accounts, nickname == username
@@ -134,6 +140,7 @@ where
                     status: None,
                     group_id: db_user.group_id,
                     group_name,
+                    bandwidth_weight: Some(resolved_weight),
                 }
             })
             .collect();
@@ -176,6 +183,10 @@ where
                 status: user.status.clone(),
                 group_id: user.group_id,
                 group_name: user.group_name.clone(),
+                bandwidth_weight: Some(
+                    user.bandwidth_weight
+                        .load(std::sync::atomic::Ordering::Relaxed),
+                ),
             });
         } else {
             // Regular accounts: deduplicate by username and aggregate sessions
@@ -187,13 +198,16 @@ where
                     // Keep earliest login time for display
                     agg.login_time = agg.login_time.min(user.login_time);
                     agg.session_ids.push(user.session_id);
-                    // Avatar, locale, group info: latest login wins (stable)
+                    // Avatar, locale, group info, bandwidth weight: latest login wins (stable)
                     if user.login_time > agg.latest_session_login_time {
                         agg.avatar = user.avatar.clone();
                         agg.locale = user.locale.clone();
                         agg.latest_session_login_time = user.login_time;
                         agg.group_id = user.group_id;
                         agg.group_name = user.group_name.clone();
+                        agg.bandwidth_weight = user
+                            .bandwidth_weight
+                            .load(std::sync::atomic::Ordering::Relaxed);
                     }
                     // Away/status: most recently active wins (accurate presence)
                     if user.last_activity > agg.most_recent_activity {
@@ -214,6 +228,9 @@ where
                     status: user.status.clone(),
                     group_id: user.group_id,
                     group_name: user.group_name.clone(),
+                    bandwidth_weight: user
+                        .bandwidth_weight
+                        .load(std::sync::atomic::Ordering::Relaxed),
                     user_id: user.user_id,
                     most_recent_activity: user.last_activity,
                 });
@@ -238,6 +255,7 @@ where
             status: agg.status,
             group_id: agg.group_id,
             group_name: agg.group_name,
+            bandwidth_weight: Some(agg.bandwidth_weight),
         })
         .collect();
 
@@ -420,6 +438,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -447,6 +466,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -496,6 +516,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -524,6 +545,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -553,6 +575,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -602,6 +625,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -627,6 +651,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -762,6 +787,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -890,6 +916,7 @@ mod tests {
                 permissions: &crate::db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -954,6 +981,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -969,6 +997,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -984,6 +1013,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             }) // admin
             .await
             .unwrap();
@@ -999,6 +1029,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1014,6 +1045,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1029,6 +1061,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1046,6 +1079,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1120,6 +1154,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1135,6 +1170,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1150,6 +1186,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1165,6 +1202,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1234,6 +1272,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1259,6 +1298,7 @@ mod tests {
                 status: Some("session1 status".to_string()),
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1288,6 +1328,7 @@ mod tests {
                 status: Some("session2 status".to_string()),
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1344,6 +1385,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1369,6 +1411,7 @@ mod tests {
                 status: Some("user one away".to_string()),
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1395,6 +1438,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1450,6 +1494,7 @@ mod tests {
                 "Staff",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend]),
+                1,
             )
             .await
             .unwrap();
@@ -1470,6 +1515,7 @@ mod tests {
                 permissions: &perms,
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1503,6 +1549,7 @@ mod tests {
                 status: None,
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1526,6 +1573,68 @@ mod tests {
                     bob_info.group_name,
                     Some("Staff".to_string()),
                     "Should include group_name"
+                );
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    /// Regression: `/list all` resolves bandwidth_weight without consulting
+    /// the cache (the target may be offline). Admins with no per-user override
+    /// must resolve to `DEFAULT_ADMIN_BANDWIDTH_WEIGHT`, not the inheritance
+    /// baseline — admins skip group lookup entirely.
+    #[tokio::test]
+    async fn test_userlist_all_admin_bandwidth_weight_uses_admin_default() {
+        use crate::handlers::testing::read_server_message;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Promote an admin account directly in the DB (no session, no cache).
+        let hashed = get_cached_password_hash("password");
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "ada",
+                hashed_password: &hashed,
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // Logged-in caller needs UserEdit (any /list all gate) but isn't admin.
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::UserEdit],
+            false,
+        )
+        .await;
+
+        let result =
+            handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserListResponse { users, .. } => {
+                let users = users.unwrap();
+                let ada = users
+                    .iter()
+                    .find(|u| u.username == "ada")
+                    .expect("ada should be in user list");
+                assert!(ada.is_admin);
+                assert_eq!(
+                    ada.bandwidth_weight,
+                    Some(nexus_common::validators::DEFAULT_ADMIN_BANDWIDTH_WEIGHT),
+                    "offline admin must resolve to DEFAULT_ADMIN_BANDWIDTH_WEIGHT, not the inheritance baseline"
                 );
             }
             _ => panic!("Expected UserListResponse"),

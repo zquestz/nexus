@@ -1,4 +1,27 @@
 //! Shared test utilities for handler tests
+//!
+//! # Pitfall: DB-vs-session-cache permission grants
+//!
+//! `login_user` / `login_user_with_features` / `login_shared_user` create
+//! the user in the DB *and* register a session whose cached permissions
+//! match the DB. That symmetry matters: several handlers (notably
+//! `user_update`, `group_update`) re-resolve the target's effective
+//! permissions from the DB partway through and overwrite the session
+//! cache with the result. A test that bypasses these helpers and adds a
+//! session directly via `user_manager.add_user(NewSessionParams { ... })`
+//! with permissions present only in `NewSessionParams.permissions` —
+//! never written to the DB — will see those permissions silently wiped
+//! the moment the handler under test re-syncs. The session then fails
+//! permission checks downstream of the resync (e.g. broadcast filters
+//! gated on `UserList`), producing confusing "test expected N broadcasts,
+//! got fewer" failures.
+//!
+//! Rule of thumb: if a test grants a permission so that a session can
+//! *receive* something the handler emits, grant it in both places — the
+//! DB row via `CreateUserParams.permissions` *and* the session cache via
+//! `NewSessionParams.permissions`. If a test grants only to drive a
+//! handler check that runs before any resync, session-cache-only is
+//! fine, but verify by reading the handler.
 
 use std::collections::HashMap;
 use std::fs;
@@ -17,6 +40,7 @@ use tokio::time::timeout;
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::read_server_message as io_read_server_message;
 use nexus_common::protocol::ServerMessage;
+use nexus_common::validators::resolve_bandwidth_weight;
 
 use super::HandlerContext;
 use crate::channels::ChannelManager;
@@ -304,6 +328,7 @@ pub async fn login_user_from_ip(
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -335,6 +360,11 @@ pub async fn login_user_from_ip(
             status: None,
             group_id: None,
             group_name: None,
+            // Mirror what production resolves to for a user with no override
+            // and no group: admins get the admin default, everyone else the
+            // system default. Routes through the shared resolver so future
+            // precedence changes can't leave fixtures out of sync.
+            bandwidth_weight: resolve_bandwidth_weight(None, None, is_admin),
             last_activity: std::time::Instant::now(),
         })
         .await
@@ -372,6 +402,7 @@ pub async fn login_user_with_features(
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -397,6 +428,8 @@ pub async fn login_user_with_features(
             status: None,
             group_id: None,
             group_name: None,
+            // See note in login_user_from_ip.
+            bandwidth_weight: resolve_bandwidth_weight(None, None, is_admin),
             last_activity: std::time::Instant::now(),
         })
         .await
@@ -442,6 +475,7 @@ pub async fn login_observer_user(
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -468,6 +502,8 @@ pub async fn login_observer_user(
             status: None,
             group_id: None,
             group_name: None,
+            // Observer is always non-admin (hardcoded above).
+            bandwidth_weight: resolve_bandwidth_weight(None, None, false),
             last_activity: std::time::Instant::now(),
         })
         .await
@@ -506,6 +542,7 @@ pub async fn login_shared_user(
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -531,6 +568,8 @@ pub async fn login_shared_user(
             status: None,
             group_id: None,
             group_name: None,
+            // Shared accounts can't be admin (XOR invariant).
+            bandwidth_weight: resolve_bandwidth_weight(None, None, false),
             last_activity: std::time::Instant::now(),
         })
         .await

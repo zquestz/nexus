@@ -209,6 +209,7 @@ impl NexusApp {
                 is_shared,
                 permissions,
                 member_count,
+                bandwidth_weight,
             } => self.handle_group_edit_response(
                 connection_id,
                 message_id,
@@ -220,6 +221,7 @@ impl NexusApp {
                     is_shared,
                     permissions,
                     member_count,
+                    bandwidth_weight,
                 },
             ),
 
@@ -308,6 +310,7 @@ impl NexusApp {
                 group_permissions,
                 revoked_permissions,
                 available_groups,
+                bandwidth_weight,
             } => self.handle_user_edit_response(
                 connection_id,
                 message_id,
@@ -325,6 +328,7 @@ impl NexusApp {
                     group_permissions,
                     revoked_permissions,
                     available_groups,
+                    bandwidth_weight,
                 },
             ),
 

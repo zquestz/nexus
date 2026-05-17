@@ -329,6 +329,19 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle bandwidth weight field change in create form
+    pub fn handle_group_management_bandwidth_weight_changed(
+        &mut self,
+        weight: u16,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            conn.user_management.group_management.bandwidth_weight = weight;
+        }
+        Task::none()
+    }
+
     /// Handle is_shared checkbox toggle in create form
     ///
     /// When toggled ON, disables forbidden permissions (only allows shared account permissions).
@@ -455,6 +468,7 @@ impl NexusApp {
             name: conn.user_management.group_management.name.clone(),
             is_shared: conn.user_management.group_management.is_shared,
             permissions,
+            bandwidth_weight: conn.user_management.group_management.bandwidth_weight,
         };
 
         // Clear any previous error on new submission
@@ -489,6 +503,23 @@ impl NexusApp {
             } = conn.user_management.group_management.mode
         {
             *nn = name;
+        }
+        Task::none()
+    }
+
+    /// Handle bandwidth weight field change in edit form
+    pub fn handle_group_management_edit_bandwidth_weight_changed(
+        &mut self,
+        weight: u16,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let GroupManagementMode::Edit {
+                bandwidth_weight: ref mut bw,
+                ..
+            } = conn.user_management.group_management.mode
+        {
+            *bw = weight;
         }
         Task::none()
     }
@@ -563,24 +594,35 @@ impl NexusApp {
             return Task::none();
         }
 
-        let (id, original_name, new_name, is_shared, permissions) =
-            match &conn.user_management.group_management.mode {
-                GroupManagementMode::Edit {
-                    id,
-                    original_name,
-                    new_name,
-                    is_shared,
-                    permissions,
-                    ..
-                } => (
-                    *id,
-                    original_name.clone(),
-                    new_name.clone(),
-                    *is_shared,
-                    permissions.clone(),
-                ),
-                _ => return Task::none(),
-            };
+        let (
+            id,
+            original_name,
+            new_name,
+            is_shared,
+            permissions,
+            bandwidth_weight,
+            original_bandwidth_weight,
+        ) = match &conn.user_management.group_management.mode {
+            GroupManagementMode::Edit {
+                id,
+                original_name,
+                new_name,
+                is_shared,
+                permissions,
+                bandwidth_weight,
+                original_bandwidth_weight,
+                ..
+            } => (
+                *id,
+                original_name.clone(),
+                new_name.clone(),
+                *is_shared,
+                permissions.clone(),
+                *bandwidth_weight,
+                *original_bandwidth_weight,
+            ),
+            _ => return Task::none(),
+        };
 
         // Validate new group name
         if let Err(e) = validators::validate_group_name(&new_name) {
@@ -622,11 +664,20 @@ impl NexusApp {
             _ => None,
         };
 
+        // Only send bandwidth_weight when the user changed it (mirrors the
+        // `requested_name` diff pattern above).
+        let requested_bandwidth_weight = if bandwidth_weight != original_bandwidth_weight {
+            Some(bandwidth_weight)
+        } else {
+            None
+        };
+
         let msg = ClientMessage::GroupUpdate {
             id,
             name: requested_name,
             is_shared: requested_is_shared,
             permissions: Some(requested_permissions),
+            bandwidth_weight: requested_bandwidth_weight,
         };
 
         // Clear any previous error on new submission
@@ -682,6 +733,9 @@ impl NexusApp {
     }
 
     pub fn handle_group_management_create_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        // NumberInput fields (CreateGroupBandwidthWeight) consume Tab
+        // internally and are reachable only via mouse — excluded from the
+        // cycle so tabbing doesn't dead-end inside them.
         const CYCLE: &[InputId] = &[InputId::CreateGroupName];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
         self.focus_field(next)
@@ -693,6 +747,8 @@ impl NexusApp {
     }
 
     pub fn handle_group_management_edit_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        // NumberInput fields (EditGroupBandwidthWeight) consume Tab
+        // internally — see create form comment above.
         const CYCLE: &[InputId] = &[InputId::EditGroupName];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
         self.focus_field(next)

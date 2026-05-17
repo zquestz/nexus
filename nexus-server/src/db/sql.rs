@@ -62,8 +62,7 @@ pub const GUEST_USERNAME: &str = "guest";
 ///
 /// **Note:** Used in `create_first_user_if_none_exist()` to check if any real users exist.
 /// The guest account is excluded so the first non-guest user becomes admin.
-pub const SQL_COUNT_NON_GUEST_USERS: &str =
-    "SELECT COUNT(*) FROM users WHERE LOWER(username) != 'guest'";
+pub const SQL_COUNT_NON_GUEST_USERS: &str = "SELECT COUNT(*) FROM users WHERE username != 'guest'";
 
 /// Select user by username (case-insensitive lookup)
 ///
@@ -72,9 +71,9 @@ pub const SQL_COUNT_NON_GUEST_USERS: &str =
 ///
 /// **Returns:** `(id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id: Option<i64>)`
 ///
-/// **Note:** Uses `LOWER()` for case-insensitive matching while preserving
-/// the original case in the returned username.
-pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id FROM users WHERE LOWER(username) = LOWER(?)";
+/// **Note:** Case-insensitive matching is enforced by the column's
+/// `COLLATE NOCASE`; the original case is preserved in the stored row.
+pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id, bandwidth_weight FROM users WHERE username = ?";
 
 /// Get the guest account's `enabled` flag.
 ///
@@ -86,7 +85,7 @@ pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_has
 ///
 /// **Note:** Used by the tracker task to populate
 /// `TrackerServerRegister.allows_guest`.
-pub const SQL_GET_GUEST_ENABLED: &str = "SELECT enabled FROM users WHERE LOWER(username) = 'guest'";
+pub const SQL_GET_GUEST_ENABLED: &str = "SELECT enabled FROM users WHERE username = 'guest'";
 
 /// Select all users (for user management listing)
 ///
@@ -95,8 +94,9 @@ pub const SQL_GET_GUEST_ENABLED: &str = "SELECT enabled FROM users WHERE LOWER(u
 /// **Returns:** Multiple rows of `(id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id: Option<i64>)`
 ///
 /// **Note:** Used by `/list all` command for user management.
-/// Results are sorted alphabetically by username (case-insensitive).
-pub const SQL_SELECT_ALL_USERS: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id FROM users ORDER BY LOWER(username)";
+/// Results are sorted alphabetically by username (case-insensitive via the
+/// column's `COLLATE NOCASE`).
+pub const SQL_SELECT_ALL_USERS: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id, bandwidth_weight FROM users ORDER BY username";
 
 /// Check if a username exists (case-insensitive)
 ///
@@ -106,8 +106,7 @@ pub const SQL_SELECT_ALL_USERS: &str = "SELECT id, username, password_hash, is_a
 /// **Returns:** `(count: i64)` - 1 if exists, 0 if not
 ///
 /// **Note:** Used to check if a shared account nickname collides with an existing username.
-pub const SQL_CHECK_USERNAME_EXISTS: &str =
-    "SELECT COUNT(*) FROM users WHERE LOWER(username) = LOWER(?)";
+pub const SQL_CHECK_USERNAME_EXISTS: &str = "SELECT COUNT(*) FROM users WHERE username = ?";
 
 // ========================================================================
 // Permission Query Operations
@@ -168,6 +167,34 @@ pub const SQL_DELETE_GRANT_PERMISSION: &str =
 /// if group-based permission resolution is needed.
 pub const SQL_SELECT_USER_GROUP_ID: &str = "SELECT group_id FROM users WHERE id = ?";
 
+/// Select a user's raw bandwidth weight plus their group's weight in one
+/// row, for resolving the effective weight without two round-trips.
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+///
+/// **Returns:** `Option<(Option<i64>, Option<i64>, bool)>` — user's raw
+/// weight (NULL = inherit), the group's weight (NULL if the user has no
+/// group), and the user's is_admin flag (admins resolve to
+/// `DEFAULT_ADMIN_BANDWIDTH_WEIGHT` when no per-user override is set).
+pub const SQL_SELECT_USER_AND_GROUP_BANDWIDTH_WEIGHT: &str = "SELECT u.bandwidth_weight, g.bandwidth_weight, u.is_admin FROM users u LEFT JOIN groups g ON u.group_id = g.id WHERE u.id = ?";
+
+/// Select a user's is_admin flag and a specified group's bandwidth weight,
+/// joining on a *parameter* group_id rather than the user's current one.
+/// Used by `get_inherited_bandwidth_weight` to ask "what will the user's
+/// inherited weight be if they're in group X?" — for the inherit-delegation
+/// check on a request that also changes the target's group.
+///
+/// **Parameters:**
+/// 1. `proposed_group_id: Option<i64>` - The group to resolve against
+///    (NULL = no group post-update)
+/// 2. `user_id: i64` - User ID
+///
+/// **Returns:** `Option<(bool, Option<i64>)>` — `(is_admin,
+/// proposed_group_weight)`. `proposed_group_weight` is NULL when
+/// `proposed_group_id` is NULL or doesn't match any group row.
+pub const SQL_SELECT_USER_ADMIN_AND_PROPOSED_GROUP_WEIGHT: &str = "SELECT u.is_admin, g.bandwidth_weight FROM users u LEFT JOIN groups g ON g.id = ? WHERE u.id = ?";
+
 /// Delete all permissions for a user
 ///
 /// **Parameters:**
@@ -207,9 +234,10 @@ pub const SQL_INSERT_PERMISSION_OVERRIDE: &str =
 /// 5. `enabled: bool` - Enabled status
 /// 6. `created_at: i64` - Unix timestamp
 /// 7. `group_id: Option<i64>` - Optional group assignment
+/// 8. `bandwidth_weight: Option<i64>` - Optional per-user override (NULL = inherit)
 ///
 /// **Returns:** `last_insert_rowid()` - The new user's ID
-pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, is_admin, is_shared, enabled, created_at, group_id) VALUES (?, ?, ?, ?, ?, ?, ?)";
+pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, is_admin, is_shared, enabled, created_at, group_id, bandwidth_weight) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
 /// Update user with atomic protection for last admin/enabled admin
 ///
@@ -218,9 +246,10 @@ pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, i
 /// 2. `password_hash: &str` - New password hash
 /// 3. `is_admin: bool` - New admin status
 /// 4. `enabled: bool` - New enabled status
-/// 5. `user_id: i64` - User ID to update
-/// 6. `enabled: bool` - (Duplicate) Final enabled status for protection check
-/// 7. `is_admin: bool` - (Duplicate) Final admin status for protection check
+/// 5. `bandwidth_weight: Option<i64>` - New per-user override (NULL = inherit)
+/// 6. `user_id: i64` - User ID to update
+/// 7. `enabled: bool` - (Duplicate) Final enabled status for protection check
+/// 8. `is_admin: bool` - (Duplicate) Final admin status for protection check
 ///
 /// **Note:** `is_shared` is not updated - it is immutable once set at creation.
 ///
@@ -234,7 +263,7 @@ pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, i
 /// preventing race conditions where multiple simultaneous updates could
 /// leave the system with zero enabled admins or zero admins.
 pub const SQL_UPDATE_USER: &str = "UPDATE users
-    SET username = ?, password_hash = ?, is_admin = ?, enabled = ?
+    SET username = ?, password_hash = ?, is_admin = ?, enabled = ?, bandwidth_weight = ?
     WHERE id = ?
     AND (
         -- Enabled protection: allow enabling, allow non-admin disable, allow if multiple enabled admins
@@ -377,14 +406,14 @@ pub const SQL_DELETE_NEWS: &str = "DELETE FROM news WHERE id = ?";
 /// - `port` is stored as INTEGER in SQLite but always fits in `u16`
 ///   because protocol-layer validation rejects out-of-range ports
 ///   before insert.
-/// - The `LOWER(name)` order matches the case-insensitive uniqueness
-///   on `name`; no tiebreaker is needed because two rows can't have
-///   the same `LOWER(name)`.
+/// - `ORDER BY name` uses the column's `COLLATE NOCASE` collation, so
+///   the sort is case-insensitive; no tiebreaker needed because two
+///   rows can't have case-equivalent names.
 pub const SQL_SELECT_ALL_TRACKERS: &str = "
     SELECT id, address, port, fingerprint, password, name, enabled,
            created_at, updated_at
     FROM trackers
-    ORDER BY LOWER(name)";
+    ORDER BY name";
 
 /// Select a single tracker by id.
 ///
@@ -657,7 +686,7 @@ pub const SQL_DELETE_EXPIRED_TRUSTS: &str = "
 ///
 /// **Note:** Member count and permissions are fetched separately per group.
 pub const SQL_SELECT_ALL_GROUPS: &str =
-    "SELECT id, name, is_shared FROM groups ORDER BY LOWER(name)";
+    "SELECT id, name, is_shared, bandwidth_weight FROM groups ORDER BY name";
 
 /// Select a group by ID
 ///
@@ -665,19 +694,20 @@ pub const SQL_SELECT_ALL_GROUPS: &str =
 /// 1. `id: i64` - Group ID
 ///
 /// **Returns:** `(id: i64, name: String, is_shared: bool)`
-pub const SQL_SELECT_GROUP_BY_ID: &str = "SELECT id, name, is_shared FROM groups WHERE id = ?";
+pub const SQL_SELECT_GROUP_BY_ID: &str =
+    "SELECT id, name, is_shared, bandwidth_weight FROM groups WHERE id = ?";
 
 /// Select a group by name (case-insensitive)
 ///
 /// **Parameters:**
 /// 1. `name: &str` - Group name
 ///
-/// **Returns:** `(id: i64, name: String, is_shared: bool)`
+/// **Returns:** `(id: i64, name: String, is_shared: bool, bandwidth_weight: i64)`
 ///
-/// **Note:** Uses `LOWER()` for case-insensitive matching while preserving
-/// the original case in the returned name.
+/// **Note:** Case-insensitive matching is enforced by the column's
+/// `COLLATE NOCASE`; the original case is preserved in the stored row.
 pub const SQL_SELECT_GROUP_BY_NAME: &str =
-    "SELECT id, name, is_shared FROM groups WHERE LOWER(name) = LOWER(?)";
+    "SELECT id, name, is_shared, bandwidth_weight FROM groups WHERE name = ?";
 
 /// Count users assigned to a group
 ///
@@ -733,18 +763,21 @@ pub const SQL_INSERT_GROUP_PERMISSION: &str =
 /// **Parameters:**
 /// 1. `name: &str` - Group name
 /// 2. `is_shared: bool` - Whether this is a shared account group
+/// 3. `bandwidth_weight: i64` - Group's bandwidth weight (1..=65535)
 ///
 /// **Returns:** `last_insert_rowid()` - The new group's ID
-pub const SQL_INSERT_GROUP: &str = "INSERT INTO groups (name, is_shared) VALUES (?, ?)";
+pub const SQL_INSERT_GROUP: &str =
+    "INSERT INTO groups (name, is_shared, bandwidth_weight) VALUES (?, ?, ?)";
 
-/// Update a group's name and shared status
+/// Update a group's name, shared status, and bandwidth weight
 ///
 /// **Parameters:**
 /// 1. `name: &str` - New group name
 /// 2. `is_shared: bool` - New shared status
-/// 3. `id: i64` - Group ID to update
-/// 4. `is_shared: bool` - (Duplicate) New shared status for atomic shared-toggle check
-/// 5. `id: i64` - (Duplicate) Group ID for member-count subquery
+/// 3. `bandwidth_weight: i64` - New bandwidth weight (1..=65535)
+/// 4. `id: i64` - Group ID to update
+/// 5. `is_shared: bool` - (Duplicate) New shared status for atomic shared-toggle check
+/// 6. `id: i64` - (Duplicate) Group ID for member-count subquery
 ///
 /// **Atomic Protection:**
 /// - Prevents toggling `is_shared` while the group has assigned members
@@ -754,12 +787,29 @@ pub const SQL_INSERT_GROUP: &str = "INSERT INTO groups (name, is_shared) VALUES 
 ///   zero members, preventing a TOCTOU race between the handler's pre-check
 ///   and the actual update
 /// - Returns 0 rows affected if blocked by protection
-pub const SQL_UPDATE_GROUP: &str = "UPDATE groups SET name = ?, is_shared = ?
+pub const SQL_UPDATE_GROUP: &str = "UPDATE groups SET name = ?, is_shared = ?, bandwidth_weight = ?
     WHERE id = ?
     AND (
         is_shared = ?
         OR (SELECT COUNT(*) FROM users WHERE group_id = ?) = 0
     )";
+
+/// Select the IDs of users in a given group whose bandwidth_weight
+/// override is NULL — i.e. members who inherit the group's bandwidth
+/// weight as their effective value.
+///
+/// **Parameters:**
+/// 1. `group_id: i64` - Group ID
+///
+/// **Returns:** `Vec<(i64,)>` — user IDs of inheriting members.
+///
+/// **Note:** Used by `update_group` inside its transaction to snapshot
+/// which members' effective weights actually move when the group's
+/// weight changes (override-holders are excluded — their override
+/// still wins). Bound to the same tx as the UPDATE so the membership
+/// matches the row state being committed.
+pub const SQL_SELECT_GROUP_INHERITING_MEMBERS: &str =
+    "SELECT id FROM users WHERE group_id = ? AND bandwidth_weight IS NULL";
 
 /// Atomically delete a group by ID, only if it has no assigned members
 ///
@@ -781,18 +831,18 @@ pub const SQL_DELETE_GROUP: &str =
 /// **Parameters:**
 /// 1. `name: &str` - Channel name
 ///
-/// **Returns:** `(name: String, topic: String, topic_set_by: String, secret: i32)`
+/// **Returns:** `(name: String, topic: String, topic_set_by: String, secret: bool)`
 ///
-/// **Note:** Uses `LOWER()` for case-insensitive matching while preserving
-/// the original case in the returned name.
+/// **Note:** Case-insensitive matching is enforced by the column's
+/// `COLLATE NOCASE`; the original case is preserved in the stored row.
 pub const SQL_SELECT_CHANNEL_SETTINGS: &str =
-    "SELECT name, topic, topic_set_by, secret FROM channel_settings WHERE LOWER(name) = LOWER(?)";
+    "SELECT name, topic, topic_set_by, secret FROM channel_settings WHERE name = ?";
 
 /// Select all channel settings
 ///
 /// **Parameters:** None
 ///
-/// **Returns:** Multiple rows of `(name: String, topic: String, topic_set_by: String, secret: i32)`
+/// **Returns:** Multiple rows of `(name: String, topic: String, topic_set_by: String, secret: bool)`
 pub const SQL_SELECT_ALL_CHANNEL_SETTINGS: &str =
     "SELECT name, topic, topic_set_by, secret FROM channel_settings";
 
@@ -802,35 +852,33 @@ pub const SQL_SELECT_ALL_CHANNEL_SETTINGS: &str =
 /// 1. `name: &str` - Channel name
 /// 2. `topic: &str` - Channel topic
 /// 3. `topic_set_by: &str` - Username of who set the topic
-/// 4. `secret: i32` - Whether the channel is secret (0 or 1)
+/// 4. `secret: bool` - Whether the channel is secret
 ///
 /// **Note:** Uses SQLite `ON CONFLICT` for upsert semantics — creates if
 /// the channel doesn't exist, updates if it does.
 pub const SQL_UPSERT_CHANNEL_SETTINGS: &str = "INSERT INTO channel_settings (name, topic, topic_set_by, secret) VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET topic = excluded.topic, topic_set_by = excluded.topic_set_by, secret = excluded.secret";
 
-/// Update topic for a channel (case-insensitive name match)
+/// Update topic for a channel (case-insensitive via column COLLATE NOCASE)
 ///
 /// **Parameters:**
 /// 1. `topic: &str` - New topic text
 /// 2. `topic_set_by: &str` - Username of who set the topic
 /// 3. `name: &str` - Channel name
 pub const SQL_UPDATE_CHANNEL_TOPIC: &str =
-    "UPDATE channel_settings SET topic = ?, topic_set_by = ? WHERE LOWER(name) = LOWER(?)";
+    "UPDATE channel_settings SET topic = ?, topic_set_by = ? WHERE name = ?";
 
-/// Update secret flag for a channel (case-insensitive name match)
+/// Update secret flag for a channel (case-insensitive via column COLLATE NOCASE)
 ///
 /// **Parameters:**
-/// 1. `secret: i32` - Whether the channel is secret (0 or 1)
+/// 1. `secret: bool` - Whether the channel is secret
 /// 2. `name: &str` - Channel name
-pub const SQL_UPDATE_CHANNEL_SECRET: &str =
-    "UPDATE channel_settings SET secret = ? WHERE LOWER(name) = LOWER(?)";
+pub const SQL_UPDATE_CHANNEL_SECRET: &str = "UPDATE channel_settings SET secret = ? WHERE name = ?";
 
-/// Delete channel settings (case-insensitive name match)
+/// Delete channel settings (case-insensitive via column COLLATE NOCASE)
 ///
 /// **Parameters:**
 /// 1. `name: &str` - Channel name
-pub const SQL_DELETE_CHANNEL_SETTINGS: &str =
-    "DELETE FROM channel_settings WHERE LOWER(name) = LOWER(?)";
+pub const SQL_DELETE_CHANNEL_SETTINGS: &str = "DELETE FROM channel_settings WHERE name = ?";
 
 // ========================================================================
 // Test-Only Query Operations
@@ -844,7 +892,7 @@ pub const SQL_DELETE_CHANNEL_SETTINGS: &str =
 /// **Returns:** `(id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id: Option<i64>)`
 ///
 /// Select a user by ID
-pub const SQL_SELECT_USER_BY_ID: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id FROM users WHERE id = ?";
+pub const SQL_SELECT_USER_BY_ID: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id, bandwidth_weight FROM users WHERE id = ?";
 
 /// Check if user is admin
 ///
@@ -910,8 +958,7 @@ pub const SQL_COUNT_ADMINS: &str = "SELECT COUNT(*) FROM users WHERE is_admin = 
 ///
 /// **Note:** Used in tests only — production code does not need this check.
 #[cfg(test)]
-pub const SQL_COUNT_CHANNEL_SETTINGS: &str =
-    "SELECT COUNT(*) FROM channel_settings WHERE LOWER(name) = LOWER(?)";
+pub const SQL_COUNT_CHANNEL_SETTINGS: &str = "SELECT COUNT(*) FROM channel_settings WHERE name = ?";
 
 /// Count all user_permissions rows for a given user
 ///

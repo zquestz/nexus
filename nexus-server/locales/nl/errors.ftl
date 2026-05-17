@@ -18,7 +18,7 @@ err-status-invalid-characters = Afwezigheidsbericht bevat ongeldige tekens
 
 # Gedeelde account-fouten
 err-shared-cannot-be-admin = Gedeelde accounts kunnen geen beheerders zijn
-err-shared-cannot-change-password = Kan wachtwoord van gedeeld account niet wijzigen
+err-shared-cannot-self-edit = Gedeelde accounts kunnen zichzelf niet bewerken
 err-shared-invalid-permissions = Gedeelde accounts kunnen deze rechten niet hebben: { $permissions }
 err-shared-message-requires-nickname = Gedeelde accounts kunnen alleen berichten ontvangen via bijnaam
 err-shared-kick-requires-nickname = Gedeelde accounts kunnen alleen worden verwijderd via bijnaam
@@ -74,6 +74,7 @@ err-cannot-edit-self = U kunt uzelf niet bewerken
 err-current-password-required = Het huidige wachtwoord is vereist om uw wachtwoord te wijzigen
 err-current-password-incorrect = Het huidige wachtwoord is onjuist
 err-cannot-create-admin = Alleen beheerders kunnen beheerdergebruikers aanmaken
+err-admin-cannot-have-group = Kan beheerdergebruikers niet aan een groep toewijzen
 err-cannot-kick-self = U kunt uzelf niet verwijderen
 err-cannot-kick-admin = Kan beheerdergebruikers niet verwijderen
 err-cannot-delete-admin = Alleen beheerders kunnen beheerdergebruikers verwijderen
@@ -319,3 +320,16 @@ err-flood-warning = Bericht beperkt (waarschuwing { $violation } van { $max_viol
    *[other] seconden
 } weer een bericht sturen. Doorgaan met flooding resulteert in een verbroken verbinding.
 err-flood-disconnect = Verbinding verbroken: chatlimiet overschreden.
+
+# Bandwidth Errors
+err-bandwidth-weight-delegation = Kan geen bandbreedtegewicht boven het eigen gewicht verlenen
+err-bandwidth-weight-inherit-would-elevate = Kan geen bandbreedtegewicht boven het eigen gewicht erven
+err-bandwidth-weight-zero = Bandbreedtegewicht moet minimaal { $min } zijn
+err-bandwidth-chunk-size-too-small = Schedulerblokgrootte moet minimaal { $min } { $min ->
+    [one] byte
+   *[other] bytes
+} zijn
+err-bandwidth-chunk-size-too-large = Schedulerblokgrootte mag maximaal { $max } { $max ->
+    [one] byte
+   *[other] bytes
+} zijn

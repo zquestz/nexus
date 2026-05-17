@@ -1379,3 +1379,13 @@ permission-tracker_add = Ajouter Tracker
 permission-tracker_edit = Modifier Tracker
 permission-tracker_remove = Retirer Tracker
 
+label-bandwidth-section = Bande passante
+label-bandwidth-weight = Poids de bande passante :
+label-chat-section = Chat
+label-files-section = Fichiers
+label-general-section = Général
+label-inherit-bandwidth-weight = Hériter du poids de bande passante
+label-max-outbound-rate = Sortie max. (Mbit/s) :
+label-unlimited = Illimité
+label-scheduler-chunk-size = Taille de bloc du planificateur (octets) :
+

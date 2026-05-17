@@ -18,7 +18,7 @@ err-status-invalid-characters = El mensaje de ausencia contiene caracteres invá
 
 # Errores de cuentas compartidas
 err-shared-cannot-be-admin = Las cuentas compartidas no pueden ser administradores
-err-shared-cannot-change-password = No se puede cambiar la contraseña de una cuenta compartida
+err-shared-cannot-self-edit = Las cuentas compartidas no pueden editarse a sí mismas
 err-shared-invalid-permissions = Las cuentas compartidas no pueden tener estos permisos: { $permissions }
 err-shared-message-requires-nickname = Las cuentas compartidas solo pueden recibir mensajes por apodo
 err-shared-kick-requires-nickname = Las cuentas compartidas solo pueden ser expulsadas por apodo
@@ -75,6 +75,7 @@ err-cannot-edit-self = No puedes editarte a ti mismo
 err-current-password-required = Se requiere la contraseña actual para cambiar tu contraseña
 err-current-password-incorrect = La contraseña actual es incorrecta
 err-cannot-create-admin = Solo los administradores pueden crear usuarios administradores
+err-admin-cannot-have-group = No se puede asignar usuarios administradores a un grupo
 err-cannot-kick-self = No puedes expulsarte a ti mismo
 err-cannot-kick-admin = No se puede expulsar a usuarios administradores
 err-cannot-delete-admin = Solo los administradores pueden eliminar usuarios administradores
@@ -320,3 +321,16 @@ err-flood-warning = Mensaje limitado por velocidad (advertencia { $violation } d
    *[other] segundos
 }. Continuar enviando mensajes resultará en desconexión.
 err-flood-disconnect = Desconectado: límite de velocidad de chat excedido.
+
+# Bandwidth Errors
+err-bandwidth-weight-delegation = No se puede otorgar un peso de ancho de banda superior al propio
+err-bandwidth-weight-inherit-would-elevate = No se puede heredar un peso de ancho de banda superior al propio
+err-bandwidth-weight-zero = El peso de ancho de banda debe ser al menos { $min }
+err-bandwidth-chunk-size-too-small = El tamaño del bloque del planificador debe ser al menos { $min } { $min ->
+    [one] byte
+   *[other] bytes
+}
+err-bandwidth-chunk-size-too-large = El tamaño del bloque del planificador debe ser como máximo { $max } { $max ->
+    [one] byte
+   *[other] bytes
+}

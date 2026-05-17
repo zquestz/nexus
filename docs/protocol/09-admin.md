@@ -188,36 +188,46 @@ Client                                        Server
 
 Create a new user account.
 
-| Field         | Type    | Required | Description                                                              |
-| ------------- | ------- | -------- | ------------------------------------------------------------------------ |
-| `username`    | string  | Yes      | Account username (1-32 characters)                                       |
-| `password`    | string  | Yes      | Account password (1-256 bytes, must meet server's min password strength) |
-| `is_admin`    | boolean | Yes      | Whether user has admin privileges                                        |
-| `is_shared`   | boolean | No       | Whether this is a shared account (default: false)                        |
-| `enabled`     | boolean | Yes      | Whether account is enabled                                               |
-| `permissions` | array   | Yes      | List of permission strings                                               |
-| `group_id`    | integer | No       | Group to assign the user to (null for no group)                          |
-| `revokes`     | array   | No       | Permissions to revoke from group (only with group)                       |
+| Field                      | Type    | Required | Description                                                                                                                                                                                                                                                            |
+| -------------------------- | ------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `username`                 | string  | Yes      | Account username (1-32 characters)                                                                                                                                                                                                                                     |
+| `password`                 | string  | Yes      | Account password (1-256 bytes, must meet server's min password strength)                                                                                                                                                                                               |
+| `is_admin`                 | boolean | Yes      | Whether user has admin privileges                                                                                                                                                                                                                                      |
+| `is_shared`                | boolean | No       | Whether this is a shared account (default: false)                                                                                                                                                                                                                      |
+| `enabled`                  | boolean | Yes      | Whether account is enabled                                                                                                                                                                                                                                             |
+| `permissions`              | array   | Yes      | List of permission strings                                                                                                                                                                                                                                             |
+| `group_id`                 | integer | No       | Group to assign the user to (null for no group). Must be NULL when `is_admin: true` — see Admin XOR group invariant below.                                                                                                                                             |
+| `revokes`                  | array   | No       | Permissions to revoke from group (only with group)                                                                                                                                                                                                                     |
+| `bandwidth_weight`         | integer | No       | Per-user bandwidth weight override (1..=65535). Subject to the delegation rule below.                                                                                                                                                                                  |
+| `inherit_bandwidth_weight` | boolean | No       | When `true`, the per-user override is cleared (NULL stored); `bandwidth_weight` is ignored if both fields are sent. Resolver returns the inherited baseline (admin-default → group → system default). `false` and field-absent are equivalent (no change to override). |
 
-**Field validation.** Each input field is enforced by a validator in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `username` — `validate_username`: non-empty, ≤32 characters; Unicode
-  letters or ASCII graphic characters only; rejects whitespace, control
-  characters, and the path-sensitive set `/ \ : . < > " | ? * #`.
-- `password` — `validate_password`: non-empty, ≤256 bytes, must meet
-  the server's configured `min_password_strength` (zxcvbn-scored,
-  username supplied as user input so passwords based on the username
-  are penalized).
-- `permissions` — `validate_permissions`: list bounded to
-  `PERMISSIONS_COUNT` (the total defined permission set); each entry
-  non-empty, ≤32 bytes, no newlines, no control characters. Format-only —
-  unrecognized permission names pass this validator and are rejected at
-  permission-parsing time downstream.
-- `revokes` — same rules as `permissions`.
+- `username`: non-empty, ≤32 characters; Unicode letters or ASCII
+  graphic characters only; rejects whitespace, control characters,
+  and the path-sensitive set `/ \ : . < > " | ? * #`.
+- `password`: non-empty, ≤256 bytes, must meet the server's configured
+  `min_password_strength` (zxcvbn-scored, username supplied as user
+  input so passwords based on the username are penalized).
+- `permissions`: list bounded to the total defined permission set;
+  each entry non-empty, ≤32 bytes, no newlines, no control
+  characters. Format-only — unrecognized permission names pass this
+  check and are rejected at the next validation stage.
+- `revokes`: same rules as `permissions`.
+- `bandwidth_weight`: must be in the range 1..=65535.
+
+**Admin XOR group invariant.** Admin users cannot be members of a
+group. A request with `is_admin: true` and a non-null `group_id` is
+rejected.
+
+**Bandwidth weight delegation.** Non-admins can set `bandwidth_weight`
+only to a value at or below their own current resolved bandwidth
+weight, and can only assign `group_id` to a group whose
+`bandwidth_weight` does not exceed their own. Admins bypass. Rejections
+return `UserCreateResponse { success: false, error }`.
 
 Validation failures send `UserCreateResponse { success: false, error }`
-with a translated error message.
+with an error message.
 
 **Regular user:**
 
@@ -323,21 +333,22 @@ Request user data for editing.
 
 Response containing user data for editing.
 
-| Field                 | Type    | Required   | Description                                    |
-| --------------------- | ------- | ---------- | ---------------------------------------------- |
-| `success`             | boolean | Yes        | Whether request succeeded                      |
-| `error`               | string  | If failure | Error message                                  |
-| `id`                  | integer | If success | Account ID                                     |
-| `username`            | string  | If success | Account username                               |
-| `is_admin`            | boolean | If success | Admin status                                   |
-| `is_shared`           | boolean | If success | Shared account status                          |
-| `enabled`             | boolean | If success | Account enabled status                         |
-| `permissions`         | array   | If success | List of permissions                            |
-| `group_id`            | integer | If success | User's group ID (null if no group)             |
-| `group_name`          | string  | If success | User's group name (null if no group)           |
-| `group_permissions`   | array   | If success | Group's base permissions (null if no group)    |
-| `revoked_permissions` | array   | If success | Permissions revoked from group for this user   |
-| `available_groups`    | array   | If success | Available groups for dropdown (GroupInfo list) |
+| Field                 | Type    | Required   | Description                                                                                         |
+| --------------------- | ------- | ---------- | --------------------------------------------------------------------------------------------------- |
+| `success`             | boolean | Yes        | Whether request succeeded                                                                           |
+| `error`               | string  | If failure | Error message                                                                                       |
+| `id`                  | integer | If success | Account ID                                                                                          |
+| `username`            | string  | If success | Account username                                                                                    |
+| `is_admin`            | boolean | If success | Admin status                                                                                        |
+| `is_shared`           | boolean | If success | Shared account status                                                                               |
+| `enabled`             | boolean | If success | Account enabled status                                                                              |
+| `permissions`         | array   | If success | List of permissions                                                                                 |
+| `group_id`            | integer | If success | User's group ID (null if no group)                                                                  |
+| `group_name`          | string  | If success | User's group name (null if no group)                                                                |
+| `group_permissions`   | array   | If success | Group's base permissions (null if no group)                                                         |
+| `revoked_permissions` | array   | If success | Permissions revoked from group for this user                                                        |
+| `available_groups`    | array   | If success | Available groups for dropdown (GroupInfo list)                                                      |
+| `bandwidth_weight`    | integer | If success | Raw per-user bandwidth weight override (null = inherit from group / admin default / system default) |
 
 **Success example:**
 
@@ -384,42 +395,90 @@ Response containing user data for editing.
 
 Update an existing user account.
 
-| Field              | Type    | Required | Description                                             |
-| ------------------ | ------- | -------- | ------------------------------------------------------- |
-| `id`               | integer | Yes      | Account ID to update                                    |
-| `current_password` | string  | No       | Current password (required for self-update)             |
-| `username`         | string  | No       | New username                                            |
-| `password`         | string  | No       | New password (must meet server's min password strength) |
-| `is_admin`         | boolean | No       | New admin status                                        |
-| `enabled`          | boolean | No       | New enabled status                                      |
-| `permissions`      | array   | No       | New permissions list                                    |
-| `group_id`         | integer | No       | Group to assign (null to keep current)                  |
-| `remove_group`     | boolean | No       | Remove user from current group                          |
-| `revokes`          | array   | No       | Permissions to revoke from group                        |
+| Field                      | Type    | Required | Description                                                                                                                                                                                                                                                            |
+| -------------------------- | ------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                       | integer | Yes      | Account ID to update                                                                                                                                                                                                                                                   |
+| `current_password`         | string  | No       | Current password (required for self-update)                                                                                                                                                                                                                            |
+| `username`                 | string  | No       | New username                                                                                                                                                                                                                                                           |
+| `password`                 | string  | No       | New password (must meet server's min password strength)                                                                                                                                                                                                                |
+| `is_admin`                 | boolean | No       | New admin status. Promotion auto-clears `group_id` and wipes all permission override rows — see Admin XOR group invariant.                                                                                                                                             |
+| `enabled`                  | boolean | No       | New enabled status                                                                                                                                                                                                                                                     |
+| `permissions`              | array   | No       | New permissions list                                                                                                                                                                                                                                                   |
+| `group_id`                 | integer | No       | Group to assign (null to keep current). Rejected when the target ends up admin — see Admin XOR group invariant.                                                                                                                                                        |
+| `remove_group`             | boolean | No       | Remove user from current group                                                                                                                                                                                                                                         |
+| `revokes`                  | array   | No       | Permissions to revoke from group                                                                                                                                                                                                                                       |
+| `bandwidth_weight`         | integer | No       | New per-user bandwidth weight override (1..=65535). Subject to the delegation rule below.                                                                                                                                                                              |
+| `inherit_bandwidth_weight` | boolean | No       | When `true`, the per-user override is cleared (NULL stored); `bandwidth_weight` is ignored if both fields are sent. Resolver returns the inherited baseline (admin-default → group → system default). `false` and field-absent are equivalent (no change to override). |
 
 **Field validation.** Same rules as
-[`UserCreate`](#usercreate-client--server) for the matching fields:
-`username` (`validate_username`), `password`
-(`validate_password`), `permissions` and `revokes`
-(`validate_permissions`). `current_password` is not run through
-`validate_password` — it is verified directly against the stored
-hash via Argon2.
+[`UserCreate`](#usercreate-client--server) for `username`, `password`,
+`permissions`, `revokes`, and `bandwidth_weight`. `current_password`
+is not run through the password validator — it is verified directly
+against the stored Argon2 hash.
+
+**Bandwidth weight delegation.** Same rule as `UserCreate`: non-admins
+can set `bandwidth_weight` only to a value at or below their own
+current resolved weight, and can only assign `group_id` to a group
+whose weight does not exceed their own. Additionally,
+`inherit_bandwidth_weight: true` is rejected for non-admins when the
+target's _inherited_ weight (admin-default → group → 1) exceeds the
+requester's — clearing an override could otherwise drop the user back
+to a tier above the requester's. Admins bypass.
+
+**Admin XOR group invariant.** Admin users cannot be members of a
+group.
+
+- A request that would leave the target as admin with a non-null
+  `group_id` is rejected. This covers both "request sends
+  `is_admin: true` together with `group_id`" and "target is already
+  admin and request sends `group_id`".
+- A request that promotes a user from non-admin to admin
+  (`is_admin: true` on a previously non-admin target) atomically
+  clears the target's `group_id` and all permission overrides
+  (grants and revokes) as part of the same update. The caller does
+  not need to send `remove_group: true` or `permissions: []` alongside
+  the promotion.
 
 `UserUpdate` is a partial update — omitted fields are unchanged.
 Two side effects of `permissions` worth knowing about:
 
 - **For admin requesters**, `permissions` (when present) fully
   replaces the target's grant and revoke override rows.
-- **For non-admin requesters**, the handler runs a delegation merge:
+- **For non-admin requesters**, the server runs a delegation merge:
   it preserves any of the target's existing grants the requester
   doesn't themselves hold (so a moderator can't remove perms only
   an admin granted), then layers in the requested set.
 - **`permissions` clears revokes**: when `permissions` is present,
-  the handler deletes both grants and revokes for the target before
-  re-inserting. To preserve revoke overrides across an update, the
-  client must re-send them in `revokes` alongside `permissions`.
+  the server clears both the target's grants and revokes before
+  applying the requested set. To preserve revoke overrides across
+  an update, the client must re-send them in `revokes` alongside
+  `permissions`.
 
 Only include fields you want to change.
+
+**Self-edit semantics.** A request whose `id` resolves to the
+requesting user is treated as a self-edit, and the accepted field
+set narrows:
+
+- **Shared accounts cannot self-edit at all** (no password to change,
+  no other fields admissible).
+- **Always rejected on self-edit**, regardless of admin status:
+  `is_admin`, `enabled`, `permissions`, `revokes`, and
+  `remove_group: true`. The server returns a `UserUpdateResponse`
+  with `success: false` and an error indicating the field cannot
+  be self-edited. Client UIs are expected to hard-disable these
+  controls on a self-row.
+- **Non-admin self-edit** is restricted to password change
+  (`password` + `current_password`). Any other field — including
+  `username`, `group_id`, `bandwidth_weight`,
+  `inherit_bandwidth_weight` — is rejected.
+- **Admin self-edit** additionally accepts `username`,
+  `bandwidth_weight`, and `inherit_bandwidth_weight`. `group_id` is
+  rejected — admins cannot be members of a group (see Admin XOR
+  group invariant above).
+- **Password change** (on any self-edit, admin or non-admin)
+  requires `current_password`, verified against the stored Argon2
+  hash before the new password is applied.
 
 **Change password (self):**
 
@@ -541,23 +600,20 @@ Disconnect a user from the server.
 | `nickname` | string | Yes      | Display name of user to kick               |
 | `reason`   | string | No       | Reason for the kick (shown to kicked user) |
 
-**Field validation.** Each input field is enforced by a validator in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `nickname` — `validate_nickname`: non-empty, ≤32 characters; Unicode
-  letters or ASCII graphic characters only; rejects whitespace,
-  control characters, and the path-sensitive set
-  `/ \ : . < > " | ? * #`.
-- `reason` (when present) — `validate_kick_reason`: ≤256 characters
-  (`MAX_KICK_REASON_LENGTH`), no control characters (newlines, tabs,
-  null bytes, etc. all rejected — the reason is rendered as a
-  single-line "kicked by X with reason: …" message rendered to the
-  kicked user). Empty / omitted is allowed. Aligned with
-  `MAX_IP_RULE_REASON_LENGTH` (ban/trust reasons) for consistency
-  across moderation-reason fields.
+- `nickname`: non-empty, ≤32 characters; Unicode letters or ASCII
+  graphic characters only; rejects whitespace, control characters,
+  and the path-sensitive set `/ \ : . < > " | ? * #`.
+- `reason` (when present): ≤256 characters, no control characters
+  (newlines, tabs, null bytes, etc. all rejected — the reason is
+  rendered as a single-line "kicked by X with reason: …" message
+  shown to the kicked user). Empty / omitted is allowed. Same limit
+  as ban/trust reason fields for consistency across moderation
+  messages.
 
 Validation failures send `UserKickResponse { success: false, error }`
-with a translated error message.
+with an error message.
 
 **Example:**
 
@@ -609,6 +665,8 @@ Update server configuration.
 | `public_address`         | string  | No       | Hostname or IP advertised for shareable `nexus://` URIs (empty string clears)   |
 | `max_connections_per_ip` | integer | No       | Max connections per IP                                                          |
 | `max_transfers_per_ip`   | integer | No       | Max transfers per IP                                                            |
+| `max_outbound_rate`      | integer | No       | Server-wide outbound bandwidth cap, in bytes/sec (0 = unlimited)                |
+| `scheduler_chunk_size`   | integer | No       | Egress scheduler packet size, in bytes (range 1024-65536)                       |
 | `image`                  | string  | No       | Server logo as data URI (max 700KB)                                             |
 | `file_reindex_interval`  | integer | No       | File reindex interval in minutes (0 to disable)                                 |
 | `persistent_channels`    | string  | No       | Space-separated persistent channel names                                        |
@@ -617,35 +675,39 @@ Update server configuration.
 | `chat_rate_limit`        | integer | No       | Messages per minute rate limit (0 = flood protection disabled)                  |
 | `min_password_strength`  | integer | No       | Minimum password strength level (0=Weak, 1=Fair, 2=Good, 3=Strong, 4=Excellent) |
 
-**Field validation.** Each input field is enforced by a validator in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `name` — `validate_server_name`: non-empty after trim, ≤64 characters,
-  no newlines, no other control characters.
-- `description` — `validate_server_description`: ≤512 characters, no
-  newlines, no other control characters. Empty string is allowed
-  (clears the description).
-- `public_address` — `validate_public_address`: ≤253 bytes; accepts
-  DNS hostnames, IPv4 literals, bare IPv6 literals, and IDN (Unicode
-  or Punycode); rejects URL schemes, brackets, paths, userinfo,
-  whitespace, embedded ports, and IPv6 zone identifiers. Empty string
-  is allowed (clears the advertised address).
-- `image` — `validate_server_image`: ≤700 KB data URI, must be a
-  well-formed `data:image/<type>;base64,...` URI for one of the
-  allowed image types (PNG, JPEG, WebP, SVG). Empty string is
-  allowed (clears the image).
-- `persistent_channels` and `auto_join_channels` — each space-separated
-  channel name is run through `validate_channel`: non-empty, starts
-  with `#`, has at least one character after the prefix, ≤32
-  characters, no invalid characters.
-- `min_password_strength` — integer in the closed range 0-4
-  (`PasswordStrength::Weak` through `PasswordStrength::Excellent`).
+- `name`: non-empty after trim, ≤64 characters, no newlines, no other
+  control characters.
+- `description`: ≤512 characters, no newlines, no other control
+  characters. Empty string is allowed (clears the description).
+- `public_address`: ≤253 bytes; accepts DNS hostnames, IPv4 literals,
+  bare IPv6 literals, and IDN (Unicode or Punycode); rejects URL
+  schemes, brackets, paths, userinfo, whitespace, embedded ports,
+  and IPv6 zone identifiers. Empty string is allowed (clears the
+  advertised address).
+- `image`: ≤700 KB data URI, must be a well-formed
+  `data:image/<type>;base64,...` URI for one of the allowed image
+  types (PNG, JPEG, WebP, SVG). Empty string is allowed (clears the
+  image).
+- `persistent_channels` and `auto_join_channels`: each
+  space-separated channel name must be non-empty, start with `#`,
+  have at least one character after the prefix, ≤32 characters, and
+  contain no invalid characters.
+- `min_password_strength`: integer in the closed range 0-4 (weak
+  through excellent). Values outside the range are rejected.
+- `scheduler_chunk_size`: integer in the closed range 1024-65536.
   Values outside the range are rejected.
 
 Other numeric fields (`max_connections_per_ip`, `max_transfers_per_ip`,
-`file_reindex_interval`, `chat_burst_limit`, `chat_rate_limit`) are
-bounded only by their integer type. `ServerInfoUpdate` is a partial
-update — omitted fields are unchanged.
+`max_outbound_rate`, `file_reindex_interval`, `chat_burst_limit`,
+`chat_rate_limit`) are bounded only by their integer type.
+`ServerInfoUpdate` is a partial update — omitted fields are unchanged.
+
+**Admin-only fields.** `scheduler_chunk_size` is admin-only — it is
+only included in `ServerInfo` responses to admin clients, and only
+admins may change it via `ServerInfoUpdate`. The other fields follow
+the existing per-field visibility rules (admin or all).
 
 Only include fields you want to change.
 
@@ -920,24 +982,22 @@ registration task once the row is inserted (unless `enabled: false`).
 | `name`        | string  | Yes      | Admin-supplied label (1-64 characters; case-insensitively unique)               |
 | `enabled`     | boolean | Yes      | Whether the registration task should actively maintain a connection             |
 
-**Field validation.** Each input field is enforced by validators in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `address` — `validate_tracker_address` (delegates to
-  `validate_public_address`): non-empty after trim, ≤253 bytes; accepts
-  DNS hostnames, IPv4 literals, bare IPv6 literals, and IDN (Unicode
-  or Punycode); rejects URL schemes, brackets, paths, userinfo,
-  whitespace, embedded ports, and IPv6 zone identifiers.
-- `port` — must be non-zero (1-65535).
-- `fingerprint` — when present, must match the canonical 95-byte
-  uppercase form (32 hex bytes separated by colons), enforced by
-  `is_canonical_fingerprint`.
-- `password` — when present, ≤256 bytes.
-- `name` — `validate_tracker_name`: non-empty after trim, ≤64 characters,
-  no newlines, no other control characters.
+- `address`: non-empty after trim, ≤253 bytes; accepts DNS hostnames,
+  IPv4 literals, bare IPv6 literals, and IDN (Unicode or Punycode);
+  rejects URL schemes, brackets, paths, userinfo, whitespace,
+  embedded ports, and IPv6 zone identifiers (same rules as the
+  server's `public_address`).
+- `port`: must be non-zero (1-65535).
+- `fingerprint`: when present, must match the canonical 95-byte
+  uppercase form (32 hex bytes separated by colons).
+- `password`: when present, ≤256 bytes.
+- `name`: non-empty after trim, ≤64 characters, no newlines, no
+  other control characters.
 
 Validation failures send `TrackerAddResponse { success: false, error }`
-with a translated error message.
+with an error message.
 
 **Example (open tracker, TOFU-pin on first connect):**
 
@@ -1252,7 +1312,7 @@ task's runtime status.
 | `connected`           | boolean | Always          | Whether the registration task currently has a healthy registration                                      |
 | `last_connected_at`   | integer | After 1st conn. | Unix epoch seconds of the most recent successful refresh (absent if it has never connected)             |
 | `last_attempted_at`   | integer | After 1st cycle | Unix epoch seconds of the most recent connection attempt (absent until the first cycle starts)          |
-| `last_error`          | string  | On error        | Most recent error message, translated into the requesting admin's locale (absent if no error)           |
+| `last_error`          | string  | On error        | Most recent error message, localized to the requesting admin's locale (absent if no error)              |
 | `last_error_kind`     | string  | On error        | Stable machine-readable error identifier (see "Tracker Error Kinds" below)                              |
 | `pending_fingerprint` | string  | On mismatch     | Newly-observed fingerprint after a Stage 1 mismatch, awaiting admin accept (absent in normal operation) |
 | `refresh_interval`    | integer | When connected  | Tracker-supplied refresh cadence in seconds (absent until the first successful registration)            |
@@ -1303,9 +1363,9 @@ A registration cycle progresses through:
 ### Tracker Error Kinds
 
 Stable machine-readable identifiers in `TrackerInfo.last_error_kind`.
-The matching `TrackerInfo.last_error` is pre-translated to the admin's
-locale. Kinds are split by _who set them_ — the BBS-side registration
-task itself, or the tracker daemon echoing back via
+The matching `TrackerInfo.last_error` is pre-localized to the admin's
+locale. Kinds are split by _who set them_ — the BBS server's
+registration task itself, or the tracker daemon echoing back via
 `TrackerServerRegisterResponse.error_kind`.
 
 #### BBS-internal kinds
@@ -1529,29 +1589,37 @@ A server can have at most 64 configured trackers.
 
 ### UserCreate Errors
 
-| Error                   | Cause                                      |
-| ----------------------- | ------------------------------------------ |
-| Permission denied       | Missing `user_create` permission           |
-| Username is empty       | Empty username provided                    |
-| Username too long       | Exceeds 32 characters                      |
-| Invalid username        | Contains invalid characters                |
-| Username already exists | Account with that name exists              |
-| Password is empty       | Empty password provided                    |
-| Password too long       | Exceeds 256 bytes                          |
-| Password too weak       | Does not meet minimum strength requirement |
+| Error                                          | Cause                                                                                     |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Permission denied                              | Missing `user_create` permission                                                          |
+| Username is empty                              | Empty username provided                                                                   |
+| Username too long                              | Exceeds 32 characters                                                                     |
+| Invalid username                               | Contains invalid characters                                                               |
+| Username already exists                        | Account with that name exists                                                             |
+| Password is empty                              | Empty password provided                                                                   |
+| Password too long                              | Exceeds 256 bytes                                                                         |
+| Password too weak                              | Does not meet minimum strength requirement                                                |
+| Cannot assign admin users to a group           | Admin XOR group invariant violated                                                        |
+| Cannot grant a bandwidth weight above your own | Non-admin requested a `bandwidth_weight` exceeding their own resolved weight (delegation) |
+| Bandwidth weight must be at least N            | `bandwidth_weight` set to a value below the minimum (1)                                   |
 
 ### UserUpdate Errors
 
-| Error                                    | Cause                                      |
-| ---------------------------------------- | ------------------------------------------ |
-| Permission denied                        | Missing `user_edit` permission             |
-| User not found                           | Account doesn't exist                      |
-| Cannot edit admin users                  | Non-admin trying to edit admin             |
-| Incorrect current password               | Wrong password for self-update             |
-| Username already exists                  | New username conflicts                     |
-| Cannot rename the guest account          | Attempted guest rename                     |
-| Cannot change the guest account password | Attempted guest password change            |
-| Password too weak                        | Does not meet minimum strength requirement |
+| Error                                            | Cause                                                                                                                                              |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Permission denied                                | Missing `user_edit` permission                                                                                                                     |
+| User not found                                   | Account doesn't exist                                                                                                                              |
+| Cannot edit admin users                          | Non-admin trying to edit admin                                                                                                                     |
+| Cannot assign admin users to a group             | Admin XOR group invariant violated                                                                                                                 |
+| Incorrect current password                       | Wrong password for self-update                                                                                                                     |
+| Username already exists                          | New username conflicts                                                                                                                             |
+| Cannot rename the guest account                  | Attempted guest rename                                                                                                                             |
+| Cannot change the guest account password         | Attempted guest password change                                                                                                                    |
+| Shared accounts cannot edit themselves           | Shared-account session attempted self-update                                                                                                       |
+| Password too weak                                | Does not meet minimum strength requirement                                                                                                         |
+| Cannot grant a bandwidth weight above your own   | Non-admin requested a `bandwidth_weight` exceeding their own resolved weight (delegation)                                                          |
+| Cannot inherit a bandwidth weight above your own | Non-admin requested `inherit_bandwidth_weight: true` and the target's post-clear inherited weight would exceed the requester's own resolved weight |
+| Bandwidth weight must be at least N              | `bandwidth_weight` set to a value below the minimum (1)                                                                                            |
 
 ### UserDelete Errors
 
@@ -1574,28 +1642,30 @@ A server can have at most 64 configured trackers.
 
 ### ServerInfoUpdate Errors
 
-| Error                                                   | Cause                           |
-| ------------------------------------------------------- | ------------------------------- |
-| Permission denied                                       | Non-admin attempted update      |
-| Server name cannot be empty                             | Empty name provided             |
-| Server name too long                                    | Exceeds 64 characters           |
-| Description too long                                    | Exceeds 512 characters          |
-| Image too large                                         | Exceeds 700KB                   |
-| Invalid image format                                    | Not PNG/WebP/JPEG/SVG           |
-| Public address is too long                              | Exceeds 253 bytes               |
-| Public address must not include a URL scheme            | Contains `://`                  |
-| Public address must not include brackets                | Bracketed IPv6 (e.g. `[::1]`)   |
-| Public address must not include a path                  | Contains `/`                    |
-| Public address must not include a username              | Contains `@`                    |
-| Public address must not contain whitespace              | Contains a whitespace character |
-| Public address must not include a port                  | Hostname-looking with `:port`   |
-| Public address must not include an IPv6 zone identifier | Contains `%zone`                |
-| Public address is not a valid hostname or IP address    | Fails IDN / IPv4 / IPv6 check   |
-| Invalid password strength value                         | Value not in range 0-4          |
+| Error                                                   | Cause                                            |
+| ------------------------------------------------------- | ------------------------------------------------ |
+| Permission denied                                       | Non-admin attempted update                       |
+| Server name cannot be empty                             | Empty name provided                              |
+| Server name too long                                    | Exceeds 64 characters                            |
+| Description too long                                    | Exceeds 512 characters                           |
+| Image too large                                         | Exceeds 700KB                                    |
+| Invalid image format                                    | Not PNG/WebP/JPEG/SVG                            |
+| Public address is too long                              | Exceeds 253 bytes                                |
+| Public address must not include a URL scheme            | Contains `://`                                   |
+| Public address must not include brackets                | Bracketed IPv6 (e.g. `[::1]`)                    |
+| Public address must not include a path                  | Contains `/`                                     |
+| Public address must not include a username              | Contains `@`                                     |
+| Public address must not contain whitespace              | Contains a whitespace character                  |
+| Public address must not include a port                  | Hostname-looking with `:port`                    |
+| Public address must not include an IPv6 zone identifier | Contains `%zone`                                 |
+| Public address is not a valid hostname or IP address    | Fails IDN / IPv4 / IPv6 check                    |
+| Invalid password strength value                         | Value not in range 0-4                           |
+| Scheduler chunk size must be at least N bytes           | `scheduler_chunk_size` below the minimum (1024)  |
+| Scheduler chunk size must be at most N bytes            | `scheduler_chunk_size` above the maximum (65536) |
 
 ### Tracker Validation Errors
 
-These apply to `TrackerAdd` and `TrackerUpdate`. The handler returns
+These apply to `TrackerAdd` and `TrackerUpdate`. The server returns
 the first failing rule.
 
 | Error                                                          | Cause                                                                                                |
@@ -1636,11 +1706,11 @@ The kicked user's sessions are all disconnected (for regular accounts with multi
 
 ## Notes
 
-- User changes are persisted to the database immediately
-- Server info changes are persisted to the database immediately
+- User changes are persisted immediately
+- Server info changes are persisted immediately
 - `UserUpdated` is only broadcast if the user is online
 - `PermissionsUpdated` is only sent to the affected user's sessions
-- Admins implicitly have all permissions (not stored in database)
+- Admins implicitly have all permissions (no explicit permission storage)
 - Username lookups are case-insensitive but preserve original casing
 - File area folders (`users/{username}/`) are not auto-created or deleted with accounts
 

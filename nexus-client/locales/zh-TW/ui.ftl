@@ -1310,3 +1310,13 @@ err-tracker-update-failed = 更新追蹤器失敗
 err-tracker-remove-failed = 移除追蹤器失敗
 err-tracker-accept-fingerprint-failed = 接受指紋失敗
 err-tracker-edit-no-payload = 伺服器未傳回追蹤器詳細資訊
+
+label-bandwidth-section = 頻寬
+label-bandwidth-weight = 頻寬權重：
+label-chat-section = 聊天
+label-files-section = 檔案
+label-general-section = 一般
+label-inherit-bandwidth-weight = 繼承頻寬權重
+label-max-outbound-rate = 最大上行 (Mbps)：
+label-unlimited = 無限制
+label-scheduler-chunk-size = 排程器區塊大小 (位元組)：

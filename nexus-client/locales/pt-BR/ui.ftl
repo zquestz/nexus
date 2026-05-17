@@ -1378,3 +1378,13 @@ err-tracker-update-failed = Falha ao atualizar tracker
 err-tracker-remove-failed = Falha ao remover tracker
 err-tracker-accept-fingerprint-failed = Falha ao aceitar impressão digital
 err-tracker-edit-no-payload = O servidor não retornou detalhes do tracker
+
+label-bandwidth-section = Largura de banda
+label-bandwidth-weight = Peso da largura de banda:
+label-chat-section = Chat
+label-files-section = Arquivos
+label-general-section = Geral
+label-inherit-bandwidth-weight = Herdar peso da largura de banda
+label-max-outbound-rate = Saída máx. (Mbps):
+label-unlimited = Ilimitada
+label-scheduler-chunk-size = Tamanho do bloco do agendador (bytes):

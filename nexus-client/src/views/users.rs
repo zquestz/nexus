@@ -10,9 +10,10 @@ use iced::widget::{
     table, text, text_input,
 };
 use iced::{Center, Element, Fill, Length, Theme};
-use iced_aw::{TabLabel, Tabs};
+use iced_aw::{NumberInput, TabLabel, Tabs};
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::{GroupInfo, UserInfo};
+use nexus_common::validators::{MIN_BANDWIDTH_WEIGHT, resolve_bandwidth_weight};
 
 use super::constants::{PERMISSION_USER_CREATE, PERMISSION_USER_DELETE, PERMISSION_USER_EDIT};
 use super::groups::{group_form_view, group_list_content};
@@ -69,20 +70,116 @@ impl std::fmt::Display for GroupOption {
     }
 }
 
+/// Build the bandwidth-weight row used by both create and edit user forms.
+///
+/// The Inherit checkbox is always visible. Baseline resolution mirrors the
+/// server (`get_resolved_bandwidth_weight`):
+/// - **Target is admin** → `DEFAULT_ADMIN_BANDWIDTH_WEIGHT` (admins skip
+///   group lookup, even if `group_weight` is somehow set).
+/// - **Otherwise** → selected group's weight, falling back to
+///   `DEFAULT_BANDWIDTH_WEIGHT`.
+///
+/// - **Inherit checked** → number input disabled, displays the baseline;
+///   the form submit sends `inherit_bandwidth_weight: Some(true)`.
+/// - **Inherit unchecked** → number input enabled, displays the typed
+///   override (falling back to the baseline when no override is set
+///   yet). Renders **bold** when the value differs from the baseline,
+///   mirroring the permission-override convention.
+fn build_bandwidth_row<'a>(
+    override_value: Option<u16>,
+    inherit: bool,
+    group_weight: Option<u16>,
+    target_is_admin: bool,
+    on_value_changed: fn(u16) -> Message,
+    on_inherit_toggled: fn(bool) -> Message,
+    input_id: InputId,
+) -> Element<'a, Message> {
+    let bold_font = iced::Font {
+        weight: font::Weight::Bold,
+        ..iced::Font::default()
+    };
+    let label = shaped_text(t("label-bandwidth-weight")).size(TEXT_SIZE);
+
+    // Baseline = the effective weight the resolver would return if the
+    // user had no per-user override. Shared with the server's
+    // `resolve_bandwidth_weight` so the displayed baseline matches what
+    // the scheduler will apply.
+    let baseline = resolve_bandwidth_weight(None, group_weight, target_is_admin);
+    let disable_input = inherit;
+
+    // Number-input display value picks the right source for the active
+    // state: when inheriting we want the baseline visible (read-only),
+    // otherwise the user's typed override (or the baseline as a sensible
+    // starting point if no override is set yet).
+    let display_value: u16 = if disable_input {
+        baseline
+    } else {
+        override_value.unwrap_or(baseline)
+    };
+
+    let mut input = NumberInput::new(
+        &display_value,
+        MIN_BANDWIDTH_WEIGHT..=u16::MAX,
+        on_value_changed,
+    );
+    if disable_input {
+        input = input.on_input_maybe(None::<fn(u16) -> Message>);
+    }
+    let number_input: Element<'a, Message> =
+        input.id(Id::from(input_id)).padding(INPUT_PADDING).into();
+
+    // Bold marker for "override differs from baseline" — only meaningful
+    // when Inherit is unchecked (otherwise the input is showing the
+    // baseline read-only and there's nothing to highlight).
+    let is_override_marker = !inherit && override_value.is_some_and(|o| o != baseline);
+
+    let label_or_marker: Element<'a, Message> = if is_override_marker {
+        shaped_text(t("label-bandwidth-weight"))
+            .size(TEXT_SIZE)
+            .font(bold_font)
+            .into()
+    } else {
+        label.into()
+    };
+
+    let inherit_box = checkbox(inherit)
+        .label(t("label-inherit-bandwidth-weight"))
+        .on_toggle(on_inherit_toggled)
+        .size(TEXT_SIZE)
+        .text_shaping(text::Shaping::Advanced);
+
+    iced::widget::Row::with_children(vec![
+        label_or_marker,
+        Space::new().width(ELEMENT_SPACING).into(),
+        number_input,
+        Space::new().width(ELEMENT_SPACING).into(),
+        inherit_box.into(),
+    ])
+    .align_y(Center)
+    .into()
+}
+
 /// Build filtered group options for the pick_list dropdown.
 ///
 /// Filters by:
+/// - Admin XOR group invariant: admins cannot be members of any group; "None" only.
 /// - Shared compatibility: shared accounts → shared groups only, regular → non-shared only
 /// - Non-admin delegation: non-admin users only see groups where they have all permissions
 fn build_group_options(
     available_groups: Option<&[GroupInfo]>,
     conn: &ServerConnection,
     is_shared: bool,
+    is_admin: bool,
 ) -> Vec<GroupOption> {
     let mut options = vec![GroupOption {
         id: None,
         label: t("user-management-group-none"),
     }];
+
+    // Admin XOR group: target is admin → no group options.
+    if is_admin {
+        return options;
+    }
 
     if let Some(groups) = available_groups {
         for group in groups {
@@ -132,6 +229,10 @@ struct EditUserContext<'a> {
     group_id: Option<i64>,
     /// Group's base permissions (for computing inherited vs override styling)
     group_permissions: &'a [String],
+    /// Bandwidth weight override (form value; None = no individual override).
+    bandwidth_weight_override: Option<u16>,
+    /// "Inherit from group" checkbox state.
+    bandwidth_weight_inherit: bool,
 }
 
 /// Build permission checkboxes split into two columns.
@@ -142,6 +243,7 @@ fn build_permission_columns<'a, F>(
     permissions: &'a [(String, bool)],
     conn: &'a ServerConnection,
     is_shared: bool,
+    target_is_admin: bool,
     on_toggle: F,
     group_permissions: Option<&'a [String]>,
 ) -> Element<'a, Message>
@@ -186,7 +288,10 @@ where
             base
         };
 
-        let checkbox_widget = if user_can_toggle && !forbidden_for_shared {
+        // Admins resolve permissions via the admin override; any stored
+        // grants/revokes are wiped on save. Show the stored state but
+        // disable the toggle so we don't pretend it's editable.
+        let checkbox_widget = if user_can_toggle && !forbidden_for_shared && !target_is_admin {
             base.on_toggle(move |checked| on_toggle_clone(perm_name.clone(), checked))
         } else {
             base
@@ -305,13 +410,15 @@ fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
             let username_for_menu = user.username.clone();
             let is_self = user.username.to_lowercase() == current_username_for_col.to_lowercase();
             let is_guest = user.username.to_lowercase() == GUEST_USERNAME;
-            let can_edit_this = can_edit && !is_self && (is_admin || !user.is_admin);
+            // Admins can edit themselves (primarily to manage their own
+            // username or bandwidth weight); non-admin self-edit still
+            // routes to the Change Password dialog only.
+            let can_edit_this = can_edit && (is_admin || !is_self) && (is_admin || !user.is_admin);
             let can_delete_this =
                 can_delete && !is_self && !is_guest && (is_admin || !user.is_admin);
-            // Own row gets a Change Password menu item. The `is_self`
-            // guard on can_edit_this/can_delete_this means those flags are
-            // false here, so the menu only carries this one item.
-            let can_change_own_password = is_self;
+            // Change Password is always self-service for any non-shared
+            // self row, even when can_edit_this is also true (admin self).
+            let can_change_own_password = is_self && !user.is_shared;
 
             let username_color = if user.is_admin {
                 Some(admin_color)
@@ -436,6 +543,29 @@ fn build_user_context_menu(
 ) -> Element<'static, Message> {
     let mut menu_items: Vec<Element<'_, Message>> = vec![];
 
+    let separator = || -> Element<'static, Message> {
+        container(Space::new())
+            .width(Fill)
+            .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
+            .style(separator_style)
+            .into()
+    };
+
+    if can_change_own_password {
+        menu_items.push(
+            MenuButton::new(shaped_text(t("button-change-password")).size(TEXT_SIZE))
+                .padding(CONTEXT_MENU_ITEM_PADDING)
+                .width(Fill)
+                .style(menu_button_style)
+                .on_press(Message::ChangePasswordPressed)
+                .into(),
+        );
+    }
+
+    if can_change_own_password && can_edit_this {
+        menu_items.push(separator());
+    }
+
     if can_edit_this {
         menu_items.push(
             MenuButton::new(shaped_text(t("button-edit")).size(TEXT_SIZE))
@@ -450,15 +580,8 @@ fn build_user_context_menu(
         );
     }
 
-    // Separator only when both actions are present
     if can_edit_this && can_delete_this {
-        menu_items.push(
-            container(Space::new())
-                .width(Fill)
-                .height(CONTEXT_MENU_SEPARATOR_HEIGHT)
-                .style(separator_style)
-                .into(),
-        );
+        menu_items.push(separator());
     }
 
     if can_delete_this {
@@ -471,17 +594,6 @@ fn build_user_context_menu(
                     user_id,
                     username.clone(),
                 ))
-                .into(),
-        );
-    }
-
-    if can_change_own_password {
-        menu_items.push(
-            MenuButton::new(shaped_text(t("button-change-password")).size(TEXT_SIZE))
-                .padding(CONTEXT_MENU_ITEM_PADDING)
-                .width(Fill)
-                .style(menu_button_style)
-                .on_press(Message::ChangePasswordPressed)
                 .into(),
         );
     }
@@ -686,6 +798,7 @@ fn create_view<'a>(
         user_management.loaded_groups(),
         conn,
         user_management.is_shared,
+        user_management.is_admin,
     );
     let selected_group = group_options
         .iter()
@@ -707,11 +820,29 @@ fn create_view<'a>(
             .map(|g| g.permissions.as_slice())
     });
 
+    // Look up the selected group's bandwidth weight (for the override-vs-inherit display).
+    let create_group_weight: Option<u16> = user_management.create_group_id.and_then(|gid| {
+        user_management
+            .loaded_groups()
+            .and_then(|groups| groups.iter().find(|g| g.id == gid))
+            .map(|g| g.bandwidth_weight)
+    });
+    let bandwidth_row = build_bandwidth_row(
+        user_management.bandwidth_weight_override,
+        user_management.bandwidth_weight_inherit,
+        create_group_weight,
+        user_management.is_admin,
+        Message::UserManagementBandwidthWeightChanged,
+        Message::UserManagementInheritBandwidthWeightToggled,
+        InputId::CreateUserBandwidthWeight,
+    );
+
     let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
     let permissions_row = build_permission_columns(
         &user_management.permissions,
         conn,
         user_management.is_shared,
+        user_management.is_admin,
         Message::UserManagementPermissionToggled,
         create_group_perms,
     );
@@ -764,6 +895,7 @@ fn create_view<'a>(
         shared_checkbox.into(),
         enabled_checkbox.into(),
         group_row.into(),
+        bandwidth_row,
         Space::new().height(SPACER_SIZE_SMALL).into(),
         permissions_title.into(),
         permissions_row,
@@ -795,6 +927,12 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
         .align_x(Center)
         .style(muted_text_style);
 
+    // Self-edit (only reachable as admin per row-level gate) routes
+    // password change through the Change Password dialog and hard-disables
+    // is_admin / enabled so the user can't accidentally lock themselves out.
+    let is_self_edit =
+        ctx.original_username.to_lowercase() == ctx.conn.connection_info.username.to_lowercase();
+
     let can_update = !ctx.new_username.trim().is_empty() && !ctx.user_management.is_submitting;
 
     // Helper for on_submit
@@ -820,7 +958,9 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
     };
 
     // Password input - disabled for guest account (password cannot be changed)
-    let password_input = if ctx.is_guest {
+    // and for self-edit (Change Password dialog is the only path that
+    // carries current_password verification).
+    let password_input = if ctx.is_guest || is_self_edit {
         text_input(&t("placeholder-password-keep-current"), ctx.new_password)
             .id(Id::from(InputId::EditNewPassword))
             .secure(true)
@@ -836,8 +976,9 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
             .size(TEXT_SIZE)
     };
 
-    // Admin checkbox - disabled when is_shared (shared accounts can't be admin)
-    let admin_checkbox = if ctx.conn.is_admin && !ctx.is_shared {
+    // Admin checkbox - disabled when shared (shared accounts can't be admin)
+    // or when self-editing (server rejects self-demotion).
+    let admin_checkbox = if ctx.conn.is_admin && !ctx.is_shared && !is_self_edit {
         checkbox(ctx.is_admin)
             .label(t("label-admin"))
             .on_toggle(Message::UserManagementEditIsAdminToggled)
@@ -856,7 +997,9 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
         .size(TEXT_SIZE)
         .text_shaping(text::Shaping::Advanced);
 
-    let enabled_checkbox = if ctx.conn.is_admin {
+    // Enabled checkbox - admin-only, plus disabled for self (server rejects
+    // self-disable).
+    let enabled_checkbox = if ctx.conn.is_admin && !is_self_edit {
         checkbox(ctx.enabled)
             .label(t("label-enabled"))
             .on_toggle(Message::UserManagementEditEnabledToggled)
@@ -871,8 +1014,12 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
 
     // Group dropdown
     let group_label = shaped_text(t("user-management-group")).size(TEXT_SIZE);
-    let group_options =
-        build_group_options(ctx.user_management.loaded_groups(), ctx.conn, ctx.is_shared);
+    let group_options = build_group_options(
+        ctx.user_management.loaded_groups(),
+        ctx.conn,
+        ctx.is_shared,
+        ctx.is_admin,
+    );
     let selected_group = group_options.iter().find(|o| o.id == ctx.group_id).cloned();
     let group_picker = pick_list(group_options, selected_group, |option| {
         Message::UserManagementEditGroupSelected(option.id)
@@ -889,11 +1036,30 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
         None
     };
 
+    // Look up the selected group's bandwidth weight for the override
+    // display (mirror of create_view).
+    let edit_group_weight: Option<u16> = ctx.group_id.and_then(|gid| {
+        ctx.user_management
+            .loaded_groups()
+            .and_then(|groups| groups.iter().find(|g| g.id == gid))
+            .map(|g| g.bandwidth_weight)
+    });
+    let bandwidth_row = build_bandwidth_row(
+        ctx.bandwidth_weight_override,
+        ctx.bandwidth_weight_inherit,
+        edit_group_weight,
+        ctx.is_admin,
+        Message::UserManagementEditBandwidthWeightChanged,
+        Message::UserManagementEditInheritBandwidthWeightToggled,
+        InputId::EditUserBandwidthWeight,
+    );
+
     let permissions_title = shaped_text(t("label-permissions")).size(TEXT_SIZE);
     let permissions_row = build_permission_columns(
         ctx.permissions,
         ctx.conn,
         ctx.is_shared,
+        ctx.is_admin,
         Message::UserManagementEditPermissionToggled,
         group_perms,
     );
@@ -946,6 +1112,7 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
         shared_checkbox.into(),
         enabled_checkbox.into(),
         group_row.into(),
+        bandwidth_row,
         Space::new().height(SPACER_SIZE_SMALL).into(),
         permissions_title.into(),
         permissions_row,
@@ -1059,6 +1226,8 @@ pub fn users_view<'a>(
                 permissions,
                 group_id,
                 group_permissions,
+                bandwidth_weight_override,
+                bandwidth_weight_inherit,
                 ..
             } => edit_view(
                 EditUserContext {
@@ -1074,6 +1243,8 @@ pub fn users_view<'a>(
                     permissions,
                     group_id: *group_id,
                     group_permissions,
+                    bandwidth_weight_override: *bandwidth_weight_override,
+                    bandwidth_weight_inherit: *bandwidth_weight_inherit,
                 },
                 theme,
             ),

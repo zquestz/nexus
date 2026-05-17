@@ -227,6 +227,7 @@ async fn test_file_download_permission_in_db() {
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -261,6 +262,7 @@ async fn test_admin_has_implicit_permissions() {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -1027,6 +1029,7 @@ async fn test_file_upload_permission_in_db() {
             permissions: &perms,
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -1061,6 +1064,7 @@ async fn test_admin_has_implicit_upload_permission() {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();

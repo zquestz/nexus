@@ -26,6 +26,8 @@ pub struct UserEditResponseData {
     pub group_permissions: Option<Vec<String>>,
     pub revoked_permissions: Option<Vec<String>>,
     pub available_groups: Option<Vec<nexus_common::protocol::GroupInfo>>,
+    /// Per-user bandwidth weight override from the server (None = inherit).
+    pub bandwidth_weight: Option<u16>,
 }
 
 impl NexusApp {
@@ -174,6 +176,7 @@ impl NexusApp {
                     group_id: data.group_id,
                     group_permissions: data.group_permissions.unwrap_or_default(),
                     revoked_permissions: data.revoked_permissions.unwrap_or_default(),
+                    bandwidth_weight: data.bandwidth_weight,
                 });
                 return self.focus_field(InputId::EditNewUsername);
             }

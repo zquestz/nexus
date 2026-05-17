@@ -276,6 +276,7 @@ mod tests {
             group_id: None,
             group_name: None,
             last_activity: std::time::Instant::now(),
+            bandwidth_weight: 1,
         }
     }
 

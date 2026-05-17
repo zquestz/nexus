@@ -7,31 +7,34 @@ use tracing::{error, info, warn};
 
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
-    self, PublicAddressError, ServerDescriptionError, ServerImageError, ServerNameError,
-    validate_channel, validate_public_address, validate_server_description, validate_server_image,
-    validate_server_name,
+    self, BandwidthChunkSizeError, MAX_BANDWIDTH_CHUNK_SIZE, MIN_BANDWIDTH_CHUNK_SIZE,
+    PublicAddressError, ServerDescriptionError, ServerImageError, ServerNameError,
+    validate_bandwidth_chunk_size, validate_channel, validate_public_address,
+    validate_server_description, validate_server_image, validate_server_name,
 };
 
 use super::{
     HandlerContext, ServerInfoValues, channel_error_to_message, err_admin_required,
-    err_authentication, err_channel_list_invalid, err_database, err_invalid_password_strength,
-    err_no_fields_to_update, err_not_logged_in, err_public_address_contains_brackets,
-    err_public_address_contains_path, err_public_address_contains_port,
-    err_public_address_contains_scheme, err_public_address_contains_userinfo,
-    err_public_address_contains_whitespace, err_public_address_contains_zone_id,
-    err_public_address_invalid_format, err_public_address_too_long,
-    err_server_description_contains_newlines, err_server_description_invalid_characters,
-    err_server_description_too_long, err_server_image_invalid_format, err_server_image_too_large,
-    err_server_image_unsupported_type, err_server_name_contains_newlines, err_server_name_empty,
-    err_server_name_invalid_characters, err_server_name_too_long,
+    err_authentication, err_bandwidth_chunk_size_too_large, err_bandwidth_chunk_size_too_small,
+    err_channel_list_invalid, err_database, err_invalid_password_strength, err_no_fields_to_update,
+    err_not_logged_in, err_public_address_contains_brackets, err_public_address_contains_path,
+    err_public_address_contains_port, err_public_address_contains_scheme,
+    err_public_address_contains_userinfo, err_public_address_contains_whitespace,
+    err_public_address_contains_zone_id, err_public_address_invalid_format,
+    err_public_address_too_long, err_server_description_contains_newlines,
+    err_server_description_invalid_characters, err_server_description_too_long,
+    err_server_image_invalid_format, err_server_image_too_large, err_server_image_unsupported_type,
+    err_server_name_contains_newlines, err_server_name_empty, err_server_name_invalid_characters,
+    err_server_name_too_long,
 };
 use crate::constants::{
     HANDLER_SERVER_INFO_UPDATE, LOG_SERVER_INFO_ADMIN_REQUIRED,
     LOG_SERVER_INFO_CHANNEL_CREATE_FAILED, LOG_SERVER_INFO_CHANNEL_DELETE_FAILED,
     LOG_SERVER_INFO_DB_AUTO_JOIN, LOG_SERVER_INFO_DB_CHAT_BURST, LOG_SERVER_INFO_DB_CHAT_RATE,
     LOG_SERVER_INFO_DB_CONNECTIONS, LOG_SERVER_INFO_DB_DESC, LOG_SERVER_INFO_DB_IMAGE,
-    LOG_SERVER_INFO_DB_NAME, LOG_SERVER_INFO_DB_PASSWORD, LOG_SERVER_INFO_DB_PERSISTENT,
-    LOG_SERVER_INFO_DB_PUBLIC_ADDRESS, LOG_SERVER_INFO_DB_REINDEX, LOG_SERVER_INFO_DB_TRANSFERS,
+    LOG_SERVER_INFO_DB_MAX_OUTBOUND_RATE, LOG_SERVER_INFO_DB_NAME, LOG_SERVER_INFO_DB_PASSWORD,
+    LOG_SERVER_INFO_DB_PERSISTENT, LOG_SERVER_INFO_DB_PUBLIC_ADDRESS, LOG_SERVER_INFO_DB_REINDEX,
+    LOG_SERVER_INFO_DB_SCHEDULER_CHUNK_SIZE, LOG_SERVER_INFO_DB_TRANSFERS,
     LOG_SERVER_INFO_NOT_LOGGED_IN, LOG_SERVER_INFO_SUCCESS,
 };
 
@@ -64,6 +67,8 @@ pub struct ServerInfoUpdateRequest {
     pub chat_burst_limit: Option<u32>,
     pub chat_rate_limit: Option<u32>,
     pub min_password_strength: Option<u8>,
+    pub max_outbound_rate: Option<u64>,
+    pub scheduler_chunk_size: Option<u32>,
     pub session_id: Option<u32>,
 }
 
@@ -88,6 +93,8 @@ where
         chat_burst_limit,
         chat_rate_limit,
         min_password_strength,
+        max_outbound_rate,
+        scheduler_chunk_size,
         session_id,
     } = request;
 
@@ -129,6 +136,8 @@ where
         && chat_burst_limit.is_none()
         && chat_rate_limit.is_none()
         && min_password_strength.is_none()
+        && max_outbound_rate.is_none()
+        && scheduler_chunk_size.is_none()
     {
         return send_failure(ctx, err_no_fields_to_update(ctx.locale)).await;
     }
@@ -238,6 +247,22 @@ where
         && strength > validators::PasswordStrength::Excellent.score()
     {
         return send_failure(ctx, err_invalid_password_strength(ctx.locale)).await;
+    }
+
+    // Validate scheduler chunk size if provided (1024..=65536 bytes).
+    // max_outbound_rate has no semantic bound — the u64 type itself is the limit.
+    if let Some(size) = scheduler_chunk_size
+        && let Err(e) = validate_bandwidth_chunk_size(size)
+    {
+        let error_msg = match e {
+            BandwidthChunkSizeError::TooSmall => {
+                err_bandwidth_chunk_size_too_small(ctx.locale, MIN_BANDWIDTH_CHUNK_SIZE)
+            }
+            BandwidthChunkSizeError::TooLarge => {
+                err_bandwidth_chunk_size_too_large(ctx.locale, MAX_BANDWIDTH_CHUNK_SIZE)
+            }
+        };
+        return send_failure(ctx, error_msg).await;
     }
 
     // Apply updates to database
@@ -420,6 +445,22 @@ where
         }
     }
 
+    // Handle max_outbound_rate update
+    if let Some(rate) = max_outbound_rate
+        && let Err(e) = ctx.db.config.set_max_outbound_rate(rate).await
+    {
+        error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_MAX_OUTBOUND_RATE);
+        return send_failure(ctx, err_database(ctx.locale)).await;
+    }
+
+    // Handle scheduler_chunk_size update
+    if let Some(size) = scheduler_chunk_size
+        && let Err(e) = ctx.db.config.set_scheduler_chunk_size(size).await
+    {
+        error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_SERVER_INFO_DB_SCHEDULER_CHUNK_SIZE);
+        return send_failure(ctx, err_database(ctx.locale)).await;
+    }
+
     // Fetch current server info for broadcast (single query)
     let config = ctx.db.config.get_all().await;
 
@@ -441,6 +482,8 @@ where
             min_password_strength: config.min_password_strength.score(),
             chat_burst_limit: config.chat_burst_limit,
             chat_rate_limit: config.chat_rate_limit,
+            max_outbound_rate: config.max_outbound_rate,
+            scheduler_chunk_size: config.scheduler_chunk_size,
         })
         .await;
 
@@ -477,6 +520,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: None,
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -505,6 +550,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -544,6 +591,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -583,6 +632,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -623,6 +674,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -664,6 +717,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -705,6 +760,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -745,6 +802,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -787,6 +846,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -827,6 +888,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -866,6 +929,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -906,6 +971,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -946,6 +1013,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1001,6 +1070,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1043,6 +1114,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1100,6 +1173,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1152,6 +1227,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1197,6 +1274,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1235,6 +1314,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1280,6 +1361,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1329,6 +1412,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1374,6 +1459,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1416,6 +1503,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1458,6 +1547,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1501,6 +1592,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1542,6 +1635,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1582,6 +1677,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1623,6 +1720,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1662,6 +1761,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1703,6 +1804,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1744,6 +1847,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1785,6 +1890,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1826,6 +1933,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: Some(3),
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1865,6 +1974,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: Some(5),
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1900,6 +2011,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: Some(0),
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1938,6 +2051,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: Some(4),
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -1976,6 +2091,8 @@ mod tests {
             chat_burst_limit: Some(10),
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -2018,6 +2135,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: Some(60),
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -2060,6 +2179,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: Some(0),
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             session_id: Some(session_id),
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
@@ -2081,5 +2202,126 @@ mod tests {
 
         // Verify FloodConfig atomic was updated
         assert_eq!(test_ctx.flood_config.rate(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_max_outbound_rate_persists_and_broadcasts() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // 100 Mbps = 12_500_000 bytes/sec.
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            public_address: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+            max_outbound_rate: Some(12_500_000),
+            scheduler_chunk_size: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        // Broadcast travels through the mpsc channel (test_ctx.rx).
+        let (broadcast, _) = test_ctx.rx.recv().await.expect("broadcast delivered");
+        match broadcast {
+            ServerMessage::ServerInfoUpdated { server_info } => {
+                assert_eq!(server_info.max_outbound_rate, Some(12_500_000));
+            }
+            _ => panic!("Expected ServerInfoUpdated, got {:?}", broadcast),
+        }
+
+        // Response comes back over the socket.
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success, "Expected success, got error: {:?}", error);
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse"),
+        }
+
+        // DB-side persistence.
+        let stored = test_ctx.db.config.get_all().await.max_outbound_rate;
+        assert_eq!(stored, 12_500_000);
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_scheduler_chunk_size_below_min_rejected() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // 512 < MIN_BANDWIDTH_CHUNK_SIZE (1024).
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            public_address: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: Some(512),
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_scheduler_chunk_size_above_max_rejected() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // 100_000 > MAX_BANDWIDTH_CHUNK_SIZE (65536).
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            public_address: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: Some(100_000),
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse"),
+        }
     }
 }

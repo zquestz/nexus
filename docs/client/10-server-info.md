@@ -37,7 +37,7 @@ The identity block sits above the tabs and is always visible:
 
 ## Config Tab
 
-The Config tab shows server configuration in three sections, each with its
+The Config tab shows server configuration in four sections, each with its
 own heading. A section appears only if at least one of its fields is
 visible to you under your current permissions; an entirely-hidden section
 disappears, heading and all. Within each section, rows are alphabetical.
@@ -51,6 +51,13 @@ disappears, heading and all. Within each section, rows are alphabetical.
 | **Max Transfers per IP**   | Maximum concurrent file transfers per IP address      |
 | **Min Password**           | Minimum password strength required for accounts       |
 | **Version**                | Server software version                               |
+
+### Bandwidth
+
+| Field                    | Visible To  | Description                                                              |
+| ------------------------ | ----------- | ------------------------------------------------------------------------ |
+| **Max Outbound (Mbps)**  | All users   | Server-wide outbound bandwidth cap. Renders `Unlimited` when set to `0`. |
+| **Scheduler Chunk Size** | Admins only | Egress scheduler packet size in bytes (internal tuning knob).            |
 
 ### Chat
 
@@ -81,22 +88,24 @@ below).
 
 ### Editable Fields
 
-| Field                   | Description                                                          |
-| ----------------------- | -------------------------------------------------------------------- |
-| **Auto-Join Channels**  | Space-separated channel names users auto-join on login               |
-| **Chat Burst Limit**    | Maximum messages in a burst before rate limiting (0 = capacity of 1) |
-| **Chat Rate Limit**     | Messages per minute rate limit (0 = flood protection disabled)       |
-| **Description**         | Server description (0–512 characters)                                |
-| **File Reindex**        | File index rebuild interval in minutes (0 to disable)                |
-| **Image**               | Server logo (PNG, JPEG, WebP, SVG; max 700KB)                        |
-| **Max Connections**     | Maximum connections per IP address                                   |
-| **Max Transfers**       | Maximum file transfers per IP address                                |
-| **Min Password**        | Minimum password strength for accounts                               |
-| **Name**                | Server display name (1–64 characters)                                |
-| **Persistent Channels** | Space-separated channel names (e.g., `#general #support`)            |
-| **Public Address**      | Hostname or IP advertised for shareable `nexus://` URIs (optional)   |
+| Field                    | Description                                                          |
+| ------------------------ | -------------------------------------------------------------------- |
+| **Auto-Join Channels**   | Space-separated channel names users auto-join on login               |
+| **Chat Burst Limit**     | Maximum messages in a burst before rate limiting (0 = capacity of 1) |
+| **Chat Rate Limit**      | Messages per minute rate limit (0 = flood protection disabled)       |
+| **Description**          | Server description (0–512 characters)                                |
+| **File Reindex**         | File index rebuild interval in minutes (0 to disable)                |
+| **Image**                | Server logo (PNG, JPEG, WebP, SVG; max 700KB)                        |
+| **Max Connections**      | Maximum connections per IP address                                   |
+| **Max Outbound (Mbps)**  | Server-wide outbound bandwidth cap; `0` = unlimited                  |
+| **Max Transfers**        | Maximum file transfers per IP address                                |
+| **Min Password**         | Minimum password strength for accounts                               |
+| **Name**                 | Server display name (1–64 characters)                                |
+| **Persistent Channels**  | Space-separated channel names (e.g., `#general #support`)            |
+| **Public Address**       | Hostname or IP advertised for shareable `nexus://` URIs (optional)   |
+| **Scheduler Chunk Size** | Egress scheduler packet size in bytes (admin-only tuning knob)       |
 
-The edit form groups fields under the same **General / Chat / Files**
+The edit form groups fields under the same **General / Bandwidth / Chat / Files**
 subheadings as the display view, so finding a field in one mode prepares
 you for the other.
 

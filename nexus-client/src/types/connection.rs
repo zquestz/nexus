@@ -135,6 +135,9 @@ pub struct ServerConnectionParams {
     pub chat_rate_limit: Option<u32>,
     /// Max connections per IP (admin only)
     pub max_connections_per_ip: Option<u32>,
+    /// Maximum outbound bandwidth cap in bytes/sec (0 = unlimited).
+    /// Visible to all users; settable by admin only.
+    pub max_outbound_rate: Option<u64>,
     /// Max transfers per IP (admin only)
     pub max_transfers_per_ip: Option<u32>,
     /// File reindex interval in minutes (admin only, 0 = disabled)
@@ -147,6 +150,8 @@ pub struct ServerConnectionParams {
     pub min_password_strength: PasswordStrength,
     /// Server log level (read-only, from ServerInfo)
     pub log_level: Option<String>,
+    /// WF2Q+ scheduler chunk size in bytes (admin-only).
+    pub scheduler_chunk_size: Option<u32>,
     /// Command sender channel
     pub tx: CommandSender,
     /// Shutdown handle for graceful disconnect
@@ -208,6 +213,9 @@ pub struct ServerConnection {
     pub chat_rate_limit: Option<u32>,
     /// Max connections per IP (admin only, from ServerInfo)
     pub max_connections_per_ip: Option<u32>,
+    /// Maximum outbound bandwidth cap in bytes/sec (0 = unlimited).
+    /// Visible to all users; settable by admin only.
+    pub max_outbound_rate: Option<u64>,
     /// Max transfers per IP (admin only, from ServerInfo)
     pub max_transfers_per_ip: Option<u32>,
     /// File reindex interval in minutes (admin only, from ServerInfo, 0 = disabled)
@@ -220,6 +228,8 @@ pub struct ServerConnection {
     pub min_password_strength: PasswordStrength,
     /// Server log level (read-only, from ServerInfo)
     pub log_level: Option<String>,
+    /// WF2Q+ scheduler chunk size in bytes (admin-only).
+    pub scheduler_chunk_size: Option<u32>,
     /// Active chat tab (Console, Channel, or UserMessage)
     pub active_chat_tab: ChatTab,
     /// Console messages (system, error, info, broadcast messages)
@@ -385,12 +395,14 @@ impl ServerConnection {
             chat_burst_limit: params.chat_burst_limit,
             chat_rate_limit: params.chat_rate_limit,
             max_connections_per_ip: params.max_connections_per_ip,
+            max_outbound_rate: params.max_outbound_rate,
             max_transfers_per_ip: params.max_transfers_per_ip,
             file_reindex_interval: params.file_reindex_interval,
             persistent_channels: params.persistent_channels,
             auto_join_channels: params.auto_join_channels,
             min_password_strength: params.min_password_strength,
             log_level: params.log_level,
+            scheduler_chunk_size: params.scheduler_chunk_size,
             active_chat_tab: ChatTab::Console,
             console_messages: Vec::new(),
             channel_tabs: Vec::new(),
@@ -478,6 +490,9 @@ pub struct NetworkConnection {
     pub chat_rate_limit: Option<u32>,
     /// Max connections per IP (admin only)
     pub max_connections_per_ip: Option<u32>,
+    /// Maximum outbound bandwidth cap in bytes/sec (0 = unlimited).
+    /// Visible to all users; settable by admin only.
+    pub max_outbound_rate: Option<u64>,
     /// Max transfers per IP (admin only)
     pub max_transfers_per_ip: Option<u32>,
     /// File reindex interval in minutes (admin only, 0 = disabled)
@@ -490,6 +505,8 @@ pub struct NetworkConnection {
     pub min_password_strength: PasswordStrength,
     /// Server log level (read-only, from ServerInfo)
     pub log_level: Option<String>,
+    /// WF2Q+ scheduler chunk size in bytes (admin-only).
+    pub scheduler_chunk_size: Option<u32>,
     /// Locale accepted by the server
     pub locale: String,
     /// Connection info (address, port, auth info)

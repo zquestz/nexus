@@ -4,6 +4,10 @@ use crate::image::{CachedImage, decode_data_uri_max_width};
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use nexus_common::validators::PasswordStrength;
 
+/// Conversion factor between Mbps (megabits per second) and bytes/sec.
+/// 1 Mbps = 1_000_000 bits/sec ÷ 8 bits/byte = 125_000 bytes/sec.
+const BYTES_PER_SEC_PER_MBPS: f64 = 125_000.0;
+
 // =============================================================================
 // Server Info Display Tab
 // =============================================================================
@@ -38,11 +42,13 @@ pub struct ServerInfoParams<'a> {
     pub file_reindex_interval: Option<u32>,
     pub image: &'a str,
     pub max_connections_per_ip: Option<u32>,
+    pub max_outbound_rate: Option<u64>,
     pub max_transfers_per_ip: Option<u32>,
     pub min_password_strength: PasswordStrength,
     pub name: Option<&'a str>,
     pub persistent_channels: Option<&'a str>,
     pub public_address: Option<&'a str>,
+    pub scheduler_chunk_size: Option<u32>,
 }
 
 impl Default for ServerInfoParams<'_> {
@@ -55,11 +61,13 @@ impl Default for ServerInfoParams<'_> {
             file_reindex_interval: None,
             image: "",
             max_connections_per_ip: None,
+            max_outbound_rate: None,
             max_transfers_per_ip: None,
             min_password_strength: PasswordStrength::Good,
             name: None,
             persistent_channels: None,
             public_address: None,
+            scheduler_chunk_size: None,
         }
     }
 }
@@ -90,6 +98,10 @@ pub struct ServerInfoEditState {
     pub is_submitting: bool,
     /// Max connections per IP (editable, uses NumberInput)
     pub max_connections_per_ip: Option<u32>,
+    /// Max outbound bandwidth cap in Mbps (NumberInput<f64>, stepper of 1.0,
+    /// fractional values typed directly). Converted to bytes/sec on save.
+    /// `0.0` means unlimited.
+    pub max_outbound_rate_mbps: f64,
     /// Max transfers per IP (editable, uses NumberInput)
     pub max_transfers_per_ip: Option<u32>,
     /// Minimum password strength required for user accounts
@@ -100,6 +112,8 @@ pub struct ServerInfoEditState {
     pub persistent_channels: String,
     /// Public address for `nexus://` URI sharing (editable; empty = unset)
     pub public_address: String,
+    /// WF2Q+ scheduler chunk size in bytes (editable, NumberInput).
+    pub scheduler_chunk_size: Option<u32>,
 }
 
 // Manual Debug implementation because CachedImage doesn't implement Debug
@@ -119,11 +133,13 @@ impl std::fmt::Debug for ServerInfoEditState {
             .field("image", &format!("<{} bytes>", self.image.len()))
             .field("is_submitting", &self.is_submitting)
             .field("max_connections_per_ip", &self.max_connections_per_ip)
+            .field("max_outbound_rate_mbps", &self.max_outbound_rate_mbps)
             .field("max_transfers_per_ip", &self.max_transfers_per_ip)
             .field("min_password_strength", &self.min_password_strength)
             .field("name", &self.name)
             .field("persistent_channels", &self.persistent_channels)
             .field("public_address", &self.public_address)
+            .field("scheduler_chunk_size", &self.scheduler_chunk_size)
             .finish()
     }
 }
@@ -149,12 +165,24 @@ impl ServerInfoEditState {
             image: params.image.to_string(),
             is_submitting: false,
             max_connections_per_ip: params.max_connections_per_ip,
+            // NumberInput accepts any finite non-negative f64; 0.0 means
+            // unlimited.
+            max_outbound_rate_mbps: params.max_outbound_rate.unwrap_or(0) as f64
+                / BYTES_PER_SEC_PER_MBPS,
             max_transfers_per_ip: params.max_transfers_per_ip,
             min_password_strength: params.min_password_strength,
             name: params.name.unwrap_or("").to_string(),
             persistent_channels: params.persistent_channels.unwrap_or("").to_string(),
             public_address: params.public_address.unwrap_or("").to_string(),
+            scheduler_chunk_size: params.scheduler_chunk_size,
         }
+    }
+
+    /// Convert the Mbps form value to bytes/sec for diff comparison and
+    /// protocol submission. NumberInput already constrains the value to a
+    /// finite non-negative f64, so this can't fail.
+    pub fn max_outbound_rate_bytes_per_sec(&self) -> u64 {
+        (self.max_outbound_rate_mbps * BYTES_PER_SEC_PER_MBPS).round() as u64
     }
 
     /// Check if the form has any changes compared to original values
@@ -175,6 +203,10 @@ impl ServerInfoEditState {
         let persistent_changed =
             self.persistent_channels != original.persistent_channels.unwrap_or("");
         let public_address_changed = self.public_address != original.public_address.unwrap_or("");
+        let max_outbound_rate_changed =
+            self.max_outbound_rate_bytes_per_sec() != original.max_outbound_rate.unwrap_or(0);
+        let scheduler_chunk_size_changed =
+            self.scheduler_chunk_size != original.scheduler_chunk_size;
         auto_join_changed
             || chat_burst_limit_changed
             || chat_rate_limit_changed
@@ -187,5 +219,60 @@ impl ServerInfoEditState {
             || name_changed
             || persistent_changed
             || public_address_changed
+            || max_outbound_rate_changed
+            || scheduler_chunk_size_changed
+    }
+}
+
+/// Format a bytes/sec rate as Mbps (decimal, no trailing zeros). Used by the
+/// edit form to populate its initial text-input from the stored u64 value,
+/// and by the display view to render the Bandwidth section.
+///
+/// Precision is `{:.6}` so sub-millibit caps render accurately rather than
+/// rounding to a misleading "0". Trailing zeros are trimmed, so normal-range
+/// values (1 Mbps, 100 Mbps, 1000 Mbps) display identically to a tighter
+/// precision.
+pub fn format_bytes_per_sec_as_mbps(bytes_per_sec: u64) -> String {
+    let mbps = bytes_per_sec as f64 / BYTES_PER_SEC_PER_MBPS;
+    let formatted = format!("{:.6}", mbps);
+    let trimmed = formatted.trim_end_matches('0').trim_end_matches('.');
+    trimmed.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Normal-range caps render with no trailing zeros — the precision
+    /// bump from {:.4} to {:.6} must NOT add visual noise to common values.
+    #[test]
+    fn format_normal_range_caps_no_trailing_zeros() {
+        assert_eq!(format_bytes_per_sec_as_mbps(125_000_000), "1000"); // 1 Gbps
+        assert_eq!(format_bytes_per_sec_as_mbps(12_500_000), "100"); // 100 Mbps
+        assert_eq!(format_bytes_per_sec_as_mbps(125_000), "1"); // 1 Mbps
+        assert_eq!(format_bytes_per_sec_as_mbps(62_500), "0.5"); // 0.5 Mbps
+        assert_eq!(format_bytes_per_sec_as_mbps(12_500), "0.1"); // 0.1 Mbps
+    }
+
+    /// Sub-resolution caps (below ~12 bytes/sec) used to round to "0"
+    /// under {:.4}, which the display view rendered as a literal "0"
+    /// next to the cap label — silently lying about the actual cap. The
+    /// {:.6} precision lets these render accurately.
+    #[test]
+    fn format_sub_resolution_caps_render_accurately() {
+        assert_eq!(format_bytes_per_sec_as_mbps(125), "0.001"); // 0.001 Mbps
+        assert_eq!(format_bytes_per_sec_as_mbps(12), "0.000096"); // 0.000096 Mbps
+        assert_eq!(format_bytes_per_sec_as_mbps(6), "0.000048"); // would have been "0"
+        assert_eq!(format_bytes_per_sec_as_mbps(1), "0.000008"); // would have been "0"
+    }
+
+    /// The display view branches on `bytes_per_sec == 0` BEFORE calling
+    /// this function (the "Unlimited" label). This formatter is only
+    /// asked to render non-zero values in practice; verify it renders
+    /// "0" for 0 anyway (defensive: any future caller that bypasses the
+    /// branch sees a sensible result).
+    #[test]
+    fn format_zero_returns_bare_zero() {
+        assert_eq!(format_bytes_per_sec_as_mbps(0), "0");
     }
 }

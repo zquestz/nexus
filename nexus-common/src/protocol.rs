@@ -27,6 +27,13 @@ fn default_locale() -> String {
     "en".to_string()
 }
 
+/// Default group bandwidth weight when missing on the wire.
+/// Sourced from `validators::DEFAULT_BANDWIDTH_WEIGHT` (single Rust-side source
+/// of truth; the schema default on `groups.bandwidth_weight` mirrors it).
+fn default_group_weight() -> u16 {
+    crate::validators::DEFAULT_BANDWIDTH_WEIGHT
+}
+
 /// Client request messages
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -214,6 +221,10 @@ pub enum ClientMessage {
         is_shared: bool,
         /// Permissions to assign to this group
         permissions: Vec<String>,
+        /// Bandwidth weight for the scheduler. Defaults to 1 when omitted
+        /// (matches schema default; old clients deserialize cleanly).
+        #[serde(default = "default_group_weight")]
+        bandwidth_weight: u16,
     },
     /// Delete an account group
     GroupDelete {
@@ -242,6 +253,9 @@ pub enum ClientMessage {
         /// New permissions (if changing)
         #[serde(default, skip_serializing_if = "Option::is_none")]
         permissions: Option<Vec<String>>,
+        /// New bandwidth weight (if changing)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bandwidth_weight: Option<u16>,
     },
     Handshake {
         version: String,
@@ -314,6 +328,12 @@ pub enum ClientMessage {
         /// Minimum password strength level (0-4)
         #[serde(default, skip_serializing_if = "Option::is_none")]
         min_password_strength: Option<u8>,
+        /// Maximum outbound bandwidth in bytes/sec (0 = unlimited)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        max_outbound_rate: Option<u64>,
+        /// WF2Q+ scheduler chunk size in bytes (1024..=65536)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        scheduler_chunk_size: Option<u32>,
     },
     /// Promote a tracker's `pending_fingerprint` (set after a Stage 1 TOFU
     /// mismatch) to its active `fingerprint`. Requires `tracker_edit`
@@ -412,6 +432,13 @@ pub enum ClientMessage {
         /// Permissions to explicitly revoke from group (only meaningful with a group)
         #[serde(default, skip_serializing_if = "Option::is_none")]
         revokes: Option<Vec<String>>,
+        /// Explicit bandwidth weight override; `None` stores NULL (inherit).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bandwidth_weight: Option<u16>,
+        /// `Some(true)` forces NULL storage (inherit) regardless of
+        /// `bandwidth_weight`. Mirrors the `remove_group` flag pattern.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        inherit_bandwidth_weight: Option<bool>,
     },
     UserDelete {
         id: i64,
@@ -467,6 +494,14 @@ pub enum ClientMessage {
         /// Permissions to explicitly revoke from group (only meaningful with a group)
         #[serde(default, skip_serializing_if = "Option::is_none")]
         revokes: Option<Vec<String>>,
+        /// New bandwidth weight (if changing). `None` leaves stored value
+        /// alone; `Some(w)` sets an override.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bandwidth_weight: Option<u16>,
+        /// `Some(true)` clears the override to NULL (inherit from group);
+        /// takes precedence over `bandwidth_weight` if both set.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        inherit_bandwidth_weight: Option<bool>,
     },
     /// Join voice chat for a channel or user message
     VoiceJoin {
@@ -848,6 +883,9 @@ pub enum ServerMessage {
         permissions: Option<Vec<String>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         member_count: Option<u32>,
+        /// Raw stored bandwidth weight (groups always have one in the DB).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bandwidth_weight: Option<u16>,
     },
     /// Response to GroupList request
     GroupListResponse {
@@ -1155,6 +1193,11 @@ pub enum ServerMessage {
         /// Available groups for the group dropdown
         #[serde(default, skip_serializing_if = "Option::is_none")]
         available_groups: Option<Vec<GroupInfo>>,
+        /// Raw stored bandwidth weight: `None` = inheriting from group,
+        /// `Some(w)` = individual override. Effective weight is derived by
+        /// the form from this value plus `available_groups`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bandwidth_weight: Option<u16>,
     },
     UserInfoResponse {
         success: bool,
@@ -1301,6 +1344,12 @@ pub struct ServerInfo {
     /// Server log level (read-only, not settable via ServerInfoUpdate)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub log_level: Option<String>,
+    /// Maximum outbound bandwidth in bytes/sec (0 = unlimited)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_outbound_rate: Option<u64>,
+    /// WF2Q+ scheduler chunk size in bytes (admin-only)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scheduler_chunk_size: Option<u32>,
 }
 
 /// Channel info returned when joining a channel (in LoginResponse or ChatJoinResponse)
@@ -1352,6 +1401,15 @@ pub struct UserInfo {
     /// Group name (if user belongs to a group)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_name: Option<String>,
+    /// Resolved effective bandwidth weight (user override → admin default
+    /// → group → system default).
+    ///
+    /// TODO(0.9.0): make required (`u16`) when bumping the protocol
+    /// minor. Current servers always set this; the `Option` is for
+    /// backward compatibility with 0.8.x peers that may have omitted
+    /// the field on the wire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bandwidth_weight: Option<u16>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1505,6 +1563,10 @@ pub struct UserInfoDetailed {
     /// Group name (if user belongs to a group)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_name: Option<String>,
+    /// Resolved effective bandwidth weight. See `UserInfo.bandwidth_weight`
+    /// for the same TODO(0.9.0) note.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bandwidth_weight: Option<u16>,
 }
 
 /// Information about an account group
@@ -1522,6 +1584,10 @@ pub struct GroupInfo {
     pub member_count: u32,
     /// Permissions granted by this group
     pub permissions: Vec<String>,
+    /// Bandwidth weight for all members of this group (NOT NULL in DB).
+    /// Old clients omitting this field deserialize as the schema default (1).
+    #[serde(default = "default_group_weight")]
+    pub bandwidth_weight: u16,
 }
 
 /// Information about a tracker the server is configured to publish to.
@@ -1787,11 +1853,13 @@ impl std::fmt::Debug for ClientMessage {
                 name,
                 is_shared,
                 permissions,
+                bandwidth_weight,
             } => f
                 .debug_struct("GroupCreate")
                 .field("name", name)
                 .field("is_shared", is_shared)
                 .field("permissions", permissions)
+                .field("bandwidth_weight", bandwidth_weight)
                 .finish(),
             ClientMessage::GroupDelete { id } => {
                 f.debug_struct("GroupDelete").field("id", id).finish()
@@ -1803,12 +1871,14 @@ impl std::fmt::Debug for ClientMessage {
                 name,
                 is_shared,
                 permissions,
+                bandwidth_weight,
             } => f
                 .debug_struct("GroupUpdate")
                 .field("id", id)
                 .field("name", name)
                 .field("is_shared", is_shared)
                 .field("permissions", permissions)
+                .field("bandwidth_weight", bandwidth_weight)
                 .finish(),
             ClientMessage::Handshake { version } => f
                 .debug_struct("Handshake")
@@ -1893,6 +1963,8 @@ impl std::fmt::Debug for ClientMessage {
                 chat_burst_limit,
                 chat_rate_limit,
                 min_password_strength,
+                max_outbound_rate,
+                scheduler_chunk_size,
             } => {
                 let mut s = f.debug_struct("ServerInfoUpdate");
                 s.field("name", name)
@@ -1905,7 +1977,9 @@ impl std::fmt::Debug for ClientMessage {
                     .field("auto_join_channels", auto_join_channels)
                     .field("chat_burst_limit", chat_burst_limit)
                     .field("chat_rate_limit", chat_rate_limit)
-                    .field("min_password_strength", min_password_strength);
+                    .field("min_password_strength", min_password_strength)
+                    .field("max_outbound_rate", max_outbound_rate)
+                    .field("scheduler_chunk_size", scheduler_chunk_size);
                 if let Some(img) = image {
                     if img.len() > 100 {
                         s.field(
@@ -1997,6 +2071,8 @@ impl std::fmt::Debug for ClientMessage {
                 permissions,
                 group_id,
                 revokes,
+                bandwidth_weight,
+                inherit_bandwidth_weight,
                 ..
             } => f
                 .debug_struct("UserCreate")
@@ -2007,6 +2083,8 @@ impl std::fmt::Debug for ClientMessage {
                 .field("permissions", permissions)
                 .field("group_id", group_id)
                 .field("revokes", revokes)
+                .field("bandwidth_weight", bandwidth_weight)
+                .field("inherit_bandwidth_weight", inherit_bandwidth_weight)
                 .field("password", &"<REDACTED>")
                 .finish(),
             ClientMessage::UserDelete { id } => {
@@ -2050,9 +2128,12 @@ impl std::fmt::Debug for ClientMessage {
                 group_id,
                 remove_group,
                 revokes,
+                bandwidth_weight,
+                inherit_bandwidth_weight,
             } => f
                 .debug_struct("UserUpdate")
                 .field("id", id)
+                .field("current_password", &"<REDACTED>")
                 .field("username", username)
                 .field("password", &"<REDACTED>")
                 .field("is_admin", is_admin)
@@ -2061,6 +2142,8 @@ impl std::fmt::Debug for ClientMessage {
                 .field("group_id", group_id)
                 .field("remove_group", remove_group)
                 .field("revokes", revokes)
+                .field("bandwidth_weight", bandwidth_weight)
+                .field("inherit_bandwidth_weight", inherit_bandwidth_weight)
                 .finish(),
             ClientMessage::VoiceJoin { target } => {
                 f.debug_struct("VoiceJoin").field("target", target).finish()
@@ -2334,6 +2417,7 @@ mod tests {
             status: None,
             group_id: None,
             group_name: None,
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"avatar\""));
@@ -2356,6 +2440,7 @@ mod tests {
             status: None,
             group_id: None,
             group_name: None,
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(!json.contains("\"avatar\""));
@@ -2382,6 +2467,7 @@ mod tests {
             channels: None,
             group_id: None,
             group_name: None,
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"avatar\""));
@@ -2456,6 +2542,8 @@ mod tests {
             permissions: vec!["chat_send".to_string()],
             group_id: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"UserCreate\""));
@@ -2522,6 +2610,7 @@ mod tests {
             avatar: None,
             group_id: None,
             group_name: None,
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"username\":\"shared_acct\""));
@@ -2545,6 +2634,7 @@ mod tests {
             avatar: None,
             group_id: None,
             group_name: None,
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"username\":\"alice\""));
@@ -2572,6 +2662,7 @@ mod tests {
             channels: None,
             group_id: None,
             group_name: None,
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"username\":\"shared_acct\""));
@@ -2595,6 +2686,7 @@ mod tests {
             group_permissions: None,
             revoked_permissions: None,
             available_groups: None,
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"UserEditResponse\""));
@@ -2617,6 +2709,7 @@ mod tests {
             group_permissions: None,
             revoked_permissions: None,
             available_groups: None,
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"UserEditResponse\""));
@@ -3097,6 +3190,8 @@ mod tests {
             chat_burst_limit: None,
             chat_rate_limit: None,
             min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: None,
             log_level: None,
         };
         let json = serde_json::to_string(&info).unwrap();
@@ -3546,6 +3641,7 @@ mod tests {
             name: "Moderators".to_string(),
             is_shared: false,
             permissions: vec!["chat_send".to_string(), "user_kick".to_string()],
+            bandwidth_weight: 1,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"GroupCreate\""));
@@ -3560,6 +3656,7 @@ mod tests {
             name: "SharedGuests".to_string(),
             is_shared: true,
             permissions: vec!["chat_send".to_string()],
+            bandwidth_weight: 1,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"is_shared\":true"));
@@ -3580,6 +3677,7 @@ mod tests {
             name: Some("NewName".to_string()),
             is_shared: None,
             permissions: Some(vec!["chat_send".to_string()]),
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"GroupUpdate\""));
@@ -3596,6 +3694,7 @@ mod tests {
             name: None,
             is_shared: None,
             permissions: None,
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"id\":5"));
@@ -3623,6 +3722,7 @@ mod tests {
                 is_shared: false,
                 member_count: 3,
                 permissions: vec!["user_kick".to_string(), "ban_create".to_string()],
+                bandwidth_weight: 1,
             }]),
         };
         let json = serde_json::to_string(&msg).unwrap();
@@ -3672,6 +3772,7 @@ mod tests {
             is_shared: Some(false),
             permissions: Some(vec!["news_edit".to_string()]),
             member_count: Some(5),
+            bandwidth_weight: Some(1),
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"GroupEditResponse\""));
@@ -3735,10 +3836,12 @@ mod tests {
                 name,
                 is_shared,
                 permissions,
+                bandwidth_weight,
             } => {
                 assert_eq!(name, "Mods");
                 assert!(!is_shared);
                 assert_eq!(permissions, vec!["chat_send"]);
+                assert_eq!(bandwidth_weight, 1);
             }
             _ => panic!("Expected GroupCreate"),
         }
@@ -3763,6 +3866,8 @@ mod tests {
                 assert!(!groups[0].is_shared);
                 assert_eq!(groups[0].member_count, 2);
                 assert_eq!(groups[0].permissions, vec!["user_kick"]);
+                // Old server JSON omits bandwidth_weight → deserializes to schema default 1
+                assert_eq!(groups[0].bandwidth_weight, 1);
             }
             _ => panic!("Expected GroupListResponse"),
         }
@@ -3779,6 +3884,8 @@ mod tests {
             permissions: vec!["chat_send".to_string()],
             group_id: Some(5),
             revokes: Some(vec!["file_upload".to_string()]),
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"group_id\":5"));
@@ -3796,6 +3903,8 @@ mod tests {
             permissions: vec![],
             group_id: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(!json.contains("\"group_id\""));
@@ -3831,6 +3940,8 @@ mod tests {
             group_id: Some(3),
             remove_group: None,
             revokes: Some(vec!["news_edit".to_string()]),
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"group_id\":3"));
@@ -3851,6 +3962,8 @@ mod tests {
             group_id: None,
             remove_group: Some(true),
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"remove_group\":true"));
@@ -3939,7 +4052,9 @@ mod tests {
                 is_shared: false,
                 member_count: 3,
                 permissions: vec!["chat_send".to_string(), "user_kick".to_string()],
+                bandwidth_weight: 1,
             }]),
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"group_id\":1"));
@@ -4023,6 +4138,7 @@ mod tests {
             status: None,
             group_id: Some(3),
             group_name: Some("Editors".to_string()),
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&user).unwrap();
         assert!(json.contains("\"group_id\":3"));
@@ -4046,6 +4162,7 @@ mod tests {
             is_shared: false,
             member_count: 7,
             permissions: vec!["file_upload".to_string(), "news_create".to_string()],
+            bandwidth_weight: 1,
         };
         let json = serde_json::to_string(&info).unwrap();
         assert!(json.contains("\"id\":10"));
@@ -4097,6 +4214,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"id\":7"));
@@ -4167,6 +4286,7 @@ mod tests {
             status: None,
             group_id: None,
             group_name: None,
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&user).unwrap();
         assert!(json.contains("\"id\":55"));
@@ -4192,6 +4312,7 @@ mod tests {
             channels: None,
             group_id: None,
             group_name: None,
+            bandwidth_weight: None,
         };
         let json = serde_json::to_string(&user).unwrap();
         assert!(json.contains("\"id\":77"));
@@ -4210,11 +4331,18 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
         };
         let debug_output = format!("{:?}", msg);
         assert!(!debug_output.contains("old_secret"));
         assert!(!debug_output.contains("new_secret"));
-        assert!(debug_output.contains("REDACTED"));
+        // Both `current_password` and `password` must appear in redacted
+        // form — silently omitting `current_password` would hide the wire
+        // shape from anyone reading the debug output.
+        assert!(debug_output.contains("current_password"));
+        assert!(debug_output.contains("password"));
+        assert_eq!(debug_output.matches("<REDACTED>").count(), 2);
         assert!(debug_output.contains("newname"));
         assert!(debug_output.contains("id"));
     }
@@ -4233,5 +4361,58 @@ mod tests {
         let debug_output = format!("{:?}", msg);
         assert!(debug_output.contains("UserEdit"));
         assert!(debug_output.contains("99"));
+    }
+
+    #[test]
+    fn test_deserialize_user_create_omits_bandwidth_fields() {
+        // Old clients without bandwidth_weight support: both optional fields absent.
+        let json = r#"{"type":"UserCreate","username":"alice","password":"x","is_admin":false,"is_shared":false,"enabled":true,"permissions":[]}"#;
+        let msg: ClientMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ClientMessage::UserCreate {
+                bandwidth_weight,
+                inherit_bandwidth_weight,
+                ..
+            } => {
+                assert!(bandwidth_weight.is_none());
+                assert!(inherit_bandwidth_weight.is_none());
+            }
+            _ => panic!("Expected UserCreate"),
+        }
+    }
+
+    #[test]
+    fn test_user_update_inherit_bandwidth_weight_roundtrip() {
+        let msg = ClientMessage::UserUpdate {
+            id: 1,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: Some(true),
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"inherit_bandwidth_weight\":true"));
+        // Field omitted when None (matches the remove_group precedent).
+        assert!(!json.contains("\"bandwidth_weight\""));
+        // Roundtrip back.
+        let decoded: ClientMessage = serde_json::from_str(&json).unwrap();
+        match decoded {
+            ClientMessage::UserUpdate {
+                inherit_bandwidth_weight,
+                bandwidth_weight,
+                ..
+            } => {
+                assert_eq!(inherit_bandwidth_weight, Some(true));
+                assert!(bandwidth_weight.is_none());
+            }
+            _ => panic!("Expected UserUpdate"),
+        }
     }
 }

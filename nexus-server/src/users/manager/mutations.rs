@@ -2,6 +2,7 @@
 
 use std::collections::HashSet;
 use std::net::IpAddr;
+use std::sync::atomic::Ordering;
 
 use ipnet::IpNet;
 use nexus_common::protocol::ServerMessage;
@@ -181,6 +182,26 @@ impl UserManager {
         for user in users.values_mut() {
             if user.user_id == user_id {
                 user.permissions = permissions.clone();
+                count += 1;
+            }
+        }
+
+        count
+    }
+
+    /// Refresh the cached `bandwidth_weight` atomic for all sessions of a
+    /// user. Called after `UserUpdate` (own user) or `GroupUpdate`
+    /// (fan-out per member). Returns the number of sessions touched.
+    ///
+    /// `Relaxed` is sufficient — the scheduler reads this advisorily for
+    /// fairness, not as a correctness invariant.
+    pub async fn update_bandwidth_weight(&self, user_id: i64, weight: u16) -> usize {
+        let users = self.users.read().await;
+        let mut count = 0;
+
+        for user in users.values() {
+            if user.user_id == user_id {
+                user.bandwidth_weight.store(weight, Ordering::Relaxed);
                 count += 1;
             }
         }
@@ -377,5 +398,144 @@ impl UserManager {
         }
 
         disconnected
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::SocketAddr;
+
+    use tokio::sync::mpsc;
+
+    use super::*;
+
+    fn shared_session_params(
+        user_id: i64,
+        nickname: &str,
+        initial_weight: u16,
+    ) -> NewSessionParams {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        NewSessionParams {
+            session_id: 0,
+            user_id,
+            username: "shared_acct".to_string(),
+            is_admin: false,
+            is_shared: true,
+            permissions: HashSet::new(),
+            address: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+            created_at: 0,
+            tx,
+            features: vec![],
+            locale: "en".to_string(),
+            avatar: None,
+            nickname: nickname.to_string(),
+            is_away: false,
+            status: None,
+            group_id: None,
+            group_name: None,
+            last_activity: std::time::Instant::now(),
+            bandwidth_weight: initial_weight,
+        }
+    }
+
+    /// Invariant: `update_bandwidth_weight(user_id, w)` must fan out the new
+    /// value to every session belonging to that user. `build_aggregated_user_info`
+    /// reads the weight from a single arbitrary session ("latest_login") and
+    /// trusts that all sessions of one user agree — if this invariant ever
+    /// breaks, group/user-update broadcasts would emit a stale or fabricated
+    /// weight on accounts with multiple connections.
+    #[tokio::test]
+    async fn test_update_bandwidth_weight_fans_out_to_all_sessions_of_user() {
+        let manager = UserManager::new();
+        const SHARED_USER_ID: i64 = 42;
+
+        // Three sessions for the same user_id (shared account with three
+        // distinct nicknames is the natural way to model this; the invariant
+        // we're pinning is "same user_id ⇒ same cached weight" regardless of
+        // shared/regular).
+        for nick in ["alice", "bob", "carol"] {
+            manager
+                .add_user(shared_session_params(SHARED_USER_ID, nick, 1))
+                .await
+                .expect("add_user should succeed");
+        }
+
+        // Sanity: all three start at the initial weight.
+        let sessions_before = manager.get_sessions_by_username("shared_acct").await;
+        assert_eq!(sessions_before.len(), 3);
+        for session in &sessions_before {
+            assert_eq!(session.bandwidth_weight.load(Ordering::Relaxed), 1);
+        }
+
+        // One call updates every session of this user_id.
+        let touched = manager.update_bandwidth_weight(SHARED_USER_ID, 99).await;
+        assert_eq!(touched, 3, "all three sessions must be touched");
+
+        let sessions_after = manager.get_sessions_by_username("shared_acct").await;
+        assert_eq!(sessions_after.len(), 3);
+        for session in &sessions_after {
+            assert_eq!(
+                session.bandwidth_weight.load(Ordering::Relaxed),
+                99,
+                "every session of one user_id must observe the new weight"
+            );
+        }
+    }
+
+    /// Companion invariant: `update_bandwidth_weight` must not bleed across
+    /// users. A weight change for user A's sessions must leave user B
+    /// untouched, even when both share the same UserManager.
+    #[tokio::test]
+    async fn test_update_bandwidth_weight_does_not_affect_other_users() {
+        let manager = UserManager::new();
+
+        manager
+            .add_user(shared_session_params(1, "alice", 1))
+            .await
+            .unwrap();
+        // Different user_id, different account — would need a fresh username
+        // to satisfy is_nickname_in_use; use a regular account here.
+        let (tx, _rx) = mpsc::unbounded_channel();
+        manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: 2,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: HashSet::new(),
+                address: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+                created_at: 0,
+                tx,
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                last_activity: std::time::Instant::now(),
+                bandwidth_weight: 1,
+            })
+            .await
+            .unwrap();
+
+        manager.update_bandwidth_weight(1, 50).await;
+
+        let alice_sessions = manager.get_sessions_by_username("shared_acct").await;
+        assert_eq!(alice_sessions.len(), 1);
+        assert_eq!(
+            alice_sessions[0].bandwidth_weight.load(Ordering::Relaxed),
+            50
+        );
+
+        let bob_sessions = manager.get_sessions_by_username("bob").await;
+        assert_eq!(bob_sessions.len(), 1);
+        assert_eq!(
+            bob_sessions[0].bandwidth_weight.load(Ordering::Relaxed),
+            1,
+            "weight update for user_id=1 must not touch user_id=2"
+        );
     }
 }

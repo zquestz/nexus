@@ -21,11 +21,11 @@ use super::{
     err_password_too_long, err_username_empty, err_username_invalid, err_username_too_long,
 };
 use crate::constants::{
-    FEATURE_CHAT, HANDLER_LOGIN, LOG_LOGIN_ACCOUNT_DISABLED, LOG_LOGIN_ALREADY_LOGGED_IN,
-    LOG_LOGIN_CREATE_USER_ERROR, LOG_LOGIN_DB_ERROR, LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN,
-    LOG_LOGIN_GROUP_ERROR, LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR,
-    LOG_LOGIN_INVALID_CREDENTIALS, LOG_LOGIN_PASSWORD_VERIFY_ERROR, LOG_LOGIN_PERMISSIONS_ERROR,
-    LOG_LOGIN_SUCCESS,
+    FEATURE_CHAT, HANDLER_LOGIN, LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED, LOG_LOGIN_ACCOUNT_DISABLED,
+    LOG_LOGIN_ALREADY_LOGGED_IN, LOG_LOGIN_CREATE_USER_ERROR, LOG_LOGIN_DB_ERROR,
+    LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN, LOG_LOGIN_GROUP_ERROR,
+    LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR, LOG_LOGIN_INVALID_CREDENTIALS,
+    LOG_LOGIN_PASSWORD_VERIFY_ERROR, LOG_LOGIN_PERMISSIONS_ERROR, LOG_LOGIN_SUCCESS,
 };
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, Permission};
@@ -382,6 +382,30 @@ where
         (false, None)
     };
 
+    // Resolve effective bandwidth weight (user override → admin default →
+    // group → system default) and cache it on the session for the scheduler.
+    // Fail the login on DB error — seeding a default would silently
+    // demote or promote the user.
+    let bandwidth_weight = match ctx
+        .db
+        .users
+        .get_resolved_bandwidth_weight(authenticated_account.id)
+        .await
+    {
+        Ok(w) => w,
+        Err(e) => {
+            error!(
+                user = %authenticated_account.username,
+                ip = %ctx.peer_addr,
+                err = %e,
+                "{}", LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED
+            );
+            return ctx
+                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_LOGIN))
+                .await;
+        }
+    };
+
     // Create session in UserManager with cached permissions
     // Note: Features are client preferences (what they want to subscribe to)
     // Permissions are now cached in the User struct to avoid DB lookups during broadcasts
@@ -410,6 +434,7 @@ where
             status: inherited_status,
             group_id,
             group_name: group_name.clone(),
+            bandwidth_weight,
             last_activity: std::time::Instant::now(),
         })
         .await
@@ -545,6 +570,8 @@ where
         min_password_strength: config.min_password_strength.score(),
         chat_burst_limit: config.chat_burst_limit,
         chat_rate_limit: config.chat_rate_limit,
+        max_outbound_rate: config.max_outbound_rate,
+        scheduler_chunk_size: config.scheduler_chunk_size,
     };
 
     let server_info_options = ServerInfoOptions {
@@ -601,6 +628,7 @@ where
         status: None,
         group_id,
         group_name,
+        bandwidth_weight: Some(bandwidth_weight),
     };
     ctx.user_manager
         .broadcast_user_event(
@@ -732,6 +760,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -813,6 +842,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -856,6 +886,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -902,6 +933,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -930,6 +962,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1019,6 +1052,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1082,6 +1116,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1193,6 +1228,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1273,6 +1309,7 @@ mod tests {
                 permissions: &db::Permissions::new(), // No permissions
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1360,6 +1397,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1437,6 +1475,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1523,6 +1562,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1619,6 +1659,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1636,6 +1677,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1696,6 +1738,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1753,6 +1796,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2013,6 +2057,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -2079,6 +2124,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -2169,6 +2215,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -2222,6 +2269,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -2275,6 +2323,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -2351,6 +2400,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -2437,6 +2487,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -2485,6 +2536,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -2533,6 +2585,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -2607,6 +2660,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -2654,6 +2708,8 @@ mod tests {
                 permissions: None,
                 revokes: None,
                 remove_group: false,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
                 group_id: None,
             })
             .await
@@ -2709,6 +2765,8 @@ mod tests {
                 permissions: None,
                 revokes: None,
                 remove_group: false,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
                 group_id: None,
             })
             .await
@@ -2749,6 +2807,8 @@ mod tests {
                 permissions: None,
                 revokes: None,
                 remove_group: false,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
                 group_id: None,
             })
             .await
@@ -2813,6 +2873,8 @@ mod tests {
                 permissions: None,
                 revokes: None,
                 remove_group: false,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
                 group_id: None,
             })
             .await
@@ -2853,6 +2915,8 @@ mod tests {
                 permissions: None,
                 revokes: None,
                 remove_group: false,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
                 group_id: None,
             })
             .await
@@ -2893,6 +2957,8 @@ mod tests {
                 permissions: None,
                 revokes: None,
                 remove_group: false,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
                 group_id: None,
             })
             .await
@@ -2983,6 +3049,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3009,6 +3076,7 @@ mod tests {
                 status: Some("grabbing lunch".to_string()),
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await
@@ -3074,6 +3142,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3099,6 +3168,7 @@ mod tests {
                 status: Some("away message".to_string()),
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await
@@ -3163,6 +3233,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3188,6 +3259,7 @@ mod tests {
                 status: Some("old status".to_string()),
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await
@@ -3217,6 +3289,7 @@ mod tests {
                 status: Some("new status".to_string()),
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: Instant::now(),
             })
             .await
@@ -3280,6 +3353,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3295,6 +3369,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3419,6 +3494,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3431,6 +3507,7 @@ mod tests {
                 "Staff",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserList]),
+                1,
             )
             .await
             .unwrap();
@@ -3450,6 +3527,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();

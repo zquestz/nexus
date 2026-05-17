@@ -4,30 +4,34 @@ use std::collections::HashMap;
 use std::io;
 
 use nexus_common::validators::{
-    ChannelListError, PasswordStrength, PublicAddressError, ServerDescriptionError,
-    ServerImageError, ServerNameError, validate_auto_join_channels, validate_persistent_channels,
-    validate_public_address, validate_server_description, validate_server_image,
-    validate_server_name,
+    BandwidthChunkSizeError, ChannelListError, DEFAULT_BANDWIDTH_CHUNK_SIZE,
+    MAX_BANDWIDTH_CHUNK_SIZE, MIN_BANDWIDTH_CHUNK_SIZE, PasswordStrength, PublicAddressError,
+    ServerDescriptionError, ServerImageError, ServerNameError, validate_auto_join_channels,
+    validate_bandwidth_chunk_size, validate_persistent_channels, validate_public_address,
+    validate_server_description, validate_server_image, validate_server_name,
 };
 use sqlx::SqlitePool;
 
 use crate::constants::{
     CONFIG_KEY_AUTO_JOIN_CHANNELS, CONFIG_KEY_CHAT_BURST_LIMIT, CONFIG_KEY_CHAT_RATE_LIMIT,
     CONFIG_KEY_FILE_REINDEX_INTERVAL, CONFIG_KEY_MAX_CONNECTIONS_PER_IP,
-    CONFIG_KEY_MAX_TRANSFERS_PER_IP, CONFIG_KEY_MIN_PASSWORD_STRENGTH,
-    CONFIG_KEY_PERSISTENT_CHANNELS, CONFIG_KEY_PUBLIC_ADDRESS, CONFIG_KEY_SERVER_DESCRIPTION,
-    CONFIG_KEY_SERVER_IMAGE, CONFIG_KEY_SERVER_NAME, DEFAULT_AUTO_JOIN_CHANNELS,
-    DEFAULT_CHAT_BURST_LIMIT, DEFAULT_CHAT_RATE_LIMIT, DEFAULT_FILE_REINDEX_INTERVAL,
-    DEFAULT_MAX_CONNECTIONS_PER_IP, DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_MIN_PASSWORD_STRENGTH,
+    CONFIG_KEY_MAX_OUTBOUND_RATE, CONFIG_KEY_MAX_TRANSFERS_PER_IP,
+    CONFIG_KEY_MIN_PASSWORD_STRENGTH, CONFIG_KEY_PERSISTENT_CHANNELS, CONFIG_KEY_PUBLIC_ADDRESS,
+    CONFIG_KEY_SCHEDULER_CHUNK_SIZE, CONFIG_KEY_SERVER_DESCRIPTION, CONFIG_KEY_SERVER_IMAGE,
+    CONFIG_KEY_SERVER_NAME, DEFAULT_AUTO_JOIN_CHANNELS, DEFAULT_CHAT_BURST_LIMIT,
+    DEFAULT_CHAT_RATE_LIMIT, DEFAULT_FILE_REINDEX_INTERVAL, DEFAULT_MAX_CONNECTIONS_PER_IP,
+    DEFAULT_MAX_OUTBOUND_RATE, DEFAULT_MAX_TRANSFERS_PER_IP, DEFAULT_MIN_PASSWORD_STRENGTH,
     DEFAULT_PERSISTENT_CHANNELS, DEFAULT_PUBLIC_ADDRESS, DEFAULT_SERVER_DESCRIPTION,
     DEFAULT_SERVER_IMAGE, DEFAULT_SERVER_NAME, ERR_PUBLIC_ADDRESS_CONTAINS_BRACKETS,
     ERR_PUBLIC_ADDRESS_CONTAINS_PATH, ERR_PUBLIC_ADDRESS_CONTAINS_PORT,
     ERR_PUBLIC_ADDRESS_CONTAINS_SCHEME, ERR_PUBLIC_ADDRESS_CONTAINS_USERINFO,
     ERR_PUBLIC_ADDRESS_CONTAINS_WHITESPACE, ERR_PUBLIC_ADDRESS_CONTAINS_ZONE_ID,
-    ERR_PUBLIC_ADDRESS_INVALID_FORMAT, ERR_PUBLIC_ADDRESS_TOO_LONG, ERR_SERVER_DESC_INVALID_CHARS,
-    ERR_SERVER_DESC_NEWLINES, ERR_SERVER_DESC_TOO_LONG, ERR_SERVER_IMAGE_INVALID_FORMAT,
-    ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNSUPPORTED_TYPE, ERR_SERVER_NAME_EMPTY,
-    ERR_SERVER_NAME_INVALID_CHARS, ERR_SERVER_NAME_NEWLINES, ERR_SERVER_NAME_TOO_LONG,
+    ERR_PUBLIC_ADDRESS_INVALID_FORMAT, ERR_PUBLIC_ADDRESS_TOO_LONG,
+    ERR_SCHEDULER_CHUNK_SIZE_TOO_LARGE, ERR_SCHEDULER_CHUNK_SIZE_TOO_SMALL,
+    ERR_SERVER_DESC_INVALID_CHARS, ERR_SERVER_DESC_NEWLINES, ERR_SERVER_DESC_TOO_LONG,
+    ERR_SERVER_IMAGE_INVALID_FORMAT, ERR_SERVER_IMAGE_TOO_LARGE, ERR_SERVER_IMAGE_UNSUPPORTED_TYPE,
+    ERR_SERVER_NAME_EMPTY, ERR_SERVER_NAME_INVALID_CHARS, ERR_SERVER_NAME_NEWLINES,
+    ERR_SERVER_NAME_TOO_LONG,
 };
 use crate::db::sql;
 
@@ -62,6 +66,10 @@ pub struct ServerConfig {
     pub min_password_strength: PasswordStrength,
     pub chat_burst_limit: u32,
     pub chat_rate_limit: u32,
+    /// Maximum outbound bandwidth in bytes/sec (0 = unlimited).
+    pub max_outbound_rate: u64,
+    /// WF2Q+ scheduler chunk size in bytes.
+    pub scheduler_chunk_size: u32,
 }
 
 /// Database interface for server configuration
@@ -131,7 +139,50 @@ impl ConfigDb {
                 .remove(CONFIG_KEY_CHAT_RATE_LIMIT)
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(DEFAULT_CHAT_RATE_LIMIT),
+            max_outbound_rate: map
+                .remove(CONFIG_KEY_MAX_OUTBOUND_RATE)
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(DEFAULT_MAX_OUTBOUND_RATE),
+            scheduler_chunk_size: map
+                .remove(CONFIG_KEY_SCHEDULER_CHUNK_SIZE)
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(DEFAULT_BANDWIDTH_CHUNK_SIZE),
         }
+    }
+
+    /// Set the maximum outbound bandwidth cap in bytes/sec (0 = unlimited).
+    pub async fn set_max_outbound_rate(&self, value: u64) -> io::Result<()> {
+        sqlx::query(sql::SQL_SET_CONFIG)
+            .bind(value.to_string())
+            .bind(CONFIG_KEY_MAX_OUTBOUND_RATE)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Set the WF2Q+ scheduler chunk size in bytes (1024..=65536).
+    pub async fn set_scheduler_chunk_size(&self, value: u32) -> io::Result<()> {
+        // Defense-in-depth (handler also validates).
+        if let Err(e) = validate_bandwidth_chunk_size(value) {
+            let msg = match e {
+                BandwidthChunkSizeError::TooSmall => {
+                    format!("{ERR_SCHEDULER_CHUNK_SIZE_TOO_SMALL} {MIN_BANDWIDTH_CHUNK_SIZE}")
+                }
+                BandwidthChunkSizeError::TooLarge => {
+                    format!("{ERR_SCHEDULER_CHUNK_SIZE_TOO_LARGE} {MAX_BANDWIDTH_CHUNK_SIZE}")
+                }
+            };
+            return Err(io::Error::other(msg));
+        }
+
+        sqlx::query(sql::SQL_SET_CONFIG)
+            .bind(value.to_string())
+            .bind(CONFIG_KEY_SCHEDULER_CHUNK_SIZE)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Ok(())
     }
 
     /// Fetch the three config fields the tracker task needs for
@@ -1102,5 +1153,82 @@ mod tests {
         assert_eq!(config.max_connections_per_ip, 20);
         // Unchanged values should still be defaults
         assert_eq!(config.max_transfers_per_ip, 3);
+    }
+
+    // =========================================================================
+    // Bandwidth Tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn test_set_max_outbound_rate_round_trips() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        // Migration sets default to 0 (unlimited).
+        assert_eq!(config_db.get_all().await.max_outbound_rate, 0);
+
+        config_db.set_max_outbound_rate(125_000_000).await.unwrap();
+        assert_eq!(config_db.get_all().await.max_outbound_rate, 125_000_000);
+
+        // Back to unlimited.
+        config_db.set_max_outbound_rate(0).await.unwrap();
+        assert_eq!(config_db.get_all().await.max_outbound_rate, 0);
+    }
+
+    #[tokio::test]
+    async fn test_set_scheduler_chunk_size_round_trips() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        // Migration sets default to 8192.
+        assert_eq!(config_db.get_all().await.scheduler_chunk_size, 8192);
+
+        config_db.set_scheduler_chunk_size(4096).await.unwrap();
+        assert_eq!(config_db.get_all().await.scheduler_chunk_size, 4096);
+
+        config_db.set_scheduler_chunk_size(65536).await.unwrap();
+        assert_eq!(config_db.get_all().await.scheduler_chunk_size, 65536);
+    }
+
+    #[tokio::test]
+    async fn test_set_scheduler_chunk_size_rejects_too_small() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        assert!(
+            config_db
+                .set_scheduler_chunk_size(MIN_BANDWIDTH_CHUNK_SIZE - 1)
+                .await
+                .is_err()
+        );
+
+        // Stored value should remain the default (no write happened).
+        assert_eq!(config_db.get_all().await.scheduler_chunk_size, 8192);
+    }
+
+    #[tokio::test]
+    async fn test_set_scheduler_chunk_size_rejects_too_large() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        assert!(
+            config_db
+                .set_scheduler_chunk_size(MAX_BANDWIDTH_CHUNK_SIZE + 1)
+                .await
+                .is_err()
+        );
+
+        // Stored value should remain the default (no write happened).
+        assert_eq!(config_db.get_all().await.scheduler_chunk_size, 8192);
+    }
+
+    #[tokio::test]
+    async fn test_get_all_includes_bandwidth_defaults() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+
+        let config = config_db.get_all().await;
+        assert_eq!(config.max_outbound_rate, 0);
+        assert_eq!(config.scheduler_chunk_size, 8192);
     }
 }

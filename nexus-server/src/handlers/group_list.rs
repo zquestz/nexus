@@ -175,6 +175,7 @@ mod tests {
                 "Staff",
                 false,
                 &Permissions::from(&[Permission::UserKick, Permission::BanCreate]),
+                1,
             )
             .await
             .expect("Failed to create Staff group");
@@ -182,7 +183,7 @@ mod tests {
         test_ctx
             .db
             .groups
-            .create_group("Guests", true, &Permissions::new())
+            .create_group("Guests", true, &Permissions::new(), 1)
             .await
             .expect("Failed to create Guests group");
 

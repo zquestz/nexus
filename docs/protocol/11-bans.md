@@ -55,21 +55,20 @@ Create or update an IP ban. The target can be a nickname, IP address, or CIDR ra
 | `duration` | string | No       | Duration: "10m", "4h", "7d", etc. Null = permanent |
 | `reason`   | string | No       | Reason for the ban (max 256 chars)                 |
 
-**Field validation.** Each input field is enforced by a validator in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `target` — `validate_target`: non-empty, ≤64 characters. Length-only —
-  the semantic check (nickname lookup vs. IP/CIDR parse) happens in
-  the handler.
-- `duration` — `validate_duration`: bounded length cap; semantic
-  parsing of the `<number><unit>` form happens in the handler.
-- `reason` — `validate_ban_reason`: ≤256 characters, no control
-  characters (newlines, tabs, null bytes, and other control chars all
-  rejected — reasons are rendered into single-line displays in admin
-  tools). Empty/omitted is allowed.
+- `target`: non-empty, ≤64 characters. Length-only at this stage; the
+  semantic check (nickname lookup vs. IP/CIDR parse) happens at a
+  later stage on the server.
+- `duration`: bounded length cap at this stage; semantic parsing of
+  the `<number><unit>` form happens at a later stage on the server.
+- `reason`: ≤256 characters, no control characters (newlines, tabs,
+  null bytes, and other control chars all rejected — reasons are
+  rendered into single-line displays in admin tools).
+  Empty/omitted is allowed.
 
 Validation failures send `BanCreateResponse { success: false, error }`
-with a translated error message.
+with an error message.
 
 **Target formats:**
 
@@ -151,16 +150,15 @@ Remove an IP ban.
 | -------- | ------ | -------- | -------------------------------------------- |
 | `target` | string | Yes      | Nickname, IP address, or CIDR range to unban |
 
-**Field validation.** `target` is enforced by `validate_target` in
-`nexus-common/src/validators/`: non-empty, ≤64 characters. Length-only —
-the semantic check (nickname lookup vs. IP/CIDR parse) happens in the
-handler. Validation failures send
-`BanDeleteResponse { success: false, error }` with a translated error
-message.
+**Field validation.** `target`: non-empty, ≤64 characters.
+Length-only at this stage; the semantic check (nickname lookup vs.
+IP/CIDR parse) happens at a later stage on the server. Validation
+failures send `BanDeleteResponse { success: false, error }` with an
+error message.
 
 **Target resolution:**
 
-1. If target is a nickname in ban table → Remove all IPs with that nickname annotation
+1. If target matches a nickname recorded on existing bans → Remove all IPs annotated with that nickname
 2. If target is a CIDR range → Remove that range AND any single IPs/smaller ranges within it
 3. Otherwise → Treat as single IP, remove that specific ban
 
@@ -285,7 +283,7 @@ Admins have all ban permissions implicitly.
 Bans are enforced **pre-TLS** to minimize resource usage:
 
 1. Client connects (TCP accept)
-2. Server checks IP against in-memory ban cache
+2. Server checks the client IP against the active ban set
 3. If banned: silent TCP close (no TLS handshake, no error message)
 4. If not banned: proceed with TLS handshake
 
@@ -303,19 +301,21 @@ When a ban is created, affected sessions are immediately disconnected:
 
 Active file transfers (port 7501) are also terminated when a ban is created:
 
-- The server tracks all active transfers by IP address via `TransferRegistry`
-- When a ban is created, matching transfers receive a ban signal via oneshot channel
+- The server tracks all active transfers by IP address
+- When a ban is created, matching transfers are signalled to abort
 - Streaming methods check for bans between 64KB chunks
-- When banned, the connection is closed immediately (no error message - client receives ban reason on BBS connection)
+- When banned, the connection is closed immediately (no error message — client receives ban reason on BBS connection)
 - Trusted IPs are skipped (trust bypasses ban)
 
 This ensures that banned users cannot continue ongoing downloads or uploads.
 
 ## Admin Protection
 
-- Cannot ban yourself → `err-ban-self`
-- Cannot ban admin by nickname → `err-ban-admin-by-nickname`
-- Cannot ban IP/CIDR if admin connected from it → `err-ban-admin-by-ip` (generic message, no info leak)
+- Cannot ban yourself
+- Cannot ban an admin by nickname
+- Cannot ban an IP/CIDR if an admin is currently connected from it (the
+  rejection message is intentionally generic so it does not leak which
+  admin or which address is connected)
 
 Note: Admins are subject to bans when connecting (pre-TLS check applies to everyone).
 
@@ -332,23 +332,23 @@ This allows updating the duration or reason of an existing ban.
 
 ### BanCreate Errors
 
-| Error                       | Cause                                         |
-| --------------------------- | --------------------------------------------- |
-| `err-ban-self`              | Trying to ban yourself                        |
-| `err-ban-admin-by-nickname` | Trying to ban an admin by nickname            |
-| `err-ban-admin-by-ip`       | Trying to ban an IP/CIDR with admin connected |
-| `err-ban-invalid-target`    | Invalid IP address or CIDR format             |
-| `err-ban-invalid-duration`  | Invalid duration format                       |
-| `err-reason-too-long`       | Reason exceeds 256 characters                 |
-| `err-reason-invalid`        | Reason contains invalid characters            |
-| `err-target-too-long`       | Target string too long                        |
+| Error                              | Cause                                         |
+| ---------------------------------- | --------------------------------------------- |
+| Cannot ban yourself                | Trying to ban yourself                        |
+| Cannot ban administrators          | Trying to ban an admin by nickname            |
+| Cannot ban this IP                 | Trying to ban an IP/CIDR with admin connected |
+| Invalid target                     | Invalid IP address or CIDR format             |
+| Invalid duration format            | Invalid duration format                       |
+| Reason is too long                 | Reason exceeds 256 characters                 |
+| Reason contains invalid characters | Reason contains invalid characters            |
+| Target is too long                 | Target string too long                        |
 
 ### BanDelete Errors
 
-| Error                 | Cause                   |
-| --------------------- | ----------------------- |
-| `err-ban-not-found`   | No ban found for target |
-| `err-target-too-long` | Target string too long  |
+| Error              | Cause                   |
+| ------------------ | ----------------------- |
+| No ban found       | No ban found for target |
+| Target is too long | Target string too long  |
 
 ## Notes
 

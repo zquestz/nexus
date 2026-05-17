@@ -1,6 +1,7 @@
 //! GroupCreate message handler - Creates a new account group
 
 use std::io;
+use std::sync::atomic::Ordering;
 
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
@@ -9,14 +10,17 @@ use crate::constants::*;
 
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ServerMessage;
-use nexus_common::validators::{self, GroupNameError, PermissionsError};
+use nexus_common::validators::{
+    self, BandwidthWeightError, GroupNameError, MIN_BANDWIDTH_WEIGHT, PermissionsError,
+    validate_bandwidth_weight,
+};
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_authentication, err_database, err_group_already_exists,
-    err_group_name_empty, err_group_name_invalid, err_group_name_too_long,
-    err_group_shared_permission, err_not_logged_in, err_permission_denied,
+    HandlerContext, err_authentication, err_bandwidth_weight_delegation, err_bandwidth_weight_zero,
+    err_database, err_group_already_exists, err_group_name_empty, err_group_name_invalid,
+    err_group_name_too_long, err_group_shared_permission, err_not_logged_in, err_permission_denied,
     err_permissions_contains_newlines, err_permissions_empty_permission,
     err_permissions_invalid_characters, err_permissions_permission_too_long,
     err_permissions_too_many, err_unknown_permission,
@@ -28,6 +32,7 @@ pub async fn handle_group_create<W>(
     name: String,
     is_shared: bool,
     permissions: Vec<String>,
+    bandwidth_weight: u16,
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
 ) -> io::Result<()>
@@ -65,6 +70,30 @@ where
         let response = ServerMessage::GroupCreateResponse {
             success: false,
             error: Some(err_permission_denied(ctx.locale)),
+            id: None,
+            name: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Bandwidth weight delegation: a non-admin creating a group can set
+    // its weight only at or below their own resolved bandwidth weight.
+    // Admins bypass.
+    if !requesting_user.is_admin
+        && bandwidth_weight > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
+    {
+        let response = ServerMessage::GroupCreateResponse {
+            success: false,
+            error: Some(err_bandwidth_weight_delegation(ctx.locale)),
+            id: None,
+            name: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+    if let Err(BandwidthWeightError::Zero) = validate_bandwidth_weight(bandwidth_weight) {
+        let response = ServerMessage::GroupCreateResponse {
+            success: false,
+            error: Some(err_bandwidth_weight_zero(ctx.locale, MIN_BANDWIDTH_WEIGHT)),
             id: None,
             name: None,
         };
@@ -161,7 +190,7 @@ where
     match ctx
         .db
         .groups
-        .create_group(&name, is_shared, &parsed_permissions)
+        .create_group(&name, is_shared, &parsed_permissions, bandwidth_weight)
         .await
     {
         Ok(group) => {
@@ -215,6 +244,7 @@ mod tests {
             "TestGroup".to_string(),
             false,
             vec![],
+            1,
             None,
             &mut test_ctx.handler_context(),
         )
@@ -234,6 +264,7 @@ mod tests {
             "TestGroup".to_string(),
             false,
             vec![],
+            1,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -267,6 +298,7 @@ mod tests {
             "Moderators".to_string(),
             false,
             vec!["chat_send".to_string(), "chat_receive".to_string()],
+            1,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -303,6 +335,7 @@ mod tests {
             "UniqueGroup".to_string(),
             false,
             vec![],
+            1,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -322,6 +355,7 @@ mod tests {
             "UniqueGroup".to_string(),
             false,
             vec![],
+            1,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -357,6 +391,7 @@ mod tests {
             "".to_string(),
             false,
             vec![],
+            1,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -389,6 +424,7 @@ mod tests {
                 "chat_send".to_string(),   // allowed for shared
                 "user_create".to_string(), // forbidden for shared
             ],
+            1,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -427,6 +463,7 @@ mod tests {
             "AdminGroup".to_string(),
             false,
             vec!["chat_send".to_string(), "user_kick".to_string()],
+            1,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -473,6 +510,7 @@ mod tests {
                 "chat_send".to_string(), // creator has this - OK
                 "user_kick".to_string(), // creator doesn't have this - FAIL
             ],
+            1,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -482,5 +520,143 @@ mod tests {
             result.is_ok(),
             "Should send error message but not disconnect"
         );
+    }
+
+    /// Set up a non-admin "editor" with resolved bandwidth weight = `weight`
+    /// by creating an Editors group at that weight and assigning editor to it.
+    /// Returns the editor session_id.
+    async fn setup_editor_with_weight(
+        test_ctx: &mut crate::handlers::testing::TestContext,
+        weight: u16,
+    ) -> u32 {
+        let editor_group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Editors",
+                false,
+                &db::Permissions::from(&[db::Permission::GroupCreate]),
+                weight,
+            )
+            .await
+            .unwrap();
+        let editor_session = login_user(
+            test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::GroupCreate],
+            false,
+        )
+        .await;
+        let admin_session = login_user(test_ctx, "admin", "password", &[], true).await;
+        let editor = test_ctx
+            .db
+            .users
+            .get_user_by_username("editor")
+            .await
+            .unwrap()
+            .unwrap();
+        crate::handlers::user_update::handle_user_update(
+            crate::handlers::user_update::UserUpdateRequest {
+                id: editor.id,
+                current_password: None,
+                username: None,
+                password: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                group_id: Some(editor_group.id),
+                remove_group: None,
+                revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
+                session_id: Some(admin_session),
+            },
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let _ = read_server_message(test_ctx).await;
+        editor_session
+    }
+
+    #[tokio::test]
+    async fn test_groupcreate_non_admin_can_create_lower_weight_group() {
+        let mut test_ctx = create_test_context().await;
+        let editor_session = setup_editor_with_weight(&mut test_ctx, 25).await;
+
+        // Create a group at weight 10 (≤ editor's 25): delegation allows it.
+        let result = handle_group_create(
+            "Helpers".to_string(),
+            false,
+            vec![],
+            10,
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupCreateResponse { success, error, .. } => {
+                assert!(success, "delegation-OK weight should succeed: {:?}", error);
+            }
+            _ => panic!("Expected GroupCreateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_groupcreate_non_admin_cannot_create_higher_weight_group() {
+        let mut test_ctx = create_test_context().await;
+        let editor_session = setup_editor_with_weight(&mut test_ctx, 25).await;
+
+        // Create a group at weight 100 (> editor's 25): delegation rejects.
+        let result = handle_group_create(
+            "PowerMods".to_string(),
+            false,
+            vec![],
+            100,
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupCreateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(
+                    error.unwrap(),
+                    crate::handlers::err_bandwidth_weight_delegation(
+                        crate::handlers::testing::DEFAULT_TEST_LOCALE
+                    )
+                );
+            }
+            _ => panic!("Expected GroupCreateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_groupcreate_admin_bypasses_delegation() {
+        let mut test_ctx = create_test_context().await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let result = handle_group_create(
+            "VIP".to_string(),
+            false,
+            vec![],
+            10_000,
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupCreateResponse { success, error, .. } => {
+                assert!(success, "admin bypass should succeed: {:?}", error);
+            }
+            _ => panic!("Expected GroupCreateResponse"),
+        }
     }
 }

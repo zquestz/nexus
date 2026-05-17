@@ -35,7 +35,7 @@ impl ChannelDb {
     /// Returns None if the channel doesn't exist in the database.
     pub async fn get_channel_settings(&self, name: &str) -> io::Result<Option<ChannelSettings>> {
         let result =
-            sqlx::query_as::<_, (String, String, String, i32)>(sql::SQL_SELECT_CHANNEL_SETTINGS)
+            sqlx::query_as::<_, (String, String, String, bool)>(sql::SQL_SELECT_CHANNEL_SETTINGS)
                 .bind(name)
                 .fetch_optional(&self.pool)
                 .await
@@ -46,7 +46,7 @@ impl ChannelDb {
                 name,
                 topic,
                 topic_set_by,
-                secret: secret != 0,
+                secret,
             }),
         )
     }
@@ -55,7 +55,7 @@ impl ChannelDb {
     ///
     /// Returns settings for all persistent channels.
     pub async fn get_all_channel_settings(&self) -> io::Result<Vec<ChannelSettings>> {
-        let results = sqlx::query_as::<_, (String, String, String, i32)>(
+        let results = sqlx::query_as::<_, (String, String, String, bool)>(
             sql::SQL_SELECT_ALL_CHANNEL_SETTINGS,
         )
         .fetch_all(&self.pool)
@@ -68,7 +68,7 @@ impl ChannelDb {
                 name,
                 topic,
                 topic_set_by,
-                secret: secret != 0,
+                secret,
             })
             .collect())
     }
@@ -81,7 +81,7 @@ impl ChannelDb {
             .bind(&settings.name)
             .bind(&settings.topic)
             .bind(&settings.topic_set_by)
-            .bind(settings.secret as i32)
+            .bind(settings.secret)
             .execute(&self.pool)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
@@ -105,7 +105,7 @@ impl ChannelDb {
     /// Update only the secret flag for a channel
     pub async fn set_secret(&self, name: &str, secret: bool) -> io::Result<()> {
         sqlx::query(sql::SQL_UPDATE_CHANNEL_SECRET)
-            .bind(secret as i32)
+            .bind(secret)
             .bind(name)
             .execute(&self.pool)
             .await

@@ -279,6 +279,7 @@ async fn perform_login(
             max_connections_per_ip: server_info
                 .as_ref()
                 .and_then(|info| info.max_connections_per_ip),
+            max_outbound_rate: server_info.as_ref().and_then(|info| info.max_outbound_rate),
             max_transfers_per_ip: server_info
                 .as_ref()
                 .and_then(|info| info.max_transfers_per_ip),
@@ -297,6 +298,9 @@ async fn perform_login(
                 .map(nexus_common::validators::PasswordStrength::from)
                 .unwrap_or(nexus_common::validators::PasswordStrength::Good),
             log_level: server_info.as_ref().and_then(|info| info.log_level.clone()),
+            scheduler_chunk_size: server_info
+                .as_ref()
+                .and_then(|info| info.scheduler_chunk_size),
             transfer_port: server_info
                 .map(|info| info.transfer_port)
                 .unwrap_or(DEFAULT_TRANSFER_PORT),

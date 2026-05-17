@@ -67,21 +67,20 @@ Create or update a trusted IP entry. The target can be a nickname, IP address, o
 | `duration` | string | No       | Duration: "10m", "4h", "7d", etc. Null = permanent |
 | `reason`   | string | No       | Reason/note for the trust entry (max 256 chars)    |
 
-**Field validation.** Each input field is enforced by a validator in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `target` — `validate_target`: non-empty, ≤64 characters. Length-only —
-  the semantic check (nickname lookup vs. IP/CIDR parse) happens in
-  the handler.
-- `duration` — `validate_duration`: bounded length cap; semantic
-  parsing of the `<number><unit>` form happens in the handler.
-- `reason` — `validate_trust_reason`: ≤256 characters, no control
-  characters (newlines, tabs, null bytes, and other control chars all
-  rejected — reasons are rendered into single-line displays in admin
-  tools). Empty/omitted is allowed.
+- `target`: non-empty, ≤64 characters. Length-only at this stage;
+  the semantic check (nickname lookup vs. IP/CIDR parse) happens at
+  a later stage on the server.
+- `duration`: bounded length cap at this stage; semantic parsing of
+  the `<number><unit>` form happens at a later stage on the server.
+- `reason`: ≤256 characters, no control characters (newlines, tabs,
+  null bytes, and other control chars all rejected — reasons are
+  rendered into single-line displays in admin tools).
+  Empty/omitted is allowed.
 
 Validation failures send `TrustCreateResponse { success: false, error }`
-with a translated error message.
+with an error message.
 
 **Target formats:**
 
@@ -163,16 +162,15 @@ Remove a trusted IP entry.
 | -------- | ------ | -------- | ---------------------------------------------- |
 | `target` | string | Yes      | Nickname, IP address, or CIDR range to untrust |
 
-**Field validation.** `target` is enforced by `validate_target` in
-`nexus-common/src/validators/`: non-empty, ≤64 characters. Length-only —
-the semantic check (nickname lookup vs. IP/CIDR parse) happens in the
-handler. Validation failures send
-`TrustDeleteResponse { success: false, error }` with a translated error
-message.
+**Field validation.** `target`: non-empty, ≤64 characters.
+Length-only at this stage; the semantic check (nickname lookup vs.
+IP/CIDR parse) happens at a later stage on the server. Validation
+failures send `TrustDeleteResponse { success: false, error }` with an
+error message.
 
 **Target resolution:**
 
-1. If target is a nickname in trust table → Remove all IPs with that nickname annotation
+1. If target matches a nickname recorded on existing trust entries → Remove all IPs annotated with that nickname
 2. If target is a CIDR range → Remove that range AND any single IPs/smaller ranges within it
 3. Otherwise → Treat as single IP, remove that specific trust entry
 
@@ -314,7 +312,7 @@ With this configuration:
 Trust checks happen **pre-TLS** alongside ban checks:
 
 1. Client connects (TCP accept)
-2. Server checks IP against in-memory cache:
+2. Server checks the client IP against the active trust and ban sets:
    - If trusted → proceed to TLS handshake
    - If banned → silent TCP close
    - If neither → proceed to TLS handshake
@@ -345,20 +343,20 @@ This allows updating the duration or reason of an existing trust entry.
 
 ### TrustCreate Errors
 
-| Error                        | Cause                              |
-| ---------------------------- | ---------------------------------- |
-| `err-trust-invalid-target`   | Invalid IP address or CIDR format  |
-| `err-trust-invalid-duration` | Invalid duration format            |
-| `err-reason-too-long`        | Reason exceeds 256 characters      |
-| `err-reason-invalid`         | Reason contains invalid characters |
-| `err-target-too-long`        | Target string too long             |
+| Error                              | Cause                              |
+| ---------------------------------- | ---------------------------------- |
+| Invalid target                     | Invalid IP address or CIDR format  |
+| Invalid duration format            | Invalid duration format            |
+| Reason is too long                 | Reason exceeds 256 characters      |
+| Reason contains invalid characters | Reason contains invalid characters |
+| Target is too long                 | Target string too long             |
 
 ### TrustDelete Errors
 
-| Error                 | Cause                           |
-| --------------------- | ------------------------------- |
-| `err-trust-not-found` | No trust entry found for target |
-| `err-target-too-long` | Target string too long          |
+| Error              | Cause                           |
+| ------------------ | ------------------------------- |
+| No trusted entry   | No trust entry found for target |
+| Target is too long | Target string too long          |
 
 ## Notes
 

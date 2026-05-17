@@ -18,7 +18,7 @@ err-status-invalid-characters = A mensagem de ausência contém caracteres invá
 
 # Erros de contas partilhadas
 err-shared-cannot-be-admin = Contas partilhadas não podem ser administradores
-err-shared-cannot-change-password = Não é possível alterar a palavra-passe de uma conta partilhada
+err-shared-cannot-self-edit = Contas partilhadas não podem editar-se a si próprias
 err-shared-invalid-permissions = Contas partilhadas não podem ter estas permissões: { $permissions }
 err-shared-message-requires-nickname = Contas partilhadas só podem receber mensagens pela alcunha
 err-shared-kick-requires-nickname = Contas partilhadas só podem ser expulsas pela alcunha
@@ -74,6 +74,7 @@ err-cannot-edit-self = Não pode editar-se a si próprio
 err-current-password-required = A palavra-passe atual é necessária para alterar a sua palavra-passe
 err-current-password-incorrect = A palavra-passe atual está incorreta
 err-cannot-create-admin = Apenas administradores podem criar utilizadores administradores
+err-admin-cannot-have-group = Não é possível atribuir utilizadores administradores a um grupo
 err-cannot-kick-self = Não pode expulsar-se a si mesmo
 err-cannot-kick-admin = Não é possível expulsar utilizadores administradores
 err-cannot-delete-admin = Apenas administradores podem eliminar utilizadores administradores
@@ -319,3 +320,16 @@ err-flood-warning = Mensagem limitada (aviso { $violation } de { $max_violations
    *[other] segundos
 }. Continuar a enviar mensagens resultará em desconexão.
 err-flood-disconnect = Desconectado: limite de velocidade do chat excedido.
+
+# Bandwidth Errors
+err-bandwidth-weight-delegation = Não é possível conceder um peso da largura de banda acima do seu
+err-bandwidth-weight-inherit-would-elevate = Não é possível herdar um peso da largura de banda acima do seu
+err-bandwidth-weight-zero = O peso da largura de banda deve ser pelo menos { $min }
+err-bandwidth-chunk-size-too-small = O tamanho do bloco do escalonador deve ser pelo menos { $min } { $min ->
+    [one] byte
+   *[other] bytes
+}
+err-bandwidth-chunk-size-too-large = O tamanho do bloco do escalonador deve ser no máximo { $max } { $max ->
+    [one] byte
+   *[other] bytes
+}

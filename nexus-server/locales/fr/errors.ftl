@@ -18,7 +18,7 @@ err-status-invalid-characters = Le message d'absence contient des caractères in
 
 # Erreurs de comptes partagés
 err-shared-cannot-be-admin = Les comptes partagés ne peuvent pas être administrateurs
-err-shared-cannot-change-password = Impossible de changer le mot de passe d'un compte partagé
+err-shared-cannot-self-edit = Les comptes partagés ne peuvent pas se modifier
 err-shared-invalid-permissions = Les comptes partagés ne peuvent pas avoir ces permissions : { $permissions }
 err-shared-message-requires-nickname = Les comptes partagés ne peuvent recevoir des messages que par pseudonyme
 err-shared-kick-requires-nickname = Les comptes partagés ne peuvent être expulsés que par pseudonyme
@@ -74,6 +74,7 @@ err-cannot-edit-self = Vous ne pouvez pas vous modifier vous-même
 err-current-password-required = Le mot de passe actuel est requis pour changer votre mot de passe
 err-current-password-incorrect = Le mot de passe actuel est incorrect
 err-cannot-create-admin = Seuls les administrateurs peuvent créer des utilisateurs administrateurs
+err-admin-cannot-have-group = Impossible d'assigner les utilisateurs administrateurs à un groupe
 err-cannot-kick-self = Vous ne pouvez pas vous expulser vous-même
 err-cannot-kick-admin = Impossible d'expulser les utilisateurs administrateurs
 err-cannot-delete-admin = Seuls les administrateurs peuvent supprimer des utilisateurs administrateurs
@@ -319,3 +320,16 @@ err-flood-warning = Message limité (avertissement { $violation } sur { $max_vio
    *[other] secondes
 }. Continuer à envoyer des messages entraînera une déconnexion.
 err-flood-disconnect = Déconnecté : limite de débit du chat dépassée.
+
+# Bandwidth Errors
+err-bandwidth-weight-delegation = Impossible d'accorder un poids de bande passante supérieur au vôtre
+err-bandwidth-weight-inherit-would-elevate = Impossible d'hériter d'un poids de bande passante supérieur au vôtre
+err-bandwidth-weight-zero = Le poids de bande passante doit être au moins { $min }
+err-bandwidth-chunk-size-too-small = La taille de bloc du planificateur doit être au moins { $min } { $min ->
+    [one] octet
+   *[other] octets
+}
+err-bandwidth-chunk-size-too-large = La taille de bloc du planificateur doit être au plus { $max } { $max ->
+    [one] octet
+   *[other] octets
+}

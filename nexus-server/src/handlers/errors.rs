@@ -54,9 +54,9 @@ pub fn err_shared_cannot_be_admin(locale: &str) -> String {
     t(locale, "err-shared-cannot-be-admin")
 }
 
-/// Get translated "shared cannot change password" error
-pub fn err_shared_cannot_change_password(locale: &str) -> String {
-    t(locale, "err-shared-cannot-change-password")
+/// Get translated "shared cannot self-edit" error
+pub fn err_shared_cannot_self_edit(locale: &str) -> String {
+    t(locale, "err-shared-cannot-self-edit")
 }
 
 /// Get translated "shared invalid permissions" error
@@ -175,6 +175,11 @@ pub fn err_broadcast_too_long(locale: &str, max_length: usize) -> String {
 /// Get translated "cannot create admin" error
 pub fn err_cannot_create_admin(locale: &str) -> String {
     t(locale, "err-cannot-create-admin")
+}
+
+/// Get translated "admin users cannot be in a group" error
+pub fn err_admin_cannot_have_group(locale: &str) -> String {
+    t(locale, "err-admin-cannot-have-group")
 }
 
 /// Get translated "cannot delete last admin" error
@@ -1406,7 +1411,8 @@ pub fn err_tracker_endpoint_duplicate(locale: &str) -> String {
 }
 
 /// Get translated "another tracker is already configured with this
-/// name" error (UNIQUE-constraint violation on `LOWER(name)`).
+/// name" error (UNIQUE-constraint violation on the `name` column,
+/// case-insensitive via COLLATE NOCASE).
 pub fn err_tracker_name_duplicate(locale: &str) -> String {
     t(locale, "err-tracker-name-duplicate")
 }
@@ -1416,4 +1422,57 @@ pub fn err_tracker_name_duplicate(locale: &str) -> String {
 /// `nexus_common::framing::MAX_TRACKERS_PER_SERVER`).
 pub fn err_tracker_too_many(locale: &str, max: usize) -> String {
     t_args(locale, "err-tracker-too-many", &[("max", &max.to_string())])
+}
+
+// =============================================================================
+// Bandwidth Errors
+// =============================================================================
+
+/// Get translated "cannot grant a bandwidth weight above your own" error.
+/// Fired for every non-admin attempt to *set* a bandwidth tier above the
+/// requester's own resolved weight (user override, group weight, group
+/// assignment, group edit). The companion error
+/// `err_bandwidth_weight_inherit_would_elevate` covers the case where the
+/// request would *inherit* a tier above the requester via clearing an
+/// override.
+pub fn err_bandwidth_weight_delegation(locale: &str) -> String {
+    t(locale, "err-bandwidth-weight-delegation")
+}
+
+/// Get translated "cannot have this user inherit a bandwidth weight above
+/// your own" error. Fired only on the inherit path: a non-admin sends
+/// `inherit_bandwidth_weight: Some(true)` to clear a target's override,
+/// but the target would then inherit a tier above the requester's
+/// resolved weight. Distinct from `err_bandwidth_weight_delegation`
+/// because the requester didn't try to *set* anything — they tried to
+/// clear, and the resolved-via-inheritance value is what would elevate.
+pub fn err_bandwidth_weight_inherit_would_elevate(locale: &str) -> String {
+    t(locale, "err-bandwidth-weight-inherit-would-elevate")
+}
+
+/// Get translated "bandwidth weight must be ≥ N" error.
+pub fn err_bandwidth_weight_zero(locale: &str, min: u16) -> String {
+    t_args(
+        locale,
+        "err-bandwidth-weight-zero",
+        &[("min", &min.to_string())],
+    )
+}
+
+/// Get translated "scheduler chunk size too small" error.
+pub fn err_bandwidth_chunk_size_too_small(locale: &str, min: u32) -> String {
+    t_args(
+        locale,
+        "err-bandwidth-chunk-size-too-small",
+        &[("min", &min.to_string())],
+    )
+}
+
+/// Get translated "scheduler chunk size too large" error.
+pub fn err_bandwidth_chunk_size_too_large(locale: &str, max: u32) -> String {
+    t_args(
+        locale,
+        "err-bandwidth-chunk-size-too-large",
+        &[("max", &max.to_string())],
+    )
 }

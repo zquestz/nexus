@@ -75,6 +75,7 @@ pub async fn add_test_user(
             status: None,
             group_id: None,
             group_name: None,
+            bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
             last_activity: std::time::Instant::now(),
         })
         .await

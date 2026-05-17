@@ -18,7 +18,7 @@ err-status-invalid-characters = 離開訊息包含無效字元
 
 # 共享帳戶錯誤
 err-shared-cannot-be-admin = 共享帳戶不能成為管理員
-err-shared-cannot-change-password = 無法更改共享帳戶的密碼
+err-shared-cannot-self-edit = 共享帳戶無法編輯自身
 err-shared-invalid-permissions = 共享帳戶不能擁有這些權限：{ $permissions }
 err-shared-message-requires-nickname = 共享帳戶只能通過暱稱接收訊息
 err-shared-kick-requires-nickname = 共享帳戶只能通過暱稱踢出
@@ -74,6 +74,7 @@ err-cannot-edit-self = 您不能編輯自己
 err-current-password-required = 變更密碼需要提供目前密碼
 err-current-password-incorrect = 目前密碼不正確
 err-cannot-create-admin = 只有管理員可以建立管理員使用者
+err-admin-cannot-have-group = 無法將管理員用戶指派到群組
 err-cannot-kick-self = 您不能踢除自己
 err-cannot-kick-admin = 無法踢除管理員用戶
 err-cannot-delete-admin = 只有管理員才能刪除管理員用戶
@@ -316,3 +317,10 @@ err-tracker-unknown = 追蹤器回報了未知的錯誤
 # Flood Protection Errors
 err-flood-warning = 訊息受到限制（警告 { $violation }/{ $max_violations }）。您可以在{ $seconds }秒後再次傳送訊息。繼續傳送將導致斷開連線。
 err-flood-disconnect = 已斷開連線：超出聊天速率限制。
+
+# Bandwidth Errors
+err-bandwidth-weight-delegation = 無法授予高於自己的頻寬權重
+err-bandwidth-weight-inherit-would-elevate = 無法繼承高於自己的頻寬權重
+err-bandwidth-weight-zero = 頻寬權重必須至少為 { $min }
+err-bandwidth-chunk-size-too-small = 排程器區塊大小必須至少為 { $min } 位元組
+err-bandwidth-chunk-size-too-large = 排程器區塊大小最多為 { $max } 位元組

@@ -213,17 +213,16 @@ Create a new news item.
 | `body`  | string | No       | Markdown content (max 4096 characters) |
 | `image` | string | No       | Image as data URI (max 700KB)          |
 
-**Field validation.** Each input field is enforced by a validator in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `body` — `validate_news_body`: ≤4096 characters, no control characters
-  except newline and tab.
-- `image` — `validate_news_image`: ≤700 KB data URI, must be a
-  well-formed `data:image/<type>;base64,...` URI for one of the
-  allowed image types (PNG, JPEG, WebP, SVG).
+- `body`: ≤4096 characters, no control characters except newline and
+  tab.
+- `image`: ≤700 KB data URI, must be a well-formed
+  `data:image/<type>;base64,...` URI for one of the allowed image
+  types (PNG, JPEG, WebP, SVG).
 
 Validation failures send `NewsCreateResponse { success: false, error }`
-with a translated error message.
+with an error message.
 
 At least one of `body` or `image` must be provided.
 
@@ -342,8 +341,7 @@ Update an existing news item.
 | `image` | string  | No       | New image as data URI |
 
 **Field validation.** Same rules as
-[`NewsCreate`](#newscreate-client--server) for the matching fields:
-`body` (`validate_news_body`) and `image` (`validate_news_image`).
+[`NewsCreate`](#newscreate-client--server) for `body` and `image`.
 
 **Update semantics differ from other Update messages.** `NewsUpdate`
 does a full replacement of the news item's `body` and `image`
@@ -585,7 +583,7 @@ The broadcast only contains the action and ID, not the full content. Clients mus
 
 ## Notes
 
-- News items are persisted in the database and survive server restart
+- News items are persistent and survive server restart
 - The author field is set automatically from the session username
 - `author_is_admin` reflects the author's admin status at creation time
 - Timestamps are in ISO 8601 format (e.g., `"2024-01-15T10:30:00Z"`)

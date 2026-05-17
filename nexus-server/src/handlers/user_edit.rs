@@ -50,8 +50,10 @@ where
         }
     };
 
-    // Prevent self-editing (cheap check before DB query)
-    if requesting_user.user_id == id {
+    // Prevent non-admin self-editing. Admins may edit themselves to manage
+    // their own bandwidth weight; field-level restrictions on what can
+    // actually change are enforced by the UserUpdate handler.
+    if requesting_user.user_id == id && !requesting_user.is_admin {
         let response = ServerMessage::UserEditResponse {
             success: false,
             error: Some(err_cannot_edit_self(ctx.locale)),
@@ -66,6 +68,7 @@ where
             group_permissions: None,
             revoked_permissions: None,
             available_groups: None,
+            bandwidth_weight: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -87,6 +90,7 @@ where
             group_permissions: None,
             revoked_permissions: None,
             available_groups: None,
+            bandwidth_weight: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -109,6 +113,7 @@ where
                 group_permissions: None,
                 revoked_permissions: None,
                 available_groups: None,
+                bandwidth_weight: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -137,6 +142,7 @@ where
             group_permissions: None,
             revoked_permissions: None,
             available_groups: None,
+            bandwidth_weight: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -216,6 +222,7 @@ where
         group_permissions: group_permissions_list,
         revoked_permissions,
         available_groups,
+        bandwidth_weight: target_user.bandwidth_weight,
     };
 
     ctx.send_message(&response).await
@@ -261,6 +268,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -327,6 +335,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -388,6 +397,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -446,6 +456,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -467,24 +478,28 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_useredit_cannot_edit_self() {
+    async fn test_useredit_non_admin_cannot_edit_self() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
-        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::UserEdit],
+            false,
+        )
+        .await;
 
-        // Look up admin's database ID
-        let admin_user = test_ctx
+        let alice_user = test_ctx
             .db
             .users
-            .get_user_by_username("admin")
+            .get_user_by_username("alice")
             .await
             .unwrap()
             .unwrap();
 
-        // Try to edit self
         let result = handle_user_edit(
-            admin_user.id,
+            alice_user.id,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -498,6 +513,45 @@ mod tests {
                 assert_eq!(error, Some(err_cannot_edit_self(DEFAULT_TEST_LOCALE)));
             }
             _ => panic!("Expected UserEditResponse with error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_useredit_admin_can_edit_self() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let result = handle_user_edit(
+            admin_user.id,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserEditResponse {
+                success,
+                error,
+                username,
+                is_admin,
+                ..
+            } => {
+                assert!(success, "admin self-edit should succeed: {:?}", error);
+                assert_eq!(username.as_deref(), Some("admin"));
+                assert_eq!(is_admin, Some(true));
+            }
+            _ => panic!("Expected UserEditResponse"),
         }
     }
 
@@ -574,6 +628,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -632,6 +687,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -671,6 +727,7 @@ mod tests {
                 "Mods",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -688,6 +745,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();

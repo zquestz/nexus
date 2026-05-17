@@ -51,15 +51,17 @@ Clicking a username opens the Edit form (requires `user_edit`); your own usernam
 
 In the Users tab toolbar, click the **Create User** icon (person-with-plus) to open the creation form. Requires `user_create` permission.
 
-| Field          | Description                                            |
-| -------------- | ------------------------------------------------------ |
-| Username       | Account identifier (1–32 characters)                   |
-| Password       | Account password (must meet server's minimum strength) |
-| Admin          | Toggle admin privileges                                |
-| Shared Account | Toggle shared account mode                             |
-| Enabled        | Toggle account access                                  |
-| Group          | Optional group assignment (inherits permissions)       |
-| Permissions    | Select allowed actions                                 |
+| Field                    | Description                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| Username                 | Account identifier (1–32 characters)                                                                                            |
+| Password                 | Account password (must meet server's minimum strength)                                                                          |
+| Admin                    | Toggle admin privileges                                                                                                         |
+| Shared Account           | Toggle shared account mode                                                                                                      |
+| Enabled                  | Toggle account access                                                                                                           |
+| Group                    | Optional group assignment (inherits permissions)                                                                                |
+| Bandwidth Weight         | Per-user weight override (1–65535)                                                                                              |
+| Inherit Bandwidth Weight | When checked, no per-user override is stored; the resolver returns the inherited baseline (group's weight, 50 for admins, or 1) |
+| Permissions              | Select allowed actions                                                                                                          |
 
 When a group is selected, the user inherits the group's permissions. Individual permission overrides can be added on top.
 
@@ -67,15 +69,17 @@ When a group is selected, the user inherits the group's permissions. Individual 
 
 Right-click a username → Edit to modify their account. The edit form shows the original username as a subtitle, followed by:
 
-| Field          | Description                                                                               |
-| -------------- | ----------------------------------------------------------------------------------------- |
-| Username       | Editable (disabled for guest account)                                                     |
-| Password       | Leave blank to keep current, new password must meet minimum strength (disabled for guest) |
-| Admin          | Toggle admin privileges (disabled for shared accounts)                                    |
-| Shared Account | Shows shared status (always disabled — cannot change in edit)                             |
-| Enabled        | Toggle account access                                                                     |
-| Group          | Assign, change, or remove group                                                           |
-| Permissions    | Select allowed actions (with override indicators when grouped)                            |
+| Field                    | Description                                                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| Username                 | Editable (disabled for guest account)                                                                                           |
+| Password                 | Leave blank to keep current, new password must meet minimum strength (disabled for guest)                                       |
+| Admin                    | Toggle admin privileges (disabled for shared accounts)                                                                          |
+| Shared Account           | Shows shared status (always disabled — cannot change in edit)                                                                   |
+| Enabled                  | Toggle account access                                                                                                           |
+| Group                    | Assign, change, or remove group                                                                                                 |
+| Bandwidth Weight         | Per-user weight override (1–65535)                                                                                              |
+| Inherit Bandwidth Weight | When checked, no per-user override is stored; the resolver returns the inherited baseline (group's weight, 50 for admins, or 1) |
+| Permissions              | Select allowed actions (with override indicators when grouped)                                                                  |
 
 Click **Update** to save changes, or **Cancel** to discard.
 
@@ -128,21 +132,23 @@ Right-click a group name to access the context menu:
 
 In the Groups tab toolbar, click the **Create Group** icon (plus-in-circle) to open the creation form. Requires `group_create` permission.
 
-| Field        | Description                              |
-| ------------ | ---------------------------------------- |
-| Name         | Group name (1–32 characters)             |
-| Shared Group | Toggle for shared account groups         |
-| Permissions  | Select permissions for all group members |
+| Field            | Description                                                                      |
+| ---------------- | -------------------------------------------------------------------------------- |
+| Name             | Group name (1–32 characters)                                                     |
+| Shared Group     | Toggle for shared account groups                                                 |
+| Bandwidth Weight | Group bandwidth weight (1–65535); inherited by members with no per-user override |
+| Permissions      | Select permissions for all group members                                         |
 
 ### Editing Groups
 
 Right-click a group name → Edit to modify the group. The edit form shows the original group name as a subtitle, followed by:
 
-| Field        | Description                                                |
-| ------------ | ---------------------------------------------------------- |
-| Name         | Group name (1–32 characters)                               |
-| Shared Group | Toggle shared status (disabled when the group has members) |
-| Permissions  | Select permissions for all group members                   |
+| Field            | Description                                                                      |
+| ---------------- | -------------------------------------------------------------------------------- |
+| Name             | Group name (1–32 characters)                                                     |
+| Shared Group     | Toggle shared status (disabled when the group has members)                       |
+| Bandwidth Weight | Group bandwidth weight (1–65535); inherited by members with no per-user override |
+| Permissions      | Select permissions for all group members                                         |
 
 Click **Update** to save changes, or **Cancel** to discard.
 
@@ -175,6 +181,18 @@ When a user belongs to a group, their effective permissions are:
 
 Administrators bypass all permission checks and always have full access. Group and override data is preserved in the database but has no effect while the admin flag is set.
 
+## Bandwidth Weight
+
+Each user has a `bandwidth_weight` (1–65535) that controls their share of the server's outbound bandwidth cap when flows contend. Higher weight = larger share. See [Server Configuration → Bandwidth](../server/02-configuration.md#bandwidth) for what the server-side cap does.
+
+**Effective weight resolution:** user override → admin default (50) → group's weight → system default (1). Admins skip group lookup entirely.
+
+The User edit form has a `Bandwidth Weight` number field and an always-visible `Inherit Bandwidth Weight` checkbox. Check Inherit to remove the per-user override and fall back to the resolver's baseline; uncheck to set or keep a per-user override. The value renders **bold** when it differs from the baseline (same convention as permission overrides).
+
+Group forms have a single `Bandwidth Weight` field — no Inherit checkbox, since groups are the inheritance source.
+
+Bandwidth weight isn't shown on the user list, user info, or any non-edit surface; inspect or change it via the Edit forms.
+
 ## Non-Admin Delegation
 
 Users with management permissions but without admin status have restrictions:
@@ -183,6 +201,7 @@ Users with management permissions but without admin status have restrictions:
 - Can only assign users to groups whose permissions they fully possess
 - Cannot modify admin accounts
 - Permissions they don't control are preserved unchanged
+- Cannot set bandwidth weight higher than their own current resolved weight (applies to per-user override, group's weight, group assignment, and clearing an override)
 
 This prevents privilege escalation — a manager cannot give a user more access than they themselves have.
 

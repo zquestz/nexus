@@ -357,6 +357,8 @@ where
             permissions,
             group_id,
             revokes,
+            bandwidth_weight,
+            inherit_bandwidth_weight,
         } => {
             let request = handlers::UserCreateRequest {
                 username,
@@ -367,6 +369,8 @@ where
                 permissions,
                 group_id,
                 revokes,
+                bandwidth_weight,
+                inherit_bandwidth_weight,
             };
             handlers::handle_user_create(request, conn_state.session_id, ctx).await?;
         }
@@ -411,6 +415,8 @@ where
             group_id,
             remove_group,
             revokes,
+            bandwidth_weight,
+            inherit_bandwidth_weight,
         } => {
             let request = handlers::UserUpdateRequest {
                 id,
@@ -423,6 +429,8 @@ where
                 group_id,
                 remove_group,
                 revokes,
+                bandwidth_weight,
+                inherit_bandwidth_weight,
                 session_id: conn_state.session_id,
             };
             handlers::handle_user_update(request, ctx).await?;
@@ -449,6 +457,8 @@ where
             chat_burst_limit,
             chat_rate_limit,
             min_password_strength,
+            max_outbound_rate,
+            scheduler_chunk_size,
         } => {
             let request = handlers::ServerInfoUpdateRequest {
                 name,
@@ -463,6 +473,8 @@ where
                 chat_burst_limit,
                 chat_rate_limit,
                 min_password_strength,
+                max_outbound_rate,
+                scheduler_chunk_size,
                 session_id: conn_state.session_id,
             };
             handlers::handle_server_info_update(request, ctx).await?;
@@ -610,9 +622,17 @@ where
             name,
             is_shared,
             permissions,
+            bandwidth_weight,
         } => {
-            handlers::handle_group_create(name, is_shared, permissions, conn_state.session_id, ctx)
-                .await?;
+            handlers::handle_group_create(
+                name,
+                is_shared,
+                permissions,
+                bandwidth_weight,
+                conn_state.session_id,
+                ctx,
+            )
+            .await?;
         }
         ClientMessage::GroupEdit { id } => {
             handlers::handle_group_edit(id, conn_state.session_id, ctx).await?;
@@ -622,12 +642,14 @@ where
             name,
             is_shared,
             permissions,
+            bandwidth_weight,
         } => {
             handlers::handle_group_update(
                 id,
                 name,
                 is_shared,
                 permissions,
+                bandwidth_weight,
                 conn_state.session_id,
                 ctx,
             )

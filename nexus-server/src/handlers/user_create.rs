@@ -1,6 +1,7 @@
 //! UserCreate message handler
 
 use std::io;
+use std::sync::atomic::Ordering;
 
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
@@ -14,18 +15,23 @@ use crate::constants::{
 
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ServerMessage;
-use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
+use nexus_common::validators::{
+    self, BandwidthWeightError, MIN_BANDWIDTH_WEIGHT, PasswordError, PermissionsError,
+    UsernameError, validate_bandwidth_weight,
+};
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_authentication, err_cannot_create_admin, err_database, err_group_not_found,
-    err_group_shared_mismatch, err_not_logged_in, err_password_empty, err_password_too_long,
-    err_password_too_weak, err_permission_denied, err_permissions_contains_newlines,
-    err_permissions_empty_permission, err_permissions_invalid_characters,
-    err_permissions_permission_too_long, err_permissions_too_many, err_shared_cannot_be_admin,
-    err_shared_invalid_permissions, err_unknown_permission, err_username_empty,
-    err_username_exists, err_username_invalid, err_username_too_long,
+    HandlerContext, err_admin_cannot_have_group, err_authentication,
+    err_bandwidth_weight_delegation, err_bandwidth_weight_zero, err_cannot_create_admin,
+    err_database, err_group_not_found, err_group_shared_mismatch, err_not_logged_in,
+    err_password_empty, err_password_too_long, err_password_too_weak, err_permission_denied,
+    err_permissions_contains_newlines, err_permissions_empty_permission,
+    err_permissions_invalid_characters, err_permissions_permission_too_long,
+    err_permissions_too_many, err_shared_cannot_be_admin, err_shared_invalid_permissions,
+    err_unknown_permission, err_username_empty, err_username_exists, err_username_invalid,
+    err_username_too_long,
 };
 use crate::db::{CreateUserParams, Permission, Permissions, hash_password_async};
 
@@ -39,6 +45,8 @@ pub struct UserCreateRequest {
     pub permissions: Vec<String>,
     pub group_id: Option<i64>,
     pub revokes: Option<Vec<String>>,
+    pub bandwidth_weight: Option<u16>,
+    pub inherit_bandwidth_weight: Option<bool>,
 }
 
 /// Handle a user creation request from the client
@@ -59,6 +67,8 @@ where
         permissions,
         group_id,
         revokes,
+        bandwidth_weight,
+        inherit_bandwidth_weight,
     } = request;
 
     // Verify authentication
@@ -116,7 +126,46 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate password
+    // Verify admin creation privilege (use is_admin from UserManager).
+    // Matches `user_update.rs`'s analogous gate: typed response, not
+    // disconnect — privilege escalation by a non-admin client should
+    // be rejected cleanly, not by terminating the session.
+    if is_admin && !requesting_user.is_admin {
+        let response = ServerMessage::UserCreateResponse {
+            success: false,
+            error: Some(err_cannot_create_admin(ctx.locale)),
+            id: None,
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Shared accounts cannot be admins
+    if is_shared && is_admin {
+        let response = ServerMessage::UserCreateResponse {
+            success: false,
+            error: Some(err_shared_cannot_be_admin(ctx.locale)),
+            id: None,
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Admin XOR group invariant: admins cannot be members of a group.
+    // Schema CHECK is the safety net; the handler check gives a clean
+    // translated error instead of a generic DB-constraint failure.
+    // Reject before the expensive password hashing further below.
+    if is_admin && group_id.is_some() {
+        let response = ServerMessage::UserCreateResponse {
+            success: false,
+            error: Some(err_admin_cannot_have_group(ctx.locale)),
+            id: None,
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Validate password (zxcvbn-scored — non-trivial)
     let min_strength = ctx.db.config.get_min_password_strength().await;
     if let Err(e) = validators::validate_password(&password, min_strength, &[&username]) {
         let error_msg = match e {
@@ -153,27 +202,6 @@ where
         let response = ServerMessage::UserCreateResponse {
             success: false,
             error: Some(error_msg),
-            id: None,
-            username: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Verify admin creation privilege (use is_admin from UserManager)
-    if is_admin && !requesting_user.is_admin {
-        return ctx
-            .send_error_and_disconnect(
-                &err_cannot_create_admin(ctx.locale),
-                Some(HANDLER_USER_CREATE),
-            )
-            .await;
-    }
-
-    // Shared accounts cannot be admins
-    if is_shared && is_admin {
-        let response = ServerMessage::UserCreateResponse {
-            success: false,
-            error: Some(err_shared_cannot_be_admin(ctx.locale)),
             id: None,
             username: None,
         };
@@ -244,6 +272,22 @@ where
             return ctx.send_message(&response).await;
         }
 
+        // Non-admin delegation: cannot assign a group whose bandwidth weight
+        // exceeds the requester's own resolved weight. Closes the escalation
+        // where a moderator could create users in a higher-weight group whose
+        // permissions they happen to fully possess.
+        if !requesting_user.is_admin
+            && group.bandwidth_weight > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
+        {
+            let response = ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(err_bandwidth_weight_delegation(ctx.locale)),
+                id: None,
+                username: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+
         // Non-admin group assignment check: requester must have all group permissions
         if !requesting_user.is_admin {
             let group_perms = match ctx.db.groups.get_group_permissions(gid).await {
@@ -277,6 +321,42 @@ where
     } else {
         None
     };
+
+    // Bandwidth weight delegation: non-admins can set a per-user override
+    // only if the requested value does not exceed their own resolved
+    // bandwidth weight. Admins bypass the check. Skipped entirely when
+    // `inherit_bandwidth_weight: Some(true)` is set — that flag wins and
+    // the override value would be discarded, so checking it would reject
+    // moot values from a defensive client.
+    //
+    // Checked here — before password hashing — so a malicious non-admin
+    // can't burn server CPU on Argon2id by submitting an over-cap weight
+    // and forcing a rejection mid-flight.
+    if inherit_bandwidth_weight != Some(true) {
+        if !requesting_user.is_admin
+            && let Some(w) = bandwidth_weight
+            && w > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
+        {
+            let response = ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(err_bandwidth_weight_delegation(ctx.locale)),
+                id: None,
+                username: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+        if let Some(w) = bandwidth_weight
+            && let Err(BandwidthWeightError::Zero) = validate_bandwidth_weight(w)
+        {
+            let response = ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(err_bandwidth_weight_zero(ctx.locale, MIN_BANDWIDTH_WEIGHT)),
+                id: None,
+                username: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+    }
 
     // Parse and validate revoke permissions (only meaningful with a group)
     let parsed_revokes: Vec<Permission> = if let Some(ref revoke_strings) = revokes {
@@ -385,6 +465,12 @@ where
         }
     };
 
+    let final_bandwidth_weight = if inherit_bandwidth_weight == Some(true) {
+        None
+    } else {
+        bandwidth_weight
+    };
+
     // Create user in database
     match ctx
         .db
@@ -398,6 +484,7 @@ where
             permissions: &perms,
             group_id: validated_group_id,
             revokes: &parsed_revokes,
+            bandwidth_weight: final_bandwidth_weight,
         })
         .await
     {
@@ -445,6 +532,8 @@ mod tests {
                 permissions: vec![],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             None,
             &mut test_ctx.handler_context(),
@@ -473,6 +562,8 @@ mod tests {
                 permissions: vec![],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(user_id),
             &mut test_ctx.handler_context(),
@@ -505,6 +596,8 @@ mod tests {
                 permissions: vec![],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -565,6 +658,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -582,6 +676,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -607,6 +702,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -623,6 +719,8 @@ mod tests {
                 permissions: vec![],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -672,6 +770,8 @@ mod tests {
                 permissions: vec![],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -738,6 +838,8 @@ mod tests {
                 permissions: vec!["user_list".to_string()],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(creator_id),
             &mut test_ctx.handler_context(),
@@ -811,6 +913,8 @@ mod tests {
                 ],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -919,6 +1023,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -943,6 +1048,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -968,6 +1074,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -984,17 +1091,38 @@ mod tests {
                 permissions: vec![],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(creator_id),
             &mut test_ctx.handler_context(),
         )
         .await;
 
-        // Should fail with disconnect
+        // Typed rejection (no disconnect) — mirrors UserUpdate's analogous
+        // gate at `handlers/user_update.rs`.
         assert!(
-            result.is_err(),
-            "Non-admin should not be able to create admin users"
+            result.is_ok(),
+            "Should send typed rejection, not disconnect"
         );
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                id,
+                username,
+            } => {
+                assert!(
+                    !success,
+                    "Non-admin should not be able to create admin users"
+                );
+                assert_eq!(error.unwrap(), err_cannot_create_admin(DEFAULT_TEST_LOCALE));
+                assert!(id.is_none());
+                assert!(username.is_none());
+            }
+            other => panic!("Expected UserCreateResponse, got {:?}", other),
+        }
     }
 
     #[tokio::test]
@@ -1016,6 +1144,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1041,6 +1170,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1066,6 +1196,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1085,6 +1216,8 @@ mod tests {
                 ],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(creator_id),
             &mut test_ctx.handler_context(),
@@ -1117,6 +1250,8 @@ mod tests {
                 permissions: vec![],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -1144,6 +1279,8 @@ mod tests {
                 permissions: vec![],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -1182,6 +1319,8 @@ mod tests {
                 ],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1262,6 +1401,8 @@ mod tests {
                 permissions: vec!["chat_send".to_string()],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1305,6 +1446,8 @@ mod tests {
                 permissions: vec![],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1322,10 +1465,9 @@ mod tests {
                 username,
             } => {
                 assert!(!success, "Should fail to create shared admin");
-                assert!(error.is_some(), "Should have error message");
-                assert!(
-                    error.unwrap().contains("cannot be admin"),
-                    "Error should mention shared accounts cannot be admins"
+                assert_eq!(
+                    error.unwrap(),
+                    err_shared_cannot_be_admin(DEFAULT_TEST_LOCALE)
                 );
                 assert!(id.is_none());
                 assert!(username.is_none());
@@ -1356,6 +1498,8 @@ mod tests {
                 ],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1410,6 +1554,8 @@ mod tests {
                 ],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1465,6 +1611,8 @@ mod tests {
                 permissions: vec![],
                 group_id: None,
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1500,6 +1648,7 @@ mod tests {
                 "Mods",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -1515,6 +1664,8 @@ mod tests {
                 permissions: vec![],
                 group_id: Some(group.id),
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1565,6 +1716,7 @@ mod tests {
                 "Regular",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend]),
+                1,
             )
             .await
             .unwrap();
@@ -1577,6 +1729,7 @@ mod tests {
                 "Shared",
                 true,
                 &db::Permissions::from(&[db::Permission::ChatSend]),
+                1,
             )
             .await
             .unwrap();
@@ -1592,6 +1745,8 @@ mod tests {
                 permissions: vec![],
                 group_id: Some(regular_group.id),
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1626,6 +1781,8 @@ mod tests {
                 permissions: vec![],
                 group_id: Some(shared_group.id),
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(admin_id),
             &mut test_ctx.handler_context(),
@@ -1672,6 +1829,7 @@ mod tests {
                 "Mods",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -1687,6 +1845,8 @@ mod tests {
                 permissions: vec![],
                 group_id: Some(group.id),
                 revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
             },
             Some(editor_session),
             &mut test_ctx.handler_context(),
@@ -1720,5 +1880,354 @@ mod tests {
         // Verify bob was NOT created
         let bob = test_ctx.db.users.get_user_by_username("bob").await.unwrap();
         assert!(bob.is_none(), "User should not have been created");
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_non_admin_cannot_assign_to_higher_weight_group() {
+        let mut test_ctx = create_test_context().await;
+
+        // editor's own group: weight 10 with [UserCreate, ChatSend]
+        let editor_group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Editors",
+                false,
+                &db::Permissions::from(&[db::Permission::UserCreate, db::Permission::ChatSend]),
+                10,
+            )
+            .await
+            .unwrap();
+
+        let editor_session = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserCreate, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+
+        // Admin moves editor into the editors group so their session weight is 10.
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let editor = test_ctx
+            .db
+            .users
+            .get_user_by_username("editor")
+            .await
+            .unwrap()
+            .unwrap();
+        crate::handlers::user_update::handle_user_update(
+            crate::handlers::user_update::UserUpdateRequest {
+                id: editor.id,
+                current_password: None,
+                username: None,
+                password: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                group_id: Some(editor_group.id),
+                remove_group: None,
+                revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
+                session_id: Some(admin_session),
+            },
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let _ = read_server_message(&mut test_ctx).await;
+
+        // High-weight group with the SAME permissions so the existing
+        // permission-subset rule alone would pass.
+        let high_group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "PowerCreators",
+                false,
+                &db::Permissions::from(&[db::Permission::UserCreate, db::Permission::ChatSend]),
+                50,
+            )
+            .await
+            .unwrap();
+
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "bob".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+                group_id: Some(high_group.id),
+                revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
+            },
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok(), "Should send error, not disconnect");
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserCreateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(
+                    error.unwrap(),
+                    err_bandwidth_weight_delegation(DEFAULT_TEST_LOCALE)
+                );
+            }
+            other => panic!("Expected UserCreateResponse, got: {other:?}"),
+        }
+
+        let bob = test_ctx.db.users.get_user_by_username("bob").await.unwrap();
+        assert!(bob.is_none(), "User should not have been created");
+    }
+
+    /// Shared helper: set up an editor with a known resolved bandwidth weight
+    /// by creating an Editors group at `weight` and assigning the editor to it.
+    async fn setup_editor_at_weight(
+        test_ctx: &mut crate::handlers::testing::TestContext,
+        weight: u16,
+    ) -> u32 {
+        let editor_group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Editors",
+                false,
+                &db::Permissions::from(&[db::Permission::UserCreate, db::Permission::ChatSend]),
+                weight,
+            )
+            .await
+            .unwrap();
+        let editor_session = login_user(
+            test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserCreate, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+        let admin_session = login_user(test_ctx, "admin", "password", &[], true).await;
+        let editor = test_ctx
+            .db
+            .users
+            .get_user_by_username("editor")
+            .await
+            .unwrap()
+            .unwrap();
+        crate::handlers::user_update::handle_user_update(
+            crate::handlers::user_update::UserUpdateRequest {
+                id: editor.id,
+                current_password: None,
+                username: None,
+                password: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                group_id: Some(editor_group.id),
+                remove_group: None,
+                revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
+                session_id: Some(admin_session),
+            },
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let _ = read_server_message(test_ctx).await;
+        editor_session
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_non_admin_can_set_lower_bandwidth_weight() {
+        let mut test_ctx = create_test_context().await;
+        let editor_session = setup_editor_at_weight(&mut test_ctx, 25).await;
+
+        // Create bob with override 10 (≤ editor's 25): delegation allows it.
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "bob".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+                group_id: None,
+                revokes: None,
+                bandwidth_weight: Some(10),
+                inherit_bandwidth_weight: None,
+            },
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserCreateResponse { success, error, .. } => {
+                assert!(success, "delegation-OK weight should succeed: {:?}", error);
+            }
+            other => panic!("Expected UserCreateResponse, got: {other:?}"),
+        }
+
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bob.bandwidth_weight, Some(10));
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_non_admin_cannot_set_higher_bandwidth_weight() {
+        let mut test_ctx = create_test_context().await;
+        let editor_session = setup_editor_at_weight(&mut test_ctx, 25).await;
+
+        // Try to create bob with override 100 (> editor's 25): delegation rejects.
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "bob".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+                group_id: None,
+                revokes: None,
+                bandwidth_weight: Some(100),
+                inherit_bandwidth_weight: None,
+            },
+            Some(editor_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserCreateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(
+                    error.unwrap(),
+                    err_bandwidth_weight_delegation(DEFAULT_TEST_LOCALE)
+                );
+            }
+            other => panic!("Expected UserCreateResponse, got: {other:?}"),
+        }
+
+        let bob = test_ctx.db.users.get_user_by_username("bob").await.unwrap();
+        assert!(bob.is_none(), "User should not have been created");
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_admin_bypasses_delegation() {
+        let mut test_ctx = create_test_context().await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Admin creates a user with a weight far above the admin default —
+        // delegation rule does not apply to admins.
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "bob".to_string(),
+                password: "password".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+                group_id: None,
+                revokes: None,
+                bandwidth_weight: Some(10_000),
+                inherit_bandwidth_weight: None,
+            },
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserCreateResponse { success, error, .. } => {
+                assert!(success, "admin bypass should succeed: {:?}", error);
+            }
+            other => panic!("Expected UserCreateResponse, got: {other:?}"),
+        }
+
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bob.bandwidth_weight, Some(10_000));
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_admin_with_group_rejected() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend]),
+                1,
+            )
+            .await
+            .unwrap();
+
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "newadmin".to_string(),
+                password: "password".to_string(),
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+                group_id: Some(group.id),
+                revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
+            },
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Should send error response");
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserCreateResponse {
+                success,
+                error,
+                id,
+                username,
+            } => {
+                assert!(!success, "Admin + group must be rejected");
+                assert_eq!(
+                    error.unwrap(),
+                    err_admin_cannot_have_group(DEFAULT_TEST_LOCALE)
+                );
+                assert!(id.is_none());
+                assert!(username.is_none());
+            }
+            other => panic!("Expected UserCreateResponse, got: {other:?}"),
+        }
     }
 }

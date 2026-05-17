@@ -129,12 +129,11 @@ Request directory contents.
 | `root`        | boolean | No       | If true, path is relative to file root (default: false) |
 | `show_hidden` | boolean | No       | If true, include dotfiles (default: false)              |
 
-**Field validation.** `path` is enforced by `validate_file_path` in
-`nexus-common/src/validators/`: ≤4096 bytes, no null bytes, no control
+**Field validation.** `path`: ≤4096 bytes, no null bytes, no control
 characters, no Windows drive letter (e.g. `C:`). Per-segment checks
-against `..`, suffix matching, and area-confinement happen later in
-the handler. Validation failures send
-`FileListResponse { success: false, error }` with a translated error
+against `..`, suffix matching, and area-confinement happen at a later
+validation stage. Validation failures send
+`FileListResponse { success: false, error }` with an error
 message.
 
 **List user's root:**
@@ -233,10 +232,9 @@ Request detailed information about a file or directory.
 | `root` | boolean | No       | If true, path is relative to file root (default: false) |
 
 **Field validation.** Same rules as
-[`FileList`](#filelist-client--server) for `path`
-(`validate_file_path`). Validation failures send
-`FileInfoResponse { success: false, error }` with a translated error
-message.
+[`FileList`](#filelist-client--server) for `path`. Validation
+failures send `FileInfoResponse { success: false, error }` with an
+error message.
 
 **Example:**
 
@@ -317,18 +315,17 @@ Create a new directory.
 | `name` | string  | Yes      | Name of the new directory                               |
 | `root` | boolean | No       | If true, path is relative to file root (default: false) |
 
-**Field validation.** Each input field is enforced by a validator in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `path` — `validate_file_path`: ≤4096 bytes, no null bytes, no
-  control characters, no Windows drive letter (e.g. `C:`).
-- `name` — `validate_dir_name`: non-empty, ≤255 bytes, no path
-  separators (`/`, `\`), no parent-dir reference (`..`), no null
-  bytes, no other control characters.
+- `path`: ≤4096 bytes, no null bytes, no control characters, no
+  Windows drive letter (e.g. `C:`).
+- `name`: non-empty, ≤255 bytes, no path separators (`/`, `\`), no
+  parent-dir reference (`..`), no null bytes, no other control
+  characters.
 
 Validation failures send
-`FileCreateDirResponse { success: false, error }` with a translated
-error message.
+`FileCreateDirResponse { success: false, error }` with an error
+message.
 
 **Example:**
 
@@ -377,17 +374,16 @@ Rename a file or directory.
 | `new_name` | string  | Yes      | New name (filename only, not path)                      |
 | `root`     | boolean | No       | If true, path is relative to file root (default: false) |
 
-**Field validation.** Each input field is enforced by a validator in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `path` — `validate_file_path`: ≤4096 bytes, no null bytes, no
-  control characters, no Windows drive letter (e.g. `C:`).
-- `new_name` — `validate_dir_name`: non-empty, ≤255 bytes, no path
-  separators (`/`, `\`), no parent-dir reference (`..`), no null
-  bytes, no other control characters.
+- `path`: ≤4096 bytes, no null bytes, no control characters, no
+  Windows drive letter (e.g. `C:`).
+- `new_name`: non-empty, ≤255 bytes, no path separators (`/`, `\`),
+  no parent-dir reference (`..`), no null bytes, no other control
+  characters.
 
 Validation failures send `FileRenameResponse { success: false, error }`
-with a translated error message.
+with an error message.
 
 **Example:**
 
@@ -436,13 +432,12 @@ Move a file or directory to a new location.
 | `source_root`      | boolean | No       | If true, source path is relative to file root      |
 | `destination_root` | boolean | No       | If true, destination path is relative to file root |
 
-**Field validation.** `source_path` and `destination_dir` are each
-enforced by `validate_file_path` in `nexus-common/src/validators/`:
+**Field validation.** `source_path` and `destination_dir`: each
 ≤4096 bytes, no null bytes, no control characters, no Windows drive
 letter (e.g. `C:`). Per-segment checks against `..`, suffix matching,
-and area-confinement happen later in the handler. Validation failures
-send `FileMoveResponse { success: false, error, error_kind }` with a
-translated error message.
+and area-confinement happen at a later validation stage. Validation
+failures send `FileMoveResponse { success: false, error, error_kind }`
+with an error message.
 
 **Example:**
 
@@ -505,9 +500,9 @@ Copy a file or directory to a new location.
 
 **Field validation.** Same rules as
 [`FileMove`](#filemove-client--server) for `source_path` and
-`destination_dir` (`validate_file_path`). Validation failures send
-`FileCopyResponse { success: false, error, error_kind }` with a
-translated error message.
+`destination_dir`. Validation failures send
+`FileCopyResponse { success: false, error, error_kind }` with an
+error message.
 
 **Example:**
 
@@ -545,11 +540,10 @@ Delete a file or empty directory.
 | `path` | string  | Yes      | Path to delete                                          |
 | `root` | boolean | No       | If true, path is relative to file root (default: false) |
 
-**Field validation.** `path` is enforced by `validate_file_path` in
-`nexus-common/src/validators/`: ≤4096 bytes, no null bytes, no
-control characters, no Windows drive letter (e.g. `C:`). Validation
-failures send `FileDeleteResponse { success: false, error }` with a
-translated error message.
+**Field validation.** `path`: ≤4096 bytes, no null bytes, no control
+characters, no Windows drive letter (e.g. `C:`). Validation failures
+send `FileDeleteResponse { success: false, error }` with an error
+message.
 
 **Example:**
 
@@ -596,10 +590,9 @@ Search for files and directories by name.
 | `query` | string | Yes      | Search query (3-256 bytes, see Search Behavior) |
 | `root`  | bool   | No       | Search entire file root (default: false)        |
 
-**Field validation.** `query` is enforced by `validate_search_query`
-in `nexus-common/src/validators/`: non-empty after trim, ≥3 bytes,
-≤256 bytes, no control characters. Validation failures send
-`FileSearchResponse { success: false, error }` with a translated error
+**Field validation.** `query`: non-empty after trim, ≥3 bytes, ≤256
+bytes, no control characters. Validation failures send
+`FileSearchResponse { success: false, error }` with an error
 message.
 
 **Example - search user's area:**

@@ -50,17 +50,16 @@ Send a message to another user.
 | `message`     | string | Yes      | Message content (1-1024 characters)         |
 | `action`      | string | No       | Action type: `"Normal"` (default) or `"Me"` |
 
-**Field validation.** Each input field is enforced by a validator in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `to_nickname` — `validate_nickname`: non-empty, ≤32 characters;
-  Unicode letters or ASCII graphic characters only; rejects whitespace,
-  control characters, and the path-sensitive set `/ \ : . < > " | ? * #`.
-- `message` — `validate_message`: non-empty after trim, ≤1024 characters,
-  no newlines, no other control characters.
+- `to_nickname`: non-empty, ≤32 characters; Unicode letters or ASCII
+  graphic characters only; rejects whitespace, control characters,
+  and the path-sensitive set `/ \ : . < > " | ? * #`.
+- `message`: non-empty after trim, ≤1024 characters, no newlines, no
+  other control characters.
 
 Validation failures send `UserMessageResponse { success: false, error }`
-with a translated error message.
+with an error message.
 
 **Example:**
 
@@ -191,10 +190,9 @@ Send a broadcast message to all connected users.
 | --------- | ------ | -------- | ------------------------------------- |
 | `message` | string | Yes      | Broadcast content (1-1024 characters) |
 
-**Field validation.** `message` is enforced by `validate_message` in
-`nexus-common/src/validators/`: non-empty after trim, ≤1024 characters, no
-newlines, no other control characters. A failure here is treated as a
-protocol violation and disconnects the connection.
+**Field validation.** `message`: non-empty after trim, ≤1024
+characters, no newlines, no other control characters. A failure here
+is treated as a protocol violation and disconnects the connection.
 
 **Example:**
 

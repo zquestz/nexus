@@ -109,12 +109,11 @@ Join or create a channel.
 | --------- | ------ | -------- | ------------------------------- |
 | `channel` | string | Yes      | Channel name (e.g., `#general`) |
 
-**Field validation.** `channel` is enforced by `validate_channel` in
-`nexus-common/src/validators/`: non-empty, must start with `#`, has at
-least one character after the prefix, ≤32 characters, no invalid
+**Field validation.** `channel`: non-empty, must start with `#`, has
+at least one character after the prefix, ≤32 characters, no invalid
 characters (whitespace, control characters, additional `#`).
 Validation failures send `ChatJoinResponse { success: false, error }`
-with a translated error message.
+with an error message.
 
 **Example:**
 
@@ -173,10 +172,9 @@ Leave a channel.
 | `channel` | string | Yes      | Channel name |
 
 **Field validation.** Same rules as
-[`ChatJoin`](#chatjoin-client--server) for `channel`
-(`validate_channel`). Validation failures send
-`ChatLeaveResponse { success: false, error }` with a translated error
-message.
+[`ChatJoin`](#chatjoin-client--server) for `channel`. Validation
+failures send `ChatLeaveResponse { success: false, error }` with an
+error message.
 
 **Example:**
 
@@ -279,10 +277,9 @@ Toggle secret mode on a channel.
 | `secret`  | boolean | Yes      | Whether to make the channel secret |
 
 **Field validation.** Same rules as
-[`ChatJoin`](#chatjoin-client--server) for `channel`
-(`validate_channel`). Validation failures send
-`ChatSecretResponse { success: false, error }` with a translated error
-message.
+[`ChatJoin`](#chatjoin-client--server) for `channel`. Validation
+failures send `ChatSecretResponse { success: false, error }` with an
+error message.
 
 **Example:**
 
@@ -320,19 +317,18 @@ Send a chat message to a channel.
 | `action`  | string | No       | Action type: `"Normal"` (default) or `"Me"` |
 | `channel` | string | Yes      | Target channel                              |
 
-**Field validation.** Each input field is enforced by a validator in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `message` — `validate_message`: non-empty after trim, ≤1024 characters,
-  no newlines, no other control characters. A failure here is treated
-  as a protocol violation and disconnects the connection.
-- `channel` — `validate_channel`: non-empty, must start with `#`, has
-  at least one character after the prefix, ≤32 characters, no invalid
-  characters (whitespace, control characters, additional `#`). A
-  failure here sends a generic `Error` message; the connection stays
-  open. (`ChatSend` has no typed `ChatSendResponse` — successful
-  sends fan out via `ChatReceive` broadcasts to other members, and a
-  per-send ack would be unreasonably chatty.)
+- `message`: non-empty after trim, ≤1024 characters, no newlines, no
+  other control characters. A failure here is treated as a protocol
+  violation and disconnects the connection.
+- `channel`: non-empty, must start with `#`, has at least one
+  character after the prefix, ≤32 characters, no invalid characters
+  (whitespace, control characters, additional `#`). A failure here
+  sends a generic `Error` message; the connection stays open.
+  (`ChatSend` has no typed `ChatSendResponse` — successful sends fan
+  out via `ChatReceive` broadcasts to other members, and a per-send
+  ack would be unreasonably chatty.)
 
 **Example:**
 
@@ -433,18 +429,17 @@ Update a channel's topic.
 | `topic`   | string | Yes      | New topic (0-256 characters, empty to clear) |
 | `channel` | string | Yes      | Target channel                               |
 
-**Field validation.** Each input field is enforced by a validator in
-`nexus-common/src/validators/`:
+**Field validation.**
 
-- `topic` — `validate_chat_topic`: ≤256 characters, no newlines, no other
-  control characters. Empty string is allowed (clears the topic).
-- `channel` — `validate_channel`: non-empty, must start with `#`, has
-  at least one character after the prefix, ≤32 characters, no invalid
-  characters (whitespace, control characters, additional `#`).
+- `topic`: ≤256 characters, no newlines, no other control characters.
+  Empty string is allowed (clears the topic).
+- `channel`: non-empty, must start with `#`, has at least one
+  character after the prefix, ≤32 characters, no invalid characters
+  (whitespace, control characters, additional `#`).
 
 Validation failures send
-`ChatTopicUpdateResponse { success: false, error }` with a translated
-error message.
+`ChatTopicUpdateResponse { success: false, error }` with an error
+message.
 
 **Set topic example:**
 
@@ -733,8 +728,8 @@ Both settings are configurable by admins via `ServerInfoUpdate` and visible to a
 - The sender receives their own message as a broadcast (for confirmation)
 - Messages are delivered in order per sender, but interleaving between senders is possible
 - `session_id` in `ChatMessage` can be used to identify the sender's session
-- Topic is persisted in the database for persistent channels only
-- Ephemeral channel topics are stored in-memory and lost on restart
+- Topic is persisted for persistent channels only; ephemeral channel
+  topics do not survive a server restart
 - Empty topic (`""`) is valid and clears the topic display
 - Channel names are case-insensitive but preserve the case of the first creator
 - Flood protection is shared across channel messages and user messages per connection

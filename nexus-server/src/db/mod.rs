@@ -11,6 +11,7 @@ pub mod sql;
 pub mod trackers;
 pub mod trusts;
 pub mod users;
+mod util;
 
 #[cfg(test)]
 pub mod testing;
@@ -18,7 +19,7 @@ pub mod testing;
 pub use bans::BanDb;
 pub use channels::ChannelDb;
 pub use config::ConfigDb;
-pub use groups::GroupDb;
+pub use groups::{GroupDb, UpdateGroupResult};
 pub use news::NewsDb;
 pub use password::{hash_password_async, verify_password_async};
 // Sync helpers retained for tests (cheap fast-hash path) and the cached test
@@ -33,7 +34,7 @@ pub use trackers::{
     is_transient_db_error,
 };
 pub use trusts::TrustDb;
-pub use users::{CreateUserParams, UpdateUserParams, UserDb};
+pub use users::{CreateUserParams, UpdateUserParams, UpdateUserResult, UserDb};
 
 use std::path::{Path, PathBuf};
 

@@ -1,4 +1,4 @@
-# Messaggi di errore del tracker (v0.1.0)
+# Messaggi di errore del tracker
 #
 # Tutte le chiavi usano il prefisso `err-tracker-*` per mantenerle isolate
 # dallo spazio dei nomi di localizzazione di nexus-server. Le chiavi

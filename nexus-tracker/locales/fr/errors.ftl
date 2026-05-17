@@ -1,4 +1,4 @@
-# Messages d'erreur du tracker (v0.1.0)
+# Messages d'erreur du tracker
 #
 # Toutes les clés utilisent le préfixe `err-tracker-*` pour les isoler de
 # l'espace de noms de localisation de nexus-server. Les clés correspondent

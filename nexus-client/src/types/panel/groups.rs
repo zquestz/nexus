@@ -30,6 +30,14 @@ pub enum GroupManagementMode {
         member_count: u32,
         /// Group permissions (editable)
         permissions: Vec<(String, bool)>,
+        /// Bandwidth weight (subject to the delegation rule on the server:
+        /// non-admins can set it only at or below their own resolved
+        /// weight; admins bypass).
+        bandwidth_weight: u16,
+        /// Original bandwidth weight as loaded from the server. Used to
+        /// detect whether the user changed the value so the update message
+        /// only carries the field when it differs.
+        original_bandwidth_weight: u16,
     },
     /// Confirming deletion of a group
     ConfirmDelete {
@@ -61,6 +69,8 @@ pub struct GroupManagementState {
     pub is_shared: bool,
     /// Permissions for create form
     pub permissions: Vec<(String, bool)>,
+    /// Bandwidth weight for create form (default 1).
+    pub bandwidth_weight: u16,
     /// Error message for create form
     pub create_error: Option<String>,
     /// Error message for edit form
@@ -94,6 +104,7 @@ impl Default for GroupManagementState {
                 .iter()
                 .map(|s| (s.to_string(), DEFAULT_USER_PERMISSIONS.contains(s)))
                 .collect(),
+            bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
             create_error: None,
             edit_error: None,
             list_error: None,
@@ -124,6 +135,7 @@ impl GroupManagementState {
         for (perm_name, enabled) in &mut self.permissions {
             *enabled = DEFAULT_USER_PERMISSIONS.contains(&perm_name.as_str());
         }
+        self.bandwidth_weight = nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT;
         self.create_error = None;
         self.is_submitting = false;
     }
@@ -142,6 +154,7 @@ impl GroupManagementState {
         is_shared: bool,
         member_count: u32,
         permissions: Vec<String>,
+        bandwidth_weight: u16,
     ) {
         let mut perm_map: Vec<(String, bool)> = ALL_PERMISSIONS
             .iter()
@@ -159,6 +172,8 @@ impl GroupManagementState {
             is_shared,
             member_count,
             permissions: perm_map,
+            bandwidth_weight,
+            original_bandwidth_weight: bandwidth_weight,
         };
         self.edit_error = None;
     }

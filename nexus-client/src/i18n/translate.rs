@@ -373,44 +373,26 @@ mod tests {
     // =========================================================================
 
     /// Read a Fluent `.ftl` file and return the set of top-level message
-    /// keys defined in it. Skips comments, blank lines, attribute
-    /// continuations, and any line whose left-of-`=` doesn't look like a
-    /// Fluent identifier.
+    /// keys defined in it. Uses the real `fluent_syntax::parser` so any
+    /// Fluent feature (multi-line values, message attributes, term refs,
+    /// etc.) is handled correctly.
     fn collect_keys_in_ftl(path: &Path) -> HashSet<String> {
-        let mut keys: HashSet<String> = HashSet::new();
+        use fluent_syntax::ast::Entry;
         let content = match fs::read_to_string(path) {
             Ok(c) => c,
-            Err(_) => return keys,
+            Err(_) => return HashSet::new(),
         };
-        for line in content.lines() {
-            if line.is_empty() {
-                continue;
-            }
-            // Comments
-            if let Some(first) = line.chars().next()
-                && (first == '#' || first.is_whitespace())
-            {
-                continue;
-            }
-            // Find the `=`
-            let Some(eq) = line.find('=') else {
-                continue;
-            };
-            let key = line[..eq].trim();
-            // Fluent identifier shape: starts with a letter, otherwise
-            // letters / digits / `-` / `_`. Reject anything else.
-            let mut chars = key.chars();
-            let valid = match chars.next() {
-                Some(c) if c.is_alphabetic() => {
-                    chars.all(|c| c.is_alphanumeric() || c == '-' || c == '_')
-                }
-                _ => false,
-            };
-            if valid {
-                keys.insert(key.to_string());
-            }
-        }
-        keys
+        // `parse` returns `Err((Resource, Vec<Error>))` on partial parse —
+        // we still want what parsed successfully, so accept either arm.
+        let resource = fluent_syntax::parser::parse(content.as_str()).unwrap_or_else(|(r, _)| r);
+        resource
+            .body
+            .into_iter()
+            .filter_map(|entry| match entry {
+                Entry::Message(msg) => Some(msg.id.name.to_string()),
+                _ => None,
+            })
+            .collect()
     }
 
     /// All non-EN locale codes the client supports. Mirrors the file

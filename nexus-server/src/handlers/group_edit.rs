@@ -62,6 +62,7 @@ where
             is_shared: None,
             permissions: None,
             member_count: None,
+            bandwidth_weight: None,
         };
         return ctx.send_message(&response).await;
     }
@@ -78,6 +79,7 @@ where
                 is_shared: None,
                 permissions: None,
                 member_count: None,
+                bandwidth_weight: None,
             };
             return ctx.send_message(&response).await;
         }
@@ -120,6 +122,7 @@ where
         is_shared: Some(group.is_shared),
         permissions: Some(permissions),
         member_count: Some(member_count),
+        bandwidth_weight: Some(group.bandwidth_weight),
     };
 
     ctx.send_message(&response).await
@@ -201,6 +204,7 @@ mod tests {
                 "Editors",
                 false,
                 &Permissions::from(&[Permission::NewsEdit, Permission::ChatSend]),
+                1,
             )
             .await
             .unwrap();
@@ -219,6 +223,7 @@ mod tests {
                 is_shared,
                 permissions,
                 member_count,
+                bandwidth_weight: _,
             } => {
                 assert!(success);
                 assert!(error.is_none());
@@ -246,7 +251,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("SharedGroup", true, &Permissions::new())
+            .create_group("SharedGroup", true, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -264,6 +269,7 @@ mod tests {
                 is_shared,
                 permissions,
                 member_count,
+                bandwidth_weight: _,
             } => {
                 assert!(success);
                 assert!(error.is_none());

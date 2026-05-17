@@ -266,6 +266,8 @@ Some settings are configured at runtime by admins through the client:
 | Public address         | Hostname/IP advertised in shareable `nexus://` URIs (optional; empty = unset)    |
 | Max connections per IP | Limit concurrent connections (default: 5)                                        |
 | Max transfers per IP   | Limit concurrent file transfers (default: 3)                                     |
+| Max outbound rate      | Server-wide outbound bandwidth cap, in Mbps (default: 0 = unlimited)             |
+| Scheduler chunk size   | Egress scheduler packet size, in bytes (default: 8192; range 1024–65536)         |
 | File reindex interval  | Minutes between search index rebuilds (default: 5, 0 to disable)                 |
 | Persistent channels    | Space-separated channel names that survive restart (default: `#nexus`)           |
 | Auto-join channels     | Space-separated channels users join on login (default: `#nexus`)                 |
@@ -281,6 +283,69 @@ see [Server Info → Tracker Management](../client/10-server-info.md#tracker-man
 for the admin walk-through. The protocol-level reference lives at
 [Admin → Listing Trackers](../protocol/09-admin.md#listing-trackers).
 Up to 64 trackers may be configured.
+
+## Bandwidth
+
+Nexus enforces a server-wide outbound bandwidth cap, dispatched
+through a per-user weighted fair-share scheduler. Two server-level
+knobs control the cap and the scheduler's chunking; per-user
+weighting is configured per account (see
+[User Management → Bandwidth Weight](05-user-management.md#bandwidth-weight)).
+
+The cap covers all WAN client connections across the BBS and transfer
+ports. Voice (UDP) is exempt — it's real-time and would degrade with
+queueing. LAN connections are bypassed (see
+[LAN Bypass](#lan-bypass) below).
+
+### Max Outbound
+
+`Max outbound rate` is the total outbound cap in Mbps. Set it to your
+uplink's actual capacity, or a fraction of it if other services share
+the same machine. The edit form accepts fractional Mbps (e.g., `0.5`
+for a 500 Kbps DSL uplink) but integer values are typical (`100`,
+`1000`).
+
+A value of `0` disables the cap entirely. The scheduler still
+dispatches WAN connections (so live cap changes take effect
+immediately), but no rate limiting is applied — bytes flow as fast as
+the kernel can drain the socket. The Config display renders
+`Unlimited` in this mode.
+
+### Scheduler Chunk Size
+
+The scheduler chunks every enqueued payload into
+`scheduler_chunk_size`-byte packets for fair-queueing. Chunking is
+invisible above the scheduler — TCP is a byte stream and clients
+reassemble frames as usual.
+
+| Property | Value                      |
+| -------- | -------------------------- |
+| Default  | 8192 (8 KB)                |
+| Range    | 1024–65536 (1 KB to 64 KB) |
+| Unit     | bytes                      |
+
+The worst-case latency for a small message arriving behind one
+in-flight chunk is `chunk_size / cap_rate`. Smaller chunks tighten
+that bound at the cost of more scheduler operations per byte
+transferred. The default is a reasonable balance for most uplinks;
+change it only if you have a specific reason.
+
+`scheduler_chunk_size` is admin-only — non-admin users do not see it
+in the Config display, and only admins can change it in the edit
+form. It's a pure internal tuning knob with no user-facing meaning.
+
+### LAN Bypass
+
+The scheduler bypasses connections classified as LAN. LAN flows write
+directly to their socket — they don't share the rate budget and can't
+starve WAN traffic. Your `max_outbound_rate` setting governs WAN
+egress only; local clients always get full speed.
+
+LAN classification:
+
+- Loopback (`127.0.0.0/8`, `::1`)
+- RFC 1918 private IPv4 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`)
+- IPv6 ULA (`fc00::/7`)
 
 ## Example Configurations
 

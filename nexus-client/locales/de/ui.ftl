@@ -1383,3 +1383,13 @@ permission-tracker_add = Tracker Hinzufügen
 permission-tracker_edit = Tracker Bearbeiten
 permission-tracker_remove = Tracker Entfernen
 
+label-bandwidth-section = Bandbreite
+label-bandwidth-weight = Bandbreitengewicht:
+label-chat-section = Chat
+label-files-section = Dateien
+label-general-section = Allgemein
+label-inherit-bandwidth-weight = Bandbreitengewicht erben
+label-max-outbound-rate = Max. ausgehend (Mbit/s):
+label-unlimited = Unbegrenzt
+label-scheduler-chunk-size = Scheduler-Blockgröße (Bytes):
+

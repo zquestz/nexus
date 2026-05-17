@@ -198,12 +198,11 @@ Request detailed information about a specific user.
 | ---------- | ------ | -------- | ----------------------------------- |
 | `nickname` | string | Yes      | Display name of the user to look up |
 
-**Field validation.** `nickname` is enforced by `validate_nickname` in
-`nexus-common/src/validators/`: non-empty, ≤32 characters; Unicode
+**Field validation.** `nickname`: non-empty, ≤32 characters; Unicode
 letters or ASCII graphic characters only; rejects whitespace, control
 characters, and the path-sensitive set `/ \ : . < > " | ? * #`.
 Validation failures send `UserInfoResponse { success: false, error }`
-with a translated error message.
+with an error message.
 
 **Example:**
 
@@ -420,45 +419,47 @@ Broadcast when a user's account is modified (e.g., username change, admin status
 
 Basic user information returned in lists and broadcasts.
 
-| Field         | Type    | Description                                           |
-| ------------- | ------- | ----------------------------------------------------- |
-| `id`          | integer | Unique user account ID                                |
-| `username`    | string  | Account username (database key)                       |
-| `nickname`    | string  | Display name (equals username for regular accounts)   |
-| `login_time`  | integer | Unix timestamp of login (or creation for `all: true`) |
-| `is_admin`    | boolean | Whether user has admin privileges                     |
-| `is_shared`   | boolean | Whether this is a shared account session              |
-| `session_ids` | array   | List of active session IDs                            |
-| `locale`      | string  | User's preferred locale                               |
-| `avatar`      | string  | Avatar as data URI (null if none)                     |
-| `is_away`     | boolean | Whether user is away                                  |
-| `status`      | string  | User's status message (null if none)                  |
-| `group_id`    | integer | User's group ID (null if no group)                    |
-| `group_name`  | string  | User's group name (null if no group)                  |
+| Field              | Type    | Description                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`               | integer | Unique user account ID                                                                                                                                                                                                                                                                                                                                                                                            |
+| `username`         | string  | Account username (account identifier)                                                                                                                                                                                                                                                                                                                                                                             |
+| `nickname`         | string  | Display name (equals username for regular accounts)                                                                                                                                                                                                                                                                                                                                                               |
+| `login_time`       | integer | Unix timestamp of login (or creation for `all: true`)                                                                                                                                                                                                                                                                                                                                                             |
+| `is_admin`         | boolean | Whether user has admin privileges                                                                                                                                                                                                                                                                                                                                                                                 |
+| `is_shared`        | boolean | Whether this is a shared account session                                                                                                                                                                                                                                                                                                                                                                          |
+| `session_ids`      | array   | List of active session IDs                                                                                                                                                                                                                                                                                                                                                                                        |
+| `locale`           | string  | User's preferred locale                                                                                                                                                                                                                                                                                                                                                                                           |
+| `avatar`           | string  | Avatar as data URI (null if none)                                                                                                                                                                                                                                                                                                                                                                                 |
+| `is_away`          | boolean | Whether user is away                                                                                                                                                                                                                                                                                                                                                                                              |
+| `status`           | string  | User's status message (null if none)                                                                                                                                                                                                                                                                                                                                                                              |
+| `group_id`         | integer | User's group ID (null if no group). Always null when `is_admin: true` — admin XOR group invariant.                                                                                                                                                                                                                                                                                                                |
+| `group_name`       | string  | User's group name (null if no group)                                                                                                                                                                                                                                                                                                                                                                              |
+| `bandwidth_weight` | integer | Resolved effective bandwidth weight (override → admin-default → group → system default). Controls the user's share of the server's outbound bandwidth cap when flows contend — see [Server Configuration → Bandwidth](../server/02-configuration.md#bandwidth). Null only on responses from 0.8.x peers that pre-date the field; servers at this protocol version always populate it (becomes required in 0.9.0). |
 
 ### UserInfoDetailed
 
 Extended user information for individual queries.
 
-| Field         | Type    | Description                                                      |
-| ------------- | ------- | ---------------------------------------------------------------- |
-| `id`          | integer | Unique user account ID                                           |
-| `username`    | string  | Account username                                                 |
-| `nickname`    | string  | Display name                                                     |
-| `login_time`  | integer | Unix timestamp of login                                          |
-| `is_shared`   | boolean | Whether this is a shared account                                 |
-| `session_ids` | array   | List of active session IDs                                       |
-| `features`    | array   | Enabled client features                                          |
-| `created_at`  | integer | Account creation timestamp                                       |
-| `locale`      | string  | User's preferred locale                                          |
-| `avatar`      | string  | Avatar as data URI (null if none)                                |
-| `is_away`     | boolean | Whether user is away                                             |
-| `status`      | string  | User's status message (null if none)                             |
-| `is_admin`    | boolean | Admin status (only visible to admins)                            |
-| `addresses`   | array   | IP addresses (only visible to admins)                            |
-| `channels`    | array   | Channels the user is in (secret channels only visible to admins) |
-| `group_id`    | integer | User's group ID (null if no group)                               |
-| `group_name`  | string  | User's group name (null if no group)                             |
+| Field              | Type    | Description                                                                                        |
+| ------------------ | ------- | -------------------------------------------------------------------------------------------------- |
+| `id`               | integer | Unique user account ID                                                                             |
+| `username`         | string  | Account username                                                                                   |
+| `nickname`         | string  | Display name                                                                                       |
+| `login_time`       | integer | Unix timestamp of login                                                                            |
+| `is_shared`        | boolean | Whether this is a shared account                                                                   |
+| `session_ids`      | array   | List of active session IDs                                                                         |
+| `features`         | array   | Enabled client features                                                                            |
+| `created_at`       | integer | Account creation timestamp                                                                         |
+| `locale`           | string  | User's preferred locale                                                                            |
+| `avatar`           | string  | Avatar as data URI (null if none)                                                                  |
+| `is_away`          | boolean | Whether user is away                                                                               |
+| `status`           | string  | User's status message (null if none)                                                               |
+| `is_admin`         | boolean | Admin status (only visible to admins)                                                              |
+| `addresses`        | array   | IP addresses (only visible to admins)                                                              |
+| `channels`         | array   | Channels the user is in (secret channels only visible to admins)                                   |
+| `group_id`         | integer | User's group ID (null if no group). Always null when `is_admin: true` — admin XOR group invariant. |
+| `group_name`       | string  | User's group name (null if no group)                                                               |
+| `bandwidth_weight` | integer | Resolved effective bandwidth weight (see `UserInfo.bandwidth_weight` for null semantics).          |
 
 ## Permissions
 
@@ -474,10 +475,10 @@ Admins have all permissions automatically.
 
 The protocol distinguishes between username and nickname:
 
-| Field      | Description                 | Example (Regular) | Example (Shared) |
-| ---------- | --------------------------- | ----------------- | ---------------- |
-| `username` | Database account identifier | `alice`           | `shared_acct`    |
-| `nickname` | Display name shown in UI    | `alice`           | `Visitor`        |
+| Field      | Description              | Example (Regular) | Example (Shared) |
+| ---------- | ------------------------ | ----------------- | ---------------- |
+| `username` | Account identifier       | `alice`           | `shared_acct`    |
+| `nickname` | Display name shown in UI | `alice`           | `Visitor`        |
 
 **Golden rule:** "Users type what they see." When users need to reference another user (e.g., for user messages, kicks, info), they use the `nickname` field.
 
@@ -518,11 +519,10 @@ Set the user as away, optionally with a status message.
 | --------- | ------ | -------- | -------------------------------------------- |
 | `message` | string | No       | Optional status message (max 128 characters) |
 
-**Field validation.** `message` is enforced by `validate_status` in
-`nexus-common/src/validators/`: ≤128 characters, no newlines, no other
-control characters. Empty/null is allowed (away without a message).
-Validation failures send `UserAwayResponse { success: false, error }`
-with a translated error message.
+**Field validation.** `message`: ≤128 characters, no newlines, no
+other control characters. Empty/null is allowed (away without a
+message). Validation failures send
+`UserAwayResponse { success: false, error }` with an error message.
 
 **Example (away with message):**
 
@@ -576,11 +576,10 @@ Set or clear a status message without changing away state.
 | -------- | ------ | -------- | -------------------------------------------------- |
 | `status` | string | No       | Status message (null to clear, max 128 characters) |
 
-**Field validation.** `status` is enforced by `validate_status` in
-`nexus-common/src/validators/`: ≤128 characters, no newlines, no other
-control characters. Empty/null is allowed (clears the status).
+**Field validation.** `status`: ≤128 characters, no newlines, no
+other control characters. Empty/null is allowed (clears the status).
 Validation failures send `UserStatusResponse { success: false, error }`
-with a translated error message.
+with an error message.
 
 **Example (set status):**
 
@@ -652,7 +651,7 @@ User lists are sorted alphabetically by nickname (case-insensitive).
 ## Notes
 
 - `UserList` with `all: false` only returns currently connected users
-- `UserList` with `all: true` returns all database accounts (for user management)
+- `UserList` with `all: true` returns all accounts (for user management)
 - `UserInfo` only works for online users (lookup by nickname)
 - `UserConnected` and `UserDisconnected` are only sent to users with `user_list` permission
 - `UserUpdated` is sent when an admin modifies a user account

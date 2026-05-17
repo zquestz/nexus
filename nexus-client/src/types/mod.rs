@@ -33,6 +33,7 @@ pub use panel::{
     TrackerBrowserState, TrackerCacheEntry, TrackerEditInit, TrackerManagementMode,
     TrackerManagementSortColumn, TrackerManagementState, TransferSortColumn, UserEditInit,
     UserManagementMode, UserManagementSortColumn, UserManagementState, UserManagementTab,
+    format_bytes_per_sec_as_mbps,
 };
 pub use pending::{PendingRequests, ResponseRouting};
 pub use tracker::ClientTracker;

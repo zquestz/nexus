@@ -1,4 +1,4 @@
-# Tracker error messages (v0.1.0)
+# Tracker error messages
 #
 # All keys use the `err-tracker-*` prefix to keep them isolated from the
 # nexus-server locale namespace. Keys correspond 1:1 with `err_tracker_*`

@@ -18,7 +18,7 @@ err-status-invalid-characters = 離席メッセージに無効な文字が含ま
 
 # 共有アカウントエラー
 err-shared-cannot-be-admin = 共有アカウントは管理者になれません
-err-shared-cannot-change-password = 共有アカウントのパスワードは変更できません
+err-shared-cannot-self-edit = 共有アカウントは自身を編集できません
 err-shared-invalid-permissions = 共有アカウントはこれらの権限を持つことができません: { $permissions }
 err-shared-message-requires-nickname = 共有アカウントにはニックネームでのみメッセージを送信できます
 err-shared-kick-requires-nickname = 共有アカウントはニックネームでのみキックできます
@@ -74,6 +74,7 @@ err-cannot-edit-self = 自分自身を編集できません
 err-current-password-required = パスワードを変更するには現在のパスワードが必要です
 err-current-password-incorrect = 現在のパスワードが正しくありません
 err-cannot-create-admin = 管理者ユーザーを作成できるのは管理者のみです
+err-admin-cannot-have-group = 管理者ユーザーをグループに割り当てることはできません
 err-cannot-kick-self = 自分自身をキックできません
 err-cannot-kick-admin = 管理者ユーザーをキックできません
 err-cannot-delete-admin = 管理者ユーザーを削除できるのは管理者のみです
@@ -316,3 +317,10 @@ err-tracker-unknown = トラッカーが不明なエラーを報告しました
 # Flood Protection Errors
 err-flood-warning = メッセージが制限されました（警告 { $violation }/{ $max_violations }）。{ $seconds }秒後に再度送信できます。続けると切断されます。
 err-flood-disconnect = 切断されました：チャットの速度制限を超えました。
+
+# Bandwidth Errors
+err-bandwidth-weight-delegation = 自分を超える帯域幅の重みは付与できません
+err-bandwidth-weight-inherit-would-elevate = 自分を超える帯域幅の重みは継承できません
+err-bandwidth-weight-zero = 帯域幅の重みは少なくとも { $min } である必要があります
+err-bandwidth-chunk-size-too-small = スケジューラーのチャンクサイズは少なくとも { $min } バイトである必要があります
+err-bandwidth-chunk-size-too-large = スケジューラーのチャンクサイズは最大で { $max } バイトである必要があります

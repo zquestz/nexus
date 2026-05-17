@@ -215,7 +215,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("TestGroup", false, &Permissions::new())
+            .create_group("TestGroup", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -261,7 +261,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("BusyGroup", false, &Permissions::new())
+            .create_group("BusyGroup", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -278,6 +278,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -310,7 +311,7 @@ mod tests {
         let group = test_ctx
             .db
             .groups
-            .create_group("AdminDeleteMe", false, &Permissions::new())
+            .create_group("AdminDeleteMe", false, &Permissions::new(), 1)
             .await
             .unwrap();
 

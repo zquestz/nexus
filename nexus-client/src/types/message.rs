@@ -202,6 +202,10 @@ pub enum Message {
     EditServerInfoMaxConnectionsChanged(u32),
     /// Server info edit: Max transfers per IP field changed
     EditServerInfoMaxTransfersChanged(u32),
+    /// Server info edit: Max outbound rate (Mbps, NumberInput<f64>) field changed
+    EditServerInfoMaxOutboundRateChanged(f64),
+    /// Server info edit: Scheduler chunk size (bytes, NumberInput) field changed
+    EditServerInfoSchedulerChunkSizeChanged(Option<u32>),
     /// Server info edit: File reindex interval field changed
     EditServerInfoFileReindexIntervalChanged(u32),
     /// Server info edit: Name field changed
@@ -531,8 +535,16 @@ pub enum Message {
     UserManagementTabSelected(UserManagementTab),
     /// User management: Create form - group dropdown changed
     UserManagementGroupSelected(Option<i64>),
+    /// User management: Create form - bandwidth weight (u16) changed
+    UserManagementBandwidthWeightChanged(u16),
+    /// User management: Create form - inherit bandwidth weight checkbox toggled
+    UserManagementInheritBandwidthWeightToggled(bool),
     /// User management: Edit form - group dropdown changed
     UserManagementEditGroupSelected(Option<i64>),
+    /// User management: Edit form - bandwidth weight (u16) changed
+    UserManagementEditBandwidthWeightChanged(u16),
+    /// User management: Edit form - inherit bandwidth weight checkbox toggled
+    UserManagementEditInheritBandwidthWeightToggled(bool),
     /// User management: Refresh users list (Users tab toolbar)
     UserManagementRefreshUsers,
     /// User management: Refresh groups list (Groups tab toolbar)
@@ -543,6 +555,8 @@ pub enum Message {
     GroupManagementShowCreate,
     /// Group management: Create form - name field changed
     GroupManagementNameChanged(String),
+    /// Group management: Create form - bandwidth weight (u16) changed
+    GroupManagementBandwidthWeightChanged(u16),
     /// Group management: Create form - is shared checkbox toggled
     GroupManagementIsSharedToggled(bool),
     /// Group management: Create form - permission checkbox toggled
@@ -559,6 +573,8 @@ pub enum Message {
     GroupManagementCancelDelete,
     /// Group management: Edit form - name field changed
     GroupManagementEditNameChanged(String),
+    /// Group management: Edit form - bandwidth weight (u16) changed
+    GroupManagementEditBandwidthWeightChanged(u16),
     /// Group management: Edit form - is shared checkbox toggled
     GroupManagementEditIsSharedToggled(bool),
     /// Group management: Edit form - permission checkbox toggled

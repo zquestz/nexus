@@ -1,9 +1,11 @@
 //! User account database operations
 
 use nexus_common::validators;
+use nexus_common::validators::{DEFAULT_BANDWIDTH_WEIGHT, resolve_bandwidth_weight};
 use sqlx::SqlitePool;
 
 use super::permissions::{Permission, Permissions};
+use super::util::clamp_db_bandwidth_weight;
 use crate::db::sql;
 
 /// Parameters for creating a new user account
@@ -16,6 +18,8 @@ pub struct CreateUserParams<'a> {
     pub permissions: &'a Permissions,
     pub group_id: Option<i64>,
     pub revokes: &'a [Permission],
+    /// `None` stores NULL (resolver falls back to group or system default).
+    pub bandwidth_weight: Option<u16>,
 }
 
 /// Parameters for updating a user account
@@ -27,6 +31,11 @@ pub struct CreateUserParams<'a> {
 /// - `remove_group: true` — remove from group
 /// - `group_id: Some(id)` — assign to group
 /// - Both false/None — no group change
+///
+/// Bandwidth weight change: `inherit_bandwidth_weight` takes precedence over `bandwidth_weight`.
+/// - `inherit_bandwidth_weight: true` — store NULL (inherit from group)
+/// - `bandwidth_weight: Some(w)` — store override
+/// - Both false/None — no change
 pub struct UpdateUserParams<'a> {
     pub username: &'a str,
     pub new_username: Option<&'a str>,
@@ -37,6 +46,47 @@ pub struct UpdateUserParams<'a> {
     pub revokes: Option<&'a [Permission]>,
     pub remove_group: bool,
     pub group_id: Option<i64>,
+    pub bandwidth_weight: Option<u16>,
+    pub inherit_bandwidth_weight: bool,
+}
+
+/// Outcome of `update_user`.
+///
+/// Distinguishes a successful update — which carries the user's new
+/// effective `bandwidth_weight` resolved inside the same transaction as
+/// the write — from a constraint-block (last-admin protection, duplicate
+/// username, user not found). Both arms are `Ok(_)`; only true DB errors
+/// produce `Err(sqlx::Error)`.
+///
+/// Computing the resolved weight inside the same transaction as the
+/// write is the key invariant: no secondary read can fail after the
+/// write succeeded, so callers never observe a "succeeded-but-bandwidth-
+/// unknown" torn state.
+#[derive(Debug, Clone)]
+pub enum UpdateUserResult {
+    /// Update succeeded.
+    ///
+    /// `account` is the post-update `UserAccount` assembled from the
+    /// in-scope values the UPDATE just wrote — same shape as
+    /// `update_group`'s `UpdateGroupResult.group`. Callers consume this
+    /// instead of re-fetching the row via `get_user_by_username`,
+    /// removing both an extra DB round-trip and the
+    /// "what-we-asked-to-write vs what-we-actually-wrote" divergence
+    /// where the handler computes its own `final_username` /
+    /// `final_is_admin`.
+    ///
+    /// `resolved_bandwidth_weight` is the user's post-update effective
+    /// weight (override → admin default → group → system default),
+    /// resolved inside the same transaction. Suitable for writing
+    /// straight to session caches.
+    Updated {
+        account: UserAccount,
+        resolved_bandwidth_weight: u16,
+    },
+    /// Update was blocked by an atomic constraint or the user was not
+    /// found. The caller distinguishes the specific reason with a
+    /// follow-up SELECT (existing pattern).
+    Blocked,
 }
 
 /// User account stored in database
@@ -63,10 +113,24 @@ pub struct UserAccount {
     pub enabled: bool,
     pub created_at: i64,
     pub group_id: Option<i64>,
+    /// Raw stored weight (`None` = inherit from group or system default).
+    pub bandwidth_weight: Option<u16>,
 }
 
-/// Row type for user queries
-type UserRow = (i64, String, String, bool, bool, bool, i64, Option<i64>);
+/// Row type for user queries (matches `SQL_SELECT_USER_BY_*`).
+/// SQLite returns the nullable `bandwidth_weight` column as `Option<i64>`; the
+/// validator bounds (1..=65535) guarantee the cast back to `u16` is lossless.
+type UserRow = (
+    i64,
+    String,
+    String,
+    bool,
+    bool,
+    bool,
+    i64,
+    Option<i64>,
+    Option<i64>,
+);
 
 impl From<UserRow> for UserAccount {
     fn from(row: UserRow) -> Self {
@@ -79,6 +143,7 @@ impl From<UserRow> for UserAccount {
             enabled: row.5,
             created_at: row.6,
             group_id: row.7,
+            bandwidth_weight: row.8.map(clamp_db_bandwidth_weight),
         }
     }
 }
@@ -196,6 +261,86 @@ impl UserDb {
     // ========================================================================
     // Permission Methods
     // ========================================================================
+
+    /// Resolve a user's effective bandwidth weight
+    ///
+    /// Resolution:
+    /// 1. `user.bandwidth_weight` — explicit per-user override always wins.
+    /// 2. If the user is admin → `DEFAULT_ADMIN_BANDWIDTH_WEIGHT` (admins
+    ///    don't belong to groups, so this slots in where group resolution
+    ///    would otherwise apply).
+    /// 3. `group.bandwidth_weight` — inherited from the user's group.
+    /// 4. `DEFAULT_BANDWIDTH_WEIGHT` — server-wide fallback.
+    ///
+    /// Returns `DEFAULT_BANDWIDTH_WEIGHT` for unknown users (intended for
+    /// scheduler hot path — caller does not need to handle "user gone" as an
+    /// error case).
+    pub async fn get_resolved_bandwidth_weight(&self, user_id: i64) -> Result<u16, sqlx::Error> {
+        let row: Option<(Option<i64>, Option<i64>, bool)> =
+            sqlx::query_as(sql::SQL_SELECT_USER_AND_GROUP_BANDWIDTH_WEIGHT)
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
+
+        let Some((user_weight, group_weight, is_admin)) = row else {
+            return Ok(DEFAULT_BANDWIDTH_WEIGHT);
+        };
+
+        Ok(resolve_bandwidth_weight(
+            user_weight.map(clamp_db_bandwidth_weight),
+            group_weight.map(clamp_db_bandwidth_weight),
+            is_admin,
+        ))
+    }
+
+    /// Resolve the user's effective bandwidth weight *as if their per-user
+    /// override were cleared* AND their group were `proposed_group_id`.
+    /// Used by the delegation check for `inherit_bandwidth_weight:
+    /// Some(true)` — we need to know what the resolver will return AFTER
+    /// the override is removed, accounting for any pending group change in
+    /// the same request.
+    ///
+    /// `proposed_group_id`:
+    /// - `Some(gid)` → user will be in group `gid` after the update
+    /// - `None` → user will have no group after the update
+    ///
+    /// When the request leaves the group unchanged, the caller passes the
+    /// user's current group_id (so the join uses the same value the
+    /// post-update resolver would see).
+    ///
+    /// Resolution (mirrors `get_resolved_bandwidth_weight` with the user
+    /// override stripped and the group substituted):
+    /// 1. If the user is admin → `DEFAULT_ADMIN_BANDWIDTH_WEIGHT`.
+    /// 2. If `proposed_group_id` is `Some(gid)` and the group exists →
+    ///    that group's `bandwidth_weight`.
+    /// 3. Otherwise → `DEFAULT_BANDWIDTH_WEIGHT`.
+    ///
+    /// Returns `DEFAULT_BANDWIDTH_WEIGHT` for unknown users.
+    pub async fn get_inherited_bandwidth_weight(
+        &self,
+        user_id: i64,
+        proposed_group_id: Option<i64>,
+    ) -> Result<u16, sqlx::Error> {
+        let row: Option<(bool, Option<i64>)> =
+            sqlx::query_as(sql::SQL_SELECT_USER_ADMIN_AND_PROPOSED_GROUP_WEIGHT)
+                .bind(proposed_group_id)
+                .bind(user_id)
+                .fetch_optional(&self.pool)
+                .await?;
+
+        let Some((is_admin, group_weight)) = row else {
+            return Ok(DEFAULT_BANDWIDTH_WEIGHT);
+        };
+
+        // `None` for the override: this query is for the "what does the
+        // resolver return AFTER the override is cleared" delegation check,
+        // so we deliberately bypass the user-override branch.
+        Ok(resolve_bandwidth_weight(
+            None,
+            group_weight.map(clamp_db_bandwidth_weight),
+            is_admin,
+        ))
+    }
 
     /// Get effective permissions for a user, resolving group + overrides
     ///
@@ -347,6 +492,14 @@ impl UserDb {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
+        // Defense-in-depth: per-user override (when present) must be non-zero.
+        // u16 type caps the upper bound; the validator rejects 0.
+        if let Some(w) = params.bandwidth_weight
+            && let Err(e) = validators::validate_bandwidth_weight(w)
+        {
+            return Err(sqlx::Error::Protocol(format!("{:?}", e)));
+        }
+
         let created_at = chrono::Utc::now().timestamp();
 
         // Use a transaction to ensure user and permissions are created atomically
@@ -360,6 +513,7 @@ impl UserDb {
             .bind(params.enabled)
             .bind(created_at)
             .bind(params.group_id)
+            .bind(params.bandwidth_weight.map(i64::from))
             .execute(&mut *tx)
             .await?;
 
@@ -412,6 +566,7 @@ impl UserDb {
             enabled: params.enabled,
             created_at,
             group_id: params.group_id,
+            bandwidth_weight: params.bandwidth_weight,
         })
     }
 
@@ -462,6 +617,7 @@ impl UserDb {
             .bind(true) // enabled = true
             .bind(created_at)
             .bind(None::<i64>) // group_id = None (first user never has a group)
+            .bind(None::<i64>) // bandwidth_weight = NULL (inherit / system default)
             .execute(&mut *tx)
             .await?;
 
@@ -479,6 +635,7 @@ impl UserDb {
             enabled: true,
             created_at,
             group_id: None,
+            bandwidth_weight: None,
         }))
     }
 
@@ -528,21 +685,29 @@ impl UserDb {
     ///
     /// # Return Value
     ///
-    /// - `Ok(true)`: Update succeeded
-    /// - `Ok(false)`: Update blocked by protection or user not found
+    /// - `Ok(UpdateUserResult::Updated { resolved_bandwidth_weight })`:
+    ///   Update succeeded. The resolved weight is computed inside the
+    ///   same transaction as the write, so callers can refresh session
+    ///   caches without a follow-up DB read (which could itself fail and
+    ///   produce a torn state).
+    /// - `Ok(UpdateUserResult::Blocked)`: Update blocked by atomic
+    ///   constraint or user not found.
     ///
     /// # Note
     ///
-    /// When `Ok(false)` is returned, the caller must distinguish between:
+    /// When `Blocked` is returned, the caller must distinguish between:
     /// - User not found
     /// - Last admin demotion attempt
     /// - Last enabled admin disable attempt
     /// - Duplicate username conflict
-    pub async fn update_user(&self, params: UpdateUserParams<'_>) -> Result<bool, sqlx::Error> {
+    pub async fn update_user(
+        &self,
+        params: UpdateUserParams<'_>,
+    ) -> Result<UpdateUserResult, sqlx::Error> {
         // First, get the user to update
         let user = match self.get_user_by_username(params.username).await? {
             Some(u) => u,
-            None => return Ok(false),
+            None => return Ok(UpdateUserResult::Blocked),
         };
 
         // Check if new username already exists (and it's not the same user)
@@ -551,7 +716,7 @@ impl UserDb {
             && self.get_user_by_username(new_name).await?.is_some()
         {
             // Username already taken
-            return Ok(false);
+            return Ok(UpdateUserResult::Blocked);
         }
 
         // Build the final values for each field
@@ -565,12 +730,61 @@ impl UserDb {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
+        // Defense-in-depth: bandwidth_weight override (when present and
+        // actually about to be stored) must be non-zero. Skip when
+        // `inherit_bandwidth_weight` takes precedence — the value will be
+        // discarded by the precedence resolution below, so a client sending
+        // {bandwidth_weight: Some(0), inherit_bandwidth_weight: true} must
+        // not be rejected as if the zero were going to land in the DB.
+        // u16 type caps the upper bound; the validator rejects 0.
+        if !params.inherit_bandwidth_weight
+            && let Some(w) = params.bandwidth_weight
+            && let Err(e) = validators::validate_bandwidth_weight(w)
+        {
+            return Err(sqlx::Error::Protocol(format!("{:?}", e)));
+        }
+
         let final_password = params.new_password_hash.unwrap_or(&user.hashed_password);
         let final_is_admin = params.is_admin.unwrap_or(user.is_admin);
         let final_enabled = params.enabled.unwrap_or(user.enabled);
+        // inherit_bandwidth_weight takes precedence over an explicit value (matches
+        // the remove_group ↔ group_id precedence above and in the protocol).
+        let final_bandwidth_weight: Option<i64> = if params.inherit_bandwidth_weight {
+            None
+        } else if let Some(w) = params.bandwidth_weight {
+            Some(w.into())
+        } else {
+            user.bandwidth_weight.map(i64::from)
+        };
 
         // Use a transaction to ensure user update and permissions are atomic
         let mut tx = self.pool.begin().await?;
+
+        // Promotion auto-clean: when flipping from non-admin to admin, NULL
+        // group_id and wipe permission override rows. The schema CHECK
+        // forbids admin + group_id together, so without this step
+        // SQL_UPDATE_USER below would fail on any user who currently has a
+        // group. Permission rows are dead state for admins (resolver
+        // short-circuits to all-permissions); clearing them prevents
+        // orphan revokes from resurfacing on a future demote.
+        //
+        // The companion invariant (admin XOR shared) takes the opposite
+        // approach — see `handlers/user_update.rs` where promoting a
+        // shared account is rejected outright rather than auto-cleaned.
+        // The asymmetry is deliberate: clearing a group is benign,
+        // demoting `is_shared` would orphan a shared account's
+        // per-session nicknames.
+        if final_is_admin && !user.is_admin {
+            sqlx::query(sql::SQL_UPDATE_USER_GROUP)
+                .bind(None::<i64>)
+                .bind(user.id)
+                .execute(&mut *tx)
+                .await?;
+            sqlx::query(sql::SQL_DELETE_PERMISSIONS)
+                .bind(user.id)
+                .execute(&mut *tx)
+                .await?;
+        }
 
         // Execute update with atomic last-admin protection
         // The SQL includes conditions to prevent:
@@ -581,6 +795,7 @@ impl UserDb {
             .bind(final_password)
             .bind(final_is_admin)
             .bind(final_enabled)
+            .bind(final_bandwidth_weight)
             .bind(user.id)
             .bind(final_enabled) // Final enabled status for the "enabling" check
             .bind(final_is_admin) // Final admin status for the "promoting" check
@@ -594,10 +809,10 @@ impl UserDb {
             tx.rollback().await?;
             if self.get_user_by_username(params.username).await?.is_some() {
                 // User exists but update was blocked - must be last admin protection
-                return Ok(false);
+                return Ok(UpdateUserResult::Blocked);
             }
             // User doesn't exist
-            return Ok(false);
+            return Ok(UpdateUserResult::Blocked);
         }
 
         // Update permissions and/or revokes if provided
@@ -677,9 +892,62 @@ impl UserDb {
             }
         }
 
+        // In-transaction resolution: compute the post-update effective
+        // bandwidth weight before commit. A successful update +
+        // failed secondary read would be a torn state — the write would
+        // land but the caller couldn't refresh session caches. Doing the
+        // resolution here means either everything succeeds together or
+        // everything rolls back together.
+        let resolve_row: Option<(Option<i64>, Option<i64>, bool)> =
+            sqlx::query_as(sql::SQL_SELECT_USER_AND_GROUP_BANDWIDTH_WEIGHT)
+                .bind(user.id)
+                .fetch_optional(&mut *tx)
+                .await?;
+
+        // Defense: we just confirmed the UPDATE affected this user's row,
+        // so a missing row here would be a corruption-grade invariant
+        // break. Fall back to the no-row resolution (matches the standalone
+        // resolver) rather than panic — the daemon must not die because a
+        // FK was concurrently broken under us.
+        let resolved_bandwidth_weight = match resolve_row {
+            Some((user_weight, group_weight, is_admin)) => resolve_bandwidth_weight(
+                user_weight.map(clamp_db_bandwidth_weight),
+                group_weight.map(clamp_db_bandwidth_weight),
+                is_admin,
+            ),
+            None => DEFAULT_BANDWIDTH_WEIGHT,
+        };
+
         tx.commit().await?;
 
-        Ok(true)
+        // Assemble the post-update `UserAccount` from the values we just
+        // wrote — same shape as `update_group`'s `GroupRecord`. No extra
+        // read; everything is already in scope. The group_id reflects
+        // the precedence: promotion auto-clears it, then `remove_group`
+        // takes precedence over `group_id`, else unchanged.
+        let promotion_auto_clean = final_is_admin && !user.is_admin;
+        let final_group_id = if promotion_auto_clean || params.remove_group {
+            None
+        } else if let Some(new_group_id) = params.group_id {
+            Some(new_group_id)
+        } else {
+            user.group_id
+        };
+
+        Ok(UpdateUserResult::Updated {
+            account: UserAccount {
+                id: user.id,
+                username: final_username.to_string(),
+                hashed_password: final_password.to_string(),
+                is_admin: final_is_admin,
+                is_shared: user.is_shared,
+                enabled: final_enabled,
+                created_at: user.created_at,
+                group_id: final_group_id,
+                bandwidth_weight: final_bandwidth_weight.map(|w| w as u16),
+            },
+            resolved_bandwidth_weight,
+        })
     }
 
     /// Get revoke override permissions for a user
@@ -731,6 +999,7 @@ mod tests {
     use super::CreateUserParams;
     use super::*;
     use crate::db::testing::*;
+    use nexus_common::validators::DEFAULT_ADMIN_BANDWIDTH_WEIGHT;
 
     // ========================================================================
     // Database Operations Tests
@@ -752,6 +1021,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -789,6 +1059,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -818,6 +1089,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await;
         assert!(result.is_err()); // Should fail due to unique constraint
@@ -839,6 +1111,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -877,6 +1150,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -909,6 +1183,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -943,6 +1218,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -993,6 +1269,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1053,6 +1330,7 @@ mod tests {
                 permissions: &initial_perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1086,10 +1364,12 @@ mod tests {
                 revokes: None,
                 remove_group: false,
                 group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await
             .unwrap();
-        assert!(updated);
+        assert!(matches!(updated, UpdateUserResult::Updated { .. }));
 
         // Should have new permission
         assert!(
@@ -1130,6 +1410,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -1147,6 +1428,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1201,6 +1483,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1233,6 +1516,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1246,6 +1530,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1278,6 +1563,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -1293,6 +1579,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1326,6 +1613,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1339,6 +1627,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1383,6 +1672,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -1398,6 +1688,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1418,6 +1709,8 @@ mod tests {
                 revokes: None,
                 remove_group: false,
                 group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             }),
             db2.update_user(UpdateUserParams {
                 username: "bob",
@@ -1429,6 +1722,8 @@ mod tests {
                 revokes: None,
                 remove_group: false,
                 group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
         );
 
@@ -1500,6 +1795,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -1542,6 +1838,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1572,6 +1869,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1597,6 +1895,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1629,6 +1928,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -1659,6 +1959,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -1687,6 +1988,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1721,6 +2023,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -1733,6 +2036,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -1745,6 +2049,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -1788,6 +2093,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -1803,6 +2109,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1811,7 +2118,7 @@ mod tests {
 
         // Update the user (change password, etc.) - is_shared should remain unchanged
         // Note: update_user doesn't have is_shared parameter because it's immutable
-        let updated = db
+        let UpdateUserResult::Updated { account, .. } = db
             .update_user(UpdateUserParams {
                 username: "shared_acct",
                 new_username: None,
@@ -1822,23 +2129,19 @@ mod tests {
                 revokes: None,
                 remove_group: false,
                 group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await
-            .unwrap();
-
-        assert!(updated, "Update should succeed");
-
-        // Verify is_shared is still true
-        let retrieved = db
-            .get_user_by_username("shared_acct")
-            .await
             .unwrap()
-            .unwrap();
+        else {
+            panic!("update should have succeeded");
+        };
         assert!(
-            retrieved.is_shared,
+            account.is_shared,
             "is_shared should remain true after update"
         );
-        assert_eq!(retrieved.hashed_password, "new_hash");
+        assert_eq!(account.hashed_password, "new_hash");
     }
 
     // ========================================================================
@@ -1856,6 +2159,7 @@ mod tests {
                 "Mods",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -1870,6 +2174,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1896,6 +2201,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1921,6 +2227,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1944,6 +2251,7 @@ mod tests {
                 "Mods",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -1959,6 +2267,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1978,7 +2287,12 @@ mod tests {
 
         // Group with chat_send
         let group = group_db
-            .create_group("Basic", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Basic",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .unwrap();
 
@@ -1993,6 +2307,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2025,6 +2340,7 @@ mod tests {
                 "Mods",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -2040,6 +2356,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2076,6 +2393,7 @@ mod tests {
                     Permission::UserKick,
                     Permission::BanCreate,
                 ]),
+                1,
             )
             .await
             .unwrap();
@@ -2090,6 +2408,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2131,7 +2450,12 @@ mod tests {
 
         // Group with chat_send only
         let group = group_db
-            .create_group("Basic", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Basic",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .unwrap();
 
@@ -2145,6 +2469,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2182,6 +2507,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2220,7 +2546,7 @@ mod tests {
 
         // Group with no permissions
         let group = group_db
-            .create_group("Empty", false, &Permissions::new())
+            .create_group("Empty", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -2234,6 +2560,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2250,7 +2577,7 @@ mod tests {
 
         // Group with no permissions, but user has a grant override
         let group = group_db
-            .create_group("Empty", false, &Permissions::new())
+            .create_group("Empty", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -2264,6 +2591,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2289,7 +2617,7 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Team", false, &Permissions::new())
+            .create_group("Team", false, &Permissions::new(), 1)
             .await
             .unwrap();
 
@@ -2302,6 +2630,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: Some(group.id),
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -2314,6 +2643,7 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: None,
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
@@ -2337,11 +2667,21 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group1 = group_db
-            .create_group("Group1", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Group1",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .unwrap();
         let group2 = group_db
-            .create_group("Group2", false, &Permissions::from(&[Permission::UserKick]))
+            .create_group(
+                "Group2",
+                false,
+                &Permissions::from(&[Permission::UserKick]),
+                1,
+            )
             .await
             .unwrap();
 
@@ -2355,6 +2695,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group1.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2362,7 +2703,7 @@ mod tests {
         assert_eq!(user.group_id, Some(group1.id));
 
         // Reassign to group2 via update_user
-        let updated = db
+        let UpdateUserResult::Updated { account, .. } = db
             .update_user(UpdateUserParams {
                 username: "alice",
                 new_username: None,
@@ -2373,14 +2714,16 @@ mod tests {
                 revokes: None,
                 remove_group: false,
                 group_id: Some(group2.id),
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await
-            .unwrap();
-        assert!(updated);
-
-        // Verify group changed
-        let fetched = db.get_user_by_id(user.id).await.unwrap().unwrap();
-        assert_eq!(fetched.group_id, Some(group2.id));
+            .unwrap()
+        else {
+            panic!("update should have succeeded");
+        };
+        assert_eq!(account.group_id, Some(group2.id), "group reassigned");
+        assert_eq!(account.id, user.id, "same user");
     }
 
     #[tokio::test]
@@ -2390,7 +2733,12 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group = group_db
-            .create_group("Team", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Team",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .unwrap();
 
@@ -2403,12 +2751,13 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: Some(group.id),
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
 
         // Remove group via update_user
-        let updated = db
+        let UpdateUserResult::Updated { account, .. } = db
             .update_user(UpdateUserParams {
                 username: "alice",
                 new_username: None,
@@ -2419,13 +2768,15 @@ mod tests {
                 revokes: None,
                 remove_group: true,
                 group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await
-            .unwrap();
-        assert!(updated);
-
-        let fetched = db.get_user_by_username("alice").await.unwrap().unwrap();
-        assert_eq!(fetched.group_id, None);
+            .unwrap()
+        else {
+            panic!("update should have succeeded");
+        };
+        assert_eq!(account.group_id, None);
     }
 
     #[tokio::test]
@@ -2435,11 +2786,21 @@ mod tests {
         let group_db = crate::db::GroupDb::new(pool.clone());
 
         let group1 = group_db
-            .create_group("Group1", false, &Permissions::from(&[Permission::ChatSend]))
+            .create_group(
+                "Group1",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
             .await
             .unwrap();
         let group2 = group_db
-            .create_group("Group2", false, &Permissions::from(&[Permission::UserKick]))
+            .create_group(
+                "Group2",
+                false,
+                &Permissions::from(&[Permission::UserKick]),
+                1,
+            )
             .await
             .unwrap();
 
@@ -2452,12 +2813,13 @@ mod tests {
             permissions: &Permissions::new(),
             group_id: Some(group1.id),
             revokes: &[],
+            bandwidth_weight: None,
         })
         .await
         .unwrap();
 
         // Both remove_group and group_id set — remove wins
-        let updated = db
+        let UpdateUserResult::Updated { account, .. } = db
             .update_user(UpdateUserParams {
                 username: "alice",
                 new_username: None,
@@ -2468,13 +2830,15 @@ mod tests {
                 revokes: None,
                 remove_group: true,
                 group_id: Some(group2.id),
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await
-            .unwrap();
-        assert!(updated);
-
-        let fetched = db.get_user_by_username("alice").await.unwrap().unwrap();
-        assert_eq!(fetched.group_id, None);
+            .unwrap()
+        else {
+            panic!("update should have succeeded");
+        };
+        assert_eq!(account.group_id, None, "remove_group wins over group_id");
     }
 
     // ========================================================================
@@ -2496,6 +2860,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2515,6 +2880,7 @@ mod tests {
                 "Mods",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -2529,6 +2895,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[Permission::UserKick],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2557,6 +2924,7 @@ mod tests {
                     Permission::UserKick,
                     Permission::BanCreate,
                 ]),
+                1,
             )
             .await
             .unwrap();
@@ -2571,6 +2939,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2606,6 +2975,7 @@ mod tests {
                 "Mods",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -2620,6 +2990,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[Permission::UserKick],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2650,6 +3021,7 @@ mod tests {
                 "Mods",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -2665,6 +3037,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2686,7 +3059,7 @@ mod tests {
             .unwrap();
 
         // Assign to group via update_user — should atomically clean up duplicate grants
-        let updated = db
+        let UpdateUserResult::Updated { account, .. } = db
             .update_user(UpdateUserParams {
                 username: "alice",
                 new_username: None,
@@ -2697,10 +3070,14 @@ mod tests {
                 revokes: None,
                 remove_group: false,
                 group_id: Some(group.id),
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await
-            .unwrap();
-        assert!(updated);
+            .unwrap()
+        else {
+            panic!("update should have succeeded");
+        };
 
         // chat_send grant should be removed (duplicate with group)
         // user_list grant should be kept (not in group)
@@ -2715,9 +3092,8 @@ mod tests {
         assert!(grant_perms.contains(&"user_list".to_string()));
         assert!(!grant_perms.contains(&"chat_send".to_string()));
 
-        // Verify group was actually assigned
-        let fetched = db.get_user_by_username("alice").await.unwrap().unwrap();
-        assert_eq!(fetched.group_id, Some(group.id));
+        // Group assignment reflected in the returned account.
+        assert_eq!(account.group_id, Some(group.id));
     }
 
     #[tokio::test]
@@ -2732,6 +3108,7 @@ mod tests {
                 "Mods",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -2747,6 +3124,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[Permission::UserKick],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2765,7 +3143,7 @@ mod tests {
         assert_eq!(revokes.len(), 1);
 
         // Remove from group via update_user — should atomically clear revokes, keep grants
-        let updated = db
+        let UpdateUserResult::Updated { account, .. } = db
             .update_user(UpdateUserParams {
                 username: "alice",
                 new_username: None,
@@ -2776,10 +3154,14 @@ mod tests {
                 revokes: None,
                 remove_group: true,
                 group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await
-            .unwrap();
-        assert!(updated);
+            .unwrap()
+        else {
+            panic!("update should have succeeded");
+        };
 
         // Grants should be kept (become individual permissions)
         let grant_rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_GRANT_PERMISSIONS)
@@ -2795,9 +3177,8 @@ mod tests {
         let revokes = db.get_revoke_permissions(user.id).await.unwrap();
         assert!(revokes.is_empty());
 
-        // Verify group was actually removed
-        let fetched = db.get_user_by_username("alice").await.unwrap().unwrap();
-        assert_eq!(fetched.group_id, None);
+        // Group removal reflected in the returned account.
+        assert_eq!(account.group_id, None);
     }
 
     #[tokio::test]
@@ -2812,6 +3193,7 @@ mod tests {
                 "OldGroup",
                 false,
                 &Permissions::from(&[Permission::ChatSend, Permission::ChatReceive]),
+                1,
             )
             .await
             .unwrap();
@@ -2820,6 +3202,7 @@ mod tests {
                 "NewGroup",
                 false,
                 &Permissions::from(&[Permission::UserList, Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -2835,6 +3218,7 @@ mod tests {
                 permissions: &Permissions::from(&[Permission::VoiceListen]),
                 group_id: Some(group1.id),
                 revokes: &[Permission::ChatReceive],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2852,7 +3236,7 @@ mod tests {
         // - New permissions: voice_listen (grant override on new group)
         // - New revokes: user_kick (revoke from new group)
         // - New group: group2 (user_list, user_kick)
-        let updated = db
+        let UpdateUserResult::Updated { account, .. } = db
             .update_user(UpdateUserParams {
                 username: "alice",
                 new_username: None,
@@ -2863,14 +3247,17 @@ mod tests {
                 revokes: Some(&[Permission::UserKick]),
                 remove_group: false,
                 group_id: Some(group2.id),
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await
-            .unwrap();
-        assert!(updated);
+            .unwrap()
+        else {
+            panic!("update should have succeeded");
+        };
 
-        // Verify group changed
-        let fetched = db.get_user_by_username("alice").await.unwrap().unwrap();
-        assert_eq!(fetched.group_id, Some(group2.id));
+        // Group reassignment reflected in the returned account.
+        assert_eq!(account.group_id, Some(group2.id));
 
         // Verify effective permissions:
         // group2 base (user_list, user_kick)
@@ -2929,5 +3316,1063 @@ mod tests {
                 .any(|(p, t)| p == "user_kick" && t == "revoke"),
             "user_kick should be stored as a revoke override"
         );
+    }
+
+    // ========================================================================
+    // Bandwidth Weight Tests
+    // ========================================================================
+
+    /// Helper: build a minimal CreateUserParams with a given bandwidth_weight override.
+    /// Lives next to its test users via a `static` so the returned reference satisfies
+    /// the `'a` lifetime without each caller allocating its own `Permissions::new()`.
+    fn create_user_params<'a>(
+        username: &'a str,
+        hashed_password: &'a str,
+        permissions: &'a Permissions,
+        group_id: Option<i64>,
+        bandwidth_weight: Option<u16>,
+    ) -> CreateUserParams<'a> {
+        CreateUserParams {
+            username,
+            hashed_password,
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions,
+            group_id,
+            revokes: &[],
+            bandwidth_weight,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_create_user_stores_bandwidth_weight_override() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        let user = db
+            .create_user(create_user_params("alice", "hash", &perms, None, Some(42)))
+            .await
+            .unwrap();
+
+        let fetched = db.get_user_by_id(user.id).await.unwrap().unwrap();
+        assert_eq!(fetched.bandwidth_weight, Some(42));
+    }
+
+    #[tokio::test]
+    async fn test_create_user_with_none_stores_null() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        let user = db
+            .create_user(create_user_params("alice", "hash", &perms, None, None))
+            .await
+            .unwrap();
+
+        let fetched = db.get_user_by_id(user.id).await.unwrap().unwrap();
+        assert!(fetched.bandwidth_weight.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_update_user_sets_explicit_weight() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        db.create_user(create_user_params("alice", "hash", &perms, None, None))
+            .await
+            .unwrap();
+
+        let UpdateUserResult::Updated { account, .. } = db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: Some(99),
+                inherit_bandwidth_weight: false,
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("update should have succeeded");
+        };
+        assert_eq!(account.bandwidth_weight, Some(99));
+    }
+
+    #[tokio::test]
+    async fn test_update_user_clear_sets_null() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        db.create_user(create_user_params("alice", "hash", &perms, None, Some(50)))
+            .await
+            .unwrap();
+
+        let UpdateUserResult::Updated { account, .. } = db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: true,
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("update should have succeeded");
+        };
+        assert!(account.bandwidth_weight.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_update_user_clear_takes_precedence_over_value() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        db.create_user(create_user_params("alice", "hash", &perms, None, Some(50)))
+            .await
+            .unwrap();
+
+        let UpdateUserResult::Updated { account, .. } = db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                // Flag wins: stored value should be NULL despite explicit Some(77).
+                bandwidth_weight: Some(77),
+                inherit_bandwidth_weight: true,
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("update should have succeeded");
+        };
+        assert!(account.bandwidth_weight.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_update_user_no_bandwidth_change_preserves_existing() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        db.create_user(create_user_params("alice", "hash", &perms, None, Some(123)))
+            .await
+            .unwrap();
+
+        // Change username only; leave bandwidth_weight untouched.
+        let UpdateUserResult::Updated { account, .. } = db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: Some("alice2"),
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("update should have succeeded");
+        };
+        assert_eq!(account.username, "alice2", "rename reflected");
+        assert_eq!(account.bandwidth_weight, Some(123), "override preserved");
+    }
+
+    /// Regression: the DB-layer's defense-in-depth zero-check on
+    /// `bandwidth_weight` must respect the same `inherit_bandwidth_weight`
+    /// precedence as the write logic ten lines below it. A request that
+    /// carries `bandwidth_weight: Some(0)` alongside
+    /// `inherit_bandwidth_weight: true` is logically valid — the zero will
+    /// be discarded by the precedence and the override cleared to NULL.
+    /// The defense must not reject the request as if the zero were going
+    /// to be stored.
+    #[tokio::test]
+    async fn test_update_user_inherit_with_zero_bandwidth_does_not_reject() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        db.create_user(create_user_params("alice", "hash", &perms, None, Some(50)))
+            .await
+            .unwrap();
+
+        // Both fields present: bandwidth_weight=0 (would be invalid on its own)
+        // but inherit=true makes the zero get discarded. The DB-layer
+        // defense-in-depth must mirror that precedence and accept the call.
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: Some(0),
+                inherit_bandwidth_weight: true,
+            })
+            .await;
+        assert!(
+            result.is_ok(),
+            "inherit=true must short-circuit the zero defense; got {:?}",
+            result.err()
+        );
+        let UpdateUserResult::Updated { account, .. } = result.unwrap() else {
+            panic!("row should report as updated");
+        };
+        // The precedence applied: stored override is now NULL.
+        assert!(
+            account.bandwidth_weight.is_none(),
+            "inherit_bandwidth_weight: true must clear the override regardless of the discarded bandwidth_weight value"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_resolved_bandwidth_weight_uses_user_override() {
+        let pool = create_test_db().await;
+        let user_db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        let group = group_db
+            .create_group("Mods", false, &Permissions::new(), 10)
+            .await
+            .unwrap();
+        let perms = Permissions::new();
+        let user = user_db
+            .create_user(create_user_params(
+                "alice",
+                "hash",
+                &perms,
+                Some(group.id),
+                Some(50),
+            ))
+            .await
+            .unwrap();
+
+        // User override (50) wins over group weight (10).
+        let resolved = user_db
+            .get_resolved_bandwidth_weight(user.id)
+            .await
+            .unwrap();
+        assert_eq!(resolved, 50);
+    }
+
+    #[tokio::test]
+    async fn test_get_resolved_bandwidth_weight_inherits_from_group() {
+        let pool = create_test_db().await;
+        let user_db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        let group = group_db
+            .create_group("Mods", false, &Permissions::new(), 25)
+            .await
+            .unwrap();
+        let perms = Permissions::new();
+        let user = user_db
+            .create_user(create_user_params(
+                "alice",
+                "hash",
+                &perms,
+                Some(group.id),
+                None,
+            ))
+            .await
+            .unwrap();
+
+        // No user override → group's weight wins.
+        let resolved = user_db
+            .get_resolved_bandwidth_weight(user.id)
+            .await
+            .unwrap();
+        assert_eq!(resolved, 25);
+    }
+
+    #[tokio::test]
+    async fn test_get_resolved_bandwidth_weight_falls_back_to_default() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        let user = db
+            .create_user(create_user_params("alice", "hash", &perms, None, None))
+            .await
+            .unwrap();
+
+        // No user override, no group → server default.
+        let resolved = db.get_resolved_bandwidth_weight(user.id).await.unwrap();
+        assert_eq!(resolved, DEFAULT_BANDWIDTH_WEIGHT);
+    }
+
+    #[tokio::test]
+    async fn test_get_resolved_bandwidth_weight_admin_default() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        let user = db
+            .create_user(CreateUserParams {
+                username: "admin",
+                hashed_password: "hash",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // Admin with no override → admin default (skips group lookup).
+        let resolved = db.get_resolved_bandwidth_weight(user.id).await.unwrap();
+        assert_eq!(resolved, DEFAULT_ADMIN_BANDWIDTH_WEIGHT);
+    }
+
+    #[tokio::test]
+    async fn test_get_resolved_bandwidth_weight_admin_override_wins() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        let user = db
+            .create_user(CreateUserParams {
+                username: "admin",
+                hashed_password: "hash",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: Some(7),
+            })
+            .await
+            .unwrap();
+
+        // Explicit per-user override beats the admin implicit default.
+        let resolved = db.get_resolved_bandwidth_weight(user.id).await.unwrap();
+        assert_eq!(resolved, 7);
+    }
+
+    #[tokio::test]
+    async fn test_create_user_admin_with_group_rejected() {
+        let pool = create_test_db().await;
+        let user_db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        let group = group_db
+            .create_group("Mods", false, &Permissions::new(), 25)
+            .await
+            .unwrap();
+        let perms = Permissions::new();
+        let result = user_db
+            .create_user(CreateUserParams {
+                username: "admin",
+                hashed_password: "hash",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: Some(group.id),
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await;
+
+        // Admin XOR group invariant: create_user must reject admin + group_id.
+        assert!(
+            result.is_err(),
+            "create_user should reject admin user with group_id"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_update_user_promotion_clears_group_and_permissions() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool.clone());
+
+        let group = group_db
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
+            .await
+            .unwrap();
+
+        // Non-admin user with group, grants, and revokes.
+        let mut grants = Permissions::new();
+        grants.permissions.insert(Permission::NewsList);
+        let user = db
+            .create_user(CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &grants,
+                group_id: Some(group.id),
+                revokes: &[Permission::ChatSend],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(user.group_id, Some(group.id));
+        let count_perm_rows = async |id: i64| -> i64 {
+            let (n,): (i64,) =
+                sqlx::query_as("SELECT COUNT(*) FROM user_permissions WHERE user_id = ?")
+                    .bind(id)
+                    .fetch_one(&pool)
+                    .await
+                    .unwrap();
+            n
+        };
+        assert!(
+            count_perm_rows(user.id).await > 0,
+            "fixture should have permission rows"
+        );
+
+        // Promote to admin without touching group / permissions in the request.
+        // The promotion auto-clean must NULL group_id and wipe all override rows
+        // so the schema CHECK passes and no stale state survives.
+        let UpdateUserResult::Updated { account, .. } = db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: Some(true),
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+            })
+            .await
+            .unwrap()
+        else {
+            panic!("update should have succeeded");
+        };
+
+        assert!(account.is_admin, "user should now be admin");
+        assert_eq!(
+            account.group_id, None,
+            "promotion must clear group_id (CHECK constraint forbids admin + group)"
+        );
+        // Permission rows are persistent state that's not on the returned
+        // account; verify directly via DB to confirm the auto-clean.
+        assert_eq!(
+            count_perm_rows(user.id).await,
+            0,
+            "promotion must wipe all permission override rows (admins resolve to all)"
+        );
+    }
+
+    /// Schema-level pin: the CHECK constraint must reject any user row with
+    /// both `is_admin = 1` and `is_shared = 1`. The handler layer also blocks
+    /// this combination (UserCreate rejects it, UserUpdate rejects promoting
+    /// a shared user to admin), but the CHECK is the storage-layer safety net
+    /// that catches any path that bypasses the handlers.
+    #[tokio::test]
+    async fn test_schema_rejects_admin_and_shared() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        // Going through create_user would route the combination through the
+        // DB layer's INSERT. The CHECK constraint fires inside SQLite and
+        // surfaces as an sqlx error — create_user propagates it.
+        let result = db
+            .create_user(CreateUserParams {
+                username: "evil",
+                hashed_password: "hash",
+                is_admin: true,
+                is_shared: true,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await;
+        assert!(
+            result.is_err(),
+            "admin+shared insert must be rejected by the schema CHECK"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_get_resolved_bandwidth_weight_unknown_user_returns_default() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        // No user with this id exists; resolver returns default rather than erroring.
+        let resolved = db.get_resolved_bandwidth_weight(99_999).await.unwrap();
+        assert_eq!(resolved, DEFAULT_BANDWIDTH_WEIGHT);
+    }
+
+    #[tokio::test]
+    async fn test_get_inherited_bandwidth_weight_ignores_user_override() {
+        let pool = create_test_db().await;
+        let user_db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        let group = group_db
+            .create_group("Mods", false, &Permissions::new(), 25)
+            .await
+            .unwrap();
+        let perms = Permissions::new();
+        let user = user_db
+            .create_user(create_user_params(
+                "alice",
+                "hash",
+                &perms,
+                Some(group.id),
+                Some(7),
+            ))
+            .await
+            .unwrap();
+
+        // User override is 7, but inherited weight ignores it → group's 25.
+        // Pass the user's current group_id as the "proposed" group: the
+        // caller's contract is to ask "what would the inherited weight be
+        // if the user were in group X" — when no group change is requested,
+        // X is the current group_id.
+        let inherited = user_db
+            .get_inherited_bandwidth_weight(user.id, Some(group.id))
+            .await
+            .unwrap();
+        assert_eq!(inherited, 25);
+    }
+
+    #[tokio::test]
+    async fn test_get_inherited_bandwidth_weight_admin() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        let user = db
+            .create_user(CreateUserParams {
+                username: "admin",
+                hashed_password: "hash",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // Admin → admin default, regardless of override or proposed group.
+        let inherited = db
+            .get_inherited_bandwidth_weight(user.id, None)
+            .await
+            .unwrap();
+        assert_eq!(inherited, DEFAULT_ADMIN_BANDWIDTH_WEIGHT);
+    }
+
+    #[tokio::test]
+    async fn test_get_inherited_bandwidth_weight_no_group_no_override() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        let user = db
+            .create_user(create_user_params("alice", "hash", &perms, None, None))
+            .await
+            .unwrap();
+
+        // No proposed group, no admin → system default.
+        let inherited = db
+            .get_inherited_bandwidth_weight(user.id, None)
+            .await
+            .unwrap();
+        assert_eq!(inherited, DEFAULT_BANDWIDTH_WEIGHT);
+    }
+
+    #[tokio::test]
+    async fn test_get_inherited_bandwidth_weight_unknown_user_returns_default() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let inherited = db
+            .get_inherited_bandwidth_weight(99_999, None)
+            .await
+            .unwrap();
+        assert_eq!(inherited, DEFAULT_BANDWIDTH_WEIGHT);
+    }
+
+    /// Regression: `proposed_group_id` must drive the join — using the
+    /// user's current group_id from the DB would defeat the purpose of the
+    /// parameter (which exists so the inherit-delegation check can ask
+    /// "what WILL the inherited weight be after this pending group change?").
+    #[tokio::test]
+    async fn test_get_inherited_bandwidth_weight_uses_proposed_group_not_current() {
+        let pool = create_test_db().await;
+        let user_db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        let high_group = group_db
+            .create_group("High", false, &Permissions::new(), 100)
+            .await
+            .unwrap();
+        let low_group = group_db
+            .create_group("Low", false, &Permissions::new(), 5)
+            .await
+            .unwrap();
+        let perms = Permissions::new();
+        // User currently in high-weight group.
+        let user = user_db
+            .create_user(create_user_params(
+                "alice",
+                "hash",
+                &perms,
+                Some(high_group.id),
+                None,
+            ))
+            .await
+            .unwrap();
+
+        // Ask: "what would alice's inherited weight be in the low group?"
+        let in_low = user_db
+            .get_inherited_bandwidth_weight(user.id, Some(low_group.id))
+            .await
+            .unwrap();
+        assert_eq!(
+            in_low, 5,
+            "proposed group must drive resolution, ignoring the user's current group_id"
+        );
+
+        // And "in no group" → system default, not high group's 100.
+        let in_none = user_db
+            .get_inherited_bandwidth_weight(user.id, None)
+            .await
+            .unwrap();
+        assert_eq!(in_none, DEFAULT_BANDWIDTH_WEIGHT);
+    }
+
+    // ========================================================================
+    // In-transaction contract: update_user returns the post-update
+    // effective weight resolved inside the same transaction as the write.
+    //
+    // These tests pin the invariant that the value reported by
+    // `UpdateUserResult::Updated.resolved_bandwidth_weight` matches what
+    // `get_resolved_bandwidth_weight` would return immediately after the
+    // commit — no torn states, no follow-up DB read needed for callers.
+    // ========================================================================
+
+    /// Setting a new override → resolved equals the override.
+    #[tokio::test]
+    async fn test_update_user_returns_resolved_for_override_set() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        db.create_user(create_user_params("alice", "hash", &perms, None, None))
+            .await
+            .unwrap();
+
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: Some(77),
+                inherit_bandwidth_weight: false,
+            })
+            .await
+            .unwrap();
+
+        match result {
+            UpdateUserResult::Updated {
+                account,
+                resolved_bandwidth_weight,
+            } => {
+                assert_eq!(resolved_bandwidth_weight, 77);
+                assert_eq!(account.bandwidth_weight, Some(77), "stored override");
+            }
+            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+        }
+    }
+
+    /// Clearing an override on a user with a group → resolved equals the
+    /// group's weight (override removed, group inheritance takes over).
+    #[tokio::test]
+    async fn test_update_user_returns_resolved_for_inherit_with_group() {
+        let pool = create_test_db().await;
+        let user_db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        let group = group_db
+            .create_group("Tier1", false, &Permissions::new(), 30)
+            .await
+            .unwrap();
+        let perms = Permissions::new();
+        user_db
+            .create_user(create_user_params(
+                "alice",
+                "hash",
+                &perms,
+                Some(group.id),
+                Some(99),
+            ))
+            .await
+            .unwrap();
+
+        let result = user_db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: true,
+            })
+            .await
+            .unwrap();
+
+        match result {
+            UpdateUserResult::Updated {
+                account,
+                resolved_bandwidth_weight,
+            } => {
+                assert_eq!(
+                    resolved_bandwidth_weight, 30,
+                    "inherit should resolve to group weight"
+                );
+                assert!(
+                    account.bandwidth_weight.is_none(),
+                    "inherit clears the stored override"
+                );
+            }
+            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+        }
+    }
+
+    /// Clearing an override on a non-admin user with no group → resolved
+    /// falls back to the system default.
+    #[tokio::test]
+    async fn test_update_user_returns_resolved_for_inherit_no_group() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        db.create_user(create_user_params("alice", "hash", &perms, None, Some(55)))
+            .await
+            .unwrap();
+
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: true,
+            })
+            .await
+            .unwrap();
+
+        match result {
+            UpdateUserResult::Updated {
+                account,
+                resolved_bandwidth_weight,
+            } => {
+                assert_eq!(resolved_bandwidth_weight, DEFAULT_BANDWIDTH_WEIGHT);
+                assert!(account.bandwidth_weight.is_none(), "override cleared");
+            }
+            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+        }
+    }
+
+    /// Promoting a non-admin to admin → resolved jumps to the admin
+    /// default, regardless of any prior override or group. The promotion
+    /// also auto-clears group_id (admin XOR group invariant), so this
+    /// covers the cross-side-effect path.
+    #[tokio::test]
+    async fn test_update_user_returns_resolved_for_admin_promotion() {
+        let pool = create_test_db().await;
+        let user_db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        let group = group_db
+            .create_group("Tier1", false, &Permissions::new(), 30)
+            .await
+            .unwrap();
+        let perms = Permissions::new();
+        user_db
+            .create_user(create_user_params(
+                "alice",
+                "hash",
+                &perms,
+                Some(group.id),
+                None,
+            ))
+            .await
+            .unwrap();
+
+        let result = user_db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: Some(true),
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+            })
+            .await
+            .unwrap();
+
+        match result {
+            UpdateUserResult::Updated {
+                account,
+                resolved_bandwidth_weight,
+            } => {
+                assert_eq!(
+                    resolved_bandwidth_weight, DEFAULT_ADMIN_BANDWIDTH_WEIGHT,
+                    "promotion should resolve to admin default"
+                );
+                assert!(account.is_admin, "promotion should flip is_admin");
+                assert!(
+                    account.group_id.is_none(),
+                    "promotion auto-clean should NULL group_id"
+                );
+            }
+            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+        }
+    }
+
+    /// A request that doesn't touch any bandwidth-relevant field still
+    /// returns the user's current effective weight — the resolution runs
+    /// unconditionally inside the tx so callers don't have to branch on
+    /// "did the bandwidth-relevant fields change?" before consuming the
+    /// value.
+    #[tokio::test]
+    async fn test_update_user_returns_resolved_for_unchanged_bandwidth() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        let perms = Permissions::new();
+        db.create_user(create_user_params("alice", "hash", &perms, None, Some(88)))
+            .await
+            .unwrap();
+
+        // Username change only — bandwidth_weight untouched.
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: Some("alice2"),
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+            })
+            .await
+            .unwrap();
+
+        match result {
+            UpdateUserResult::Updated {
+                account,
+                resolved_bandwidth_weight,
+            } => {
+                assert_eq!(
+                    resolved_bandwidth_weight, 88,
+                    "unchanged bandwidth → resolved still equals the existing override"
+                );
+                assert_eq!(account.username, "alice2", "rename should be reflected");
+                assert_eq!(account.bandwidth_weight, Some(88), "override preserved");
+            }
+            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+        }
+    }
+
+    /// The post-write in-tx resolution must agree with what
+    /// `get_resolved_bandwidth_weight` would return immediately after
+    /// commit. Pins the contract that the two resolution paths are
+    /// equivalent — no future drift can split them.
+    #[tokio::test]
+    async fn test_update_user_resolved_matches_standalone_resolver() {
+        let pool = create_test_db().await;
+        let user_db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        let group = group_db
+            .create_group("Tier1", false, &Permissions::new(), 30)
+            .await
+            .unwrap();
+        let perms = Permissions::new();
+        let user = user_db
+            .create_user(create_user_params(
+                "alice",
+                "hash",
+                &perms,
+                Some(group.id),
+                None,
+            ))
+            .await
+            .unwrap();
+
+        let result = user_db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: Some(150),
+                inherit_bandwidth_weight: false,
+            })
+            .await
+            .unwrap();
+
+        let in_tx = match result {
+            UpdateUserResult::Updated {
+                account: _,
+                resolved_bandwidth_weight,
+            } => resolved_bandwidth_weight,
+            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+        };
+        let standalone = user_db
+            .get_resolved_bandwidth_weight(user.id)
+            .await
+            .unwrap();
+        assert_eq!(
+            in_tx, standalone,
+            "in-tx resolution and standalone resolver must agree"
+        );
+    }
+
+    /// Trust-anchor for the `account` field of `UpdateUserResult::Updated`:
+    /// the assembled `UserAccount` (built from in-scope values) must
+    /// equal what a fresh `get_user_by_id` returns for the same row.
+    /// If the assembly ever diverges from the actual SQL writes, this
+    /// test catches it — and callers can stop double-fetching to verify.
+    #[tokio::test]
+    async fn test_update_user_returned_account_matches_db_row() {
+        let pool = create_test_db().await;
+        let user_db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        let group = group_db
+            .create_group("Tier1", false, &Permissions::new(), 30)
+            .await
+            .unwrap();
+        let perms = Permissions::new();
+        let user = user_db
+            .create_user(create_user_params(
+                "alice",
+                "hash",
+                &perms,
+                Some(group.id),
+                Some(99),
+            ))
+            .await
+            .unwrap();
+
+        // Touch every assembly-relevant field at once: rename, password,
+        // enabled, override, remove_group. Pins the assembly contract
+        // across the whole shape, not just one field at a time.
+        let result = user_db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: Some("alice2"),
+                new_password_hash: Some("newhash"),
+                is_admin: None,
+                enabled: Some(false),
+                permissions: None,
+                revokes: None,
+                remove_group: true,
+                group_id: None,
+                bandwidth_weight: Some(42),
+                inherit_bandwidth_weight: false,
+            })
+            .await
+            .unwrap();
+
+        let returned_account = match result {
+            UpdateUserResult::Updated { account, .. } => account,
+            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+        };
+        let row = user_db
+            .get_user_by_id(user.id)
+            .await
+            .unwrap()
+            .expect("user should still exist after update");
+
+        assert_eq!(returned_account.id, row.id);
+        assert_eq!(returned_account.username, row.username);
+        assert_eq!(returned_account.hashed_password, row.hashed_password);
+        assert_eq!(returned_account.is_admin, row.is_admin);
+        assert_eq!(returned_account.is_shared, row.is_shared);
+        assert_eq!(returned_account.enabled, row.enabled);
+        assert_eq!(returned_account.created_at, row.created_at);
+        assert_eq!(returned_account.group_id, row.group_id);
+        assert_eq!(returned_account.bandwidth_weight, row.bandwidth_weight);
     }
 }

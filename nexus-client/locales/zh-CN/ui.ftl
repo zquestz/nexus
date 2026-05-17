@@ -1311,3 +1311,13 @@ err-tracker-update-failed = 更新追踪器失败
 err-tracker-remove-failed = 移除追踪器失败
 err-tracker-accept-fingerprint-failed = 接受指纹失败
 err-tracker-edit-no-payload = 服务器未返回追踪器详细信息
+
+label-bandwidth-section = 带宽
+label-bandwidth-weight = 带宽权重：
+label-chat-section = 聊天
+label-files-section = 文件
+label-general-section = 常规
+label-inherit-bandwidth-weight = 继承带宽权重
+label-max-outbound-rate = 最大出站 (Mbps)：
+label-unlimited = 无限制
+label-scheduler-chunk-size = 调度器块大小 (字节)：

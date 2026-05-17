@@ -210,6 +210,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -396,6 +397,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -527,6 +529,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -544,6 +547,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -570,6 +574,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -661,6 +666,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();

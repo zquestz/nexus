@@ -18,7 +18,7 @@ err-status-invalid-characters = Status message contains invalid characters
 
 # Shared Account Errors
 err-shared-cannot-be-admin = Shared accounts cannot be admins
-err-shared-cannot-change-password = Cannot change password on shared account
+err-shared-cannot-self-edit = Shared accounts cannot edit themselves
 err-shared-invalid-permissions = Shared accounts cannot have these permissions: { $permissions }
 err-shared-message-requires-nickname = Shared accounts can only be messaged by nickname
 err-shared-kick-requires-nickname = Shared accounts can only be kicked by nickname
@@ -63,6 +63,7 @@ err-cannot-edit-self = You cannot edit yourself
 err-current-password-required = Current password is required to change your password
 err-current-password-incorrect = Current password is incorrect
 err-cannot-create-admin = Only admins can create admin users
+err-admin-cannot-have-group = Cannot assign admin users to a group
 err-cannot-kick-self = You cannot kick yourself
 err-cannot-kick-admin = Cannot kick admin users
 err-cannot-delete-admin = Only admins can delete admin users
@@ -320,3 +321,16 @@ err-flood-warning = Message rate limited (warning { $violation } of { $max_viola
    *[other] seconds
 }. Continued flooding will result in disconnection.
 err-flood-disconnect = Disconnected: chat rate limit exceeded.
+
+# Bandwidth Errors
+err-bandwidth-weight-delegation = Cannot grant a bandwidth weight above your own
+err-bandwidth-weight-inherit-would-elevate = Cannot inherit a bandwidth weight above your own
+err-bandwidth-weight-zero = Bandwidth weight must be at least { $min }
+err-bandwidth-chunk-size-too-small = Scheduler chunk size must be at least { $min } { $min ->
+    [one] byte
+   *[other] bytes
+}
+err-bandwidth-chunk-size-too-large = Scheduler chunk size must be at most { $max } { $max ->
+    [one] byte
+   *[other] bytes
+}

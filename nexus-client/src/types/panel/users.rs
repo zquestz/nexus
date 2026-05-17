@@ -94,6 +94,16 @@ pub enum UserManagementMode {
         /// Permissions explicitly revoked from the group for this user.
         /// Empty when user has no group.
         revoked_permissions: Vec<String>,
+        /// Bandwidth weight override (editable). `None` = inherit from group,
+        /// `Some(w)` = individual override.
+        bandwidth_weight_override: Option<u16>,
+        /// "Inherit from group" checkbox state. Drives the override
+        /// vs inherit-on-submit decision.
+        bandwidth_weight_inherit: bool,
+        /// Original bandwidth weight override from the server (used to
+        /// diff against the form value so the update message only carries
+        /// the field when it changed).
+        original_bandwidth_weight_override: Option<u16>,
     },
     /// Confirming deletion of a user
     ConfirmDelete {
@@ -135,6 +145,14 @@ pub struct UserManagementState {
     pub permissions: Vec<(String, bool)>,
     /// Group ID for create user form (None = no group)
     pub create_group_id: Option<i64>,
+    /// Bandwidth weight override for create user form. `None` means
+    /// "inherit from group" (and `inherit_bandwidth_weight: true` is sent);
+    /// `Some(w)` means an individual override is set.
+    pub bandwidth_weight_override: Option<u16>,
+    /// "Inherit from group" checkbox state for the create user form.
+    /// When `true`, the bandwidth-weight NumberInput is disabled and the
+    /// submit sends `inherit_bandwidth_weight: Some(true)`.
+    pub bandwidth_weight_inherit: bool,
     /// Error message for create user form
     pub create_error: Option<String>,
     /// Error message for edit user form
@@ -180,6 +198,8 @@ impl Default for UserManagementState {
                 .map(|s| (s.to_string(), DEFAULT_USER_PERMISSIONS.contains(s)))
                 .collect(),
             create_group_id: None,
+            bandwidth_weight_override: None,
+            bandwidth_weight_inherit: true,
             create_error: None,
             edit_error: None,
             list_error: None,
@@ -214,6 +234,8 @@ impl std::fmt::Debug for UserManagementState {
             .field("enabled", &self.enabled)
             .field("permissions", &self.permissions)
             .field("create_group_id", &self.create_group_id)
+            .field("bandwidth_weight_override", &self.bandwidth_weight_override)
+            .field("bandwidth_weight_inherit", &self.bandwidth_weight_inherit)
             .field("create_error", &self.create_error)
             .field("edit_error", &self.edit_error)
             .field("list_error", &self.list_error)
@@ -242,6 +264,9 @@ pub struct UserEditInit {
     pub group_permissions: Vec<String>,
     /// Permissions explicitly revoked from the group for this user.
     pub revoked_permissions: Vec<String>,
+    /// Per-user bandwidth weight override from the server. `None` means
+    /// the user inherits from group / server default.
+    pub bandwidth_weight: Option<u16>,
 }
 
 impl UserManagementState {
@@ -267,6 +292,8 @@ impl UserManagementState {
             *enabled = DEFAULT_USER_PERMISSIONS.contains(&perm_name.as_str());
         }
         self.create_group_id = None;
+        self.bandwidth_weight_override = None;
+        self.bandwidth_weight_inherit = true;
         self.create_error = None;
         self.is_submitting = false;
     }
@@ -291,6 +318,7 @@ impl UserManagementState {
             group_id,
             group_permissions,
             revoked_permissions,
+            bandwidth_weight,
         } = init;
         // Convert permissions Vec<String> to Vec<(String, bool)>
         let mut perm_map: Vec<(String, bool)> = ALL_PERMISSIONS
@@ -302,6 +330,9 @@ impl UserManagementState {
         for (perm_name, perm_enabled) in &mut perm_map {
             *perm_enabled = permissions.contains(perm_name);
         }
+
+        // Inherit when no individual override is set on the server.
+        let inherit = bandwidth_weight.is_none();
 
         self.mode = UserManagementMode::Edit {
             id,
@@ -316,6 +347,9 @@ impl UserManagementState {
             group_id,
             group_permissions,
             revoked_permissions,
+            bandwidth_weight_override: bandwidth_weight,
+            bandwidth_weight_inherit: inherit,
+            original_bandwidth_weight_override: bandwidth_weight,
         };
         self.edit_error = None;
     }

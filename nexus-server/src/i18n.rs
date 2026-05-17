@@ -255,6 +255,89 @@ mod tests {
         assert_eq!(result, "Не выполнен вход");
     }
 
+    /// Exercise Russian's three-form plural selector on `err-flood-warning`.
+    /// All three branches produce visibly distinct words ("секунду / секунды /
+    /// секунд"), so this proves Fluent's numeric selector is actually firing —
+    /// if `t_args` passed the value as a string, the selector would fall
+    /// through to `*[other]` for every input.
+    #[test]
+    fn test_russian_plural_three_forms_via_flood_warning() {
+        let one = t_args(
+            "ru",
+            "err-flood-warning",
+            &[
+                ("violation", "1"),
+                ("max_violations", "3"),
+                ("seconds", "1"),
+            ],
+        );
+        assert!(one.contains("секунду"), "expected 'секунду' for one: {one}");
+
+        let few = t_args(
+            "ru",
+            "err-flood-warning",
+            &[
+                ("violation", "1"),
+                ("max_violations", "3"),
+                ("seconds", "3"),
+            ],
+        );
+        assert!(few.contains("секунды"), "expected 'секунды' for few: {few}");
+
+        let other = t_args(
+            "ru",
+            "err-flood-warning",
+            &[
+                ("violation", "1"),
+                ("max_violations", "3"),
+                ("seconds", "5"),
+            ],
+        );
+        assert!(
+            other.contains("секунд") && !other.contains("секунду") && !other.contains("секунды"),
+            "expected bare 'секунд' for other: {other}"
+        );
+    }
+
+    /// Russian plural rendering on the bandwidth chunk size selectors.
+    /// Russian uses three numeric-noun forms after a numeral:
+    /// - `[one]` (n ≡ 1 mod 10, n ≢ 11 mod 100) → nominative singular "байт"
+    ///   ("1 байт", "21 байт")
+    /// - `[few]` (n ≡ 2..4 mod 10, n ≢ 12..14 mod 100) → genitive singular
+    ///   "байта" ("2 байта", "1024 байта")
+    /// - `*[other]` (5..20, 25..30, etc.) → genitive plural "байт"
+    ///   ("5 байт", "65536 байт")
+    ///
+    /// `min = 1024` lands in `[few]`, which is the real-world configured
+    /// minimum — operators trying smaller chunks see this exact error.
+    #[test]
+    fn test_russian_plural_bandwidth_chunk_size() {
+        let one = t_args("ru", "err-bandwidth-chunk-size-too-small", &[("min", "1")]);
+        assert!(
+            one.contains("байт") && !one.contains("байта"),
+            "expected bare 'байт' for one: {one}"
+        );
+
+        let few = t_args(
+            "ru",
+            "err-bandwidth-chunk-size-too-small",
+            &[("min", "1024")],
+        );
+        assert!(few.contains("байта"), "expected 'байта' for few: {few}");
+
+        // 100 lands in [other] (100 % 10 = 0). 8192 would NOT — it's [few]
+        // (8192 % 10 = 2).
+        let other = t_args(
+            "ru",
+            "err-bandwidth-chunk-size-too-small",
+            &[("min", "100")],
+        );
+        assert!(
+            other.contains("байт") && !other.contains("байта"),
+            "expected bare 'байт' for other: {other}"
+        );
+    }
+
     #[test]
     fn test_translation_chinese() {
         let result = t("zh", "err-not-logged-in");
@@ -301,5 +384,74 @@ mod tests {
     fn test_translation_chinese_tw() {
         let result = t("zh-TW", "err-not-logged-in");
         assert_eq!(result, "未登入");
+    }
+
+    /// All non-EN locale codes the server ships, mirroring the directories
+    /// under `nexus-server/locales/`.
+    const NON_EN_LOCALES: &[&str] = &[
+        "es", "fr", "de", "it", "nl", "pt-BR", "pt-PT", "ru", "ja", "zh-CN", "zh-TW", "ko",
+    ];
+
+    /// Read a Fluent `.ftl` file and return the set of top-level message
+    /// keys defined in it. Uses the real `fluent_syntax::parser` so any
+    /// Fluent feature (multi-line values, message attributes, term refs,
+    /// etc.) is handled correctly.
+    fn collect_keys_in_ftl(path: &std::path::Path) -> std::collections::HashSet<String> {
+        use fluent_syntax::ast::Entry;
+        // Surface the I/O error directly: a missing/unreadable locale file
+        // is a real bug, and panicking with the path + OS error is far
+        // more diagnostic than absorbing the read failure and letting the
+        // "every key is missing" diff message obscure the actual cause.
+        let content = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+        // `parse` returns `Err((Resource, Vec<Error>))` on partial parse —
+        // we still want what parsed successfully, so accept either arm.
+        let resource = fluent_syntax::parser::parse(content.as_str()).unwrap_or_else(|(r, _)| r);
+        resource
+            .body
+            .into_iter()
+            .filter_map(|entry| match entry {
+                Entry::Message(msg) => Some(msg.id.name.to_string()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn locale_errors_path(locale: &str) -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("locales")
+            .join(locale)
+            .join("errors.ftl")
+    }
+
+    #[test]
+    fn every_en_key_exists_in_all_locales() {
+        let en_keys = collect_keys_in_ftl(&locale_errors_path("en"));
+        assert!(
+            !en_keys.is_empty(),
+            "en/errors.ftl scanner found zero keys — path or parser likely broken"
+        );
+
+        let mut report: Vec<String> = Vec::new();
+        for locale in NON_EN_LOCALES {
+            let locale_keys = collect_keys_in_ftl(&locale_errors_path(locale));
+            let mut missing: Vec<&String> = en_keys.difference(&locale_keys).collect();
+            missing.sort();
+            if !missing.is_empty() {
+                report.push(format!(
+                    "[{}] missing {} key(s): {:#?}",
+                    locale,
+                    missing.len(),
+                    missing
+                ));
+            }
+        }
+
+        assert!(
+            report.is_empty(),
+            "Locales missing keys present in en/errors.ftl. Translate the \
+             missing keys (or remove them from EN if intentional):\n\n{}",
+            report.join("\n\n"),
+        );
     }
 }

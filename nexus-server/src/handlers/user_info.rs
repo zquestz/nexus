@@ -1,6 +1,7 @@
 //! UserInfo message handler
 
 use std::io;
+use std::sync::atomic::Ordering;
 
 use tokio::io::AsyncWrite;
 use tracing::{error, warn};
@@ -206,6 +207,15 @@ where
     // Use the actual username from the database (preserves original casing)
     let actual_username = target_account.username.clone();
 
+    // Bandwidth weight: read from the session cache. Reading the first
+    // session is sufficient because `update_bandwidth_weight` fans out
+    // the resolved value to every session of a given user_id atomically,
+    // so all sessions of the same user agree. The `err_nickname_not_online`
+    // gate above guarantees at least one session exists.
+    let resolved_weight = target_sessions
+        .first()
+        .map(|s| s.bandwidth_weight.load(Ordering::Relaxed));
+
     // Build response with appropriate visibility level
     // is_admin is visible to everyone (same as in user list)
     // addresses are only visible to admins
@@ -230,6 +240,7 @@ where
             channels,
             group_id,
             group_name: group_name.clone(),
+            bandwidth_weight: resolved_weight,
         }
     } else {
         // Non-admin gets all fields except addresses
@@ -251,6 +262,7 @@ where
             channels,
             group_id,
             group_name,
+            bandwidth_weight: resolved_weight,
         }
     };
 
@@ -303,6 +315,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -328,6 +341,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -374,6 +388,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -399,6 +414,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -469,6 +485,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -486,6 +503,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -512,6 +530,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -538,6 +557,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -614,6 +634,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -631,6 +652,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -657,6 +679,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -683,6 +706,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -765,6 +789,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -781,6 +806,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -806,6 +832,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -832,6 +859,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -950,6 +978,7 @@ mod tests {
                 permissions: &crate::db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -977,6 +1006,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1028,6 +1058,7 @@ mod tests {
                 permissions: &crate::db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1056,6 +1087,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1085,6 +1117,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1171,6 +1204,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1247,6 +1281,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1557,6 +1592,7 @@ mod tests {
                 "Staff",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend]),
+                1,
             )
             .await
             .unwrap();
@@ -1585,6 +1621,8 @@ mod tests {
                 revokes: None,
                 remove_group: false,
                 group_id: Some(group.id),
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await
             .unwrap();

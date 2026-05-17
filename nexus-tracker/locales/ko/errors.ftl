@@ -1,4 +1,4 @@
-# 트래커 오류 메시지 (v0.1.0)
+# 트래커 오류 메시지
 #
 # 모든 키는 `err-tracker-*` 접두사를 사용하여 nexus-server의 로컬라이제이션
 # 네임스페이스로부터 격리됩니다. 키는 `nexus-tracker/src/errors.rs`의

@@ -131,10 +131,14 @@ pub enum InputId {
     AdminUsername,
     /// Admin panel: Password input
     AdminPassword,
+    /// Create user panel: Bandwidth weight override input (NumberInput)
+    CreateUserBandwidthWeight,
     /// Edit user panel: New username input
     EditNewUsername,
     /// Edit user panel: New password input
     EditNewPassword,
+    /// Edit user panel: Bandwidth weight override input (NumberInput)
+    EditUserBandwidthWeight,
     /// Server info edit: Name input
     EditServerInfoName,
     /// Server info edit: Description input
@@ -149,6 +153,10 @@ pub enum InputId {
     EditServerInfoMaxConnections,
     /// Server info edit: Max transfers per IP input
     EditServerInfoMaxTransfers,
+    /// Server info edit: Max outbound rate (Mbps) input
+    EditServerInfoMaxOutboundRate,
+    /// Server info edit: Scheduler chunk size (bytes) input
+    EditServerInfoSchedulerChunkSize,
     /// Server info edit: File reindex interval input
     EditServerInfoFileReindexInterval,
     /// Broadcast panel: Message input
@@ -211,8 +219,12 @@ pub enum InputId {
     EditTrackerPassword,
     /// Group management create form: Name input
     CreateGroupName,
+    /// Group management create form: Bandwidth weight input (NumberInput)
+    CreateGroupBandwidthWeight,
     /// Group management edit form: Name input
     EditGroupName,
+    /// Group management edit form: Bandwidth weight input (NumberInput)
+    EditGroupBandwidthWeight,
     /// Disconnect dialog: reason input
     DisconnectDialogReason,
     /// Tracker discovery panel: Search input (toolbar)
@@ -254,8 +266,10 @@ impl From<InputId> for Id {
             InputId::BookmarkPassword => "InputId::BookmarkPassword",
             InputId::AdminUsername => "InputId::AdminUsername",
             InputId::AdminPassword => "InputId::AdminPassword",
+            InputId::CreateUserBandwidthWeight => "InputId::CreateUserBandwidthWeight",
             InputId::EditNewUsername => "InputId::EditNewUsername",
             InputId::EditNewPassword => "InputId::EditNewPassword",
+            InputId::EditUserBandwidthWeight => "InputId::EditUserBandwidthWeight",
             InputId::EditServerInfoName => "InputId::EditServerInfoName",
             InputId::EditServerInfoDescription => "InputId::EditServerInfoDescription",
             InputId::EditServerInfoPublicAddress => "InputId::EditServerInfoPublicAddress",
@@ -265,6 +279,10 @@ impl From<InputId> for Id {
             }
             InputId::EditServerInfoMaxConnections => "InputId::EditServerInfoMaxConnections",
             InputId::EditServerInfoMaxTransfers => "InputId::EditServerInfoMaxTransfers",
+            InputId::EditServerInfoMaxOutboundRate => "InputId::EditServerInfoMaxOutboundRate",
+            InputId::EditServerInfoSchedulerChunkSize => {
+                "InputId::EditServerInfoSchedulerChunkSize"
+            }
             InputId::EditServerInfoFileReindexInterval => {
                 "InputId::EditServerInfoFileReindexInterval"
             }
@@ -298,7 +316,9 @@ impl From<InputId> for Id {
             InputId::EditTrackerFingerprint => "InputId::EditTrackerFingerprint",
             InputId::EditTrackerPassword => "InputId::EditTrackerPassword",
             InputId::CreateGroupName => "InputId::CreateGroupName",
+            InputId::CreateGroupBandwidthWeight => "InputId::CreateGroupBandwidthWeight",
             InputId::EditGroupName => "InputId::EditGroupName",
+            InputId::EditGroupBandwidthWeight => "InputId::EditGroupBandwidthWeight",
             InputId::DisconnectDialogReason => "InputId::DisconnectDialogReason",
             InputId::TrackerBrowserSearch => "InputId::TrackerBrowserSearch",
             InputId::TrackerBrowserAddName => "InputId::TrackerBrowserAddName",

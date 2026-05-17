@@ -5,7 +5,7 @@ use iced::widget::Id;
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{
-    self, BanReasonError, KickReasonError, PasswordError, UsernameError,
+    self, BanReasonError, KickReasonError, PasswordError, UsernameError, resolve_bandwidth_weight,
 };
 
 use crate::NexusApp;
@@ -350,6 +350,13 @@ impl NexusApp {
             // Shared accounts cannot be admins - ignore toggle if is_shared
             if !conn.user_management.is_shared {
                 conn.user_management.is_admin = is_admin;
+
+                // Admin XOR group: clear group selection when admin is ticked
+                // so the dropdown (which collapses to "None" only) and the
+                // submitted request agree.
+                if is_admin {
+                    conn.user_management.create_group_id = None;
+                }
             }
         }
         Task::none()
@@ -382,6 +389,32 @@ impl NexusApp {
                     }
                 }
             }
+        }
+        Task::none()
+    }
+
+    /// Handle bandwidth weight field change in create form
+    pub fn handle_user_management_bandwidth_weight_changed(
+        &mut self,
+        weight: u16,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            conn.user_management.bandwidth_weight_override = Some(weight);
+        }
+        Task::none()
+    }
+
+    /// Handle "Inherit from group" checkbox toggle in create form
+    pub fn handle_user_management_inherit_bandwidth_weight_toggled(
+        &mut self,
+        inherit: bool,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+        {
+            conn.user_management.bandwidth_weight_inherit = inherit;
         }
         Task::none()
     }
@@ -508,6 +541,31 @@ impl NexusApp {
                 .filter(|v| !v.is_empty())
         });
 
+        // Bandwidth weight: we always send both fields explicitly so the
+        // server gets the form's full intent unambiguously.
+        //  - Inherit checked   → bandwidth_weight=None, inherit=Some(true)
+        //    (server clears any per-user override, falls back to baseline).
+        //  - Inherit unchecked → pin to the typed override, or to the
+        //    displayed baseline when no value was typed (unchecking
+        //    Inherit is an explicit "pin this user" gesture).
+        let (bandwidth_weight, inherit_bandwidth_weight) =
+            if conn.user_management.bandwidth_weight_inherit {
+                (None, Some(true))
+            } else {
+                let group_weight = create_group_id.and_then(|gid| {
+                    conn.user_management
+                        .loaded_groups()
+                        .and_then(|groups| groups.iter().find(|g| g.id == gid))
+                        .map(|g| g.bandwidth_weight)
+                });
+                let baseline = resolve_bandwidth_weight(None, group_weight, is_admin);
+                let pinned = conn
+                    .user_management
+                    .bandwidth_weight_override
+                    .unwrap_or(baseline);
+                (Some(pinned), Some(false))
+            };
+
         let msg = ClientMessage::UserCreate {
             username: conn.user_management.username.clone(),
             password: conn.user_management.password.clone(),
@@ -517,6 +575,8 @@ impl NexusApp {
             permissions,
             group_id: create_group_id,
             revokes: create_revokes,
+            bandwidth_weight,
+            inherit_bandwidth_weight,
         };
 
         // Clear any previous error on new submission
@@ -623,10 +683,17 @@ impl NexusApp {
             && let Some(conn) = self.connections.get_mut(&conn_id)
             && let UserManagementMode::Edit {
                 is_admin: ref mut ia,
+                group_id: ref mut gid,
                 ..
             } = conn.user_management.mode
         {
             *ia = is_admin;
+            // Admin XOR group: clear group selection when admin is ticked
+            // so the dropdown (which collapses to "None" only) and the
+            // submitted request agree.
+            if is_admin {
+                *gid = None;
+            }
         }
         Task::none()
     }
@@ -640,6 +707,40 @@ impl NexusApp {
             } = conn.user_management.mode
         {
             *e = enabled;
+        }
+        Task::none()
+    }
+
+    /// Handle bandwidth weight field change in edit form
+    pub fn handle_user_management_edit_bandwidth_weight_changed(
+        &mut self,
+        weight: u16,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let UserManagementMode::Edit {
+                bandwidth_weight_override: ref mut bw,
+                ..
+            } = conn.user_management.mode
+        {
+            *bw = Some(weight);
+        }
+        Task::none()
+    }
+
+    /// Handle "Inherit from group" checkbox toggle in edit form
+    pub fn handle_user_management_edit_inherit_bandwidth_weight_toggled(
+        &mut self,
+        inherit: bool,
+    ) -> Task<Message> {
+        if let Some(conn_id) = self.active_connection
+            && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let UserManagementMode::Edit {
+                bandwidth_weight_inherit: ref mut bwi,
+                ..
+            } = conn.user_management.mode
+        {
+            *bwi = inherit;
         }
         Task::none()
     }
@@ -688,6 +789,9 @@ impl NexusApp {
             original_group_id,
             edit_group_id,
             edit_group_permissions,
+            edit_bandwidth_weight_override,
+            edit_bandwidth_weight_inherit,
+            original_bandwidth_weight_override,
         ) = match &conn.user_management.mode {
             UserManagementMode::Edit {
                 id,
@@ -701,6 +805,9 @@ impl NexusApp {
                 original_group_id,
                 group_id,
                 group_permissions,
+                bandwidth_weight_override,
+                bandwidth_weight_inherit,
+                original_bandwidth_weight_override,
                 ..
             } => (
                 *id,
@@ -713,6 +820,9 @@ impl NexusApp {
                 *original_group_id,
                 *group_id,
                 group_permissions.clone(),
+                *bandwidth_weight_override,
+                *bandwidth_weight_inherit,
+                *original_bandwidth_weight_override,
             ),
             _ => return Task::none(),
         };
@@ -762,47 +872,102 @@ impl NexusApp {
             None
         };
 
-        // Only send admin flag if current user is admin
-        let requested_is_admin = if conn.is_admin { Some(is_admin) } else { None };
+        // Self-edit (only admins can reach the Edit form on self) strips
+        // fields the server rejects defensively: is_admin, enabled,
+        // permissions, revokes, remove_group. Server treats group_id as a
+        // no-op for admin self (admins don't store a group), so we pass it
+        // through to match the user's selection visually.
+        let is_self_edit =
+            original_username.to_lowercase() == conn.connection_info.username.to_lowercase();
 
-        // Only send enabled flag if current user is admin
-        let requested_enabled = if conn.is_admin { Some(enabled) } else { None };
+        // Only send admin flag if current user is admin and it's not a self-edit
+        let requested_is_admin = if conn.is_admin && !is_self_edit {
+            Some(is_admin)
+        } else {
+            None
+        };
 
-        // Only send permissions that the current user has (or all if admin)
-        let requested_permissions: Vec<String> = permissions
-            .iter()
-            .filter(|(perm_name, perm_enabled)| *perm_enabled && conn.has_permission(perm_name))
-            .map(|(name, _)| name.clone())
-            .collect();
+        // Only send enabled flag if current user is admin and it's not a self-edit
+        let requested_enabled = if conn.is_admin && !is_self_edit {
+            Some(enabled)
+        } else {
+            None
+        };
 
-        // Compute group assignment and revokes
-        let (requested_group_id, requested_remove_group, requested_revokes) =
-            if let Some(gid) = edit_group_id {
-                // User has a group selected — compute revokes (group perms that are unchecked)
-                let revoke_list: Vec<String> = edit_group_permissions
+        // Only send permissions that the current user has (or all if admin).
+        // Stripped entirely for self-edits.
+        let requested_permissions: Option<Vec<String>> = if is_self_edit {
+            None
+        } else {
+            Some(
+                permissions
                     .iter()
-                    .filter(|gp| {
-                        permissions
-                            .iter()
-                            .any(|(p, enabled)| p.as_str() == gp.as_str() && !*enabled)
+                    .filter(|(perm_name, perm_enabled)| {
+                        *perm_enabled && conn.has_permission(perm_name)
                     })
-                    .cloned()
-                    .collect();
-                let revokes = if revoke_list.is_empty() {
-                    None
-                } else {
-                    Some(revoke_list)
-                };
-                (Some(gid), None, revokes)
+                    .map(|(name, _)| name.clone())
+                    .collect(),
+            )
+        };
+
+        // Compute group assignment and revokes. For self-edits we strip
+        // revokes and remove_group (server rejects); group_id passes through.
+        let (requested_group_id, requested_remove_group, requested_revokes) = if is_self_edit {
+            (edit_group_id, None, None)
+        } else if let Some(gid) = edit_group_id {
+            // User has a group selected — compute revokes (group perms that are unchecked)
+            let revoke_list: Vec<String> = edit_group_permissions
+                .iter()
+                .filter(|gp| {
+                    permissions
+                        .iter()
+                        .any(|(p, enabled)| p.as_str() == gp.as_str() && !*enabled)
+                })
+                .cloned()
+                .collect();
+            let revokes = if revoke_list.is_empty() {
+                None
             } else {
-                // No group selected — only send remove_group if user originally had one
-                let remove = if original_group_id.is_some() {
-                    Some(true)
-                } else {
-                    None
-                };
-                (None, remove, None)
+                Some(revoke_list)
             };
+            (Some(gid), None, revokes)
+        } else {
+            // No group selected — only send remove_group if user originally had one
+            let remove = if original_group_id.is_some() {
+                Some(true)
+            } else {
+                None
+            };
+            (None, remove, None)
+        };
+
+        // Bandwidth-weight diff. We compare both the inherit state and the
+        // override value against what was loaded from the server. When
+        // anything changed we send both fields explicitly (the form's full
+        // intent) so the server gets an unambiguous signal:
+        //  - Inherit checked   → bandwidth_weight=None, inherit=Some(true)
+        //  - Inherit unchecked → pin to the typed override, or to the
+        //    displayed baseline if no value was typed (unchecking Inherit
+        //    is an explicit "pin this user" gesture).
+        let original_inherit = original_bandwidth_weight_override.is_none();
+        let bandwidth_changed = edit_bandwidth_weight_inherit != original_inherit
+            || edit_bandwidth_weight_override != original_bandwidth_weight_override;
+        let (requested_bandwidth_weight, requested_inherit_bandwidth_weight) = if !bandwidth_changed
+        {
+            (None, None)
+        } else if edit_bandwidth_weight_inherit {
+            (None, Some(true))
+        } else {
+            let group_weight = edit_group_id.and_then(|gid| {
+                conn.user_management
+                    .loaded_groups()
+                    .and_then(|groups| groups.iter().find(|g| g.id == gid))
+                    .map(|g| g.bandwidth_weight)
+            });
+            let baseline = resolve_bandwidth_weight(None, group_weight, is_admin);
+            let pinned = edit_bandwidth_weight_override.unwrap_or(baseline);
+            (Some(pinned), Some(false))
+        };
 
         let msg = ClientMessage::UserUpdate {
             id,
@@ -811,10 +976,12 @@ impl NexusApp {
             password: requested_password,
             is_admin: requested_is_admin,
             enabled: requested_enabled,
-            permissions: Some(requested_permissions),
+            permissions: requested_permissions,
             group_id: requested_group_id,
             remove_group: requested_remove_group,
             revokes: requested_revokes,
+            bandwidth_weight: requested_bandwidth_weight,
+            inherit_bandwidth_weight: requested_inherit_bandwidth_weight,
         };
 
         // Clear any previous error on new submission
@@ -1336,6 +1503,8 @@ impl NexusApp {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
         };
 
         // Clear any previous error and mark as submitting
@@ -1369,6 +1538,9 @@ impl NexusApp {
     }
 
     pub fn handle_user_management_create_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        // NumberInput fields (CreateUserBandwidthWeight) consume Tab
+        // internally and are reachable only via mouse — excluded from the
+        // cycle so tabbing doesn't dead-end inside them.
         const CYCLE: &[InputId] = &[InputId::AdminUsername, InputId::AdminPassword];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
         self.focus_field(next)
@@ -1380,6 +1552,8 @@ impl NexusApp {
     }
 
     pub fn handle_user_management_edit_tab_resolved(&mut self, focused: Id) -> Task<Message> {
+        // NumberInput fields (EditUserBandwidthWeight) consume Tab
+        // internally — see create form comment above.
         const CYCLE: &[InputId] = &[InputId::EditNewUsername, InputId::EditNewPassword];
         let next = super::focus::next_in_cycle(&focused, CYCLE);
         self.focus_field(next)

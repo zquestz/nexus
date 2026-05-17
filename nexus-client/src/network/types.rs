@@ -356,6 +356,8 @@ pub struct LoginInfo {
     /// Chat rate limit (messages per minute, from ServerInfo)
     pub chat_rate_limit: Option<u32>,
     pub max_connections_per_ip: Option<u32>,
+    /// Maximum outbound bandwidth cap in bytes/sec (0 = unlimited).
+    pub max_outbound_rate: Option<u64>,
     pub max_transfers_per_ip: Option<u32>,
     pub file_reindex_interval: Option<u32>,
     /// Persistent channels (space-separated, admin only)
@@ -366,6 +368,8 @@ pub struct LoginInfo {
     pub min_password_strength: PasswordStrength,
     /// Server log level (read-only, from ServerInfo)
     pub log_level: Option<String>,
+    /// WF2Q+ scheduler chunk size in bytes (admin-only).
+    pub scheduler_chunk_size: Option<u32>,
     pub transfer_port: u16,
     pub locale: String,
 }

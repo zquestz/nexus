@@ -1,13 +1,17 @@
 //! UserUpdate message handler
 
 use std::io;
+use std::sync::atomic::Ordering;
 
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use nexus_common::is_shared_account_permission;
 use nexus_common::protocol::{ServerMessage, UserInfo};
-use nexus_common::validators::{self, PasswordError, PermissionsError, UsernameError};
+use nexus_common::validators::{
+    self, BandwidthWeightError, MIN_BANDWIDTH_WEIGHT, PasswordError, PermissionsError,
+    UsernameError, validate_bandwidth_weight,
+};
 
 use crate::constants::{
     DEFAULT_LOCALE, HANDLER_USER_UPDATE, LOG_USER_UPDATE_ADMIN, LOG_USER_UPDATE_DB_ERROR,
@@ -22,17 +26,18 @@ use crate::constants::{
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_account_disabled_by_admin, err_authentication,
-    err_cannot_change_guest_password, err_cannot_demote_last_admin, err_cannot_disable_last_admin,
-    err_cannot_edit_admin, err_cannot_edit_self, err_cannot_rename_guest,
-    err_current_password_incorrect, err_current_password_required, err_database,
-    err_group_not_found, err_group_shared_mismatch, err_not_logged_in, err_password_empty,
-    err_password_too_long, err_password_too_weak, err_permission_denied,
+    HandlerContext, err_account_disabled_by_admin, err_admin_cannot_have_group, err_authentication,
+    err_bandwidth_weight_delegation, err_bandwidth_weight_inherit_would_elevate,
+    err_bandwidth_weight_zero, err_cannot_change_guest_password, err_cannot_demote_last_admin,
+    err_cannot_disable_last_admin, err_cannot_edit_admin, err_cannot_edit_self,
+    err_cannot_rename_guest, err_current_password_incorrect, err_current_password_required,
+    err_database, err_group_not_found, err_group_shared_mismatch, err_not_logged_in,
+    err_password_empty, err_password_too_long, err_password_too_weak, err_permission_denied,
     err_permissions_contains_newlines, err_permissions_empty_permission,
     err_permissions_invalid_characters, err_permissions_permission_too_long,
-    err_permissions_too_many, err_shared_cannot_change_password, err_shared_invalid_permissions,
-    err_unknown_permission, err_update_failed, err_user_not_found, err_username_empty,
-    err_username_exists, err_username_invalid, err_username_too_long,
+    err_permissions_too_many, err_shared_cannot_be_admin, err_shared_cannot_self_edit,
+    err_shared_invalid_permissions, err_unknown_permission, err_update_failed, err_user_not_found,
+    err_username_empty, err_username_exists, err_username_invalid, err_username_too_long,
     remove_user_with_voice_cleanup,
 };
 use super::{ServerInfoOptions, ServerInfoValues, build_server_info};
@@ -56,6 +61,8 @@ pub struct UserUpdateRequest {
     pub group_id: Option<i64>,
     pub remove_group: Option<bool>,
     pub revokes: Option<Vec<String>>,
+    pub bandwidth_weight: Option<u16>,
+    pub inherit_bandwidth_weight: Option<bool>,
     pub session_id: Option<u32>,
 }
 
@@ -131,30 +138,32 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check if this is a self-edit (user changing their own password)
+    // Self-edit gate: a non-admin can edit only their own account, and the
+    // set of fields they may change is more restrictive than for an admin
+    // editing someone else. Drives the password / shared-account / forbidden-
+    // field branches below.
     let is_self_edit = target_username.to_lowercase() == requesting_user.username.to_lowercase();
 
     if is_self_edit {
-        // Shared accounts cannot change their own password
+        // Shared accounts cannot self-edit (no password to change, no other
+        // fields admissible).
         if requesting_user.is_shared {
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
-                error: Some(err_shared_cannot_change_password(ctx.locale)),
+                error: Some(err_shared_cannot_self_edit(ctx.locale)),
                 id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
         }
 
-        // Self-edit: only password change is allowed
-        // Reject if trying to change anything other than password
-        if request.username.is_some()
-            || request.is_admin.is_some()
+        // Defense in depth: these fields are never accepted on self-edit,
+        // even from an admin. Client UI hard-disables them on self-rows.
+        if request.is_admin.is_some()
             || request.enabled.is_some()
             || request.permissions.is_some()
-            || request.group_id.is_some()
-            || request.remove_group == Some(true)
             || request.revokes.is_some()
+            || request.remove_group == Some(true)
         {
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
@@ -165,54 +174,96 @@ where
             return ctx.send_message(&response).await;
         }
 
-        // Password change requires current_password
-        let Some(ref current_password) = request.current_password else {
+        // Admin self-edit: group_id is rejected by the admin XOR group
+        // invariant (admins cannot be members of a group). Non-admin self
+        // edits also can't set group_id, but that's caught by the
+        // non-admin-restriction block below with a different error.
+        if requesting_user.is_admin && request.group_id.is_some() {
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
-                error: Some(err_current_password_required(ctx.locale)),
+                error: Some(err_admin_cannot_have_group(ctx.locale)),
                 id: None,
                 username: None,
             };
             return ctx.send_message(&response).await;
-        };
+        }
 
-        // Verify current password against database
-        let password_hash = match ctx.db.users.get_user_by_username(&target_username).await {
-            Ok(Some(user)) => user.hashed_password,
-            Ok(None) => {
+        // Non-admin self-edits are restricted to password change. Admin
+        // self-edits additionally permit username and the bandwidth-weight
+        // fields. (group_id rejected above for admins; admins can't have
+        // groups.)
+        if !requesting_user.is_admin
+            && (request.username.is_some()
+                || request.group_id.is_some()
+                || request.bandwidth_weight.is_some()
+                || request.inherit_bandwidth_weight.is_some())
+        {
+            let response = ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_cannot_edit_self(ctx.locale)),
+                id: None,
+                username: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+
+        // Password change (admin or non-admin) requires current_password
+        // verification. Skipped entirely when no password change requested.
+        if let Some(ref new_password) = request.password
+            && !new_password.trim().is_empty()
+        {
+            let Some(ref current_password) = request.current_password else {
                 let response = ServerMessage::UserUpdateResponse {
                     success: false,
-                    error: Some(err_user_not_found(ctx.locale, &target_username)),
+                    error: Some(err_current_password_required(ctx.locale)),
                     id: None,
                     username: None,
                 };
                 return ctx.send_message(&response).await;
-            }
-            Err(e) => {
-                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_USER);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
-                    .await;
-            }
-        };
+            };
 
-        // Verify the current password
-        match verify_password_async(current_password.to_string(), password_hash.clone()).await {
-            Ok(true) => {} // Password correct, continue
-            Ok(false) => {
-                let response = ServerMessage::UserUpdateResponse {
-                    success: false,
-                    error: Some(err_current_password_incorrect(ctx.locale)),
-                    id: None,
-                    username: None,
-                };
-                return ctx.send_message(&response).await;
-            }
-            Err(e) => {
-                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_PASSWORD_VERIFY);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
-                    .await;
+            let password_hash = match ctx.db.users.get_user_by_username(&target_username).await {
+                Ok(Some(user)) => user.hashed_password,
+                Ok(None) => {
+                    let response = ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_user_not_found(ctx.locale, &target_username)),
+                        id: None,
+                        username: None,
+                    };
+                    return ctx.send_message(&response).await;
+                }
+                Err(e) => {
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_USER);
+                    return ctx
+                        .send_error_and_disconnect(
+                            &err_database(ctx.locale),
+                            Some(HANDLER_USER_UPDATE),
+                        )
+                        .await;
+                }
+            };
+
+            match verify_password_async(current_password.to_string(), password_hash.clone()).await {
+                Ok(true) => {}
+                Ok(false) => {
+                    let response = ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_current_password_incorrect(ctx.locale)),
+                        id: None,
+                        username: None,
+                    };
+                    return ctx.send_message(&response).await;
+                }
+                Err(e) => {
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_PASSWORD_VERIFY);
+                    return ctx
+                        .send_error_and_disconnect(
+                            &err_database(ctx.locale),
+                            Some(HANDLER_USER_UPDATE),
+                        )
+                        .await;
+                }
             }
         }
     } else {
@@ -347,6 +398,129 @@ where
                 .await;
         }
     };
+
+    // Admin XOR group invariant. Reject requests that would leave the target
+    // as admin AND set a group_id. Promotion from non-admin to admin is fine
+    // (DB layer auto-clears group_id); the rejection only fires when
+    // group_id assignment coincides with the target ending up admin.
+    let target_final_is_admin = request
+        .is_admin
+        .unwrap_or_else(|| target_user_account.as_ref().is_some_and(|a| a.is_admin));
+    if target_final_is_admin && request.group_id.is_some() {
+        let response = ServerMessage::UserUpdateResponse {
+            success: false,
+            error: Some(err_admin_cannot_have_group(ctx.locale)),
+            id: None,
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Admin XOR shared invariant. `is_shared` is set at create-time and
+    // never modified by UserUpdate, so the only path into the bad
+    // combination is promoting an existing shared account to admin.
+    //
+    // Note the asymmetry with admin XOR group: that invariant auto-cleans
+    // in `db/users.rs::update_user` (nulls group_id + wipes permission
+    // rows on promotion) because clearing a group is benign — admins
+    // resolve to all permissions regardless. Admin XOR shared instead
+    // rejects here because demoting `is_shared` orphans the per-session
+    // nicknames a shared account carries; we make the admin explicitly
+    // delete and recreate rather than silently destroy that identity.
+    if request.is_admin == Some(true) && target_user_account.as_ref().is_some_and(|a| a.is_shared) {
+        let response = ServerMessage::UserUpdateResponse {
+            success: false,
+            error: Some(err_shared_cannot_be_admin(ctx.locale)),
+            id: None,
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    // Bandwidth weight delegation: non-admins can change a user's effective
+    // bandwidth only to a value at or below their own resolved weight.
+    // - `bandwidth_weight: Some(N)` → reject when `N > requester`.
+    // - `inherit_bandwidth_weight: Some(true)` → reject when the target's
+    //   inherited weight (admin-default → group → 1) > requester. Clearing
+    //   the override would let the user fall back to a higher tier.
+    // Admins bypass both checks.
+    //
+    // When `inherit_bandwidth_weight: Some(true)`, the `bandwidth_weight`
+    // value is discarded by the DB layer (inherit wins). Skip the value
+    // check in that case so a defensive client sending both fields isn't
+    // rejected on a moot value.
+    if !requesting_user.is_admin {
+        let requester_weight = requesting_user.bandwidth_weight.load(Ordering::Relaxed);
+        // Track the rejection reason as an already-translated error string —
+        // the two paths use distinct i18n keys (see `errors.rs` for the
+        // contract). The set path fires on `bandwidth_weight: Some(w > req)`;
+        // the inherit path fires when clearing the override would land the
+        // target on an inherited tier above the requester.
+        let mut delegation_error: Option<String> = None;
+        if request.inherit_bandwidth_weight != Some(true)
+            && let Some(w) = request.bandwidth_weight
+            && w > requester_weight
+        {
+            delegation_error = Some(err_bandwidth_weight_delegation(ctx.locale));
+        }
+        if delegation_error.is_none() && request.inherit_bandwidth_weight == Some(true) {
+            // The inherited weight to compare against must reflect the
+            // POST-update group: if the same request also changes group_id
+            // or sets remove_group, the OLD group's weight is irrelevant.
+            // Otherwise (group unchanged), pass the target's current
+            // group_id so the resolver joins on the same row it would
+            // post-update.
+            let proposed_group_id: Option<i64> = if request.remove_group == Some(true) {
+                None
+            } else if let Some(new_gid) = request.group_id {
+                Some(new_gid)
+            } else {
+                target_user_account.as_ref().and_then(|a| a.group_id)
+            };
+            let inherited = match ctx
+                .db
+                .users
+                .get_inherited_bandwidth_weight(request.id, proposed_group_id)
+                .await
+            {
+                Ok(w) => w,
+                Err(e) => {
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
+                    return ctx
+                        .send_error_and_disconnect(
+                            &err_database(ctx.locale),
+                            Some(HANDLER_USER_UPDATE),
+                        )
+                        .await;
+                }
+            };
+            if inherited > requester_weight {
+                delegation_error = Some(err_bandwidth_weight_inherit_would_elevate(ctx.locale));
+            }
+        }
+        if let Some(error) = delegation_error {
+            let response = ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(error),
+                id: None,
+                username: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+    }
+    // Skip zero-validation too when inherit takes precedence (value discarded).
+    if request.inherit_bandwidth_weight != Some(true)
+        && let Some(w) = request.bandwidth_weight
+        && let Err(BandwidthWeightError::Zero) = validate_bandwidth_weight(w)
+    {
+        let response = ServerMessage::UserUpdateResponse {
+            success: false,
+            error: Some(err_bandwidth_weight_zero(ctx.locale, MIN_BANDWIDTH_WEIGHT)),
+            id: None,
+            username: None,
+        };
+        return ctx.send_message(&response).await;
+    }
 
     // Validate and parse requested permissions
     let parsed_permissions = if let Some(ref perm_strings) = request.permissions {
@@ -601,6 +775,24 @@ where
                         return ctx.send_message(&response).await;
                     }
 
+                    // Non-admin delegation: cannot promote a user to a group
+                    // whose bandwidth weight exceeds the requester's own
+                    // resolved weight. Closes the escalation where a moderator
+                    // could move themselves (or others) into a higher-weight
+                    // group whose permissions they happen to fully possess.
+                    if !requesting_user.is_admin
+                        && group.bandwidth_weight
+                            > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
+                    {
+                        let response = ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_bandwidth_weight_delegation(ctx.locale)),
+                            id: None,
+                            username: None,
+                        };
+                        return ctx.send_message(&response).await;
+                    }
+
                     // Non-admin delegation: requester must have all group permissions
                     if !requesting_user.is_admin {
                         let group_perms = match ctx
@@ -800,24 +992,32 @@ where
             revokes: parsed_revokes.as_deref(),
             remove_group: validated_remove_group,
             group_id: validated_group_id,
+            bandwidth_weight: request.bandwidth_weight,
+            inherit_bandwidth_weight: request.inherit_bandwidth_weight == Some(true),
         })
         .await
     {
-        Ok(true) => {
-            // Success - send response to requester
-            // Use the final username (in case it changed)
-            let final_username = request
-                .username
-                .as_ref()
-                .unwrap_or(&target_username)
-                .clone();
-
-            info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %final_username, "{}", LOG_USER_UPDATE_SUCCESS);
+        Ok(crate::db::UpdateUserResult::Updated {
+            account: updated_account,
+            resolved_bandwidth_weight,
+        }) => {
+            // Source of truth for everything below is `updated_account` —
+            // the row state assembled inside the same tx as the write —
+            // not the request fields. Promotion auto-clean is reflected
+            // (group_id is None after promotion); the audit trail's
+            // `is_admin` field is the actually-committed value.
+            info!(
+                user = %requesting_user.username,
+                ip = %ctx.peer_addr,
+                target = %updated_account.username,
+                is_admin = updated_account.is_admin,
+                "{}", LOG_USER_UPDATE_SUCCESS
+            );
             let response = ServerMessage::UserUpdateResponse {
                 success: true,
                 error: None,
                 id: Some(request.id),
-                username: Some(final_username.clone()),
+                username: Some(updated_account.username.clone()),
             };
 
             ctx.send_message(&response).await?;
@@ -825,10 +1025,6 @@ where
             let group_changed = validated_remove_group || validated_group_id.is_some();
 
             // We'll determine if permissions actually changed after fetching new state
-
-            // Get the updated user's account
-            if let Ok(Some(updated_account)) =
-                ctx.db.users.get_user_by_username(&final_username).await
             {
                 // Get the final permissions
                 if let Ok(final_permissions) =
@@ -888,6 +1084,8 @@ where
                             min_password_strength: config.min_password_strength.score(),
                             chat_burst_limit: config.chat_burst_limit,
                             chat_rate_limit: config.chat_rate_limit,
+                            max_outbound_rate: config.max_outbound_rate,
+                            scheduler_chunk_size: config.scheduler_chunk_size,
                         };
 
                         let info_options = ServerInfoOptions {
@@ -1054,8 +1252,11 @@ where
                         (None, None)
                     };
 
-                // If group changed, update UserManager sessions
-                if group_changed {
+                // Update UserManager sessions when group changed OR when
+                // admin status changed (promotion auto-clears group_id in
+                // the DB, so cached session group_id/group_name must follow
+                // even though the request didn't touch group_id directly).
+                if group_changed || admin_status_changed {
                     ctx.user_manager
                         .update_group(
                             updated_account.id,
@@ -1065,27 +1266,101 @@ where
                         .await;
                 }
 
-                // Broadcast UserUpdated if username, admin status, or group changed
-                if username_changed || admin_status_changed || group_changed {
-                    let session_ids = ctx
-                        .user_manager
-                        .get_session_ids_for_user(&updated_account.username)
+                // Did the request actually change the stored bandwidth_weight
+                // override? Used by both the cache-refresh trigger and the
+                // broadcast trigger below — neither should fire on a no-op
+                // submit (e.g. resubmitting the same value, or asking to
+                // inherit when already inheriting).
+                //
+                // Branch order mirrors the DB layer's write precedence
+                // (`db/users.rs::update_user`): when both `inherit: Some(true)`
+                // and `bandwidth_weight: Some(N)` are present in one request,
+                // inherit wins and the stored value goes to NULL. Checking
+                // inherit first ensures we detect that case as a real change
+                // even when the request also carries the user's pre-update
+                // value in `bandwidth_weight`.
+                let bandwidth_weight_request_change =
+                    if request.inherit_bandwidth_weight == Some(true) {
+                        target_account.bandwidth_weight.is_some()
+                    } else if let Some(new) = request.bandwidth_weight {
+                        target_account.bandwidth_weight != Some(new)
+                    } else {
+                        false
+                    };
+
+                let broadcast_should_fire = username_changed
+                    || admin_status_changed
+                    || group_changed
+                    || bandwidth_weight_request_change;
+                let cache_should_refresh =
+                    bandwidth_weight_request_change || group_changed || admin_status_changed;
+
+                // Bandwidth-only trigger: bandwidth changed and nothing
+                // else did. Cross-trigger updates (username / admin /
+                // group) carry visible info regardless of the bandwidth
+                // side and skip the suppression check below.
+                let bw_only_trigger = bandwidth_weight_request_change
+                    && !username_changed
+                    && !admin_status_changed
+                    && !group_changed;
+
+                // Fetch sessions once for both the suppression check below
+                // and the broadcast aggregation. Empty when no broadcast
+                // trigger fired (no work to do).
+                let sessions = if broadcast_should_fire {
+                    ctx.user_manager
+                        .get_sessions_by_username(&updated_account.username)
+                        .await
+                } else {
+                    Vec::new()
+                };
+
+                // Capture the pre-update effective weight from the session
+                // cache. Every session of a given user holds the same
+                // resolved value (fan-out invariant maintained by
+                // `update_bandwidth_weight`), so the first session is
+                // authoritative. `None` means the user is offline.
+                let old_resolved: Option<u16> = sessions
+                    .first()
+                    .map(|s| s.bandwidth_weight.load(Ordering::Relaxed));
+
+                // Refresh cached bandwidth_weight on every session of this
+                // user. The in-tx resolution already gave us the
+                // post-update value, so this is a direct write — no DB
+                // roundtrip, no fallback path. Either the write succeeded
+                // with this resolved value or the whole match arm is
+                // `Blocked`.
+                if cache_should_refresh {
+                    ctx.user_manager
+                        .update_bandwidth_weight(updated_account.id, resolved_bandwidth_weight)
                         .await;
+                }
 
-                    let (login_time, locale, avatar, is_away, status) = if !session_ids.is_empty() {
-                        let user_sessions = ctx
-                            .user_manager
-                            .get_sessions_by_username(&updated_account.username)
-                            .await;
+                // No-op suppression: a bandwidth-only update whose
+                // effective weight didn't move for an online user carries
+                // no new info to listeners. Offline users
+                // (`old_resolved.is_none()`) always broadcast —
+                // `None != Some(_)` — so a concurrent login or a UserList
+                // holder tracking offline users converges on the
+                // post-update value.
+                let suppress_for_bw_only =
+                    bw_only_trigger && old_resolved == Some(resolved_bandwidth_weight);
 
-                        let login_time = user_sessions
-                            .iter()
-                            .map(|u| u.login_time)
-                            .min()
-                            .unwrap_or(0);
+                // Broadcast UserUpdated when any field visible in `UserInfo`
+                // could have changed: username, admin status, group, OR
+                // bandwidth_weight (own override or inherit toggle). Group
+                // and admin changes also implicitly shift the resolved
+                // bandwidth weight, so they were already in scope. The
+                // no-op suppression above skips the bw-only case where
+                // the effective value didn't change.
+                if broadcast_should_fire && !suppress_for_bw_only {
+                    let session_ids: Vec<u32> = sessions.iter().map(|s| s.session_id).collect();
+
+                    let (login_time, locale, avatar, is_away, status) = if !sessions.is_empty() {
+                        let login_time = sessions.iter().map(|u| u.login_time).min().unwrap_or(0);
 
                         // Avatar, locale: latest login wins (stable)
-                        let latest_login = user_sessions.iter().max_by_key(|u| u.login_time);
+                        let latest_login = sessions.iter().max_by_key(|u| u.login_time);
 
                         let locale = latest_login
                             .map(|u| u.locale.clone())
@@ -1094,7 +1369,7 @@ where
                         let avatar = latest_login.and_then(|u| u.avatar.clone());
 
                         // Away/status: most recently active wins (accurate presence)
-                        let most_active = user_sessions.iter().max_by_key(|u| u.last_activity);
+                        let most_active = sessions.iter().max_by_key(|u| u.last_activity);
 
                         let is_away = most_active.is_some_and(|u| u.is_away);
                         let status = most_active.and_then(|u| u.status.clone());
@@ -1120,6 +1395,10 @@ where
                         status,
                         group_id: updated_group_id,
                         group_name: updated_group_name,
+                        // Resolved in-transaction by `update_user`, so
+                        // it's always Some — no admin-aware fallback
+                        // layer needed.
+                        bandwidth_weight: Some(resolved_bandwidth_weight),
                     };
 
                     let user_updated = ServerMessage::UserUpdated {
@@ -1134,7 +1413,7 @@ where
 
             Ok(())
         }
-        Ok(false) => {
+        Ok(crate::db::UpdateUserResult::Blocked) => {
             // Update was blocked (user not found, last admin, or duplicate username)
             // We need to determine which error to return
             let error_message = if ctx
@@ -1174,7 +1453,7 @@ where
 
             let response = ServerMessage::UserUpdateResponse {
                 success: false,
-                error: Some(error_message.to_string()),
+                error: Some(error_message),
                 id: None,
                 username: None,
             };
@@ -1191,6 +1470,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
+
     use super::*;
     use crate::db;
     #[allow(unused_imports)]
@@ -1215,6 +1496,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: None, // Not logged in
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1242,6 +1525,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1257,6 +1541,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1281,10 +1567,50 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_userupdate_cannot_edit_self_username() {
+    async fn test_userupdate_non_admin_cannot_edit_own_username() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
+        let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+
+        let alice_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+        let request = UserUpdateRequest {
+            id: alice_user.id,
+            current_password: None,
+            username: Some("alice2".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(error.unwrap(), err_cannot_edit_self(DEFAULT_TEST_LOCALE));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_admin_can_edit_own_username() {
+        let mut test_ctx = create_test_context().await;
+
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let admin_user = test_ctx
@@ -1305,6 +1631,181 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+                ..
+            } => {
+                assert!(success, "admin self-rename should succeed: {:?}", error);
+                assert_eq!(username, Some("admin2".to_string()));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_admin_can_edit_own_bandwidth_weight() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+        let request = UserUpdateRequest {
+            id: admin_user.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(42),
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(
+                    success,
+                    "admin self-bandwidth-weight should succeed: {:?}",
+                    error
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        let updated = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.bandwidth_weight, Some(42));
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_admin_can_clear_own_bandwidth_weight() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+
+        // First, set a per-user override
+        test_ctx
+            .db
+            .users
+            .update_user(db::UpdateUserParams {
+                username: "admin",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: Some(99),
+                inherit_bandwidth_weight: false,
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: admin_user.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: Some(true),
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(
+                    success,
+                    "admin self-clear-bandwidth should succeed: {:?}",
+                    error
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        let updated = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.bandwidth_weight, None);
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_cannot_edit_own_bandwidth_weight() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+
+        let alice_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+        let request = UserUpdateRequest {
+            id: alice_user.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(42),
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1346,6 +1847,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1387,6 +1890,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1428,6 +1933,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1438,6 +1945,215 @@ mod tests {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
                 assert_eq!(error.unwrap(), err_cannot_edit_self(DEFAULT_TEST_LOCALE));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_cannot_edit_self_revokes() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+
+        let alice_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+        let request = UserUpdateRequest {
+            id: alice_user.id,
+            current_password: Some("password".to_string()),
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: Some(vec!["chat_send".to_string()]), // Trying to revoke from self
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(error.unwrap(), err_cannot_edit_self(DEFAULT_TEST_LOCALE));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_cannot_edit_self_remove_group() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+
+        let alice_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+        let request = UserUpdateRequest {
+            id: alice_user.id,
+            current_password: Some("password".to_string()),
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: Some(true), // Trying to clear own group membership
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(error.unwrap(), err_cannot_edit_self(DEFAULT_TEST_LOCALE));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_admin_self_edit_group_id_rejected() {
+        // Admin self-edit: setting group_id on self is rejected with the
+        // admin-XOR-group error (replacing the prior silent-ignore behavior).
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend]),
+                1,
+            )
+            .await
+            .unwrap();
+
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+        let request = UserUpdateRequest {
+            id: admin_user.id,
+            current_password: Some("password".to_string()),
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: Some(group.id),
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(
+                    error.unwrap(),
+                    err_admin_cannot_have_group(DEFAULT_TEST_LOCALE)
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_assign_group_to_existing_admin_rejected() {
+        // Non-self edit: admin A tries to assign a group to existing admin B.
+        // Should reject with err_admin_cannot_have_group (admin XOR group).
+        let mut test_ctx = create_test_context().await;
+
+        let admin_a_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Create a second admin via DB (no group, satisfies CHECK).
+        let admin_b = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "adminb",
+                hashed_password: "hash",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend]),
+                1,
+            )
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: admin_b.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: Some(group.id),
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_a_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(
+                    error.unwrap(),
+                    err_admin_cannot_have_group(DEFAULT_TEST_LOCALE)
+                );
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
@@ -1469,6 +2185,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1517,6 +2235,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1561,6 +2281,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1599,6 +2321,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1614,6 +2337,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1665,6 +2390,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1710,6 +2437,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin1_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1750,6 +2479,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin2_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1800,6 +2531,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1815,6 +2547,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1864,6 +2598,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1880,6 +2615,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1923,6 +2660,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1938,6 +2676,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -1954,6 +2693,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -1989,6 +2730,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2005,6 +2747,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2057,6 +2801,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2073,6 +2818,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2134,6 +2881,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2150,6 +2898,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2236,6 +2986,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(bob_session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2303,6 +3055,7 @@ mod tests {
                 "Staff",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend]),
+                1,
             )
             .await
             .unwrap();
@@ -2322,6 +3075,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2345,6 +3099,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: Some(vec!["totally_fake_permission".to_string()]),
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2377,6 +3133,7 @@ mod tests {
                 "Staff",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -2396,6 +3153,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2415,6 +3173,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: Some(vec!["user_kick".to_string()]),
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2482,6 +3242,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2501,6 +3262,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2547,6 +3310,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2589,6 +3354,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin1_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2629,6 +3396,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin1_session),
         };
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2653,6 +3422,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin1_session),
         };
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2676,6 +3447,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin1_session),
         };
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2705,10 +3478,15 @@ mod tests {
                 revokes: None,
                 remove_group: false,
                 group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await
             .unwrap();
-        assert!(!result, "Should not be able to disable the last admin");
+        assert!(
+            matches!(result, db::UpdateUserResult::Blocked),
+            "Should not be able to disable the last admin"
+        );
 
         // Verify admin1 is still enabled
         let admin1_after = test_ctx
@@ -2743,6 +3521,7 @@ mod tests {
                 permissions: &perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2768,6 +3547,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -2792,6 +3572,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2832,6 +3614,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -2851,6 +3634,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2895,6 +3680,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(session_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -2967,6 +3754,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3001,6 +3790,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3016,6 +3806,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3041,6 +3832,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -3066,6 +3858,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -3083,6 +3876,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin1_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3137,6 +3932,8 @@ mod tests {
                 revokes: None,
                 remove_group: false,
                 group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await
             .unwrap();
@@ -3157,13 +3954,15 @@ mod tests {
                 revokes: None,
                 remove_group: false,
                 group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await;
 
-        // Should return Ok(false) - update blocked by atomic SQL protection
+        // Should return Ok(UpdateUserResult::Blocked) - update blocked by atomic SQL protection
         assert!(result.is_ok());
         assert!(
-            !result.unwrap(),
+            matches!(result.unwrap(), db::UpdateUserResult::Blocked),
             "Database should block demoting last admin atomically"
         );
 
@@ -3186,7 +3985,7 @@ mod tests {
     // ========================================================================
 
     #[tokio::test]
-    async fn test_userupdate_shared_user_cannot_change_own_password() {
+    async fn test_userupdate_shared_user_cannot_self_edit() {
         let mut test_ctx = create_test_context().await;
 
         // Create admin first
@@ -3205,6 +4004,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -3231,7 +4031,8 @@ mod tests {
         // Read login response
         let _login_response = read_login_response(&mut test_ctx).await;
 
-        // Try to change own password
+        // Shared accounts are blocked from any self-edit, regardless of field.
+        // The password is just a convenient probe.
         let shared_user = test_ctx
             .db
             .users
@@ -3250,6 +4051,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: shared_session_id,
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3259,14 +4062,10 @@ mod tests {
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
-                assert!(
-                    !success,
-                    "Shared user should not be able to change password"
-                );
-                assert!(error.is_some(), "Should have error message");
-                assert!(
-                    error.unwrap().contains("shared account"),
-                    "Error should mention shared account"
+                assert!(!success, "Shared user must not be able to self-edit");
+                assert_eq!(
+                    error.unwrap(),
+                    err_shared_cannot_self_edit(DEFAULT_TEST_LOCALE)
                 );
             }
             _ => panic!("Expected UserUpdateResponse"),
@@ -3293,6 +4092,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -3320,6 +4120,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3362,6 +4164,7 @@ mod tests {
                 permissions: &db::Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .expect("shared account creation should succeed");
@@ -3390,6 +4193,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3435,6 +4240,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3460,6 +4266,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -3484,6 +4291,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3531,6 +4340,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3556,6 +4366,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -3581,6 +4392,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3623,6 +4436,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3648,6 +4462,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -3676,6 +4491,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3718,6 +4535,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3743,6 +4561,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -3767,6 +4586,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_id),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3806,6 +4627,7 @@ mod tests {
                 permissions: &bob_perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3831,6 +4653,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -3848,6 +4671,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3897,6 +4722,7 @@ mod tests {
                 permissions: &bob_perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -3922,6 +4748,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -3939,6 +4766,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -3999,6 +4828,7 @@ mod tests {
                 permissions: &bob_perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -4024,6 +4854,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4041,6 +4872,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4087,6 +4920,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -4112,6 +4946,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4129,6 +4964,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4187,6 +5024,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -4212,6 +5050,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4229,6 +5068,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4290,6 +5131,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -4315,6 +5157,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4332,6 +5175,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4379,6 +5224,7 @@ mod tests {
                 permissions: &voice_perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -4408,6 +5254,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4456,6 +5303,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4503,6 +5352,7 @@ mod tests {
                 permissions: &voice_perms,
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -4535,6 +5385,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4582,6 +5433,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4622,6 +5475,7 @@ mod tests {
                 "Mods",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -4639,6 +5493,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -4665,6 +5520,8 @@ mod tests {
             group_id: Some(group.id),
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4712,6 +5569,7 @@ mod tests {
                 "Mods",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -4729,6 +5587,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -4755,6 +5614,8 @@ mod tests {
             group_id: None,
             remove_group: Some(true),
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(admin_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4809,6 +5670,7 @@ mod tests {
                 "Mods",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -4826,6 +5688,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -4842,6 +5705,8 @@ mod tests {
             group_id: None,
             remove_group: Some(true),
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4907,6 +5772,7 @@ mod tests {
                 "Mods",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -4924,6 +5790,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: None,
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -4940,6 +5807,8 @@ mod tests {
             group_id: Some(group.id),
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -4980,6 +5849,303 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_userupdate_non_admin_cannot_promote_to_higher_weight_group() {
+        let mut test_ctx = create_test_context().await;
+
+        // editor's group: weight 10 with [UserEdit, ChatSend]
+        let editor_group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Editors",
+                false,
+                &db::Permissions::from(&[db::Permission::UserEdit, db::Permission::ChatSend]),
+                10,
+            )
+            .await
+            .unwrap();
+
+        // Login editor and assign them to their group (weight 10 inherited).
+        let editor_session = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserEdit, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let editor = test_ctx
+            .db
+            .users
+            .get_user_by_username("editor")
+            .await
+            .unwrap()
+            .unwrap();
+        // Admin moves editor into the editors group so their session weight is 10.
+        let assign_request = UserUpdateRequest {
+            id: editor.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: Some(editor_group.id),
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(assign_request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+        let _ = read_server_message(&mut test_ctx).await;
+
+        // High-weight group with the same permission set so the permission
+        // delegation rule alone would pass.
+        let high_group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "PowerMods",
+                false,
+                &db::Permissions::from(&[db::Permission::UserEdit, db::Permission::ChatSend]),
+                50,
+            )
+            .await
+            .unwrap();
+
+        // A target user the editor wants to promote.
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // Editor tries to assign bob to the higher-weight group.
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: Some(high_group.id),
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(editor_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok(), "Should send error, not disconnect");
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(
+                    error.unwrap(),
+                    err_bandwidth_weight_delegation(DEFAULT_TEST_LOCALE)
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            bob.group_id, None,
+            "Group should not have been assigned (escalation blocked)"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_can_assign_to_equal_weight_group() {
+        let mut test_ctx = create_test_context().await;
+
+        let editor_group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Editors",
+                false,
+                &db::Permissions::from(&[db::Permission::UserEdit, db::Permission::ChatSend]),
+                10,
+            )
+            .await
+            .unwrap();
+        let editor_session = login_user(
+            &mut test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserEdit, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let editor = test_ctx
+            .db
+            .users
+            .get_user_by_username("editor")
+            .await
+            .unwrap()
+            .unwrap();
+        let assign_request = UserUpdateRequest {
+            id: editor.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: Some(editor_group.id),
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(assign_request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+        let _ = read_server_message(&mut test_ctx).await;
+
+        // Same weight as editor's group: permitted.
+        let peer_group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Reviewers",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend]),
+                10,
+            )
+            .await
+            .unwrap();
+
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: Some(peer_group.id),
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(editor_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(
+                    success,
+                    "equal-weight assignment should succeed: {:?}",
+                    error
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_admin_can_assign_to_any_weight_group() {
+        let mut test_ctx = create_test_context().await;
+
+        // Admin's own weight resolves to DEFAULT_ADMIN_BANDWIDTH_WEIGHT (50),
+        // but the bypass means even weight-1000 groups are fair game.
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let high_group = test_ctx
+            .db
+            .groups
+            .create_group("VIP", false, &db::Permissions::new(), 1000)
+            .await
+            .unwrap();
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: Some(high_group.id),
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "admin bypass should succeed: {:?}", error);
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_userupdate_non_admin_can_edit_user_in_high_privilege_group() {
         let mut test_ctx = create_test_context().await;
 
@@ -5001,6 +6167,7 @@ mod tests {
                 "Mods",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -5018,6 +6185,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -5034,6 +6202,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -5088,6 +6258,7 @@ mod tests {
                 "Mods",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::UserKick]),
+                1,
             )
             .await
             .unwrap();
@@ -5105,6 +6276,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -5121,6 +6293,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: Some(vec!["user_kick".to_string()]),
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -5190,6 +6364,7 @@ mod tests {
                 "Admins",
                 false,
                 &db::Permissions::from(&[db::Permission::BanCreate]),
+                1,
             )
             .await
             .unwrap();
@@ -5202,6 +6377,7 @@ mod tests {
                 "Basic",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend]),
+                1,
             )
             .await
             .unwrap();
@@ -5219,6 +6395,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(high_group.id),
                 revokes: &[],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -5236,6 +6413,8 @@ mod tests {
             group_id: Some(low_group.id),
             remove_group: None,
             revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -5286,6 +6465,7 @@ mod tests {
                 "Mods",
                 false,
                 &db::Permissions::from(&[db::Permission::ChatSend, db::Permission::BanCreate]),
+                1,
             )
             .await
             .unwrap();
@@ -5304,6 +6484,7 @@ mod tests {
                 permissions: &Permissions::new(),
                 group_id: Some(group.id),
                 revokes: &[db::Permission::BanCreate],
+                bandwidth_weight: None,
             })
             .await
             .unwrap();
@@ -5331,6 +6512,8 @@ mod tests {
             group_id: None,
             remove_group: None,
             revokes: Some(vec!["chat_send".to_string()]),
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
             session_id: Some(editor_session),
         };
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
@@ -5363,6 +6546,1580 @@ mod tests {
         assert!(
             revokes.contains(&db::Permission::BanCreate),
             "BanCreate revoke should be preserved (editor can't control it)"
+        );
+    }
+
+    /// Helper for the delegation tests below: log a non-admin user in and
+    /// move them into a group at `requester_weight`, so their cached session
+    /// weight reflects that value. Returns the (admin_session, editor_session,
+    /// editor_id, editor_group_id) tuple.
+    async fn setup_editor_with_weight(
+        test_ctx: &mut crate::handlers::testing::TestContext,
+        requester_weight: u16,
+    ) -> (u32, u32, i64, i64) {
+        let editor_group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Editors",
+                false,
+                &db::Permissions::from(&[db::Permission::UserEdit, db::Permission::ChatSend]),
+                requester_weight,
+            )
+            .await
+            .unwrap();
+        let editor_session = login_user(
+            test_ctx,
+            "editor",
+            "password",
+            &[db::Permission::UserEdit, db::Permission::ChatSend],
+            false,
+        )
+        .await;
+        let admin_session = login_user(test_ctx, "admin", "password", &[], true).await;
+        let editor = test_ctx
+            .db
+            .users
+            .get_user_by_username("editor")
+            .await
+            .unwrap()
+            .unwrap();
+        handle_user_update(
+            UserUpdateRequest {
+                id: editor.id,
+                current_password: None,
+                username: None,
+                password: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                group_id: Some(editor_group.id),
+                remove_group: None,
+                revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
+                session_id: Some(admin_session),
+            },
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let _ = read_server_message(test_ctx).await;
+        (admin_session, editor_session, editor.id, editor_group.id)
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_can_set_lower_bandwidth_weight() {
+        let mut test_ctx = create_test_context().await;
+        // Editor has resolved weight 25.
+        let (_admin_session, editor_session, _editor_id, _editor_group_id) =
+            setup_editor_with_weight(&mut test_ctx, 25).await;
+
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // Setting bob's weight to 10 (≤ 25) is allowed under delegation.
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(10),
+            inherit_bandwidth_weight: None,
+            session_id: Some(editor_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "delegation-OK weight should succeed: {:?}", error);
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bob.bandwidth_weight, Some(10));
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_cannot_set_higher_bandwidth_weight() {
+        let mut test_ctx = create_test_context().await;
+        let (_admin_session, editor_session, _editor_id, _editor_group_id) =
+            setup_editor_with_weight(&mut test_ctx, 25).await;
+
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // Setting bob's weight to 100 (> 25) is rejected.
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(100),
+            inherit_bandwidth_weight: None,
+            session_id: Some(editor_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(
+                    error.unwrap(),
+                    err_bandwidth_weight_delegation(DEFAULT_TEST_LOCALE)
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_non_admin_cannot_inherit_when_inherited_exceeds_weight() {
+        let mut test_ctx = create_test_context().await;
+        let (_admin_session, editor_session, _editor_id, _editor_group_id) =
+            setup_editor_with_weight(&mut test_ctx, 25).await;
+
+        // Bob is in a HIGH-weight group (100) with override=10. Effective = 10.
+        // Editor (weight 25) wants to clear bob's override: post-clear effective
+        // would be 100 (the group's weight) > 25 → reject.
+        let high_group = test_ctx
+            .db
+            .groups
+            .create_group("Heavy", false, &db::Permissions::new(), 100)
+            .await
+            .unwrap();
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(high_group.id),
+                revokes: &[],
+                bandwidth_weight: Some(10),
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: Some(true),
+            session_id: Some(editor_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                // Inherit path uses its own key (distinct from the set-path's
+                // `err_bandwidth_weight_delegation` — see errors.rs).
+                assert_eq!(
+                    error.unwrap(),
+                    err_bandwidth_weight_inherit_would_elevate(DEFAULT_TEST_LOCALE)
+                );
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+
+        // Bob's override should be unchanged.
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bob.bandwidth_weight, Some(10));
+    }
+
+    /// Regression: the inherit-delegation check must resolve the inherited
+    /// weight against the POST-update group, not the pre-update one. If a
+    /// non-admin requests `{remove_group: true, inherit: true}` on a user
+    /// who's currently in a high-weight group, the OLD group's weight is
+    /// irrelevant — the user will inherit `DEFAULT_BANDWIDTH_WEIGHT` after
+    /// the group is removed. Rejecting based on the old group is a false
+    /// rejection on a request that would actually *lower* the user.
+    #[tokio::test]
+    async fn test_userupdate_inherit_delegation_uses_post_update_group_on_remove() {
+        let mut test_ctx = create_test_context().await;
+        let (_admin_session, editor_session, _editor_id, _editor_group_id) =
+            setup_editor_with_weight(&mut test_ctx, 25).await;
+
+        // Bob currently in a HIGH-weight group (100) with override(75).
+        // Editor (weight 25) sends `{remove_group: true, inherit: true}`.
+        // POST-update: no group, no override → effective = DEFAULT (1).
+        // Pre-fix this rejected because the resolver used the OLD group (100).
+        let high_group = test_ctx
+            .db
+            .groups
+            .create_group("Heavy", false, &db::Permissions::new(), 100)
+            .await
+            .unwrap();
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(high_group.id),
+                revokes: &[],
+                bandwidth_weight: Some(75),
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: Some(true),
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: Some(true),
+            session_id: Some(editor_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(
+                    success,
+                    "delegation must use POST-update group, allowing this drop-down: {:?}",
+                    error
+                );
+            }
+            other => panic!("Expected UserUpdateResponse, got {:?}", other),
+        }
+
+        // DB reflects both changes: no group, no override.
+        let bob_after = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bob_after.group_id, None);
+        assert_eq!(bob_after.bandwidth_weight, None);
+    }
+
+    /// Regression companion: same `inherit: true` request, but the proposed
+    /// NEW group also exceeds the requester's weight. The delegation check
+    /// must reject based on the new group's weight, not the old. (Without
+    /// the post-update fix, this might still reject for the WRONG reason —
+    /// based on the old group's weight, which happens to also exceed.
+    /// Picking values where old < requester < new exercises the bug
+    /// cleanly: the new check rejects, the old check would have allowed.)
+    #[tokio::test]
+    async fn test_userupdate_inherit_delegation_uses_post_update_group_on_assign() {
+        let mut test_ctx = create_test_context().await;
+        let (_admin_session, editor_session, _editor_id, _editor_group_id) =
+            setup_editor_with_weight(&mut test_ctx, 25).await;
+
+        // Bob currently in a LOW-weight group (5) — below the editor (25).
+        // Editor sends `{group_id: Some(high), inherit: true}` where the
+        // NEW group has weight 100 (> 25). Pre-fix the resolver used the
+        // OLD group (5) and would have passed the delegation check; the
+        // separate new-group check at lines 765-776 would catch it, but
+        // the inherit check should reject too — defense-in-depth standalone.
+        let low_group = test_ctx
+            .db
+            .groups
+            .create_group("Light", false, &db::Permissions::new(), 5)
+            .await
+            .unwrap();
+        let high_group = test_ctx
+            .db
+            .groups
+            .create_group("Heavy", false, &db::Permissions::new(), 100)
+            .await
+            .unwrap();
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(low_group.id),
+                revokes: &[],
+                bandwidth_weight: Some(10),
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: Some(high_group.id),
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: Some(true),
+            session_id: Some(editor_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(
+                    !success,
+                    "delegation must reject based on NEW group's weight"
+                );
+                // Inherit path uses its own key.
+                assert_eq!(
+                    error.unwrap(),
+                    err_bandwidth_weight_inherit_would_elevate(DEFAULT_TEST_LOCALE)
+                );
+            }
+            other => panic!("Expected UserUpdateResponse, got {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_admin_can_set_any_bandwidth_weight() {
+        let mut test_ctx = create_test_context().await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // Admin sets bob's weight to a value far above any non-admin's reach.
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(10_000),
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "admin bypass should succeed: {:?}", error);
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(bob.bandwidth_weight, Some(10_000));
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_admin_promotion_refreshes_cached_weight() {
+        // Promoting a non-admin to admin should refresh the cached
+        // bandwidth_weight (admins skip group lookup and resolve to
+        // DEFAULT_ADMIN_BANDWIDTH_WEIGHT). Without the refresh, the
+        // scheduler would read the stale pre-promotion value.
+        use std::sync::atomic::Ordering;
+
+        let mut test_ctx = create_test_context().await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Bob logs in as a non-admin → cached weight starts at default 1.
+        let bob_session = login_user(&mut test_ctx, "bob", "password", &[], false).await;
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let initial_weight = test_ctx
+            .user_manager
+            .get_user_by_session_id(bob_session)
+            .await
+            .unwrap()
+            .bandwidth_weight
+            .load(Ordering::Relaxed);
+        assert_eq!(initial_weight, 1, "non-admin starts at default");
+
+        // Admin promotes bob to admin.
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: Some(true),
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+        let _ = read_server_message(&mut test_ctx).await; // response
+        while test_ctx.rx.try_recv().is_ok() {} // drain cascade
+
+        let promoted_weight = test_ctx
+            .user_manager
+            .get_user_by_session_id(bob_session)
+            .await
+            .unwrap()
+            .bandwidth_weight
+            .load(Ordering::Relaxed);
+        assert_eq!(
+            promoted_weight,
+            nexus_common::validators::DEFAULT_ADMIN_BANDWIDTH_WEIGHT,
+            "promotion to admin should refresh cached weight to admin default"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_admin_promotion_clears_cached_group() {
+        // Promoting an in-group non-admin to admin auto-clears their
+        // group_id in the DB. The session cache must follow — otherwise
+        // get_sessions_by_group_id keeps returning this admin and UserList
+        // reports them as still in the old group until re-login.
+        let mut test_ctx = create_test_context().await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &db::Permissions::from(&[db::Permission::ChatSend]),
+                1,
+            )
+            .await
+            .unwrap();
+
+        // Bob logs in as a non-admin, then gets assigned to Staff via DB
+        // + session cache update.
+        let bob_session = login_user(&mut test_ctx, "bob", "password", &[], false).await;
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        test_ctx
+            .db
+            .users
+            .update_user(db::UpdateUserParams {
+                username: "bob",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: Some(group.id),
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+            })
+            .await
+            .unwrap();
+        test_ctx
+            .user_manager
+            .update_group(bob.id, Some(group.id), Some("Staff".to_string()))
+            .await;
+
+        // Sanity check: session has the group set before promotion.
+        let pre = test_ctx
+            .user_manager
+            .get_user_by_session_id(bob_session)
+            .await
+            .unwrap();
+        assert_eq!(pre.group_id, Some(group.id), "pre-promotion group_id");
+        assert_eq!(pre.group_name.as_deref(), Some("Staff"));
+
+        // Promote bob to admin.
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: Some(true),
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+        let _ = read_server_message(&mut test_ctx).await; // response
+        while test_ctx.rx.try_recv().is_ok() {} // drain cascade
+
+        let post = test_ctx
+            .user_manager
+            .get_user_by_session_id(bob_session)
+            .await
+            .unwrap();
+        assert_eq!(
+            post.group_id, None,
+            "promotion must clear cached group_id (admin XOR group)"
+        );
+        assert_eq!(
+            post.group_name, None,
+            "promotion must clear cached group_name"
+        );
+    }
+
+    /// Invariant: a single `UserUpdate` call that touches multiple
+    /// UserInfo-visible fields must produce exactly one `UserUpdated`
+    /// broadcast per receiver — not one per changed field. Mirrors the
+    /// same invariant pinned for `group_update.rs`. If a future refactor
+    /// splits the broadcast back into per-field emits, this test fails
+    /// before the multi-broadcast hits the wire.
+    #[tokio::test]
+    async fn test_userupdate_one_broadcast_per_receiver_for_combined_field_change() {
+        let mut test_ctx = create_test_context().await;
+
+        let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Bob: created in DB, registered as an online session that holds
+        // user_list so his tx is a legitimate broadcast target. Admin and bob
+        // share `test_ctx.tx`, so one broadcast call lands twice in the queue.
+        // UserList must be granted in the DB (not just the session cache) —
+        // user_update re-syncs cached permissions from the DB partway through,
+        // so a test-only session-cache grant would be wiped before the
+        // broadcast iterates eligible recipients.
+        let mut bob_db_perms = db::Permissions::new();
+        bob_db_perms.permissions.insert(db::Permission::UserList);
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &bob_db_perms,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let mut bob_session_perms = HashSet::new();
+        bob_session_perms.insert(db::Permission::UserList);
+        let _bob_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: bob_session_perms,
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        // Combined change: username + bandwidth_weight in one call. Both fields
+        // trigger the broadcast condition; the consolidated emit should still
+        // fire once. (Avoiding is_admin / group / permissions changes here
+        // keeps the queue clean of PermissionsUpdated noise — those are a
+        // different message type and have their own broadcast.)
+        let admin_session = test_ctx
+            .user_manager
+            .get_sessions_by_username("admin")
+            .await
+            .first()
+            .map(|s| s.session_id);
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: Some("robert".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(100),
+            inherit_bandwidth_weight: None,
+            session_id: admin_session,
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        // First message is the UserUpdateResponse delivered to admin (the
+        // request caller). Drain the rest and count UserUpdated for "robert".
+        let _response = read_server_message(&mut test_ctx).await;
+
+        let mut user_updated_count = 0;
+        let mut other_msgs = Vec::new();
+        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+            match msg {
+                ServerMessage::UserUpdated { user, .. } if user.username == "robert" => {
+                    assert_eq!(user.bandwidth_weight, Some(100));
+                    user_updated_count += 1;
+                }
+                other => other_msgs.push(format!("{:?}", other)),
+            }
+        }
+        assert_eq!(
+            user_updated_count, 2,
+            "combined username+bandwidth change must emit one broadcast per receiver \
+             (one fan-out × 2 sessions on the shared tx = 2), not one per changed field (would be 4). other msgs: {:?}",
+            other_msgs
+        );
+    }
+
+    /// Regression: when a request carries both `bandwidth_weight: Some(N)`
+    /// and `inherit_bandwidth_weight: Some(true)`, the DB layer's write
+    /// precedence makes inherit win — the stored override is cleared to
+    /// NULL regardless of `N`. The handler's broadcast detector must mirror
+    /// that precedence; otherwise a request where `N` happens to equal the
+    /// pre-update stored value would suppress the broadcast even though
+    /// the effective weight just changed (override → inherited baseline).
+    #[tokio::test]
+    async fn test_userupdate_broadcasts_when_inherit_wins_over_matching_explicit() {
+        let mut test_ctx = create_test_context().await;
+
+        let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Bob has a per-user override of 50. UserList in DB so the broadcast
+        // reaches him (the cached perms get re-synced by the handler).
+        let mut bob_db_perms = db::Permissions::new();
+        bob_db_perms.permissions.insert(db::Permission::UserList);
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &bob_db_perms,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: Some(50),
+            })
+            .await
+            .unwrap();
+
+        let mut bob_session_perms = HashSet::new();
+        bob_session_perms.insert(db::Permission::UserList);
+        let _bob_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: bob_session_perms,
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: 50,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        // Hostile/defensive client: both fields present, with bandwidth_weight
+        // matching bob's current stored value. Inherit wins → override cleared
+        // → effective weight drops to baseline 1.
+        let admin_session = test_ctx
+            .user_manager
+            .get_sessions_by_username("admin")
+            .await
+            .first()
+            .map(|s| s.session_id);
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(50),           // matches current stored
+            inherit_bandwidth_weight: Some(true), // but inherit wins
+            session_id: admin_session,
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let _response = read_server_message(&mut test_ctx).await;
+
+        // Must see at least one UserUpdated for bob with the new effective
+        // weight (DEFAULT_BANDWIDTH_WEIGHT = 1, the inherited baseline).
+        let mut saw_broadcast = false;
+        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+            if let ServerMessage::UserUpdated { user, .. } = msg
+                && user.username == "bob"
+            {
+                assert_eq!(
+                    user.bandwidth_weight,
+                    Some(nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT),
+                    "broadcast must carry the post-update inherited weight"
+                );
+                saw_broadcast = true;
+            }
+        }
+        assert!(
+            saw_broadcast,
+            "broadcast must fire when inherit clears an override, even if the request \
+             carried a bandwidth_weight that happened to match the cleared value"
+        );
+
+        // DB row confirms the precedence: override is now NULL.
+        let after = test_ctx
+            .db
+            .users
+            .get_user_by_id(bob.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            after.bandwidth_weight, None,
+            "inherit_bandwidth_weight: Some(true) must clear the override regardless of bandwidth_weight value"
+        );
+    }
+
+    // =========================================================================
+    // Admin XOR shared invariant: handler-layer enforcement
+    // =========================================================================
+
+    /// Handler enforcement of admin XOR shared: promoting a shared account
+    /// to admin must be rejected before any DB write. The schema CHECK is
+    /// the storage-layer safety net; this test pins the clean translated
+    /// error path on top of it.
+    #[tokio::test]
+    async fn test_userupdate_rejects_promoting_shared_to_admin() {
+        let mut test_ctx = create_test_context().await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let shared = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: shared.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: Some(true),
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(
+                    error.unwrap(),
+                    crate::handlers::err_shared_cannot_be_admin(DEFAULT_TEST_LOCALE)
+                );
+            }
+            other => panic!("Expected UserUpdateResponse, got {:?}", other),
+        }
+
+        // Verify the DB row was NOT mutated.
+        let after = test_ctx
+            .db
+            .users
+            .get_user_by_id(shared.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!after.is_admin, "shared account must remain non-admin");
+        assert!(after.is_shared, "shared status must be preserved");
+    }
+
+    // =========================================================================
+    // Self-edit gate matrix
+    //
+    // The gate sits at the top of `handle_user_update` and has five sequential
+    // checkpoints; each test below pins one outcome class. A shared helper
+    // (`assert_self_edit_outcome`) sets up the requesting user, runs the
+    // handler with a caller-supplied request builder, and asserts the
+    // expected outcome.
+    // =========================================================================
+
+    enum SelfEditOutcome {
+        Success,
+        Error(String),
+    }
+
+    /// Per-case request builder used by the gate-matrix tests. Type-aliased
+    /// to avoid `type_complexity` clippy warnings on each `Vec<(_, ...)>`.
+    type SelfEditRequestBuilder = fn(i64, Option<u32>) -> UserUpdateRequest;
+
+    /// Run a self-edit through the handler and assert the outcome. `build_request`
+    /// receives the requesting user's database id and session_id (so each call
+    /// site only specifies the field(s) under test) and returns a fully-formed
+    /// `UserUpdateRequest` targeting self.
+    async fn assert_self_edit_outcome<F>(
+        requesting_is_admin: bool,
+        requesting_is_shared: bool,
+        build_request: F,
+        expected: SelfEditOutcome,
+    ) where
+        F: FnOnce(i64, Option<u32>) -> UserUpdateRequest,
+    {
+        let mut test_ctx = create_test_context().await;
+
+        let (session_id, user_id) = if requesting_is_shared {
+            // Shared account: account username "shared_acct" + nickname "alice".
+            // Self-edit is keyed on account username, not nickname.
+            let sid =
+                login_shared_user(&mut test_ctx, "shared_acct", "password", "alice", &[]).await;
+            let user = test_ctx
+                .db
+                .users
+                .get_user_by_username("shared_acct")
+                .await
+                .unwrap()
+                .unwrap();
+            (sid, user.id)
+        } else {
+            let sid =
+                login_user(&mut test_ctx, "alice", "password", &[], requesting_is_admin).await;
+            let user = test_ctx
+                .db
+                .users
+                .get_user_by_username("alice")
+                .await
+                .unwrap()
+                .unwrap();
+            (sid, user.id)
+        };
+
+        let request = build_request(user_id, Some(session_id));
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => match expected {
+                SelfEditOutcome::Success => {
+                    assert!(success, "expected success, got error: {:?}", error);
+                }
+                SelfEditOutcome::Error(expected_msg) => {
+                    assert!(!success, "expected error, got success");
+                    assert_eq!(error.unwrap(), expected_msg);
+                }
+            },
+            other => panic!("Expected UserUpdateResponse, got {:?}", other),
+        }
+    }
+
+    /// Build a UserUpdateRequest with every field defaulted to None, ready
+    /// for tests to fill in one field per case.
+    fn empty_self_edit_request(user_id: i64, session_id: Option<u32>) -> UserUpdateRequest {
+        UserUpdateRequest {
+            id: user_id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id,
+        }
+    }
+
+    /// Gate checkpoint 1: shared accounts are blocked from self-edit at the
+    /// top of the gate, before any field-specific checks. One representative
+    /// case is enough; the short-circuit fires before the field matters.
+    #[tokio::test]
+    async fn test_self_edit_shared_account_rejected_for_any_field() {
+        // Probe with `password` — even the most innocuous field is rejected.
+        assert_self_edit_outcome(
+            false, // requesting_is_admin
+            true,  // requesting_is_shared
+            |user_id, session_id| UserUpdateRequest {
+                current_password: Some("password".to_string()),
+                password: Some("newpassword".to_string()),
+                ..empty_self_edit_request(user_id, session_id)
+            },
+            SelfEditOutcome::Error(err_shared_cannot_self_edit(DEFAULT_TEST_LOCALE)),
+        )
+        .await;
+    }
+
+    /// Gate checkpoint 2: the "forbidden on self" field set is blocked for
+    /// admins. These fields are never allowed in a self-edit request,
+    /// regardless of whether the caller is admin or not.
+    #[tokio::test]
+    async fn test_self_edit_forbidden_fields_rejected_for_admin() {
+        let cases: Vec<(&str, SelfEditRequestBuilder)> = vec![
+            ("is_admin", |id, sid| UserUpdateRequest {
+                is_admin: Some(false),
+                ..empty_self_edit_request(id, sid)
+            }),
+            ("enabled", |id, sid| UserUpdateRequest {
+                enabled: Some(false),
+                ..empty_self_edit_request(id, sid)
+            }),
+            ("permissions", |id, sid| UserUpdateRequest {
+                permissions: Some(vec!["chat_send".to_string()]),
+                ..empty_self_edit_request(id, sid)
+            }),
+            ("revokes", |id, sid| UserUpdateRequest {
+                revokes: Some(vec!["chat_send".to_string()]),
+                ..empty_self_edit_request(id, sid)
+            }),
+            ("remove_group=true", |id, sid| UserUpdateRequest {
+                remove_group: Some(true),
+                ..empty_self_edit_request(id, sid)
+            }),
+        ];
+
+        for (label, builder) in cases {
+            eprintln!("self-edit admin forbidden case: {}", label);
+            assert_self_edit_outcome(
+                true,  // requesting_is_admin
+                false, // requesting_is_shared
+                builder,
+                SelfEditOutcome::Error(err_cannot_edit_self(DEFAULT_TEST_LOCALE)),
+            )
+            .await;
+        }
+    }
+
+    /// Gate checkpoint 2 mirror: same forbidden fields are also rejected for
+    /// a non-admin caller. The check doesn't depend on `requesting_is_admin`.
+    #[tokio::test]
+    async fn test_self_edit_forbidden_fields_rejected_for_non_admin() {
+        let cases: Vec<(&str, SelfEditRequestBuilder)> = vec![
+            ("is_admin", |id, sid| UserUpdateRequest {
+                is_admin: Some(true),
+                ..empty_self_edit_request(id, sid)
+            }),
+            ("enabled", |id, sid| UserUpdateRequest {
+                enabled: Some(false),
+                ..empty_self_edit_request(id, sid)
+            }),
+            ("permissions", |id, sid| UserUpdateRequest {
+                permissions: Some(vec!["chat_send".to_string()]),
+                ..empty_self_edit_request(id, sid)
+            }),
+            ("revokes", |id, sid| UserUpdateRequest {
+                revokes: Some(vec!["chat_send".to_string()]),
+                ..empty_self_edit_request(id, sid)
+            }),
+            ("remove_group=true", |id, sid| UserUpdateRequest {
+                remove_group: Some(true),
+                ..empty_self_edit_request(id, sid)
+            }),
+        ];
+
+        for (label, builder) in cases {
+            eprintln!("self-edit non-admin forbidden case: {}", label);
+            assert_self_edit_outcome(
+                false, // requesting_is_admin
+                false, // requesting_is_shared
+                builder,
+                SelfEditOutcome::Error(err_cannot_edit_self(DEFAULT_TEST_LOCALE)),
+            )
+            .await;
+        }
+    }
+
+    /// Gate checkpoint 3: admin self-edit setting `group_id` is rejected by
+    /// the admin XOR group invariant, with a distinct error (different from
+    /// the generic `err_cannot_edit_self`).
+    #[tokio::test]
+    async fn test_self_edit_admin_group_id_rejected() {
+        assert_self_edit_outcome(
+            true,  // requesting_is_admin
+            false, // requesting_is_shared
+            |id, sid| UserUpdateRequest {
+                group_id: Some(1),
+                ..empty_self_edit_request(id, sid)
+            },
+            SelfEditOutcome::Error(err_admin_cannot_have_group(DEFAULT_TEST_LOCALE)),
+        )
+        .await;
+    }
+
+    /// Gate checkpoint 4: non-admin self-edit cannot change username,
+    /// group_id, or either bandwidth_weight field. (group_id falls through
+    /// the admin XOR group gate above and lands here with a generic error.)
+    #[tokio::test]
+    async fn test_self_edit_non_admin_restricted_fields_rejected() {
+        let cases: Vec<(&str, SelfEditRequestBuilder)> = vec![
+            ("username", |id, sid| UserUpdateRequest {
+                username: Some("newalice".to_string()),
+                ..empty_self_edit_request(id, sid)
+            }),
+            ("group_id", |id, sid| UserUpdateRequest {
+                group_id: Some(1),
+                ..empty_self_edit_request(id, sid)
+            }),
+            ("bandwidth_weight", |id, sid| UserUpdateRequest {
+                bandwidth_weight: Some(50),
+                ..empty_self_edit_request(id, sid)
+            }),
+            ("inherit_bandwidth_weight", |id, sid| UserUpdateRequest {
+                inherit_bandwidth_weight: Some(true),
+                ..empty_self_edit_request(id, sid)
+            }),
+        ];
+
+        for (label, builder) in cases {
+            eprintln!("self-edit non-admin restricted case: {}", label);
+            assert_self_edit_outcome(
+                false, // requesting_is_admin
+                false, // requesting_is_shared
+                builder,
+                SelfEditOutcome::Error(err_cannot_edit_self(DEFAULT_TEST_LOCALE)),
+            )
+            .await;
+        }
+    }
+
+    /// The permitted face of the gate: what each caller class can actually
+    /// change about themselves. Admin can change username, bandwidth_weight,
+    /// inherit_bandwidth_weight, and password. Non-admin can change password.
+    #[tokio::test]
+    async fn test_self_edit_allowed_fields_succeed() {
+        // Admin self-edit: username
+        assert_self_edit_outcome(
+            true,
+            false,
+            |id, sid| UserUpdateRequest {
+                username: Some("newalice".to_string()),
+                ..empty_self_edit_request(id, sid)
+            },
+            SelfEditOutcome::Success,
+        )
+        .await;
+
+        // Admin self-edit: bandwidth_weight
+        assert_self_edit_outcome(
+            true,
+            false,
+            |id, sid| UserUpdateRequest {
+                bandwidth_weight: Some(75),
+                ..empty_self_edit_request(id, sid)
+            },
+            SelfEditOutcome::Success,
+        )
+        .await;
+
+        // Admin self-edit: inherit_bandwidth_weight
+        assert_self_edit_outcome(
+            true,
+            false,
+            |id, sid| UserUpdateRequest {
+                inherit_bandwidth_weight: Some(true),
+                ..empty_self_edit_request(id, sid)
+            },
+            SelfEditOutcome::Success,
+        )
+        .await;
+
+        // Admin self-edit: password (with correct current_password)
+        assert_self_edit_outcome(
+            true,
+            false,
+            |id, sid| UserUpdateRequest {
+                current_password: Some("password".to_string()),
+                password: Some("newpassword".to_string()),
+                ..empty_self_edit_request(id, sid)
+            },
+            SelfEditOutcome::Success,
+        )
+        .await;
+
+        // Non-admin self-edit: password (with correct current_password)
+        assert_self_edit_outcome(
+            false,
+            false,
+            |id, sid| UserUpdateRequest {
+                current_password: Some("password".to_string()),
+                password: Some("newpassword".to_string()),
+                ..empty_self_edit_request(id, sid)
+            },
+            SelfEditOutcome::Success,
+        )
+        .await;
+    }
+
+    // ========================================================================
+    // No-op broadcast suppression: a bandwidth-only update should not
+    // emit `UserUpdated` when the user's *effective* weight didn't
+    // actually move. The check compares the pre-update cached resolved
+    // value (as `Option<u16>`) against the post-update resolved value
+    // returned by `update_user`. Offline users (`None`) always broadcast
+    // because `None != Some(_)` — matching how the handler treats
+    // offline users for every other trigger. Cross-trigger updates
+    // (bw + username, bw + group, etc.) bypass suppression because the
+    // non-bandwidth field carries visible info on its own.
+    // ========================================================================
+
+    /// Bandwidth-only update to an OFFLINE user → broadcast still fires.
+    /// `old_resolved` is `None` for an offline target, which fails
+    /// equality against any `Some(_)` resolved value, ensuring an
+    /// offline user who logs in concurrently (or a UserList holder that
+    /// tracks offline users) converges on the post-update value.
+    /// Consistent with how non-bandwidth triggers treat offline users.
+    #[tokio::test]
+    async fn test_userupdate_bandwidth_only_offline_broadcasts() {
+        let mut test_ctx = create_test_context().await;
+
+        let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Bob exists in the DB but has NO active session — offline.
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let admin_session = test_ctx
+            .user_manager
+            .get_sessions_by_username("admin")
+            .await
+            .first()
+            .map(|s| s.session_id);
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(200),
+            inherit_bandwidth_weight: None,
+            session_id: admin_session,
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        // First message: UserUpdateResponse to admin.
+        let _response = read_server_message(&mut test_ctx).await;
+
+        let mut saw_broadcast = false;
+        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+            if let ServerMessage::UserUpdated { user, .. } = msg
+                && user.username == "bob"
+            {
+                assert_eq!(
+                    user.bandwidth_weight,
+                    Some(200),
+                    "broadcast must carry the post-update resolved weight"
+                );
+                saw_broadcast = true;
+            }
+        }
+        assert!(
+            saw_broadcast,
+            "offline-user bw-only update must still broadcast UserUpdated \
+             (None ≠ any Some(_) resolved value)"
+        );
+    }
+
+    /// Bandwidth-only update where the resolved value doesn't move →
+    /// no broadcast. Constructed using a non-admin user with no group
+    /// (resolved = DEFAULT_BANDWIDTH_WEIGHT) and writing an override
+    /// equal to that default. The DB row changes (NULL → Some(default)),
+    /// so `bandwidth_weight_request_change` is true, but resolved stays
+    /// at DEFAULT_BANDWIDTH_WEIGHT (override wins per the resolver but
+    /// the override value IS the default). The cached session value
+    /// matches the new resolved → suppression fires.
+    #[tokio::test]
+    async fn test_userupdate_bandwidth_only_same_resolved_suppresses_broadcast() {
+        let mut test_ctx = create_test_context().await;
+
+        let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Bob: non-admin, no group, no override. Resolved = DEFAULT_BANDWIDTH_WEIGHT.
+        let mut bob_db_perms = db::Permissions::new();
+        bob_db_perms.permissions.insert(db::Permission::UserList);
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &bob_db_perms,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let mut bob_session_perms = HashSet::new();
+        bob_session_perms.insert(db::Permission::UserList);
+        let _bob_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: bob_session_perms,
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        // Write an override equal to the existing resolved value. DB row
+        // changes (NULL → Some(DEFAULT)) so the dirty bit fires, but
+        // resolved stays at DEFAULT_BANDWIDTH_WEIGHT — exactly the value
+        // already in bob's session cache. Suppression must fire.
+        let admin_session = test_ctx
+            .user_manager
+            .get_sessions_by_username("admin")
+            .await
+            .first()
+            .map(|s| s.session_id);
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT),
+            inherit_bandwidth_weight: None,
+            session_id: admin_session,
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let _response = read_server_message(&mut test_ctx).await;
+
+        let mut user_updated_count = 0;
+        let mut other_msgs = Vec::new();
+        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+            match msg {
+                ServerMessage::UserUpdated { user, .. } if user.username == "bob" => {
+                    user_updated_count += 1;
+                }
+                other => other_msgs.push(format!("{:?}", other)),
+            }
+        }
+        assert_eq!(
+            user_updated_count, 0,
+            "bw-only update where resolved value doesn't move must suppress the broadcast. \
+             other msgs: {:?}",
+            other_msgs
+        );
+    }
+
+    /// Suppression must NOT fire when a non-bandwidth field also
+    /// changed. Same "bw side is a no-op" setup as the same-resolved
+    /// suppression test (non-admin, override=DEFAULT, resolved
+    /// unchanged), but combined with a username rename. Username is a
+    /// UserInfo-visible change, so the broadcast must fire regardless
+    /// of whether the bandwidth side suppressed on its own.
+    #[tokio::test]
+    async fn test_userupdate_combined_change_bypasses_l2_suppression() {
+        let mut test_ctx = create_test_context().await;
+
+        let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let mut bob_db_perms = db::Permissions::new();
+        bob_db_perms.permissions.insert(db::Permission::UserList);
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &bob_db_perms,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let mut bob_session_perms = HashSet::new();
+        bob_session_perms.insert(db::Permission::UserList);
+        let _bob_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: bob_session_perms,
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        // Combined: rename + bandwidth override that resolves to the
+        // same value. Without the username change suppression would
+        // fire; with it, the broadcast must still fire.
+        let admin_session = test_ctx
+            .user_manager
+            .get_sessions_by_username("admin")
+            .await
+            .first()
+            .map(|s| s.session_id);
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: Some("robert".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT),
+            inherit_bandwidth_weight: None,
+            session_id: admin_session,
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let _response = read_server_message(&mut test_ctx).await;
+
+        let mut saw_broadcast_for_robert = false;
+        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+            if let ServerMessage::UserUpdated { user, .. } = msg
+                && user.username == "robert"
+            {
+                saw_broadcast_for_robert = true;
+            }
+        }
+        assert!(
+            saw_broadcast_for_robert,
+            "cross-trigger update (username + bandwidth) must bypass suppression and broadcast"
         );
     }
 }

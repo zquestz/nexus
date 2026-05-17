@@ -66,6 +66,7 @@ impl NexusApp {
             conn.public_address = info.public_address.filter(|s| !s.is_empty());
             conn.server_version = info.version;
             conn.max_connections_per_ip = info.max_connections_per_ip;
+            conn.max_outbound_rate = info.max_outbound_rate;
             conn.max_transfers_per_ip = info.max_transfers_per_ip;
             conn.file_reindex_interval = info.file_reindex_interval;
             conn.persistent_channels = info.persistent_channels;
@@ -85,6 +86,7 @@ impl NexusApp {
                 conn.min_password_strength = PasswordStrength::from(score);
             }
             conn.log_level = info.log_level;
+            conn.scheduler_chunk_size = info.scheduler_chunk_size;
         }
 
         // If user just gained user_list permission, refresh the list

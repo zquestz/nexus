@@ -23,10 +23,10 @@ Client                                        Server
 
 Generic error message sent when a request fails.
 
-| Field     | Type   | Required | Description                               |
-| --------- | ------ | -------- | ----------------------------------------- |
-| `message` | string | Yes      | Human-readable error message (translated) |
-| `command` | string | No       | Command that caused the error             |
+| Field     | Type   | Required | Description                                                                                       |
+| --------- | ------ | -------- | ------------------------------------------------------------------------------------------------- |
+| `message` | string | Yes      | Human-readable error message (pre-localized to the client's locale; see Error Localization below) |
+| `command` | string | No       | Command that caused the error                                                                     |
 
 **Example:**
 
@@ -210,13 +210,18 @@ These errors allow the connection to continue:
 | Rate limiting  | Chat rate limit exceeded (warning) |
 | Self-operation | Cannot kick yourself               |
 
-## Error Translation
+## Error Localization
 
-All human-readable error messages are translated **server-side** before being sent to the client. The server uses the locale provided by the client during login to select the appropriate translation. This means:
+All human-readable error strings in the protocol are pre-localized to
+the client's `locale` (provided in `Login`) before being sent. This
+applies to:
 
-- The `message` field in `Error` messages is already translated
-- The `error` field in all response types (e.g., `UserCreateResponse.error`) is already translated
-- Clients can display these messages directly to users without additional translation
+- The `message` field of every `Error` message.
+- The `error` field of every `*Response` type (e.g.,
+  `UserCreateResponse.error`).
+
+Clients SHOULD display these strings directly. Unrecognized or unknown
+locales fall back to English.
 
 **Example:** A client with `locale: "de"` receives German error messages:
 

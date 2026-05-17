@@ -1,4 +1,4 @@
-# Tracker-foutmeldingen (v0.1.0)
+# Tracker-foutmeldingen
 #
 # Alle sleutels gebruiken het voorvoegsel `err-tracker-*` om ze geïsoleerd
 # te houden van de lokalisatie-naamruimte van nexus-server. De sleutels

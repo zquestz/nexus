@@ -55,9 +55,8 @@ sent after the handshake.
 
 The tracker protocol versions independently of the BBS protocol. A single
 Nexus release may ship one BBS protocol version and a different tracker
-protocol version; they are tracked as separate constants in `nexus-common`.
-Tracker-only changes bump only the tracker protocol version, leaving the
-BBS protocol version untouched.
+protocol version. Tracker-only changes bump only the tracker protocol
+version, leaving the BBS protocol version untouched.
 
 Current tracker protocol version: `0.1.0`.
 
@@ -143,7 +142,7 @@ used for the initial registration and every refresh.
 | Field            | Type   | Required | Description                                                                  |
 | ---------------- | ------ | -------- | ---------------------------------------------------------------------------- |
 | `password`       | string | If gated | Registration password (omit if the tracker is open)                          |
-| `locale`         | string | No       | BCP-47 language tag for translated text in responses (default: `"en"`)       |
+| `locale`         | string | No       | BCP-47 language tag for localized text in responses (default: `"en"`)        |
 | `name`           | string | Yes      | Server display name (non-empty after trim, no newlines or control chars)     |
 | `description`    | string | No       | Free-form description (no newlines or control chars)                         |
 | `address`        | string | No       | Public hostname or IP; tracker uses the connecting IP if omitted (see below) |
@@ -156,11 +155,10 @@ used for the initial registration and every refresh.
 
 **Field validation.** Where a field is shared with the BBS protocol's
 `ServerInfoUpdate`, the tracker applies the same rule the BBS server
-applies — `name`, `description`, `locale`, and `version` reuse the
-validators in `nexus-common/src/validators/` (`validate_server_name`,
-`validate_server_description`, `validate_locale`, `validate_version`)
-verbatim, so a value that registers cleanly is also one the BBS server
-would have accepted on its own configuration. Tracker-specific rules:
+applies — `name`, `description`, `locale`, and `version` use the same
+validation rules verbatim, so a value that registers cleanly is also
+one the BBS server would have accepted on its own configuration.
+Tracker-specific rules:
 
 - `port` must be non-zero. `websocket_port`, when present, must be
   non-zero.
@@ -180,12 +178,12 @@ collapse to one (single nickname). Shared-account and guest sessions
 count individually because each has its own nickname. Pre-login
 connections are excluded.
 
-**Fingerprint format.** The `fingerprint` field MUST follow the canonical
-Nexus fingerprint format: 32 uppercase hex bytes separated by colons (95
-bytes total — `AA:BB:CC:...`). This matches the output of
-`format_certificate_fingerprint` in `nexus-common`, the single source of
-truth for fingerprint shape across the workspace. Trackers MUST validate
-this format on each `TrackerServerRegister` and reject non-canonical values
+**Fingerprint format.** The `fingerprint` field MUST be the SHA-256
+digest of the server's TLS certificate, encoded as 32 uppercase hex
+bytes separated by colons (95 bytes total — `AA:BB:CC:...`). This is
+the same canonical form used elsewhere in Nexus (see
+[01-handshake.md](01-handshake.md)). Trackers MUST validate this
+format on each `TrackerServerRegister` and reject non-canonical values
 (wrong length, lowercase hex, missing colons, non-hex characters) via
 `TrackerServerRegisterResponse { success: false, error }`. Strict validation
 guarantees clients see a single canonical form and can compare byte-equal
@@ -286,25 +284,24 @@ Fingerprint is metadata for client-side server verification, not a storage
 key.
 
 **Field length limits.** Tracker implementations MUST enforce the
-following maximum lengths, matching the limits used by `nexus-server`
-for analogous fields. The unit per field is listed in the table below
-— some fields are measured in **characters** (Unicode scalar values,
-matching `str::chars().count()` in the Rust reference implementation)
-so non-ASCII users aren't penalized for their UTF-8 byte length;
-others are measured in **bytes** (matching `str::len()`) where the
-underlying constraint is byte-based (DNS octet limits, ASCII-only
+following maximum lengths, which match the limits the BBS protocol
+applies to analogous fields. The unit per field is listed in the
+table below — some fields are measured in **characters** (Unicode
+scalar values) so non-ASCII users aren't penalized
+for their UTF-8 byte length; others are measured in **bytes** where
+the underlying constraint is byte-based (DNS octet limits, ASCII-only
 identifiers, opaque hashes). Values exceeding the limit are rejected
 with `error_kind: invalid`.
 
-| Field         | Max length     | Source constant in `nexus-common`                      |
-| ------------- | -------------- | ------------------------------------------------------ |
-| `name`        | 64 characters  | `MAX_SERVER_NAME_LENGTH`                               |
-| `description` | 512 characters | `MAX_SERVER_DESCRIPTION_LENGTH`                        |
-| `password`    | 256 bytes      | `MAX_PASSWORD_LENGTH`                                  |
-| `address`     | 253 bytes      | `MAX_PUBLIC_ADDRESS_LENGTH` (RFC 1035 DNS octet limit) |
-| `version`     | 32 bytes       | `MAX_VERSION_LENGTH`                                   |
-| `locale`      | 16 bytes       | `MAX_LOCALE_LENGTH`                                    |
-| `fingerprint` | 95 bytes exact | Canonical form (see Fingerprint format above)          |
+| Field         | Max length     | Notes                                         |
+| ------------- | -------------- | --------------------------------------------- |
+| `name`        | 64 characters  |                                               |
+| `description` | 512 characters |                                               |
+| `password`    | 256 bytes      |                                               |
+| `address`     | 253 bytes      | RFC 1035 DNS octet limit                      |
+| `version`     | 32 bytes       |                                               |
+| `locale`      | 16 bytes       |                                               |
+| `fingerprint` | 95 bytes exact | Canonical form (see Fingerprint format above) |
 
 Numeric fields (`port`, `websocket_port`, `user_count`) follow the
 ranges of their declared types.
@@ -441,11 +438,11 @@ follow-up message defined for this flow.
 
 ### `TrackerServerList`
 
-| Field      | Type   | Required | Description                                                            |
-| ---------- | ------ | -------- | ---------------------------------------------------------------------- |
-| `password` | string | If gated | Listing password (omit if the tracker is open)                         |
-| `locale`   | string | No       | BCP-47 language tag for translated text in responses (default: `"en"`) |
-| `version`  | string | Yes      | Sender's `CARGO_PKG_VERSION` for compat filtering (semver)             |
+| Field      | Type   | Required | Description                                                           |
+| ---------- | ------ | -------- | --------------------------------------------------------------------- |
+| `password` | string | If gated | Listing password (omit if the tracker is open)                        |
+| `locale`   | string | No       | BCP-47 language tag for localized text in responses (default: `"en"`) |
+| `version`  | string | Yes      | Sender's `CARGO_PKG_VERSION` for compat filtering (semver)            |
 
 `TrackerServerList` carries no filter, search, or pagination parameters in this
 version of the protocol — but the tracker filters the response set to entries
@@ -463,25 +460,22 @@ filter locally and may resort for views other than the default name ordering
 }
 ```
 
-**Field validation.** `locale` and `version` reuse the same validators
-the BBS server's input validation applies (`validate_locale`,
-`validate_version` from `nexus-common/src/validators/`); the rules are
-identical wherever those fields are accepted elsewhere in Nexus.
-`version`-specific rules and the post-validation filter behavior are
-detailed below.
+**Field validation.** `locale` and `version` use the same rules as
+the BBS server applies elsewhere; rules are identical wherever those
+fields are accepted in Nexus. `version`-specific rules and the
+post-validation filter behavior are detailed below.
 
 #### Compatibility filter
 
 The tracker validates `version` and uses it to filter `servers` to entries
 the requesting client can speak with. The same semver compatibility rule
-the BBS handshake uses (`nexus_common::version::check_compatibility`)
-applies — same major; pre-1.0 same minor; post-1.0 client minor ≤ server
-minor; patch ignored.
+the BBS handshake uses applies — same major; pre-1.0 same minor; post-1.0
+client minor ≤ server minor; patch ignored.
 
-- **Validation.** `version` is required. Empty / over-cap
-  (`MAX_VERSION_LENGTH`, 32 bytes) / unparseable as semver → typed
-  `TrackerServerListResponse` with `success: false`,
-  `error_kind: "invalid"`. A _missing_ `version` field is a
+- **Validation.** `version` is required. Empty / over-cap (32 bytes)
+  / unparseable as semver → typed `TrackerServerListResponse` with
+  `success: false`, `error_kind: "invalid"`. A _missing_ `version`
+  field is a
   deserialization failure handled at the framing layer — the tracker
   emits a generic `Error` message and closes the connection, same as
   any required field on any message in the protocol. (List connections
@@ -619,14 +613,14 @@ further attempts.
 ### Localization
 
 All human-readable error strings — the `error` field in typed responses
-and the `message` field in `Error` — are translated server-side using
-the `locale` provided in the request. Clients receive pre-translated
-strings and can display them directly without further translation.
+and the `message` field in `Error` — are pre-localized to the `locale`
+provided in the request before being sent on the wire. Clients receive
+pre-localized strings and SHOULD display them directly.
 
 When the tracker sends `Error` before the request's `locale` is known —
 for example, on a frame format violation that prevents `TrackerServerRegister`
-or `TrackerServerList` from being parsed — the message is rendered in the
-implementation's default locale (`"en"` for the reference tracker).
+or `TrackerServerList` from being parsed — the message is rendered in
+the implementation's default locale (English).
 
 ### `Error`
 

@@ -124,17 +124,22 @@ Per-user weighted fair share of server outbound bandwidth, enforced via a single
 - Flow = nickname (lowercased). For regular accounts nickname equals username, so all sessions of a regular user share one flow. For shared accounts each session has a unique nickname, so each session gets its own flow — fair share works per real person rather than per shared login.
 - Pre-login traffic (WAN only): one **anonymous flow per source IP**, weight = 1. Reaped via refcount when the last pre-login connection from that IP disconnects or graduates to a nickname flow. LAN connections bypass the scheduler from accept onward and never enter the anon flow.
 - **Trust does NOT bypass cap.** Speed and ban are orthogonal concerns.
-- **Admin gets no special bypass** — admins use their user/group weight like anyone else.
+- **Admins skip group lookup.** Admins don't belong to groups; if they have no explicit per-user weight, they resolve to `DEFAULT_ADMIN_BANDWIDTH_WEIGHT` (50). They participate in fair scheduling like everyone else — the elevated default just reflects that admins typically warrant a larger share than guests.
 
 **Weight resolution (mirrors permission resolution)**
 
 ```
 bandwidth_weight =
-    user.bandwidth_weight                  // Some(w) → explicit user override
+    user.bandwidth_weight                                     // Some(w) → explicit user override
+        .or_else(|| if user.is_admin {                        // admins skip group lookup
+            Some(DEFAULT_ADMIN_BANDWIDTH_WEIGHT)              //   → 50
+        } else {
+            None
+        })
         .or(user.group_id
             .and_then(group_lookup)
-            .map(|g| g.bandwidth_weight))  // group's weight
-        .unwrap_or(1)                      // system default
+            .map(|g| g.bandwidth_weight))                     // group's weight
+        .unwrap_or(DEFAULT_BANDWIDTH_WEIGHT)                  // → 1 (system default)
 ```
 
 Cached on `UserSession.bandwidth_weight` at login as an `AtomicU16` so the scheduler's per-dispatch read is lock-free (`Ordering::Relaxed` is sufficient — the value is advisory for fairness, not a correctness invariant). Cache invalidation (live edits, group changes) does `store(new_weight, Ordering::Relaxed)` on the same atomic. No "VIP / uncap" mechanism — for an effectively-uncapped user, set their weight very high (e.g., `1000`) so they dominate.
@@ -273,11 +278,11 @@ The scheduler maintains two internal registries:
 
 - `users` table: `ALTER TABLE users ADD COLUMN bandwidth_weight INTEGER NULL` — NULL = inherit from group (or system default if no group).
 - `groups` table: `ALTER TABLE groups ADD COLUMN bandwidth_weight INTEGER NOT NULL DEFAULT 1`.
-- `server_config` table (existing key-value store): new rows `max_outbound_rate_bytes_per_sec` (default `'0'`) and `scheduler_chunk_size` (default `'8192'`). Values stored as `TEXT` per the existing convention; setter / getter in `db/config.rs` handle the int parse.
+- `config` table (existing key-value store): new rows `max_outbound_rate` (default `'0'`, stored as bytes/sec) and `scheduler_chunk_size` (default `'8192'`). Values stored as `TEXT` per the existing convention; setter / getter in `db/config.rs` handle the int parse.
 
 **Protocol additions**
 
-- `UserCreate` / `UserUpdate` / `GroupCreate` / `GroupUpdate` requests gain optional `bandwidth_weight` field.
+- `UserCreate` / `UserUpdate` / `GroupUpdate` requests gain optional `bandwidth_weight` field. `UserCreate` / `UserUpdate` additionally carry `inherit_bandwidth_weight: Option<bool>` (when `Some(true)`, no per-user override is stored; the resolver falls back through admin-default → group → system default). `GroupCreate.bandwidth_weight` is non-optional `u16` with serde default = `DEFAULT_BANDWIDTH_WEIGHT`.
 - `UserEditResponse` / `GroupEditResponse` return the field (the raw stored value, including `None` for "inherit from group" on users).
 - `UserInfo` and `UserInfoDetailed` gain `bandwidth_weight: Option<u16>` (#[serde(default, skip_serializing_if = "Option::is_none")]) carrying the **resolved** effective weight (server always sends `Some(weight)`; old clients ignore the field). Visible to all users, consistent with the rest of the UserInfo fields. Rides naturally on `UserUpdated` broadcasts.
 - `ServerInfo` and `ServerInfoUpdate` both gain `max_outbound_rate` and `scheduler_chunk_size`: `max_outbound_rate` visible to all (like `chat_rate_limit` / `max_connections_per_ip`); `scheduler_chunk_size` admin-only (pure internal tuning knob with no user-facing meaning). `ServerInfoUpdated` broadcast carries either when changed, with the same per-field visibility.
@@ -287,17 +292,25 @@ The scheduler maintains two internal registries:
 - New **"Bandwidth"** section in the Server Info admin panel — present in **both** the Config display tab and the edit form.
 - Section order in Server Info: General (special, first) → Bandwidth (B) → Chat → … (alphabetical after General).
 - Fields: `Max outbound (Mbps)` (float, 0 = unlimited), `Scheduler chunk size (bytes)` (integer, default 8192).
-- User create + user edit forms: directly **under the Group dropdown row**, add a `Bandwidth weight` number field plus an "Inherit from group" checkbox.
-  - No group assigned → "Inherit from group" hidden; the number field is the user's own weight (defaults to system default).
-  - Group assigned, Inherit checked → number field disabled, shows the group's weight greyed; save sends "inherit" (null override).
-  - Group assigned, Inherit unchecked → number field enabled, **bold when it differs from the group's weight** (same visual rule as the permission overrides above it).
-  - Disabled for non-admins where the widget supports it.
-- Group create + group edit forms: between **Shared** and **Permissions**, add a single `Bandwidth weight` number field, default 1. Disabled for non-admins where the widget supports it.
+- User create + user edit forms: directly **under the Group dropdown row**, add a `Bandwidth weight` number field plus an **always-visible** "Inherit Bandwidth Weight" checkbox.
+  - The inherited baseline mirrors the server resolution rule: the selected group's weight when a group is set, `DEFAULT_ADMIN_BANDWIDTH_WEIGHT` (50) when the target is admin, otherwise `DEFAULT_BANDWIDTH_WEIGHT` (1).
+  - Inherit checked → number field disabled, shows the baseline greyed; save sends "inherit" (null override).
+  - Inherit unchecked → number field enabled, **bold when it differs from the baseline** (same visual rule as the permission overrides above it).
+- Group create + group edit forms: between **Shared** and **Permissions**, add a single `Bandwidth weight` number field, default 1.
 - Not shown in user list, user info, user management table, or any non-edit surface.
 
 **Permissions**
 
-- No new permissions. `user_edit` / `group_edit` can view `bandwidth_weight` but only admins can change it. Server rejects a non-admin request only when the value actually differs from the stored one. Admin-only Server Info edit covers rate-limit config (existing pattern).
+- No new permissions. `user_edit` / `group_edit` gate access to the bandwidth_weight field, and it follows the same delegation pattern as the rest of Nexus: non-admins can set it to any value **at or below their own current resolved bandwidth weight**. They cannot grant a tier above their own, mirroring how non-admins can't grant permissions they don't have.
+- The rule is enforced at the server, not in the UI — the number input uses the field's inherent bounds (`MIN_BANDWIDTH_WEIGHT..=u16::MAX`) for everyone, and the server rejects on submit if a non-admin's request exceeds their own resolved weight.
+- The rule applies uniformly to every site that can change a user's or group's effective bandwidth:
+  - `UserCreate` / `UserUpdate` with `bandwidth_weight: Some(N)` → `N ≤ requester.resolved_weight`
+  - `UserUpdate` with `inherit_bandwidth_weight: Some(true)` → the inherited effective weight (admin-default → group → 1) ≤ requester's resolved weight
+  - `UserCreate` / `UserUpdate` with `group_id: Some(g)` → `g.bandwidth_weight ≤ requester.resolved_weight`
+  - `GroupCreate` with `bandwidth_weight: N` (non-default) → `N ≤ requester.resolved_weight`
+  - `GroupUpdate` with `bandwidth_weight: Some(N)` → `N ≤ requester.resolved_weight`
+- Admins bypass the rule entirely. The server reads the requester's current weight from `UserSession.bandwidth_weight` (the live `AtomicU16` cache), so admin downgrades take effect immediately on subsequent delegation attempts.
+- Admin-only ServerInfo edit still covers rate-limit config (`max_outbound_rate`, `scheduler_chunk_size`) — existing pattern, unchanged.
 
 **Implementation phasing (two PRs)**
 

@@ -1310,3 +1310,13 @@ err-tracker-update-failed = トラッカーの更新に失敗しました
 err-tracker-remove-failed = トラッカーの削除に失敗しました
 err-tracker-accept-fingerprint-failed = フィンガープリントの承認に失敗しました
 err-tracker-edit-no-payload = サーバーがトラッカーの詳細を返しませんでした
+
+label-bandwidth-section = 帯域幅
+label-bandwidth-weight = 帯域幅の重み:
+label-chat-section = チャット
+label-files-section = ファイル
+label-general-section = 一般
+label-inherit-bandwidth-weight = 帯域幅の重みを継承
+label-max-outbound-rate = 最大送信 (Mbps):
+label-unlimited = 無制限
+label-scheduler-chunk-size = スケジューラーのチャンクサイズ (バイト):

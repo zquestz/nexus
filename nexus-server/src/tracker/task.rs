@@ -1562,6 +1562,8 @@ mod tests {
                 revokes: None,
                 remove_group: false,
                 group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
             })
             .await
             .expect("enable guest");

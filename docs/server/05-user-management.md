@@ -38,11 +38,13 @@ Admins manage users through the client's **User Management** panel (accessible f
 ### Editing Users
 
 1. Open User Management panel
-2. Right-click a username → **Edit**
+2. Click a username to open Edit, or right-click → **Edit**
 3. Modify the details
 4. Click **Update**
 
 When editing a user who belongs to a group, permissions shown in **bold** indicate individual overrides (differ from the group's base permissions).
+
+**Editing your own row.** Clicking your own row opens **Change Password** if you're not an admin, or **Edit** if you are. The right-click context menu on your own row offers Change Password (always) and Edit (admins only). See [Admin Protection](#admin-protection) for what's editable when editing yourself.
 
 ### Deleting Users
 
@@ -201,6 +203,16 @@ Non-admin users cannot:
 
 Only admins can manage other admins.
 
+**Admins editing themselves.** Admins can open the Edit form on their own row — primarily to change their bandwidth weight, or to rename themselves. The following fields are disabled when editing self:
+
+- **Password** — use the Change Password dialog (it requires your current password)
+- **Admin** — can't demote yourself
+- **Enabled** — can't disable yourself
+- **Shared account** — immutable in any edit
+- **Permissions** — admins resolve via the admin override, so per-user grants and revokes are no-ops anyway
+
+Editable when editing self: username, group dropdown (silently ignored by the server since admins don't belong to groups), bandwidth weight + Inherit checkbox. These restrictions are enforced on both the client UI and the server handler.
+
 ## Permission Merging
 
 When a non-admin creates or edits a user, they can only grant permissions they possess themselves.
@@ -212,6 +224,118 @@ Example: A moderator with `[chat_send, user_kick, news_edit]` tries to grant `[c
 Admins bypass this restriction.
 
 **Group-aware merging:** The same rule applies to group permissions. Non-admins with `group_edit` can only set group permissions they themselves have. Non-admins can only assign users to groups whose permissions they fully possess.
+
+## Bandwidth Weight
+
+Each user has a `bandwidth_weight` integer (range `1..=65535`) controlling their share of the server's outbound bandwidth cap when flows contend. Higher weight = larger share. Weights are advisory for fairness — they don't allocate dedicated bandwidth, they bias the scheduler. When only one user is transferring, that user gets the full cap; weights only matter under contention.
+
+The server cap itself is configured separately by the operator — see [Configuration → Bandwidth](02-configuration.md#bandwidth).
+
+### Resolution
+
+The effective weight for a user is resolved in this order:
+
+```
+if user has an explicit per-user weight:
+    → that weight wins
+
+elif user is admin:
+    → 50 (admins skip group lookup entirely)
+
+elif user belongs to a group:
+    → the group's weight
+
+else:
+    → 1 (server default)
+```
+
+Admins never inherit from a group — they don't belong to one. The admin default of `50` sits above typical group tiers (see below) but leaves the `51..=65535` range open for special-case accounts that should outrank admins.
+
+### Recommended tiers
+
+A linear ramp works well for most servers:
+
+| Role      | Weight |
+| --------- | ------ |
+| Guest     | 1      |
+| Shared    | 5      |
+| User      | 10     |
+| Moderator | 25     |
+| Admin     | 50     |
+
+The `51..=65535` range is open for service accounts, CI bots, or any role that should outrank admins.
+
+### Worked example
+
+Server cap = 100 Mbps. Two users actively transferring:
+
+- Guest (weight 1) and Admin (weight 50)
+- Total weight = 51
+- Admin gets `50 / 51` ≈ 98% of the cap → ~98 Mbps
+- Guest gets `1 / 51` ≈ 2% of the cap → ~2 Mbps
+
+Add a Moderator (weight 25) transferring at the same time:
+
+- Total weight = 1 + 25 + 50 = 76
+- Admin: `50 / 76` ≈ 66% → ~66 Mbps
+- Moderator: `25 / 76` ≈ 33% → ~33 Mbps
+- Guest: `1 / 76` ≈ 1% → ~1 Mbps
+
+The numbers shift as users start and stop transferring; the scheduler is work-conserving, so any unused share goes to whoever else is active.
+
+### Shared accounts
+
+Each session of a shared account gets its own flow, identified by the session's nickname. Two people logged in under the same shared account contend with each other on equal footing — the shared group's weight applies to each session, not to the account as a whole.
+
+### Trust does not bypass the cap
+
+The IP trust list bypasses bans, not the rate cap. A trusted client still goes through the scheduler at its user's resolved weight. Speed and ban are orthogonal concerns.
+
+### Setting the weight
+
+**User Create / Edit form.** Under the Group dropdown, you'll see a `Bandwidth Weight` field and an always-visible `Inherit Bandwidth Weight` checkbox.
+
+- **Inherit checked** → the weight field shows the inherited baseline read-only (the group's weight if set, `50` if the user is admin, or `1` otherwise). Saving stores no per-user override; the resolver will compute the same baseline at runtime.
+- **Inherit unchecked** → the weight field is editable and holds a per-user override. The value renders **bold** when it differs from the baseline, matching the permission-override convention used above it.
+
+**Group Create / Edit form.** A single `Bandwidth Weight` field between the Shared checkbox and Permissions. No Inherit checkbox — groups are the inheritance source.
+
+### Who can change the weight
+
+Bandwidth weight follows the same **delegation pattern** as permissions: non-admins can set it to any value **at or below their own current resolved bandwidth weight**. They cannot grant a tier above their own, mirroring how non-admins can't grant permissions they don't possess. Admins bypass the rule.
+
+The rule applies uniformly wherever weight is being set:
+
+| Operation                                                  | Constraint                                                |
+| ---------------------------------------------------------- | --------------------------------------------------------- |
+| Set a user's per-user override (`bandwidth_weight = N`)    | `N ≤ requester.resolved_weight`                           |
+| Clear a user's override (Inherit checkbox checked on save) | The user's inherited weight ≤ `requester.resolved_weight` |
+| Assign a user to a group                                   | `group.bandwidth_weight ≤ requester.resolved_weight`      |
+| Create a group                                             | `group.bandwidth_weight ≤ requester.resolved_weight`      |
+| Edit a group's weight                                      | New weight ≤ `requester.resolved_weight`                  |
+
+**Practical example.** A moderator in the Moderators group (weight = 25) has `user_edit` and `group_edit`. They can:
+
+- Promote a new user to weight 10 (≤ 25): ✓
+- Move a user into the Power-Users group at weight 20 (≤ 25): ✓
+- Bump the Helpers group's weight from 5 to 25: ✓
+- Promote a user to weight 50: ✗ (exceeds their own 25)
+- Move a user into a high-weight group at weight 50: ✗
+- Bump any group's weight to 100: ✗
+
+**Edge case — clearing an override drops a user back to a higher tier.** If Alice has a per-user override of 10 but belongs to the Power-Users group (weight 20), her effective weight is 10. If a moderator at weight 25 checks Inherit and saves (clearing Alice's override), Alice's effective weight jumps to 20 — still ≤ moderator's 25, so allowed. But if Alice's group were a high-weight tier (e.g., weight 50), the operation would be rejected — the moderator can't grant Alice a higher tier even indirectly. Admin can step in for such cases.
+
+### Live edits
+
+Bandwidth weight changes take effect immediately:
+
+- Changing a user's per-user weight refreshes every active session of that user.
+- Changing a group's weight refreshes every active session of every member of that group (same fan-out pattern as group permission cascades).
+- Promoting or demoting a user to/from admin refreshes their resolved weight immediately (admins skip group lookup and resolve to the admin default; non-admins fall back through group → system default). All active sessions of the affected user see the new weight.
+
+### Visibility
+
+The resolved effective weight is included in the `UserInfo` broadcast that all users see. It's not rendered in the user list or any non-edit surface today — admins can inspect it via the User Edit form, and the resolver value is what the server actually uses.
 
 ## Account Groups
 
@@ -387,6 +511,8 @@ Admins can configure server-wide settings through the **Server Info** panel:
 | Auto-join channels     | Space-separated channels users join on login (default: `#nexus`)                 |
 | Chat burst limit       | Max messages in a burst before rate limiting (default: 5, 0 = capacity of 1)     |
 | Chat rate limit        | Messages per minute rate limit (default: 20, 0 = flood protection disabled)      |
+| Max outbound rate      | Server-wide outbound bandwidth cap, in Mbps (default: 0 = unlimited)             |
+| Scheduler chunk size   | Egress scheduler packet size, in bytes (default: 8192; range 1024–65536)         |
 | Min password strength  | Minimum password strength level: Weak/Fair/Good/Strong/Excellent (default: Good) |
 
 ### Connection Limits

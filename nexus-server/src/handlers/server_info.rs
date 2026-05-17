@@ -27,6 +27,8 @@ pub struct ServerInfoValues {
     pub min_password_strength: u8,
     pub chat_burst_limit: u32,
     pub chat_rate_limit: u32,
+    pub max_outbound_rate: u64,
+    pub scheduler_chunk_size: u32,
 }
 
 /// Options controlling what's included in the built ServerInfo.
@@ -52,6 +54,7 @@ pub struct ServerInfoOptions {
 /// - `file_reindex_interval`: admin or FileReindex permission
 /// - `persistent_channels`: admin only
 /// - `auto_join_channels`: admin or ChatJoin permission
+/// - `scheduler_chunk_size`: admin only (internal tuning knob)
 pub fn build_server_info(values: &ServerInfoValues, options: &ServerInfoOptions) -> ServerInfo {
     let file_reindex_interval = if options.is_admin || options.has_file_reindex {
         Some(values.file_reindex_interval)
@@ -84,6 +87,13 @@ pub fn build_server_info(values: &ServerInfoValues, options: &ServerInfoOptions)
         Some(values.public_address.clone())
     };
 
+    // scheduler_chunk_size is a pure internal tuning knob — admin-only.
+    let scheduler_chunk_size = if options.is_admin {
+        Some(values.scheduler_chunk_size)
+    } else {
+        None
+    };
+
     ServerInfo {
         name: Some(values.name.clone()),
         description: Some(values.description.clone()),
@@ -101,5 +111,65 @@ pub fn build_server_info(values: &ServerInfoValues, options: &ServerInfoOptions)
         chat_rate_limit: Some(values.chat_rate_limit),
         min_password_strength: Some(values.min_password_strength),
         log_level: Some(current_log_level().to_string()),
+        max_outbound_rate: Some(values.max_outbound_rate),
+        scheduler_chunk_size,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_values() -> ServerInfoValues {
+        ServerInfoValues {
+            name: String::new(),
+            description: String::new(),
+            public_address: String::new(),
+            version: String::new(),
+            image: String::new(),
+            max_connections_per_ip: 0,
+            max_transfers_per_ip: 0,
+            transfer_port: 7501,
+            transfer_websocket_port: None,
+            file_reindex_interval: 0,
+            persistent_channels: String::new(),
+            auto_join_channels: String::new(),
+            min_password_strength: 0,
+            chat_burst_limit: 0,
+            chat_rate_limit: 0,
+            max_outbound_rate: 0,
+            scheduler_chunk_size: 8192,
+        }
+    }
+
+    /// `scheduler_chunk_size` is an internal tuning knob and must never
+    /// reach non-admin clients. Pinned to catch a future refactor that
+    /// drops the gate.
+    #[test]
+    fn scheduler_chunk_size_hidden_from_non_admin() {
+        let info = build_server_info(
+            &sample_values(),
+            &ServerInfoOptions {
+                is_admin: false,
+                has_file_reindex: false,
+                has_chat_join: false,
+                include_image: false,
+            },
+        );
+        assert!(info.scheduler_chunk_size.is_none());
+    }
+
+    #[test]
+    fn scheduler_chunk_size_visible_to_admin() {
+        let info = build_server_info(
+            &sample_values(),
+            &ServerInfoOptions {
+                is_admin: true,
+                has_file_reindex: false,
+                has_chat_join: false,
+                include_image: false,
+            },
+        );
+        assert_eq!(info.scheduler_chunk_size, Some(8192));
     }
 }
