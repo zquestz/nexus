@@ -1850,7 +1850,11 @@ mod tests {
             bob_session,
             test_ctx.peer_addr.ip(),
         );
-        test_ctx.voice_registry.add(voice_session).await;
+        test_ctx
+            .voice_registry
+            .add(voice_session)
+            .await
+            .expect("test setup: session_id is unique");
 
         // Verify bob is in voice
         assert!(test_ctx.voice_registry.has_session(bob_session).await);

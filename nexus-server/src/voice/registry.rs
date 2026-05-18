@@ -13,6 +13,12 @@ use uuid::Uuid;
 use super::session::VoiceSession;
 use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
 
+/// Result of a successful `VoiceRegistry::add`.
+pub struct AddOutcome {
+    pub token: Uuid,
+    pub broadcast_joined: bool,
+}
+
 /// Information needed to send VoiceUserLeft notifications after removing a session.
 ///
 /// This struct encapsulates all the computed values needed for notifications,
@@ -54,23 +60,37 @@ impl VoiceRegistry {
         }
     }
 
-    /// Add a voice session to the registry
-    ///
-    /// Returns the session's token for the client to use in UDP packets.
-    pub async fn add(&self, session: VoiceSession) -> Uuid {
+    /// Atomically register a voice session. Returns `None` if the
+    /// `session_id` is already registered.
+    #[must_use]
+    pub async fn add(&self, session: VoiceSession) -> Option<AddOutcome> {
         let token = session.token;
         let session_id = session.session_id;
         let ip = session.ip;
+        let target_key_lower = session.target_key().to_lowercase();
+        let nickname_lower = session.nickname.to_lowercase();
 
         let mut sessions = self.sessions.write().await;
         let mut id_to_token = self.session_id_to_token.write().await;
         let mut active_ips = self.active_ips.write().await;
 
+        if id_to_token.contains_key(&session_id) {
+            return None;
+        }
+
+        let nickname_already_in_target = sessions.values().any(|s| {
+            s.target_key().to_lowercase() == target_key_lower
+                && s.nickname.to_lowercase() == nickname_lower
+        });
+
         sessions.insert(token, session);
         id_to_token.insert(session_id, token);
         active_ips.insert(ip);
 
-        token
+        Some(AddOutcome {
+            token,
+            broadcast_joined: !nickname_already_in_target,
+        })
     }
 
     /// Remove a voice session by its token and compute notification info.
@@ -180,8 +200,11 @@ impl VoiceRegistry {
 
     /// Get a voice session by TCP session ID
     pub async fn get_by_session_id(&self, session_id: u32) -> Option<VoiceSession> {
-        let id_to_token = self.session_id_to_token.read().await;
+        // Lock order: sessions → id_to_token, matching every writer
+        // (`add`, `remove_by_*`, `update_nickname`). Reversing would
+        // create an AB-BA deadlock under contention.
         let sessions = self.sessions.read().await;
+        let id_to_token = self.session_id_to_token.read().await;
 
         id_to_token
             .get(&session_id)
@@ -351,7 +374,10 @@ mod tests {
         let session = create_test_session("alice", "#general", 1);
         let token = session.token;
 
-        registry.add(session).await;
+        registry
+            .add(session)
+            .await
+            .expect("test setup: session_id is unique");
 
         let retrieved = registry.get_by_token(token).await;
         assert!(retrieved.is_some());
@@ -363,7 +389,10 @@ mod tests {
         let registry = VoiceRegistry::new();
         let session = create_test_session("alice", "#general", 42);
 
-        registry.add(session).await;
+        registry
+            .add(session)
+            .await
+            .expect("test setup: session_id is unique");
 
         let retrieved = registry.get_by_session_id(42).await;
         assert!(retrieved.is_some());
@@ -379,7 +408,10 @@ mod tests {
         let session = create_test_session("alice", "#general", 1);
         let token = session.token;
 
-        registry.add(session).await;
+        registry
+            .add(session)
+            .await
+            .expect("test setup: session_id is unique");
         assert!(registry.has_session(1).await);
 
         let removed = registry.remove_by_token(token).await;
@@ -397,7 +429,10 @@ mod tests {
         let session = create_test_session("alice", "#general", 1);
         let token = session.token;
 
-        registry.add(session).await;
+        registry
+            .add(session)
+            .await
+            .expect("test setup: session_id is unique");
 
         let removed = registry.remove_by_session_id(1).await;
         assert!(removed.is_some());
@@ -414,7 +449,10 @@ mod tests {
         assert!(!registry.has_session(1).await);
 
         let session = create_test_session("alice", "#general", 1);
-        registry.add(session).await;
+        registry
+            .add(session)
+            .await
+            .expect("test setup: session_id is unique");
 
         assert!(registry.has_session(1).await);
         assert!(!registry.has_session(2).await);
@@ -427,13 +465,16 @@ mod tests {
         // Add multiple users to the same channel
         registry
             .add(create_test_session("alice", "#general", 1))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
         registry
             .add(create_test_session("bob", "#general", 2))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
         registry
             .add(create_test_session("charlie", "#other", 3))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
 
         let participants = registry.get_participants("#general").await;
         assert_eq!(participants.len(), 2);
@@ -448,10 +489,12 @@ mod tests {
 
         registry
             .add(create_test_session("alice", "#general", 1))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
         registry
             .add(create_test_session("bob", "#general", 2))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
 
         // Should find both regardless of case
         let participants = registry.get_participants("#GENERAL").await;
@@ -464,13 +507,16 @@ mod tests {
 
         registry
             .add(create_test_session("alice", "#general", 1))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
         registry
             .add(create_test_session("bob", "#general", 2))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
         registry
             .add(create_test_session("charlie", "#other", 3))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
 
         let sessions = registry.get_sessions_for_target("#general").await;
         assert_eq!(sessions.len(), 2);
@@ -482,7 +528,10 @@ mod tests {
         let session = create_test_session("alice", "#general", 1);
         let token = session.token;
 
-        registry.add(session).await;
+        registry
+            .add(session)
+            .await
+            .expect("test setup: session_id is unique");
 
         let addr: std::net::SocketAddr = "192.168.1.1:12345".parse().unwrap();
         assert!(registry.set_udp_addr(token, addr).await);
@@ -502,12 +551,14 @@ mod tests {
 
         registry
             .add(create_test_session("alice", "#general", 1))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
         assert_eq!(registry.session_count().await, 1);
 
         registry
             .add(create_test_session("bob", "#general", 2))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
         assert_eq!(registry.session_count().await, 2);
 
         registry.remove_by_session_id(1).await;
@@ -533,8 +584,14 @@ mod tests {
             2,
             ip,
         );
-        registry.add(alice_session).await;
-        registry.add(bob_session).await;
+        registry
+            .add(alice_session)
+            .await
+            .expect("test setup: session_id is unique");
+        registry
+            .add(bob_session)
+            .await
+            .expect("test setup: session_id is unique");
 
         // Both should be in the same voice session
         let participants = registry.get_participants("alice:bob").await;
@@ -563,7 +620,8 @@ mod tests {
         // Add alice to #general
         registry
             .add(create_test_session("alice", "#general", 1))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
 
         // Alice is in #general
         assert!(
@@ -601,7 +659,8 @@ mod tests {
         // Add alice session 1 to #general
         registry
             .add(create_test_session("alice", "#general", 1))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
 
         // Alice is in #general when not excluding any session
         assert!(
@@ -620,7 +679,8 @@ mod tests {
         // Add alice session 2 to #general (multi-session case)
         registry
             .add(create_test_session("alice", "#general", 2))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
 
         // Alice is still in #general when excluding session 1 (session 2 remains)
         assert!(
@@ -654,10 +714,12 @@ mod tests {
         // Simulate a regular user with two sessions joining voice
         registry
             .add(create_test_session("alice", "#general", 1))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
         registry
             .add(create_test_session("alice", "#general", 2))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
 
         // Participant list should contain alice (possibly twice, but that's for display)
         let participants = registry.get_participants("#general").await;
@@ -687,7 +749,8 @@ mod tests {
         // Add a session for alice
         registry
             .add(create_test_session("alice", "#general", 1))
-            .await;
+            .await
+            .expect("test setup: session_id is unique");
 
         // Verify alice is in participants
         let participants = registry.get_participants("#general").await;
@@ -711,5 +774,50 @@ mod tests {
         // Try to update nickname for a session that's not in voice
         let updated = registry.update_nickname(999, "bob".to_string()).await;
         assert!(!updated);
+    }
+
+    /// Two concurrent `add` calls for the same `session_id` must
+    /// produce exactly one winner. Without the atomic check both
+    /// would insert into `sessions` (different tokens), then the
+    /// second `id_to_token.insert` would overwrite the first,
+    /// orphaning a `VoiceSession` reachable only by its token.
+    #[tokio::test]
+    async fn test_add_rejects_duplicate_session_id() {
+        let registry = VoiceRegistry::new();
+
+        let s1 = create_test_session("alice", "#general", 42);
+        let s2 = create_test_session("alicia", "#general", 42);
+
+        let (r1, r2) = tokio::join!(registry.add(s1), registry.add(s2));
+
+        let winners = [r1.is_some(), r2.is_some()].iter().filter(|x| **x).count();
+        assert_eq!(winners, 1, "exactly one concurrent add must win");
+        assert_eq!(registry.session_count().await, 1);
+    }
+
+    /// Two concurrent same-nickname joins to the same target (with
+    /// distinct `session_id`s) must yield exactly one
+    /// `broadcast_joined = true`. The pre-add `is_nickname_in_target`
+    /// check this replaces could race so both saw "not present" and
+    /// the handler emitted duplicate `VoiceUserJoined` broadcasts.
+    #[tokio::test]
+    async fn test_add_serializes_broadcast_joined_for_same_nickname_target() {
+        let registry = VoiceRegistry::new();
+
+        let s1 = create_test_session("alice", "#general", 1);
+        let s2 = create_test_session("alice", "#general", 2);
+
+        let (r1, r2) = tokio::join!(registry.add(s1), registry.add(s2));
+
+        let o1 = r1.expect("session_id 1 unique");
+        let o2 = r2.expect("session_id 2 unique");
+        let broadcasters = [o1.broadcast_joined, o2.broadcast_joined]
+            .iter()
+            .filter(|x| **x)
+            .count();
+        assert_eq!(
+            broadcasters, 1,
+            "exactly one of two concurrent same-nickname joins broadcasts"
+        );
     }
 }

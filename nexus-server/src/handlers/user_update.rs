@@ -3982,7 +3982,11 @@ mod tests {
             voiceadmin_session,
             test_ctx.peer_addr.ip(),
         );
-        test_ctx.voice_registry.add(voice_session).await;
+        test_ctx
+            .voice_registry
+            .add(voice_session)
+            .await
+            .expect("test setup: session_id is unique");
         assert!(
             test_ctx
                 .voice_registry
@@ -4119,7 +4123,11 @@ mod tests {
             lounge_session,
             test_ctx.peer_addr.ip(),
         );
-        test_ctx.voice_registry.add(voice_session).await;
+        test_ctx
+            .voice_registry
+            .add(voice_session)
+            .await
+            .expect("test setup: session_id is unique");
 
         // Admin renames the shared account.
         let request = UserUpdateRequest {
@@ -5670,7 +5678,11 @@ mod tests {
             voice_user_session,
             test_ctx.peer_addr.ip(),
         );
-        test_ctx.voice_registry.add(voice_session).await;
+        test_ctx
+            .voice_registry
+            .add(voice_session)
+            .await
+            .expect("test setup: session_id is unique");
 
         // Verify user is in voice
         assert!(
@@ -5800,7 +5812,11 @@ mod tests {
             voice_user_session,
             test_ctx.peer_addr.ip(),
         );
-        test_ctx.voice_registry.add(voice_session).await;
+        test_ctx
+            .voice_registry
+            .add(voice_session)
+            .await
+            .expect("test setup: session_id is unique");
 
         // Verify user is in voice
         assert!(

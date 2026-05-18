@@ -145,29 +145,37 @@ where
     // Get current participants before adding the new session
     let mut participants = ctx.voice_registry.get_participants(&target_key).await;
 
-    // Check if this nickname is already in voice for this target (multi-session case)
-    // Only broadcast VoiceUserJoined on first join of a nickname
-    let nickname_already_in_voice = ctx
-        .voice_registry
-        .is_nickname_in_target(&target_key, &user.nickname, None)
-        .await;
-
-    // Create and add the voice session
+    // Create and add the voice session. The atomic `add` is the
+    // authoritative race guard: it both rejects duplicate session_id
+    // joins (lost-race → None → `err_voice_already_joined`) and
+    // reports whether this nickname was already in the target, so
+    // two simultaneous joins under the same nickname can't both
+    // observe "first join" and produce duplicate broadcasts.
     let voice_session = VoiceSession::new(
         user.nickname.clone(),
         internal_target,
         session_id,
         ctx.peer_addr.ip(),
     );
-    let token = ctx.voice_registry.add(voice_session).await;
+    let (token, broadcast_joined) = match ctx.voice_registry.add(voice_session).await {
+        Some(outcome) => (outcome.token, outcome.broadcast_joined),
+        None => {
+            let response = ServerMessage::VoiceJoinResponse {
+                success: false,
+                token: None,
+                target: None,
+                participants: None,
+                error: Some(err_voice_already_joined(ctx.locale)),
+            };
+            return ctx.send_message(&response).await;
+        }
+    };
 
     // Add self to participants list (sorted by lowercase)
     participants.push(user.nickname.clone());
     participants.sort_by_key(|a| a.to_lowercase());
 
-    // Broadcast VoiceUserJoined only if this is the first session of this nickname joining
-    // (prevents duplicate announcements for multi-session users)
-    if !nickname_already_in_voice {
+    if broadcast_joined {
         if is_channel {
             // For channels: broadcast to ALL channel members with voice_listen permission
             // (not just voice participants) so everyone can see who's in voice
