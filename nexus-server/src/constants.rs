@@ -813,8 +813,6 @@ pub const LOG_USER_UPDATE_DB_ERROR: &str = "UserUpdate: database error";
 pub const LOG_USER_UPDATE_DB_ERROR_LOOKUP: &str = "UserUpdate: database error looking up user";
 pub const LOG_USER_UPDATE_DB_ERROR_TARGET: &str = "UserUpdate: database error getting target user";
 pub const LOG_USER_UPDATE_DB_ERROR_USER: &str = "UserUpdate: database error getting user";
-pub const LOG_USER_UPDATE_DB_ERROR_PERMISSIONS: &str =
-    "UserUpdate: database error fetching permissions for merge";
 pub const LOG_USER_UPDATE_DB_ERROR_GROUP: &str = "UserUpdate: database error fetching group";
 pub const LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS: &str =
     "UserUpdate: database error fetching group permissions";

@@ -153,22 +153,6 @@ impl UserManager {
         count
     }
 
-    /// Update admin status for a user by database user ID
-    /// Returns the number of sessions updated
-    pub async fn update_admin_status(&self, user_id: i64, is_admin: bool) -> usize {
-        let mut users = self.users.write().await;
-        let mut count = 0;
-
-        for user in users.values_mut() {
-            if user.user_id == user_id {
-                user.is_admin = is_admin;
-                count += 1;
-            }
-        }
-
-        count
-    }
-
     /// Update cached permissions for a user by database user ID
     /// Returns the number of sessions updated
     pub async fn update_permissions(
@@ -181,6 +165,32 @@ impl UserManager {
 
         for user in users.values_mut() {
             if user.user_id == user_id {
+                user.permissions = permissions.clone();
+                count += 1;
+            }
+        }
+
+        count
+    }
+
+    /// Atomically flip both `is_admin` and cached permissions for
+    /// every session of `user_id` under one write-lock acquisition.
+    /// `UserSession::has_permission` short-circuits on `is_admin`, so
+    /// splitting the two writes would let a demoted admin keep
+    /// passing privileged checks until both landed. Returns the
+    /// number of sessions touched.
+    pub async fn update_auth_state(
+        &self,
+        user_id: i64,
+        is_admin: bool,
+        permissions: HashSet<Permission>,
+    ) -> usize {
+        let mut users = self.users.write().await;
+        let mut count = 0;
+
+        for user in users.values_mut() {
+            if user.user_id == user_id {
+                user.is_admin = is_admin;
                 user.permissions = permissions.clone();
                 count += 1;
             }
@@ -211,18 +221,12 @@ impl UserManager {
         count
     }
 
-    /// Batched companion to [`Self::update_bandwidth_weight`]: refresh
-    /// the cached weight for every session whose `user_id` is in
-    /// `user_ids`, in one read-lock acquisition and one pass over
-    /// sessions. Used by the `GroupUpdate` cascade so a group with many
-    /// inheriting members doesn't pay O(N·M) (one full-session scan per
-    /// member). Returns the number of sessions touched.
-    ///
-    /// Read lock is sufficient even though we mutate `bandwidth_weight`:
-    /// the field is `AtomicU16` and stores go through interior
-    /// mutability — same reason `update_bandwidth_weight` reads. Unlike
-    /// `update_group_name`, which mutates a `String` and needs
-    /// `write().await`.
+    /// Batched companion to [`Self::update_bandwidth_weight`] —
+    /// refreshes every session whose `user_id` is in `user_ids` in one
+    /// pass over sessions. Used by the `GroupUpdate` cascade to avoid
+    /// O(N·M) per-member scans. Returns the number of sessions
+    /// touched. Read lock suffices because `bandwidth_weight` is an
+    /// `AtomicU16`.
     pub async fn update_bandwidth_weight_for_user_ids(
         &self,
         user_ids: &HashSet<i64>,

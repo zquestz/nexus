@@ -145,6 +145,7 @@ err-update-failed = Falha ao atualizar o utilizador "{ $username }"
 err-username-too-long = O nome de utilizador é demasiado longo (máximo { $max_length } caracteres)
 # Erros de validação de permissões
 err-permissions-too-many = Demasiadas permissões (máximo { $max_count })
+err-permission-grant-revoke-conflict = A permissão { $permission } não pode ser concedida e revogada simultaneamente
 err-permissions-empty-permission = O nome da permissão não pode estar vazio
 err-permissions-permission-too-long = O nome da permissão é demasiado longo (máximo { $max_length } bytes)
 err-permissions-contains-newlines = O nome da permissão não pode conter quebras de linha

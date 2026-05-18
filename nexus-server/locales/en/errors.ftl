@@ -115,6 +115,7 @@ err-features-invalid-characters = Feature name contains invalid characters
 
 # Permissions Validation Errors
 err-permissions-too-many = Too many permissions (max { $max_count })
+err-permission-grant-revoke-conflict = Permission { $permission } cannot be both granted and revoked
 err-permissions-empty-permission = Permission name cannot be empty
 err-permissions-permission-too-long = Permission name is too long (max { $max_length } bytes)
 err-permissions-contains-newlines = Permission name cannot contain newlines

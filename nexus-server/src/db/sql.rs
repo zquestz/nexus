@@ -167,6 +167,27 @@ pub const SQL_DELETE_GRANT_PERMISSION: &str =
 /// if group-based permission resolution is needed.
 pub const SQL_SELECT_USER_GROUP_ID: &str = "SELECT group_id FROM users WHERE id = ?";
 
+/// Select a user's `group_id` and `is_shared` together. Used by
+/// `update_user`'s in-tx group-auth re-read for non-admin callers.
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+///
+/// **Returns:** `Option<(Option<i64>, bool)>`
+pub const SQL_SELECT_USER_GROUP_AND_SHARED: &str =
+    "SELECT group_id, is_shared FROM users WHERE id = ?";
+
+/// Select a group's `is_shared` and raw `bandwidth_weight`. Used by
+/// `update_user`'s in-tx new-group re-check (clamp the weight at the
+/// call site).
+///
+/// **Parameters:**
+/// 1. `group_id: i64` - Group ID
+///
+/// **Returns:** `Option<(bool, i64)>`
+pub const SQL_SELECT_GROUP_SHARED_AND_BANDWIDTH: &str =
+    "SELECT is_shared, bandwidth_weight FROM groups WHERE id = ?";
+
 /// Select a user's raw bandwidth weight plus their group's weight in one
 /// row, for resolving the effective weight without two round-trips.
 ///
@@ -220,6 +241,32 @@ pub const SQL_INSERT_PERMISSION: &str =
 pub const SQL_INSERT_PERMISSION_OVERRIDE: &str =
     "INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, ?)";
 
+/// Upsert a grant override. `(user_id, permission)` is the PK so a row
+/// is either grant OR revoke — the upsert flips an existing revoke to
+/// a grant in one operation.
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+/// 2. `permission: &str` - Permission name (snake_case)
+pub const SQL_UPSERT_GRANT_PERMISSION: &str = "INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, 'grant') \
+     ON CONFLICT(user_id, permission) DO UPDATE SET override_type = 'grant'";
+
+/// Symmetric to `SQL_UPSERT_GRANT_PERMISSION` with grant ↔ revoke.
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+/// 2. `permission: &str` - Permission name (snake_case)
+pub const SQL_UPSERT_REVOKE_PERMISSION: &str = "INSERT INTO user_permissions (user_id, permission, override_type) VALUES (?, ?, 'revoke') \
+     ON CONFLICT(user_id, permission) DO UPDATE SET override_type = 'revoke'";
+
+/// Delete a single revoke override row (leaves any grant row for the
+/// same permission alone). Symmetric to `SQL_DELETE_GRANT_PERMISSION`.
+///
+/// **Parameters:**
+/// 1. `user_id: i64` - User ID
+/// 2. `permission: &str` - Permission name (snake_case)
+pub const SQL_DELETE_REVOKE_PERMISSION: &str = "DELETE FROM user_permissions WHERE user_id = ? AND permission = ? AND override_type = 'revoke'";
+
 // ========================================================================
 // User Mutation Operations
 // ========================================================================
@@ -250,18 +297,22 @@ pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, i
 /// 6. `user_id: i64` - User ID to update
 /// 7. `enabled: bool` - (Duplicate) Final enabled status for protection check
 /// 8. `is_admin: bool` - (Duplicate) Final admin status for protection check
+/// 9. `requester_is_admin: bool` - Whether the requester is admin (non-admin cannot edit admin target)
 ///
 /// **Note:** `is_shared` is not updated - it is immutable once set at creation.
 ///
 /// **Atomic Protection:**
 /// - Prevents disabling the last enabled admin
 /// - Prevents demoting the last admin
+/// - Prevents non-admin requesters from editing admin target accounts
 /// - Uses compound WHERE clauses with subqueries to check counts atomically
 /// - Returns 0 rows affected if blocked by protection
 ///
 /// **TOCTOU Prevention:** All checks happen in a single SQL statement,
 /// preventing race conditions where multiple simultaneous updates could
-/// leave the system with zero enabled admins or zero admins.
+/// leave the system with zero enabled admins or zero admins, or where a
+/// concurrent promotion could let a non-admin's in-flight edit land on a
+/// now-admin row.
 pub const SQL_UPDATE_USER: &str = "UPDATE users
     SET username = ?, password_hash = ?, is_admin = ?, enabled = ?, bandwidth_weight = ?
     WHERE id = ?
@@ -276,6 +327,14 @@ pub const SQL_UPDATE_USER: &str = "UPDATE users
         ? = 1
         OR is_admin = 0
         OR (SELECT COUNT(*) FROM users WHERE is_admin = 1) > 1
+    )
+    AND (
+        -- Non-admin requester cannot edit an admin target. Atomic with
+        -- the UPDATE so a concurrent promotion between the handler's
+        -- pre-check and this write can't let a non-admin edit a
+        -- now-admin row.
+        ? = 1
+        OR is_admin = 0
     )";
 
 /// Update a user's group assignment

@@ -145,6 +145,7 @@ err-update-failed = Kan gebruiker "{ $username }" niet bijwerken
 err-username-too-long = De gebruikersnaam is te lang (maximaal { $max_length } tekens)
 # Machtigingsvalidatiefouten
 err-permissions-too-many = Te veel machtigingen (maximaal { $max_count })
+err-permission-grant-revoke-conflict = Machtiging { $permission } kan niet zowel verleend als ingetrokken zijn
 err-permissions-empty-permission = De machtigingsnaam mag niet leeg zijn
 err-permissions-permission-too-long = De machtigingsnaam is te lang (maximaal { $max_length } bytes)
 err-permissions-contains-newlines = De machtigingsnaam mag geen regelafbrekingen bevatten

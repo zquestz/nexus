@@ -16,11 +16,10 @@ use nexus_common::validators::{
 use crate::constants::{
     DEFAULT_LOCALE, HANDLER_USER_UPDATE, LOG_USER_UPDATE_ADMIN, LOG_USER_UPDATE_DB_ERROR,
     LOG_USER_UPDATE_DB_ERROR_GROUP, LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS,
-    LOG_USER_UPDATE_DB_ERROR_LOOKUP, LOG_USER_UPDATE_DB_ERROR_PERMISSIONS,
-    LOG_USER_UPDATE_DB_ERROR_TARGET, LOG_USER_UPDATE_DB_ERROR_USER, LOG_USER_UPDATE_HASH_ERROR,
-    LOG_USER_UPDATE_NOT_LOGGED_IN, LOG_USER_UPDATE_PASSWORD_VERIFY,
-    LOG_USER_UPDATE_PERMISSION_DENIED, LOG_USER_UPDATE_SUCCESS, LOG_USER_UPDATE_UNOWNED_PERMISSION,
-    LOG_USER_UPDATE_UNOWNED_REVOKE,
+    LOG_USER_UPDATE_DB_ERROR_LOOKUP, LOG_USER_UPDATE_DB_ERROR_TARGET,
+    LOG_USER_UPDATE_DB_ERROR_USER, LOG_USER_UPDATE_HASH_ERROR, LOG_USER_UPDATE_NOT_LOGGED_IN,
+    LOG_USER_UPDATE_PASSWORD_VERIFY, LOG_USER_UPDATE_PERMISSION_DENIED, LOG_USER_UPDATE_SUCCESS,
+    LOG_USER_UPDATE_UNOWNED_PERMISSION, LOG_USER_UPDATE_UNOWNED_REVOKE,
 };
 
 #[cfg(test)]
@@ -33,12 +32,12 @@ use super::{
     err_cannot_rename_guest, err_current_password_incorrect, err_current_password_required,
     err_database, err_group_not_found, err_group_shared_mismatch, err_not_logged_in,
     err_password_empty, err_password_too_long, err_password_too_weak, err_permission_denied,
-    err_permissions_contains_newlines, err_permissions_empty_permission,
-    err_permissions_invalid_characters, err_permissions_permission_too_long,
-    err_permissions_too_many, err_shared_cannot_be_admin, err_shared_cannot_self_edit,
-    err_shared_invalid_permissions, err_unknown_permission, err_update_failed, err_user_not_found,
-    err_username_empty, err_username_exists, err_username_invalid, err_username_too_long,
-    remove_user_with_voice_cleanup,
+    err_permission_grant_revoke_conflict, err_permissions_contains_newlines,
+    err_permissions_empty_permission, err_permissions_invalid_characters,
+    err_permissions_permission_too_long, err_permissions_too_many, err_shared_cannot_be_admin,
+    err_shared_cannot_self_edit, err_shared_invalid_permissions, err_unknown_permission,
+    err_update_failed, err_user_not_found, err_username_empty, err_username_exists,
+    err_username_invalid, err_username_too_long, remove_user_with_voice_cleanup,
 };
 use super::{ServerInfoOptions, ServerInfoValues, build_server_info};
 #[cfg(test)]
@@ -603,40 +602,13 @@ where
             perms.permissions.insert(perm);
         }
 
-        // Apply permission merge logic for non-admins: preserve permissions
-        // the requester can't control, layer in their requested changes
-        if !requesting_user.is_admin
-            && let Some(ref account) = target_user_account
-        {
-            let target_perms = match ctx.db.users.get_user_permissions(account.id).await {
-                Ok(p) => p,
-                Err(e) => {
-                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_PERMISSIONS);
-                    return ctx
-                        .send_error_and_disconnect(
-                            &err_database(ctx.locale),
-                            Some(HANDLER_USER_UPDATE),
-                        )
-                        .await;
-                }
-            };
-
-            let mut final_perms = Permissions::new();
-
-            // Preserve target's permissions the requester can't control
-            for target_perm in &target_perms.permissions {
-                if !requesting_user.has_permission(*target_perm) {
-                    final_perms.permissions.insert(*target_perm);
-                }
-            }
-
-            // Add all requested permissions (already validated as requester-held)
-            for requested_perm in &perms.permissions {
-                final_perms.permissions.insert(*requested_perm);
-            }
-
-            perms = final_perms;
-        }
+        // No pre-tx merge for non-admins: the surgical
+        // `OwnedSubset` write path inside `update_user` only touches
+        // rows for permissions in the requester's owned set, so
+        // unowned rows (including any an admin just granted) are
+        // preserved automatically. The old snapshot-merge-then-replace
+        // approach raced against concurrent admin writes; this passes
+        // the requester's literal request straight through.
 
         Some(perms)
     } else {
@@ -885,19 +857,14 @@ where
                 }
             }
 
-            // Non-admin merge: preserve existing revokes for permissions the
-            // requester can't control (same pattern as grant permission merge)
-            if !requesting_user.is_admin
-                && let Ok(existing_revokes) = ctx.db.users.get_revoke_permissions(account.id).await
-            {
-                for existing_revoke in existing_revokes {
-                    if !requesting_user.has_permission(existing_revoke)
-                        && !parsed_revokes.contains(&existing_revoke)
-                    {
-                        parsed_revokes.push(existing_revoke);
-                    }
-                }
-            }
+            // No pre-tx merge for non-admins — same reasoning as the
+            // grant-merge removal above. The `OwnedSubset` write path
+            // inside `update_user` only touches revoke rows for
+            // permissions in the requester's owned set, so unowned
+            // revoke rows survive untouched. (The old merge also
+            // silently swallowed DB read errors via `if let Ok(...)`,
+            // which dropped all unowned-revoke preservation on any
+            // transient read failure; that path is gone.)
 
             Some(parsed_revokes)
         } else {
@@ -978,6 +945,42 @@ where
         }
     };
 
+    // The `(user_id, permission)` PK allows only one row per permission;
+    // a request that names the same permission as both grant and revoke
+    // would otherwise be resolved by write order. Fail upfront instead.
+    if let (Some(grants), Some(revokes)) = (parsed_permissions.as_ref(), parsed_revokes.as_ref()) {
+        for revoke in revokes {
+            if grants.permissions.contains(revoke) {
+                let response = ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_permission_grant_revoke_conflict(
+                        ctx.locale,
+                        revoke.as_str(),
+                    )),
+                    id: None,
+                    username: None,
+                };
+                return ctx.send_message(&response).await;
+            }
+        }
+    }
+
+    let owned_for_scope: Vec<Permission> = if requesting_user.is_admin {
+        Vec::new()
+    } else {
+        requesting_user.permissions.iter().copied().collect()
+    };
+    let permission_write_scope = if requesting_user.is_admin {
+        crate::db::PermissionWriteScope::ReplaceAll
+    } else {
+        crate::db::PermissionWriteScope::OwnedSubset(&owned_for_scope)
+    };
+    let requester_bandwidth_max = if requesting_user.is_admin {
+        None
+    } else {
+        Some(requesting_user.bandwidth_weight.load(Ordering::Relaxed))
+    };
+
     // Attempt to update the user (with atomic last-admin protection in SQL)
     match ctx
         .db
@@ -994,18 +997,17 @@ where
             group_id: validated_group_id,
             bandwidth_weight: request.bandwidth_weight,
             inherit_bandwidth_weight: request.inherit_bandwidth_weight == Some(true),
+            requester_is_admin: requesting_user.is_admin,
+            permission_write_scope,
+            requester_bandwidth_max,
         })
         .await
     {
         Ok(crate::db::UpdateUserResult::Updated {
             account: updated_account,
             resolved_bandwidth_weight,
+            permissions: final_permissions,
         }) => {
-            // Source of truth for everything below is `updated_account` —
-            // the row state assembled inside the same tx as the write —
-            // not the request fields. Promotion auto-clean is reflected
-            // (group_id is None after promotion); the audit trail's
-            // `is_admin` field is the actually-committed value.
             info!(
                 user = %requesting_user.username,
                 ip = %ctx.peer_addr,
@@ -1013,6 +1015,8 @@ where
                 is_admin = updated_account.is_admin,
                 "{}", LOG_USER_UPDATE_SUCCESS
             );
+            // Response is sent at the end of this arm — a slow admin
+            // socket must not stall the security-relevant cascades.
             let response = ServerMessage::UserUpdateResponse {
                 success: true,
                 error: None,
@@ -1020,209 +1024,48 @@ where
                 username: Some(updated_account.username.clone()),
             };
 
-            ctx.send_message(&response).await?;
-
             let group_changed = validated_remove_group || validated_group_id.is_some();
+            let admin_status_changed = old_is_admin != updated_account.is_admin;
+            let permissions_changed = old_permissions.permissions != final_permissions.permissions;
 
-            // We'll determine if permissions actually changed after fetching new state
+            // Atomic flip: `UserSession::has_permission` short-circuits
+            // on `is_admin`, so a split write would widen the
+            // demoted-admin window across every await between the two.
+            if admin_status_changed || permissions_changed {
+                ctx.user_manager
+                    .update_auth_state(
+                        updated_account.id,
+                        updated_account.is_admin,
+                        final_permissions.permissions.clone(),
+                    )
+                    .await;
+            }
+
+            let (updated_group_id, updated_group_name) = if let Some(gid) = updated_account.group_id
             {
-                // Get the final permissions
-                if let Ok(final_permissions) =
-                    ctx.db.users.get_user_permissions(updated_account.id).await
-                {
-                    // Check if anything actually changed
-                    let admin_changed = old_is_admin != updated_account.is_admin;
-                    let enabled_changed = old_enabled != updated_account.enabled;
-                    let permissions_changed =
-                        old_permissions.permissions != final_permissions.permissions;
-                    let actually_changed =
-                        admin_changed || enabled_changed || permissions_changed || group_changed;
-
-                    // Always update cached permissions in UserManager for all sessions of this user
-                    // (even if we don't broadcast, keeps cache in sync)
-                    ctx.user_manager
-                        .update_permissions(
-                            updated_account.id,
-                            final_permissions.permissions.clone(),
-                        )
-                        .await;
-
-                    // Only notify the user if their permissions/admin/enabled status actually changed
-                    if actually_changed {
-                        let permission_strings: Vec<String> = final_permissions
-                            .permissions
-                            .iter()
-                            .map(|p| p.as_str().to_string())
-                            .collect();
-
-                        // Build ServerInfo for the updated user (always include, not just for admins)
-                        // Use updated permissions for field visibility
-                        let has_file_reindex = updated_account.is_admin
-                            || final_permissions
-                                .permissions
-                                .contains(&Permission::FileReindex);
-                        let has_chat_join = updated_account.is_admin
-                            || final_permissions
-                                .permissions
-                                .contains(&Permission::ChatJoin);
-
-                        let config = ctx.db.config.get_all().await;
-
-                        let info_values = ServerInfoValues {
-                            name: config.server_name,
-                            description: config.server_description,
-                            public_address: config.public_address,
-                            version: env!("CARGO_PKG_VERSION").to_string(),
-                            image: config.server_image,
-                            max_connections_per_ip: config.max_connections_per_ip,
-                            max_transfers_per_ip: config.max_transfers_per_ip,
-                            transfer_port: ctx.transfer_port,
-                            transfer_websocket_port: ctx.transfer_websocket_port,
-                            file_reindex_interval: config.file_reindex_interval,
-                            persistent_channels: config.persistent_channels,
-                            auto_join_channels: config.auto_join_channels,
-                            min_password_strength: config.min_password_strength.score(),
-                            chat_burst_limit: config.chat_burst_limit,
-                            chat_rate_limit: config.chat_rate_limit,
-                            max_outbound_rate: config.max_outbound_rate,
-                            scheduler_chunk_size: config.scheduler_chunk_size,
-                        };
-
-                        let info_options = ServerInfoOptions {
-                            is_admin: updated_account.is_admin,
-                            has_file_reindex,
-                            has_chat_join,
-                            include_image: false,
-                        };
-
-                        let server_info = Some(build_server_info(&info_values, &info_options));
-
-                        // Fetch group info for the updated user
-                        let (perm_group_id, perm_group_name) =
-                            if let Some(gid) = updated_account.group_id {
-                                match ctx.db.groups.get_group_by_id(gid).await {
-                                    Ok(Some(g)) => (Some(gid), Some(g.name)),
-                                    _ => (None, None),
-                                }
-                            } else {
-                                (None, None)
-                            };
-
-                        let permissions_update = ServerMessage::PermissionsUpdated {
-                            is_admin: updated_account.is_admin,
-                            permissions: permission_strings,
-                            server_info,
-                            group_id: perm_group_id,
-                            group_name: perm_group_name,
-                        };
-
-                        // Send to all sessions belonging to the updated user
-                        ctx.user_manager
-                            .broadcast_to_username(&updated_account.username, &permissions_update)
-                            .await;
-
-                        // If voice_listen was revoked, kick user from voice
-                        let had_voice_listen = old_permissions
-                            .permissions
-                            .contains(&Permission::VoiceListen);
-                        let has_voice_listen = final_permissions
-                            .permissions
-                            .contains(&Permission::VoiceListen);
-
-                        if had_voice_listen && !has_voice_listen {
-                            // Get all session IDs for this user and remove them from voice
-                            let session_ids = ctx
-                                .user_manager
-                                .get_session_ids_for_user(&updated_account.username)
-                                .await;
-
-                            for session_id in session_ids {
-                                if let Some(info) =
-                                    ctx.voice_registry.remove_by_session_id(session_id).await
-                                {
-                                    // Get the leaving user's tx if still connected
-                                    let leaving_user_tx = ctx
-                                        .user_manager
-                                        .get_user_by_session_id(session_id)
-                                        .await
-                                        .map(|u| u.tx.clone());
-
-                                    // Send notifications using the consolidated helper
-                                    send_voice_leave_notifications(
-                                        &info,
-                                        leaving_user_tx.as_ref(),
-                                        ctx.user_manager,
-                                        ctx.channel_manager,
-                                    )
-                                    .await;
-                                }
-                            }
-                        }
-                    }
+                match ctx.db.groups.get_group_by_id(gid).await {
+                    Ok(Some(g)) => (Some(gid), Some(g.name)),
+                    _ => (None, None),
                 }
+            } else {
+                (None, None)
+            };
 
-                // If user was disabled, disconnect all their active sessions
-                //
-                // Clean Disconnect Flow:
-                // 1. Send Error message to user ("Account disabled by admin")
-                // 2. Remove user from UserManager (drops the tx sender)
-                // 3. Connection handler's rx.recv() returns None (channel closed)
-                // 4. Connection loop breaks cleanly
-                // 5. TCP connection closes
-                //
-                // This approach avoids manual shutdown signals and relies on channel semantics:
-                // - User struct contains a tx (clone of the channel sender)
-                // - UserManager.remove_user() drops the User, which drops tx
-                // - When all senders are dropped, rx.recv() returns None
-                // - Connection handler detects None and breaks the loop
-                //
-                // Note: UserDisconnected is only broadcast once here (connection.rs cleanup
-                // doesn't re-broadcast because the user is already removed from manager)
-                if let Some(false) = request.enabled {
-                    // Get all session IDs for this user
-                    let session_ids = ctx
-                        .user_manager
-                        .get_session_ids_for_user(&updated_account.username)
-                        .await;
+            // Rename the cache identity before any username-keyed
+            // cascade below — otherwise PermissionsUpdated / voice
+            // cleanup / disable disconnect would miss every session.
+            let username_changed =
+                old_username.to_lowercase() != updated_account.username.to_lowercase();
 
-                    // Disconnect each session
-                    for session_id in session_ids {
-                        // Send disconnect message to inform the user in their locale
-                        if let Some(user) =
-                            ctx.user_manager.get_user_by_session_id(session_id).await
-                        {
-                            let disconnect_msg = ServerMessage::Error {
-                                message: err_account_disabled_by_admin(&user.locale),
-                                command: None,
-                            };
-                            let _ = user.tx.send((disconnect_msg, None));
+            if username_changed {
+                ctx.user_manager
+                    .update_username(updated_account.id, updated_account.username.clone())
+                    .await;
 
-                            // Remove from voice (if in voice) and UserManager, broadcast disconnection
-                            remove_user_with_voice_cleanup(
-                                ctx.user_manager,
-                                ctx.voice_registry,
-                                ctx.channel_manager,
-                                session_id,
-                                &user,
-                            )
-                            .await;
-                        }
-                    }
-                }
-
-                // Check if username or admin status changed
-                let username_changed =
-                    old_username.to_lowercase() != updated_account.username.to_lowercase();
-                let admin_status_changed = old_is_admin != updated_account.is_admin;
-
-                // If username changed, update UserManager and VoiceRegistry
-                // (for regular accounts, nickname == username)
-                if username_changed {
-                    ctx.user_manager
-                        .update_username(updated_account.id, updated_account.username.clone())
-                        .await;
-
-                    // Update nickname in voice registry for all sessions of this user
+                // Shared accounts keep per-session nicknames (chosen at
+                // login) — same invariant `UserManager::update_username`
+                // honors for `user.nickname`.
+                if !updated_account.is_shared {
                     let session_ids = ctx
                         .user_manager
                         .get_session_ids_for_user(&updated_account.username)
@@ -1233,199 +1076,308 @@ where
                             .await;
                     }
                 }
+            }
 
-                // If admin status changed, update UserManager
-                if admin_status_changed {
-                    ctx.user_manager
-                        .update_admin_status(updated_account.id, updated_account.is_admin)
-                        .await;
-                }
+            {
+                let enabled_changed = old_enabled != updated_account.enabled;
+                let actually_changed =
+                    admin_status_changed || enabled_changed || permissions_changed || group_changed;
 
-                // Resolve group info once (used by both update_group and UserUpdated broadcast)
-                let (updated_group_id, updated_group_name) =
-                    if let Some(gid) = updated_account.group_id {
-                        match ctx.db.groups.get_group_by_id(gid).await {
-                            Ok(Some(g)) => (Some(gid), Some(g.name)),
-                            _ => (None, None),
-                        }
-                    } else {
-                        (None, None)
+                if actually_changed {
+                    let permission_strings: Vec<String> = final_permissions
+                        .permissions
+                        .iter()
+                        .map(|p| p.as_str().to_string())
+                        .collect();
+
+                    let has_file_reindex = updated_account.is_admin
+                        || final_permissions
+                            .permissions
+                            .contains(&Permission::FileReindex);
+                    let has_chat_join = updated_account.is_admin
+                        || final_permissions
+                            .permissions
+                            .contains(&Permission::ChatJoin);
+
+                    let config = ctx.db.config.get_all().await;
+
+                    let info_values = ServerInfoValues {
+                        name: config.server_name,
+                        description: config.server_description,
+                        public_address: config.public_address,
+                        version: env!("CARGO_PKG_VERSION").to_string(),
+                        image: config.server_image,
+                        max_connections_per_ip: config.max_connections_per_ip,
+                        max_transfers_per_ip: config.max_transfers_per_ip,
+                        transfer_port: ctx.transfer_port,
+                        transfer_websocket_port: ctx.transfer_websocket_port,
+                        file_reindex_interval: config.file_reindex_interval,
+                        persistent_channels: config.persistent_channels,
+                        auto_join_channels: config.auto_join_channels,
+                        min_password_strength: config.min_password_strength.score(),
+                        chat_burst_limit: config.chat_burst_limit,
+                        chat_rate_limit: config.chat_rate_limit,
+                        max_outbound_rate: config.max_outbound_rate,
+                        scheduler_chunk_size: config.scheduler_chunk_size,
                     };
 
-                // Update UserManager sessions when group changed OR when
-                // admin status changed (promotion auto-clears group_id in
-                // the DB, so cached session group_id/group_name must follow
-                // even though the request didn't touch group_id directly).
-                if group_changed || admin_status_changed {
-                    ctx.user_manager
-                        .update_group(
-                            updated_account.id,
-                            updated_group_id,
-                            updated_group_name.clone(),
-                        )
-                        .await;
-                }
-
-                // Did the request actually change the stored bandwidth_weight
-                // override? Used by both the cache-refresh trigger and the
-                // broadcast trigger below — neither should fire on a no-op
-                // submit (e.g. resubmitting the same value, or asking to
-                // inherit when already inheriting).
-                //
-                // Branch order mirrors the DB layer's write precedence
-                // (`db/users.rs::update_user`): when both `inherit: Some(true)`
-                // and `bandwidth_weight: Some(N)` are present in one request,
-                // inherit wins and the stored value goes to NULL. Checking
-                // inherit first ensures we detect that case as a real change
-                // even when the request also carries the user's pre-update
-                // value in `bandwidth_weight`.
-                let bandwidth_weight_request_change =
-                    if request.inherit_bandwidth_weight == Some(true) {
-                        target_account.bandwidth_weight.is_some()
-                    } else if let Some(new) = request.bandwidth_weight {
-                        target_account.bandwidth_weight != Some(new)
-                    } else {
-                        false
-                    };
-
-                let broadcast_should_fire = username_changed
-                    || admin_status_changed
-                    || group_changed
-                    || bandwidth_weight_request_change;
-                let cache_should_refresh =
-                    bandwidth_weight_request_change || group_changed || admin_status_changed;
-
-                // Bandwidth-only trigger: bandwidth changed and nothing
-                // else did. Cross-trigger updates (username / admin /
-                // group) carry visible info regardless of the bandwidth
-                // side and skip the suppression check below.
-                let bw_only_trigger = bandwidth_weight_request_change
-                    && !username_changed
-                    && !admin_status_changed
-                    && !group_changed;
-
-                // Fetch sessions once for both the suppression check below
-                // and the broadcast aggregation. Empty when no broadcast
-                // trigger fired (no work to do).
-                let sessions = if broadcast_should_fire {
-                    ctx.user_manager
-                        .get_sessions_by_username(&updated_account.username)
-                        .await
-                } else {
-                    Vec::new()
-                };
-
-                // Capture the pre-update effective weight from the session
-                // cache. Every session of a given user holds the same
-                // resolved value (fan-out invariant maintained by
-                // `update_bandwidth_weight`), so the first session is
-                // authoritative. `None` means the user is offline.
-                let old_resolved: Option<u16> = sessions
-                    .first()
-                    .map(|s| s.bandwidth_weight.load(Ordering::Relaxed));
-
-                // Refresh cached bandwidth_weight on every session of this
-                // user. The in-tx resolution already gave us the
-                // post-update value, so this is a direct write — no DB
-                // roundtrip, no fallback path. Either the write succeeded
-                // with this resolved value or the whole match arm is
-                // `Blocked`.
-                if cache_should_refresh {
-                    ctx.user_manager
-                        .update_bandwidth_weight(updated_account.id, resolved_bandwidth_weight)
-                        .await;
-                }
-
-                // No-op suppression: a bandwidth-only update whose
-                // effective weight didn't move for an online user carries
-                // no new info to listeners. Offline users
-                // (`old_resolved.is_none()`) always broadcast —
-                // `None != Some(_)` — so a concurrent login or a UserList
-                // holder tracking offline users converges on the
-                // post-update value.
-                let suppress_for_bw_only =
-                    bw_only_trigger && old_resolved == Some(resolved_bandwidth_weight);
-
-                // Broadcast UserUpdated when any field visible in `UserInfo`
-                // could have changed: username, admin status, group, OR
-                // bandwidth_weight (own override or inherit toggle). Group
-                // and admin changes also implicitly shift the resolved
-                // bandwidth weight, so they were already in scope. The
-                // no-op suppression above skips the bw-only case where
-                // the effective value didn't change.
-                if broadcast_should_fire && !suppress_for_bw_only {
-                    let session_ids: Vec<u32> = sessions.iter().map(|s| s.session_id).collect();
-
-                    let (login_time, locale, avatar, is_away, status) = if !sessions.is_empty() {
-                        let login_time = sessions.iter().map(|u| u.login_time).min().unwrap_or(0);
-
-                        // Avatar, locale: latest login wins (stable)
-                        let latest_login = sessions.iter().max_by_key(|u| u.login_time);
-
-                        let locale = latest_login
-                            .map(|u| u.locale.clone())
-                            .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
-
-                        let avatar = latest_login.and_then(|u| u.avatar.clone());
-
-                        // Away/status: most recently active wins (accurate presence)
-                        let most_active = sessions.iter().max_by_key(|u| u.last_activity);
-
-                        let is_away = most_active.is_some_and(|u| u.is_away);
-                        let status = most_active.and_then(|u| u.status.clone());
-
-                        (login_time, locale, avatar, is_away, status)
-                    } else {
-                        (0, DEFAULT_LOCALE.to_string(), None, false, None)
-                    };
-
-                    let user_info = UserInfo {
-                        id: updated_account.id,
-                        username: updated_account.username.clone(),
-                        // For account-level updates, nickname == username
-                        // (we're broadcasting about the account, not a specific session)
-                        nickname: updated_account.username.clone(),
-                        login_time,
+                    let info_options = ServerInfoOptions {
                         is_admin: updated_account.is_admin,
-                        is_shared: updated_account.is_shared,
-                        session_ids,
-                        locale,
-                        avatar,
-                        is_away,
-                        status,
-                        group_id: updated_group_id,
-                        group_name: updated_group_name,
-                        // Resolved in-transaction by `update_user`, so
-                        // it's always Some — no admin-aware fallback
-                        // layer needed.
-                        bandwidth_weight: Some(resolved_bandwidth_weight),
+                        has_file_reindex,
+                        has_chat_join,
+                        include_image: false,
                     };
 
-                    let user_updated = ServerMessage::UserUpdated {
-                        previous_username: old_username.clone(),
-                        user: user_info,
+                    let server_info = Some(build_server_info(&info_values, &info_options));
+
+                    let permissions_update = ServerMessage::PermissionsUpdated {
+                        is_admin: updated_account.is_admin,
+                        permissions: permission_strings,
+                        server_info,
+                        group_id: updated_group_id,
+                        group_name: updated_group_name.clone(),
                     };
+
+                    // Send to all sessions belonging to the updated user
                     ctx.user_manager
-                        .broadcast_to_permission(user_updated, Permission::UserList)
+                        .broadcast_to_username(&updated_account.username, &permissions_update)
                         .await;
+
+                    // Admin-aware: admins hold `VoiceListen` implicitly
+                    // via the `has_permission` bypass, so a demoted admin
+                    // without an explicit grant still loses it.
+                    let had_voice_listen = old_is_admin
+                        || old_permissions
+                            .permissions
+                            .contains(&Permission::VoiceListen);
+                    let has_voice_listen = updated_account.is_admin
+                        || final_permissions
+                            .permissions
+                            .contains(&Permission::VoiceListen);
+
+                    if had_voice_listen && !has_voice_listen {
+                        // Get all session IDs for this user and remove them from voice
+                        let session_ids = ctx
+                            .user_manager
+                            .get_session_ids_for_user(&updated_account.username)
+                            .await;
+
+                        for session_id in session_ids {
+                            if let Some(info) =
+                                ctx.voice_registry.remove_by_session_id(session_id).await
+                            {
+                                // Get the leaving user's tx if still connected
+                                let leaving_user_tx = ctx
+                                    .user_manager
+                                    .get_user_by_session_id(session_id)
+                                    .await
+                                    .map(|u| u.tx.clone());
+
+                                // Send notifications using the consolidated helper
+                                send_voice_leave_notifications(
+                                    &info,
+                                    leaving_user_tx.as_ref(),
+                                    ctx.user_manager,
+                                    ctx.channel_manager,
+                                )
+                                .await;
+                            }
+                        }
+                    }
                 }
             }
 
-            Ok(())
+            // Send a disabled-by-admin Error then drop the tx. The
+            // connection loop's `rx.recv()` returns None once all
+            // senders are dropped and the TCP connection closes.
+            // `connection.rs` cleanup won't re-broadcast
+            // UserDisconnected because the user is already gone from
+            // the manager.
+            if let Some(false) = request.enabled {
+                let session_ids = ctx
+                    .user_manager
+                    .get_session_ids_for_user(&updated_account.username)
+                    .await;
+
+                for session_id in session_ids {
+                    if let Some(user) = ctx.user_manager.get_user_by_session_id(session_id).await {
+                        let disconnect_msg = ServerMessage::Error {
+                            message: err_account_disabled_by_admin(&user.locale),
+                            command: None,
+                        };
+                        let _ = user.tx.send((disconnect_msg, None));
+
+                        // Remove from voice (if in voice) and UserManager, broadcast disconnection
+                        remove_user_with_voice_cleanup(
+                            ctx.user_manager,
+                            ctx.voice_registry,
+                            ctx.channel_manager,
+                            session_id,
+                            &user,
+                        )
+                        .await;
+                    }
+                }
+            }
+
+            // Promotion auto-clears group_id in the DB, so admin status
+            // change must refresh the cached group too even when the
+            // request didn't touch group_id directly.
+            if group_changed || admin_status_changed {
+                ctx.user_manager
+                    .update_group(
+                        updated_account.id,
+                        updated_group_id,
+                        updated_group_name.clone(),
+                    )
+                    .await;
+            }
+
+            // Inherit wins over an explicit weight (matches the DB
+            // layer's precedence) — check it first so a request that
+            // also carries the pre-update value still registers as a
+            // change.
+            let bandwidth_weight_request_change = if request.inherit_bandwidth_weight == Some(true)
+            {
+                target_account.bandwidth_weight.is_some()
+            } else if let Some(new) = request.bandwidth_weight {
+                target_account.bandwidth_weight != Some(new)
+            } else {
+                false
+            };
+
+            let broadcast_should_fire = username_changed
+                || admin_status_changed
+                || group_changed
+                || bandwidth_weight_request_change;
+            let cache_should_refresh =
+                bandwidth_weight_request_change || group_changed || admin_status_changed;
+            let bw_only_trigger = bandwidth_weight_request_change
+                && !username_changed
+                && !admin_status_changed
+                && !group_changed;
+
+            let sessions = if broadcast_should_fire {
+                ctx.user_manager
+                    .get_sessions_by_username(&updated_account.username)
+                    .await
+            } else {
+                Vec::new()
+            };
+
+            // All sessions of one user agree on the cached weight
+            // (`update_bandwidth_weight` fan-out invariant); first
+            // session is authoritative. `None` means offline.
+            let old_resolved: Option<u16> = sessions
+                .first()
+                .map(|s| s.bandwidth_weight.load(Ordering::Relaxed));
+
+            if cache_should_refresh {
+                ctx.user_manager
+                    .update_bandwidth_weight(updated_account.id, resolved_bandwidth_weight)
+                    .await;
+            }
+
+            // Suppress a bandwidth-only broadcast when the effective
+            // weight didn't move for an online user. Offline users
+            // (`None`) always broadcast — `None != Some(_)` — so
+            // observers converge once the user logs in.
+            let suppress_for_bw_only =
+                bw_only_trigger && old_resolved == Some(resolved_bandwidth_weight);
+
+            if broadcast_should_fire && !suppress_for_bw_only {
+                let session_ids: Vec<u32> = sessions.iter().map(|s| s.session_id).collect();
+
+                let (login_time, locale, avatar, is_away, status) = if !sessions.is_empty() {
+                    let login_time = sessions.iter().map(|u| u.login_time).min().unwrap_or(0);
+
+                    // Avatar, locale: latest login wins (stable)
+                    let latest_login = sessions.iter().max_by_key(|u| u.login_time);
+
+                    let locale = latest_login
+                        .map(|u| u.locale.clone())
+                        .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
+
+                    let avatar = latest_login.and_then(|u| u.avatar.clone());
+
+                    // Away/status: most recently active wins (accurate presence)
+                    let most_active = sessions.iter().max_by_key(|u| u.last_activity);
+
+                    let is_away = most_active.is_some_and(|u| u.is_away);
+                    let status = most_active.and_then(|u| u.status.clone());
+
+                    (login_time, locale, avatar, is_away, status)
+                } else {
+                    (0, DEFAULT_LOCALE.to_string(), None, false, None)
+                };
+
+                let user_info = UserInfo {
+                    id: updated_account.id,
+                    username: updated_account.username.clone(),
+                    // For account-level updates, nickname == username
+                    // (we're broadcasting about the account, not a specific session)
+                    nickname: updated_account.username.clone(),
+                    login_time,
+                    is_admin: updated_account.is_admin,
+                    is_shared: updated_account.is_shared,
+                    session_ids,
+                    locale,
+                    avatar,
+                    is_away,
+                    status,
+                    group_id: updated_group_id,
+                    group_name: updated_group_name,
+                    // Resolved in-transaction by `update_user`, so
+                    // it's always Some — no admin-aware fallback
+                    // layer needed.
+                    bandwidth_weight: Some(resolved_bandwidth_weight),
+                };
+
+                let user_updated = ServerMessage::UserUpdated {
+                    previous_username: old_username.clone(),
+                    user: user_info,
+                };
+                ctx.user_manager
+                    .broadcast_to_permission(user_updated, Permission::UserList)
+                    .await;
+            }
+
+            ctx.send_message(&response).await
+        }
+        Ok(crate::db::UpdateUserResult::BlockedForGroupAuth) => {
+            // In-tx group-auth race — admin altered the target group
+            // between the handler's pre-check and the tx. Conservative
+            // message: we don't know which of the four conditions raced.
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
+            let response = ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_update_failed(ctx.locale, &target_username)),
+                id: None,
+                username: None,
+            };
+            ctx.send_message(&response).await
         }
         Ok(crate::db::UpdateUserResult::Blocked) => {
-            // Update was blocked (user not found, last admin, or duplicate username)
-            // We need to determine which error to return
-            let error_message = if ctx
+            // Update was blocked (user not found, last admin, duplicate
+            // username, or non-admin requester racing a concurrent
+            // promotion of the target).
+            let target_after = ctx
                 .db
                 .users
                 .get_user_by_username(&target_username)
                 .await
                 .ok()
-                .flatten()
-                .is_none()
-            {
+                .flatten();
+            let error_message = if target_after.is_none() {
                 err_user_not_found(ctx.locale, &target_username)
+            } else if !requesting_user.is_admin && target_after.as_ref().is_some_and(|u| u.is_admin)
+            {
+                // Race: handler's pre-check at the top saw target as
+                // non-admin; an admin promoted them between then and the
+                // SQL UPDATE, which then refused the write. Surface the
+                // same error the pre-check would have produced.
+                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_ADMIN);
+                err_cannot_edit_admin(ctx.locale)
             } else if let Some(ref new_username) = request.username {
                 // Check if the new username already exists (and it's not the same user)
                 if new_username != &target_username
@@ -1736,6 +1688,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: Some(99),
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: db::PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();
@@ -3480,6 +3435,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: db::PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();
@@ -3773,6 +3731,438 @@ mod tests {
         );
     }
 
+    /// A request that names the same permission in both `permissions`
+    /// (grants) and `revokes` is rejected upfront with a clear error.
+    /// The `(user_id, permission)` primary key only allows one row per
+    /// permission, so the write path would otherwise have to pick a
+    /// winner by ordering — the new pre-tx check makes the intent
+    /// explicit and fails the request with
+    /// `err_permission_grant_revoke_conflict` rather than letting the
+    /// DB resolve it implicitly.
+    ///
+    /// Note: revokes only parse to `Some(...)` when the target has (or
+    /// is being assigned to) a group — handler logic drops revokes for
+    /// ungrouped users since there's nothing for them to revoke. This
+    /// test puts the target in a group so both lists reach the overlap
+    /// check.
+    #[tokio::test]
+    async fn test_userupdate_rejects_overlapping_grant_and_revoke() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                1,
+            )
+            .await
+            .unwrap();
+
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // Same permission in both lists — should fail upfront.
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec!["chat_send".to_string()]),
+            group_id: None,
+            remove_group: None,
+            revokes: Some(vec!["chat_send".to_string()]),
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(
+            result.is_ok(),
+            "should return an error response, not disconnect"
+        );
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success, "overlapping grant + revoke must be rejected");
+                let msg = error.expect("error message must be present");
+                assert!(
+                    msg.contains("chat_send"),
+                    "error must name the conflicting permission, got: {msg}"
+                );
+            }
+            other => panic!("expected UserUpdateResponse, got {:?}", other),
+        }
+
+        // Bob's DB rows must be unchanged — no partial write. Bob still
+        // has zero override rows (group provides ChatSend; no grant or
+        // revoke overrides were stored).
+        let perms_after = test_ctx
+            .db
+            .users
+            .get_user_permissions(bob.id)
+            .await
+            .unwrap();
+        // Effective perms == group perms only; no override rows landed.
+        assert_eq!(
+            perms_after.permissions.len(),
+            1,
+            "only the group's ChatSend should resolve, no overrides written"
+        );
+        assert!(perms_after.permissions.contains(&Permission::ChatSend));
+    }
+
+    /// Regression: a single `UserUpdate` that both renames AND disables a
+    /// user must still disconnect the active session. Pre-fix, the cache
+    /// rename ran after the disable-disconnect lookup, so
+    /// `get_session_ids_for_user(&new_username)` found nothing while the
+    /// cache still carried the old username — the renamed user stayed
+    /// online despite being disabled.
+    #[tokio::test]
+    async fn test_userupdate_rename_and_disable_disconnects_session() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let bob_session = login_user(&mut test_ctx, "bob", "password", &[], false).await;
+
+        assert!(
+            test_ctx
+                .user_manager
+                .get_user_by_session_id(bob_session)
+                .await
+                .is_some(),
+            "bob should be in user manager"
+        );
+
+        let bob_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Rename AND disable in one request — the bug only manifests
+        // when both fields move together.
+        let request = UserUpdateRequest {
+            id: bob_user.id,
+            current_password: None,
+            username: Some("bob2".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: Some(false),
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        assert!(
+            test_ctx
+                .user_manager
+                .get_user_by_session_id(bob_session)
+                .await
+                .is_none(),
+            "bob's session must be removed from user manager after a rename + disable"
+        );
+
+        let bob_after = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob2")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!bob_after.enabled, "bob2 should be disabled in DB");
+    }
+
+    /// Regression: demoting an admin who is currently in voice must
+    /// kick them from voice, even if they had no explicit
+    /// `VoiceListen` grant. Admins implicitly hold every permission via
+    /// `UserSession::has_permission`'s bypass; the previous check
+    /// looked only at the stored grants and so saw `had_voice_listen
+    /// = false` for any admin without an explicit grant, skipping the
+    /// cleanup and leaving the demoted admin receiving relayed audio.
+    #[tokio::test]
+    async fn test_userupdate_demoted_admin_loses_voice() {
+        use std::collections::HashSet;
+
+        let mut test_ctx = create_test_context().await;
+
+        // First admin (the requester) — stays admin so the second
+        // demotion isn't blocked by last-admin protection.
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Second admin (the demotion target). No explicit VoiceListen
+        // grant — they rely on the admin bypass.
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "voiceadmin",
+                hashed_password: "hash",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let voiceadmin_db = test_ctx
+            .db
+            .users
+            .get_user_by_username("voiceadmin")
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Add the admin's session to UserManager with `is_admin: true`
+        // and an empty permission set (matches how admins are seeded
+        // at login — bypass lives in `has_permission`, not in the set).
+        let voiceadmin_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: voiceadmin_db.id,
+                username: "voiceadmin".to_string(),
+                nickname: "voiceadmin".to_string(),
+                is_admin: true,
+                is_shared: false,
+                permissions: HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .expect("Failed to add voiceadmin session");
+
+        // Put voiceadmin in voice.
+        let voice_session = crate::voice::VoiceSession::new(
+            "voiceadmin".to_string(),
+            vec!["#general".to_string()],
+            voiceadmin_session,
+            test_ctx.peer_addr.ip(),
+        );
+        test_ctx.voice_registry.add(voice_session).await;
+        assert!(
+            test_ctx
+                .voice_registry
+                .has_session(voiceadmin_session)
+                .await,
+            "voiceadmin must start out in the voice registry"
+        );
+
+        // Admin demotes voiceadmin to non-admin. No explicit permissions
+        // are granted, so `final_permissions` resolves to empty —
+        // matching the exact scenario the admin-bypass-aware check is
+        // there to catch.
+        let request = UserUpdateRequest {
+            id: voiceadmin_db.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: Some(false),
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        // Voice cleanup must have fired — pre-fix this assertion failed
+        // because `had_voice_listen` looked at the empty stored grant
+        // set and saw `false`, so the cleanup branch never ran.
+        assert!(
+            !test_ctx
+                .voice_registry
+                .has_session(voiceadmin_session)
+                .await,
+            "demoted admin must be kicked from voice (admin bypass meant they were effectively voiced)"
+        );
+
+        // Cache flip is also visible: the demoted session is no longer
+        // `is_admin` in UserManager either, so future privileged
+        // requests would fail at the cached check.
+        let session_after = test_ctx
+            .user_manager
+            .get_user_by_session_id(voiceadmin_session)
+            .await
+            .expect("session must still be present in UserManager (only voice was cleaned)");
+        assert!(
+            !session_after.is_admin,
+            "session cache must reflect the demotion immediately after the DB commit"
+        );
+    }
+
+    /// Regression: renaming a SHARED account must not rewrite the
+    /// voice-registry nickname of that account's in-voice sessions.
+    /// Shared accounts keep per-session nicknames chosen at login —
+    /// `UserManager::update_username` honors that by skipping
+    /// `user.nickname` for shared sessions. The handler's
+    /// voice-registry update used to lack the same gate, so a renamed
+    /// shared account's voice nickname would silently flip from the
+    /// participant-chosen handle to the account username.
+    #[tokio::test]
+    async fn test_userupdate_rename_shared_preserves_voice_nickname() {
+        use std::collections::HashSet;
+
+        let mut test_ctx = create_test_context().await;
+
+        // Create a shared account in the DB.
+        let mut perms = Permissions::new();
+        perms.permissions.insert(Permission::VoiceListen);
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "lounge",
+                hashed_password: "",
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let lounge_db = test_ctx
+            .db
+            .users
+            .get_user_by_username("lounge")
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Shared session with a nickname DIFFERENT from the account name —
+        // this is the participant's chosen handle and must survive a rename.
+        let session_perms: HashSet<Permission> =
+            [Permission::VoiceListen].iter().copied().collect();
+        let lounge_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: lounge_db.id,
+                username: "lounge".to_string(),
+                nickname: "vibes".to_string(),
+                is_admin: false,
+                is_shared: true,
+                permissions: session_perms,
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .expect("Failed to add shared session");
+
+        // Put that session in voice under the chosen nickname.
+        let voice_session = crate::voice::VoiceSession::new(
+            "vibes".to_string(),
+            vec!["#general".to_string()],
+            lounge_session,
+            test_ctx.peer_addr.ip(),
+        );
+        test_ctx.voice_registry.add(voice_session).await;
+
+        // Admin renames the shared account.
+        let request = UserUpdateRequest {
+            id: lounge_db.id,
+            current_password: None,
+            username: Some("lounge2".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        // Voice nickname must be unchanged — the participant chose "vibes",
+        // a rename of the *account* shouldn't move it.
+        let voice_after = test_ctx
+            .voice_registry
+            .get_by_session_id(lounge_session)
+            .await
+            .expect("voice session must still exist after rename");
+        assert_eq!(
+            voice_after.nickname, "vibes",
+            "shared-account rename must not rewrite the per-session voice nickname"
+        );
+
+        // Sanity: the UserManager session's nickname is also unchanged
+        // (this part was already correct in `update_username`).
+        let session_after = test_ctx
+            .user_manager
+            .get_user_by_session_id(lounge_session)
+            .await
+            .expect("session must still be in UserManager");
+        assert_eq!(session_after.nickname, "vibes");
+        assert_eq!(session_after.username, "lounge2");
+    }
+
     #[tokio::test]
     async fn test_userupdate_atomic_admin_demotion_protection() {
         let mut test_ctx = create_test_context().await;
@@ -3934,6 +4324,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: db::PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();
@@ -3956,6 +4349,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: db::PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await;
 
@@ -7129,6 +7525,9 @@ mod tests {
                 group_id: Some(group.id),
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: db::PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();

@@ -145,6 +145,7 @@ err-update-failed = ユーザー「{ $username }」の更新に失敗しまし�
 err-username-too-long = ユーザー名が長すぎます（最大{ $max_length }文字）
 # 権限バリデーションエラー
 err-permissions-too-many = 権限が多すぎます（最大{ $max_count }個）
+err-permission-grant-revoke-conflict = 権限 { $permission } を付与と取り消しの両方に指定することはできません
 err-permissions-empty-permission = 権限名を空にすることはできません
 err-permissions-permission-too-long = 権限名が長すぎます（最大{ $max_length }バイト）
 err-permissions-contains-newlines = 権限名に改行を含めることはできません

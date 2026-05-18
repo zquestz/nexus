@@ -145,6 +145,7 @@ err-update-failed = 사용자 "{ $username }"을(를) 업데이트하지 못했�
 err-username-too-long = 사용자 이름이 너무 깁니다 (최대 { $max_length }자)
 # 권한 유효성 검사 오류
 err-permissions-too-many = 권한이 너무 많습니다 (최대 { $max_count }개)
+err-permission-grant-revoke-conflict = 권한 { $permission }은(는) 부여와 취소를 동시에 할 수 없습니다
 err-permissions-empty-permission = 권한 이름은 비워둘 수 없습니다
 err-permissions-permission-too-long = 권한 이름이 너무 깁니다 (최대 { $max_length } 바이트)
 err-permissions-contains-newlines = 권한 이름에 줄바꿈을 포함할 수 없습니다

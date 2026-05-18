@@ -145,6 +145,7 @@ err-update-failed = Не удалось обновить пользовател�
 err-username-too-long = Имя пользователя слишком длинное (максимум { $max_length } символов)
 # Ошибки валидации разрешений
 err-permissions-too-many = Слишком много разрешений (максимум { $max_count })
+err-permission-grant-revoke-conflict = Разрешение { $permission } не может быть одновременно предоставлено и отозвано
 err-permissions-empty-permission = Название разрешения не может быть пустым
 err-permissions-permission-too-long = Название разрешения слишком длинное (максимум { $max_length } байт)
 err-permissions-contains-newlines = Название разрешения не может содержать переносы строк

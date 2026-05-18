@@ -145,6 +145,7 @@ err-update-failed = 更新用户"{ $username }"失败
 err-username-too-long = 用户名太长（最多{ $max_length }个字符）
 # 权限验证错误
 err-permissions-too-many = 权限太多（最多{ $max_count }个）
+err-permission-grant-revoke-conflict = 权限 { $permission } 不能同时被授予和撤销
 err-permissions-empty-permission = 权限名称不能为空
 err-permissions-permission-too-long = 权限名称太长（最多{ $max_length }个字节）
 err-permissions-contains-newlines = 权限名称不能包含换行符

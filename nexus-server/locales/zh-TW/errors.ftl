@@ -145,6 +145,7 @@ err-update-failed = 更新使用者「{ $username }」失敗
 err-username-too-long = 使用者名稱太長（最多{ $max_length }個字元）
 # 權限驗證錯誤
 err-permissions-too-many = 權限太多（最多{ $max_count }個）
+err-permission-grant-revoke-conflict = 權限 { $permission } 不能同時被授予和撤銷
 err-permissions-empty-permission = 權限名稱不能為空
 err-permissions-permission-too-long = 權限名稱太長（最多{ $max_length }個位元組）
 err-permissions-contains-newlines = 權限名稱不能包含換行符

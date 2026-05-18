@@ -48,6 +48,34 @@ pub struct UpdateUserParams<'a> {
     pub group_id: Option<i64>,
     pub bandwidth_weight: Option<u16>,
     pub inherit_bandwidth_weight: bool,
+    /// Threaded into the atomic SQL guard so a non-admin's in-flight
+    /// edit can't land on a row promoted to admin in the interim.
+    /// Internal / system callers pass `true` to skip the guard.
+    pub requester_is_admin: bool,
+    /// See [`PermissionWriteScope`].
+    pub permission_write_scope: PermissionWriteScope<'a>,
+    /// Bandwidth ceiling for the in-tx group-auth check. `None` means
+    /// no ceiling (admin / system).
+    ///
+    /// API invariant: `requester_is_admin == false` requires both
+    /// `Some(_)` here AND `OwnedSubset(_)` in
+    /// `permission_write_scope`. Violating either returns
+    /// `Err(sqlx::Error::Protocol(_))` from `update_user`.
+    pub requester_bandwidth_max: Option<u16>,
+}
+
+/// Scope of grant / revoke writes performed inside `update_user`.
+/// Explicit variants (rather than `Option<&[Permission]>` with
+/// `None`-means-replace) so the surgical path is opt-in by intent.
+#[derive(Debug, Clone, Copy)]
+pub enum PermissionWriteScope<'a> {
+    /// Admin / system: replace the full grant + revoke set.
+    ReplaceAll,
+    /// Non-admin bounded by their own perms — writes only touch rows
+    /// whose permission is in this slice, so concurrent admin writes
+    /// to unowned permissions can't be clobbered. Upserts flip
+    /// `override_type` when the requester asks for the opposite kind.
+    OwnedSubset(&'a [Permission]),
 }
 
 /// Outcome of `update_user`.
@@ -79,14 +107,25 @@ pub enum UpdateUserResult {
     /// weight (override → admin default → group → system default),
     /// resolved inside the same transaction. Suitable for writing
     /// straight to session caches.
+    ///
+    /// `permissions` is the post-update effective set (group ∪
+    /// grants − revokes; empty for admins, who bypass at
+    /// `UserSession::has_permission`). Resolved in-tx so callers
+    /// flip the auth cache atomically without a follow-up read.
     Updated {
         account: UserAccount,
         resolved_bandwidth_weight: u16,
+        permissions: Permissions,
     },
     /// Update was blocked by an atomic constraint or the user was not
     /// found. The caller distinguishes the specific reason with a
     /// follow-up SELECT (existing pattern).
     Blocked,
+    /// In-tx group-auth re-validation refused the write — an admin
+    /// altered the target group between the handler's pre-check and
+    /// this tx. Distinct from `Blocked` so a same-request username
+    /// change isn't mis-attributed to duplicate / last-admin.
+    BlockedForGroupAuth,
 }
 
 /// User account stored in database
@@ -477,6 +516,83 @@ impl UserDb {
         Ok(())
     }
 
+    /// Surgical grant overrides for non-admin callers: per `p` in
+    /// `owned`, upsert grant if `p ∈ requested_grants` (flipping an
+    /// existing revoke), else delete the grant row (revoke untouched).
+    /// Rows for permissions outside `owned` are never touched —
+    /// concurrent admin writes to unowned perms survive.
+    async fn set_grant_overrides_for_owned_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        user_id: i64,
+        requested_grants: &Permissions,
+        owned: &[Permission],
+    ) -> Result<(), sqlx::Error> {
+        for owned_perm in owned {
+            if requested_grants.permissions.contains(owned_perm) {
+                sqlx::query(sql::SQL_UPSERT_GRANT_PERMISSION)
+                    .bind(user_id)
+                    .bind(owned_perm.as_str())
+                    .execute(&mut **tx)
+                    .await?;
+            } else {
+                sqlx::query(sql::SQL_DELETE_GRANT_PERMISSION)
+                    .bind(user_id)
+                    .bind(owned_perm.as_str())
+                    .execute(&mut **tx)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Symmetric to [`Self::set_grant_overrides_for_owned_in_tx`] with
+    /// grant ↔ revoke swapped.
+    async fn set_revoke_overrides_for_owned_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        user_id: i64,
+        requested_revokes: &[Permission],
+        owned: &[Permission],
+    ) -> Result<(), sqlx::Error> {
+        for owned_perm in owned {
+            if requested_revokes.contains(owned_perm) {
+                sqlx::query(sql::SQL_UPSERT_REVOKE_PERMISSION)
+                    .bind(user_id)
+                    .bind(owned_perm.as_str())
+                    .execute(&mut **tx)
+                    .await?;
+            } else {
+                sqlx::query(sql::SQL_DELETE_REVOKE_PERMISSION)
+                    .bind(user_id)
+                    .bind(owned_perm.as_str())
+                    .execute(&mut **tx)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Returns `true` when every permission the group currently holds
+    /// (read inside `tx`) is in `owned`. Parse failures are treated
+    /// conservatively as unowned.
+    async fn group_perms_within_owned_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        group_id: i64,
+        owned: &[Permission],
+    ) -> Result<bool, sqlx::Error> {
+        let rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_GROUP_PERMISSIONS)
+            .bind(group_id)
+            .fetch_all(&mut **tx)
+            .await?;
+        let owned_set: std::collections::HashSet<Permission> = owned.iter().copied().collect();
+        for (perm_str,) in rows {
+            match Permission::parse(&perm_str) {
+                Some(perm) if owned_set.contains(&perm) => continue,
+                _ => return Ok(false),
+            }
+        }
+        Ok(true)
+    }
+
     // ========================================================================
     // Mutation Methods - Create/Update/Delete
     // ========================================================================
@@ -799,6 +915,7 @@ impl UserDb {
             .bind(user.id)
             .bind(final_enabled) // Final enabled status for the "enabling" check
             .bind(final_is_admin) // Final admin status for the "promoting" check
+            .bind(params.requester_is_admin) // Non-admin cannot edit admin target
             .execute(&mut *tx)
             .await?;
 
@@ -815,32 +932,134 @@ impl UserDb {
             return Ok(UpdateUserResult::Blocked);
         }
 
-        // Update permissions and/or revokes if provided
+        // Admins resolve to all permissions via `has_permission`'s
+        // bypass, so override rows are dead state for them — clear.
         if let Some(perms) = params.permissions {
-            // Only set permissions for non-admin users
-            if !final_is_admin {
-                Self::set_permissions_in_tx(&mut tx, user.id, perms, params.revokes).await?;
-            } else {
-                // Clear permissions for admin users (they get all automatically)
+            if final_is_admin {
                 sqlx::query(sql::SQL_DELETE_PERMISSIONS)
                     .bind(user.id)
                     .execute(&mut *tx)
                     .await?;
+            } else {
+                match params.permission_write_scope {
+                    PermissionWriteScope::ReplaceAll => {
+                        Self::set_permissions_in_tx(&mut tx, user.id, perms, params.revokes)
+                            .await?;
+                    }
+                    PermissionWriteScope::OwnedSubset(owned) => {
+                        Self::set_grant_overrides_for_owned_in_tx(&mut tx, user.id, perms, owned)
+                            .await?;
+                        // `revokes: None` here still runs revoke
+                        // surgery with an empty set, mirroring the
+                        // grant side. To leave revokes alone, pass
+                        // both `permissions: None` and `revokes: None`.
+                        let revokes_for_surgery: &[Permission] = params.revokes.unwrap_or(&[]);
+                        Self::set_revoke_overrides_for_owned_in_tx(
+                            &mut tx,
+                            user.id,
+                            revokes_for_surgery,
+                            owned,
+                        )
+                        .await?;
+                    }
+                }
             }
-        } else if let Some(revokes) = params.revokes {
-            // Revokes-only (no grant changes) — replace revoke overrides within this transaction
-            if !final_is_admin {
-                sqlx::query(sql::SQL_DELETE_REVOKE_PERMISSIONS)
-                    .bind(user.id)
-                    .execute(&mut *tx)
-                    .await?;
-                for perm in revokes {
-                    sqlx::query(sql::SQL_INSERT_PERMISSION_OVERRIDE)
+        } else if let Some(revokes) = params.revokes
+            && !final_is_admin
+        {
+            match params.permission_write_scope {
+                PermissionWriteScope::ReplaceAll => {
+                    // Upsert (not INSERT) so a revoke request flips an
+                    // existing grant row instead of colliding on the PK.
+                    sqlx::query(sql::SQL_DELETE_REVOKE_PERMISSIONS)
                         .bind(user.id)
-                        .bind(perm.as_str())
-                        .bind("revoke")
                         .execute(&mut *tx)
                         .await?;
+                    for perm in revokes {
+                        sqlx::query(sql::SQL_UPSERT_REVOKE_PERMISSION)
+                            .bind(user.id)
+                            .bind(perm.as_str())
+                            .execute(&mut *tx)
+                            .await?;
+                    }
+                }
+                PermissionWriteScope::OwnedSubset(owned) => {
+                    Self::set_revoke_overrides_for_owned_in_tx(&mut tx, user.id, revokes, owned)
+                        .await?;
+                }
+            }
+        }
+
+        // In-tx re-validation: the handler's pre-tx group checks ran
+        // against a snapshot that an admin could have invalidated.
+        // Re-read the target row and the relevant group rows here so
+        // the rules are enforced against the same state the group
+        // writes below will land on.
+        if !params.requester_is_admin {
+            // API invariant: non-admin must supply OwnedSubset + max_bw.
+            // Returning Err rolls the tx back rather than silently
+            // bypassing the checks below.
+            let (owned, max_bw) = match (
+                params.permission_write_scope,
+                params.requester_bandwidth_max,
+            ) {
+                (PermissionWriteScope::OwnedSubset(o), Some(m)) => (o, m),
+                _ => {
+                    return Err(sqlx::Error::Protocol(
+                        "non-admin update_user caller must supply OwnedSubset scope \
+                         and requester_bandwidth_max"
+                            .into(),
+                    ));
+                }
+            };
+
+            let current_row: Option<(Option<i64>, bool)> =
+                sqlx::query_as(sql::SQL_SELECT_USER_GROUP_AND_SHARED)
+                    .bind(user.id)
+                    .fetch_optional(&mut *tx)
+                    .await?;
+            let Some((current_group_id, current_is_shared)) = current_row else {
+                // Row vanished after our own UPDATE — corruption-grade,
+                // not a normal race. Roll back rather than panic.
+                tx.rollback().await?;
+                return Ok(UpdateUserResult::BlockedForGroupAuth);
+            };
+
+            if params.remove_group {
+                if let Some(old_gid) = current_group_id
+                    && !Self::group_perms_within_owned_in_tx(&mut tx, old_gid, owned).await?
+                {
+                    tx.rollback().await?;
+                    return Ok(UpdateUserResult::BlockedForGroupAuth);
+                }
+            } else if let Some(new_gid) = params.group_id {
+                if let Some(old_gid) = current_group_id
+                    && old_gid != new_gid
+                    && !Self::group_perms_within_owned_in_tx(&mut tx, old_gid, owned).await?
+                {
+                    tx.rollback().await?;
+                    return Ok(UpdateUserResult::BlockedForGroupAuth);
+                }
+
+                let new_group_row: Option<(bool, i64)> =
+                    sqlx::query_as(sql::SQL_SELECT_GROUP_SHARED_AND_BANDWIDTH)
+                        .bind(new_gid)
+                        .fetch_optional(&mut *tx)
+                        .await?;
+                let Some((new_is_shared, new_bw_raw)) = new_group_row else {
+                    // Group deleted in the gap — block rather than let
+                    // the next UPDATE fall through to a FK error.
+                    tx.rollback().await?;
+                    return Ok(UpdateUserResult::BlockedForGroupAuth);
+                };
+                let new_bw = clamp_db_bandwidth_weight(new_bw_raw);
+
+                if current_is_shared != new_is_shared
+                    || new_bw > max_bw
+                    || !Self::group_perms_within_owned_in_tx(&mut tx, new_gid, owned).await?
+                {
+                    tx.rollback().await?;
+                    return Ok(UpdateUserResult::BlockedForGroupAuth);
                 }
             }
         }
@@ -918,13 +1137,8 @@ impl UserDb {
             None => DEFAULT_BANDWIDTH_WEIGHT,
         };
 
-        tx.commit().await?;
-
-        // Assemble the post-update `UserAccount` from the values we just
-        // wrote — same shape as `update_group`'s `GroupRecord`. No extra
-        // read; everything is already in scope. The group_id reflects
-        // the precedence: promotion auto-clears it, then `remove_group`
-        // takes precedence over `group_id`, else unchanged.
+        // Precedence: promotion auto-clears, then remove_group, then
+        // group_id, then unchanged.
         let promotion_auto_clean = final_is_admin && !user.is_admin;
         let final_group_id = if promotion_auto_clean || params.remove_group {
             None
@@ -934,6 +1148,51 @@ impl UserDb {
             user.group_id
         };
 
+        // In-tx resolution mirroring `get_user_permissions`. Admins
+        // resolve to empty (their bypass lives in
+        // `UserSession::has_permission`).
+        let mut final_permissions = Permissions::new();
+        if !final_is_admin {
+            let perm_rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_SELECT_PERMISSIONS)
+                .bind(user.id)
+                .fetch_all(&mut *tx)
+                .await?;
+            if let Some(gid) = final_group_id {
+                let group_perm_rows: Vec<(String,)> =
+                    sqlx::query_as(sql::SQL_SELECT_GROUP_PERMISSIONS)
+                        .bind(gid)
+                        .fetch_all(&mut *tx)
+                        .await?;
+                for (perm_str,) in &group_perm_rows {
+                    if let Some(perm) = Permission::parse(perm_str) {
+                        final_permissions.permissions.insert(perm);
+                    }
+                }
+                for (perm_str, override_type) in &perm_rows {
+                    if let Some(perm) = Permission::parse(perm_str) {
+                        if override_type == "grant" {
+                            final_permissions.permissions.insert(perm);
+                        } else if override_type == "revoke" {
+                            final_permissions.permissions.remove(&perm);
+                        }
+                    }
+                }
+            } else {
+                for (perm_str, override_type) in &perm_rows {
+                    if override_type == "grant"
+                        && let Some(perm) = Permission::parse(perm_str)
+                    {
+                        final_permissions.permissions.insert(perm);
+                    }
+                }
+            }
+        }
+
+        tx.commit().await?;
+
+        // Assemble the post-update `UserAccount` from the values we just
+        // wrote — same shape as `update_group`'s `GroupRecord`. No extra
+        // read; everything is already in scope.
         Ok(UpdateUserResult::Updated {
             account: UserAccount {
                 id: user.id,
@@ -947,6 +1206,7 @@ impl UserDb {
                 bandwidth_weight: final_bandwidth_weight.map(|w| w as u16),
             },
             resolved_bandwidth_weight,
+            permissions: final_permissions,
         })
     }
 
@@ -1366,6 +1626,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();
@@ -1711,6 +1974,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             }),
             db2.update_user(UpdateUserParams {
                 username: "bob",
@@ -1724,6 +1990,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
         );
 
@@ -2131,6 +2400,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap()
@@ -2716,6 +2988,9 @@ mod tests {
                 group_id: Some(group2.id),
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap()
@@ -2770,6 +3045,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap()
@@ -2832,6 +3110,9 @@ mod tests {
                 group_id: Some(group2.id),
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap()
@@ -3072,6 +3353,9 @@ mod tests {
                 group_id: Some(group.id),
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap()
@@ -3156,6 +3440,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap()
@@ -3249,6 +3536,9 @@ mod tests {
                 group_id: Some(group2.id),
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap()
@@ -3398,6 +3688,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: Some(99),
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap()
@@ -3430,6 +3723,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: true,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap()
@@ -3463,6 +3759,9 @@ mod tests {
                 // Flag wins: stored value should be NULL despite explicit Some(77).
                 bandwidth_weight: Some(77),
                 inherit_bandwidth_weight: true,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap()
@@ -3496,6 +3795,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap()
@@ -3540,6 +3842,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: Some(0),
                 inherit_bandwidth_weight: true,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await;
         assert!(
@@ -3781,6 +4086,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap()
@@ -3800,6 +4108,849 @@ mod tests {
             0,
             "promotion must wipe all permission override rows (admins resolve to all)"
         );
+    }
+
+    /// Atomic guard: a non-admin requester must not be able to update an
+    /// admin target, even if they slipped past a handler-level pre-check
+    /// because the target was promoted between the pre-check and this
+    /// UPDATE. Pin the SQL clause directly so a future refactor of the
+    /// handler's pre-check can't accidentally remove this race protection.
+    #[tokio::test]
+    async fn test_update_user_non_admin_cannot_edit_admin_target() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        // Two admins so the per-row CHECK doesn't conflate this with the
+        // last-admin guard (we're testing the new clause in isolation).
+        db.create_user(CreateUserParams {
+            username: "alice",
+            hashed_password: "alice_original_hash",
+            is_admin: true,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+            revokes: &[],
+            bandwidth_weight: None,
+        })
+        .await
+        .unwrap();
+        db.create_user(CreateUserParams {
+            username: "carol",
+            hashed_password: "hash",
+            is_admin: true,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+            revokes: &[],
+            bandwidth_weight: None,
+        })
+        .await
+        .unwrap();
+
+        // Non-admin requester tries to change alice's password (the
+        // race-case attack: handler pre-check saw alice as non-admin,
+        // then someone promoted alice, then this UPDATE landed).
+        // Non-admin must satisfy the API invariant (OwnedSubset +
+        // bandwidth ceiling); empty owned + default ceiling here since
+        // the request doesn't touch permissions or group.
+        let no_owned: [Permission; 0] = [];
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: Some("compromised_hash"),
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                requester_is_admin: false,
+                permission_write_scope: PermissionWriteScope::OwnedSubset(&no_owned),
+                requester_bandwidth_max: Some(DEFAULT_BANDWIDTH_WEIGHT),
+            })
+            .await
+            .unwrap();
+
+        assert!(
+            matches!(result, UpdateUserResult::Blocked),
+            "non-admin requester must not be able to update an admin target"
+        );
+
+        // Password must be untouched.
+        let alice_after = db.get_user_by_username("alice").await.unwrap().unwrap();
+        assert_eq!(
+            alice_after.hashed_password, "alice_original_hash",
+            "blocked update must not have touched any field"
+        );
+
+        // Admin requester editing the same target succeeds — verifying
+        // the clause distinguishes by requester, not by target alone.
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: Some("admin_set_hash"),
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
+            })
+            .await
+            .unwrap();
+        assert!(matches!(result, UpdateUserResult::Updated { .. }));
+        let alice_after = db.get_user_by_username("alice").await.unwrap().unwrap();
+        assert_eq!(alice_after.hashed_password, "admin_set_hash");
+
+        // Non-admin editing a non-admin target succeeds — the clause
+        // doesn't accidentally block legitimate non-admin → non-admin
+        // edits (e.g. a moderator with UserEdit editing a regular user).
+        db.create_user(CreateUserParams {
+            username: "bob",
+            hashed_password: "bob_hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+            revokes: &[],
+            bandwidth_weight: None,
+        })
+        .await
+        .unwrap();
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "bob",
+                new_username: None,
+                new_password_hash: Some("mod_set_hash"),
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                requester_is_admin: false,
+                permission_write_scope: PermissionWriteScope::OwnedSubset(&no_owned),
+                requester_bandwidth_max: Some(DEFAULT_BANDWIDTH_WEIGHT),
+            })
+            .await
+            .unwrap();
+        assert!(matches!(result, UpdateUserResult::Updated { .. }));
+    }
+
+    // ========================================================================
+    // OwnedSubset (non-admin surgical permission writes) tests
+    // ========================================================================
+
+    /// Helper: snapshot a user's permission rows as `(permission, override_type)`
+    /// pairs, sorted, for deterministic assertions.
+    async fn snapshot_perm_rows(pool: &SqlitePool, user_id: i64) -> Vec<(String, String)> {
+        let mut rows: Vec<(String, String)> = sqlx::query_as(
+            "SELECT permission, override_type FROM user_permissions WHERE user_id = ?",
+        )
+        .bind(user_id)
+        .fetch_all(pool)
+        .await
+        .unwrap();
+        rows.sort();
+        rows
+    }
+
+    /// Seed a target user with explicit grant + revoke rows for the surgery
+    /// tests. Bypasses `create_user`'s "no group" cleanup path (no group
+    /// assigned, so grants stay as-is).
+    async fn seed_target_user(
+        db: &UserDb,
+        username: &str,
+        grants: &[Permission],
+        revokes: &[Permission],
+    ) -> i64 {
+        let mut grant_perms = Permissions::new();
+        for p in grants {
+            grant_perms.permissions.insert(*p);
+        }
+        let user = db
+            .create_user(CreateUserParams {
+                username,
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &grant_perms,
+                group_id: None,
+                revokes,
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        user.id
+    }
+
+    /// `OwnedSubset` grant surgery must leave rows for permissions
+    /// outside `owned` completely untouched. Models the race against a
+    /// concurrent admin grant: an admin (or any owner of the unowned
+    /// permission) put a row in place; a non-admin's edit must not
+    /// clobber it.
+    #[tokio::test]
+    async fn test_owned_subset_preserves_unowned_grants() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // Target has two grants. Requester only owns one of them
+        // (ChatSend); UserKick is unowned (e.g. just granted by an admin).
+        let user_id = seed_target_user(
+            &db,
+            "target",
+            &[Permission::ChatSend, Permission::UserKick],
+            &[],
+        )
+        .await;
+
+        // Non-admin requester re-asserts the grant for ChatSend (their owned
+        // permission), implicitly leaving UserKick alone.
+        let mut requested_grants = Permissions::new();
+        requested_grants.permissions.insert(Permission::ChatSend);
+        let owned = [Permission::ChatSend];
+
+        db.update_user(UpdateUserParams {
+            username: "target",
+            new_username: None,
+            new_password_hash: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(&requested_grants),
+            revokes: None,
+            remove_group: false,
+            group_id: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: false,
+            requester_is_admin: false,
+            permission_write_scope: PermissionWriteScope::OwnedSubset(&owned),
+            requester_bandwidth_max: Some(DEFAULT_BANDWIDTH_WEIGHT),
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(
+            snapshot_perm_rows(&pool, user_id).await,
+            vec![
+                ("chat_send".to_string(), "grant".to_string()),
+                ("user_kick".to_string(), "grant".to_string()),
+            ],
+            "unowned grant must survive non-admin surgical update"
+        );
+    }
+
+    /// Symmetric to the grants test: `OwnedSubset` revoke surgery must
+    /// leave revoke rows for unowned permissions in place.
+    #[tokio::test]
+    async fn test_owned_subset_preserves_unowned_revokes() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // Target has two revokes. Requester only owns ChatSend.
+        let user_id = seed_target_user(
+            &db,
+            "target",
+            &[],
+            &[Permission::ChatSend, Permission::UserKick],
+        )
+        .await;
+
+        // Non-admin requester re-asserts the revoke for ChatSend only.
+        let requested_revokes = vec![Permission::ChatSend];
+        let owned = [Permission::ChatSend];
+
+        db.update_user(UpdateUserParams {
+            username: "target",
+            new_username: None,
+            new_password_hash: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            revokes: Some(&requested_revokes),
+            remove_group: false,
+            group_id: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: false,
+            requester_is_admin: false,
+            permission_write_scope: PermissionWriteScope::OwnedSubset(&owned),
+            requester_bandwidth_max: Some(DEFAULT_BANDWIDTH_WEIGHT),
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(
+            snapshot_perm_rows(&pool, user_id).await,
+            vec![
+                ("chat_send".to_string(), "revoke".to_string()),
+                ("user_kick".to_string(), "revoke".to_string()),
+            ],
+            "unowned revoke must survive non-admin surgical revoke-only update"
+        );
+    }
+
+    /// Upsert semantics: requesting a grant for a permission the
+    /// requester owns AND the target currently has revoked must flip
+    /// the row to a grant. Without the `ON CONFLICT` upsert this would
+    /// either be a no-op (if we only inserted) or a unique-constraint
+    /// failure (if the table key wasn't `(user_id, permission)`).
+    #[tokio::test]
+    async fn test_owned_grant_upsert_flips_owned_revoke() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        let user_id = seed_target_user(&db, "target", &[], &[Permission::ChatSend]).await;
+
+        let mut requested_grants = Permissions::new();
+        requested_grants.permissions.insert(Permission::ChatSend);
+        let owned = [Permission::ChatSend];
+
+        db.update_user(UpdateUserParams {
+            username: "target",
+            new_username: None,
+            new_password_hash: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(&requested_grants),
+            revokes: None,
+            remove_group: false,
+            group_id: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: false,
+            requester_is_admin: false,
+            permission_write_scope: PermissionWriteScope::OwnedSubset(&owned),
+            requester_bandwidth_max: Some(DEFAULT_BANDWIDTH_WEIGHT),
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(
+            snapshot_perm_rows(&pool, user_id).await,
+            vec![("chat_send".to_string(), "grant".to_string())],
+            "grant request on owned-but-currently-revoked permission must flip to grant"
+        );
+    }
+
+    /// Symmetric upsert: requesting a revoke for a permission the
+    /// requester owns AND the target currently has granted must flip
+    /// the row to a revoke.
+    #[tokio::test]
+    async fn test_owned_revoke_upsert_flips_owned_grant() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        let user_id = seed_target_user(&db, "target", &[Permission::ChatSend], &[]).await;
+
+        let requested_revokes = vec![Permission::ChatSend];
+        let owned = [Permission::ChatSend];
+
+        db.update_user(UpdateUserParams {
+            username: "target",
+            new_username: None,
+            new_password_hash: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            revokes: Some(&requested_revokes),
+            remove_group: false,
+            group_id: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: false,
+            requester_is_admin: false,
+            permission_write_scope: PermissionWriteScope::OwnedSubset(&owned),
+            requester_bandwidth_max: Some(DEFAULT_BANDWIDTH_WEIGHT),
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(
+            snapshot_perm_rows(&pool, user_id).await,
+            vec![("chat_send".to_string(), "revoke".to_string())],
+            "revoke request on owned-but-currently-granted permission must flip to revoke"
+        );
+    }
+
+    /// Per-side separation: a non-admin grant write that re-asserts
+    /// an owned permission must NOT touch a revoke row for a
+    /// different owned permission. Pins the contract that grant
+    /// surgery's per-row DELETE is scoped to `override_type = 'grant'`,
+    /// not "any row for this permission".
+    ///
+    /// Setup: target has `revoke(user_message)`; requester owns both
+    /// `chat_send` and `user_message`; request asks to grant only
+    /// `chat_send`. The revoke must survive because the grant
+    /// surgery's owned-and-not-requested branch deletes only grant
+    /// rows (and `user_message` doesn't have one).
+    #[tokio::test]
+    async fn test_owned_subset_does_not_touch_unrelated_revokes_during_grant_write() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        let user_id = seed_target_user(&db, "target", &[], &[Permission::UserMessage]).await;
+
+        let mut requested_grants = Permissions::new();
+        requested_grants.permissions.insert(Permission::ChatSend);
+        let owned = [Permission::ChatSend, Permission::UserMessage];
+
+        db.update_user(UpdateUserParams {
+            username: "target",
+            new_username: None,
+            new_password_hash: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(&requested_grants),
+            // Re-assert the seeded revoke. With `revokes: None` the
+            // `OwnedSubset` dispatch would also run revoke surgery
+            // with an empty requested set and delete the
+            // owned-but-not-requested `user_message` revoke — but
+            // that's the revoke-side behavior, not what this test is
+            // pinning. Keeping the revoke in `requested_revokes`
+            // isolates the assertion to "grant surgery doesn't touch
+            // unrelated revokes".
+            revokes: Some(&[Permission::UserMessage]),
+            remove_group: false,
+            group_id: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: false,
+            requester_is_admin: false,
+            permission_write_scope: PermissionWriteScope::OwnedSubset(&owned),
+            requester_bandwidth_max: Some(DEFAULT_BANDWIDTH_WEIGHT),
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(
+            snapshot_perm_rows(&pool, user_id).await,
+            vec![
+                ("chat_send".to_string(), "grant".to_string()),
+                ("user_message".to_string(), "revoke".to_string()),
+            ],
+            "grant surgery must not touch revoke rows for other permissions"
+        );
+    }
+
+    /// `ReplaceAll` revoke-only path: an admin-issued revoke-only
+    /// update for a permission that currently has a grant row must
+    /// succeed — the upsert flips the grant to a revoke. Pre-fix the
+    /// `DELETE WHERE override_type = 'revoke'` left the grant row in
+    /// place, the subsequent plain `INSERT` collided with the
+    /// `(user_id, permission)` primary key, and the whole tx aborted
+    /// with a UNIQUE constraint error on what is a perfectly valid
+    /// admin request.
+    #[tokio::test]
+    async fn test_replace_all_revoke_only_flips_existing_grant() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // Target has a single grant for ChatSend (no group, no revokes).
+        let user_id = seed_target_user(&db, "target", &[Permission::ChatSend], &[]).await;
+
+        // Admin (`requester_is_admin: true`, `ReplaceAll`) sends a
+        // revoke-only update naming the same permission.
+        let requested_revokes = vec![Permission::ChatSend];
+        db.update_user(UpdateUserParams {
+            username: "target",
+            new_username: None,
+            new_password_hash: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            revokes: Some(&requested_revokes),
+            remove_group: false,
+            group_id: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: false,
+            requester_is_admin: true,
+            permission_write_scope: PermissionWriteScope::ReplaceAll,
+            requester_bandwidth_max: None,
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(
+            snapshot_perm_rows(&pool, user_id).await,
+            vec![("chat_send".to_string(), "revoke".to_string())],
+            "ReplaceAll revoke-only update must flip an existing grant row to a revoke"
+        );
+    }
+
+    // ========================================================================
+    // In-tx group-auth re-validation (non-admin race protection)
+    // ========================================================================
+
+    /// API invariant: a non-admin caller must supply both an
+    /// `OwnedSubset` scope and a `requester_bandwidth_max`. Violations
+    /// return `Err(sqlx::Error::Protocol(...))` rather than silently
+    /// bypassing the in-tx ownership/bandwidth checks. Belt-and-suspenders
+    /// — the production handler always sets both for non-admins, but
+    /// this guard catches a future refactor that drops one wire.
+    #[tokio::test]
+    async fn test_update_user_non_admin_must_have_owned_subset_and_bandwidth_max() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        db.create_user(CreateUserParams {
+            username: "target",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+            revokes: &[],
+            bandwidth_weight: None,
+        })
+        .await
+        .unwrap();
+
+        // Missing OwnedSubset (passes ReplaceAll with non-admin).
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "target",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                requester_is_admin: false,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: Some(DEFAULT_BANDWIDTH_WEIGHT),
+            })
+            .await;
+        assert!(matches!(result, Err(sqlx::Error::Protocol(_))));
+
+        // Missing bandwidth ceiling (OwnedSubset but None).
+        let no_owned: [Permission; 0] = [];
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "target",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                requester_is_admin: false,
+                permission_write_scope: PermissionWriteScope::OwnedSubset(&no_owned),
+                requester_bandwidth_max: None,
+            })
+            .await;
+        assert!(matches!(result, Err(sqlx::Error::Protocol(_))));
+    }
+
+    /// In-tx race protection: a non-admin assigning a target to a
+    /// group whose perms include one the requester doesn't own must be
+    /// rejected, even if the handler's pre-tx check would have passed
+    /// (admin added the unowned perm after the snapshot). Re-fetched
+    /// inside the tx so the check sees the row state the
+    /// `SQL_UPDATE_USER_GROUP` write will land on.
+    #[tokio::test]
+    async fn test_update_user_non_admin_group_assign_blocked_on_unowned_perm() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        // Group with two perms.
+        let group = group_db
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
+            )
+            .await
+            .unwrap();
+
+        db.create_user(CreateUserParams {
+            username: "target",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+            revokes: &[],
+            bandwidth_weight: None,
+        })
+        .await
+        .unwrap();
+
+        // Requester owns only ChatSend; group requires UserKick too.
+        let owned = [Permission::ChatSend];
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "target",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: Some(group.id),
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                requester_is_admin: false,
+                permission_write_scope: PermissionWriteScope::OwnedSubset(&owned),
+                requester_bandwidth_max: Some(DEFAULT_BANDWIDTH_WEIGHT),
+            })
+            .await
+            .unwrap();
+        assert!(matches!(result, UpdateUserResult::BlockedForGroupAuth));
+
+        // Target's group_id must still be None — tx rolled back.
+        let target_after = db.get_user_by_username("target").await.unwrap().unwrap();
+        assert_eq!(target_after.group_id, None);
+    }
+
+    /// In-tx race protection: bandwidth ceiling re-checked against the
+    /// group's current weight. An admin's mid-flight weight bump can't
+    /// slip a target into an over-ceiling group.
+    #[tokio::test]
+    async fn test_update_user_non_admin_group_assign_blocked_on_bandwidth_ceiling() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        // Group's weight is 100; requester's ceiling is 50.
+        let group = group_db
+            .create_group("Staff", false, &Permissions::new(), 100)
+            .await
+            .unwrap();
+
+        db.create_user(CreateUserParams {
+            username: "target",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+            revokes: &[],
+            bandwidth_weight: None,
+        })
+        .await
+        .unwrap();
+
+        let no_owned: [Permission; 0] = [];
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "target",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: Some(group.id),
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                requester_is_admin: false,
+                permission_write_scope: PermissionWriteScope::OwnedSubset(&no_owned),
+                requester_bandwidth_max: Some(50),
+            })
+            .await
+            .unwrap();
+        assert!(matches!(result, UpdateUserResult::BlockedForGroupAuth));
+
+        let target_after = db.get_user_by_username("target").await.unwrap().unwrap();
+        assert_eq!(target_after.group_id, None);
+    }
+
+    /// In-tx race protection: removing a target from a group with
+    /// perms the requester doesn't own is rejected.
+    #[tokio::test]
+    async fn test_update_user_non_admin_group_remove_blocked_on_unowned_perm() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        let group = group_db
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::UserKick]),
+                1,
+            )
+            .await
+            .unwrap();
+
+        db.create_user(CreateUserParams {
+            username: "target",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: Some(group.id),
+            revokes: &[],
+            bandwidth_weight: None,
+        })
+        .await
+        .unwrap();
+
+        // Requester owns ChatSend, NOT UserKick (which the group has).
+        let owned = [Permission::ChatSend];
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "target",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: true,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                requester_is_admin: false,
+                permission_write_scope: PermissionWriteScope::OwnedSubset(&owned),
+                requester_bandwidth_max: Some(DEFAULT_BANDWIDTH_WEIGHT),
+            })
+            .await
+            .unwrap();
+        assert!(matches!(result, UpdateUserResult::BlockedForGroupAuth));
+
+        // Target still in the group — tx rolled back.
+        let target_after = db.get_user_by_username("target").await.unwrap().unwrap();
+        assert_eq!(target_after.group_id, Some(group.id));
+    }
+
+    /// In-tx race protection: `is_shared` mismatch re-checked against
+    /// the group's current row. Covers the empty-group → flip →
+    /// first-incompatible-member-assignment race the GroupUpdate
+    /// pre-check doesn't cover (it only blocks the flip when the
+    /// group already has members).
+    #[tokio::test]
+    async fn test_update_user_non_admin_group_assign_blocked_on_shared_mismatch() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        // Shared group, but target is a non-shared user.
+        let group = group_db
+            .create_group("Shared", true, &Permissions::new(), 1)
+            .await
+            .unwrap();
+
+        db.create_user(CreateUserParams {
+            username: "target",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+            revokes: &[],
+            bandwidth_weight: None,
+        })
+        .await
+        .unwrap();
+
+        let no_owned: [Permission; 0] = [];
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "target",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: Some(group.id),
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                requester_is_admin: false,
+                permission_write_scope: PermissionWriteScope::OwnedSubset(&no_owned),
+                requester_bandwidth_max: Some(DEFAULT_BANDWIDTH_WEIGHT),
+            })
+            .await
+            .unwrap();
+        assert!(matches!(result, UpdateUserResult::BlockedForGroupAuth));
+    }
+
+    /// Companion: admin callers bypass all in-tx group-auth checks.
+    /// Same setup as the unowned-perm test above; admin succeeds where
+    /// non-admin was blocked.
+    #[tokio::test]
+    async fn test_update_user_admin_bypasses_in_tx_group_auth() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+        let group_db = crate::db::GroupDb::new(pool);
+
+        let group = group_db
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                100,
+            )
+            .await
+            .unwrap();
+
+        db.create_user(CreateUserParams {
+            username: "target",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+            revokes: &[],
+            bandwidth_weight: None,
+        })
+        .await
+        .unwrap();
+
+        let result = db
+            .update_user(UpdateUserParams {
+                username: "target",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: Some(group.id),
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
+            })
+            .await
+            .unwrap();
+        assert!(matches!(result, UpdateUserResult::Updated { .. }));
+
+        let target_after = db.get_user_by_username("target").await.unwrap().unwrap();
+        assert_eq!(target_after.group_id, Some(group.id));
     }
 
     /// Schema-level pin: the CHECK constraint must reject any user row with
@@ -4021,6 +5172,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: Some(77),
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();
@@ -4029,11 +5183,14 @@ mod tests {
             UpdateUserResult::Updated {
                 account,
                 resolved_bandwidth_weight,
+                ..
             } => {
                 assert_eq!(resolved_bandwidth_weight, 77);
                 assert_eq!(account.bandwidth_weight, Some(77), "stored override");
             }
-            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+            UpdateUserResult::Blocked | UpdateUserResult::BlockedForGroupAuth => {
+                panic!("update should have succeeded")
+            }
         }
     }
 
@@ -4074,6 +5231,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: true,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();
@@ -4082,6 +5242,7 @@ mod tests {
             UpdateUserResult::Updated {
                 account,
                 resolved_bandwidth_weight,
+                ..
             } => {
                 assert_eq!(
                     resolved_bandwidth_weight, 30,
@@ -4092,7 +5253,9 @@ mod tests {
                     "inherit clears the stored override"
                 );
             }
-            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+            UpdateUserResult::Blocked | UpdateUserResult::BlockedForGroupAuth => {
+                panic!("update should have succeeded")
+            }
         }
     }
 
@@ -4121,6 +5284,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: true,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();
@@ -4129,11 +5295,14 @@ mod tests {
             UpdateUserResult::Updated {
                 account,
                 resolved_bandwidth_weight,
+                ..
             } => {
                 assert_eq!(resolved_bandwidth_weight, DEFAULT_BANDWIDTH_WEIGHT);
                 assert!(account.bandwidth_weight.is_none(), "override cleared");
             }
-            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+            UpdateUserResult::Blocked | UpdateUserResult::BlockedForGroupAuth => {
+                panic!("update should have succeeded")
+            }
         }
     }
 
@@ -4176,6 +5345,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();
@@ -4184,6 +5356,7 @@ mod tests {
             UpdateUserResult::Updated {
                 account,
                 resolved_bandwidth_weight,
+                ..
             } => {
                 assert_eq!(
                     resolved_bandwidth_weight, DEFAULT_ADMIN_BANDWIDTH_WEIGHT,
@@ -4195,7 +5368,9 @@ mod tests {
                     "promotion auto-clean should NULL group_id"
                 );
             }
-            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+            UpdateUserResult::Blocked | UpdateUserResult::BlockedForGroupAuth => {
+                panic!("update should have succeeded")
+            }
         }
     }
 
@@ -4228,6 +5403,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();
@@ -4236,6 +5414,7 @@ mod tests {
             UpdateUserResult::Updated {
                 account,
                 resolved_bandwidth_weight,
+                ..
             } => {
                 assert_eq!(
                     resolved_bandwidth_weight, 88,
@@ -4244,7 +5423,9 @@ mod tests {
                 assert_eq!(account.username, "alice2", "rename should be reflected");
                 assert_eq!(account.bandwidth_weight, Some(88), "override preserved");
             }
-            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+            UpdateUserResult::Blocked | UpdateUserResult::BlockedForGroupAuth => {
+                panic!("update should have succeeded")
+            }
         }
     }
 
@@ -4287,6 +5468,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: Some(150),
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();
@@ -4295,8 +5479,11 @@ mod tests {
             UpdateUserResult::Updated {
                 account: _,
                 resolved_bandwidth_weight,
+                ..
             } => resolved_bandwidth_weight,
-            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+            UpdateUserResult::Blocked | UpdateUserResult::BlockedForGroupAuth => {
+                panic!("update should have succeeded")
+            }
         };
         let standalone = user_db
             .get_resolved_bandwidth_weight(user.id)
@@ -4351,13 +5538,18 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: Some(42),
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();
 
         let returned_account = match result {
             UpdateUserResult::Updated { account, .. } => account,
-            UpdateUserResult::Blocked => panic!("update should have succeeded"),
+            UpdateUserResult::Blocked | UpdateUserResult::BlockedForGroupAuth => {
+                panic!("update should have succeeded")
+            }
         };
         let row = user_db
             .get_user_by_id(user.id)

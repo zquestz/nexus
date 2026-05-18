@@ -34,7 +34,9 @@ pub use trackers::{
     is_transient_db_error,
 };
 pub use trusts::TrustDb;
-pub use users::{CreateUserParams, UpdateUserParams, UpdateUserResult, UserDb};
+pub use users::{
+    CreateUserParams, PermissionWriteScope, UpdateUserParams, UpdateUserResult, UserDb,
+};
 
 use std::path::{Path, PathBuf};
 

@@ -1623,6 +1623,9 @@ mod tests {
                 group_id: Some(group.id),
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: db::PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .unwrap();

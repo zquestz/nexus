@@ -1564,6 +1564,9 @@ mod tests {
                 group_id: None,
                 bandwidth_weight: None,
                 inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: crate::db::PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
             })
             .await
             .expect("enable guest");

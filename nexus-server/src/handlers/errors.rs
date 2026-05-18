@@ -527,6 +527,15 @@ pub fn err_permissions_too_many(locale: &str, max_count: usize) -> String {
     )
 }
 
+/// Get translated "permission appears in both grant and revoke" error
+pub fn err_permission_grant_revoke_conflict(locale: &str, permission: &str) -> String {
+    t_args(
+        locale,
+        "err-permission-grant-revoke-conflict",
+        &[("permission", permission)],
+    )
+}
+
 /// Get translated "topic contains newlines" error
 pub fn err_topic_contains_newlines(locale: &str) -> String {
     t(locale, "err-topic-contains-newlines")
