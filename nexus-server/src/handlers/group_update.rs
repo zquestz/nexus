@@ -355,29 +355,11 @@ where
                 HashSet::new()
             };
 
-            // Single fetch of member sessions for both the cache refresh
-            // and the broadcast. Empty when no field-level cascade is
-            // needed; the permissions cascade below re-fetches its own
-            // snapshot because it consumes fresh `permissions` rows that
-            // the bandwidth/name path doesn't touch, and it walks the
-            // members independently to emit `PermissionsUpdated` rather
-            // than `UserUpdated`.
-            let member_sessions = if bandwidth_weight_changed || name_changed {
-                ctx.user_manager.get_sessions_by_group_id(id).await
-            } else {
-                Vec::new()
-            };
-
-            // Bandwidth cache refresh: the new resolved value for an
-            // inheriting member IS the new group weight — no per-user
-            // re-resolution needed. Walking `member_sessions` (vs
-            // `inheriting_set` directly) keeps the work scoped to
-            // *online* inheriting members; offline members have no
-            // session cache to refresh. The `seen_user_ids` dedup
-            // matters because `update_bandwidth_weight` fans out to
-            // every session of `user_id` in one call — without dedup,
-            // a multi-session user would trigger that fan-out once per
-            // session.
+            // Bandwidth cache refresh: a single batched call walks the
+            // session map once and updates every session whose user_id
+            // is in `inheriting_set`. Offline members produce no
+            // matching sessions; we don't need a session snapshot to
+            // scope this fan-out.
             //
             // Race window with concurrent `UserUpdate`: `inheriting_set`
             // is bound to the group tx, but this fan-out runs after
@@ -395,19 +377,12 @@ where
             // re-resolving every inheriting member inside the tx (N
             // extra reads); accept the eventual consistency instead.
             if bandwidth_weight_changed {
-                let mut seen_user_ids: HashSet<i64> = HashSet::new();
-                for session in &member_sessions {
-                    if inheriting_set.contains(&session.user_id)
-                        && seen_user_ids.insert(session.user_id)
-                    {
-                        ctx.user_manager
-                            .update_bandwidth_weight(
-                                session.user_id,
-                                updated_group.bandwidth_weight,
-                            )
-                            .await;
-                    }
-                }
+                ctx.user_manager
+                    .update_bandwidth_weight_for_user_ids(
+                        &inheriting_set,
+                        updated_group.bandwidth_weight,
+                    )
+                    .await;
             }
 
             if name_changed {
@@ -417,6 +392,23 @@ where
                     .update_group_name(id, &updated_group.name)
                     .await;
             }
+
+            // Single fresh snapshot of online member sessions, reused by
+            // both the UserUpdated broadcast and the permissions cascade
+            // below. Taken AFTER the bandwidth/name cache writes so the
+            // shared-account broadcast branch (which reads `group_name`
+            // / `bandwidth_weight` straight off the session) sees the
+            // post-update values. The permissions cascade re-resolves
+            // permissions from the DB per member, so it only needs the
+            // snapshot for `user_id` / `username` and the pre-cascade
+            // `permissions` it diffs against — none of which the
+            // bandwidth/name writes touch.
+            let member_sessions =
+                if name_changed || !inheriting_set.is_empty() || permissions_changed {
+                    ctx.user_manager.get_sessions_by_group_id(id).await
+                } else {
+                    Vec::new()
+                };
 
             // Single UserUpdated broadcast per affected user:
             // - name_changed → every member (group_name shifted for all)
@@ -433,8 +425,6 @@ where
             // online member, update session caches, send PermissionsUpdated, do voice cleanup.
             // Offline users get fresh permissions at next login — no cascade needed.
             if permissions_changed {
-                let member_sessions = ctx.user_manager.get_sessions_by_group_id(id).await;
-
                 // Fetch config once for ServerInfo construction (shared across all members)
                 let config = ctx.db.config.get_all().await;
                 let info_values = ServerInfoValues {
@@ -2369,6 +2359,125 @@ mod tests {
         assert!(
             test_ctx.rx.try_recv().is_err(),
             "No cascade when name and permissions are unchanged"
+        );
+    }
+
+    /// Regression: shared-account members in a renamed/reweighted
+    /// group must broadcast `UserUpdated` with the *new* `group_name`
+    /// and `bandwidth_weight`. The helper's shared branch builds
+    /// `UserInfo` straight from the session snapshot, so an unrefreshed
+    /// snapshot taken before the cache writes silently leaks stale
+    /// values into the broadcast.
+    #[tokio::test]
+    async fn test_group_update_shared_member_broadcast_has_fresh_group_name_and_weight() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                true,
+                &Permissions::from(&[Permission::ChatSend]),
+                5,
+            )
+            .await
+            .expect("Failed to create shared group");
+
+        let kiosk = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "kiosk",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let kiosk_effective = test_ctx
+            .db
+            .users
+            .get_user_permissions(kiosk.id)
+            .await
+            .unwrap();
+        test_ctx
+            .user_manager
+            .add_user(crate::users::user::NewSessionParams {
+                session_id: 0,
+                user_id: kiosk.id,
+                username: "kiosk".to_string(),
+                is_admin: false,
+                is_shared: true,
+                permissions: kiosk_effective.permissions.clone(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "lobby".to_string(),
+                is_away: false,
+                status: None,
+                group_id: Some(group.id),
+                group_name: Some("Staff".to_string()),
+                bandwidth_weight: 5,
+                last_activity: Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        let result = handle_group_update(
+            group.id,
+            Some("Moderators".to_string()),
+            None,
+            None,
+            Some(12),
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
+            other => panic!("Expected GroupUpdateResponse, got {:?}", other),
+        }
+
+        let mut saw_kiosk_broadcast = false;
+        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+            if let ServerMessage::UserUpdated {
+                previous_username,
+                user,
+            } = msg
+                && previous_username == "kiosk"
+            {
+                assert_eq!(user.nickname, "lobby");
+                assert_eq!(
+                    user.group_name,
+                    Some("Moderators".to_string()),
+                    "shared-account broadcast must carry the post-update group_name"
+                );
+                assert_eq!(
+                    user.bandwidth_weight,
+                    Some(12),
+                    "shared-account broadcast must carry the post-update bandwidth_weight"
+                );
+                saw_kiosk_broadcast = true;
+            }
+        }
+        assert!(
+            saw_kiosk_broadcast,
+            "expected a UserUpdated broadcast for the shared session"
         );
     }
 

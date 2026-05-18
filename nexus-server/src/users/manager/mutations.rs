@@ -190,8 +190,10 @@ impl UserManager {
     }
 
     /// Refresh the cached `bandwidth_weight` atomic for all sessions of a
-    /// user. Called after `UserUpdate` (own user) or `GroupUpdate`
-    /// (fan-out per member). Returns the number of sessions touched.
+    /// user. Called after `UserUpdate` (own user). For the `GroupUpdate`
+    /// cascade, prefer [`Self::update_bandwidth_weight_for_user_ids`] —
+    /// it batches the per-user fan-out into a single pass. Returns the
+    /// number of sessions touched.
     ///
     /// `Relaxed` is sufficient — the scheduler reads this advisorily for
     /// fairness, not as a correctness invariant.
@@ -201,6 +203,39 @@ impl UserManager {
 
         for user in users.values() {
             if user.user_id == user_id {
+                user.bandwidth_weight.store(weight, Ordering::Relaxed);
+                count += 1;
+            }
+        }
+
+        count
+    }
+
+    /// Batched companion to [`Self::update_bandwidth_weight`]: refresh
+    /// the cached weight for every session whose `user_id` is in
+    /// `user_ids`, in one read-lock acquisition and one pass over
+    /// sessions. Used by the `GroupUpdate` cascade so a group with many
+    /// inheriting members doesn't pay O(N·M) (one full-session scan per
+    /// member). Returns the number of sessions touched.
+    ///
+    /// Read lock is sufficient even though we mutate `bandwidth_weight`:
+    /// the field is `AtomicU16` and stores go through interior
+    /// mutability — same reason `update_bandwidth_weight` reads. Unlike
+    /// `update_group_name`, which mutates a `String` and needs
+    /// `write().await`.
+    pub async fn update_bandwidth_weight_for_user_ids(
+        &self,
+        user_ids: &HashSet<i64>,
+        weight: u16,
+    ) -> usize {
+        if user_ids.is_empty() {
+            return 0;
+        }
+        let users = self.users.read().await;
+        let mut count = 0;
+
+        for user in users.values() {
+            if user_ids.contains(&user.user_id) {
                 user.bandwidth_weight.store(weight, Ordering::Relaxed);
                 count += 1;
             }
@@ -536,6 +571,111 @@ mod tests {
             bob_sessions[0].bandwidth_weight.load(Ordering::Relaxed),
             1,
             "weight update for user_id=1 must not touch user_id=2"
+        );
+    }
+
+    /// Batched variant: a single call updates every session whose
+    /// `user_id` is in the set, including multi-session users, and
+    /// leaves out-of-set users alone. Empty set is a no-op.
+    #[tokio::test]
+    async fn test_update_bandwidth_weight_for_user_ids_batched() {
+        let manager = UserManager::new();
+
+        // user_id=1 (shared, two sessions), user_id=2 (regular, "bob"),
+        // user_id=3 (regular, "carol"). Cascade set = {1, 3}.
+        manager
+            .add_user(shared_session_params(1, "alice1", 1))
+            .await
+            .unwrap();
+        manager
+            .add_user(shared_session_params(1, "alice2", 1))
+            .await
+            .unwrap();
+        let (tx_b, _rx_b) = mpsc::unbounded_channel();
+        manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: 2,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: HashSet::new(),
+                address: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+                created_at: 0,
+                tx: tx_b,
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                last_activity: std::time::Instant::now(),
+                bandwidth_weight: 1,
+            })
+            .await
+            .unwrap();
+        let (tx_c, _rx_c) = mpsc::unbounded_channel();
+        manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: 3,
+                username: "carol".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: HashSet::new(),
+                address: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+                created_at: 0,
+                tx: tx_c,
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: "carol".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                last_activity: std::time::Instant::now(),
+                bandwidth_weight: 1,
+            })
+            .await
+            .unwrap();
+
+        let set: HashSet<i64> = [1i64, 3].into_iter().collect();
+        let touched = manager.update_bandwidth_weight_for_user_ids(&set, 77).await;
+        assert_eq!(touched, 3, "two alice sessions + one carol session");
+
+        let alice_sessions = manager.get_sessions_by_username("shared_acct").await;
+        assert_eq!(alice_sessions.len(), 2);
+        for s in &alice_sessions {
+            assert_eq!(s.bandwidth_weight.load(Ordering::Relaxed), 77);
+        }
+
+        let carol_sessions = manager.get_sessions_by_username("carol").await;
+        assert_eq!(carol_sessions.len(), 1);
+        assert_eq!(
+            carol_sessions[0].bandwidth_weight.load(Ordering::Relaxed),
+            77
+        );
+
+        let bob_sessions = manager.get_sessions_by_username("bob").await;
+        assert_eq!(bob_sessions.len(), 1);
+        assert_eq!(
+            bob_sessions[0].bandwidth_weight.load(Ordering::Relaxed),
+            1,
+            "user_id not in set must be untouched"
+        );
+
+        // Empty set is a no-op — no sessions changed, no lock contention worth taking.
+        let touched_empty = manager
+            .update_bandwidth_weight_for_user_ids(&HashSet::new(), 99)
+            .await;
+        assert_eq!(touched_empty, 0);
+        let bob_after_empty = manager.get_sessions_by_username("bob").await;
+        assert_eq!(
+            bob_after_empty[0].bandwidth_weight.load(Ordering::Relaxed),
+            1
         );
     }
 }
