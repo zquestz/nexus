@@ -14,7 +14,7 @@ use tokio::sync::RwLock;
 
 use nexus_common::validators::MAX_CHANNELS_PER_USER;
 
-use super::types::{Channel, ChannelListInfo, JoinError, JoinResult, LeaveResult};
+use super::types::{Channel, ChannelListInfo, JoinError, JoinPolicy, JoinResult, LeaveResult};
 use crate::db::ChannelDb;
 use crate::users::UserManager;
 
@@ -106,18 +106,18 @@ impl ChannelManager {
         persistent.contains(&key)
     }
 
-    /// Join a channel, creating it if it doesn't exist
-    ///
-    /// Returns information about the join operation, or an error if the user
-    /// is already a member of too many channels (`MAX_CHANNELS_PER_USER`).
-    ///
-    /// Note: If the user is already a member, this succeeds (returns `already_member: true`)
-    /// without counting against their channel limit.
-    pub async fn join(&self, channel_name: &str, session_id: u32) -> Result<JoinResult, JoinError> {
+    /// Join a channel under the channel-map write lock so policy
+    /// enforcement is atomic with the existence check.
+    pub async fn join(
+        &self,
+        channel_name: &str,
+        session_id: u32,
+        policy: JoinPolicy,
+    ) -> Result<JoinResult, JoinError> {
         let key = channel_name.to_lowercase();
         let mut channels = self.channels.write().await;
 
-        // Check if already a member (doesn't count against limit)
+        // Already-a-member doesn't count against the channel limit.
         if let Some(ch) = channels.get(&key)
             && ch.has_member(session_id)
         {
@@ -130,7 +130,14 @@ impl ChannelManager {
             });
         }
 
-        // Check channel limit before joining
+        // Order matters: ExistingOnly is checked before the channel
+        // limit so an at-limit user without `ChatCreate` gets the
+        // "needs ChatCreate" mapping, not "too many channels".
+        let channel_exists = channels.contains_key(&key);
+        if !channel_exists && matches!(policy, JoinPolicy::ExistingOnly) {
+            return Err(JoinError::ChannelDoesNotExist);
+        }
+
         let current_count = channels
             .values()
             .filter(|ch| ch.has_member(session_id))
@@ -333,13 +340,6 @@ impl ChannelManager {
             .is_some_and(|ch| ch.has_member(session_id))
     }
 
-    /// Check if a channel exists
-    pub async fn exists(&self, channel_name: &str) -> bool {
-        let key = channel_name.to_lowercase();
-        let channels = self.channels.read().await;
-        channels.contains_key(&key)
-    }
-
     /// Get member session IDs for a channel
     ///
     /// Returns None if the channel doesn't exist.
@@ -418,8 +418,8 @@ mod tests {
 
         manager.initialize_persistent_channels(channels).await;
 
-        assert!(manager.exists(DEFAULT_CHANNEL).await);
-        assert!(manager.exists("#support").await);
+        assert!(manager.get_channel(DEFAULT_CHANNEL).await.is_some());
+        assert!(manager.get_channel("#support").await.is_some());
         assert!(manager.is_persistent(DEFAULT_CHANNEL).await);
         assert!(manager.is_persistent("#support").await);
 
@@ -431,10 +431,13 @@ mod tests {
     async fn test_join_creates_channel() {
         let manager = create_test_manager().await;
 
-        let result = manager.join("#general", 1).await.unwrap();
+        let result = manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         assert!(!result.already_member);
-        assert!(manager.exists("#general").await);
+        assert!(manager.get_channel("#general").await.is_some());
     }
 
     #[tokio::test]
@@ -442,10 +445,16 @@ mod tests {
         let manager = create_test_manager().await;
 
         // First user creates the channel
-        manager.join("#general", 1).await.unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         // Second user joins existing channel
-        let result = manager.join("#general", 2).await.unwrap();
+        let result = manager
+            .join("#general", 2, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         assert!(!result.already_member);
     }
@@ -454,18 +463,76 @@ mod tests {
     async fn test_join_already_member() {
         let manager = create_test_manager().await;
 
-        manager.join("#general", 1).await.unwrap();
-        let result = manager.join("#general", 1).await.unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        let result = manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         assert!(result.already_member);
+    }
+
+    #[tokio::test]
+    async fn test_join_existing_only_rejects_missing_channel() {
+        let manager = create_test_manager().await;
+
+        let result = manager.join("#missing", 1, JoinPolicy::ExistingOnly).await;
+        assert!(matches!(result, Err(JoinError::ChannelDoesNotExist)));
+        assert!(manager.get_channel("#missing").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_join_existing_only_joins_existing_channel() {
+        let manager = create_test_manager().await;
+
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+
+        let result = manager
+            .join("#general", 2, JoinPolicy::ExistingOnly)
+            .await
+            .unwrap();
+        assert!(!result.already_member);
+    }
+
+    /// Order pin: when the user is at `MAX_CHANNELS_PER_USER` AND the
+    /// requested channel is missing, the `ExistingOnly` branch fires
+    /// before the channel-limit check. Mapped by the handler to
+    /// "needs ChatCreate" (the truth) instead of "too many channels"
+    /// (misleading).
+    #[tokio::test]
+    async fn test_join_existing_only_at_limit_returns_does_not_exist() {
+        let manager = create_test_manager().await;
+
+        for i in 0..MAX_CHANNELS_PER_USER {
+            manager
+                .join(&format!("#channel{}", i), 1, JoinPolicy::CreateIfMissing)
+                .await
+                .unwrap();
+        }
+
+        let result = manager.join("#missing", 1, JoinPolicy::ExistingOnly).await;
+        assert!(matches!(result, Err(JoinError::ChannelDoesNotExist)));
+        assert!(manager.get_channel("#missing").await.is_none());
     }
 
     #[tokio::test]
     async fn test_leave_channel() {
         let manager = create_test_manager().await;
 
-        manager.join("#general", 1).await.unwrap();
-        manager.join("#general", 2).await.unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#general", 2, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         let result = manager.leave("#general", 1).await;
 
@@ -473,21 +540,24 @@ mod tests {
         let result = result.unwrap();
         assert_eq!(result.remaining_member_session_ids, vec![2]);
         // Channel still exists (has member 2)
-        assert!(manager.exists("#general").await);
+        assert!(manager.get_channel("#general").await.is_some());
     }
 
     #[tokio::test]
     async fn test_leave_deletes_empty_ephemeral_channel() {
         let manager = create_test_manager().await;
 
-        manager.join("#general", 1).await.unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
         let result = manager.leave("#general", 1).await;
 
         assert!(result.is_some());
         let result = result.unwrap();
         assert!(result.remaining_member_session_ids.is_empty());
         // Ephemeral channel deleted when empty
-        assert!(!manager.exists("#general").await);
+        assert!(manager.get_channel("#general").await.is_none());
     }
 
     #[tokio::test]
@@ -498,14 +568,17 @@ mod tests {
             .initialize_persistent_channels(vec![Channel::new(DEFAULT_CHANNEL.to_string())])
             .await;
 
-        manager.join(DEFAULT_CHANNEL, 1).await.unwrap();
+        manager
+            .join(DEFAULT_CHANNEL, 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
         let result = manager.leave(DEFAULT_CHANNEL, 1).await;
 
         assert!(result.is_some());
         let result = result.unwrap();
         assert!(result.remaining_member_session_ids.is_empty());
         // Persistent channel kept even when empty
-        assert!(manager.exists(DEFAULT_CHANNEL).await);
+        assert!(manager.get_channel(DEFAULT_CHANNEL).await.is_some());
     }
 
     #[tokio::test]
@@ -521,7 +594,10 @@ mod tests {
     async fn test_leave_not_member() {
         let manager = create_test_manager().await;
 
-        manager.join("#general", 1).await.unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
         let result = manager.leave("#general", 2).await;
 
         assert!(result.is_none());
@@ -531,9 +607,18 @@ mod tests {
     async fn test_remove_from_all() {
         let manager = create_test_manager().await;
 
-        manager.join("#general", 1).await.unwrap();
-        manager.join("#support", 1).await.unwrap();
-        manager.join("#support", 2).await.unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#support", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#support", 2, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         let channel_names = manager.remove_from_all(1).await;
 
@@ -547,7 +632,7 @@ mod tests {
         assert!(!manager.is_member("#support", 1).await);
 
         // #support should still exist (has user 2)
-        assert!(manager.exists("#support").await);
+        assert!(manager.get_channel("#support").await.is_some());
     }
 
     #[tokio::test]
@@ -558,24 +643,36 @@ mod tests {
             .initialize_persistent_channels(vec![Channel::new(DEFAULT_CHANNEL.to_string())])
             .await;
 
-        manager.join(DEFAULT_CHANNEL, 1).await.unwrap();
-        manager.join("#general", 1).await.unwrap();
+        manager
+            .join(DEFAULT_CHANNEL, 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         manager.remove_from_all(1).await;
 
         // Default channel should still exist (persistent)
-        assert!(manager.exists(DEFAULT_CHANNEL).await);
+        assert!(manager.get_channel(DEFAULT_CHANNEL).await.is_some());
 
         // #general should be deleted (ephemeral + empty)
-        assert!(!manager.exists("#general").await);
+        assert!(manager.get_channel("#general").await.is_none());
     }
 
     #[tokio::test]
     async fn test_list_channels() {
         let manager = create_test_manager().await;
 
-        manager.join("#general", 1).await.unwrap();
-        manager.join("#support", 1).await.unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#support", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         let list = manager.list(1, false).await;
 
@@ -589,8 +686,14 @@ mod tests {
     async fn test_list_hides_secret_channels() {
         let manager = create_test_manager().await;
 
-        manager.join("#public", 1).await.unwrap();
-        manager.join("#secret", 2).await.unwrap();
+        manager
+            .join("#public", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#secret", 2, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
         manager.set_secret("#secret", true).await.unwrap();
 
         // User 1 should see #public (non-secret) but not #secret
@@ -614,7 +717,10 @@ mod tests {
     async fn test_set_secret() {
         let manager = create_test_manager().await;
 
-        manager.join("#general", 1).await.unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         let result = manager.set_secret("#general", true).await.unwrap();
         assert!(result);
@@ -627,7 +733,10 @@ mod tests {
     async fn test_set_topic() {
         let manager = create_test_manager().await;
 
-        manager.join("#general", 1).await.unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         manager
             .set_topic(
@@ -647,7 +756,10 @@ mod tests {
     async fn test_is_member() {
         let manager = create_test_manager().await;
 
-        manager.join("#general", 1).await.unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         assert!(manager.is_member("#general", 1).await);
         assert!(!manager.is_member("#general", 2).await);
@@ -658,8 +770,14 @@ mod tests {
     async fn test_get_members() {
         let manager = create_test_manager().await;
 
-        manager.join("#general", 1).await.unwrap();
-        manager.join("#general", 2).await.unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#general", 2, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         let members = manager.get_members("#general").await.unwrap();
         assert_eq!(members.len(), 2);
@@ -671,10 +789,13 @@ mod tests {
     async fn test_case_insensitive() {
         let manager = create_test_manager().await;
 
-        manager.join("#General", 1).await.unwrap();
+        manager
+            .join("#General", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
-        assert!(manager.exists("#general").await);
-        assert!(manager.exists("#GENERAL").await);
+        assert!(manager.get_channel("#general").await.is_some());
+        assert!(manager.get_channel("#GENERAL").await.is_some());
         assert!(manager.is_member("#GENERAL", 1).await);
     }
 
@@ -682,7 +803,10 @@ mod tests {
     async fn test_preserves_original_case() {
         let manager = create_test_manager().await;
 
-        manager.join("#MyChannel", 1).await.unwrap();
+        manager
+            .join("#MyChannel", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         let channel = manager.get_channel("#mychannel").await.unwrap();
         assert_eq!(channel.name, "#MyChannel");
@@ -701,9 +825,11 @@ mod tests {
         let mut handles = Vec::new();
         for i in 0..10 {
             let manager = manager.clone();
-            handles.push(tokio::spawn(
-                async move { manager.join("#concurrent", i).await },
-            ));
+            handles.push(tokio::spawn(async move {
+                manager
+                    .join("#concurrent", i, JoinPolicy::CreateIfMissing)
+                    .await
+            }));
         }
 
         // Wait for all joins to complete
@@ -726,7 +852,10 @@ mod tests {
 
         // First, have some users join
         for i in 0..5 {
-            manager.join("#concurrent", i).await.unwrap();
+            manager
+                .join("#concurrent", i, JoinPolicy::CreateIfMissing)
+                .await
+                .unwrap();
         }
 
         // Concurrently: users 0-4 leave, users 5-9 join
@@ -740,9 +869,11 @@ mod tests {
         }
         for i in 5..10 {
             let manager = manager.clone();
-            join_handles.push(tokio::spawn(
-                async move { manager.join("#concurrent", i).await },
-            ));
+            join_handles.push(tokio::spawn(async move {
+                manager
+                    .join("#concurrent", i, JoinPolicy::CreateIfMissing)
+                    .await
+            }));
         }
 
         // Wait for all operations
@@ -774,7 +905,9 @@ mod tests {
         for i in 0..10 {
             let manager = manager.clone();
             let channel = format!("#channel{}", i);
-            handles.push(tokio::spawn(async move { manager.join(&channel, i).await }));
+            handles.push(tokio::spawn(async move {
+                manager.join(&channel, i, JoinPolicy::CreateIfMissing).await
+            }));
         }
 
         // Wait for all
@@ -784,7 +917,12 @@ mod tests {
 
         // Verify all 10 channels exist
         for i in 0..10 {
-            assert!(manager.exists(&format!("#channel{}", i)).await);
+            assert!(
+                manager
+                    .get_channel(&format!("#channel{}", i))
+                    .await
+                    .is_some()
+            );
         }
     }
 
@@ -795,12 +933,18 @@ mod tests {
 
         // User 1 joins many channels
         for i in 0..20 {
-            manager.join(&format!("#channel{}", i), 1).await.unwrap();
+            manager
+                .join(&format!("#channel{}", i), 1, JoinPolicy::CreateIfMissing)
+                .await
+                .unwrap();
         }
 
         // User 2 joins some of them
         for i in 0..10 {
-            manager.join(&format!("#channel{}", i), 2).await.unwrap();
+            manager
+                .join(&format!("#channel{}", i), 2, JoinPolicy::CreateIfMissing)
+                .await
+                .unwrap();
         }
 
         // Concurrently remove user 1 from all channels while user 2 continues operating
@@ -842,10 +986,13 @@ mod tests {
 
         // Create channel name at exactly max length
         let max_name = format!("#{}", "a".repeat(MAX_CHANNEL_LENGTH - 1));
-        let result = manager.join(&max_name, 1).await.unwrap();
+        let result = manager
+            .join(&max_name, 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         assert!(!result.already_member);
-        assert!(manager.exists(&max_name).await);
+        assert!(manager.get_channel(&max_name).await.is_some());
     }
 
     #[tokio::test]
@@ -863,21 +1010,24 @@ mod tests {
         ];
 
         for (i, channel) in unicode_channels.iter().enumerate() {
-            manager.join(channel, i as u32).await.unwrap();
+            manager
+                .join(channel, i as u32, JoinPolicy::CreateIfMissing)
+                .await
+                .unwrap();
         }
 
         // Verify all exist
         for channel in &unicode_channels {
             assert!(
-                manager.exists(channel).await,
+                manager.get_channel(channel).await.is_some(),
                 "Channel {} should exist",
                 channel
             );
         }
 
         // Verify case-insensitivity works with Unicode
-        assert!(manager.exists("#РОССИЯ").await);
-        assert!(manager.exists("#日本語").await); // Already lowercase
+        assert!(manager.get_channel("#РОССИЯ").await.is_some());
+        assert!(manager.get_channel("#日本語").await.is_some()); // Already lowercase
     }
 
     #[tokio::test]
@@ -894,9 +1044,18 @@ mod tests {
             .await;
 
         // Join some users
-        manager.join("#channelA", 1).await.unwrap();
-        manager.join("#channelB", 2).await.unwrap();
-        manager.join("#channelC", 3).await.unwrap();
+        manager
+            .join("#channelA", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#channelB", 2, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#channelC", 3, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         // Reinitialize with B, C, D (A removed, D added)
         manager
@@ -908,7 +1067,7 @@ mod tests {
             .await;
 
         // A should still exist (has members) but no longer persistent
-        assert!(manager.exists("#channelA").await);
+        assert!(manager.get_channel("#channelA").await.is_some());
         assert!(!manager.is_persistent("#channelA").await);
 
         // B, C, D should be persistent
@@ -935,7 +1094,10 @@ mod tests {
             .await;
 
         // Don't join anyone to A (it's empty)
-        manager.join("#channelB", 1).await.unwrap();
+        manager
+            .join("#channelB", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         // Reinitialize with only B (A removed)
         manager
@@ -943,10 +1105,10 @@ mod tests {
             .await;
 
         // A should be deleted (was empty and no longer persistent)
-        assert!(!manager.exists("#channelA").await);
+        assert!(manager.get_channel("#channelA").await.is_none());
 
         // B should still exist
-        assert!(manager.exists("#channelB").await);
+        assert!(manager.get_channel("#channelB").await.is_some());
     }
 
     #[tokio::test]
@@ -991,10 +1153,16 @@ mod tests {
     async fn test_double_join_idempotent() {
         let manager = create_test_manager().await;
 
-        let result1 = manager.join("#general", 1).await.unwrap();
+        let result1 = manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
         assert!(!result1.already_member);
 
-        let result2 = manager.join("#general", 1).await.unwrap();
+        let result2 = manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
         assert!(result2.already_member);
 
         // Should still have exactly 1 member
@@ -1006,7 +1174,10 @@ mod tests {
     async fn test_double_leave_safe() {
         let manager = create_test_manager().await;
 
-        manager.join("#general", 1).await.unwrap();
+        manager
+            .join("#general", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         let result1 = manager.leave("#general", 1).await;
         assert!(result1.is_some());
@@ -1021,7 +1192,10 @@ mod tests {
         let manager = create_test_manager().await;
 
         // User 1 creates a secret channel
-        manager.join("#secret", 1).await.unwrap();
+        manager
+            .join("#secret", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
         manager.set_secret("#secret", true).await.unwrap();
 
         // User 2 (non-member, non-admin) should not see it in list
@@ -1029,7 +1203,7 @@ mod tests {
         assert!(list.is_empty());
 
         // But the channel exists
-        assert!(manager.exists("#secret").await);
+        assert!(manager.get_channel("#secret").await.is_some());
 
         // And is_member returns false (not revealing it's secret)
         assert!(!manager.is_member("#secret", 2).await);
@@ -1043,16 +1217,20 @@ mod tests {
 
         // Join MAX_CHANNELS_PER_USER channels
         for i in 0..MAX_CHANNELS_PER_USER {
-            let result = manager.join(&format!("#channel{}", i), 1).await;
+            let result = manager
+                .join(&format!("#channel{}", i), 1, JoinPolicy::CreateIfMissing)
+                .await;
             assert!(result.is_ok(), "Should be able to join channel {}", i);
         }
 
         // Try to join one more - should fail with TooManyChannels
-        let result = manager.join("#onemore", 1).await;
+        let result = manager
+            .join("#onemore", 1, JoinPolicy::CreateIfMissing)
+            .await;
         assert!(matches!(result, Err(JoinError::TooManyChannels)));
 
         // Verify the channel was NOT created
-        assert!(!manager.exists("#onemore").await);
+        assert!(manager.get_channel("#onemore").await.is_none());
     }
 
     #[tokio::test]
@@ -1069,9 +1247,18 @@ mod tests {
         let manager = create_test_manager().await;
 
         // Join some channels
-        manager.join("#alpha", 1).await.unwrap();
-        manager.join("#beta", 1).await.unwrap();
-        manager.join("#gamma", 1).await.unwrap();
+        manager
+            .join("#alpha", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#beta", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#gamma", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         let channels = manager.get_channels_for_session(1, false).await;
         assert_eq!(channels.len(), 3);
@@ -1084,8 +1271,14 @@ mod tests {
         let manager = create_test_manager().await;
 
         // Join channels
-        manager.join("#public", 1).await.unwrap();
-        manager.join("#secret", 1).await.unwrap();
+        manager
+            .join("#public", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#secret", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         // Make #secret secret
         let _ = manager.set_secret("#secret", true).await;
@@ -1100,8 +1293,14 @@ mod tests {
         let manager = create_test_manager().await;
 
         // Join channels
-        manager.join("#public", 1).await.unwrap();
-        manager.join("#secret", 1).await.unwrap();
+        manager
+            .join("#public", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#secret", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         // Make #secret secret
         let _ = manager.set_secret("#secret", true).await;
@@ -1118,9 +1317,18 @@ mod tests {
         let manager = create_test_manager().await;
 
         // Join channels with mixed case
-        manager.join("#Zebra", 1).await.unwrap();
-        manager.join("#alpha", 1).await.unwrap();
-        manager.join("#BETA", 1).await.unwrap();
+        manager
+            .join("#Zebra", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#alpha", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        manager
+            .join("#BETA", 1, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
 
         let channels = manager.get_channels_for_session(1, false).await;
         // Should be sorted case-insensitively: alpha, BETA, Zebra
@@ -1133,11 +1341,16 @@ mod tests {
 
         // Join MAX_CHANNELS_PER_USER channels
         for i in 0..MAX_CHANNELS_PER_USER {
-            manager.join(&format!("#channel{}", i), 1).await.unwrap();
+            manager
+                .join(&format!("#channel{}", i), 1, JoinPolicy::CreateIfMissing)
+                .await
+                .unwrap();
         }
 
         // Re-joining an existing channel should succeed (already_member)
-        let result = manager.join("#channel0", 1).await;
+        let result = manager
+            .join("#channel0", 1, JoinPolicy::CreateIfMissing)
+            .await;
         assert!(result.is_ok());
         assert!(result.unwrap().already_member);
     }

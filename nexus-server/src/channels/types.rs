@@ -71,8 +71,15 @@ impl Channel {
 /// Error when joining a channel fails
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JoinError {
-    /// User is already a member of too many channels
     TooManyChannels,
+    ChannelDoesNotExist,
+}
+
+/// Whether `ChannelManager::join` may create the channel when missing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JoinPolicy {
+    CreateIfMissing,
+    ExistingOnly,
 }
 
 /// Result of joining a channel

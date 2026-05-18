@@ -4,4 +4,4 @@ mod manager;
 mod types;
 
 pub use manager::ChannelManager;
-pub use types::{Channel, JoinError};
+pub use types::{Channel, JoinError, JoinPolicy};

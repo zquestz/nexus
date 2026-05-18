@@ -185,6 +185,7 @@ where
 mod tests {
     use super::*;
     use crate::channels::Channel;
+    use crate::channels::JoinPolicy;
     use crate::db::Permission;
     use crate::handlers::testing::{
         DEFAULT_TEST_LOCALE, create_test_context, login_user, login_user_with_features,
@@ -263,7 +264,7 @@ mod tests {
         // Join a channel
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -309,7 +310,7 @@ mod tests {
         // Join a channel
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -352,7 +353,7 @@ mod tests {
         // Join a channel
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -408,7 +409,7 @@ mod tests {
         // Join a channel
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -453,7 +454,7 @@ mod tests {
         // Join a channel
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -495,7 +496,7 @@ mod tests {
         // Join a channel
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -542,7 +543,7 @@ mod tests {
         // Join a channel
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -621,7 +622,10 @@ mod tests {
         .await;
 
         // Create channel but don't join it
-        let _ = test_ctx.channel_manager.join("#general", 999).await;
+        let _ = test_ctx
+            .channel_manager
+            .join("#general", 999, JoinPolicy::CreateIfMissing)
+            .await;
 
         let result = handle_chat_topic_update(
             "Test topic".to_string(),
@@ -665,7 +669,7 @@ mod tests {
         // Join #general channel (ephemeral)
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -721,7 +725,7 @@ mod tests {
         // Join the persistent channel
         test_ctx
             .channel_manager
-            .join(DEFAULT_CHANNEL, session_id)
+            .join(DEFAULT_CHANNEL, session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 

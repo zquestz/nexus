@@ -131,6 +131,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::channels::JoinPolicy;
     use crate::db::Permission;
     use crate::handlers::chat_join::handle_chat_join;
     use crate::handlers::testing::{
@@ -235,7 +236,13 @@ mod tests {
         }
 
         // Verify channel was deleted (empty)
-        assert!(!test_ctx.channel_manager.exists("#general").await);
+        assert!(
+            test_ctx
+                .channel_manager
+                .get_channel("#general")
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -553,11 +560,11 @@ mod tests {
         // Both alice sessions join #general (already exists)
         let _ = test_ctx
             .channel_manager
-            .join("#general", alice_session1)
+            .join("#general", alice_session1, JoinPolicy::CreateIfMissing)
             .await;
         let _ = test_ctx
             .channel_manager
-            .join("#general", alice_session2)
+            .join("#general", alice_session2, JoinPolicy::CreateIfMissing)
             .await;
 
         // Drain any pending messages
@@ -645,11 +652,11 @@ mod tests {
         // Both guests join #general (already exists)
         let _ = test_ctx
             .channel_manager
-            .join("#general", guest1_session)
+            .join("#general", guest1_session, JoinPolicy::CreateIfMissing)
             .await;
         let _ = test_ctx
             .channel_manager
-            .join("#general", guest2_session)
+            .join("#general", guest2_session, JoinPolicy::CreateIfMissing)
             .await;
 
         // Drain any pending messages
@@ -747,11 +754,11 @@ mod tests {
         // Both alice sessions join #general (already exists)
         let _ = test_ctx
             .channel_manager
-            .join("#general", alice_session1)
+            .join("#general", alice_session1, JoinPolicy::CreateIfMissing)
             .await;
         let _ = test_ctx
             .channel_manager
-            .join("#general", alice_session2)
+            .join("#general", alice_session2, JoinPolicy::CreateIfMissing)
             .await;
 
         // Drain any pending messages

@@ -19,39 +19,25 @@ pub struct AddOutcome {
     pub broadcast_joined: bool,
 }
 
-/// Information needed to send VoiceUserLeft notifications after removing a session.
-///
-/// This struct encapsulates all the computed values needed for notifications,
-/// avoiding duplicated logic across different disconnect paths.
+/// Notification context returned from a voice-session removal.
 pub struct VoiceLeaveInfo {
-    /// The removed voice session
     pub session: VoiceSession,
-    /// Target string to send to the leaving user (channel name or other user's nickname)
     pub self_target: String,
-    /// Whether to broadcast to remaining participants (true if this was the last session for this nickname)
+    /// Whether this was the last session for the nickname.
     pub should_broadcast: bool,
-    /// Remaining participant nicknames to notify (empty if should_broadcast is false)
     pub remaining_participants: Vec<String>,
-    /// Target string for broadcast messages (channel name or leaving user's nickname)
     pub broadcast_target: String,
 }
 
-/// Manages all active voice sessions on the server
-///
-/// The registry is entirely in-memory - voice state is not persisted.
-/// When the server restarts, all voice sessions are lost.
+/// In-memory registry of active voice sessions (not persisted).
 #[derive(Clone)]
 pub struct VoiceRegistry {
-    /// Map of voice token -> VoiceSession
     sessions: Arc<RwLock<HashMap<Uuid, VoiceSession>>>,
-    /// Map of session_id -> voice token (for quick lookup by TCP session)
     session_id_to_token: Arc<RwLock<HashMap<u32, Uuid>>>,
-    /// Set of IPs with active voice sessions (for O(1) UDP validation)
     active_ips: Arc<RwLock<HashSet<IpAddr>>>,
 }
 
 impl VoiceRegistry {
-    /// Create a new empty voice registry
     pub fn new() -> Self {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
@@ -93,10 +79,7 @@ impl VoiceRegistry {
         })
     }
 
-    /// Remove a voice session by its token and compute notification info.
-    ///
-    /// Returns `VoiceLeaveInfo` with all the data needed to send notifications,
-    /// or `None` if no session was found.
+    /// `None` when no session matches the token.
     pub async fn remove_by_token(&self, token: Uuid) -> Option<VoiceLeaveInfo> {
         let session = {
             let mut sessions = self.sessions.write().await;
@@ -117,10 +100,7 @@ impl VoiceRegistry {
         Some(self.compute_leave_info(session).await)
     }
 
-    /// Remove a voice session by TCP session ID and compute notification info.
-    ///
-    /// Returns `VoiceLeaveInfo` with all the data needed to send notifications,
-    /// or `None` if no session was found.
+    /// `None` when no session matches the TCP session id.
     pub async fn remove_by_session_id(&self, session_id: u32) -> Option<VoiceLeaveInfo> {
         let session = {
             let mut sessions = self.sessions.write().await;
@@ -142,20 +122,16 @@ impl VoiceRegistry {
         Some(self.compute_leave_info(session).await)
     }
 
-    /// Compute all the notification info for a voice leave event.
-    ///
-    /// This centralizes the logic for determining targets and whether to broadcast,
-    /// avoiding duplication across different disconnect paths.
+    /// Shared by every disconnect path so the broadcast-target /
+    /// should-broadcast logic isn't duplicated.
     async fn compute_leave_info(&self, session: VoiceSession) -> VoiceLeaveInfo {
         let target_key = session.target_key();
         let is_channel = session.is_channel();
 
-        // Check if this nickname still has other sessions in voice for this target
         let nickname_still_in_voice = self
             .is_nickname_in_target(&target_key, &session.nickname, None)
             .await;
 
-        // Compute target string for the leaving user's notification
         let self_target = if is_channel {
             session.target.first().cloned().unwrap_or_default()
         } else {
@@ -168,7 +144,6 @@ impl VoiceRegistry {
                 .unwrap_or_default()
         };
 
-        // Compute broadcast info
         let (should_broadcast, remaining_participants, broadcast_target) =
             if nickname_still_in_voice {
                 (false, Vec::new(), String::new())
@@ -192,13 +167,11 @@ impl VoiceRegistry {
         }
     }
 
-    /// Get a voice session by its token
     pub async fn get_by_token(&self, token: Uuid) -> Option<VoiceSession> {
         let sessions = self.sessions.read().await;
         sessions.get(&token).cloned()
     }
 
-    /// Get a voice session by TCP session ID
     pub async fn get_by_session_id(&self, session_id: u32) -> Option<VoiceSession> {
         // Lock order: sessions → id_to_token, matching every writer
         // (`add`, `remove_by_*`, `update_nickname`). Reversing would
@@ -211,32 +184,21 @@ impl VoiceRegistry {
             .and_then(|token| sessions.get(token).cloned())
     }
 
-    /// Check if a user (by session ID) is already in a voice session
     pub async fn has_session(&self, session_id: u32) -> bool {
         let id_to_token = self.session_id_to_token.read().await;
         id_to_token.contains_key(&session_id)
     }
 
-    /// Check if any voice session exists for the given IP address
-    ///
-    /// Used to validate DTLS connections - only IPs that have joined voice
-    /// via TCP signaling should be allowed to connect via UDP.
-    ///
-    /// This is O(1) using the cached IP set.
+    /// Used to gate DTLS connections — only IPs that joined voice
+    /// via TCP signaling may connect via UDP.
     pub async fn has_session_for_ip(&self, ip: IpAddr) -> bool {
         let active_ips = self.active_ips.read().await;
         active_ips.contains(&ip)
     }
 
-    /// Check if a nickname is already present in voice for a target
-    ///
-    /// Used to prevent duplicate join/leave broadcasts when the same user
-    /// has multiple sessions. Only broadcasts on first join / last leave.
-    ///
-    /// # Arguments
-    /// * `target_key` - The voice target key (e.g., "#general" or "alice:bob")
-    /// * `nickname` - The nickname to check for
-    /// * `exclude_session_id` - Optional session ID to exclude from the check
+    /// Used by leave paths to decide whether to broadcast — only
+    /// the last session of a nickname triggers a notification.
+    /// Joins now compute this inside [`Self::add`] atomically.
     pub async fn is_nickname_in_target(
         &self,
         target_key: &str,
@@ -254,9 +216,7 @@ impl VoiceRegistry {
         })
     }
 
-    /// Get all participants in a voice target (channel or user message)
-    ///
-    /// Returns a list of nicknames of users in voice for the given target.
+    /// Nicknames currently in voice for the given target.
     pub async fn get_participants(&self, target_key: &str) -> Vec<String> {
         let sessions = self.sessions.read().await;
         let target_lower = target_key.to_lowercase();
@@ -268,9 +228,7 @@ impl VoiceRegistry {
             .collect()
     }
 
-    /// Get all voice sessions for a target (channel or user message)
-    ///
-    /// Returns cloned sessions for broadcasting voice events.
+    /// Cloned sessions for the target (for broadcasting voice events).
     pub async fn get_sessions_for_target(&self, target_key: &str) -> Vec<VoiceSession> {
         let sessions = self.sessions.read().await;
         let target_lower = target_key.to_lowercase();
@@ -282,9 +240,7 @@ impl VoiceRegistry {
             .collect()
     }
 
-    /// Update the UDP address for a session (identified by token)
-    ///
-    /// Called when the first UDP packet is received from a client.
+    /// Called when the first UDP packet arrives from a client.
     pub async fn set_udp_addr(&self, token: Uuid, addr: std::net::SocketAddr) -> bool {
         let mut sessions = self.sessions.write().await;
         if let Some(session) = sessions.get_mut(&token) {
@@ -295,10 +251,8 @@ impl VoiceRegistry {
         }
     }
 
-    /// Update the nickname for all sessions belonging to a given session_id.
-    ///
-    /// Called when a user's username changes (for regular accounts, nickname == username).
-    /// Returns true if a session was updated.
+    /// Called when a user's username changes (regular accounts only;
+    /// shared accounts keep their per-session nickname).
     pub async fn update_nickname(&self, session_id: u32, new_nickname: String) -> bool {
         let mut sessions = self.sessions.write().await;
         let id_to_token = self.session_id_to_token.read().await;
@@ -312,10 +266,8 @@ impl VoiceRegistry {
         false
     }
 
-    /// Find sessions that never established a UDP connection and are older than the timeout.
-    ///
-    /// Returns tokens of stale sessions that should be cleaned up.
-    /// This handles the case where a client sends VoiceJoin but fails to connect via DTLS.
+    /// Tokens of sessions that signaled `VoiceJoin` but never opened
+    /// a DTLS connection within the timeout — for cleanup.
     pub async fn find_stale_sessions(&self, timeout_secs: u64) -> Vec<Uuid> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -326,7 +278,6 @@ impl VoiceRegistry {
         sessions
             .iter()
             .filter(|(_, session)| {
-                // Session never got a UDP connection and is older than timeout
                 session.udp_addr.is_none() && (now - session.joined_at) > timeout_secs as i64
             })
             .map(|(token, _)| *token)
@@ -398,7 +349,6 @@ mod tests {
         assert!(retrieved.is_some());
         assert_eq!(retrieved.unwrap().nickname, "alice");
 
-        // Non-existent session ID
         assert!(registry.get_by_session_id(999).await.is_none());
     }
 
@@ -418,7 +368,6 @@ mod tests {
         assert!(removed.is_some());
         assert_eq!(removed.unwrap().session.nickname, "alice");
 
-        // Session should be gone
         assert!(!registry.has_session(1).await);
         assert!(registry.get_by_token(token).await.is_none());
     }
@@ -437,7 +386,6 @@ mod tests {
         let removed = registry.remove_by_session_id(1).await;
         assert!(removed.is_some());
 
-        // Both lookups should fail now
         assert!(registry.get_by_token(token).await.is_none());
         assert!(registry.get_by_session_id(1).await.is_none());
     }
@@ -462,7 +410,6 @@ mod tests {
     async fn test_get_participants() {
         let registry = VoiceRegistry::new();
 
-        // Add multiple users to the same channel
         registry
             .add(create_test_session("alice", "#general", 1))
             .await
@@ -496,7 +443,6 @@ mod tests {
             .await
             .expect("test setup: session_id is unique");
 
-        // Should find both regardless of case
         let participants = registry.get_participants("#GENERAL").await;
         assert_eq!(participants.len(), 2);
     }
@@ -539,7 +485,6 @@ mod tests {
         let updated = registry.get_by_token(token).await.unwrap();
         assert_eq!(updated.udp_addr, Some(addr));
 
-        // Non-existent token should return false
         assert!(!registry.set_udp_addr(Uuid::new_v4(), addr).await);
     }
 
@@ -593,7 +538,6 @@ mod tests {
             .await
             .expect("test setup: session_id is unique");
 
-        // Both should be in the same voice session
         let participants = registry.get_participants("alice:bob").await;
         assert_eq!(participants.len(), 2);
         assert!(participants.contains(&"alice".to_string()));
@@ -610,41 +554,35 @@ mod tests {
     async fn test_is_nickname_in_target() {
         let registry = VoiceRegistry::new();
 
-        // No sessions yet
         assert!(
             !registry
                 .is_nickname_in_target("#general", "alice", None)
                 .await
         );
 
-        // Add alice to #general
         registry
             .add(create_test_session("alice", "#general", 1))
             .await
             .expect("test setup: session_id is unique");
 
-        // Alice is in #general
         assert!(
             registry
                 .is_nickname_in_target("#general", "alice", None)
                 .await
         );
 
-        // Alice is not in #other
         assert!(
             !registry
                 .is_nickname_in_target("#other", "alice", None)
                 .await
         );
 
-        // Bob is not in #general
         assert!(
             !registry
                 .is_nickname_in_target("#general", "bob", None)
                 .await
         );
 
-        // Case insensitive check
         assert!(
             registry
                 .is_nickname_in_target("#GENERAL", "ALICE", None)
@@ -656,50 +594,42 @@ mod tests {
     async fn test_is_nickname_in_target_with_exclude() {
         let registry = VoiceRegistry::new();
 
-        // Add alice session 1 to #general
         registry
             .add(create_test_session("alice", "#general", 1))
             .await
             .expect("test setup: session_id is unique");
 
-        // Alice is in #general when not excluding any session
         assert!(
             registry
                 .is_nickname_in_target("#general", "alice", None)
                 .await
         );
 
-        // Alice is NOT in #general when excluding session 1 (her only session)
         assert!(
             !registry
                 .is_nickname_in_target("#general", "alice", Some(1))
                 .await
         );
 
-        // Add alice session 2 to #general (multi-session case)
         registry
             .add(create_test_session("alice", "#general", 2))
             .await
             .expect("test setup: session_id is unique");
 
-        // Alice is still in #general when excluding session 1 (session 2 remains)
         assert!(
             registry
                 .is_nickname_in_target("#general", "alice", Some(1))
                 .await
         );
 
-        // Alice is still in #general when excluding session 2 (session 1 remains)
         assert!(
             registry
                 .is_nickname_in_target("#general", "alice", Some(2))
                 .await
         );
 
-        // Remove session 1
         registry.remove_by_session_id(1).await;
 
-        // Alice is NOT in #general when excluding session 2 (only remaining session)
         assert!(
             !registry
                 .is_nickname_in_target("#general", "alice", Some(2))
@@ -711,7 +641,6 @@ mod tests {
     async fn test_multi_session_same_nickname() {
         let registry = VoiceRegistry::new();
 
-        // Simulate a regular user with two sessions joining voice
         registry
             .add(create_test_session("alice", "#general", 1))
             .await
@@ -721,11 +650,9 @@ mod tests {
             .await
             .expect("test setup: session_id is unique");
 
-        // Participant list should contain alice (possibly twice, but that's for display)
         let participants = registry.get_participants("#general").await;
         assert_eq!(participants.iter().filter(|n| *n == "alice").count(), 2);
 
-        // When session 1 leaves, alice is still in voice via session 2
         registry.remove_by_session_id(1).await;
         assert!(
             registry
@@ -733,7 +660,6 @@ mod tests {
                 .await
         );
 
-        // When session 2 leaves, alice is no longer in voice
         registry.remove_by_session_id(2).await;
         assert!(
             !registry
@@ -746,22 +672,18 @@ mod tests {
     async fn test_update_nickname() {
         let registry = VoiceRegistry::new();
 
-        // Add a session for alice
         registry
             .add(create_test_session("alice", "#general", 1))
             .await
             .expect("test setup: session_id is unique");
 
-        // Verify alice is in participants
         let participants = registry.get_participants("#general").await;
         assert!(participants.contains(&"alice".to_string()));
         assert!(!participants.contains(&"alicia".to_string()));
 
-        // Update nickname (simulating username change)
         let updated = registry.update_nickname(1, "alicia".to_string()).await;
         assert!(updated);
 
-        // Verify alicia is now in participants, not alice
         let participants = registry.get_participants("#general").await;
         assert!(!participants.contains(&"alice".to_string()));
         assert!(participants.contains(&"alicia".to_string()));
@@ -771,7 +693,6 @@ mod tests {
     async fn test_update_nickname_not_in_voice() {
         let registry = VoiceRegistry::new();
 
-        // Try to update nickname for a session that's not in voice
         let updated = registry.update_nickname(999, "bob".to_string()).await;
         assert!(!updated);
     }

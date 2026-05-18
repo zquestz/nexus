@@ -186,6 +186,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::channels::JoinPolicy;
     use crate::db;
     use crate::flood::{FloodConfig, FloodTracker};
     use crate::handlers::testing::{
@@ -256,7 +257,7 @@ mod tests {
         // Join a channel
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -405,7 +406,7 @@ mod tests {
         // Join a channel
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -475,7 +476,7 @@ mod tests {
         // Join a channel
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -538,7 +539,7 @@ mod tests {
         // Join a channel
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -578,7 +579,7 @@ mod tests {
         // Create channel but don't join it
         test_ctx
             .channel_manager
-            .join("#general", 999)
+            .join("#general", 999, JoinPolicy::CreateIfMissing)
             .await
             .unwrap(); // Someone else creates it
 
@@ -645,7 +646,7 @@ mod tests {
         // Join #general channel
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -722,7 +723,7 @@ mod tests {
 
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -785,7 +786,7 @@ mod tests {
 
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -854,7 +855,7 @@ mod tests {
 
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
@@ -897,7 +898,7 @@ mod tests {
 
         test_ctx
             .channel_manager
-            .join("#general", session_id)
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 

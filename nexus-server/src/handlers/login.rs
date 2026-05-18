@@ -473,21 +473,20 @@ where
     let joining_user_is_admin = authenticated_account.is_admin;
     let joining_user_is_shared = authenticated_account.is_shared;
 
+    let auto_join_policy = if has_chat_create_permission {
+        crate::channels::JoinPolicy::CreateIfMissing
+    } else {
+        crate::channels::JoinPolicy::ExistingOnly
+    };
+
     let mut joined_channels = Vec::new();
     for channel_name in auto_join_channel_names {
-        // Check if channel exists - if not, user needs ChatCreate permission to create it.
-        // Note: There's a benign TOCTOU race here - the channel could be created by another
-        // user between our exists() check and join() call. This is acceptable because if
-        // another user creates it first, we just join the existing channel (which requires
-        // only ChatJoin, not ChatCreate). No privilege escalation is possible.
-        let channel_exists = ctx.channel_manager.exists(&channel_name).await;
-        if !channel_exists && !has_chat_create_permission {
-            // User can't create channels, skip this one
-            continue;
-        }
-
-        // Auto-join at login - ignore errors (e.g., if user somehow hits channel limit)
-        let Ok(result) = ctx.channel_manager.join(&channel_name, id).await else {
+        // Skip on any error (missing channel + no ChatCreate, at limit, …).
+        let Ok(result) = ctx
+            .channel_manager
+            .join(&channel_name, id, auto_join_policy)
+            .await
+        else {
             continue;
         };
 
@@ -1448,7 +1447,11 @@ mod tests {
 
         // Verify the channel was NOT created
         assert!(
-            !test_ctx.channel_manager.exists("#nonexistent").await,
+            test_ctx
+                .channel_manager
+                .get_channel("#nonexistent")
+                .await
+                .is_none(),
             "Channel should not be created without ChatCreate permission"
         );
     }

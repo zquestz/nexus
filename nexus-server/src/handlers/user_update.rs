@@ -1425,6 +1425,7 @@ mod tests {
     use std::collections::HashSet;
 
     use super::*;
+    use crate::channels::JoinPolicy;
     use crate::db;
     #[allow(unused_imports)]
     use crate::handlers::testing::read_login_response;
@@ -5668,7 +5669,7 @@ mod tests {
         // First, join a channel
         let _ = test_ctx
             .channel_manager
-            .join("#general", voice_user_session)
+            .join("#general", voice_user_session, JoinPolicy::CreateIfMissing)
             .await;
 
         // Create a voice session for the user
@@ -5802,7 +5803,7 @@ mod tests {
         // Have the voice user join voice in a channel
         let _ = test_ctx
             .channel_manager
-            .join("#general", voice_user_session)
+            .join("#general", voice_user_session, JoinPolicy::CreateIfMissing)
             .await;
 
         // Create a voice session for the user

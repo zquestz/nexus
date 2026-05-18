@@ -277,6 +277,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::channels::JoinPolicy;
     use crate::db;
     use crate::handlers::testing::{
         create_test_context, get_cached_password_hash, login_user, read_login_response,
@@ -1393,12 +1394,12 @@ mod tests {
         // Alice joins two channels
         test_ctx
             .channel_manager
-            .join("#general", target_id)
+            .join("#general", target_id, JoinPolicy::CreateIfMissing)
             .await
             .expect("Alice should join #general");
         test_ctx
             .channel_manager
-            .join("#support", target_id)
+            .join("#support", target_id, JoinPolicy::CreateIfMissing)
             .await
             .expect("Alice should join #support");
 
@@ -1463,12 +1464,12 @@ mod tests {
         // Alice joins both channels
         test_ctx
             .channel_manager
-            .join("#public", target_id)
+            .join("#public", target_id, JoinPolicy::CreateIfMissing)
             .await
             .expect("Alice should join #public");
         test_ctx
             .channel_manager
-            .join("#secret", target_id)
+            .join("#secret", target_id, JoinPolicy::CreateIfMissing)
             .await
             .expect("Alice should join #secret");
 
@@ -1533,12 +1534,12 @@ mod tests {
         // Alice joins both channels
         test_ctx
             .channel_manager
-            .join("#public", target_id)
+            .join("#public", target_id, JoinPolicy::CreateIfMissing)
             .await
             .expect("Alice should join #public");
         test_ctx
             .channel_manager
-            .join("#secret", target_id)
+            .join("#secret", target_id, JoinPolicy::CreateIfMissing)
             .await
             .expect("Alice should join #secret");
 

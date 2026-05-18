@@ -36,7 +36,6 @@ pub async fn handle_voice_join<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_VOICE_JOIN_NOT_LOGGED_IN);
         return ctx
@@ -44,7 +43,6 @@ where
             .await;
     };
 
-    // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(u) => u,
         None => {
@@ -57,7 +55,6 @@ where
         }
     };
 
-    // Check voice_listen permission
     if !user.has_permission(Permission::VoiceListen) {
         warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_VOICE_JOIN_PERMISSION_DENIED);
         let response = ServerMessage::VoiceJoinResponse {
@@ -70,7 +67,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate target is not empty
     if target.is_empty() {
         let response = ServerMessage::VoiceJoinResponse {
             success: false,
@@ -82,7 +78,9 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check if user is already in a voice session
+    // Fast-path also preserves error precedence: an already-joined
+    // session sending a join for a bad target gets
+    // `voice_already_joined` instead of leaking target validation.
     if ctx.voice_registry.has_session(session_id).await {
         let response = ServerMessage::VoiceJoinResponse {
             success: false,
@@ -94,15 +92,11 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate target based on type and build internal target array
     let is_channel = target.starts_with('#');
 
-    // The target to return to the client (same as input for channels, same for user messages)
     let client_target = target.clone();
 
-    // Build internal target array for registry
     let internal_target = if is_channel {
-        // Channel voice: user must be a member of the channel
         if !ctx.channel_manager.is_member(&target, session_id).await {
             let response = ServerMessage::VoiceJoinResponse {
                 success: false,
@@ -115,7 +109,6 @@ where
         }
         vec![target]
     } else {
-        // User message voice: target must be online
         let target_online = ctx
             .user_manager
             .get_session_by_nickname(&target)
@@ -139,18 +132,14 @@ where
         pair
     };
 
-    // Convert internal target to registry key
     let target_key = internal_target.join(":");
 
     // Get current participants before adding the new session
     let mut participants = ctx.voice_registry.get_participants(&target_key).await;
 
-    // Create and add the voice session. The atomic `add` is the
-    // authoritative race guard: it both rejects duplicate session_id
-    // joins (lost-race → None → `err_voice_already_joined`) and
-    // reports whether this nickname was already in the target, so
-    // two simultaneous joins under the same nickname can't both
-    // observe "first join" and produce duplicate broadcasts.
+    // Atomic guard: registry.add rejects duplicate session_id and
+    // reports `broadcast_joined` so concurrent same-nickname joins
+    // can't both broadcast.
     let voice_session = VoiceSession::new(
         user.nickname.clone(),
         internal_target,
@@ -187,12 +176,10 @@ where
                 .unwrap_or_default();
 
             for member_session_id in members {
-                // Skip self
                 if member_session_id == session_id {
                     continue;
                 }
 
-                // Check if member has voice_listen permission
                 if let Some(member) = ctx
                     .user_manager
                     .get_user_by_session_id(member_session_id)
@@ -209,7 +196,6 @@ where
         } else {
             // For user messages: only notify the other participant
             for participant_nickname in &participants {
-                // Skip self
                 if participant_nickname.to_lowercase() == user.nickname.to_lowercase() {
                     continue;
                 }
@@ -230,7 +216,6 @@ where
         }
     }
 
-    // Send success response to the joining user
     let response = ServerMessage::VoiceJoinResponse {
         success: true,
         token: Some(token),
@@ -269,7 +254,6 @@ mod tests {
     async fn test_voice_join_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user without voice_listen permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_voice_join(
@@ -295,7 +279,6 @@ mod tests {
     async fn test_voice_join_empty_target() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with voice_listen permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -328,7 +311,6 @@ mod tests {
     async fn test_voice_join_channel_not_member() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with voice_listen permission but not in channel
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -361,7 +343,6 @@ mod tests {
     async fn test_voice_join_channel_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with voice_listen and chat_join permissions and chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -376,7 +357,6 @@ mod tests {
         )
         .await;
 
-        // Join the channel first
         handle_chat_join(
             "#general".to_string(),
             Some(session_id),
@@ -386,7 +366,6 @@ mod tests {
         .unwrap();
         let _ = read_server_message(&mut test_ctx).await; // consume ChatJoinResponse
 
-        // Now join voice
         let result = handle_voice_join(
             "#general".to_string(),
             Some(session_id),
@@ -409,7 +388,6 @@ mod tests {
                 assert!(token.is_some());
                 assert_eq!(target, Some("#general".to_string()));
                 assert!(participants.is_some());
-                // Participants includes self
                 let p = participants.unwrap();
                 assert_eq!(p.len(), 1);
                 assert!(p.contains(&"alice".to_string()));
@@ -423,7 +401,6 @@ mod tests {
     async fn test_voice_join_already_in_voice() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with voice_listen and chat permissions and chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -438,7 +415,6 @@ mod tests {
         )
         .await;
 
-        // Join the channel
         handle_chat_join(
             "#general".to_string(),
             Some(session_id),
@@ -448,7 +424,6 @@ mod tests {
         .unwrap();
         let _ = read_server_message(&mut test_ctx).await;
 
-        // Join voice first time
         handle_voice_join(
             "#general".to_string(),
             Some(session_id),
@@ -458,7 +433,6 @@ mod tests {
         .unwrap();
         let _ = read_server_message(&mut test_ctx).await;
 
-        // Try to join voice again
         let result = handle_voice_join(
             "#general".to_string(),
             Some(session_id),
@@ -482,7 +456,6 @@ mod tests {
     async fn test_voice_join_user_message_target_offline() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with voice_listen permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -492,7 +465,6 @@ mod tests {
         )
         .await;
 
-        // Try to join voice with offline user
         let result = handle_voice_join(
             "bob".to_string(),
             Some(session_id),
@@ -516,7 +488,6 @@ mod tests {
     async fn test_voice_join_user_message_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login alice with voice_listen permission
         let alice_session = login_user(
             &mut test_ctx,
             "alice",
@@ -526,7 +497,6 @@ mod tests {
         )
         .await;
 
-        // Login bob (target must be online)
         let _bob_session = login_user(
             &mut test_ctx,
             "bob",
@@ -536,7 +506,6 @@ mod tests {
         )
         .await;
 
-        // Alice joins voice with bob
         let result = handle_voice_join(
             "bob".to_string(),
             Some(alice_session),
@@ -565,8 +534,6 @@ mod tests {
             _ => panic!("Expected VoiceJoinResponse, got {:?}", response),
         }
 
-        // Verify response includes self
-        // Registry lookup returns same result
         let participants = test_ctx.voice_registry.get_participants("alice:bob").await;
         assert_eq!(participants.len(), 1);
         assert!(participants.contains(&"alice".to_string()));
@@ -576,7 +543,6 @@ mod tests {
     async fn test_voice_join_user_message_both_users_same_session() {
         let mut test_ctx = create_test_context().await;
 
-        // Login alice
         let alice_session = login_user(
             &mut test_ctx,
             "alice",
@@ -586,7 +552,6 @@ mod tests {
         )
         .await;
 
-        // Login bob
         let bob_session = login_user(
             &mut test_ctx,
             "bob",
@@ -596,7 +561,6 @@ mod tests {
         )
         .await;
 
-        // Alice joins voice with bob
         handle_voice_join(
             "bob".to_string(),
             Some(alice_session),
@@ -606,7 +570,6 @@ mod tests {
         .unwrap();
         let _ = read_server_message(&mut test_ctx).await;
 
-        // Bob joins voice with alice
         handle_voice_join(
             "alice".to_string(),
             Some(bob_session),
@@ -626,7 +589,6 @@ mod tests {
                 assert!(success);
                 // Bob sees "alice" as the target
                 assert_eq!(target, Some("alice".to_string()));
-                // Alice is already in the session, and bob (self) is now included
                 let p = participants.unwrap();
                 assert!(p.contains(&"alice".to_string()));
                 assert!(p.contains(&"bob".to_string()));
@@ -634,7 +596,6 @@ mod tests {
             _ => panic!("Expected VoiceJoinResponse, got {:?}", response),
         }
 
-        // Both should be in the same internal session
         let participants = test_ctx.voice_registry.get_participants("alice:bob").await;
         assert_eq!(participants.len(), 2);
         assert!(participants.contains(&"alice".to_string()));

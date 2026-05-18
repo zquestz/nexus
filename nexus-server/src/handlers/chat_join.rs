@@ -12,7 +12,7 @@ use super::{
     HandlerContext, channel_error_to_message, err_authentication, err_channel_already_member,
     err_channel_limit_exceeded, err_not_logged_in, err_permission_denied,
 };
-use crate::channels::JoinError;
+use crate::channels::{JoinError, JoinPolicy};
 use crate::constants::{
     FEATURE_CHAT, HANDLER_CHAT_JOIN, LOG_CHAT_JOIN_CREATE_DENIED, LOG_CHAT_JOIN_NOT_LOGGED_IN,
     LOG_CHAT_JOIN_PERMISSION_DENIED,
@@ -20,12 +20,10 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::i18n::t;
 
-/// Error message for missing ChatCreate permission when creating a channel
 fn err_permission_denied_chat_create(locale: &str) -> String {
     t(locale, "err-permission-denied-chat-create")
 }
 
-/// Helper to create an error response with all fields set to None
 fn error_response(error_msg: String) -> ServerMessage {
     ServerMessage::ChatJoinResponse {
         success: false,
@@ -48,7 +46,6 @@ pub async fn handle_chat_join<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_NOT_LOGGED_IN);
         return ctx
@@ -56,7 +53,6 @@ where
             .await;
     };
 
-    // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(u) => u,
         None => {
@@ -66,14 +62,12 @@ where
         }
     };
 
-    // Check chat feature
     if !user.has_feature(FEATURE_CHAT) {
         return ctx
             .send_message(&error_response(err_permission_denied(ctx.locale)))
             .await;
     }
 
-    // Check ChatJoin permission (required for both joining and creating)
     if !user.has_permission(Permission::ChatJoin) {
         warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_PERMISSION_DENIED);
         return ctx
@@ -81,33 +75,20 @@ where
             .await;
     }
 
-    // Validate channel name
     if let Err(e) = validators::validate_channel(&channel) {
         return ctx
             .send_message(&error_response(channel_error_to_message(e, ctx.locale)))
             .await;
     }
 
-    // Check if channel exists - if not, also require ChatCreate permission.
-    // Note: There's a benign TOCTOU race here - the channel could be created by another
-    // user between our exists() check and join() call. This is acceptable because if
-    // another user creates it first, we just join the existing channel (which requires
-    // only ChatJoin, not ChatCreate). No privilege escalation is possible.
-    let channel_exists = ctx.channel_manager.exists(&channel).await;
-    if !channel_exists && !user.has_permission(Permission::ChatCreate) {
-        warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_CREATE_DENIED);
-        return ctx
-            .send_message(&error_response(err_permission_denied_chat_create(
-                ctx.locale,
-            )))
-            .await;
-    }
+    let policy = if user.has_permission(Permission::ChatCreate) {
+        JoinPolicy::CreateIfMissing
+    } else {
+        JoinPolicy::ExistingOnly
+    };
 
-    // Join the channel (or create if it doesn't exist)
-    // This enforces MAX_CHANNELS_PER_USER internally
-    let result = match ctx.channel_manager.join(&channel, session_id).await {
+    let result = match ctx.channel_manager.join(&channel, session_id, policy).await {
         Ok(result) => {
-            // If already a member, return an error
             if result.already_member {
                 return ctx
                     .send_message(&error_response(err_channel_already_member(
@@ -122,6 +103,14 @@ where
                 .send_message(&error_response(err_channel_limit_exceeded(
                     ctx.locale,
                     MAX_CHANNELS_PER_USER,
+                )))
+                .await;
+        }
+        Err(JoinError::ChannelDoesNotExist) => {
+            warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_CREATE_DENIED);
+            return ctx
+                .send_message(&error_response(err_permission_denied_chat_create(
+                    ctx.locale,
                 )))
                 .await;
         }
@@ -157,7 +146,6 @@ where
         }
     }
 
-    // Get voiced nicknames if user has voice_listen permission
     let voiced = if user.has_permission(Permission::VoiceListen) {
         let participants = ctx.voice_registry.get_participants(&channel).await;
         if participants.is_empty() {
@@ -169,7 +157,6 @@ where
         None
     };
 
-    // Send success response with full channel data
     let response = ServerMessage::ChatJoinResponse {
         success: true,
         error: None,
@@ -212,7 +199,6 @@ mod tests {
     async fn test_chat_join_validates_channel_name() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatJoin permission and chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -223,7 +209,6 @@ mod tests {
         )
         .await;
 
-        // Test missing # prefix
         let result = handle_chat_join(
             "general".to_string(),
             Some(session_id),
@@ -247,7 +232,6 @@ mod tests {
     async fn test_chat_join_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatJoin and ChatCreate permissions and chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -267,7 +251,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Single response with full channel data
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
@@ -287,15 +270,19 @@ mod tests {
             _ => panic!("Expected ChatJoinResponse, got {:?}", response),
         }
 
-        // Verify channel was created
-        assert!(test_ctx.channel_manager.exists("#general").await);
+        assert!(
+            test_ctx
+                .channel_manager
+                .get_channel("#general")
+                .await
+                .is_some()
+        );
     }
 
     #[tokio::test]
     async fn test_chat_join_already_member_is_error() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatJoin and ChatCreate permissions and chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -306,7 +293,6 @@ mod tests {
         )
         .await;
 
-        // Join once - should succeed
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(session_id),
@@ -315,7 +301,6 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Join again - should fail with "already member" error
         let result = handle_chat_join(
             "#general".to_string(),
             Some(session_id),
@@ -349,7 +334,6 @@ mod tests {
     async fn test_chat_join_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user WITHOUT ChatJoin permission but WITH chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -383,7 +367,6 @@ mod tests {
     async fn test_chat_join_requires_chat_create_for_new_channel() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatJoin permission but WITHOUT ChatCreate permission
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -394,7 +377,6 @@ mod tests {
         )
         .await;
 
-        // Try to create a new channel - should fail without ChatCreate
         let result = handle_chat_join(
             "#newchannel".to_string(),
             Some(session_id),
@@ -409,28 +391,31 @@ mod tests {
             ServerMessage::ChatJoinResponse { success, error, .. } => {
                 assert!(!success);
                 assert!(error.is_some());
-                // Should mention they can join but not create
                 assert!(error.unwrap().contains("create"));
             }
             _ => panic!("Expected ChatJoinResponse, got {:?}", response),
         }
 
         // Verify channel was NOT created
-        assert!(!test_ctx.channel_manager.exists("#newchannel").await);
+        assert!(
+            test_ctx
+                .channel_manager
+                .get_channel("#newchannel")
+                .await
+                .is_none()
+        );
     }
 
     #[tokio::test]
     async fn test_chat_join_existing_channel_without_chat_create() {
         let mut test_ctx = create_test_context().await;
 
-        // First, create the channel using channel_manager directly
         test_ctx
             .channel_manager
-            .join("#existing", DUMMY_SESSION_ID)
+            .join("#existing", DUMMY_SESSION_ID, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
-        // Login user with ChatJoin permission but WITHOUT ChatCreate permission
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -441,7 +426,6 @@ mod tests {
         )
         .await;
 
-        // Try to join existing channel - should succeed even without ChatCreate
         let result = handle_chat_join(
             "#existing".to_string(),
             Some(session_id),
@@ -474,7 +458,6 @@ mod tests {
     async fn test_chat_join_requires_feature() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user WITH ChatJoin and ChatCreate permissions but WITHOUT chat feature
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -507,7 +490,6 @@ mod tests {
     async fn test_chat_join_includes_topic_info() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatJoin permission and chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -518,13 +500,12 @@ mod tests {
         )
         .await;
 
-        // Create channel with topic via channel manager directly
         // Use a dummy session to create the channel and set topic
         // Don't remove the dummy - leaving would delete the ephemeral channel
         let channel_name = "#topical";
         test_ctx
             .channel_manager
-            .join(channel_name, DUMMY_SESSION_ID)
+            .join(channel_name, DUMMY_SESSION_ID, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
         test_ctx
@@ -537,7 +518,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Now join and verify topic info is included
         let result = handle_chat_join(
             channel_name.to_string(),
             Some(session_id),
@@ -567,7 +547,6 @@ mod tests {
     async fn test_chat_join_limit_exceeded() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatJoin and ChatCreate permissions and chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -578,17 +557,18 @@ mod tests {
         )
         .await;
 
-        // Join MAX_CHANNELS_PER_USER channels
-        // Join MAX_CHANNELS_PER_USER channels (all should succeed)
         for i in 0..MAX_CHANNELS_PER_USER {
             let result = test_ctx
                 .channel_manager
-                .join(&format!("#channel{}", i), session_id)
+                .join(
+                    &format!("#channel{}", i),
+                    session_id,
+                    JoinPolicy::CreateIfMissing,
+                )
                 .await;
             assert!(result.is_ok(), "Should be able to join channel {}", i);
         }
 
-        // Try to join one more channel - should fail
         let result = handle_chat_join(
             "#onemore".to_string(),
             Some(session_id),
@@ -617,10 +597,6 @@ mod tests {
             _ => panic!("Expected ChatJoinResponse, got {:?}", response),
         }
     }
-
-    // =========================================================================
-    // Multi-session join tests
-    // =========================================================================
 
     /// Helper to add a second session for the same user to UserManager
     async fn add_second_session(
@@ -707,7 +683,6 @@ mod tests {
     async fn test_chat_join_broadcasts_user_joined_to_other_members() {
         let mut test_ctx = create_test_context().await;
 
-        // Login alice with chat permissions (including ChatCreate to create the channel)
         let alice_session = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -718,7 +693,6 @@ mod tests {
         )
         .await;
 
-        // Alice joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(alice_session),
@@ -727,7 +701,6 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Login bob with chat permissions (only ChatJoin needed to join existing channel)
         let bob_session = login_user_with_features(
             &mut test_ctx,
             "bob",
@@ -738,7 +711,6 @@ mod tests {
         )
         .await;
 
-        // Bob joins #general - alice should receive ChatUserJoined
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(bob_session),
@@ -746,7 +718,6 @@ mod tests {
         )
         .await;
 
-        // Read bob's ChatJoinResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
@@ -785,7 +756,6 @@ mod tests {
     async fn test_chat_join_no_broadcast_when_nickname_already_present() {
         let mut test_ctx = create_test_context().await;
 
-        // Login alice session 1 with chat permissions (including ChatCreate to create the channel)
         let alice_session1 = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -796,7 +766,6 @@ mod tests {
         )
         .await;
 
-        // Alice session 1 joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(alice_session1),
@@ -805,7 +774,6 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Add second session for alice (only ChatJoin needed to join existing)
         let alice_session2 = add_second_session(
             &mut test_ctx,
             "alice",
@@ -823,7 +791,6 @@ mod tests {
         )
         .await;
 
-        // Read alice session 2's ChatJoinResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
@@ -851,7 +818,6 @@ mod tests {
     async fn test_chat_join_shared_account_different_nicknames_broadcast() {
         let mut test_ctx = create_test_context().await;
 
-        // Add shared session "Guest1" with chat permissions (including ChatCreate to create the channel)
         let guest1_session = add_shared_session(
             &mut test_ctx,
             "guest",
@@ -861,7 +827,6 @@ mod tests {
         )
         .await;
 
-        // Guest1 joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(guest1_session),
@@ -870,7 +835,6 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Add another shared session "Guest2" with chat permissions (only ChatJoin needed to join existing)
         let guest2_session = add_shared_session(
             &mut test_ctx,
             "guest",
@@ -954,7 +918,10 @@ mod tests {
 
         // All three sessions join #general
         for session in [alice_session1, alice_session2, alice_session3] {
-            let _ = test_ctx.channel_manager.join("#general", session).await;
+            let _ = test_ctx
+                .channel_manager
+                .join("#general", session, JoinPolicy::CreateIfMissing)
+                .await;
         }
 
         // Login bob
@@ -1046,7 +1013,6 @@ mod tests {
         }
 
         // Add alice session 2
-        // Add second session for alice (only ChatJoin needed to join existing)
         let alice_session2 = add_second_session(
             &mut test_ctx,
             "alice",

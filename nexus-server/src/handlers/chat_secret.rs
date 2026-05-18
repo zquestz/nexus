@@ -152,6 +152,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::channels::JoinPolicy;
     use crate::handlers::chat_join::handle_chat_join;
     use crate::handlers::testing::{
         create_test_context, login_user, login_user_with_features, read_server_message,
@@ -354,7 +355,10 @@ mod tests {
         .await;
 
         // Create the channel with another user first
-        let _ = test_ctx.channel_manager.join("#general", 999).await;
+        let _ = test_ctx
+            .channel_manager
+            .join("#general", 999, JoinPolicy::CreateIfMissing)
+            .await;
 
         // Try to set secret on channel we're not a member of
         let result = handle_chat_secret(
@@ -445,7 +449,7 @@ mod tests {
         // Join the persistent channel
         test_ctx
             .channel_manager
-            .join(DEFAULT_CHANNEL, session_id)
+            .join(DEFAULT_CHANNEL, session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 

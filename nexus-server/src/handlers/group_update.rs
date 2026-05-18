@@ -645,6 +645,7 @@ mod tests {
     use std::time::Instant;
 
     use super::*;
+    use crate::channels::JoinPolicy;
     use crate::db;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
 
@@ -1842,7 +1843,10 @@ mod tests {
             .unwrap();
 
         // Have bob join a channel and voice
-        let _ = test_ctx.channel_manager.join("#general", bob_session).await;
+        let _ = test_ctx
+            .channel_manager
+            .join("#general", bob_session, JoinPolicy::CreateIfMissing)
+            .await;
 
         let voice_session = crate::voice::VoiceSession::new(
             "voicebob".to_string(),
