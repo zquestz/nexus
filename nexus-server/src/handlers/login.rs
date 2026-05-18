@@ -12,23 +12,26 @@ use nexus_common::validators::{
 
 use super::{
     HandlerContext, ServerInfoOptions, ServerInfoValues, build_server_info, current_timestamp,
-    err_account_disabled, err_already_logged_in, err_authentication, err_avatar_invalid_format,
-    err_avatar_too_large, err_avatar_unsupported_type, err_database, err_failed_to_create_user,
-    err_features_empty_feature, err_features_feature_too_long, err_features_invalid_characters,
-    err_features_too_many, err_guest_disabled, err_handshake_required, err_invalid_credentials,
-    err_locale_invalid_characters, err_locale_too_long, err_nickname_empty, err_nickname_in_use,
-    err_nickname_invalid, err_nickname_is_username, err_nickname_required, err_nickname_too_long,
-    err_password_too_long, err_username_empty, err_username_invalid, err_username_too_long,
+    err_account_disabled, err_account_type_changed, err_already_logged_in, err_authentication,
+    err_avatar_invalid_format, err_avatar_too_large, err_avatar_unsupported_type, err_database,
+    err_failed_to_create_user, err_features_empty_feature, err_features_feature_too_long,
+    err_features_invalid_characters, err_features_too_many, err_guest_disabled,
+    err_handshake_required, err_invalid_credentials, err_locale_invalid_characters,
+    err_locale_too_long, err_login_bandwidth_failed, err_login_group_failed,
+    err_login_permissions_failed, err_nickname_empty, err_nickname_in_use, err_nickname_invalid,
+    err_nickname_is_username, err_nickname_required, err_nickname_too_long, err_password_too_long,
+    err_username_empty, err_username_invalid, err_username_too_long,
 };
 use crate::constants::{
     FEATURE_CHAT, HANDLER_LOGIN, LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED, LOG_LOGIN_ACCOUNT_DISABLED,
-    LOG_LOGIN_ALREADY_LOGGED_IN, LOG_LOGIN_CREATE_USER_ERROR, LOG_LOGIN_DB_ERROR,
-    LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN, LOG_LOGIN_GROUP_ERROR,
-    LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR, LOG_LOGIN_INVALID_CREDENTIALS,
-    LOG_LOGIN_PASSWORD_VERIFY_ERROR, LOG_LOGIN_PERMISSIONS_ERROR, LOG_LOGIN_SUCCESS,
+    LOG_LOGIN_ACCOUNT_STATE_CHANGED, LOG_LOGIN_ACCOUNT_TYPE_CHANGED, LOG_LOGIN_ALREADY_LOGGED_IN,
+    LOG_LOGIN_CREATE_USER_ERROR, LOG_LOGIN_DB_ERROR, LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN,
+    LOG_LOGIN_GROUP_ERROR, LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR,
+    LOG_LOGIN_INVALID_CREDENTIALS, LOG_LOGIN_PASSWORD_CHANGED, LOG_LOGIN_PASSWORD_VERIFY_ERROR,
+    LOG_LOGIN_PERMISSIONS_ERROR, LOG_LOGIN_RENAMED_MID_LOGIN, LOG_LOGIN_SUCCESS,
 };
 use crate::db::sql::GUEST_USERNAME;
-use crate::db::{self, Permission};
+use crate::db::{self, LoginSnapshotError, Permission};
 use crate::users::manager::AddUserError;
 use crate::users::user::NewSessionParams;
 
@@ -41,6 +44,30 @@ pub struct LoginRequest {
     pub avatar: Option<String>,
     pub nickname: Option<String>,
     pub handshake_complete: bool,
+}
+
+fn handle_login_snapshot_error(
+    err: &LoginSnapshotError,
+    username: &str,
+    peer: std::net::SocketAddr,
+    locale: &str,
+) -> String {
+    let (msg, e, client_err) = match err {
+        LoginSnapshotError::User(e) => (LOG_LOGIN_DB_ERROR, e, err_database(locale)),
+        LoginSnapshotError::Permissions(e) => (
+            LOG_LOGIN_PERMISSIONS_ERROR,
+            e,
+            err_login_permissions_failed(locale),
+        ),
+        LoginSnapshotError::Group(e) => (LOG_LOGIN_GROUP_ERROR, e, err_login_group_failed(locale)),
+        LoginSnapshotError::BandwidthWeight(e) => (
+            LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED,
+            e,
+            err_login_bandwidth_failed(locale),
+        ),
+    };
+    error!(user = %username, ip = %peer, err = %e, "{}", msg);
+    client_err
 }
 
 /// Handle a login request from the client
@@ -317,57 +344,78 @@ where
         None
     };
 
-    // Fetch user permissions from database (used for both caching and LoginResponse)
-    let cached_permissions = if authenticated_account.is_admin {
-        // Admins bypass permission checks, so we can use an empty set
-        std::collections::HashSet::new()
-    } else {
-        match ctx
-            .db
-            .users
-            .get_user_permissions(authenticated_account.id)
-            .await
-        {
-            Ok(perms) => perms.permissions,
-            Err(e) => {
-                error!(user = %authenticated_account.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_PERMISSIONS_ERROR);
-                std::collections::HashSet::new()
-            }
+    // Initial seed from the authoritative state. The verify-window
+    // drift check immediately below catches any rename/password reset
+    // that committed during password verification; the post-add
+    // snapshot catches anything that lands during add_user.
+    let pre_snapshot = match ctx
+        .db
+        .get_login_session_snapshot(authenticated_account.id)
+        .await
+    {
+        Ok(Some(s)) if s.account.enabled => s,
+        Ok(Some(_)) => {
+            return ctx
+                .send_error_and_disconnect(
+                    &err_account_disabled(&locale, &authenticated_account.username),
+                    Some(HANDLER_LOGIN),
+                )
+                .await;
+        }
+        Ok(None) => {
+            return ctx
+                .send_error_and_disconnect(&err_authentication(&locale), Some(HANDLER_LOGIN))
+                .await;
+        }
+        Err(e) => {
+            let client_err = handle_login_snapshot_error(
+                &e,
+                &authenticated_account.username,
+                ctx.peer_addr,
+                &locale,
+            );
+            return ctx
+                .send_error_and_disconnect(&client_err, Some(HANDLER_LOGIN))
+                .await;
         }
     };
 
-    // Look up group name if user belongs to a group
-    let (group_id, group_name) = if let Some(gid) = authenticated_account.group_id {
-        match ctx.db.groups.get_group_by_id(gid).await {
-            Ok(Some(group)) => (Some(gid), Some(group.name)),
-            Ok(None) => (None, None), // Group was deleted (ON DELETE SET NULL)
-            Err(e) => {
-                error!(user = %authenticated_account.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_GROUP_ERROR);
-                (None, None)
-            }
-        }
-    } else {
-        (None, None)
-    };
+    // Verify-window drift: typed username vs the row pre_snapshot just
+    // read, and verified hash vs the row's current hash. Drift means
+    // admin renamed or reset the account during password verify;
+    // credentials the user sent no longer describe this row.
+    if username.to_lowercase() != pre_snapshot.account.username.to_lowercase() {
+        warn!(
+            user = %username,
+            new_username = %pre_snapshot.account.username,
+            ip = %ctx.peer_addr,
+            "{}", LOG_LOGIN_RENAMED_MID_LOGIN
+        );
+        return ctx
+            .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
+            .await;
+    }
+    if authenticated_account.hashed_password != pre_snapshot.account.hashed_password {
+        warn!(
+            user = %authenticated_account.username,
+            ip = %ctx.peer_addr,
+            "{}", LOG_LOGIN_PASSWORD_CHANGED
+        );
+        return ctx
+            .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
+            .await;
+    }
 
-    // Check if user can auto-join channels BEFORE features is moved into NewSessionParams
-    // Auto-join only happens if:
-    // 1. User has the chat feature enabled (passed in login request)
-    // 2. User has ChatJoin permission (or is admin)
-    // Additionally, creating new channels during auto-join requires ChatCreate permission.
+    let authenticated_account = pre_snapshot.account;
+    let cached_permissions = pre_snapshot.permissions.permissions;
+    let group_id = authenticated_account.group_id;
+    let group_name = pre_snapshot.group_name;
+    let bandwidth_weight = pre_snapshot.resolved_bandwidth_weight;
+
     let has_chat_feature = features.iter().any(|f| f == FEATURE_CHAT);
-    let has_chat_join_permission =
-        authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatJoin);
-    let has_chat_create_permission =
-        authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatCreate);
-    let has_voice_listen_permission =
-        authenticated_account.is_admin || cached_permissions.contains(&Permission::VoiceListen);
-    let can_auto_join = has_chat_feature && has_chat_join_permission;
 
-    // For regular accounts with existing sessions, inherit is_away/status from the latest session
-    // This ensures that if a user set themselves as away, logging in from another device
-    // doesn't silently clear their away status from the perspective of other users.
-    // Shared accounts don't inherit (different people may use the same account).
+    // Regular accounts inherit is_away/status from the latest existing
+    // session so a multi-device login doesn't clear away state.
     let (inherited_is_away, inherited_status) = if !authenticated_account.is_shared {
         let existing_sessions = ctx
             .user_manager
@@ -380,30 +428,6 @@ where
         }
     } else {
         (false, None)
-    };
-
-    // Resolve effective bandwidth weight (user override → admin default →
-    // group → system default) and cache it on the session for the scheduler.
-    // Fail the login on DB error — seeding a default would silently
-    // demote or promote the user.
-    let bandwidth_weight = match ctx
-        .db
-        .users
-        .get_resolved_bandwidth_weight(authenticated_account.id)
-        .await
-    {
-        Ok(w) => w,
-        Err(e) => {
-            error!(
-                user = %authenticated_account.username,
-                ip = %ctx.peer_addr,
-                err = %e,
-                "{}", LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED
-            );
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_LOGIN))
-                .await;
-        }
     };
 
     // Create session in UserManager with cached permissions
@@ -447,6 +471,122 @@ where
         }
     };
     *session_id = Some(id);
+
+    // Post-add drift check. Catches any UserUpdate / GroupUpdate /
+    // UserDelete / disable that committed during add_user; the
+    // Ok(None) and Ok(Some(disabled)) arms cover delete/disable
+    // races where cleanup ran before our session was registered.
+    let post_snapshot = match ctx
+        .db
+        .get_login_session_snapshot(authenticated_account.id)
+        .await
+    {
+        Ok(Some(s)) if s.account.enabled => s,
+        Ok(Some(disabled)) => {
+            ctx.user_manager.remove_user(id).await;
+            *session_id = None;
+            return ctx
+                .send_error_and_disconnect(
+                    &err_account_disabled(&locale, &disabled.account.username),
+                    Some(HANDLER_LOGIN),
+                )
+                .await;
+        }
+        Ok(None) => {
+            ctx.user_manager.remove_user(id).await;
+            *session_id = None;
+            return ctx
+                .send_error_and_disconnect(&err_authentication(&locale), Some(HANDLER_LOGIN))
+                .await;
+        }
+        Err(e) => {
+            let client_err = handle_login_snapshot_error(
+                &e,
+                &authenticated_account.username,
+                ctx.peer_addr,
+                &locale,
+            );
+            ctx.user_manager.remove_user(id).await;
+            *session_id = None;
+            return ctx
+                .send_error_and_disconnect(&client_err, Some(HANDLER_LOGIN))
+                .await;
+        }
+    };
+
+    // Drift between pre- and post-snapshot means a concurrent
+    // UserUpdate/GroupUpdate committed during add_user — fail the
+    // login. The pre-snapshot values seeded into add_user are
+    // authoritative for this session; downstream code uses the
+    // pre-bound locals. Auth fields (username, hashed_password) come
+    // first so a password reset that coincides with state drift
+    // surfaces the auth-specific log line.
+    if authenticated_account.username.to_lowercase()
+        != post_snapshot.account.username.to_lowercase()
+    {
+        warn!(
+            user = %authenticated_account.username,
+            new_username = %post_snapshot.account.username,
+            ip = %ctx.peer_addr,
+            "{}", LOG_LOGIN_RENAMED_MID_LOGIN
+        );
+        ctx.user_manager.remove_user(id).await;
+        *session_id = None;
+        return ctx
+            .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
+            .await;
+    }
+    if authenticated_account.hashed_password != post_snapshot.account.hashed_password {
+        warn!(
+            user = %authenticated_account.username,
+            ip = %ctx.peer_addr,
+            "{}", LOG_LOGIN_PASSWORD_CHANGED
+        );
+        ctx.user_manager.remove_user(id).await;
+        *session_id = None;
+        return ctx
+            .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
+            .await;
+    }
+    if authenticated_account.is_shared != post_snapshot.account.is_shared {
+        warn!(
+            user = %authenticated_account.username,
+            was_shared = authenticated_account.is_shared,
+            now_shared = post_snapshot.account.is_shared,
+            ip = %ctx.peer_addr,
+            "{}", LOG_LOGIN_ACCOUNT_TYPE_CHANGED
+        );
+        ctx.user_manager.remove_user(id).await;
+        *session_id = None;
+        return ctx
+            .send_error_and_disconnect(&err_account_type_changed(&locale), Some(HANDLER_LOGIN))
+            .await;
+    }
+    if authenticated_account.is_admin != post_snapshot.account.is_admin
+        || cached_permissions != post_snapshot.permissions.permissions
+        || authenticated_account.group_id != post_snapshot.account.group_id
+        || group_name != post_snapshot.group_name
+        || bandwidth_weight != post_snapshot.resolved_bandwidth_weight
+    {
+        warn!(
+            user = %authenticated_account.username,
+            ip = %ctx.peer_addr,
+            "{}", LOG_LOGIN_ACCOUNT_STATE_CHANGED
+        );
+        ctx.user_manager.remove_user(id).await;
+        *session_id = None;
+        return ctx
+            .send_error_and_disconnect(&err_authentication(&locale), Some(HANDLER_LOGIN))
+            .await;
+    }
+
+    let has_chat_join_permission =
+        authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatJoin);
+    let has_chat_create_permission =
+        authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatCreate);
+    let has_voice_listen_permission =
+        authenticated_account.is_admin || cached_permissions.contains(&Permission::VoiceListen);
+    let can_auto_join = has_chat_feature && has_chat_join_permission;
 
     // Fetch all server config values in a single query
     let config = ctx.db.config.get_all().await;

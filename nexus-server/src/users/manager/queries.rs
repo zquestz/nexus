@@ -89,6 +89,18 @@ impl UserManager {
             .collect()
     }
 
+    /// All sessions owned by `user_id`. Stable across username
+    /// changes, so safer than `get_sessions_by_username` for
+    /// cleanup paths keyed on the DB row's identity.
+    pub async fn get_sessions_by_user_id(&self, user_id: i64) -> Vec<UserSession> {
+        let users = self.users.read().await;
+        users
+            .values()
+            .filter(|u| u.user_id == user_id)
+            .cloned()
+            .collect()
+    }
+
     /// Get all sessions for users assigned to a specific group
     ///
     /// Returns cloned sessions for all online users whose `group_id` matches.

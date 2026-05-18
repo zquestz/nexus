@@ -35,7 +35,7 @@ pub use trackers::{
 };
 pub use trusts::TrustDb;
 pub use users::{
-    CreateUserParams, PermissionWriteScope, UpdateUserParams, UpdateUserResult, UserDb,
+    CreateUserParams, PermissionWriteScope, UpdateUserParams, UpdateUserResult, UserAccount, UserDb,
 };
 
 use std::path::{Path, PathBuf};
@@ -106,6 +106,77 @@ impl Database {
             allows_guest,
         })
     }
+
+    /// Bundle the authoritative state the login handler needs to
+    /// seed (pre-add) and drift-check (post-add) a session. The
+    /// returned snapshot is observed inside a single read transaction
+    /// — account row, permissions, group name, and resolved bandwidth
+    /// are all consistent as of one DB point-in-time.
+    ///
+    /// Returns `Ok(None)` if the user row is missing. The
+    /// `account.enabled` flag is the caller's signal for
+    /// disabled-mid-login; the helper itself doesn't gate on it
+    /// (so the same helper can be reused for paths where a
+    /// disabled user is still a valid input).
+    pub async fn get_login_session_snapshot(
+        &self,
+        user_id: i64,
+    ) -> Result<Option<LoginSessionSnapshot>, LoginSnapshotError> {
+        // Wrap all four reads in a single tx so the returned snapshot
+        // is coherent — account row, permissions, group, and bandwidth
+        // are all observed as of one DB point-in-time, not four.
+        let mut tx = self.users.begin().await.map_err(LoginSnapshotError::User)?;
+
+        let Some(account) = users::UserDb::get_user_by_id_on(&mut tx, user_id)
+            .await
+            .map_err(LoginSnapshotError::User)?
+        else {
+            return Ok(None);
+        };
+
+        let permissions = if account.is_admin {
+            Permissions::new()
+        } else {
+            users::UserDb::get_user_permissions_on(&mut tx, user_id)
+                .await
+                .map_err(LoginSnapshotError::Permissions)?
+        };
+
+        let group_name = if let Some(gid) = account.group_id {
+            groups::GroupDb::get_group_by_id_on(&mut tx, gid)
+                .await
+                .map_err(LoginSnapshotError::Group)?
+                .map(|g| g.name)
+        } else {
+            None
+        };
+
+        let resolved_bandwidth_weight =
+            users::UserDb::get_resolved_bandwidth_weight_on(&mut tx, user_id)
+                .await
+                .map_err(LoginSnapshotError::BandwidthWeight)?;
+
+        tx.commit().await.map_err(LoginSnapshotError::User)?;
+
+        Ok(Some(LoginSessionSnapshot {
+            account,
+            permissions,
+            group_name,
+            resolved_bandwidth_weight,
+        }))
+    }
+}
+
+/// Sub-read-specific error from [`Database::get_login_session_snapshot`].
+/// The variant identifies which composed read failed so the login
+/// handler can emit a specific log line instead of a generic
+/// "database error".
+#[derive(Debug)]
+pub enum LoginSnapshotError {
+    User(sqlx::Error),
+    Permissions(sqlx::Error),
+    Group(sqlx::Error),
+    BandwidthWeight(sqlx::Error),
 }
 
 /// Fields the tracker task needs to populate `TrackerServerRegister`
@@ -116,6 +187,18 @@ pub struct TrackerRegistrationFields {
     pub description: Option<String>,
     pub public_address: Option<String>,
     pub allows_guest: bool,
+}
+
+/// Authoritative per-login state: account row, effective permissions,
+/// resolved group name, resolved bandwidth weight. Bundled by
+/// [`Database::get_login_session_snapshot`] and consumed by the login
+/// handler both pre-`add_user` (initial seed) and post-`add_user`
+/// (drift check against the pre-add snapshot).
+pub struct LoginSessionSnapshot {
+    pub account: UserAccount,
+    pub permissions: Permissions,
+    pub group_name: Option<String>,
+    pub resolved_bandwidth_weight: u16,
 }
 
 /// Get the database file path under the given server data directory

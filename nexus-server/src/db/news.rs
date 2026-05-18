@@ -460,7 +460,7 @@ mod tests {
             .unwrap();
 
         // Delete the user
-        users_db.delete_user(user.id).await.unwrap();
+        users_db.delete_user(user.id, true).await.unwrap();
 
         // News should be cascade deleted
         let fetched = news_db.get_news_by_id(news.id).await.unwrap();

@@ -40,6 +40,7 @@ err-already-logged-in = Вы уже вошли в систему
 err-handshake-already-completed = Рукопожатие уже выполнено
 err-account-deleted = Ваша учетная запись удалена
 err-account-disabled-by-admin = Учетная запись отключена администратором
+err-account-type-changed = Тип этой учётной записи изменился. Пожалуйста, переподключитесь.
 
 # Ошибки прав доступа
 err-permission-denied = Доступ запрещен
@@ -61,6 +62,9 @@ err-channel-list-invalid = Недопустимый канал '{ $channel }': {
 
 # Ошибки базы данных
 err-database = Ошибка базы данных
+err-login-permissions-failed = Не удалось загрузить разрешения учётной записи
+err-login-group-failed = Не удалось загрузить группу учётной записи
+err-login-bandwidth-failed = Не удалось загрузить настройки пропускной способности
 
 # Ошибки формата сообщения
 err-invalid-message-format = Неверный формат сообщения

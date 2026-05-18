@@ -40,6 +40,7 @@ err-already-logged-in = 已經登入
 err-handshake-already-completed = 握手已完成
 err-account-deleted = 您的帳戶已被刪除
 err-account-disabled-by-admin = 帳戶已被管理員停用
+err-account-type-changed = 此帳號的類型已變更。請重新連線。
 
 # 權限和存取錯誤
 err-permission-denied = 權限被拒絕
@@ -61,6 +62,9 @@ err-channel-list-invalid = 無效頻道 '{ $channel }': { $reason }
 
 # 資料庫錯誤
 err-database = 資料庫錯誤
+err-login-permissions-failed = 無法載入帳戶權限
+err-login-group-failed = 無法載入帳戶分組
+err-login-bandwidth-failed = 無法載入帳戶頻寬設定
 
 # 訊息格式錯誤
 err-invalid-message-format = 無效的訊息格式

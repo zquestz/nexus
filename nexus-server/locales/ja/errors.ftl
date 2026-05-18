@@ -40,6 +40,7 @@ err-already-logged-in = 既にログインしています
 err-handshake-already-completed = ハンドシェイクは既に完了しています
 err-account-deleted = アカウントが削除されました
 err-account-disabled-by-admin = 管理者によってアカウントが無効化されました
+err-account-type-changed = このアカウントの種類が変更されました。再接続してください。
 
 # 権限とアクセスのエラー
 err-permission-denied = 権限がありません
@@ -61,6 +62,9 @@ err-channel-list-invalid = 無効なチャンネル '{ $channel }': { $reason }
 
 # データベースエラー
 err-database = データベースエラー
+err-login-permissions-failed = アカウントの権限を読み込めませんでした
+err-login-group-failed = アカウントのグループを読み込めませんでした
+err-login-bandwidth-failed = アカウントの帯域幅設定を読み込めませんでした
 
 # メッセージ形式のエラー
 err-invalid-message-format = 無効なメッセージ形式です

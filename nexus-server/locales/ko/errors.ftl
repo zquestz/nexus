@@ -40,6 +40,7 @@ err-already-logged-in = 이미 로그인됨
 err-handshake-already-completed = 핸드셰이크가 이미 완료됨
 err-account-deleted = 계정이 삭제되었습니다
 err-account-disabled-by-admin = 관리자가 계정을 비활성화했습니다
+err-account-type-changed = 이 계정의 유형이 변경되었습니다. 다시 연결해 주세요.
 
 # 권한 및 액세스 오류
 err-permission-denied = 권한이 거부됨
@@ -61,6 +62,9 @@ err-channel-list-invalid = 잘못된 채널 '{ $channel }': { $reason }
 
 # 데이터베이스 오류
 err-database = 데이터베이스 오류
+err-login-permissions-failed = 계정 권한을 불러오지 못했습니다
+err-login-group-failed = 계정 그룹을 불러오지 못했습니다
+err-login-bandwidth-failed = 계정 대역폭 설정을 불러오지 못했습니다
 
 # 메시지 형식 오류
 err-invalid-message-format = 잘못된 메시지 형식

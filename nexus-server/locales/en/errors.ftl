@@ -40,6 +40,7 @@ err-already-logged-in = Already logged in
 err-handshake-already-completed = Handshake already completed
 err-account-deleted = Your account has been deleted
 err-account-disabled-by-admin = Account disabled by admin
+err-account-type-changed = This account's type changed. Please reconnect.
 
 # Permission & Access Errors
 err-permission-denied = Permission denied
@@ -50,6 +51,9 @@ err-chat-feature-not-enabled = Chat feature not enabled
 
 # Database Errors
 err-database = Database error
+err-login-permissions-failed = Failed to load account permissions
+err-login-group-failed = Failed to load account group
+err-login-bandwidth-failed = Failed to load account bandwidth settings
 
 # Message Format Errors
 err-invalid-message-format = Invalid message format

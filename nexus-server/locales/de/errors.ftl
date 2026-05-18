@@ -40,6 +40,7 @@ err-already-logged-in = Bereits angemeldet
 err-handshake-already-completed = Handshake bereits abgeschlossen
 err-account-deleted = Ihr Konto wurde gelöscht
 err-account-disabled-by-admin = Konto vom Administrator deaktiviert
+err-account-type-changed = Der Typ dieses Kontos hat sich geändert. Bitte neu verbinden.
 
 # Berechtigungs- und Zugriffsfehler
 err-permission-denied = Zugriff verweigert
@@ -61,6 +62,9 @@ err-channel-list-invalid = Ungültiger Kanal '{ $channel }': { $reason }
 
 # Datenbankfehler
 err-database = Datenbankfehler
+err-login-permissions-failed = Fehler beim Laden der Kontoberechtigungen
+err-login-group-failed = Fehler beim Laden der Kontogruppe
+err-login-bandwidth-failed = Fehler beim Laden der Bandbreiten-Einstellungen
 
 # Nachrichtenformatfehler
 err-invalid-message-format = Ungültiges Nachrichtenformat

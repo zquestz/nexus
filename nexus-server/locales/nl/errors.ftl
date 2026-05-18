@@ -40,6 +40,7 @@ err-already-logged-in = Al ingelogd
 err-handshake-already-completed = Handshake al voltooid
 err-account-deleted = Uw account is verwijderd
 err-account-disabled-by-admin = Account uitgeschakeld door beheerder
+err-account-type-changed = Het type van dit account is gewijzigd. Maak opnieuw verbinding.
 
 # Permissie- en toegangsfouten
 err-permission-denied = Toestemming geweigerd
@@ -61,6 +62,9 @@ err-channel-list-invalid = Ongeldig kanaal '{ $channel }': { $reason }
 
 # Databasefouten
 err-database = Databasefout
+err-login-permissions-failed = Kan accountmachtigingen niet laden
+err-login-group-failed = Kan accountgroep niet laden
+err-login-bandwidth-failed = Kan bandbreedte-instellingen niet laden
 
 # Berichtformaatfouten
 err-invalid-message-format = Ongeldig berichtformaat

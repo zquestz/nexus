@@ -82,8 +82,8 @@ where
         }
     };
 
-    // Prevent self-deletion
-    if target_user.username.to_lowercase() == requesting_user_session.username.to_lowercase() {
+    // ID-based identity check — username compare leaks on rename.
+    if target_user.id == requesting_user_session.user_id {
         let response = ServerMessage::UserDeleteResponse {
             success: false,
             error: Some(err_cannot_delete_self(ctx.locale)),
@@ -92,7 +92,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Prevent deleting the guest account
     if target_user.username.to_lowercase() == GUEST_USERNAME {
         let response = ServerMessage::UserDeleteResponse {
             success: false,
@@ -102,7 +101,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Prevent non-admins from deleting admin users
     if target_user.is_admin && !requesting_user_session.is_admin {
         warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_ADMIN);
         let response = ServerMessage::UserDeleteResponse {
@@ -113,54 +111,81 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Handle online user disconnection (all sessions)
-    let online_users = ctx
-        .user_manager
-        .get_sessions_by_username(&target_user.username)
-        .await;
+    // DB delete first. On Blocked or Err the user stays in UserManager
+    // — no kick is dispatched on a failed delete. After commit, a
+    // concurrent login can't add new sessions for this user_id (auth
+    // would fail against the missing row), so the by-user_id
+    // disconnect sweep below catches everything that existed at
+    // delete time.
+    match ctx
+        .db
+        .users
+        .delete_user(target_user.id, requesting_user_session.is_admin)
+        .await
+    {
+        Ok(true) => {
+            info!(user = %requesting_user_session.username, ip = %ctx.peer_addr, target = %target_user.username, "{}", LOG_USER_DELETE_SUCCESS);
 
-    for online_user in online_users {
-        // Send error message to the user being deleted (in their locale)
-        let disconnect_msg = ServerMessage::Error {
-            message: err_account_deleted(&online_user.locale),
-            command: None,
-        };
-        let _ = online_user.tx.send((disconnect_msg, None));
-
-        // Remove from voice (if in voice) and UserManager, broadcast disconnection
-        let session_id = online_user.session_id;
-        remove_user_with_voice_cleanup(
-            ctx.user_manager,
-            ctx.voice_registry,
-            ctx.channel_manager,
-            session_id,
-            &online_user,
-        )
-        .await;
-    }
-
-    // Delete user from database (atomic last-admin protection)
-    match ctx.db.users.delete_user(target_user.id).await {
-        Ok(deleted) => {
-            if deleted {
-                // Send success response to the admin who deleted the user
-                // Use the database-preserved username casing, not the input
-                info!(user = %requesting_user_session.username, ip = %ctx.peer_addr, target = %target_user.username, "{}", LOG_USER_DELETE_SUCCESS);
-                let response = ServerMessage::UserDeleteResponse {
-                    success: true,
-                    error: None,
-                    username: Some(target_user.username),
+            let online_users = ctx
+                .user_manager
+                .get_sessions_by_user_id(target_user.id)
+                .await;
+            for online_user in online_users {
+                let disconnect_msg = ServerMessage::Error {
+                    message: err_account_deleted(&online_user.locale),
+                    command: None,
                 };
-                ctx.send_message(&response).await
-            } else {
-                // Deletion was blocked (likely because they're the last admin)
-                let response = ServerMessage::UserDeleteResponse {
-                    success: false,
-                    error: Some(err_cannot_delete_last_admin(ctx.locale)),
-                    username: None,
-                };
-                ctx.send_message(&response).await
+                let _ = online_user.tx.send((disconnect_msg, None));
+
+                let session_id = online_user.session_id;
+                remove_user_with_voice_cleanup(
+                    ctx.user_manager,
+                    ctx.voice_registry,
+                    ctx.channel_manager,
+                    session_id,
+                    &online_user,
+                )
+                .await;
             }
+
+            let response = ServerMessage::UserDeleteResponse {
+                success: true,
+                error: None,
+                username: Some(target_user.username),
+            };
+            ctx.send_message(&response).await
+        }
+        Ok(false) => {
+            // Atomic guard blocked. Re-read target to disambiguate:
+            //   None                  → another delete raced ahead
+            //   Some(admin), !req.adm → admin-target SQL guard fired
+            //   else                  → last-admin SQL guard fired
+            let target_now = match ctx.db.users.get_user_by_id(target_user.id).await {
+                Ok(t) => t,
+                Err(e) => {
+                    error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
+                    return ctx
+                        .send_error_and_disconnect(
+                            &err_database(ctx.locale),
+                            Some(HANDLER_USER_DELETE),
+                        )
+                        .await;
+                }
+            };
+            let error = match target_now {
+                None => err_user_not_found(ctx.locale, &id.to_string()),
+                Some(u) if u.is_admin && !requesting_user_session.is_admin => {
+                    warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_ADMIN);
+                    err_cannot_delete_admin(ctx.locale)
+                }
+                _ => err_cannot_delete_last_admin(ctx.locale),
+            };
+            let response = ServerMessage::UserDeleteResponse {
+                success: false,
+                error: Some(error),
+                username: None,
+            };
+            ctx.send_message(&response).await
         }
         Err(e) => {
             error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
@@ -434,11 +459,21 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        let deleted = test_ctx2.db.users.delete_user(admin2.id).await.unwrap();
+        let deleted = test_ctx2
+            .db
+            .users
+            .delete_user(admin2.id, true)
+            .await
+            .unwrap();
         assert!(deleted, "Should delete admin2");
 
         // Now try to delete the last admin via the database directly
-        let deleted = test_ctx2.db.users.delete_user(only_admin.id).await.unwrap();
+        let deleted = test_ctx2
+            .db
+            .users
+            .delete_user(only_admin.id, true)
+            .await
+            .unwrap();
         assert!(!deleted, "Should not be able to delete the last admin");
 
         // Verify only_admin still exists
@@ -782,5 +817,64 @@ mod tests {
             }
             _ => panic!("Expected UserDeleteResponse"),
         }
+    }
+
+    /// Broader contract: any blocked delete path must leave the
+    /// target's session intact. This case exercises the pre-tx admin
+    /// block (non-admin requester targeting an admin); the SQL guard
+    /// itself is covered by db::users tests. Pre-fix the kick fired
+    /// before the DB delete attempt regardless of which path blocked.
+    #[tokio::test]
+    async fn test_userdelete_blocked_delete_does_not_disconnect_session() {
+        let mut test_ctx = create_test_context().await;
+
+        let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let deleter_session = login_user(
+            &mut test_ctx,
+            "deleter",
+            "password",
+            &[db::Permission::UserDelete],
+            false,
+        )
+        .await;
+
+        let admin_db = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let admin_session_id_in_mgr = test_ctx
+            .user_manager
+            .get_sessions_by_user_id(admin_db.id)
+            .await
+            .first()
+            .map(|s| s.session_id)
+            .expect("admin should have a session in UserManager");
+
+        let result = handle_user_delete(
+            admin_db.id,
+            Some(deleter_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserDeleteResponse { success, .. } => assert!(!success),
+            _ => panic!("Expected UserDeleteResponse"),
+        }
+
+        assert!(
+            test_ctx
+                .user_manager
+                .get_user_by_session_id(admin_session_id_in_mgr)
+                .await
+                .is_some(),
+            "blocked delete must not have disconnected the target's session"
+        );
     }
 }

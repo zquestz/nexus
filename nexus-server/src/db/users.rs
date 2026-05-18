@@ -2,7 +2,7 @@
 
 use nexus_common::validators;
 use nexus_common::validators::{DEFAULT_BANDWIDTH_WEIGHT, resolve_bandwidth_weight};
-use sqlx::SqlitePool;
+use sqlx::{SqliteConnection, SqlitePool};
 
 use super::permissions::{Permission, Permissions};
 use super::util::clamp_db_bandwidth_weight;
@@ -219,15 +219,32 @@ impl UserDb {
         Self { pool }
     }
 
+    /// Begin a transaction on the underlying pool, for callers that
+    /// need to thread multiple reads or writes through a single
+    /// connection.
+    pub async fn begin(&self) -> Result<sqlx::Transaction<'_, sqlx::Sqlite>, sqlx::Error> {
+        self.pool.begin().await
+    }
+
     // ========================================================================
     // Query Methods - User Lookup
     // ========================================================================
 
     /// Get a user by ID
     pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
+        let mut conn = self.pool.acquire().await?;
+        Self::get_user_by_id_on(&mut conn, user_id).await
+    }
+
+    /// `get_user_by_id` against an explicit connection, so the read
+    /// can share a transaction with other queries.
+    pub async fn get_user_by_id_on(
+        conn: &mut SqliteConnection,
+        user_id: i64,
+    ) -> Result<Option<UserAccount>, sqlx::Error> {
         let row: Option<UserRow> = sqlx::query_as(sql::SQL_SELECT_USER_BY_ID)
             .bind(user_id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *conn)
             .await?;
 
         Ok(row.map(UserAccount::from))
@@ -314,11 +331,21 @@ impl UserDb {
     /// Returns `DEFAULT_BANDWIDTH_WEIGHT` for unknown users (intended for
     /// scheduler hot path — caller does not need to handle "user gone" as an
     /// error case).
+    #[cfg(test)]
     pub async fn get_resolved_bandwidth_weight(&self, user_id: i64) -> Result<u16, sqlx::Error> {
+        let mut conn = self.pool.acquire().await?;
+        Self::get_resolved_bandwidth_weight_on(&mut conn, user_id).await
+    }
+
+    /// `get_resolved_bandwidth_weight` against an explicit connection.
+    pub async fn get_resolved_bandwidth_weight_on(
+        conn: &mut SqliteConnection,
+        user_id: i64,
+    ) -> Result<u16, sqlx::Error> {
         let row: Option<(Option<i64>, Option<i64>, bool)> =
             sqlx::query_as(sql::SQL_SELECT_USER_AND_GROUP_BANDWIDTH_WEIGHT)
                 .bind(user_id)
-                .fetch_optional(&self.pool)
+                .fetch_optional(&mut *conn)
                 .await?;
 
         let Some((user_weight, group_weight, is_admin)) = row else {
@@ -387,10 +414,21 @@ impl UserDb {
     /// - If user has a group: `(group_permissions ∪ grant_overrides) - revoke_overrides`
     /// - If user has no group: grant overrides only (legacy behavior)
     pub async fn get_user_permissions(&self, user_id: i64) -> Result<Permissions, sqlx::Error> {
+        let mut conn = self.pool.acquire().await?;
+        Self::get_user_permissions_on(&mut conn, user_id).await
+    }
+
+    /// `get_user_permissions` against an explicit connection. The
+    /// three internal reads share that connection, so a shared read
+    /// transaction sees a coherent group+overrides view.
+    pub async fn get_user_permissions_on(
+        conn: &mut SqliteConnection,
+        user_id: i64,
+    ) -> Result<Permissions, sqlx::Error> {
         // Check if user has a group assignment
         let group_id: Option<(Option<i64>,)> = sqlx::query_as(sql::SQL_SELECT_USER_GROUP_ID)
             .bind(user_id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *conn)
             .await?;
 
         // User doesn't exist — return empty permissions
@@ -401,7 +439,7 @@ impl UserDb {
         // Fetch user's individual permissions with override type
         let perm_rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_SELECT_PERMISSIONS)
             .bind(user_id)
-            .fetch_all(&self.pool)
+            .fetch_all(&mut *conn)
             .await?;
 
         let mut permissions = Permissions::new();
@@ -410,7 +448,7 @@ impl UserDb {
             // User has a group — resolve: (group_perms ∪ grants) - revokes
             let group_perm_rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_GROUP_PERMISSIONS)
                 .bind(gid)
-                .fetch_all(&self.pool)
+                .fetch_all(&mut *conn)
                 .await?;
 
             // Start with group permissions
@@ -755,16 +793,19 @@ impl UserDb {
         }))
     }
 
-    /// Delete a user account
-    /// Returns Ok(true) if user was deleted, Ok(false) if user didn't exist or deletion was blocked
-    ///
-    /// This operation is atomic and prevents deleting the last admin via a SQL constraint.
-    /// If the target user is an admin and they are the last admin, the deletion will not occur.
-    pub async fn delete_user(&self, user_id: i64) -> Result<bool, sqlx::Error> {
-        // Atomic deletion: only delete if user is non-admin OR if they're not the last admin
-        // This prevents race conditions when multiple admins try to delete each other simultaneously
+    /// Delete a user. `Ok(true)` on success, `Ok(false)` if the row
+    /// is missing OR the atomic guard blocked (last-admin or
+    /// non-admin requester targeting an admin row). Internal/system
+    /// callers pass `requester_is_admin: true` to skip the
+    /// admin-target guard.
+    pub async fn delete_user(
+        &self,
+        user_id: i64,
+        requester_is_admin: bool,
+    ) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(sql::SQL_DELETE_USER_ATOMIC)
             .bind(user_id)
+            .bind(requester_is_admin)
             .execute(&self.pool)
             .await?;
 
@@ -1705,7 +1746,7 @@ mod tests {
         assert_eq!(perm_count, 2);
 
         // Delete user
-        let deleted = db.delete_user(user.id).await.unwrap();
+        let deleted = db.delete_user(user.id, true).await.unwrap();
         assert!(deleted, "User should be deleted");
 
         // Permissions should be cascaded
@@ -1726,8 +1767,57 @@ mod tests {
         let db = UserDb::new(pool.clone());
 
         // Try to delete non-existent user
-        let deleted = db.delete_user(99999).await.unwrap();
+        let deleted = db.delete_user(99999, true).await.unwrap();
         assert!(!deleted, "Should return false for non-existent user");
+    }
+
+    /// Atomic SQL guard for non-admin → admin delete. Pins the race
+    /// protection in isolation from the handler's pre-check (since the
+    /// handler can be bypassed by a target promotion between the
+    /// pre-check and the DELETE).
+    #[tokio::test]
+    async fn test_delete_user_non_admin_cannot_delete_admin_target() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool);
+
+        // Two admins so the last-admin guard doesn't conflate with the new one.
+        db.create_user(CreateUserParams {
+            username: "alice",
+            hashed_password: "hash",
+            is_admin: true,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+            revokes: &[],
+            bandwidth_weight: None,
+        })
+        .await
+        .unwrap();
+        let bob = db
+            .create_user(CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // Non-admin requester blocked.
+        let deleted = db.delete_user(bob.id, false).await.unwrap();
+        assert!(!deleted, "non-admin requester must not delete admin");
+        assert!(db.get_user_by_id(bob.id).await.unwrap().is_some());
+
+        // Admin requester proceeds.
+        let deleted = db.delete_user(bob.id, true).await.unwrap();
+        assert!(deleted, "admin requester deletes admin target");
+        assert!(db.get_user_by_id(bob.id).await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -1755,7 +1845,7 @@ mod tests {
         assert_eq!(count_admins(&pool).await, 1);
 
         // Try to delete the last admin
-        let deleted = db.delete_user(admin.id).await.unwrap();
+        let deleted = db.delete_user(admin.id, true).await.unwrap();
         assert!(!deleted, "Should not delete the last admin");
 
         // Admin should still exist
@@ -1802,7 +1892,7 @@ mod tests {
         assert_eq!(count_admins(&pool).await, 2);
 
         // Delete one admin (should succeed)
-        let deleted = db.delete_user(admin1.id).await.unwrap();
+        let deleted = db.delete_user(admin1.id, true).await.unwrap();
         assert!(deleted, "Should delete admin when multiple exist");
 
         // Verify one admin remains
@@ -1848,7 +1938,7 @@ mod tests {
             .unwrap();
 
         // Delete regular user (should succeed)
-        let deleted = db.delete_user(user.id).await.unwrap();
+        let deleted = db.delete_user(user.id, true).await.unwrap();
         assert!(deleted, "Should delete non-admin user");
 
         // User should be gone
@@ -1898,8 +1988,10 @@ mod tests {
         assert_eq!(count_admins(&pool).await, 2);
 
         // Try to delete both admins simultaneously
-        let (result1, result2) =
-            tokio::join!(db1.delete_user(admin2.id), db2.delete_user(admin1.id));
+        let (result1, result2) = tokio::join!(
+            db1.delete_user(admin2.id, true),
+            db2.delete_user(admin1.id, true)
+        );
 
         let deleted1 = result1.unwrap();
         let deleted2 = result2.unwrap();

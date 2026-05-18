@@ -7,6 +7,7 @@ use std::collections::HashMap;
 
 use nexus_common::protocol::GroupInfo;
 use nexus_common::validators;
+use sqlx::SqliteConnection;
 use sqlx::sqlite::SqlitePool;
 
 use crate::db::permissions::{Permission, Permissions};
@@ -81,9 +82,18 @@ impl GroupDb {
 
     /// Get a single group by ID
     pub async fn get_group_by_id(&self, id: i64) -> Result<Option<GroupRecord>, sqlx::Error> {
+        let mut conn = self.pool.acquire().await?;
+        Self::get_group_by_id_on(&mut conn, id).await
+    }
+
+    /// `get_group_by_id` against an explicit connection.
+    pub async fn get_group_by_id_on(
+        conn: &mut SqliteConnection,
+        id: i64,
+    ) -> Result<Option<GroupRecord>, sqlx::Error> {
         let row: Option<GroupRow> = sqlx::query_as(sql::SQL_SELECT_GROUP_BY_ID)
             .bind(id)
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *conn)
             .await?;
 
         Ok(row.map(GroupRecord::from))

@@ -737,11 +737,10 @@ pub const LOG_FLOOD_LIMITED: &str = "Chat rate limited";
 pub const LOG_FLOOD_DISCONNECT: &str = "Disconnected for repeated flood violations";
 
 // --- Bandwidth Weight Resolution ---
-// Login seeds the session cache by resolving bandwidth_weight from the DB.
-// UserUpdate / GroupUpdate get the resolved value from their respective
-// update returns (in-tx) and don't need a follow-up resolve. UserInfo /
-// UserList read from the session cache. So this log line only fires from
-// login.rs, where a DB error here disconnects the client.
+// Surfaces a DB error from resolving a user's effective bandwidth
+// weight (override → admin default → group → system default). Fires
+// from the login snapshot path; admin/group cascades carry the
+// resolved value in-tx and don't go through this read.
 pub const LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED: &str =
     "Failed to resolve bandwidth weight from database";
 
@@ -1125,6 +1124,10 @@ pub const LOG_LOGIN_GROUP_ERROR: &str = "Login: error fetching group";
 pub const LOG_LOGIN_HASH_ERROR: &str = "Login: failed to hash password";
 pub const LOG_LOGIN_CREATE_USER_ERROR: &str = "Login: failed to create first user";
 pub const LOG_LOGIN_PASSWORD_VERIFY_ERROR: &str = "Login: password verification error";
+pub const LOG_LOGIN_RENAMED_MID_LOGIN: &str = "Login: account renamed";
+pub const LOG_LOGIN_PASSWORD_CHANGED: &str = "Login: password changed";
+pub const LOG_LOGIN_ACCOUNT_TYPE_CHANGED: &str = "Login: account type changed";
+pub const LOG_LOGIN_ACCOUNT_STATE_CHANGED: &str = "Login: account state changed";
 
 // --- Handler: Voice ---
 pub const LOG_VOICE_JOIN_NOT_LOGGED_IN: &str = "VoiceJoin: not logged in";

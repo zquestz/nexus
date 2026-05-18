@@ -40,6 +40,7 @@ err-already-logged-in = 已经登录
 err-handshake-already-completed = 握手已完成
 err-account-deleted = 您的账户已被删除
 err-account-disabled-by-admin = 账户已被管理员禁用
+err-account-type-changed = 此账户的类型已更改。请重新连接。
 
 # 权限和访问错误
 err-permission-denied = 权限被拒绝
@@ -61,6 +62,9 @@ err-channel-list-invalid = 无效频道 '{ $channel }': { $reason }
 
 # 数据库错误
 err-database = 数据库错误
+err-login-permissions-failed = 无法加载账户权限
+err-login-group-failed = 无法加载账户分组
+err-login-bandwidth-failed = 无法加载账户带宽设置
 
 # 消息格式错误
 err-invalid-message-format = 无效的消息格式

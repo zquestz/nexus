@@ -134,6 +134,11 @@ pub fn err_account_disabled_by_admin(locale: &str) -> String {
     t(locale, "err-account-disabled-by-admin")
 }
 
+/// Get translated "account type changed" error
+pub fn err_account_type_changed(locale: &str) -> String {
+    t(locale, "err-account-type-changed")
+}
+
 /// Get translated "already logged in" error
 pub fn err_already_logged_in(locale: &str) -> String {
     t(locale, "err-already-logged-in")
@@ -340,6 +345,21 @@ pub fn err_channel_limit_exceeded(locale: &str, max: usize) -> String {
 /// Get translated "database" error
 pub fn err_database(locale: &str) -> String {
     t(locale, "err-database")
+}
+
+/// Get translated "login permissions failed" error
+pub fn err_login_permissions_failed(locale: &str) -> String {
+    t(locale, "err-login-permissions-failed")
+}
+
+/// Get translated "login group failed" error
+pub fn err_login_group_failed(locale: &str) -> String {
+    t(locale, "err-login-group-failed")
+}
+
+/// Get translated "login bandwidth failed" error
+pub fn err_login_bandwidth_failed(locale: &str) -> String {
+    t(locale, "err-login-bandwidth-failed")
 }
 
 /// Get translated "failed to create user" error

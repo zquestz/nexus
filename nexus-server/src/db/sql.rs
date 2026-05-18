@@ -344,19 +344,19 @@ pub const SQL_UPDATE_USER: &str = "UPDATE users
 /// 2. `user_id: i64` - User ID
 pub const SQL_UPDATE_USER_GROUP: &str = "UPDATE users SET group_id = ? WHERE id = ?";
 
-/// Delete user with atomic protection for last admin
+/// Delete user with atomic protection for last admin + non-admin-can't-delete-admin
 ///
 /// **Parameters:**
 /// 1. `user_id: i64` - User ID to delete
+/// 2. `requester_is_admin: bool` - Skip the admin-target guard when admin
 ///
 /// **Atomic Protection:**
 /// - Prevents deleting the last admin user
-/// - Uses subquery to check admin count atomically
-/// - Returns 0 rows affected if blocked by protection
-///
-/// **TOCTOU Prevention:** The admin count check and deletion happen in a
-/// single SQL statement, preventing race conditions where two admins could
-/// simultaneously delete each other, leaving zero admins.
+/// - Prevents non-admin requesters from deleting admin target accounts
+///   (closes the race where a target is promoted between the handler's
+///   pre-check and this DELETE)
+/// - Uses subqueries to check counts atomically
+/// - Returns 0 rows affected if blocked by either protection
 ///
 /// **Cascade:** Foreign key constraints automatically delete associated
 /// permissions when the user is deleted.
@@ -365,6 +365,11 @@ pub const SQL_DELETE_USER_ATOMIC: &str = "DELETE FROM users
      AND (
          is_admin = 0
          OR (SELECT COUNT(*) FROM users WHERE is_admin = 1) > 1
+     )
+     AND (
+         -- Non-admin requester cannot delete admin target.
+         ? = 1
+         OR is_admin = 0
      )";
 
 // ========================================================================

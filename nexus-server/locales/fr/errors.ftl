@@ -40,6 +40,7 @@ err-already-logged-in = Déjà connecté
 err-handshake-already-completed = Handshake déjà effectué
 err-account-deleted = Votre compte a été supprimé
 err-account-disabled-by-admin = Compte désactivé par l'administrateur
+err-account-type-changed = Le type de ce compte a changé. Veuillez vous reconnecter.
 
 # Erreurs de permission et d'accès
 err-permission-denied = Permission refusée
@@ -61,6 +62,9 @@ err-channel-list-invalid = Canal invalide '{ $channel }' : { $reason }
 
 # Erreurs de base de données
 err-database = Erreur de base de données
+err-login-permissions-failed = Échec du chargement des permissions du compte
+err-login-group-failed = Échec du chargement du groupe du compte
+err-login-bandwidth-failed = Échec du chargement des paramètres de bande passante
 
 # Erreurs de format de message
 err-invalid-message-format = Format de message invalide

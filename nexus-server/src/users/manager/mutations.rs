@@ -682,4 +682,53 @@ mod tests {
             1
         );
     }
+
+    /// `get_sessions_by_user_id` returns exactly the sessions for the
+    /// given user_id, regardless of username. The by-user_id form is
+    /// the cleanup-path primitive for `user_delete` — username could
+    /// be stale if another admin renamed the target between the
+    /// pre-tx fetch and the cleanup sweep.
+    #[tokio::test]
+    async fn test_get_sessions_by_user_id() {
+        let manager = UserManager::new();
+
+        // user_id=1 (shared, two sessions), user_id=2 (regular, "bob").
+        manager
+            .add_user(shared_session_params(1, "alice1", 1))
+            .await
+            .unwrap();
+        manager
+            .add_user(shared_session_params(1, "alice2", 1))
+            .await
+            .unwrap();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: 2,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: HashSet::new(),
+                address: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+                created_at: 0,
+                tx,
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                last_activity: std::time::Instant::now(),
+                bandwidth_weight: 1,
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(manager.get_sessions_by_user_id(1).await.len(), 2);
+        assert_eq!(manager.get_sessions_by_user_id(2).await.len(), 1);
+        assert!(manager.get_sessions_by_user_id(999).await.is_empty());
+    }
 }
