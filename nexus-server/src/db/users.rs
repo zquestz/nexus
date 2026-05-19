@@ -219,9 +219,6 @@ impl UserDb {
         Self { pool }
     }
 
-    /// Begin a transaction on the underlying pool, for callers that
-    /// need to thread multiple reads or writes through a single
-    /// connection.
     pub async fn begin(&self) -> Result<sqlx::Transaction<'_, sqlx::Sqlite>, sqlx::Error> {
         self.pool.begin().await
     }
@@ -236,8 +233,6 @@ impl UserDb {
         Self::get_user_by_id_on(&mut conn, user_id).await
     }
 
-    /// `get_user_by_id` against an explicit connection, so the read
-    /// can share a transaction with other queries.
     pub async fn get_user_by_id_on(
         conn: &mut SqliteConnection,
         user_id: i64,
@@ -337,7 +332,6 @@ impl UserDb {
         Self::get_resolved_bandwidth_weight_on(&mut conn, user_id).await
     }
 
-    /// `get_resolved_bandwidth_weight` against an explicit connection.
     pub async fn get_resolved_bandwidth_weight_on(
         conn: &mut SqliteConnection,
         user_id: i64,
@@ -418,9 +412,8 @@ impl UserDb {
         Self::get_user_permissions_on(&mut conn, user_id).await
     }
 
-    /// `get_user_permissions` against an explicit connection. The
-    /// three internal reads share that connection, so a shared read
-    /// transaction sees a coherent group+overrides view.
+    /// The three internal reads share the connection, so a shared
+    /// read tx sees a coherent group+overrides view.
     pub async fn get_user_permissions_on(
         conn: &mut SqliteConnection,
         user_id: i64,

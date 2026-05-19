@@ -38,6 +38,10 @@ pub struct NewSessionParams {
     pub group_name: Option<String>,
     /// Resolved effective bandwidth weight at session creation.
     pub bandwidth_weight: u16,
+    /// Per-user override column value (`None` if NULL). Group cascades
+    /// skip sessions where this is `Some(_)` even if the value matches
+    /// the group's weight.
+    pub bandwidth_weight_override: Option<u16>,
     /// Last meaningful activity time (for idle tracking)
     pub last_activity: std::time::Instant,
 }
@@ -90,12 +94,16 @@ pub struct UserSession {
     /// the value is advisory for fairness (not a correctness invariant).
     ///
     /// Multi-session invariant: every session of a given `user_id` holds
-    /// the same value, kept in lockstep by `UserManager::update_bandwidth_weight`
+    /// the same value, kept in lockstep by `UserManager::update_bandwidth_state`
     /// fanning out the new value to every session in a single pass. The
     /// atomic is **not** shared between sessions (each `UserSession` owns
     /// its own); the convergence is by value, not by memory. Readers that
     /// aggregate across sessions of one user can read any one session.
     pub bandwidth_weight: AtomicU16,
+    /// Per-user override column value (`None` if NULL). Group cascades
+    /// skip sessions where this is `Some(_)` even if the value matches
+    /// the group's weight.
+    pub bandwidth_weight_override: Option<u16>,
     /// Last meaningful activity time (for idle tracking, excludes passive messages like Ping/UserAway)
     pub last_activity: std::time::Instant,
 }
@@ -103,7 +111,7 @@ pub struct UserSession {
 // Manual `Clone` impl: `AtomicU16` doesn't derive `Clone` (cloning an
 // atomic isn't atomic). The clone snapshots the current value into a
 // fresh atomic, so the clone is independent of the original — subsequent
-// writes through `update_bandwidth_weight` don't propagate to the clone.
+// writes through `update_bandwidth_state` don't propagate to the clone.
 // This matches every caller's intent (queries return snapshots; live
 // updates flow through the manager lock).
 impl Clone for UserSession {
@@ -131,6 +139,7 @@ impl Clone for UserSession {
                 self.bandwidth_weight
                     .load(std::sync::atomic::Ordering::Relaxed),
             ),
+            bandwidth_weight_override: self.bandwidth_weight_override,
             last_activity: self.last_activity,
         }
     }
@@ -159,6 +168,7 @@ impl UserSession {
             group_id: params.group_id,
             group_name: params.group_name,
             bandwidth_weight: AtomicU16::new(params.bandwidth_weight),
+            bandwidth_weight_override: params.bandwidth_weight_override,
             last_activity: params.last_activity,
         }
     }

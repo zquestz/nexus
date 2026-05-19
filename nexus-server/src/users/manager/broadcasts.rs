@@ -88,23 +88,17 @@ impl UserManager {
         self.remove_disconnected(disconnected).await;
     }
 
-    /// Broadcast a message to all sessions of a specific user (by username, case-insensitive)
-    ///
-    /// This is useful for multi-session scenarios where the same user is logged in
-    /// from multiple devices/connections and all sessions need to be notified.
-    ///
-    /// Automatically removes users whose channels have closed (disconnected connections).
-    pub async fn broadcast_to_username(&self, username: &str, message: &ServerMessage) {
+    /// Broadcast to every session of `user_id`. Keyed on the
+    /// immutable PK so a concurrent rename can't make the lookup miss
+    /// sessions. Automatically removes sessions whose channels have
+    /// closed (disconnected connections).
+    pub async fn broadcast_to_user_id(&self, user_id: i64, message: &ServerMessage) {
         let mut disconnected = Vec::new();
-
-        let username_lower = username.to_lowercase();
 
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if user.username.to_lowercase() == username_lower
-                    && user.tx.send((message.clone(), None)).is_err()
-                {
+                if user.user_id == user_id && user.tx.send((message.clone(), None)).is_err() {
                     disconnected.push(user.session_id);
                 }
             }
@@ -240,5 +234,82 @@ impl UserManager {
         }
 
         self.remove_disconnected(disconnected).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::net::SocketAddr;
+
+    use tokio::sync::mpsc;
+
+    use super::*;
+    use crate::users::user::NewSessionParams;
+
+    fn session_params(
+        user_id: i64,
+        username: &str,
+        tx: mpsc::UnboundedSender<(ServerMessage, Option<nexus_common::framing::MessageId>)>,
+    ) -> NewSessionParams {
+        NewSessionParams {
+            session_id: 0,
+            user_id,
+            username: username.to_string(),
+            is_admin: false,
+            is_shared: false,
+            permissions: HashSet::new(),
+            address: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+            created_at: 0,
+            tx,
+            features: vec![],
+            locale: "en".to_string(),
+            avatar: None,
+            nickname: username.to_string(),
+            is_away: false,
+            status: None,
+            group_id: None,
+            group_name: None,
+            bandwidth_weight_override: None,
+            last_activity: std::time::Instant::now(),
+            bandwidth_weight: 1,
+        }
+    }
+
+    /// `broadcast_to_user_id` delivers to every session of the given
+    /// user_id (multi-session case) and skips other users. Pins the
+    /// PK-keyed dispatch contract that the rename-race fix depends on.
+    #[tokio::test]
+    async fn test_broadcast_to_user_id_hits_all_sessions_of_one_user_only() {
+        let manager = UserManager::new();
+
+        // user_id=1 has two sessions (test fixture exercising the
+        // multi-session-per-user fan-out — not a production state for
+        // a regular account); user_id=2 has one.
+        let (tx_a1, mut rx_a1) = mpsc::unbounded_channel();
+        let (tx_a2, mut rx_a2) = mpsc::unbounded_channel();
+        let (tx_b, mut rx_b) = mpsc::unbounded_channel();
+        manager
+            .add_user(session_params(1, "alice_one", tx_a1))
+            .await
+            .unwrap();
+        manager
+            .add_user(session_params(1, "alice_two", tx_a2))
+            .await
+            .unwrap();
+        manager
+            .add_user(session_params(2, "bob", tx_b))
+            .await
+            .unwrap();
+
+        let payload = ServerMessage::Pong;
+        manager.broadcast_to_user_id(1, &payload).await;
+
+        assert!(rx_a1.try_recv().is_ok(), "alice's first session received");
+        assert!(rx_a2.try_recv().is_ok(), "alice's second session received");
+        assert!(
+            rx_b.try_recv().is_err(),
+            "bob (different user_id) must not receive"
+        );
     }
 }

@@ -81,7 +81,12 @@ where
             .await;
     };
 
-    // Get requesting user from session
+    // Acquire the state lock before fetching the requester so all
+    // requester-dependent authorization + cache reconciliation runs
+    // against a snapshot that can't drift mid-handler. Dropped at
+    // every early-reject path before any socket I/O, and at the end
+    // of the success arm before the final broadcast.
+    let _state_guard = ctx.user_manager.lock_user_state().await;
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -89,6 +94,7 @@ where
     {
         Some(u) => u,
         None => {
+            drop(_state_guard);
             return ctx
                 .send_error_and_disconnect(
                     &err_authentication(ctx.locale),
@@ -108,10 +114,12 @@ where
                 id: None,
                 username: None,
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %request.id, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_LOOKUP);
+            drop(_state_guard);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
                 .await;
@@ -134,6 +142,7 @@ where
             id: None,
             username: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -153,6 +162,7 @@ where
                 id: None,
                 username: None,
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
 
@@ -170,6 +180,7 @@ where
                 id: None,
                 username: None,
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
 
@@ -184,6 +195,7 @@ where
                 id: None,
                 username: None,
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
 
@@ -203,6 +215,7 @@ where
                 id: None,
                 username: None,
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
 
@@ -218,6 +231,7 @@ where
                     id: None,
                     username: None,
                 };
+                drop(_state_guard);
                 return ctx.send_message(&response).await;
             };
 
@@ -230,10 +244,12 @@ where
                         id: None,
                         username: None,
                     };
+                    drop(_state_guard);
                     return ctx.send_message(&response).await;
                 }
                 Err(e) => {
                     error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_USER);
+                    drop(_state_guard);
                     return ctx
                         .send_error_and_disconnect(
                             &err_database(ctx.locale),
@@ -252,10 +268,12 @@ where
                         id: None,
                         username: None,
                     };
+                    drop(_state_guard);
                     return ctx.send_message(&response).await;
                 }
                 Err(e) => {
                     error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_PASSWORD_VERIFY);
+                    drop(_state_guard);
                     return ctx
                         .send_error_and_disconnect(
                             &err_database(ctx.locale),
@@ -275,6 +293,7 @@ where
                 id: None,
                 username: None,
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
 
@@ -290,6 +309,7 @@ where
                         id: None,
                         username: None,
                     };
+                    drop(_state_guard);
                     return ctx.send_message(&response).await;
                 }
                 Ok(Some(_)) => {} // Target is not admin, proceed
@@ -300,10 +320,12 @@ where
                         id: None,
                         username: None,
                     };
+                    drop(_state_guard);
                     return ctx.send_message(&response).await;
                 }
                 Err(e) => {
                     error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
+                    drop(_state_guard);
                     return ctx
                         .send_error_and_disconnect(
                             &err_database(ctx.locale),
@@ -332,6 +354,7 @@ where
             id: None,
             username: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -346,6 +369,7 @@ where
             id: None,
             username: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -360,6 +384,7 @@ where
             id: None,
             username: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -375,6 +400,7 @@ where
             id: None,
             username: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -388,10 +414,12 @@ where
                 id: None,
                 username: None,
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
+            drop(_state_guard);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
                 .await;
@@ -412,6 +440,7 @@ where
             id: None,
             username: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -433,6 +462,7 @@ where
             id: None,
             username: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -485,6 +515,7 @@ where
                 Ok(w) => w,
                 Err(e) => {
                     error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
+                    drop(_state_guard);
                     return ctx
                         .send_error_and_disconnect(
                             &err_database(ctx.locale),
@@ -504,6 +535,7 @@ where
                 id: None,
                 username: None,
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
     }
@@ -518,6 +550,7 @@ where
             id: None,
             username: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -543,6 +576,7 @@ where
                     id: None,
                     username: None,
                 };
+                drop(_state_guard);
                 return ctx.send_message(&response).await;
             }
         }
@@ -569,6 +603,7 @@ where
                 id: None,
                 username: None,
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
 
@@ -583,6 +618,7 @@ where
                         id: None,
                         username: None,
                     };
+                    drop(_state_guard);
                     return ctx.send_message(&response).await;
                 }
             };
@@ -596,6 +632,7 @@ where
                     id: None,
                     username: None,
                 };
+                drop(_state_guard);
                 return ctx.send_message(&response).await;
             }
 
@@ -640,6 +677,7 @@ where
                                     id: None,
                                     username: None,
                                 };
+                                drop(_state_guard);
                                 return ctx.send_message(&response).await;
                             }
                         };
@@ -651,6 +689,7 @@ where
                                     id: None,
                                     username: None,
                                 };
+                                drop(_state_guard);
                                 return ctx.send_message(&response).await;
                             }
                         }
@@ -688,6 +727,7 @@ where
                                     id: None,
                                     username: None,
                                 };
+                                drop(_state_guard);
                                 return ctx.send_message(&response).await;
                             }
                         };
@@ -699,6 +739,7 @@ where
                                     id: None,
                                     username: None,
                                 };
+                                drop(_state_guard);
                                 return ctx.send_message(&response).await;
                             }
                         }
@@ -714,10 +755,12 @@ where
                                 id: None,
                                 username: None,
                             };
+                            drop(_state_guard);
                             return ctx.send_message(&response).await;
                         }
                         Err(e) => {
                             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP);
+                            drop(_state_guard);
                             return ctx
                                 .send_error_and_disconnect(
                                     &err_database(ctx.locale),
@@ -735,6 +778,7 @@ where
                             id: None,
                             username: None,
                         };
+                        drop(_state_guard);
                         return ctx.send_message(&response).await;
                     }
                     if !account.is_shared && group.is_shared {
@@ -744,6 +788,7 @@ where
                             id: None,
                             username: None,
                         };
+                        drop(_state_guard);
                         return ctx.send_message(&response).await;
                     }
 
@@ -762,6 +807,7 @@ where
                             id: None,
                             username: None,
                         };
+                        drop(_state_guard);
                         return ctx.send_message(&response).await;
                     }
 
@@ -782,6 +828,7 @@ where
                                     id: None,
                                     username: None,
                                 };
+                                drop(_state_guard);
                                 return ctx.send_message(&response).await;
                             }
                         };
@@ -793,6 +840,7 @@ where
                                     id: None,
                                     username: None,
                                 };
+                                drop(_state_guard);
                                 return ctx.send_message(&response).await;
                             }
                         }
@@ -841,6 +889,7 @@ where
                                 id: None,
                                 username: None,
                             };
+                            drop(_state_guard);
                             return ctx.send_message(&response).await;
                         }
                         parsed_revokes.push(perm);
@@ -852,6 +901,7 @@ where
                             id: None,
                             username: None,
                         };
+                        drop(_state_guard);
                         return ctx.send_message(&response).await;
                     }
                 }
@@ -900,12 +950,14 @@ where
                     id: None,
                     username: None,
                 };
+                drop(_state_guard);
                 return ctx.send_message(&response).await;
             }
             match hash_password_async(password.clone(), min_strength, false).await {
                 Ok(hash) => Some(hash),
                 Err(e) => {
                     error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_HASH_ERROR);
+                    drop(_state_guard);
                     return ctx
                         .send_error_and_disconnect(
                             &err_database(ctx.locale),
@@ -960,6 +1012,7 @@ where
                     id: None,
                     username: None,
                 };
+                drop(_state_guard);
                 return ctx.send_message(&response).await;
             }
         }
@@ -1066,13 +1119,13 @@ where
                 // login) — same invariant `UserManager::update_username`
                 // honors for `user.nickname`.
                 if !updated_account.is_shared {
-                    let session_ids = ctx
+                    let sessions = ctx
                         .user_manager
-                        .get_session_ids_for_user(&updated_account.username)
+                        .get_sessions_by_user_id(updated_account.id)
                         .await;
-                    for session_id in session_ids {
+                    for session in sessions {
                         ctx.voice_registry
-                            .update_nickname(session_id, updated_account.username.clone())
+                            .update_nickname(session.session_id, updated_account.username.clone())
                             .await;
                     }
                 }
@@ -1140,7 +1193,7 @@ where
 
                     // Send to all sessions belonging to the updated user
                     ctx.user_manager
-                        .broadcast_to_username(&updated_account.username, &permissions_update)
+                        .broadcast_to_user_id(updated_account.id, &permissions_update)
                         .await;
 
                     // Admin-aware: admins hold `VoiceListen` implicitly
@@ -1156,27 +1209,19 @@ where
                             .contains(&Permission::VoiceListen);
 
                     if had_voice_listen && !has_voice_listen {
-                        // Get all session IDs for this user and remove them from voice
-                        let session_ids = ctx
+                        for session in ctx
                             .user_manager
-                            .get_session_ids_for_user(&updated_account.username)
-                            .await;
-
-                        for session_id in session_ids {
-                            if let Some(info) =
-                                ctx.voice_registry.remove_by_session_id(session_id).await
+                            .get_sessions_by_user_id(updated_account.id)
+                            .await
+                        {
+                            if let Some(info) = ctx
+                                .voice_registry
+                                .remove_by_session_id(session.session_id)
+                                .await
                             {
-                                // Get the leaving user's tx if still connected
-                                let leaving_user_tx = ctx
-                                    .user_manager
-                                    .get_user_by_session_id(session_id)
-                                    .await
-                                    .map(|u| u.tx.clone());
-
-                                // Send notifications using the consolidated helper
                                 send_voice_leave_notifications(
                                     &info,
-                                    leaving_user_tx.as_ref(),
+                                    Some(&session.tx),
                                     ctx.user_manager,
                                     ctx.channel_manager,
                                 )
@@ -1194,29 +1239,25 @@ where
             // UserDisconnected because the user is already gone from
             // the manager.
             if let Some(false) = request.enabled {
-                let session_ids = ctx
+                for user in ctx
                     .user_manager
-                    .get_session_ids_for_user(&updated_account.username)
+                    .get_sessions_by_user_id(updated_account.id)
+                    .await
+                {
+                    let disconnect_msg = ServerMessage::Error {
+                        message: err_account_disabled_by_admin(&user.locale),
+                        command: None,
+                    };
+                    let _ = user.tx.send((disconnect_msg, None));
+
+                    remove_user_with_voice_cleanup(
+                        ctx.user_manager,
+                        ctx.voice_registry,
+                        ctx.channel_manager,
+                        user.session_id,
+                        &user,
+                    )
                     .await;
-
-                for session_id in session_ids {
-                    if let Some(user) = ctx.user_manager.get_user_by_session_id(session_id).await {
-                        let disconnect_msg = ServerMessage::Error {
-                            message: err_account_disabled_by_admin(&user.locale),
-                            command: None,
-                        };
-                        let _ = user.tx.send((disconnect_msg, None));
-
-                        // Remove from voice (if in voice) and UserManager, broadcast disconnection
-                        remove_user_with_voice_cleanup(
-                            ctx.user_manager,
-                            ctx.voice_registry,
-                            ctx.channel_manager,
-                            session_id,
-                            &user,
-                        )
-                        .await;
-                    }
                 }
             }
 
@@ -1259,14 +1300,14 @@ where
 
             let sessions = if broadcast_should_fire {
                 ctx.user_manager
-                    .get_sessions_by_username(&updated_account.username)
+                    .get_sessions_by_user_id(updated_account.id)
                     .await
             } else {
                 Vec::new()
             };
 
             // All sessions of one user agree on the cached weight
-            // (`update_bandwidth_weight` fan-out invariant); first
+            // (`update_bandwidth_state` fan-out invariant); first
             // session is authoritative. `None` means offline.
             let old_resolved: Option<u16> = sessions
                 .first()
@@ -1274,7 +1315,11 @@ where
 
             if cache_should_refresh {
                 ctx.user_manager
-                    .update_bandwidth_weight(updated_account.id, resolved_bandwidth_weight)
+                    .update_bandwidth_state(
+                        updated_account.id,
+                        updated_account.bandwidth_weight,
+                        resolved_bandwidth_weight,
+                    )
                     .await;
             }
 
@@ -1342,6 +1387,7 @@ where
                     .await;
             }
 
+            drop(_state_guard);
             ctx.send_message(&response).await
         }
         Ok(crate::db::UpdateUserResult::BlockedForGroupAuth) => {
@@ -1355,6 +1401,7 @@ where
                 id: None,
                 username: None,
             };
+            drop(_state_guard);
             ctx.send_message(&response).await
         }
         Ok(crate::db::UpdateUserResult::Blocked) => {
@@ -1409,10 +1456,12 @@ where
                 id: None,
                 username: None,
             };
+            drop(_state_guard);
             ctx.send_message(&response).await
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR);
+            drop(_state_guard);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
                 .await;
@@ -3507,6 +3556,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -3836,10 +3886,10 @@ mod tests {
 
     /// Regression: a single `UserUpdate` that both renames AND disables a
     /// user must still disconnect the active session. Pre-fix, the cache
-    /// rename ran after the disable-disconnect lookup, so
-    /// `get_session_ids_for_user(&new_username)` found nothing while the
-    /// cache still carried the old username — the renamed user stayed
-    /// online despite being disabled.
+    /// rename ran after the disable-disconnect lookup, so the lookup
+    /// found nothing under the new username while the cache still
+    /// carried the old one — the renamed user stayed online despite
+    /// being disabled.
     #[tokio::test]
     async fn test_userupdate_rename_and_disable_disconnects_session() {
         let mut test_ctx = create_test_context().await;
@@ -3971,6 +4021,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4112,6 +4163,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4232,6 +4284,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4258,6 +4311,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4672,6 +4726,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4772,6 +4827,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4868,6 +4924,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -4967,6 +5024,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -5059,6 +5117,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -5154,6 +5213,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -5260,6 +5320,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -5352,6 +5413,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -5456,6 +5518,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -5563,6 +5626,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -5660,6 +5724,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -5795,6 +5860,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -7660,6 +7726,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -7775,6 +7842,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: 50,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -8382,6 +8450,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -8490,6 +8559,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await

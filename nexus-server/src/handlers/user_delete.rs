@@ -39,10 +39,14 @@ where
             .await;
     };
 
-    // Get requesting user from session
+    // Acquire the state lock so a concurrent admin user/group update
+    // can't interleave its cache reconciliation / broadcasts with our
+    // delete + sweep. Dropped before each direct writer-socket I/O.
+    let _state_guard = ctx.user_manager.lock_user_state().await;
     let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
+            drop(_state_guard);
             return ctx
                 .send_error_and_disconnect(
                     &err_authentication(ctx.locale),
@@ -60,6 +64,7 @@ where
             error: Some(err_permission_denied(ctx.locale)),
             username: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -72,10 +77,12 @@ where
                 error: Some(err_user_not_found(ctx.locale, &id.to_string())),
                 username: None,
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
         Err(e) => {
             error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
+            drop(_state_guard);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_DELETE))
                 .await;
@@ -89,6 +96,7 @@ where
             error: Some(err_cannot_delete_self(ctx.locale)),
             username: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -98,6 +106,7 @@ where
             error: Some(err_cannot_delete_guest(ctx.locale)),
             username: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -108,15 +117,12 @@ where
             error: Some(err_cannot_delete_admin(ctx.locale)),
             username: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
-    // DB delete first. On Blocked or Err the user stays in UserManager
-    // — no kick is dispatched on a failed delete. After commit, a
-    // concurrent login can't add new sessions for this user_id (auth
-    // would fail against the missing row), so the by-user_id
-    // disconnect sweep below catches everything that existed at
-    // delete time.
+    // DB delete first; the by-user_id disconnect sweep below runs
+    // only on Ok(true). On Blocked / Err the user stays online.
     match ctx
         .db
         .users
@@ -153,6 +159,7 @@ where
                 error: None,
                 username: Some(target_user.username),
             };
+            drop(_state_guard);
             ctx.send_message(&response).await
         }
         Ok(false) => {
@@ -164,6 +171,7 @@ where
                 Ok(t) => t,
                 Err(e) => {
                     error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
+                    drop(_state_guard);
                     return ctx
                         .send_error_and_disconnect(
                             &err_database(ctx.locale),
@@ -185,10 +193,12 @@ where
                 error: Some(error),
                 username: None,
             };
+            drop(_state_guard);
             ctx.send_message(&response).await
         }
         Err(e) => {
             error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
+            drop(_state_guard);
             ctx.send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_DELETE))
                 .await
         }
@@ -610,6 +620,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await

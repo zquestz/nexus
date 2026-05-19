@@ -822,6 +822,12 @@ pub const SQL_DELETE_GROUP_PERMISSIONS: &str = "DELETE FROM group_permissions WH
 pub const SQL_INSERT_GROUP_PERMISSION: &str =
     "INSERT INTO group_permissions (group_id, permission) VALUES (?, ?)";
 
+pub const SQL_INSERT_GROUP_PERMISSION_OR_IGNORE: &str =
+    "INSERT OR IGNORE INTO group_permissions (group_id, permission) VALUES (?, ?)";
+
+pub const SQL_DELETE_GROUP_PERMISSION_BY_NAME: &str =
+    "DELETE FROM group_permissions WHERE group_id = ? AND permission = ?";
+
 /// Insert a new group
 ///
 /// **Parameters:**
@@ -857,23 +863,6 @@ pub const SQL_UPDATE_GROUP: &str = "UPDATE groups SET name = ?, is_shared = ?, b
         is_shared = ?
         OR (SELECT COUNT(*) FROM users WHERE group_id = ?) = 0
     )";
-
-/// Select the IDs of users in a given group whose bandwidth_weight
-/// override is NULL — i.e. members who inherit the group's bandwidth
-/// weight as their effective value.
-///
-/// **Parameters:**
-/// 1. `group_id: i64` - Group ID
-///
-/// **Returns:** `Vec<(i64,)>` — user IDs of inheriting members.
-///
-/// **Note:** Used by `update_group` inside its transaction to snapshot
-/// which members' effective weights actually move when the group's
-/// weight changes (override-holders are excluded — their override
-/// still wins). Bound to the same tx as the UPDATE so the membership
-/// matches the row state being committed.
-pub const SQL_SELECT_GROUP_INHERITING_MEMBERS: &str =
-    "SELECT id FROM users WHERE group_id = ? AND bandwidth_weight IS NULL";
 
 /// Atomically delete a group by ID, only if it has no assigned members
 ///

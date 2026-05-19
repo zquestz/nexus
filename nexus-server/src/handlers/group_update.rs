@@ -27,7 +27,7 @@ use super::{
     err_permissions_too_many, err_unknown_permission,
 };
 use crate::constants::*;
-use crate::db::{Permission, Permissions};
+use crate::db::{GroupPermissionWriteScope, Permission, Permissions};
 use crate::users::manager::UserManager;
 use crate::users::user::UserSession;
 use crate::voice::send_voice_leave_notifications;
@@ -53,10 +53,16 @@ where
             .await;
     };
 
-    // Get requesting user from session
+    // Acquire the state lock before fetching the requester so all
+    // requester-dependent authorization + cache reconciliation runs
+    // against a snapshot that can't drift mid-handler. Dropped at
+    // every early-reject path before any socket I/O, and at the end
+    // of the success arm before the final broadcast.
+    let _state_guard = ctx.user_manager.lock_user_state().await;
     let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(u) => u,
         None => {
+            drop(_state_guard);
             return ctx
                 .send_error_and_disconnect(
                     &err_authentication(ctx.locale),
@@ -75,6 +81,7 @@ where
             name: None,
             error: Some(err_permission_denied(ctx.locale)),
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -87,6 +94,7 @@ where
             name: None,
             error: Some(err_group_no_fields(ctx.locale)),
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -107,6 +115,7 @@ where
             name: None,
             error: Some(error_msg),
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -131,6 +140,7 @@ where
             name: None,
             error: Some(error_msg),
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -144,10 +154,12 @@ where
                 name: None,
                 error: Some(err_group_not_found(ctx.locale)),
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_UPDATE_DB_ERROR);
+            drop(_state_guard);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_GROUP_UPDATE))
                 .await;
@@ -159,6 +171,7 @@ where
         Ok(p) => p,
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_UPDATE_DB_ERROR);
+            drop(_state_guard);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_GROUP_UPDATE))
                 .await;
@@ -173,6 +186,7 @@ where
             Ok(c) => c,
             Err(e) => {
                 error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_UPDATE_DB_ERROR);
+                drop(_state_guard);
                 return ctx
                     .send_error_and_disconnect(
                         &err_database(ctx.locale),
@@ -189,6 +203,7 @@ where
                 name: None,
                 error: Some(err_group_not_empty_modify(ctx.locale)),
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
     }
@@ -197,13 +212,15 @@ where
     let final_name = name.unwrap_or_else(|| group.name.clone());
     let final_is_shared = is_shared.unwrap_or(group.is_shared);
 
-    // Resolve final permissions
-    let final_permissions_vec: Vec<Permission> = if let Some(ref requested_perms) = permissions {
-        // Parse and validate each permission string
-        let mut parsed_requested: Vec<Permission> = Vec::new();
+    // Parse the requested permissions, if any. For non-admins, also
+    // collect the requester's owned permissions — the `OwnedSubset`
+    // write below only touches rows in that slice, so a concurrent
+    // admin grant of an unowned permission survives.
+    let parsed_requested: Option<Vec<Permission>> = if let Some(ref requested_perms) = permissions {
+        let mut parsed: Vec<Permission> = Vec::new();
         for perm_str in requested_perms {
             match Permission::parse(perm_str) {
-                Some(perm) => parsed_requested.push(perm),
+                Some(perm) => parsed.push(perm),
                 None => {
                     let response = ServerMessage::GroupUpdateResponse {
                         success: false,
@@ -211,16 +228,16 @@ where
                         name: None,
                         error: Some(err_unknown_permission(ctx.locale, perm_str)),
                     };
+                    drop(_state_guard);
                     return ctx.send_message(&response).await;
                 }
             }
         }
 
-        // Non-admins: validate requested permissions, then merge with
-        // current group permissions the requester can't control
+        // Reject if requesting a permission the non-admin editor
+        // doesn't hold.
         if !requesting_user.is_admin {
-            // Reject if requesting a permission the editor doesn't hold
-            for perm in &parsed_requested {
+            for perm in &parsed {
                 if !requesting_user.has_permission(*perm) {
                     warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm.as_str(), "{}", LOG_GROUP_UPDATE_UNOWNED_PERMISSION);
                     let response = ServerMessage::GroupUpdateResponse {
@@ -229,35 +246,51 @@ where
                         name: None,
                         error: Some(err_permission_denied(ctx.locale)),
                     };
+                    drop(_state_guard);
                     return ctx.send_message(&response).await;
                 }
             }
-
-            // Merge: preserve current group permissions the requester can't
-            // control, then layer in the requested changes
-            let mut merged = Vec::new();
-            for perm in &current_permissions {
-                if !requesting_user.has_permission(*perm) {
-                    merged.push(*perm);
-                }
-            }
-            for perm in parsed_requested {
-                if !merged.contains(&perm) {
-                    merged.push(perm);
-                }
-            }
-            merged
-        } else {
-            parsed_requested
         }
+        Some(parsed)
     } else {
-        // No permission changes requested — pass through current permissions unchanged
-        current_permissions.clone()
+        None
     };
 
-    // Shared group permission validation: if final group is shared, all permissions must be allowed
+    // Project the expected final set for shared-compatibility validation.
+    // For admin requests this is just the requested set. For non-admin
+    // requests it's (current ∖ owned) ∪ (owned ∩ requested) — i.e. the
+    // unowned perms we'll leave in place plus the owned perms the
+    // requester is asking for. The projection is snapshot-based: a
+    // racing admin grant of an incompatible perm between this read and
+    // our tx could land an unvalidated state. Same race window as the
+    // pre-OwnedSubset code; closing it requires in-tx validation
+    // (deferred).
+    let requester_owned: Vec<Permission> = if requesting_user.is_admin {
+        Vec::new()
+    } else {
+        requesting_user.permissions.iter().copied().collect()
+    };
+    let projected_final: Vec<Permission> = match (&parsed_requested, requesting_user.is_admin) {
+        (Some(req), true) => req.clone(),
+        (Some(req), false) => {
+            let mut out: Vec<Permission> = current_permissions
+                .iter()
+                .filter(|p| !requester_owned.contains(p))
+                .copied()
+                .collect();
+            for p in req {
+                if !out.contains(p) {
+                    out.push(*p);
+                }
+            }
+            out
+        }
+        (None, _) => current_permissions.clone(),
+    };
+
+    // Shared group permission validation against the projected final set.
     if final_is_shared {
-        for perm in &final_permissions_vec {
+        for perm in &projected_final {
             if !is_shared_account_permission(perm.as_str()) {
                 let response = ServerMessage::GroupUpdateResponse {
                     success: false,
@@ -265,21 +298,36 @@ where
                     name: None,
                     error: Some(err_group_shared_permission(ctx.locale)),
                 };
+                drop(_state_guard);
                 return ctx.send_message(&response).await;
             }
         }
     }
 
-    // Capture old state for diff detection
+    // Capture old state for diff detection. `old_permissions` is
+    // sourced from the in-tx `previous_permissions` returned by
+    // `update_group` below, not the pre-tx `current_permissions`,
+    // because a concurrent group update can land between our
+    // pre-tx read and our tx and a snapshot-based diff would
+    // misclassify "we re-wrote the value the other update already
+    // cascaded" as "no change" and skip our cascade, leaving caches
+    // stale.
     let old_name = group.name.clone();
     let old_bandwidth_weight = group.bandwidth_weight;
-    let old_permissions: HashSet<Permission> = current_permissions.into_iter().collect();
 
-    let final_permissions: Permissions = Permissions::from(final_permissions_vec.as_slice());
+    // What we hand to the DB: the requested set as-is (DB layer handles
+    // ReplaceAll vs OwnedSubset semantics). When no permissions change
+    // was requested we pass an empty set with NoChange scope.
+    let requested_permissions: Permissions = match &parsed_requested {
+        Some(p) => Permissions::from(p.as_slice()),
+        None => Permissions::new(),
+    };
+    let permission_write_scope = match (&parsed_requested, requesting_user.is_admin) {
+        (Some(_), true) => GroupPermissionWriteScope::ReplaceAll,
+        (Some(_), false) => GroupPermissionWriteScope::OwnedSubset(&requester_owned),
+        (None, _) => GroupPermissionWriteScope::NoChange,
+    };
 
-    // Bandwidth weight delegation: a non-admin updating a group can set
-    // its weight only at or below their own resolved bandwidth weight.
-    // Admins bypass.
     if !requesting_user.is_admin
         && let Some(w) = bandwidth_weight
         && w > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
@@ -290,6 +338,7 @@ where
             name: None,
             error: Some(err_bandwidth_weight_delegation(ctx.locale)),
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
     if let Some(w) = bandwidth_weight
@@ -301,6 +350,7 @@ where
             name: None,
             error: Some(err_bandwidth_weight_zero(ctx.locale, MIN_BANDWIDTH_WEIGHT)),
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
     let final_bandwidth_weight = bandwidth_weight.unwrap_or(group.bandwidth_weight);
@@ -313,18 +363,21 @@ where
             id,
             &final_name,
             final_is_shared,
-            &final_permissions,
+            &requested_permissions,
             final_bandwidth_weight,
+            permission_write_scope,
         )
         .await
     {
         Ok(Some(crate::db::UpdateGroupResult {
             group: updated_group,
-            inheriting_member_ids,
+            previous_permissions,
+            final_permissions,
         })) => {
-            // Source of truth for everything below is `updated_group` —
-            // the row state from the same tx as the write — not the
-            // `final_*` values we asked it to write.
+            // Source of truth for everything below is `updated_group`,
+            // `previous_permissions`, and `final_permissions` — all
+            // read in the same tx as the write — not the request
+            // values we asked it to write or the pre-tx snapshot.
             info!(user = %requesting_user.username, ip = %ctx.peer_addr, group = %updated_group.name, "{}", LOG_GROUP_UPDATE_SUCCESS);
             let response = ServerMessage::GroupUpdateResponse {
                 success: true,
@@ -332,77 +385,35 @@ where
                 name: Some(updated_group.name.clone()),
                 error: None,
             };
-            ctx.send_message(&response).await?;
 
-            // === Cascade to member sessions ===
+            // Send is deferred to the end of this arm: avoids holding
+            // `_state_guard` across socket I/O and avoids `?` skipping
+            // the cache fan-out on a client disconnect.
 
             let name_changed = old_name != updated_group.name;
+            let old_permissions: HashSet<Permission> =
+                previous_permissions.iter().copied().collect();
             let new_permissions: HashSet<Permission> = final_permissions.iter().copied().collect();
             let permissions_changed = old_permissions != new_permissions;
             let bandwidth_weight_changed = old_bandwidth_weight != updated_group.bandwidth_weight;
 
-            // Cascade scope: when the group's bandwidth weight changes,
-            // only members whose effective weight is sourced from the group
-            // (NULL override) actually move. Override-holders stay pinned
-            // to their own value — broadcasting "your bandwidth changed"
-            // for them would be both wasteful and a lie. The set comes
-            // directly from `update_group` (computed inside the same tx
-            // as the write), so the membership matches the row state we
-            // just committed.
             let inheriting_set: HashSet<i64> = if bandwidth_weight_changed {
-                inheriting_member_ids.into_iter().collect()
+                ctx.user_manager
+                    .update_bandwidth_weight_for_group_inheritors(
+                        id,
+                        updated_group.bandwidth_weight,
+                    )
+                    .await
             } else {
                 HashSet::new()
             };
 
-            // Bandwidth cache refresh: a single batched call walks the
-            // session map once and updates every session whose user_id
-            // is in `inheriting_set`. Offline members produce no
-            // matching sessions; we don't need a session snapshot to
-            // scope this fan-out.
-            //
-            // Race window with concurrent `UserUpdate`: `inheriting_set`
-            // is bound to the group tx, but this fan-out runs after
-            // commit. If a `UserUpdate` sets a per-user override on
-            // member X between our commit and this fan-out, X is no
-            // longer truly inheriting but we still write
-            // `updated_group.bandwidth_weight` to X's cache — briefly
-            // poisoning it with the old (now-incorrect) value. The
-            // window is bounded by the gap between the two `await`
-            // points (microseconds in practice); the `UserUpdate`
-            // handler's own cache-refresh path then overwrites X with
-            // the correct resolved value. Bandwidth is advisory for
-            // fairness, not a correctness invariant, so the brief stale
-            // window is acceptable. Eliminating it would require
-            // re-resolving every inheriting member inside the tx (N
-            // extra reads); accept the eventual consistency instead.
-            if bandwidth_weight_changed {
-                ctx.user_manager
-                    .update_bandwidth_weight_for_user_ids(
-                        &inheriting_set,
-                        updated_group.bandwidth_weight,
-                    )
-                    .await;
-            }
-
             if name_changed {
-                // Update cached group_name on all member sessions; the broadcast
-                // helper reads group_name straight from the session cache.
                 ctx.user_manager
                     .update_group_name(id, &updated_group.name)
                     .await;
             }
 
-            // Single fresh snapshot of online member sessions, reused by
-            // both the UserUpdated broadcast and the permissions cascade
-            // below. Taken AFTER the bandwidth/name cache writes so the
-            // shared-account broadcast branch (which reads `group_name`
-            // / `bandwidth_weight` straight off the session) sees the
-            // post-update values. The permissions cascade re-resolves
-            // permissions from the DB per member, so it only needs the
-            // snapshot for `user_id` / `username` and the pre-cascade
-            // `permissions` it diffs against — none of which the
-            // bandwidth/name writes touch.
             let member_sessions =
                 if name_changed || !inheriting_set.is_empty() || permissions_changed {
                     ctx.user_manager.get_sessions_by_group_id(id).await
@@ -410,22 +421,11 @@ where
                     Vec::new()
                 };
 
-            // Single UserUpdated broadcast per affected user:
-            // - name_changed → every member (group_name shifted for all)
-            // - bandwidth_weight_changed → only inheriting members
-            //   (override-holders' effective value didn't move).
-            if name_changed || !inheriting_set.is_empty() {
-                broadcast_user_updated_for_members(ctx, &member_sessions, |session| {
-                    name_changed || inheriting_set.contains(&session.user_id)
-                })
-                .await;
-            }
-
-            // Permission change cascade: re-resolve effective permissions for each
-            // online member, update session caches, send PermissionsUpdated, do voice cleanup.
-            // Offline users get fresh permissions at next login — no cascade needed.
+            // (user_id, payload, voice_cleanup_needed). Keyed on the
+            // immutable user_id so the dispatch loop below can't miss
+            // sessions due to a concurrent rename.
+            let mut perm_updates: Vec<(i64, ServerMessage, bool)> = Vec::new();
             if permissions_changed {
-                // Fetch config once for ServerInfo construction (shared across all members)
                 let config = ctx.db.config.get_all().await;
                 let info_values = ServerInfoValues {
                     name: config.server_name,
@@ -447,17 +447,12 @@ where
                     scheduler_chunk_size: config.scheduler_chunk_size,
                 };
 
-                // Deduplicate by user_id (regular accounts may have multiple sessions)
                 let mut seen_user_ids: HashSet<i64> = HashSet::new();
                 for session in &member_sessions {
                     if !seen_user_ids.insert(session.user_id) {
                         continue;
                     }
-
-                    // Capture old cached permissions from session (before update)
                     let old_session_perms = session.permissions.clone();
-
-                    // Re-resolve effective permissions from DB
                     let new_effective = match ctx
                         .db
                         .users
@@ -470,25 +465,18 @@ where
                             continue;
                         }
                     };
-
-                    // Update session cache
                     ctx.user_manager
                         .update_permissions(session.user_id, new_effective.permissions.clone())
                         .await;
-
-                    // Check if permissions actually changed for this member
                     if old_session_perms == new_effective.permissions {
                         continue;
                     }
 
-                    // Build and send PermissionsUpdated
                     let permission_strings: Vec<String> = new_effective
                         .permissions
                         .iter()
                         .map(|p| p.as_str().to_string())
                         .collect();
-
-                    // Build per-user ServerInfo with permission-based field visibility
                     let has_file_reindex =
                         new_effective.permissions.contains(&Permission::FileReindex);
                     let has_chat_join = new_effective.permissions.contains(&Permission::ChatJoin);
@@ -499,7 +487,6 @@ where
                         include_image: false,
                     };
                     let server_info = Some(build_server_info(&info_values, &info_options));
-
                     let permissions_update = ServerMessage::PermissionsUpdated {
                         is_admin: false,
                         permissions: permission_strings,
@@ -508,43 +495,54 @@ where
                         group_name: Some(updated_group.name.clone()),
                     };
 
-                    ctx.user_manager
-                        .broadcast_to_username(&session.username, &permissions_update)
-                        .await;
-
-                    // Voice cleanup: if voice_listen was revoked, kick from voice
                     let had_voice_listen = old_session_perms.contains(&Permission::VoiceListen);
                     let has_voice_listen =
                         new_effective.permissions.contains(&Permission::VoiceListen);
+                    let voice_cleanup_needed = had_voice_listen && !has_voice_listen;
 
-                    if had_voice_listen && !has_voice_listen {
-                        let session_ids = ctx
-                            .user_manager
-                            .get_session_ids_for_user(&session.username)
+                    perm_updates.push((session.user_id, permissions_update, voice_cleanup_needed));
+                }
+            }
+
+            // Broadcasts + voice cleanup stay under the lock so a
+            // concurrent locked UserUpdate can't re-grant a permission
+            // (e.g., VoiceListen) between our cache write and our
+            // side-effect dispatch. All are in-memory channel sends —
+            // the lock is dropped only before the direct
+            // `ctx.send_message` below. Lookups key on the immutable
+            // user_id so a rename can't make them miss sessions.
+            if name_changed || !inheriting_set.is_empty() {
+                broadcast_user_updated_for_members(ctx, &member_sessions, |session| {
+                    name_changed || inheriting_set.contains(&session.user_id)
+                })
+                .await;
+            }
+
+            for (user_id, permissions_update, voice_cleanup_needed) in perm_updates {
+                ctx.user_manager
+                    .broadcast_to_user_id(user_id, &permissions_update)
+                    .await;
+                if voice_cleanup_needed {
+                    for session in ctx.user_manager.get_sessions_by_user_id(user_id).await {
+                        if let Some(info) = ctx
+                            .voice_registry
+                            .remove_by_session_id(session.session_id)
+                            .await
+                        {
+                            send_voice_leave_notifications(
+                                &info,
+                                Some(&session.tx),
+                                ctx.user_manager,
+                                ctx.channel_manager,
+                            )
                             .await;
-
-                        for sid in session_ids {
-                            if let Some(info) = ctx.voice_registry.remove_by_session_id(sid).await {
-                                let leaving_user_tx = ctx
-                                    .user_manager
-                                    .get_user_by_session_id(sid)
-                                    .await
-                                    .map(|u| u.tx.clone());
-
-                                send_voice_leave_notifications(
-                                    &info,
-                                    leaving_user_tx.as_ref(),
-                                    ctx.user_manager,
-                                    ctx.channel_manager,
-                                )
-                                .await;
-                            }
                         }
                     }
                 }
             }
 
-            Ok(())
+            drop(_state_guard);
+            ctx.send_message(&response).await
         }
         Ok(None) => {
             // 0 rows affected — either group was deleted by another admin
@@ -561,6 +559,7 @@ where
                 name: None,
                 error: Some(error),
             };
+            drop(_state_guard);
             ctx.send_message(&response).await
         }
         Err(e) => {
@@ -580,9 +579,11 @@ where
                     name: None,
                     error: Some(err_group_already_exists(ctx.locale)),
                 };
+                drop(_state_guard);
                 ctx.send_message(&response).await
             } else {
                 error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_UPDATE_DB_ERROR);
+                drop(_state_guard);
                 ctx.send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_GROUP_UPDATE))
                     .await
             }
@@ -1504,6 +1505,7 @@ mod tests {
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -1645,6 +1647,7 @@ mod tests {
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -1837,6 +1840,7 @@ mod tests {
                 group_id: Some(group.id),
                 group_name: Some("Listeners".to_string()),
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -1959,6 +1963,7 @@ mod tests {
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -2082,6 +2087,7 @@ mod tests {
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -2195,6 +2201,7 @@ mod tests {
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -2337,6 +2344,7 @@ mod tests {
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -2438,6 +2446,7 @@ mod tests {
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
                 bandwidth_weight: 5,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -2725,6 +2734,7 @@ mod tests {
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
                 bandwidth_weight: 5,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -2850,6 +2860,7 @@ mod tests {
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
                 bandwidth_weight: 5,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -2964,6 +2975,7 @@ mod tests {
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
                 bandwidth_weight: 100,
+                bandwidth_weight_override: Some(100),
                 last_activity: Instant::now(),
             })
             .await

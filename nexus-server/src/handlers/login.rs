@@ -344,10 +344,6 @@ where
         None
     };
 
-    // Initial seed from the authoritative state. The verify-window
-    // drift check immediately below catches any rename/password reset
-    // that committed during password verification; the post-add
-    // snapshot catches anything that lands during add_user.
     let pre_snapshot = match ctx
         .db
         .get_login_session_snapshot(authenticated_account.id)
@@ -380,10 +376,9 @@ where
         }
     };
 
-    // Verify-window drift: typed username vs the row pre_snapshot just
-    // read, and verified hash vs the row's current hash. Drift means
-    // admin renamed or reset the account during password verify;
-    // credentials the user sent no longer describe this row.
+    // Verify-window drift: rename or password reset during password
+    // verify means the credentials the user sent no longer describe
+    // this row.
     if username.to_lowercase() != pre_snapshot.account.username.to_lowercase() {
         warn!(
             user = %username,
@@ -459,6 +454,7 @@ where
             group_id,
             group_name: group_name.clone(),
             bandwidth_weight,
+            bandwidth_weight_override: authenticated_account.bandwidth_weight,
             last_activity: std::time::Instant::now(),
         })
         .await
@@ -472,10 +468,9 @@ where
     };
     *session_id = Some(id);
 
-    // Post-add drift check. Catches any UserUpdate / GroupUpdate /
-    // UserDelete / disable that committed during add_user; the
-    // Ok(None) and Ok(Some(disabled)) arms cover delete/disable
-    // races where cleanup ran before our session was registered.
+    // Post-add drift check: catches mutations that committed during
+    // add_user, including delete/disable races where cleanup ran
+    // before our session was registered.
     let post_snapshot = match ctx
         .db
         .get_login_session_snapshot(authenticated_account.id)
@@ -514,13 +509,8 @@ where
         }
     };
 
-    // Drift between pre- and post-snapshot means a concurrent
-    // UserUpdate/GroupUpdate committed during add_user — fail the
-    // login. The pre-snapshot values seeded into add_user are
-    // authoritative for this session; downstream code uses the
-    // pre-bound locals. Auth fields (username, hashed_password) come
-    // first so a password reset that coincides with state drift
-    // surfaces the auth-specific log line.
+    // Auth-field buckets come before the state bucket so a password
+    // reset coinciding with state drift logs the auth-specific event.
     if authenticated_account.username.to_lowercase()
         != post_snapshot.account.username.to_lowercase()
     {
@@ -3238,6 +3228,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -3330,6 +3321,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -3421,6 +3413,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await
@@ -3451,6 +3444,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: Instant::now(),
             })
             .await

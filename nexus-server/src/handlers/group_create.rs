@@ -47,7 +47,11 @@ where
             .await;
     };
 
-    // Get requesting user from session
+    // Acquire the state lock before fetching the requester so
+    // requester-dependent authorization sees a snapshot that can't
+    // drift mid-handler. Dropped at every early-reject path before
+    // socket I/O, and at the end of the success arm.
+    let _state_guard = ctx.user_manager.lock_user_state().await;
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -55,6 +59,7 @@ where
     {
         Some(u) => u,
         None => {
+            drop(_state_guard);
             return ctx
                 .send_error_and_disconnect(
                     &err_authentication(ctx.locale),
@@ -73,6 +78,7 @@ where
             id: None,
             name: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -88,6 +94,7 @@ where
             id: None,
             name: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
     if let Err(BandwidthWeightError::Zero) = validate_bandwidth_weight(bandwidth_weight) {
@@ -97,6 +104,7 @@ where
             id: None,
             name: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -115,6 +123,7 @@ where
             id: None,
             name: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -137,6 +146,7 @@ where
             id: None,
             name: None,
         };
+        drop(_state_guard);
         return ctx.send_message(&response).await;
     }
 
@@ -150,6 +160,7 @@ where
                     id: None,
                     name: None,
                 };
+                drop(_state_guard);
                 return ctx.send_message(&response).await;
             }
         }
@@ -167,6 +178,7 @@ where
                     id: None,
                     name: None,
                 };
+                drop(_state_guard);
                 return ctx.send_message(&response).await;
             }
         };
@@ -180,6 +192,7 @@ where
                 id: None,
                 name: None,
             };
+            drop(_state_guard);
             return ctx.send_message(&response).await;
         }
 
@@ -201,6 +214,7 @@ where
                 id: Some(group.id),
                 name: Some(group.name),
             };
+            drop(_state_guard);
             ctx.send_message(&response).await
         }
         Err(e) => {
@@ -220,9 +234,11 @@ where
                     id: None,
                     name: None,
                 };
+                drop(_state_guard);
                 return ctx.send_message(&response).await;
             }
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_CREATE_DB_ERROR);
+            drop(_state_guard);
             return ctx
                 .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_GROUP_CREATE))
                 .await;

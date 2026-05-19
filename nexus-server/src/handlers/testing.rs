@@ -365,6 +365,7 @@ pub async fn login_user_from_ip(
             // system default. Routes through the shared resolver so future
             // precedence changes can't leave fixtures out of sync.
             bandwidth_weight: resolve_bandwidth_weight(None, None, is_admin),
+            bandwidth_weight_override: None,
             last_activity: std::time::Instant::now(),
         })
         .await
@@ -430,6 +431,7 @@ pub async fn login_user_with_features(
             group_name: None,
             // See note in login_user_from_ip.
             bandwidth_weight: resolve_bandwidth_weight(None, None, is_admin),
+            bandwidth_weight_override: None,
             last_activity: std::time::Instant::now(),
         })
         .await
@@ -504,6 +506,7 @@ pub async fn login_observer_user(
             group_name: None,
             // Observer is always non-admin (hardcoded above).
             bandwidth_weight: resolve_bandwidth_weight(None, None, false),
+            bandwidth_weight_override: None,
             last_activity: std::time::Instant::now(),
         })
         .await
@@ -570,6 +573,7 @@ pub async fn login_shared_user(
             group_name: None,
             // Shared accounts can't be admin (XOR invariant).
             bandwidth_weight: resolve_bandwidth_weight(None, None, false),
+            bandwidth_weight_override: None,
             last_activity: std::time::Instant::now(),
         })
         .await

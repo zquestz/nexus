@@ -19,7 +19,7 @@ pub mod testing;
 pub use bans::BanDb;
 pub use channels::ChannelDb;
 pub use config::ConfigDb;
-pub use groups::{GroupDb, UpdateGroupResult};
+pub use groups::{GroupDb, GroupPermissionWriteScope, UpdateGroupResult};
 pub use news::NewsDb;
 pub use password::{hash_password_async, verify_password_async};
 // Sync helpers retained for tests (cheap fast-hash path) and the cached test
@@ -107,24 +107,13 @@ impl Database {
         })
     }
 
-    /// Bundle the authoritative state the login handler needs to
-    /// seed (pre-add) and drift-check (post-add) a session. The
-    /// returned snapshot is observed inside a single read transaction
-    /// — account row, permissions, group name, and resolved bandwidth
-    /// are all consistent as of one DB point-in-time.
-    ///
-    /// Returns `Ok(None)` if the user row is missing. The
-    /// `account.enabled` flag is the caller's signal for
-    /// disabled-mid-login; the helper itself doesn't gate on it
-    /// (so the same helper can be reused for paths where a
-    /// disabled user is still a valid input).
+    /// Coherent snapshot inside a single read tx. `Ok(None)` if the
+    /// user row is missing. `account.enabled` is the caller's signal
+    /// for disabled-mid-login; the helper doesn't gate on it.
     pub async fn get_login_session_snapshot(
         &self,
         user_id: i64,
     ) -> Result<Option<LoginSessionSnapshot>, LoginSnapshotError> {
-        // Wrap all four reads in a single tx so the returned snapshot
-        // is coherent — account row, permissions, group, and bandwidth
-        // are all observed as of one DB point-in-time, not four.
         let mut tx = self.users.begin().await.map_err(LoginSnapshotError::User)?;
 
         let Some(account) = users::UserDb::get_user_by_id_on(&mut tx, user_id)
@@ -189,11 +178,6 @@ pub struct TrackerRegistrationFields {
     pub allows_guest: bool,
 }
 
-/// Authoritative per-login state: account row, effective permissions,
-/// resolved group name, resolved bandwidth weight. Bundled by
-/// [`Database::get_login_session_snapshot`] and consumed by the login
-/// handler both pre-`add_user` (initial seed) and post-`add_user`
-/// (drift check against the pre-add snapshot).
 pub struct LoginSessionSnapshot {
     pub account: UserAccount,
     pub permissions: Permissions,

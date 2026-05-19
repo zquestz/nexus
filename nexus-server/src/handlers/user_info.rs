@@ -208,7 +208,7 @@ where
     let actual_username = target_account.username.clone();
 
     // Bandwidth weight: read from the session cache. Reading the first
-    // session is sufficient because `update_bandwidth_weight` fans out
+    // session is sufficient because `update_bandwidth_state` fans out
     // the resolved value to every session of a given user_id atomically,
     // so all sessions of the same user agree. The `err_nickname_not_online`
     // gate above guarantees at least one session exists.
@@ -343,6 +343,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -416,6 +417,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -532,6 +534,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -559,6 +562,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -681,6 +685,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -708,6 +713,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -834,6 +840,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -861,6 +868,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1008,6 +1016,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1089,6 +1098,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1119,6 +1129,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await

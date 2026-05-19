@@ -467,6 +467,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -546,6 +547,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -576,6 +578,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -652,6 +655,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1299,6 +1303,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1329,6 +1334,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1412,6 +1418,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1439,6 +1446,7 @@ mod tests {
                 group_id: None,
                 group_name: None,
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await
@@ -1550,6 +1558,7 @@ mod tests {
                 group_id: Some(group.id),
                 group_name: Some("Staff".to_string()),
                 bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
             })
             .await

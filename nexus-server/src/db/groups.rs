@@ -23,20 +23,26 @@ pub struct GroupRecord {
     pub bandwidth_weight: u16,
 }
 
-/// Outcome of `update_group`: the updated group record plus the IDs
-/// of members whose effective bandwidth weight is sourced from this
-/// group (members with a NULL per-user override).
-///
-/// The cascade is scoped to inheriting members on purpose: when a
-/// group's bandwidth weight changes, override-holders' effective
-/// weights don't move (their override still wins), so they need no
-/// cache write and no broadcast. Returning only the inheriting set
-/// lets the handler do an O(inheriting) cascade instead of O(all
-/// members) plus per-member re-resolution.
+/// Both permission sets are read inside the write tx; a pre-tx
+/// snapshot in the handler would race with concurrent group updates.
 #[derive(Debug, Clone)]
 pub struct UpdateGroupResult {
     pub group: GroupRecord,
-    pub inheriting_member_ids: Vec<i64>,
+    pub previous_permissions: Permissions,
+    pub final_permissions: Permissions,
+}
+
+/// Scope of group-permission writes performed inside `update_group`.
+#[derive(Debug, Clone, Copy)]
+pub enum GroupPermissionWriteScope<'a> {
+    /// Admin / system: replace the full permission set with the
+    /// requested set.
+    ReplaceAll,
+    /// Writes only touch rows whose permission is in this slice;
+    /// unowned rows are left alone so concurrent admin grants survive.
+    OwnedSubset(&'a [Permission]),
+    /// Request omitted the permissions field — leave rows untouched.
+    NoChange,
 }
 
 /// Row type for group queries (matches `SQL_SELECT_GROUP_*`).
@@ -86,7 +92,6 @@ impl GroupDb {
         Self::get_group_by_id_on(&mut conn, id).await
     }
 
-    /// `get_group_by_id` against an explicit connection.
     pub async fn get_group_by_id_on(
         conn: &mut SqliteConnection,
         id: i64,
@@ -183,28 +188,66 @@ impl GroupDb {
     // Mutation Methods
     // ========================================================================
 
-    /// Set permissions for a group within an existing transaction
-    ///
-    /// Deletes all existing permissions and inserts the new ones.
+    /// See [`GroupPermissionWriteScope`].
     async fn set_permissions_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         group_id: i64,
-        permissions: &Permissions,
+        requested: &Permissions,
+        scope: GroupPermissionWriteScope<'_>,
     ) -> Result<(), sqlx::Error> {
-        sqlx::query(sql::SQL_DELETE_GROUP_PERMISSIONS)
-            .bind(group_id)
-            .execute(&mut **tx)
-            .await?;
+        match scope {
+            GroupPermissionWriteScope::ReplaceAll => {
+                sqlx::query(sql::SQL_DELETE_GROUP_PERMISSIONS)
+                    .bind(group_id)
+                    .execute(&mut **tx)
+                    .await?;
 
-        for perm in permissions.iter() {
-            sqlx::query(sql::SQL_INSERT_GROUP_PERMISSION)
-                .bind(group_id)
-                .bind(perm.as_str())
-                .execute(&mut **tx)
-                .await?;
+                for perm in requested.iter() {
+                    sqlx::query(sql::SQL_INSERT_GROUP_PERMISSION)
+                        .bind(group_id)
+                        .bind(perm.as_str())
+                        .execute(&mut **tx)
+                        .await?;
+                }
+            }
+            GroupPermissionWriteScope::OwnedSubset(owned) => {
+                for perm in owned {
+                    if requested.permissions.contains(perm) {
+                        sqlx::query(sql::SQL_INSERT_GROUP_PERMISSION_OR_IGNORE)
+                            .bind(group_id)
+                            .bind(perm.as_str())
+                            .execute(&mut **tx)
+                            .await?;
+                    } else {
+                        sqlx::query(sql::SQL_DELETE_GROUP_PERMISSION_BY_NAME)
+                            .bind(group_id)
+                            .bind(perm.as_str())
+                            .execute(&mut **tx)
+                            .await?;
+                    }
+                }
+            }
+            GroupPermissionWriteScope::NoChange => {}
         }
 
         Ok(())
+    }
+
+    async fn get_permissions_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        group_id: i64,
+    ) -> Result<Permissions, sqlx::Error> {
+        let rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_GROUP_PERMISSIONS)
+            .bind(group_id)
+            .fetch_all(&mut **tx)
+            .await?;
+        let mut perms = Permissions::new();
+        for (s,) in rows {
+            if let Some(p) = Permission::parse(&s) {
+                perms.permissions.insert(p);
+            }
+        }
+        Ok(perms)
     }
 
     /// Create a new group with permissions
@@ -244,7 +287,13 @@ impl GroupDb {
 
         let group_id = result.last_insert_rowid();
 
-        Self::set_permissions_in_tx(&mut tx, group_id, permissions).await?;
+        Self::set_permissions_in_tx(
+            &mut tx,
+            group_id,
+            permissions,
+            GroupPermissionWriteScope::ReplaceAll,
+        )
+        .await?;
 
         tx.commit().await?;
 
@@ -256,35 +305,19 @@ impl GroupDb {
         })
     }
 
-    /// Update a group's name, shared status, and permissions
-    ///
-    /// Returns the updated group record alongside the IDs of members
-    /// whose effective bandwidth weight is sourced from this group (i.e.
-    /// members with no per-user override), or `None` if the group
-    /// doesn't exist.
-    ///
-    /// `inheriting_member_ids` lets callers cascade a group's weight
-    /// change only to the sessions actually affected. Override-holders
-    /// are intentionally excluded: their resolved weight doesn't shift
-    /// when the group's weight changes, so emitting cache writes or
-    /// broadcasts for them would be both wasteful and incorrect (it
-    /// would imply their value changed when it didn't).
-    ///
-    /// The member-id query runs inside the same transaction as the
-    /// group UPDATE so the membership snapshot the cascade uses matches
-    /// the row state the write just committed.
+    /// Returns `None` if the group doesn't exist.
     ///
     /// # Errors
     ///
-    /// Returns `sqlx::Error::Database` if the new name conflicts with an
-    /// existing group (case-insensitive unique constraint violation).
+    /// `sqlx::Error::Database` on name collision (unique-constraint).
     pub async fn update_group(
         &self,
         id: i64,
         name: &str,
         is_shared: bool,
-        permissions: &Permissions,
+        requested_permissions: &Permissions,
         bandwidth_weight: u16,
+        permission_write_scope: GroupPermissionWriteScope<'_>,
     ) -> Result<Option<UpdateGroupResult>, sqlx::Error> {
         // Validate group name (failsafe - handlers should also validate)
         if let Err(e) = validators::validate_group_name(name) {
@@ -314,17 +347,15 @@ impl GroupDb {
             return Ok(None);
         }
 
-        Self::set_permissions_in_tx(&mut tx, id, permissions).await?;
+        // Read previous + final from inside the tx so the handler's
+        // cascade diffs against committed state, not a pre-tx
+        // snapshot that could race with a concurrent group update.
+        let previous_permissions = Self::get_permissions_in_tx(&mut tx, id).await?;
 
-        // In-transaction cascade snapshot: pull the inheriting members (NULL override)
-        // inside the tx so the caller's cache/broadcast set matches the
-        // group state we're about to commit.
-        let inheriting_rows: Vec<(i64,)> = sqlx::query_as(sql::SQL_SELECT_GROUP_INHERITING_MEMBERS)
-            .bind(id)
-            .fetch_all(&mut *tx)
+        Self::set_permissions_in_tx(&mut tx, id, requested_permissions, permission_write_scope)
             .await?;
-        let inheriting_member_ids: Vec<i64> =
-            inheriting_rows.into_iter().map(|(uid,)| uid).collect();
+
+        let final_permissions = Self::get_permissions_in_tx(&mut tx, id).await?;
 
         tx.commit().await?;
 
@@ -335,7 +366,8 @@ impl GroupDb {
                 is_shared,
                 bandwidth_weight,
             },
-            inheriting_member_ids,
+            previous_permissions,
+            final_permissions,
         }))
     }
 
@@ -681,6 +713,7 @@ mod tests {
                 false,
                 &Permissions::from(&[Permission::ChatSend]),
                 1,
+                GroupPermissionWriteScope::ReplaceAll,
             )
             .await
             .unwrap()
@@ -702,7 +735,14 @@ mod tests {
         assert!(!group.is_shared);
 
         let updated = group_db
-            .update_group(group.id, "Flex", true, &Permissions::new(), 1)
+            .update_group(
+                group.id,
+                "Flex",
+                true,
+                &Permissions::new(),
+                1,
+                GroupPermissionWriteScope::ReplaceAll,
+            )
             .await
             .unwrap()
             .unwrap();
@@ -736,6 +776,7 @@ mod tests {
                 false,
                 &Permissions::from(&[Permission::UserKick, Permission::BanCreate]),
                 1,
+                GroupPermissionWriteScope::ReplaceAll,
             )
             .await
             .unwrap();
@@ -744,6 +785,147 @@ mod tests {
         assert_eq!(
             perms_after,
             vec![Permission::BanCreate, Permission::UserKick]
+        );
+    }
+
+    /// `OwnedSubset` must only touch rows whose permission is in the
+    /// owned slice. Unowned rows survive — this is what closes the
+    /// non-admin merge-then-replace race.
+    #[tokio::test]
+    async fn test_update_group_owned_subset_preserves_unowned() {
+        let pool = create_test_db().await;
+        let group_db = GroupDb::new(pool);
+
+        // Group starts with one owned perm + one unowned perm.
+        let group = group_db
+            .create_group(
+                "Mixed",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
+            )
+            .await
+            .unwrap();
+
+        // Non-admin requester owns ChatSend (not UserKick) and asks
+        // for [ChatSend, BanCreate]. Result must be:
+        //   - UserKick stays (unowned, untouched)
+        //   - ChatSend stays (owned, in requested set)
+        //   - BanCreate added (owned, in requested set)
+        let owned = [Permission::ChatSend, Permission::BanCreate];
+        let requested = Permissions::from(&[Permission::ChatSend, Permission::BanCreate]);
+        let result = group_db
+            .update_group(
+                group.id,
+                "Mixed",
+                false,
+                &requested,
+                1,
+                GroupPermissionWriteScope::OwnedSubset(&owned),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        let mut final_perms: Vec<Permission> = result.final_permissions.iter().copied().collect();
+        final_perms.sort_by_key(|p| p.as_str().to_string());
+        assert_eq!(
+            final_perms,
+            vec![
+                Permission::BanCreate,
+                Permission::ChatSend,
+                Permission::UserKick,
+            ],
+            "UserKick (unowned) must survive; ChatSend kept; BanCreate added"
+        );
+
+        // Requesting an empty set with ChatSend owned should remove
+        // ChatSend but keep UserKick.
+        let owned = [Permission::ChatSend];
+        let requested = Permissions::new();
+        let result = group_db
+            .update_group(
+                group.id,
+                "Mixed",
+                false,
+                &requested,
+                1,
+                GroupPermissionWriteScope::OwnedSubset(&owned),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        // previous_permissions is read inside the tx and reflects the
+        // committed state right before the write — i.e. the result of
+        // the first update_group call above.
+        let mut prev_perms: Vec<Permission> = result.previous_permissions.iter().copied().collect();
+        prev_perms.sort_by_key(|p| p.as_str().to_string());
+        assert_eq!(
+            prev_perms,
+            vec![
+                Permission::BanCreate,
+                Permission::ChatSend,
+                Permission::UserKick,
+            ],
+            "previous_permissions reflects committed state before the second write"
+        );
+
+        let mut final_perms: Vec<Permission> = result.final_permissions.iter().copied().collect();
+        final_perms.sort_by_key(|p| p.as_str().to_string());
+        assert_eq!(
+            final_perms,
+            vec![Permission::BanCreate, Permission::UserKick],
+            "ChatSend (owned, omitted) removed; BanCreate + UserKick (unowned) survive"
+        );
+    }
+
+    /// `NoChange` leaves the permission set untouched even if a
+    /// non-empty `requested` is supplied (the variant wins).
+    #[tokio::test]
+    async fn test_update_group_no_change_leaves_permissions_alone() {
+        let pool = create_test_db().await;
+        let group_db = GroupDb::new(pool);
+
+        let group = group_db
+            .create_group(
+                "Stable",
+                false,
+                &Permissions::from(&[Permission::ChatSend, Permission::UserKick]),
+                1,
+            )
+            .await
+            .unwrap();
+
+        // A non-empty requested set is ignored under NoChange.
+        let bogus_requested = Permissions::from(&[Permission::BanCreate]);
+        let result = group_db
+            .update_group(
+                group.id,
+                "Stable",
+                false,
+                &bogus_requested,
+                1,
+                GroupPermissionWriteScope::NoChange,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        let mut prev_perms: Vec<Permission> = result.previous_permissions.iter().copied().collect();
+        prev_perms.sort_by_key(|p| p.as_str().to_string());
+        assert_eq!(
+            prev_perms,
+            vec![Permission::ChatSend, Permission::UserKick],
+            "previous_permissions reflects pre-write state"
+        );
+
+        let mut final_perms: Vec<Permission> = result.final_permissions.iter().copied().collect();
+        final_perms.sort_by_key(|p| p.as_str().to_string());
+        assert_eq!(
+            final_perms,
+            vec![Permission::ChatSend, Permission::UserKick],
+            "NoChange must leave the original set intact"
         );
     }
 
@@ -763,7 +945,14 @@ mod tests {
             .unwrap();
 
         group_db
-            .update_group(group.id, "Mods", false, &Permissions::new(), 1)
+            .update_group(
+                group.id,
+                "Mods",
+                false,
+                &Permissions::new(),
+                1,
+                GroupPermissionWriteScope::ReplaceAll,
+            )
             .await
             .unwrap();
 
@@ -777,7 +966,14 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let result = group_db
-            .update_group(99999, "Ghost", false, &Permissions::new(), 1)
+            .update_group(
+                99999,
+                "Ghost",
+                false,
+                &Permissions::new(),
+                1,
+                GroupPermissionWriteScope::ReplaceAll,
+            )
             .await
             .unwrap();
 
@@ -800,7 +996,14 @@ mod tests {
 
         // Try to rename GroupB to GroupA
         let result = group_db
-            .update_group(group_b.id, "GroupA", false, &Permissions::new(), 1)
+            .update_group(
+                group_b.id,
+                "GroupA",
+                false,
+                &Permissions::new(),
+                1,
+                GroupPermissionWriteScope::ReplaceAll,
+            )
             .await;
         assert!(result.is_err());
     }
@@ -821,7 +1024,14 @@ mod tests {
 
         // Try to rename GroupB to "groupa" (case-insensitive conflict)
         let result = group_db
-            .update_group(group_b.id, "groupa", false, &Permissions::new(), 1)
+            .update_group(
+                group_b.id,
+                "groupa",
+                false,
+                &Permissions::new(),
+                1,
+                GroupPermissionWriteScope::ReplaceAll,
+            )
             .await;
         assert!(result.is_err());
     }
@@ -844,6 +1054,7 @@ mod tests {
                 false,
                 &Permissions::from(&[Permission::ChatSend]),
                 1,
+                GroupPermissionWriteScope::ReplaceAll,
             )
             .await
             .unwrap()
@@ -864,7 +1075,14 @@ mod tests {
 
         // Changing case of own name should succeed (same row, no conflict)
         let updated = group_db
-            .update_group(group.id, "MyGroup", false, &Permissions::new(), 1)
+            .update_group(
+                group.id,
+                "MyGroup",
+                false,
+                &Permissions::new(),
+                1,
+                GroupPermissionWriteScope::ReplaceAll,
+            )
             .await
             .unwrap()
             .unwrap();
@@ -884,13 +1102,27 @@ mod tests {
 
         // Empty name
         let result = group_db
-            .update_group(group.id, "", false, &Permissions::new(), 1)
+            .update_group(
+                group.id,
+                "",
+                false,
+                &Permissions::new(),
+                1,
+                GroupPermissionWriteScope::ReplaceAll,
+            )
             .await;
         assert!(result.is_err());
 
         // Forbidden characters
         let result = group_db
-            .update_group(group.id, "bad/name", false, &Permissions::new(), 1)
+            .update_group(
+                group.id,
+                "bad/name",
+                false,
+                &Permissions::new(),
+                1,
+                GroupPermissionWriteScope::ReplaceAll,
+            )
             .await;
         assert!(result.is_err());
     }
@@ -1120,7 +1352,14 @@ mod tests {
             .unwrap();
 
         let updated = group_db
-            .update_group(group.id, "Mods", false, &Permissions::new(), 42)
+            .update_group(
+                group.id,
+                "Mods",
+                false,
+                &Permissions::new(),
+                42,
+                GroupPermissionWriteScope::ReplaceAll,
+            )
             .await
             .unwrap();
         assert!(updated.is_some());
@@ -1153,146 +1392,6 @@ mod tests {
         assert_eq!(groups[1].bandwidth_weight, 50);
     }
 
-    // ========================================================================
-    // In-transaction contract: update_group returns the inheriting members snapshot
-    // captured inside the same transaction as the write.
-    //
-    // These tests pin which members appear in `inheriting_member_ids`:
-    // only users with a NULL `bandwidth_weight` override. Override-holders
-    // are excluded — their effective weight doesn't move when the group's
-    // weight changes, so cascading to them would be incorrect.
-    // ========================================================================
-
-    /// Helper: create a non-admin user assigned to `group_id` with the
-    /// given override (None = inheriting).
-    async fn make_group_member(
-        user_db: &crate::db::UserDb,
-        username: &str,
-        group_id: i64,
-        bandwidth_weight: Option<u16>,
-    ) -> i64 {
-        user_db
-            .create_user(crate::db::CreateUserParams {
-                username,
-                hashed_password: "hash",
-                is_admin: false,
-                is_shared: false,
-                enabled: true,
-                permissions: &Permissions::new(),
-                group_id: Some(group_id),
-                revokes: &[],
-                bandwidth_weight,
-            })
-            .await
-            .unwrap()
-            .id
-    }
-
-    /// Mixed-membership group: only the NULL-override member is reported
-    /// as inheriting; the user with an explicit override is excluded.
-    #[tokio::test]
-    async fn test_update_group_inheriting_members_excludes_override_holders() {
-        let pool = create_test_db().await;
-        let group_db = GroupDb::new(pool.clone());
-        let user_db = crate::db::UserDb::new(pool);
-
-        let group = group_db
-            .create_group("Tier1", false, &Permissions::new(), 10)
-            .await
-            .unwrap();
-        let inheriter_id = make_group_member(&user_db, "alice", group.id, None).await;
-        let _override_id = make_group_member(&user_db, "bob", group.id, Some(200)).await;
-
-        let result = group_db
-            .update_group(group.id, "Tier1", false, &Permissions::new(), 20)
-            .await
-            .unwrap()
-            .unwrap();
-
-        assert_eq!(
-            result.inheriting_member_ids,
-            vec![inheriter_id],
-            "only the NULL-override member should be reported as inheriting"
-        );
-    }
-
-    /// All-override group: nobody inherits, so the set is empty.
-    /// Cascade caller should write zero session caches and emit zero
-    /// `UserUpdated`s for the bandwidth-change trigger.
-    #[tokio::test]
-    async fn test_update_group_inheriting_members_empty_when_all_override() {
-        let pool = create_test_db().await;
-        let group_db = GroupDb::new(pool.clone());
-        let user_db = crate::db::UserDb::new(pool);
-
-        let group = group_db
-            .create_group("Tier1", false, &Permissions::new(), 10)
-            .await
-            .unwrap();
-        make_group_member(&user_db, "alice", group.id, Some(100)).await;
-        make_group_member(&user_db, "bob", group.id, Some(200)).await;
-
-        let result = group_db
-            .update_group(group.id, "Tier1", false, &Permissions::new(), 50)
-            .await
-            .unwrap()
-            .unwrap();
-
-        assert!(
-            result.inheriting_member_ids.is_empty(),
-            "all-override membership should produce an empty inheriting set"
-        );
-    }
-
-    /// All-inheriting group: every member appears in the set.
-    #[tokio::test]
-    async fn test_update_group_inheriting_members_includes_all_when_no_overrides() {
-        let pool = create_test_db().await;
-        let group_db = GroupDb::new(pool.clone());
-        let user_db = crate::db::UserDb::new(pool);
-
-        let group = group_db
-            .create_group("Tier1", false, &Permissions::new(), 10)
-            .await
-            .unwrap();
-        let a_id = make_group_member(&user_db, "alice", group.id, None).await;
-        let b_id = make_group_member(&user_db, "bob", group.id, None).await;
-
-        let result = group_db
-            .update_group(group.id, "Tier1", false, &Permissions::new(), 50)
-            .await
-            .unwrap()
-            .unwrap();
-
-        let mut returned = result.inheriting_member_ids;
-        returned.sort();
-        let mut expected = vec![a_id, b_id];
-        expected.sort();
-        assert_eq!(returned, expected);
-    }
-
-    /// Empty group: no members at all → empty set, regardless of weight
-    /// change. Verifies the cascade snapshot doesn't surface phantom
-    /// rows on a row-less SELECT.
-    #[tokio::test]
-    async fn test_update_group_inheriting_members_empty_for_empty_group() {
-        let pool = create_test_db().await;
-        let group_db = GroupDb::new(pool);
-
-        let group = group_db
-            .create_group("Empty", false, &Permissions::new(), 10)
-            .await
-            .unwrap();
-
-        let result = group_db
-            .update_group(group.id, "Empty", false, &Permissions::new(), 99)
-            .await
-            .unwrap()
-            .unwrap();
-
-        assert!(result.inheriting_member_ids.is_empty());
-    }
-
     /// Source-of-truth contract: the `group` field of `UpdateGroupResult`
     /// reflects what was actually written, including the new weight.
     /// Pins the invariant the production handler depends on (line
@@ -1309,7 +1408,14 @@ mod tests {
             .unwrap();
 
         let result = group_db
-            .update_group(group.id, "Renamed", true, &Permissions::new(), 42)
+            .update_group(
+                group.id,
+                "Renamed",
+                true,
+                &Permissions::new(),
+                42,
+                GroupPermissionWriteScope::ReplaceAll,
+            )
             .await
             .unwrap()
             .unwrap();

@@ -199,21 +199,24 @@ impl UserManager {
         count
     }
 
-    /// Refresh the cached `bandwidth_weight` atomic for all sessions of a
-    /// user. Called after `UserUpdate` (own user). For the `GroupUpdate`
-    /// cascade, prefer [`Self::update_bandwidth_weight_for_user_ids`] —
-    /// it batches the per-user fan-out into a single pass. Returns the
-    /// number of sessions touched.
-    ///
-    /// `Relaxed` is sufficient — the scheduler reads this advisorily for
-    /// fairness, not as a correctness invariant.
-    pub async fn update_bandwidth_weight(&self, user_id: i64, weight: u16) -> usize {
-        let users = self.users.read().await;
+    /// Both fields are written under a single write-lock acquisition
+    /// so any concurrent reader (in particular the group cascade)
+    /// observes either the old pair or the new pair, never a
+    /// half-update where the resolved weight reflects a new override
+    /// but the marker doesn't.
+    pub async fn update_bandwidth_state(
+        &self,
+        user_id: i64,
+        override_value: Option<u16>,
+        resolved: u16,
+    ) -> usize {
+        let mut users = self.users.write().await;
         let mut count = 0;
 
-        for user in users.values() {
+        for user in users.values_mut() {
             if user.user_id == user_id {
-                user.bandwidth_weight.store(weight, Ordering::Relaxed);
+                user.bandwidth_weight_override = override_value;
+                user.bandwidth_weight.store(resolved, Ordering::Relaxed);
                 count += 1;
             }
         }
@@ -221,31 +224,25 @@ impl UserManager {
         count
     }
 
-    /// Batched companion to [`Self::update_bandwidth_weight`] —
-    /// refreshes every session whose `user_id` is in `user_ids` in one
-    /// pass over sessions. Used by the `GroupUpdate` cascade to avoid
-    /// O(N·M) per-member scans. Returns the number of sessions
-    /// touched. Read lock suffices because `bandwidth_weight` is an
-    /// `AtomicU16`.
-    pub async fn update_bandwidth_weight_for_user_ids(
+    /// Returns the touched `user_id` set so callers can scope
+    /// `UserUpdated` broadcasts to users whose visible weight changed
+    /// (override-holders are filtered out).
+    pub async fn update_bandwidth_weight_for_group_inheritors(
         &self,
-        user_ids: &HashSet<i64>,
+        group_id: i64,
         weight: u16,
-    ) -> usize {
-        if user_ids.is_empty() {
-            return 0;
-        }
-        let users = self.users.read().await;
-        let mut count = 0;
+    ) -> HashSet<i64> {
+        let mut users = self.users.write().await;
+        let mut touched: HashSet<i64> = HashSet::new();
 
-        for user in users.values() {
-            if user_ids.contains(&user.user_id) {
+        for user in users.values_mut() {
+            if user.group_id == Some(group_id) && user.bandwidth_weight_override.is_none() {
                 user.bandwidth_weight.store(weight, Ordering::Relaxed);
-                count += 1;
+                touched.insert(user.user_id);
             }
         }
 
-        count
+        touched
     }
 
     /// Update group info for all sessions of a user by database user ID
@@ -472,26 +469,24 @@ mod tests {
             status: None,
             group_id: None,
             group_name: None,
+            bandwidth_weight_override: None,
             last_activity: std::time::Instant::now(),
             bandwidth_weight: initial_weight,
         }
     }
 
-    /// Invariant: `update_bandwidth_weight(user_id, w)` must fan out the new
-    /// value to every session belonging to that user. `build_aggregated_user_info`
-    /// reads the weight from a single arbitrary session ("latest_login") and
-    /// trusts that all sessions of one user agree — if this invariant ever
-    /// breaks, group/user-update broadcasts would emit a stale or fabricated
-    /// weight on accounts with multiple connections.
+    /// Invariant: `update_bandwidth_state` must fan out both fields
+    /// (override + resolved) to every session belonging to that user.
+    /// `build_aggregated_user_info` reads from a single arbitrary
+    /// session and trusts that all sessions of one user agree — if
+    /// this invariant ever breaks, group/user-update broadcasts would
+    /// emit a stale or fabricated weight on accounts with multiple
+    /// connections.
     #[tokio::test]
-    async fn test_update_bandwidth_weight_fans_out_to_all_sessions_of_user() {
+    async fn test_update_bandwidth_state_fans_out_to_all_sessions_of_user() {
         let manager = UserManager::new();
         const SHARED_USER_ID: i64 = 42;
 
-        // Three sessions for the same user_id (shared account with three
-        // distinct nicknames is the natural way to model this; the invariant
-        // we're pinning is "same user_id ⇒ same cached weight" regardless of
-        // shared/regular).
         for nick in ["alice", "bob", "carol"] {
             manager
                 .add_user(shared_session_params(SHARED_USER_ID, nick, 1))
@@ -499,41 +494,41 @@ mod tests {
                 .expect("add_user should succeed");
         }
 
-        // Sanity: all three start at the initial weight.
         let sessions_before = manager.get_sessions_by_username("shared_acct").await;
         assert_eq!(sessions_before.len(), 3);
         for session in &sessions_before {
             assert_eq!(session.bandwidth_weight.load(Ordering::Relaxed), 1);
+            assert_eq!(session.bandwidth_weight_override, None);
         }
 
-        // One call updates every session of this user_id.
-        let touched = manager.update_bandwidth_weight(SHARED_USER_ID, 99).await;
+        let touched = manager
+            .update_bandwidth_state(SHARED_USER_ID, Some(99), 99)
+            .await;
         assert_eq!(touched, 3, "all three sessions must be touched");
 
         let sessions_after = manager.get_sessions_by_username("shared_acct").await;
         assert_eq!(sessions_after.len(), 3);
         for session in &sessions_after {
+            assert_eq!(session.bandwidth_weight.load(Ordering::Relaxed), 99);
             assert_eq!(
-                session.bandwidth_weight.load(Ordering::Relaxed),
-                99,
-                "every session of one user_id must observe the new weight"
+                session.bandwidth_weight_override,
+                Some(99),
+                "override field must move in lockstep with resolved"
             );
         }
     }
 
-    /// Companion invariant: `update_bandwidth_weight` must not bleed across
-    /// users. A weight change for user A's sessions must leave user B
-    /// untouched, even when both share the same UserManager.
+    /// Companion invariant: `update_bandwidth_state` must not bleed
+    /// across users. A weight change for user A's sessions must leave
+    /// user B untouched, even when both share the same UserManager.
     #[tokio::test]
-    async fn test_update_bandwidth_weight_does_not_affect_other_users() {
+    async fn test_update_bandwidth_state_does_not_affect_other_users() {
         let manager = UserManager::new();
 
         manager
             .add_user(shared_session_params(1, "alice", 1))
             .await
             .unwrap();
-        // Different user_id, different account — would need a fresh username
-        // to satisfy is_nickname_in_use; use a regular account here.
         let (tx, _rx) = mpsc::unbounded_channel();
         manager
             .add_user(NewSessionParams {
@@ -554,13 +549,14 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
                 bandwidth_weight: 1,
             })
             .await
             .unwrap();
 
-        manager.update_bandwidth_weight(1, 50).await;
+        manager.update_bandwidth_state(1, Some(50), 50).await;
 
         let alice_sessions = manager.get_sessions_by_username("shared_acct").await;
         assert_eq!(alice_sessions.len(), 1);
@@ -568,6 +564,7 @@ mod tests {
             alice_sessions[0].bandwidth_weight.load(Ordering::Relaxed),
             50
         );
+        assert_eq!(alice_sessions[0].bandwidth_weight_override, Some(50));
 
         let bob_sessions = manager.get_sessions_by_username("bob").await;
         assert_eq!(bob_sessions.len(), 1);
@@ -576,111 +573,142 @@ mod tests {
             1,
             "weight update for user_id=1 must not touch user_id=2"
         );
+        assert_eq!(bob_sessions[0].bandwidth_weight_override, None);
     }
 
-    /// Batched variant: a single call updates every session whose
-    /// `user_id` is in the set, including multi-session users, and
-    /// leaves out-of-set users alone. Empty set is a no-op.
+    /// Helper: regular (non-shared) session with explicit group + override.
+    fn regular_session_params(
+        user_id: i64,
+        username: &str,
+        group_id: Option<i64>,
+        bandwidth_weight_override: Option<u16>,
+        resolved_weight: u16,
+    ) -> NewSessionParams {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        NewSessionParams {
+            session_id: 0,
+            user_id,
+            username: username.to_string(),
+            is_admin: false,
+            is_shared: false,
+            permissions: HashSet::new(),
+            address: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+            created_at: 0,
+            tx,
+            features: vec![],
+            locale: "en".to_string(),
+            avatar: None,
+            nickname: username.to_string(),
+            is_away: false,
+            status: None,
+            group_id,
+            group_name: None,
+            bandwidth_weight_override,
+            last_activity: std::time::Instant::now(),
+            bandwidth_weight: resolved_weight,
+        }
+    }
+
+    /// Core invariant of the cascade fix: sessions with a non-None
+    /// override are skipped even when their group_id matches. This is
+    /// the load-bearing property that closes the cascade-vs-update
+    /// race — without this check, a group fan-out could clobber a
+    /// freshly-set per-user override with the group's weight.
     #[tokio::test]
-    async fn test_update_bandwidth_weight_for_user_ids_batched() {
+    async fn test_update_bandwidth_weight_for_group_inheritors_skips_override_holders() {
         let manager = UserManager::new();
 
-        // user_id=1 (shared, two sessions), user_id=2 (regular, "bob"),
-        // user_id=3 (regular, "carol"). Cascade set = {1, 3}.
+        // alice (user 1) inherits from group 7; bob (user 2) is in
+        // group 7 but has an override; carol (user 3) is in a
+        // different group.
         manager
-            .add_user(shared_session_params(1, "alice1", 1))
+            .add_user(regular_session_params(1, "alice", Some(7), None, 10))
             .await
             .unwrap();
         manager
-            .add_user(shared_session_params(1, "alice2", 1))
+            .add_user(regular_session_params(2, "bob", Some(7), Some(200), 200))
             .await
             .unwrap();
-        let (tx_b, _rx_b) = mpsc::unbounded_channel();
         manager
-            .add_user(NewSessionParams {
-                session_id: 0,
-                user_id: 2,
-                username: "bob".to_string(),
-                is_admin: false,
-                is_shared: false,
-                permissions: HashSet::new(),
-                address: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
-                created_at: 0,
-                tx: tx_b,
-                features: vec![],
-                locale: "en".to_string(),
-                avatar: None,
-                nickname: "bob".to_string(),
-                is_away: false,
-                status: None,
-                group_id: None,
-                group_name: None,
-                last_activity: std::time::Instant::now(),
-                bandwidth_weight: 1,
-            })
-            .await
-            .unwrap();
-        let (tx_c, _rx_c) = mpsc::unbounded_channel();
-        manager
-            .add_user(NewSessionParams {
-                session_id: 0,
-                user_id: 3,
-                username: "carol".to_string(),
-                is_admin: false,
-                is_shared: false,
-                permissions: HashSet::new(),
-                address: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
-                created_at: 0,
-                tx: tx_c,
-                features: vec![],
-                locale: "en".to_string(),
-                avatar: None,
-                nickname: "carol".to_string(),
-                is_away: false,
-                status: None,
-                group_id: None,
-                group_name: None,
-                last_activity: std::time::Instant::now(),
-                bandwidth_weight: 1,
-            })
+            .add_user(regular_session_params(3, "carol", Some(8), None, 5))
             .await
             .unwrap();
 
-        let set: HashSet<i64> = [1i64, 3].into_iter().collect();
-        let touched = manager.update_bandwidth_weight_for_user_ids(&set, 77).await;
-        assert_eq!(touched, 3, "two alice sessions + one carol session");
-
-        let alice_sessions = manager.get_sessions_by_username("shared_acct").await;
-        assert_eq!(alice_sessions.len(), 2);
-        for s in &alice_sessions {
-            assert_eq!(s.bandwidth_weight.load(Ordering::Relaxed), 77);
-        }
-
-        let carol_sessions = manager.get_sessions_by_username("carol").await;
-        assert_eq!(carol_sessions.len(), 1);
-        assert_eq!(
-            carol_sessions[0].bandwidth_weight.load(Ordering::Relaxed),
-            77
-        );
-
-        let bob_sessions = manager.get_sessions_by_username("bob").await;
-        assert_eq!(bob_sessions.len(), 1);
-        assert_eq!(
-            bob_sessions[0].bandwidth_weight.load(Ordering::Relaxed),
-            1,
-            "user_id not in set must be untouched"
-        );
-
-        // Empty set is a no-op — no sessions changed, no lock contention worth taking.
-        let touched_empty = manager
-            .update_bandwidth_weight_for_user_ids(&HashSet::new(), 99)
+        let touched = manager
+            .update_bandwidth_weight_for_group_inheritors(7, 50)
             .await;
-        assert_eq!(touched_empty, 0);
-        let bob_after_empty = manager.get_sessions_by_username("bob").await;
+
         assert_eq!(
-            bob_after_empty[0].bandwidth_weight.load(Ordering::Relaxed),
-            1
+            touched,
+            HashSet::from([1]),
+            "only alice (inheritor of group 7) should be touched"
         );
+
+        let alice = &manager.get_sessions_by_username("alice").await[0];
+        assert_eq!(
+            alice.bandwidth_weight.load(Ordering::Relaxed),
+            50,
+            "alice inherits from group 7, gets the new group weight"
+        );
+
+        let bob = &manager.get_sessions_by_username("bob").await[0];
+        assert_eq!(
+            bob.bandwidth_weight.load(Ordering::Relaxed),
+            200,
+            "bob has an override, must be skipped by group cascade"
+        );
+
+        let carol = &manager.get_sessions_by_username("carol").await[0];
+        assert_eq!(
+            carol.bandwidth_weight.load(Ordering::Relaxed),
+            5,
+            "carol is in a different group, must be untouched"
+        );
+    }
+
+    /// All inheritors get touched, returned set matches.
+    #[tokio::test]
+    async fn test_update_bandwidth_weight_for_group_inheritors_returns_touched_set() {
+        let manager = UserManager::new();
+
+        manager
+            .add_user(regular_session_params(1, "alice", Some(7), None, 10))
+            .await
+            .unwrap();
+        manager
+            .add_user(regular_session_params(2, "bob", Some(7), None, 10))
+            .await
+            .unwrap();
+        manager
+            .add_user(regular_session_params(3, "carol", Some(8), None, 5))
+            .await
+            .unwrap();
+
+        let touched = manager
+            .update_bandwidth_weight_for_group_inheritors(7, 30)
+            .await;
+
+        assert_eq!(touched, HashSet::from([1, 2]));
+    }
+
+    /// Empty result for a group with no online inheritors.
+    #[tokio::test]
+    async fn test_update_bandwidth_weight_for_group_inheritors_empty_for_unrelated_group() {
+        let manager = UserManager::new();
+
+        manager
+            .add_user(regular_session_params(1, "alice", Some(7), None, 10))
+            .await
+            .unwrap();
+
+        let touched = manager
+            .update_bandwidth_weight_for_group_inheritors(99, 50)
+            .await;
+
+        assert!(touched.is_empty());
+
+        let alice = &manager.get_sessions_by_username("alice").await[0];
+        assert_eq!(alice.bandwidth_weight.load(Ordering::Relaxed), 10);
     }
 
     /// `get_sessions_by_user_id` returns exactly the sessions for the
@@ -721,6 +749,7 @@ mod tests {
                 status: None,
                 group_id: None,
                 group_name: None,
+                bandwidth_weight_override: None,
                 last_activity: std::time::Instant::now(),
                 bandwidth_weight: 1,
             })
