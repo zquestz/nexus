@@ -124,7 +124,7 @@ where
         resolve_user_area(file_root, &requesting_user.username)
     };
 
-    let area_root = match area_root_path.canonicalize() {
+    let area_root = match tokio::fs::canonicalize(&area_root_path).await {
         Ok(p) => p,
         Err(_) => {
             // Root mode: admin's file_root is broken. Non-root: the user's

@@ -135,7 +135,7 @@ where
 
     for file_info in &files {
         // Canonicalize path to handle symlinks
-        let canonical_path = match std::fs::canonicalize(&file_info.absolute_path) {
+        let canonical_path = match tokio::fs::canonicalize(&file_info.absolute_path).await {
             Ok(p) => p,
             Err(e) => {
                 success = false;

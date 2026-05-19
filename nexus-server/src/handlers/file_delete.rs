@@ -95,7 +95,7 @@ where
         resolve_user_area(file_root, &requesting_user.username)
     };
 
-    let area_root = match area_root_path.canonicalize() {
+    let area_root = match tokio::fs::canonicalize(&area_root_path).await {
         Ok(p) => p,
         Err(_) => {
             // Root mode: admin's file_root is broken. Non-root: the user's
@@ -169,7 +169,7 @@ where
         };
 
         // `symlink_metadata` so we don't follow the final symlink component.
-        let symlink_meta = std::fs::symlink_metadata(&candidate);
+        let symlink_meta = tokio::fs::symlink_metadata(&candidate).await;
         let (path_to_delete, is_dir) = match &symlink_meta {
             Ok(meta) if meta.file_type().is_symlink() => {
                 // Delete the symlink, not its target.

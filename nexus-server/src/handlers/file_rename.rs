@@ -116,7 +116,7 @@ where
         resolve_user_area(file_root, &requesting_user.username)
     };
 
-    let area_root = match area_root_path.canonicalize() {
+    let area_root = match tokio::fs::canonicalize(&area_root_path).await {
         Ok(p) => p,
         Err(_) => {
             // Root mode: admin's file_root is broken. Non-root: the user's
@@ -225,7 +225,7 @@ where
         };
 
         // Under lock: resolve source from the authoritative filesystem state.
-        let symlink_meta = std::fs::symlink_metadata(&candidate);
+        let symlink_meta = tokio::fs::symlink_metadata(&candidate).await;
         let source_path = match &symlink_meta {
             Ok(meta) if meta.file_type().is_symlink() => {
                 // Rename the symlink, not its target.

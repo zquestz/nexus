@@ -227,7 +227,7 @@ where
     };
 
     // Canonicalize area_root (it might not exist yet for new users)
-    let area_root = match area_root_path.canonicalize() {
+    let area_root = match tokio::fs::canonicalize(&area_root_path).await {
         Ok(p) => p,
         Err(_) => {
             // User's area doesn't exist - return empty listing

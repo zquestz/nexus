@@ -208,7 +208,7 @@ where
         resolve_user_area(file_root, &requesting_user.username)
     };
 
-    let area_root = match area_root_path.canonicalize() {
+    let area_root = match tokio::fs::canonicalize(&area_root_path).await {
         Ok(p) => p,
         Err(_) => {
             // Root mode: admin's file_root is broken. Non-root: the user's
@@ -242,7 +242,8 @@ where
 
     // Check if the candidate path is a symlink BEFORE resolving
     // (resolve_path follows symlinks, so we'd lose this info)
-    let is_symlink = std::fs::symlink_metadata(&candidate)
+    let is_symlink = tokio::fs::symlink_metadata(&candidate)
+        .await
         .map(|m| m.file_type().is_symlink())
         .unwrap_or(false);
 
@@ -260,7 +261,7 @@ where
     };
 
     // Get file metadata from resolved path (follows symlinks for size, timestamps, etc.)
-    let metadata = match std::fs::metadata(&resolved) {
+    let metadata = match tokio::fs::metadata(&resolved).await {
         Ok(m) => m,
         Err(_) => {
             let response = ServerMessage::FileInfoResponse {
