@@ -1,7 +1,4 @@
-//! Voice registry for managing active voice sessions
-//!
-//! The registry tracks all active voice sessions on the server and provides
-//! methods for adding, removing, and querying sessions.
+//! In-memory registry of active voice sessions on the server.
 
 use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
@@ -135,7 +132,7 @@ impl VoiceRegistry {
         let self_target = if is_channel {
             session.target.first().cloned().unwrap_or_default()
         } else {
-            // For user messages, send the other user's nickname
+            // User messages: report the other user's nickname.
             session
                 .target
                 .iter()
@@ -152,7 +149,7 @@ impl VoiceRegistry {
                 let target = if is_channel {
                     session.target.first().cloned().unwrap_or_default()
                 } else {
-                    // For user messages, send the leaving user's nickname to remaining participants
+                    // User messages: remaining participants get the leaver's nickname.
                     session.nickname.clone()
                 };
                 (true, participants, target)
@@ -291,10 +288,8 @@ impl Default for VoiceRegistry {
     }
 }
 
-// Test-only methods
 #[cfg(test)]
 impl VoiceRegistry {
-    /// Get the number of active voice sessions (test-only)
     pub async fn session_count(&self) -> usize {
         self.sessions.read().await.len()
     }
@@ -305,14 +300,12 @@ mod tests {
     use super::*;
 
     fn create_test_session(nickname: &str, target: &str, session_id: u32) -> VoiceSession {
-        // Parse target: if it starts with #, it's a channel (single element)
-        // Otherwise, assume it's a user message key like "alice:bob"
+        // `#name` → channel; `a:b` → user-message key; bare name → pair with nickname.
         let target_vec = if target.starts_with('#') {
             vec![target.to_string()]
         } else if target.contains(':') {
             target.split(':').map(|s| s.to_string()).collect()
         } else {
-            // Single nickname - create a pair with test user
             vec![nickname.to_string(), target.to_string()]
         };
         let ip: std::net::IpAddr = "192.168.1.1".parse().unwrap();
@@ -514,8 +507,7 @@ mod tests {
     async fn test_user_message_voice_session() {
         let registry = VoiceRegistry::new();
 
-        // User message voice session uses canonical sorted target ["alice", "bob"]
-        // Both users should end up in the same voice session
+        // Both users share the canonical sorted target ["alice", "bob"].
         let ip: std::net::IpAddr = "192.168.1.1".parse().unwrap();
         let alice_session = VoiceSession::new(
             "alice".to_string(),

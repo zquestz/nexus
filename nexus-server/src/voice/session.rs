@@ -1,42 +1,31 @@
-//! Voice session types
-//!
-//! A VoiceSession represents a single user's participation in a voice channel
-//! or user message conversation.
+//! A single user's participation in a voice channel or user-message conversation.
 
 use std::net::{IpAddr, SocketAddr};
 
 use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
 use uuid::Uuid;
 
-/// Represents a user's active voice session
-///
-/// Each user can have at most one voice session per server.
-/// The session tracks their authentication token, target (channel/user message),
-/// and UDP endpoint for voice packets.
+/// At most one per user per server (session-rules invariant).
 #[derive(Debug, Clone)]
 pub struct VoiceSession {
-    /// Unique token for authenticating UDP voice packets
+    /// Authenticates UDP voice packets.
     pub token: Uuid,
-    /// Display name of the user
     pub nickname: String,
-    /// Target as array: ["#channel"] for channels, ["alice", "bob"] for user messages (sorted)
+    /// `["#channel"]` for channels, sorted `["alice", "bob"]` for user messages.
     pub target: Vec<String>,
-    /// Unix timestamp when the session was created (used for stale session cleanup)
+    /// Unix create time; used to expire sessions that never opened DTLS.
     pub joined_at: i64,
-    /// Client's UDP address for sending voice packets (set when first UDP packet received)
+    /// Set on the first UDP packet from the client.
     pub udp_addr: Option<SocketAddr>,
-    /// TCP session ID (for correlating with the BBS connection and permission checks)
+    /// Correlates with the BBS connection for permission checks.
     pub session_id: u32,
-    /// Client's IP address (for validating DTLS connections)
+    /// Validates DTLS connections.
     pub ip: IpAddr,
 }
 
 impl VoiceSession {
-    /// Create a new voice session
-    ///
-    /// Permissions (voice_listen, voice_talk) are checked dynamically via
-    /// UserManager using the session_id, not cached here. This ensures
-    /// permission changes take effect immediately.
+    /// Permissions aren't cached here — they're resolved dynamically by
+    /// session_id via UserManager so permission changes take effect at once.
     pub fn new(nickname: String, target: Vec<String>, session_id: u32, ip: IpAddr) -> Self {
         Self {
             token: Uuid::new_v4(),
@@ -52,23 +41,22 @@ impl VoiceSession {
         }
     }
 
-    /// Check if this session is for a channel (single element starting with '#')
+    /// Single element starting with `#`.
     pub fn is_channel(&self) -> bool {
         self.target.len() == 1 && self.target[0].starts_with('#')
     }
 
-    /// Check if this session is for a user message (two elements, neither starting with '#')
     #[allow(dead_code)] // API completeness, complement to is_channel()
     pub fn is_user_message(&self) -> bool {
         self.target.len() == 2
     }
 
-    /// Get the target as a string key for registry lookups
+    /// Colon-joined target, the key used for registry lookups.
     pub fn target_key(&self) -> String {
         self.target.join(":")
     }
 
-    /// Check if this session's target matches a given channel name (case-insensitive)
+    /// Case-insensitive match against a channel name.
     pub fn target_matches_channel(&self, channel: &str) -> bool {
         self.is_channel()
             && self
@@ -78,7 +66,7 @@ impl VoiceSession {
                 .unwrap_or(false)
     }
 
-    /// Set the UDP address when first packet is received
+    /// Set on the first inbound UDP packet.
     pub fn set_udp_addr(&mut self, addr: SocketAddr) {
         self.udp_addr = Some(addr);
     }
@@ -93,7 +81,6 @@ mod tests {
         let ip: std::net::IpAddr = "192.168.1.1".parse().unwrap();
         let session = VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1, ip);
 
-        // Token should be a valid UUID v4
         assert_eq!(session.token.get_version_num(), 4);
     }
 
