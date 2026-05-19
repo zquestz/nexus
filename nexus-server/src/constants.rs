@@ -496,6 +496,10 @@ pub const ERR_CONNECTION_TRACKER_LOCK: &str = "connection tracker lock";
 /// limiting transfer connections.
 pub const ERR_TRANSFER_TRACKER_LOCK: &str = "transfer tracker lock";
 
+/// Panic message: the connection-tracker per-IP-count mutex used for
+/// limiting voice connections.
+pub const ERR_VOICE_TRACKER_LOCK: &str = "voice tracker lock";
+
 // =============================================================================
 // Other panic messages (programmer-error invariants)
 // =============================================================================
@@ -716,7 +720,7 @@ pub const LOG_SCAN_DONE: &str = "Done scanning directory";
 
 // --- Voice DTLS ---
 pub const LOG_VOICE_REJECTED_BANNED: &str = "Voice DTLS: rejected banned IP";
-pub const LOG_VOICE_REJECTED_NO_SESSION: &str = "Voice DTLS: rejected, no voice session";
+pub const LOG_VOICE_REJECTED_LIMIT: &str = "Voice DTLS: rejected, per-IP voice limit reached";
 pub const LOG_VOICE_NEW_CONNECTION: &str = "Voice DTLS: new connection";
 pub const LOG_VOICE_ACCEPT_ERROR: &str = "Voice DTLS: accept error";
 pub const LOG_VOICE_CONNECTION_CLOSED: &str = "Voice DTLS: connection closed";

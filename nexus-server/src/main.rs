@@ -287,6 +287,7 @@ async fn main() {
             ip_rule_cache.clone(),
             user_manager.clone(),
             channel_manager.clone(),
+            connection_tracker.clone(),
         ))
     });
 

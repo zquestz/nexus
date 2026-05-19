@@ -1,7 +1,6 @@
 //! In-memory registry of active voice sessions on the server.
 
-use std::collections::{HashMap, HashSet};
-use std::net::IpAddr;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -31,7 +30,6 @@ pub struct VoiceLeaveInfo {
 pub struct VoiceRegistry {
     sessions: Arc<RwLock<HashMap<Uuid, VoiceSession>>>,
     session_id_to_token: Arc<RwLock<HashMap<u32, Uuid>>>,
-    active_ips: Arc<RwLock<HashSet<IpAddr>>>,
 }
 
 impl VoiceRegistry {
@@ -39,7 +37,6 @@ impl VoiceRegistry {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             session_id_to_token: Arc::new(RwLock::new(HashMap::new())),
-            active_ips: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 
@@ -49,13 +46,11 @@ impl VoiceRegistry {
     pub async fn add(&self, session: VoiceSession) -> Option<AddOutcome> {
         let token = session.token;
         let session_id = session.session_id;
-        let ip = session.ip;
         let target_key_lower = session.target_key().to_lowercase();
         let nickname_lower = session.nickname.to_lowercase();
 
         let mut sessions = self.sessions.write().await;
         let mut id_to_token = self.session_id_to_token.write().await;
-        let mut active_ips = self.active_ips.write().await;
 
         if id_to_token.contains_key(&session_id) {
             return None;
@@ -68,7 +63,6 @@ impl VoiceRegistry {
 
         sessions.insert(token, session);
         id_to_token.insert(session_id, token);
-        active_ips.insert(ip);
 
         Some(AddOutcome {
             token,
@@ -81,13 +75,9 @@ impl VoiceRegistry {
         let session = {
             let mut sessions = self.sessions.write().await;
             let mut id_to_token = self.session_id_to_token.write().await;
-            let mut active_ips = self.active_ips.write().await;
 
             if let Some(session) = sessions.remove(&token) {
                 id_to_token.remove(&session.session_id);
-                if !sessions.values().any(|s| s.ip == session.ip) {
-                    active_ips.remove(&session.ip);
-                }
                 session
             } else {
                 return None;
@@ -102,14 +92,10 @@ impl VoiceRegistry {
         let session = {
             let mut sessions = self.sessions.write().await;
             let mut id_to_token = self.session_id_to_token.write().await;
-            let mut active_ips = self.active_ips.write().await;
 
             if let Some(token) = id_to_token.remove(&session_id)
                 && let Some(session) = sessions.remove(&token)
             {
-                if !sessions.values().any(|s| s.ip == session.ip) {
-                    active_ips.remove(&session.ip);
-                }
                 session
             } else {
                 return None;
@@ -184,13 +170,6 @@ impl VoiceRegistry {
     pub async fn has_session(&self, session_id: u32) -> bool {
         let id_to_token = self.session_id_to_token.read().await;
         id_to_token.contains_key(&session_id)
-    }
-
-    /// Used to gate DTLS connections — only IPs that joined voice
-    /// via TCP signaling may connect via UDP.
-    pub async fn has_session_for_ip(&self, ip: IpAddr) -> bool {
-        let active_ips = self.active_ips.read().await;
-        active_ips.contains(&ip)
     }
 
     /// Used by leave paths to decide whether to broadcast — only

@@ -1,15 +1,18 @@
 //! Connection tracking for DoS protection
 //!
-//! This module provides connection limiting per IP address to prevent
-//! resource exhaustion attacks. It tracks main BBS connections,
-//! file transfer connections, and voice connections with separate limits.
+//! Per-IP connection limiting to prevent resource exhaustion. Main BBS
+//! and file-transfer connections each have their own configurable limit;
+//! voice connections are counted separately but share the main BBS limit
+//! value (one voice stream per connected user from an IP).
 
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::constants::{ERR_CONNECTION_TRACKER_LOCK, ERR_TRANSFER_TRACKER_LOCK};
+use crate::constants::{
+    ERR_CONNECTION_TRACKER_LOCK, ERR_TRANSFER_TRACKER_LOCK, ERR_VOICE_TRACKER_LOCK,
+};
 
 /// Tracks active connections per IP address for both main and transfer connections
 ///
@@ -27,6 +30,9 @@ pub struct ConnectionTracker {
     transfer_connections: Arc<Mutex<HashMap<IpAddr, usize>>>,
     /// Maximum transfer connections allowed per IP (0 = unlimited)
     max_transfers_per_ip: AtomicUsize,
+    /// Map of IP addresses to their current voice connection count.
+    /// Capped against `max_connections_per_ip` (shared value, separate count).
+    voice_connections: Arc<Mutex<HashMap<IpAddr, usize>>>,
 }
 
 impl ConnectionTracker {
@@ -40,6 +46,7 @@ impl ConnectionTracker {
             max_connections_per_ip: AtomicUsize::new(max_connections_per_ip),
             transfer_connections: Arc::new(Mutex::new(HashMap::new())),
             max_transfers_per_ip: AtomicUsize::new(max_transfers_per_ip),
+            voice_connections: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -107,6 +114,29 @@ impl ConnectionTracker {
             connections: self.transfer_connections.clone(),
         })
     }
+
+    /// Try to acquire a voice connection slot for the given IP. Capped
+    /// against `max_connections_per_ip` — counted separately from BBS
+    /// connections, so a per-IP BBS limit of N also allows N voice streams.
+    ///
+    /// Returns `None` if the IP has reached the limit. The guard releases
+    /// the slot when dropped.
+    pub fn try_acquire_voice(&self, ip: IpAddr) -> Option<VoiceGuard> {
+        let max = self.max_connections_per_ip.load(Ordering::Relaxed);
+        let mut connections = self.voice_connections.lock().expect(ERR_VOICE_TRACKER_LOCK);
+        let count = connections.entry(ip).or_insert(0);
+
+        // 0 means unlimited
+        if max > 0 && *count >= max {
+            return None;
+        }
+
+        *count += 1;
+        Some(VoiceGuard {
+            ip,
+            connections: self.voice_connections.clone(),
+        })
+    }
 }
 
 /// RAII guard that releases a main connection slot when dropped
@@ -153,6 +183,25 @@ impl Drop for TransferGuard {
     }
 }
 
+/// RAII guard that releases a voice connection slot when dropped.
+#[derive(Debug)]
+pub struct VoiceGuard {
+    ip: IpAddr,
+    connections: Arc<Mutex<HashMap<IpAddr, usize>>>,
+}
+
+impl Drop for VoiceGuard {
+    fn drop(&mut self) {
+        let mut connections = self.connections.lock().expect(ERR_VOICE_TRACKER_LOCK);
+        if let Some(count) = connections.get_mut(&self.ip) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                connections.remove(&self.ip);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,6 +230,12 @@ mod tests {
                 .transfer_connections
                 .lock()
                 .expect(ERR_TRANSFER_TRACKER_LOCK);
+            connections.get(&ip).copied().unwrap_or(0)
+        }
+
+        /// Get the current voice connection count for an IP
+        fn voice_count(&self, ip: IpAddr) -> usize {
+            let connections = self.voice_connections.lock().expect(ERR_VOICE_TRACKER_LOCK);
             connections.get(&ip).copied().unwrap_or(0)
         }
 
@@ -507,5 +562,79 @@ mod tests {
         let tracker = ConnectionTracker::new(5, 3);
         assert_eq!(tracker.max_connections_per_ip(), 5);
         assert_eq!(tracker.max_transfers_per_ip(), 3);
+    }
+
+    // =========================================================================
+    // Voice connection tests
+    // =========================================================================
+
+    #[test]
+    fn test_voice_acquire_and_release() {
+        let tracker = ConnectionTracker::new(2, 5);
+        let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
+
+        let guard1 = tracker.try_acquire_voice(ip);
+        assert!(guard1.is_some());
+        assert_eq!(tracker.voice_count(ip), 1);
+
+        let guard2 = tracker.try_acquire_voice(ip);
+        assert!(guard2.is_some());
+        assert_eq!(tracker.voice_count(ip), 2);
+
+        // At the (BBS) limit of 2
+        assert!(tracker.try_acquire_voice(ip).is_none());
+
+        drop(guard1);
+        assert_eq!(tracker.voice_count(ip), 1);
+        assert!(tracker.try_acquire_voice(ip).is_some());
+    }
+
+    #[test]
+    fn test_voice_uses_main_limit_but_counts_separately() {
+        let tracker = ConnectionTracker::new(1, 5);
+        let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
+
+        // Fill the single main slot.
+        let _c = tracker.try_acquire(ip).unwrap();
+        assert!(tracker.try_acquire(ip).is_none());
+
+        // Voice has its own count against the same limit value, so a
+        // voice slot is still available even though BBS is full.
+        let _v = tracker.try_acquire_voice(ip).unwrap();
+        assert!(tracker.try_acquire_voice(ip).is_none());
+
+        assert_eq!(tracker.connection_count(ip), 1);
+        assert_eq!(tracker.voice_count(ip), 1);
+    }
+
+    #[test]
+    fn test_voice_unlimited_when_zero() {
+        let tracker = ConnectionTracker::new(0, 5);
+        let ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1));
+
+        let mut guards = Vec::new();
+        for _ in 0..100 {
+            let guard = tracker.try_acquire_voice(ip);
+            assert!(guard.is_some(), "unlimited should allow any number");
+            guards.push(guard);
+        }
+        assert_eq!(tracker.voice_count(ip), 100);
+    }
+
+    #[test]
+    fn test_voice_cleanup_on_zero() {
+        let tracker = ConnectionTracker::new(2, 5);
+        let ip = IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1));
+
+        let guard = tracker.try_acquire_voice(ip).unwrap();
+        assert_eq!(tracker.voice_count(ip), 1);
+
+        drop(guard);
+        assert_eq!(tracker.voice_count(ip), 0);
+        let connections = tracker
+            .voice_connections
+            .lock()
+            .expect(ERR_VOICE_TRACKER_LOCK);
+        assert!(!connections.contains_key(&ip));
     }
 }

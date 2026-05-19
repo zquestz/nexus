@@ -30,6 +30,7 @@ use nexus_common::voice::{
 const STALE_CLIENT_CHECK_INTERVAL_SECS: u64 = 30;
 
 use crate::channels::ChannelManager;
+use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Permission;
 use crate::ip_rule_cache::IpRuleCache;
@@ -52,6 +53,7 @@ pub struct VoiceUdpServer {
     ip_rule_cache: Arc<StdRwLock<IpRuleCache>>,
     user_manager: UserManager,
     channel_manager: ChannelManager,
+    connection_tracker: Arc<ConnectionTracker>,
 }
 
 impl VoiceUdpServer {
@@ -61,6 +63,7 @@ impl VoiceUdpServer {
         ip_rule_cache: Arc<StdRwLock<IpRuleCache>>,
         user_manager: UserManager,
         channel_manager: ChannelManager,
+        connection_tracker: Arc<ConnectionTracker>,
     ) -> Self {
         Self {
             listener,
@@ -69,6 +72,7 @@ impl VoiceUdpServer {
             ip_rule_cache,
             user_manager,
             channel_manager,
+            connection_tracker,
         }
     }
 
@@ -105,12 +109,16 @@ impl VoiceUdpServer {
                         continue;
                     }
 
-                    // Reject IPs that don't have an active voice session
-                    if !self.registry.has_session_for_ip(remote_addr.ip()).await {
-                        warn!(ip = %remote_addr.ip(), "{}", LOG_VOICE_REJECTED_NO_SESSION);
+                    // Per-IP voice connection cap (shares the BBS limit value,
+                    // counted separately). Authorization is the per-packet
+                    // token check; this just bounds concurrent connections.
+                    let Some(voice_guard) =
+                        self.connection_tracker.try_acquire_voice(remote_addr.ip())
+                    else {
+                        debug!(ip = %remote_addr.ip(), "{}", LOG_VOICE_REJECTED_LIMIT);
                         let _ = conn.close().await;
                         continue;
-                    }
+                    };
 
                     debug!(ip = %remote_addr, "{}", LOG_VOICE_NEW_CONNECTION);
 
@@ -127,6 +135,8 @@ impl VoiceUdpServer {
 
                     let server = self.clone();
                     tokio::spawn(async move {
+                        // Held for the connection's lifetime; releases the slot on drop.
+                        let _voice_guard = voice_guard;
                         server.handle_connection(client, remote_addr).await;
                     });
                 }

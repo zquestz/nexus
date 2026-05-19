@@ -19,7 +19,9 @@ pub struct VoiceSession {
     pub udp_addr: Option<SocketAddr>,
     /// Correlates with the BBS connection for permission checks.
     pub session_id: u32,
-    /// Validates DTLS connections.
+    /// TCP peer IP at join. Retained for future connection tracking /
+    /// admin visibility; not currently read.
+    #[allow(dead_code)]
     pub ip: IpAddr,
 }
 
