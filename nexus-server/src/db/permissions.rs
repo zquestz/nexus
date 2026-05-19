@@ -3,128 +3,76 @@
 use std::collections::HashSet;
 use strum::AsRefStr;
 
-/// Permission types for user actions
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, AsRefStr)]
 #[strum(serialize_all = "snake_case")]
 pub enum Permission {
-    /// Permission to create/update IP bans
     BanCreate,
-    /// Permission to remove IP bans
     BanDelete,
-    /// Permission to view list of active bans
     BanList,
-    /// Permission to create/update trusted IPs
     TrustCreate,
-    /// Permission to remove trusted IPs
     TrustDelete,
-    /// Permission to view list of trusted IPs
     TrustList,
-    /// Permission to view active connections
     ConnectionMonitor,
-    /// Permission to use UserList command
     UserList,
-    /// Permission to use UserInfo command
     UserInfo,
-    /// Permission to use ChatSend command
     ChatSend,
-    /// Permission to receive chat messages
     ChatReceive,
-    /// Permission to join existing channels
     ChatJoin,
-    /// Permission to create new channels
     ChatCreate,
-    /// Permission to view list of available channels
     ChatList,
-    /// Permission to toggle secret mode on channels
     ChatSecret,
-    /// Permission to see/receive chat topic
     ChatTopic,
-    /// Permission to edit chat topic
     ChatTopicEdit,
-    /// Permission to bypass chat rate limiting (flood protection)
+    /// Bypass chat rate limiting (flood protection).
     ChatUnlimited,
-    /// Permission to send broadcast messages
     UserBroadcast,
-    /// Permission to create users
     UserCreate,
-    /// Permission to delete users
     UserDelete,
-    /// Permission to edit users
     UserEdit,
-    /// Permission to kick/disconnect users
     UserKick,
-    /// Permission to send messages to users
     UserMessage,
-    /// Permission to view news posts
     NewsList,
-    /// Permission to create news posts
     NewsCreate,
-    /// Permission to edit any news post (without: only own posts)
+    /// Edit any news post (without: only own posts).
     NewsEdit,
-    /// Permission to delete any news post (without: only own posts)
+    /// Delete any news post (without: only own posts).
     NewsDelete,
-    /// Permission to download files
     FileDownload,
-    /// Permission to upload files to upload/dropbox folders
+    /// Upload files to upload/dropbox folders.
     FileUpload,
-    /// Permission to upload files to any directory, bypassing upload/dropbox folder restriction
+    /// Upload files to any directory, bypassing upload/dropbox folder restriction.
     FileUploadAnywhere,
-    /// Permission to list files and directories
     FileList,
-    /// Permission to search files
     FileSearch,
-    /// Permission to trigger file index rebuild
     FileReindex,
-    /// Permission to browse entire file area from root
+    /// Browse entire file area from root.
     FileRoot,
-    /// Permission to create directories anywhere in file area
     FileCreateDir,
-    /// Permission to delete files and empty directories
+    /// Delete files and empty directories.
     FileDelete,
-    /// Permission to view detailed file/directory information
     FileInfo,
-    /// Permission to rename files and directories
     FileRename,
-    /// Permission to move files and directories
     FileMove,
-    /// Permission to copy files and directories
     FileCopy,
-    /// Permission to create account groups
     GroupCreate,
-    /// Permission to delete account groups
     GroupDelete,
-    /// Permission to edit account group name and permissions
     GroupEdit,
-    /// Permission to add a tracker to the server's tracker list
     TrackerAdd,
-    /// Permission to edit a tracker's configuration (also gates fetching detail for the edit form, and accepting a Stage 1 pending fingerprint)
+    /// Edit a tracker's configuration (also gates fetching detail for the edit form, and accepting a Stage 1 pending fingerprint).
     TrackerEdit,
-    /// Permission to view the server's configured trackers and their runtime status
     TrackerList,
-    /// Permission to remove a tracker from the server's tracker list
     TrackerRemove,
-    /// Permission to receive audio from others in voice chat
     VoiceListen,
-    /// Permission to transmit audio in voice chat
     VoiceTalk,
 }
 
 impl Permission {
-    /// Convert permission to string for database storage.
-    ///
-    /// Uses strum's AsRefStr to automatically convert PascalCase enum variants
-    /// to snake_case strings (UserList → user_list, ChatSend → chat_send).
-    ///
-    /// Returns `&str` with zero allocation and zero runtime cost.
+    /// Convert permission to its snake_case database string (e.g. UserList → user_list).
     pub fn as_str(&self) -> &str {
         self.as_ref()
     }
 
-    /// Parse a permission string into a Permission enum variant.
-    ///
-    /// Accepts snake_case strings like "user_list", "chat_send", etc.
-    ///
-    /// Returns Some(Permission) if the string is valid, None otherwise.
+    /// Parse a snake_case permission string; `None` if unrecognized.
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "ban_create" => Some(Permission::BanCreate),
@@ -182,63 +130,26 @@ impl Permission {
     }
 }
 
-/// A set of permissions for a user
-///
-/// This struct wraps a `HashSet<Permission>` to provide an efficient way to
-/// store and check user permissions. It provides methods to add, remove, and
-/// query permissions.
-///
-/// # Usage
-///
-/// Create a new permission set with `new()`, add permissions with `add()`,
-/// and convert to a vector with `to_vec()` for iteration or inspection.
 #[derive(Debug, Clone)]
 pub struct Permissions {
     pub(crate) permissions: HashSet<Permission>,
 }
 
 impl Permissions {
-    /// Create a new empty permission set
-    ///
-    /// Returns a `Permissions` instance with no permissions. Permissions can
-    /// be added using the `add()` method.
     pub fn new() -> Self {
         Self {
             permissions: HashSet::new(),
         }
     }
 
-    /// Convert the permission set to a vector
-    ///
-    /// Returns a vector containing all permissions in the set. The order is
-    /// not guaranteed as it depends on the internal hash set implementation.
-    ///
-    /// # Returns
-    ///
-    /// A `Vec<Permission>` containing all permissions in the set.
     pub fn to_vec(&self) -> Vec<Permission> {
         self.permissions.iter().copied().collect()
     }
 
-    /// Iterate over the permissions in the set
-    ///
-    /// Returns an iterator over the permissions. The order is not guaranteed.
     pub fn iter(&self) -> impl Iterator<Item = &Permission> {
         self.permissions.iter()
     }
 
-    /// Add a permission to the set
-    ///
-    /// If the permission already exists in the set, this is a no-op.
-    ///
-    /// # Arguments
-    ///
-    /// * `permission` - The permission to add to the set
-    ///
-    /// # Note
-    ///
-    /// This method is primarily used in tests to build permission sets.
-    /// Production code typically uses `update_user()` from the database layer.
     #[cfg_attr(not(test), allow(dead_code))]
     pub fn add(&mut self, permission: Permission) {
         self.permissions.insert(permission);
@@ -272,7 +183,6 @@ mod tests {
 
     #[test]
     fn test_permission_snake_case_conversion() {
-        // Test that strum correctly converts PascalCase to snake_case
         assert_eq!(Permission::BanCreate.as_str(), "ban_create");
         assert_eq!(Permission::BanDelete.as_str(), "ban_delete");
         assert_eq!(Permission::BanList.as_str(), "ban_list");
@@ -330,7 +240,6 @@ mod tests {
 
     #[test]
     fn test_permission_parse_valid() {
-        // Test parsing all valid permission strings
         assert_eq!(Permission::parse("ban_create"), Some(Permission::BanCreate));
         assert_eq!(Permission::parse("ban_delete"), Some(Permission::BanDelete));
         assert_eq!(Permission::parse("ban_list"), Some(Permission::BanList));
@@ -472,7 +381,6 @@ mod tests {
 
     #[test]
     fn test_permission_parse_invalid() {
-        // Test that invalid strings return None
         assert_eq!(Permission::parse("invalid"), None);
         assert_eq!(Permission::parse(""), None);
         assert_eq!(Permission::parse("UserList"), None); // Wrong case
@@ -502,7 +410,7 @@ mod tests {
         perms.add(Permission::ChatSend);
         assert_eq!(perms.to_vec().len(), 2);
 
-        // Adding duplicate should not increase count
+        // Adding a duplicate does not increase the count.
         perms.add(Permission::UserList);
         assert_eq!(perms.to_vec().len(), 2);
     }
@@ -517,7 +425,7 @@ mod tests {
         let vec = perms.to_vec();
         assert_eq!(vec.len(), 3);
 
-        // Check that all permissions are present (order doesn't matter)
+        // Order is not guaranteed; check membership only.
         assert!(vec.contains(&Permission::UserList));
         assert!(vec.contains(&Permission::ChatSend));
         assert!(vec.contains(&Permission::UserInfo));

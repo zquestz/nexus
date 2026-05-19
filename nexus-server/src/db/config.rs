@@ -72,21 +72,18 @@ pub struct ServerConfig {
     pub scheduler_chunk_size: u32,
 }
 
-/// Database interface for server configuration
 #[derive(Clone)]
 pub struct ConfigDb {
     pool: SqlitePool,
 }
 
 impl ConfigDb {
-    /// Create a new ConfigDb instance
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
-    /// Get all server configuration values in a single query.
-    ///
-    /// Returns a `ServerConfig` with all values, using defaults for any missing keys.
+    /// All server configuration values in a single query, using
+    /// defaults for any missing keys.
     pub async fn get_all(&self) -> ServerConfig {
         let rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_GET_ALL_CONFIG)
             .fetch_all(&self.pool)
@@ -150,7 +147,6 @@ impl ConfigDb {
         }
     }
 
-    /// Set the maximum outbound bandwidth cap in bytes/sec (0 = unlimited).
     #[cfg(test)]
     pub async fn set_max_outbound_rate(&self, value: u64) -> io::Result<()> {
         let mut tx = self
@@ -177,7 +173,6 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Set the WF2Q+ scheduler chunk size in bytes (1024..=65536).
     #[cfg(test)]
     pub async fn set_scheduler_chunk_size(&self, value: u32) -> io::Result<()> {
         let mut tx = self
@@ -227,10 +222,6 @@ impl ConfigDb {
     /// Empty `description` and `public_address` values are normalized
     /// to `None` here so the protocol-level message construction
     /// doesn't need to special-case empty strings.
-    ///
-    /// # Errors
-    ///
-    /// Returns `sqlx::Error` if the database query fails.
     pub async fn get_tracker_fields(&self) -> Result<TrackerConfigFields, sqlx::Error> {
         let rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_GET_TRACKER_CONFIG_FIELDS)
             .fetch_all(&self.pool)
@@ -251,9 +242,6 @@ impl ConfigDb {
         })
     }
 
-    /// Get the maximum connections allowed per IP address
-    ///
-    /// Returns the configured value, or 5 (the default) if not found or invalid.
     pub async fn get_max_connections_per_ip(&self) -> usize {
         sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_MAX_CONNECTIONS_PER_IP)
@@ -264,13 +252,7 @@ impl ConfigDb {
             .unwrap_or(DEFAULT_MAX_CONNECTIONS_PER_IP)
     }
 
-    /// Set the maximum connections allowed per IP address
-    ///
     /// A value of 0 means unlimited connections are allowed.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the database update fails.
     #[cfg(test)]
     pub async fn set_max_connections_per_ip(&self, value: u32) -> io::Result<()> {
         let mut tx = self
@@ -298,9 +280,6 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Get the maximum file transfer connections allowed per IP address
-    ///
-    /// Returns the configured value, or 3 (the default) if not found or invalid.
     pub async fn get_max_transfers_per_ip(&self) -> usize {
         sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_MAX_TRANSFERS_PER_IP)
@@ -311,13 +290,7 @@ impl ConfigDb {
             .unwrap_or(DEFAULT_MAX_TRANSFERS_PER_IP)
     }
 
-    /// Set the maximum file transfer connections allowed per IP address
-    ///
     /// A value of 0 means unlimited transfers are allowed.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the database update fails.
     #[cfg(test)]
     pub async fn set_max_transfers_per_ip(&self, value: u32) -> io::Result<()> {
         let mut tx = self
@@ -345,9 +318,6 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Get the server name
-    ///
-    /// Returns the configured value, or "Nexus BBS" (the default) if not found.
     #[cfg(test)]
     pub async fn get_server_name(&self) -> String {
         sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
@@ -357,11 +327,6 @@ impl ConfigDb {
             .unwrap_or_else(|_| DEFAULT_SERVER_NAME.to_string())
     }
 
-    /// Set the server name
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if validation fails or if the database update fails.
     #[cfg(test)]
     pub async fn set_server_name(&self, name: &str) -> io::Result<()> {
         let mut tx = self
@@ -379,7 +344,7 @@ impl ConfigDb {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         name: &str,
     ) -> io::Result<()> {
-        // Defense-in-depth validation
+        // Defense-in-depth (handler also validates).
         if let Err(e) = validate_server_name(name) {
             let msg = match e {
                 ServerNameError::Empty => ERR_SERVER_NAME_EMPTY,
@@ -400,9 +365,6 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Get the server description
-    ///
-    /// Returns the configured value, or "" (empty string, the default) if not found.
     #[cfg(test)]
     pub async fn get_server_description(&self) -> String {
         sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
@@ -412,11 +374,6 @@ impl ConfigDb {
             .unwrap_or_else(|_| DEFAULT_SERVER_DESCRIPTION.to_string())
     }
 
-    /// Set the server description
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if validation fails or if the database update fails.
     #[cfg(test)]
     pub async fn set_server_description(&self, description: &str) -> io::Result<()> {
         let mut tx = self
@@ -434,7 +391,7 @@ impl ConfigDb {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         description: &str,
     ) -> io::Result<()> {
-        // Defense-in-depth validation
+        // Defense-in-depth (handler also validates).
         if let Err(e) = validate_server_description(description) {
             let msg = match e {
                 ServerDescriptionError::TooLong => ERR_SERVER_DESC_TOO_LONG,
@@ -454,9 +411,6 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Get the server image
-    ///
-    /// Returns the configured value, or "" (empty string, the default) if not found.
     #[cfg(test)]
     pub async fn get_server_image(&self) -> String {
         sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
@@ -466,11 +420,6 @@ impl ConfigDb {
             .unwrap_or_else(|_| DEFAULT_SERVER_IMAGE.to_string())
     }
 
-    /// Set the server image
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if validation fails or if the database update fails.
     /// An empty string is allowed to clear the image.
     #[cfg(test)]
     pub async fn set_server_image(&self, image: &str) -> io::Result<()> {
@@ -489,7 +438,7 @@ impl ConfigDb {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         image: &str,
     ) -> io::Result<()> {
-        // Defense-in-depth validation (empty string is allowed to clear image)
+        // Defense-in-depth (handler also validates); empty string clears the image.
         if !image.is_empty()
             && let Err(e) = validate_server_image(image)
         {
@@ -511,9 +460,6 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Get the public address advertised for `nexus://` URI sharing
-    ///
-    /// Returns the configured value, or "" (the default, meaning "not set") if not found.
     #[cfg(test)]
     pub async fn get_public_address(&self) -> String {
         sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
@@ -523,13 +469,7 @@ impl ConfigDb {
             .unwrap_or_else(|_| DEFAULT_PUBLIC_ADDRESS.to_string())
     }
 
-    /// Set the public address
-    ///
     /// An empty string is allowed to clear the advertised address.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if validation fails or if the database update fails.
     #[cfg(test)]
     pub async fn set_public_address(&self, value: &str) -> io::Result<()> {
         let mut tx = self
@@ -547,7 +487,7 @@ impl ConfigDb {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: &str,
     ) -> io::Result<()> {
-        // Defense-in-depth validation (empty string is allowed to clear)
+        // Defense-in-depth (handler also validates); empty string clears the address.
         if let Err(e) = validate_public_address(value) {
             let msg = match e {
                 PublicAddressError::TooLong => ERR_PUBLIC_ADDRESS_TOO_LONG,
@@ -573,9 +513,6 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Get the file reindex interval in minutes
-    ///
-    /// Returns the configured value, or 5 (the default) if not found or invalid.
     /// A value of 0 means automatic reindexing is disabled.
     pub async fn get_file_reindex_interval(&self) -> u32 {
         sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
@@ -587,13 +524,7 @@ impl ConfigDb {
             .unwrap_or(DEFAULT_FILE_REINDEX_INTERVAL)
     }
 
-    /// Set the file reindex interval in minutes
-    ///
     /// A value of 0 disables automatic reindexing.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the database update fails.
     #[cfg(test)]
     pub async fn set_file_reindex_interval(&self, value: u32) -> io::Result<()> {
         let mut tx = self
@@ -621,10 +552,7 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Get the persistent channels list
-    ///
-    /// Returns a space-separated string of channel names that survive restart.
-    /// Returns the default channel from `DEFAULT_PERSISTENT_CHANNELS` if not configured.
+    /// Space-separated string of channel names that survive restart.
     pub async fn get_persistent_channels(&self) -> String {
         sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_PERSISTENT_CHANNELS)
@@ -633,14 +561,7 @@ impl ConfigDb {
             .unwrap_or_else(|_| DEFAULT_PERSISTENT_CHANNELS.to_string())
     }
 
-    /// Set the persistent channels list
-    ///
-    /// Value should be a space-separated string of channel names (e.g., "#general #support").
     /// These channels survive restart and can't be deleted when empty.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if validation fails or the database update fails.
     #[cfg(test)]
     pub async fn set_persistent_channels(&self, value: &str) -> io::Result<()> {
         let mut tx = self
@@ -658,7 +579,7 @@ impl ConfigDb {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: &str,
     ) -> io::Result<()> {
-        // Defense-in-depth validation
+        // Defense-in-depth (handler also validates).
         if let Err(e) = validate_persistent_channels(value) {
             let msg = match e {
                 ChannelListError::TooLong => "Persistent channels list is too long",
@@ -680,10 +601,7 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Get the auto-join channels list
-    ///
-    /// Returns a space-separated string of channel names that users auto-join on login.
-    /// Returns the default channel from `DEFAULT_AUTO_JOIN_CHANNELS` if not configured.
+    /// Space-separated string of channel names users auto-join on login.
     #[cfg(test)]
     pub async fn get_auto_join_channels(&self) -> String {
         sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
@@ -693,14 +611,6 @@ impl ConfigDb {
             .unwrap_or_else(|_| DEFAULT_AUTO_JOIN_CHANNELS.to_string())
     }
 
-    /// Set the auto-join channels list
-    ///
-    /// Value should be a space-separated string of channel names (e.g., "#nexus #welcome").
-    /// These channels are automatically joined by users on login.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if validation fails or the database update fails.
     #[cfg(test)]
     pub async fn set_auto_join_channels(&self, value: &str) -> io::Result<()> {
         let mut tx = self
@@ -718,7 +628,7 @@ impl ConfigDb {
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: &str,
     ) -> io::Result<()> {
-        // Defense-in-depth validation
+        // Defense-in-depth (handler also validates).
         if let Err(e) = validate_auto_join_channels(value) {
             let msg = match e {
                 ChannelListError::TooLong => "Auto-join channels list is too long",
@@ -740,9 +650,6 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Get the minimum password strength requirement
-    ///
-    /// Returns the configured value, or `Good` (the default) if not found or invalid.
     pub async fn get_min_password_strength(&self) -> PasswordStrength {
         sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_MIN_PASSWORD_STRENGTH)
@@ -754,11 +661,6 @@ impl ConfigDb {
             .unwrap_or(DEFAULT_MIN_PASSWORD_STRENGTH)
     }
 
-    /// Set the minimum password strength requirement
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the database update fails.
     #[cfg(test)]
     pub async fn set_min_password_strength(&self, value: PasswordStrength) -> io::Result<()> {
         let mut tx = self
@@ -786,10 +688,7 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Get the chat burst limit (max messages in a burst)
-    ///
     /// A value of 0 means no burst allowance (capacity is 1).
-    /// Defaults to 5 if not configured.
     pub async fn get_chat_burst_limit(&self) -> u32 {
         sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_CHAT_BURST_LIMIT)
@@ -800,11 +699,6 @@ impl ConfigDb {
             .unwrap_or(DEFAULT_CHAT_BURST_LIMIT)
     }
 
-    /// Set the chat burst limit
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the database update fails.
     #[cfg(test)]
     pub async fn set_chat_burst_limit(&self, value: u32) -> io::Result<()> {
         let mut tx = self
@@ -831,10 +725,7 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Get the chat rate limit (messages per minute)
-    ///
-    /// A value of 0 means flood protection is disabled.
-    /// Defaults to 20 if not configured.
+    /// Messages per minute; a value of 0 disables flood protection.
     pub async fn get_chat_rate_limit(&self) -> u32 {
         sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
             .bind(CONFIG_KEY_CHAT_RATE_LIMIT)
@@ -845,11 +736,6 @@ impl ConfigDb {
             .unwrap_or(DEFAULT_CHAT_RATE_LIMIT)
     }
 
-    /// Set the chat rate limit
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the database update fails.
     #[cfg(test)]
     pub async fn set_chat_rate_limit(&self, value: u32) -> io::Result<()> {
         let mut tx = self
@@ -876,10 +762,6 @@ impl ConfigDb {
         Ok(())
     }
 
-    /// Parse channel list string into a list of channel names
-    ///
-    /// Handles space-separated values.
-    /// Returns an empty Vec if the input is empty.
     pub fn parse_channel_list(value: &str) -> Vec<String> {
         value.split_whitespace().map(|s| s.to_string()).collect()
     }
@@ -906,7 +788,6 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        // Set to new value
         config_db.set_max_connections_per_ip(10).await.unwrap();
         let limit = config_db.get_max_connections_per_ip().await;
         assert_eq!(limit, 10);
@@ -917,7 +798,6 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        // 0 means unlimited
         config_db.set_max_connections_per_ip(0).await.unwrap();
         let limit = config_db.get_max_connections_per_ip().await;
         assert_eq!(limit, 0);
@@ -938,7 +818,6 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        // Set to new value
         config_db.set_max_transfers_per_ip(5).await.unwrap();
         let limit = config_db.get_max_transfers_per_ip().await;
         assert_eq!(limit, 5);
@@ -949,7 +828,6 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        // 0 means unlimited
         config_db.set_max_transfers_per_ip(0).await.unwrap();
         let limit = config_db.get_max_transfers_per_ip().await;
         assert_eq!(limit, 0);
@@ -1024,13 +902,11 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        // First set to something
         config_db
             .set_server_description("Initial description")
             .await
             .unwrap();
 
-        // Then clear it
         config_db.set_server_description("").await.unwrap();
         let description = config_db.get_server_description().await;
         assert_eq!(description, "");
@@ -1046,10 +922,6 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("too long"));
     }
-
-    // =========================================================================
-    // Server Image Tests
-    // =========================================================================
 
     #[tokio::test]
     async fn test_get_server_image_default() {
@@ -1077,13 +949,11 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        // First set to something
         config_db
             .set_server_image("data:image/png;base64,iVBORw0KGgo=")
             .await
             .unwrap();
 
-        // Then clear it
         config_db.set_server_image("").await.unwrap();
         let image = config_db.get_server_image().await;
         assert_eq!(image, "");
@@ -1116,7 +986,6 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        // Create an image that exceeds the limit
         let prefix = "data:image/png;base64,";
         let padding = "A".repeat(validators::MAX_SERVER_IMAGE_DATA_URI_LENGTH);
         let large_image = format!("{}{}", prefix, padding);
@@ -1125,10 +994,6 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("too large"));
     }
-
-    // =========================================================================
-    // Public Address Tests
-    // =========================================================================
 
     #[tokio::test]
     async fn test_get_public_address_default() {
@@ -1210,10 +1075,6 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // =========================================================================
-    // File Reindex Interval Tests
-    // =========================================================================
-
     #[tokio::test]
     async fn test_get_file_reindex_interval_default() {
         let pool = create_test_db().await;
@@ -1229,7 +1090,6 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        // Set to new value
         config_db.set_file_reindex_interval(10).await.unwrap();
         let interval = config_db.get_file_reindex_interval().await;
         assert_eq!(interval, 10);
@@ -1240,15 +1100,10 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
 
-        // 0 disables automatic reindexing
         config_db.set_file_reindex_interval(0).await.unwrap();
         let interval = config_db.get_file_reindex_interval().await;
         assert_eq!(interval, 0);
     }
-
-    // =========================================================================
-    // Min Password Strength Tests
-    // =========================================================================
 
     #[tokio::test]
     async fn test_get_min_password_strength_default() {
@@ -1391,10 +1246,6 @@ mod tests {
         assert_eq!(config.max_transfers_per_ip, 3);
     }
 
-    // =========================================================================
-    // Bandwidth Tests
-    // =========================================================================
-
     #[tokio::test]
     async fn test_set_max_outbound_rate_round_trips() {
         let pool = create_test_db().await;
@@ -1406,7 +1257,6 @@ mod tests {
         config_db.set_max_outbound_rate(125_000_000).await.unwrap();
         assert_eq!(config_db.get_all().await.max_outbound_rate, 125_000_000);
 
-        // Back to unlimited.
         config_db.set_max_outbound_rate(0).await.unwrap();
         assert_eq!(config_db.get_all().await.max_outbound_rate, 0);
     }

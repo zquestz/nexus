@@ -8,7 +8,6 @@ use super::permissions::{Permission, Permissions};
 use super::util::clamp_db_bandwidth_weight;
 use crate::db::sql;
 
-/// Parameters for creating a new user account
 pub struct CreateUserParams<'a> {
     pub username: &'a str,
     pub hashed_password: &'a str,
@@ -22,10 +21,7 @@ pub struct CreateUserParams<'a> {
     pub bandwidth_weight: Option<u16>,
 }
 
-/// Parameters for updating a user account
-///
 /// All fields except `username` are optional — only provided fields are changed.
-/// This struct mirrors the `CreateUserParams` pattern to avoid excessive positional arguments.
 ///
 /// Group change: `remove_group` takes precedence over `group_id`.
 /// - `remove_group: true` — remove from group
@@ -128,20 +124,7 @@ pub enum UpdateUserResult {
     BlockedForGroupAuth,
 }
 
-/// User account stored in database
-///
-/// Represents a complete user record retrieved from the database.
-/// This struct contains all user fields including credentials, permissions,
-/// and metadata.
-///
-/// # Fields
-///
-/// * `id` - Unique database identifier
-/// * `username` - Username (case-preserved, but lookups are case-insensitive)
-/// * `hashed_password` - Argon2id password hash
-/// * `is_admin` - Whether user has admin privileges (admins get all permissions automatically)
-/// * `enabled` - Whether the account is active (disabled users cannot login)
-/// * `created_at` - Unix timestamp when account was created
+/// User account stored in database.
 #[derive(Debug, Clone)]
 pub struct UserAccount {
     pub id: i64,
@@ -187,11 +170,7 @@ impl From<UserRow> for UserAccount {
     }
 }
 
-/// Database operations for user accounts
-///
-/// Provides methods for creating, reading, updating, and deleting user accounts,
-/// as well as managing user permissions. All methods use the connection pool
-/// for efficient database access.
+/// Database operations for user accounts.
 ///
 /// # Atomic Protection
 ///
@@ -199,31 +178,16 @@ impl From<UserRow> for UserAccount {
 /// - `delete_user()` - Prevents deleting the last admin
 /// - `update_user()` - Prevents disabling last enabled admin or demoting last admin
 /// - `create_first_user_if_none_exist()` - Prevents multiple first users
-///
-/// # Thread Safety
-///
-/// This struct is `Clone` and can be safely shared across threads/tasks.
-/// The underlying connection pool handles concurrent access.
 #[derive(Clone)]
 pub struct UserDb {
     pool: SqlitePool,
 }
 
 impl UserDb {
-    // ========================================================================
-    // Constructor
-    // ========================================================================
-
-    /// Create a new UserDb instance
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
-    // ========================================================================
-    // Query Methods - User Lookup
-    // ========================================================================
-
-    /// Get a user by ID
     pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
         let mut conn = self.pool.acquire().await?;
         Self::get_user_by_id_in_tx(&mut conn, user_id).await
@@ -241,13 +205,12 @@ impl UserDb {
         Ok(row.map(UserAccount::from))
     }
 
-    /// Get a user by username (case-insensitive lookup)
+    /// Case-insensitive lookup (column-level `COLLATE NOCASE`).
     pub async fn get_user_by_username(
         &self,
         username: &str,
     ) -> Result<Option<UserAccount>, sqlx::Error> {
-        // Validate username format (failsafe - handlers should also validate)
-        // If this fails, it indicates a bug or attack bypassing handler validation
+        // Failsafe validation — handlers should also validate.
         if let Err(e) = validators::validate_username(username) {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
@@ -260,12 +223,9 @@ impl UserDb {
         Ok(row.map(UserAccount::from))
     }
 
-    /// Check if a username exists in the database (case-insensitive)
-    ///
-    /// Used to check if a shared account nickname collides with an existing username.
+    /// Case-insensitive existence check.
     pub async fn username_exists(&self, username: &str) -> Result<bool, sqlx::Error> {
-        // Validate username format (failsafe - handlers should also validate)
-        // If this fails, it indicates a bug or attack bypassing handler validation
+        // Failsafe validation — handlers should also validate.
         if let Err(e) = validators::validate_username(username) {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
@@ -283,10 +243,6 @@ impl UserDb {
     /// `TrackerServerRegister.allows_guest`. Returns `false` if the
     /// guest account row is missing (catastrophic; bootstrap migration
     /// ensures it exists).
-    ///
-    /// # Errors
-    ///
-    /// Returns `sqlx::Error` if the database query fails.
     pub async fn guest_enabled(&self) -> Result<bool, sqlx::Error> {
         let row: Option<(bool,)> = sqlx::query_as(sql::SQL_GET_GUEST_ENABLED)
             .fetch_optional(&self.pool)
@@ -294,9 +250,7 @@ impl UserDb {
         Ok(row.map(|(enabled,)| enabled).unwrap_or(false))
     }
 
-    /// Get all users from the database (sorted alphabetically by username)
-    ///
-    /// Used by the `/list all` command for user management.
+    /// All users, sorted alphabetically by username.
     pub async fn get_all_users(&self) -> Result<Vec<UserAccount>, sqlx::Error> {
         let rows: Vec<UserRow> = sqlx::query_as(sql::SQL_SELECT_ALL_USERS)
             .fetch_all(&self.pool)
@@ -304,10 +258,6 @@ impl UserDb {
 
         Ok(rows.into_iter().map(UserAccount::from).collect())
     }
-
-    // ========================================================================
-    // Permission Methods
-    // ========================================================================
 
     /// Resolve a user's effective bandwidth weight
     ///
@@ -414,18 +364,15 @@ impl UserDb {
         conn: &mut SqliteConnection,
         user_id: i64,
     ) -> Result<Permissions, sqlx::Error> {
-        // Check if user has a group assignment
         let group_id: Option<(Option<i64>,)> = sqlx::query_as(sql::SQL_SELECT_USER_GROUP_ID)
             .bind(user_id)
             .fetch_optional(&mut *conn)
             .await?;
 
-        // User doesn't exist — return empty permissions
         let Some((group_id,)) = group_id else {
             return Ok(Permissions::new());
         };
 
-        // Fetch user's individual permissions with override type
         let perm_rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_SELECT_PERMISSIONS)
             .bind(user_id)
             .fetch_all(&mut *conn)
@@ -440,14 +387,12 @@ impl UserDb {
                 .fetch_all(&mut *conn)
                 .await?;
 
-            // Start with group permissions
             for (perm_str,) in &group_perm_rows {
                 if let Some(perm) = Permission::parse(perm_str) {
                     permissions.permissions.insert(perm);
                 }
             }
 
-            // Apply overrides
             for (perm_str, override_type) in &perm_rows {
                 if let Some(perm) = Permission::parse(perm_str) {
                     if override_type == "grant" {
@@ -481,13 +426,11 @@ impl UserDb {
         user_id: i64,
         permission: Permission,
     ) -> Result<bool, sqlx::Error> {
-        // Check if user is admin (admins have all permissions)
         let is_admin: Option<(bool,)> = sqlx::query_as(sql::SQL_CHECK_IS_ADMIN)
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await?;
 
-        // User doesn't exist
         let Some((is_admin,)) = is_admin else {
             return Ok(false);
         };
@@ -496,8 +439,7 @@ impl UserDb {
             return Ok(true);
         }
 
-        // Use get_user_permissions() which correctly resolves group + overrides:
-        // (group_perms ∪ grants) - revokes
+        // Resolves group + overrides: (group_perms ∪ grants) - revokes
         let permissions = self.get_user_permissions(user_id).await?;
         Ok(permissions.permissions.contains(&permission))
     }
@@ -513,13 +455,11 @@ impl UserDb {
         permissions: &Permissions,
         revokes: Option<&[Permission]>,
     ) -> Result<(), sqlx::Error> {
-        // Delete existing permissions (both grants and revokes)
         sqlx::query(sql::SQL_DELETE_PERMISSIONS)
             .bind(user_id)
             .execute(&mut **tx)
             .await?;
 
-        // Insert new permissions as grants
         for perm in permissions.iter() {
             sqlx::query(sql::SQL_INSERT_PERMISSION)
                 .bind(user_id)
@@ -528,7 +468,6 @@ impl UserDb {
                 .await?;
         }
 
-        // Insert revoke overrides if provided
         if let Some(revoke_perms) = revokes {
             for perm in revoke_perms {
                 sqlx::query(sql::SQL_INSERT_PERMISSION_OVERRIDE)
@@ -620,17 +559,11 @@ impl UserDb {
         Ok(true)
     }
 
-    // ========================================================================
-    // Mutation Methods - Create/Update/Delete
-    // ========================================================================
-
-    /// Create a new user account with permissions
     pub async fn create_user(
         &self,
         params: CreateUserParams<'_>,
     ) -> Result<UserAccount, sqlx::Error> {
-        // Validate username format (failsafe - handlers should also validate)
-        // If this fails, it indicates a bug or attack bypassing handler validation
+        // Failsafe validation — handlers should also validate.
         if let Err(e) = validators::validate_username(params.username) {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
@@ -645,7 +578,7 @@ impl UserDb {
 
         let created_at = chrono::Utc::now().timestamp();
 
-        // Use a transaction to ensure user and permissions are created atomically
+        // Transaction so user row + permissions land atomically.
         let mut tx = self.pool.begin().await?;
 
         let result = sqlx::query(sql::SQL_INSERT_USER)
@@ -728,28 +661,23 @@ impl UserDb {
         username: &str,
         hashed_password: &str,
     ) -> Result<Option<UserAccount>, sqlx::Error> {
-        // Validate username format (failsafe - handlers should also validate)
-        // If this fails, it indicates a bug or attack bypassing handler validation
+        // Failsafe validation — handlers should also validate.
         if let Err(e) = validators::validate_username(username) {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
 
-        // Start a transaction for atomicity
         let mut tx = self.pool.begin().await?;
 
-        // Check if any non-guest users exist (within transaction)
-        // The guest account is excluded so the first real user becomes admin
+        // Guest account excluded so the first real user becomes admin.
         let count: (i64,) = sqlx::query_as(sql::SQL_COUNT_NON_GUEST_USERS)
             .fetch_one(&mut *tx)
             .await?;
 
         if count.0 > 0 {
-            // Non-guest users exist - rollback and return None
             tx.rollback().await?;
             return Ok(None);
         }
 
-        // No users exist - create first user as admin
         let created_at = chrono::Utc::now().timestamp();
 
         let result = sqlx::query(sql::SQL_INSERT_USER)
@@ -766,7 +694,6 @@ impl UserDb {
 
         let user_id = result.last_insert_rowid();
 
-        // Commit the transaction
         tx.commit().await?;
 
         Ok(Some(UserAccount {
@@ -801,9 +728,6 @@ impl UserDb {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Update a user account
-    /// Returns Ok(true) if user was updated, Ok(false) if user didn't exist or update was blocked
-    ///
     /// # Atomic Protection
     ///
     /// This method uses atomic SQL to prevent race conditions in two scenarios:
@@ -850,26 +774,21 @@ impl UserDb {
         &self,
         params: UpdateUserParams<'_>,
     ) -> Result<UpdateUserResult, sqlx::Error> {
-        // First, get the user to update
         let user = match self.get_user_by_username(params.username).await? {
             Some(u) => u,
             None => return Ok(UpdateUserResult::Blocked),
         };
 
-        // Check if new username already exists (and it's not the same user)
         if let Some(new_name) = params.new_username
             && new_name != params.username
             && self.get_user_by_username(new_name).await?.is_some()
         {
-            // Username already taken
             return Ok(UpdateUserResult::Blocked);
         }
 
-        // Build the final values for each field
         let final_username = params.new_username.unwrap_or(params.username);
 
-        // Validate username format if it's being changed (failsafe)
-        // If this fails, it indicates a bug or attack bypassing handler validation
+        // Failsafe validation — handlers should also validate.
         if let Some(new_username) = params.new_username
             && let Err(e) = validators::validate_username(new_username)
         {
@@ -903,7 +822,7 @@ impl UserDb {
             user.bandwidth_weight.map(i64::from)
         };
 
-        // Use a transaction to ensure user update and permissions are atomic
+        // Transaction so the row update + permission writes land atomically.
         let mut tx = self.pool.begin().await?;
 
         // Promotion auto-clean: when flipping from non-admin to admin, NULL
@@ -949,16 +868,14 @@ impl UserDb {
             .execute(&mut *tx)
             .await?;
 
-        // Check if the update was blocked (0 rows affected means constraints prevented update)
+        // 0 rows affected: last-admin protection blocked it, or the user
+        // is gone. Roll back and re-read to distinguish the cases (the
+        // caller surfaces a different error for each).
         if result.rows_affected() == 0 {
-            // Update was blocked - could be last admin protection or user not found
-            // Rollback and check if user still exists to distinguish between the cases
             tx.rollback().await?;
             if self.get_user_by_username(params.username).await?.is_some() {
-                // User exists but update was blocked - must be last admin protection
                 return Ok(UpdateUserResult::Blocked);
             }
-            // User doesn't exist
             return Ok(UpdateUserResult::Blocked);
         }
 
@@ -1097,7 +1014,6 @@ impl UserDb {
         // Update group assignment if requested (atomic with permissions above)
         // remove_group takes precedence over group_id
         if params.remove_group {
-            // Remove from group
             sqlx::query(sql::SQL_UPDATE_USER_GROUP)
                 .bind(None::<i64>)
                 .bind(user.id)
@@ -1110,7 +1026,6 @@ impl UserDb {
                 .execute(&mut *tx)
                 .await?;
         } else if let Some(new_group_id) = params.group_id {
-            // Assign to group
             sqlx::query(sql::SQL_UPDATE_USER_GROUP)
                 .bind(Some(new_group_id))
                 .bind(user.id)
@@ -1240,7 +1155,6 @@ impl UserDb {
         })
     }
 
-    /// Get revoke override permissions for a user
     pub async fn get_revoke_permissions(
         &self,
         user_id: i64,
@@ -1255,8 +1169,6 @@ impl UserDb {
             .collect())
     }
 
-    /// Set revoke override permissions for a user
-    ///
     /// Replaces all revoke overrides with the given list.
     #[cfg_attr(not(test), allow(dead_code))]
     pub async fn set_revoke_permissions(
@@ -1291,16 +1203,11 @@ mod tests {
     use crate::db::testing::*;
     use nexus_common::validators::DEFAULT_ADMIN_BANDWIDTH_WEIGHT;
 
-    // ========================================================================
-    // Database Operations Tests
-    // ========================================================================
-
     #[tokio::test]
     async fn test_get_user_by_username() {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create user
         let created = db
             .create_user(CreateUserParams {
                 username: "alice",
@@ -1316,7 +1223,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Retrieve user
         let retrieved = db.get_user_by_username("alice").await.unwrap().unwrap();
 
         assert_eq!(retrieved.id, created.id);
@@ -1339,7 +1245,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create user with specific casing
         db.create_user(CreateUserParams {
             username: "Alice",
             hashed_password: "hash123",
@@ -1359,7 +1264,6 @@ mod tests {
         let user2 = db.get_user_by_username("alice").await.unwrap().unwrap();
         let user3 = db.get_user_by_username("ALICE").await.unwrap().unwrap();
 
-        // All should return the same user
         assert_eq!(user1.id, user2.id);
         assert_eq!(user1.id, user3.id);
 
@@ -1390,7 +1294,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create user
         let created = db
             .create_user(CreateUserParams {
                 username: "alice",
@@ -1406,7 +1309,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Retrieve by ID
         let retrieved = db.get_user_by_id(created.id).await.unwrap().unwrap();
 
         assert_eq!(retrieved.id, created.id);
@@ -1427,7 +1329,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create user with specific permissions
         let perms = Permissions::from(&[Permission::UserList, Permission::ChatSend]);
 
         let user = db
@@ -1445,7 +1346,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify permissions were stored in database
         let (count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USER_PERMISSIONS)
             .bind(user.id)
             .fetch_one(&pool)
@@ -1460,7 +1360,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create admin with permissions object (should be ignored)
         let perms = Permissions::from(&[Permission::UserList]);
 
         let admin = db
@@ -1478,7 +1377,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify NO permissions stored in database (admin gets all automatically)
         let (count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USER_PERMISSIONS)
             .bind(admin.id)
             .fetch_one(&pool)
@@ -1488,16 +1386,11 @@ mod tests {
         assert_eq!(count, 0, "Admin should have no stored permissions");
     }
 
-    // ========================================================================
-    // Permission Tests
-    // ========================================================================
-
     #[tokio::test]
     async fn test_admin_has_all_permissions() {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create admin (no permissions stored in DB)
         let admin = db
             .create_user(CreateUserParams {
                 username: "admin",
@@ -1513,7 +1406,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Admin should have all permissions
         assert!(
             db.has_permission(admin.id, Permission::UserList)
                 .await
@@ -1564,7 +1456,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Should have granted permissions
         assert!(
             db.has_permission(user.id, Permission::UserList)
                 .await
@@ -1576,7 +1467,6 @@ mod tests {
                 .unwrap()
         );
 
-        // Should NOT have other permissions
         assert!(
             !db.has_permission(user.id, Permission::ChatSend)
                 .await
@@ -1594,7 +1484,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Non-existent user should have no permissions
         let result = db
             .has_permission(99999, Permission::UserList)
             .await
@@ -1607,7 +1496,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create user with initial permissions
         let initial_perms = Permissions::from(&[Permission::UserList, Permission::ChatSend]);
 
         let _user = db
@@ -1625,10 +1513,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Get user to verify initial permissions
         let user = db.get_user_by_username("alice").await.unwrap().unwrap();
 
-        // Verify initial permissions
         assert!(
             db.has_permission(user.id, Permission::UserList)
                 .await
@@ -1664,14 +1550,12 @@ mod tests {
             .unwrap();
         assert!(matches!(updated, UpdateUserResult::Updated { .. }));
 
-        // Should have new permission
         assert!(
             db.has_permission(user.id, Permission::ChatReceive)
                 .await
                 .unwrap()
         );
 
-        // Should NOT have old permissions
         assert!(
             !db.has_permission(user.id, Permission::UserList)
                 .await
@@ -1684,16 +1568,11 @@ mod tests {
         );
     }
 
-    // ========================================================================
-    // User Deletion Tests
-    // ========================================================================
-
     #[tokio::test]
     async fn test_delete_user_cascades_permissions() {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create admin first
         db.create_user(CreateUserParams {
             username: "admin",
             hashed_password: "hash0",
@@ -1708,7 +1587,6 @@ mod tests {
         .await
         .unwrap();
 
-        // Create user with permissions
         let perms = Permissions::from(&[Permission::UserList, Permission::ChatSend]);
 
         let user = db
@@ -1726,7 +1604,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify permissions exist
         let (perm_count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USER_PERMISSIONS)
             .bind(user.id)
             .fetch_one(&pool)
@@ -1734,11 +1611,9 @@ mod tests {
             .unwrap();
         assert_eq!(perm_count, 2);
 
-        // Delete user
         let deleted = db.delete_user(user.id, true).await.unwrap();
         assert!(deleted, "User should be deleted");
 
-        // Permissions should be cascaded
         let (perm_count_after,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USER_PERMISSIONS)
             .bind(user.id)
             .fetch_one(&pool)
@@ -1755,7 +1630,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Try to delete non-existent user
         let deleted = db.delete_user(99999, true).await.unwrap();
         assert!(!deleted, "Should return false for non-existent user");
     }
@@ -1814,7 +1688,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create single admin
         let admin = db
             .create_user(CreateUserParams {
                 username: "admin",
@@ -1830,14 +1703,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify only one admin exists
         assert_eq!(count_admins(&pool).await, 1);
 
-        // Try to delete the last admin
         let deleted = db.delete_user(admin.id, true).await.unwrap();
         assert!(!deleted, "Should not delete the last admin");
 
-        // Admin should still exist
         assert!(db.get_user_by_id(admin.id).await.unwrap().is_some());
         assert_eq!(count_admins(&pool).await, 1);
     }
@@ -1847,7 +1717,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create two admins
         let admin1 = db
             .create_user(CreateUserParams {
                 username: "admin1",
@@ -1877,14 +1746,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify two admins exist
         assert_eq!(count_admins(&pool).await, 2);
 
-        // Delete one admin (should succeed)
         let deleted = db.delete_user(admin1.id, true).await.unwrap();
         assert!(deleted, "Should delete admin when multiple exist");
 
-        // Verify one admin remains
         assert_eq!(count_admins(&pool).await, 1);
         assert!(db.get_user_by_id(admin2.id).await.unwrap().is_some());
         assert!(db.get_user_by_id(admin1.id).await.unwrap().is_none());
@@ -1895,7 +1761,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create admin (so system has an admin)
         db.create_user(CreateUserParams {
             username: "admin",
             hashed_password: "hash0",
@@ -1910,7 +1775,6 @@ mod tests {
         .await
         .unwrap();
 
-        // Create regular user
         let user = db
             .create_user(CreateUserParams {
                 username: "bob",
@@ -1926,17 +1790,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Delete regular user (should succeed)
         let deleted = db.delete_user(user.id, true).await.unwrap();
         assert!(deleted, "Should delete non-admin user");
 
-        // User should be gone
         assert!(db.get_user_by_id(user.id).await.unwrap().is_none());
     }
-
-    // ========================================================================
-    // Race Condition Tests
-    // ========================================================================
 
     #[tokio::test]
     async fn test_concurrent_admin_deletion_race_condition() {
@@ -1944,7 +1802,6 @@ mod tests {
         let db1 = UserDb::new(pool.clone());
         let db2 = UserDb::new(pool.clone());
 
-        // Create exactly 2 admins
         let admin1 = db1
             .create_user(CreateUserParams {
                 username: "admin1",
@@ -2006,7 +1863,6 @@ mod tests {
         let db1 = UserDb::new(pool.clone());
         let db2 = UserDb::new(pool.clone());
 
-        // Create admin first
         db1.create_user(CreateUserParams {
             username: "admin",
             hashed_password: "hash0",
@@ -2021,7 +1877,6 @@ mod tests {
         .await
         .unwrap();
 
-        // Create user
         let user = db1
             .create_user(CreateUserParams {
                 username: "bob",
@@ -2037,7 +1892,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Set different permissions concurrently
         let perms1 = Permissions::from(&[Permission::UserList]);
 
         let perms2 = Permissions::from(&[Permission::ChatSend]);
@@ -2103,14 +1957,13 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Only guest account exists (from migration) - should still allow first real user
         let (count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USERS)
             .fetch_one(&pool)
             .await
             .unwrap();
         assert_eq!(count, 1, "Should only have guest account from migration");
 
-        // Create first user (guest account is excluded from the check)
+        // Guest account is excluded from the existence check.
         let result = db
             .create_first_user_if_none_exist("admin", "hash123")
             .await
@@ -2122,7 +1975,6 @@ mod tests {
         assert!(user.is_admin, "First user should be admin");
         assert!(user.enabled, "First user should be enabled");
 
-        // Verify user exists in database (guest + admin)
         let (count_after,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USERS)
             .fetch_one(&pool)
             .await
@@ -2135,7 +1987,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create a non-guest user first
         db.create_user(CreateUserParams {
             username: "existing",
             hashed_password: "hash",
@@ -2150,7 +2001,6 @@ mod tests {
         .await
         .unwrap();
 
-        // Try to create first user when non-guest users already exist
         let result = db
             .create_first_user_if_none_exist("admin", "hash123")
             .await
@@ -2158,7 +2008,6 @@ mod tests {
 
         assert!(result.is_none(), "Should return None when users exist");
 
-        // Verify no additional user was created (guest + existing)
         let (count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USERS)
             .fetch_one(&pool)
             .await
@@ -2171,7 +2020,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create user with specific permissions
         let perms = Permissions::from(&[
             Permission::UserList,
             Permission::ChatSend,
@@ -2193,7 +2041,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Get permissions back from database
         let retrieved_perms = db.get_user_permissions(user.id).await.unwrap();
         let retrieved_vec = retrieved_perms.to_vec();
 
@@ -2208,7 +2055,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create user with no permissions
         let user = db
             .create_user(CreateUserParams {
                 username: "bob",
@@ -2224,7 +2070,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Get permissions (should be empty)
         let perms = db.get_user_permissions(user.id).await.unwrap();
         assert_eq!(perms.to_vec().len(), 0);
     }
@@ -2234,7 +2079,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create admin (no permissions stored in DB)
         let admin = db
             .create_user(CreateUserParams {
                 username: "admin",
@@ -2250,7 +2094,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Get permissions (should be empty in DB, admin gets all via has_permission)
         let perms = db.get_user_permissions(admin.id).await.unwrap();
         assert_eq!(
             perms.to_vec().len(),
@@ -2259,16 +2102,11 @@ mod tests {
         );
     }
 
-    // ========================================================================
-    // Username Exists Tests
-    // ========================================================================
-
     #[tokio::test]
     async fn test_username_exists_found() {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create a user
         db.create_user(CreateUserParams {
             username: "alice",
             hashed_password: "hash",
@@ -2283,10 +2121,9 @@ mod tests {
         .await
         .unwrap();
 
-        // Check existence - exact match
         assert!(db.username_exists("alice").await.unwrap());
 
-        // Check existence - case insensitive
+        // Case-insensitive matches.
         assert!(db.username_exists("Alice").await.unwrap());
         assert!(db.username_exists("ALICE").await.unwrap());
     }
@@ -2296,10 +2133,8 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // No users exist
         assert!(!db.username_exists("alice").await.unwrap());
 
-        // Create a different user
         db.create_user(CreateUserParams {
             username: "bob",
             hashed_password: "hash",
@@ -2318,16 +2153,11 @@ mod tests {
         assert!(!db.username_exists("alice").await.unwrap());
     }
 
-    // ========================================================================
-    // Shared Account Tests
-    // ========================================================================
-
     #[tokio::test]
     async fn test_create_shared_account() {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create a shared account
         let shared = db
             .create_user(CreateUserParams {
                 username: "shared_acct",
@@ -2348,7 +2178,6 @@ mod tests {
         assert!(shared.is_shared);
         assert!(shared.enabled);
 
-        // Retrieve and verify
         let retrieved = db
             .get_user_by_username("shared_acct")
             .await
@@ -2411,7 +2240,6 @@ mod tests {
             "Should have guest, alice, shared_acct, bob"
         );
 
-        // Find each user and verify is_shared
         let alice = all_users.iter().find(|u| u.username == "alice").unwrap();
         assert!(!alice.is_shared);
         assert!(!alice.is_admin);
@@ -2433,7 +2261,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        // Create admin first (needed for system to function)
         db.create_user(CreateUserParams {
             username: "admin",
             hashed_password: "hash",
@@ -2448,7 +2275,6 @@ mod tests {
         .await
         .unwrap();
 
-        // Create a shared account
         let shared = db
             .create_user(CreateUserParams {
                 username: "shared_acct",
@@ -2497,10 +2323,6 @@ mod tests {
         assert_eq!(account.hashed_password, "new_hash");
     }
 
-    // ========================================================================
-    // Group + Override Permission Resolution
-    // ========================================================================
-
     #[tokio::test]
     async fn test_create_user_with_group() {
         let pool = create_test_db().await;
@@ -2534,7 +2356,6 @@ mod tests {
 
         assert_eq!(user.group_id, Some(group.id));
 
-        // Verify via fetch
         let fetched = db.get_user_by_username("alice").await.unwrap().unwrap();
         assert_eq!(fetched.group_id, Some(group.id));
     }
@@ -2598,7 +2419,6 @@ mod tests {
         let db = UserDb::new(pool.clone());
         let group_db = crate::db::GroupDb::new(pool.clone());
 
-        // Group with chat_send + user_kick
         let group = group_db
             .create_group(
                 "Mods",
@@ -2609,7 +2429,6 @@ mod tests {
             .await
             .unwrap();
 
-        // User assigned to group, no individual overrides
         let user = db
             .create_user(CreateUserParams {
                 username: "alice",
@@ -2638,7 +2457,6 @@ mod tests {
         let db = UserDb::new(pool.clone());
         let group_db = crate::db::GroupDb::new(pool.clone());
 
-        // Group with chat_send
         let group = group_db
             .create_group(
                 "Basic",
@@ -2649,7 +2467,6 @@ mod tests {
             .await
             .unwrap();
 
-        // User assigned to group with an additional grant override
         let user = db
             .create_user(CreateUserParams {
                 username: "alice",
@@ -2687,7 +2504,6 @@ mod tests {
         let db = UserDb::new(pool.clone());
         let group_db = crate::db::GroupDb::new(pool.clone());
 
-        // Group with chat_send + user_kick
         let group = group_db
             .create_group(
                 "Mods",
@@ -2698,7 +2514,6 @@ mod tests {
             .await
             .unwrap();
 
-        // User assigned to group
         let user = db
             .create_user(CreateUserParams {
                 username: "alice",
@@ -2714,7 +2529,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Revoke user_kick for this user
         sqlx::query(sql::SQL_INSERT_PERMISSION_OVERRIDE)
             .bind(user.id)
             .bind("user_kick")
@@ -2736,7 +2550,6 @@ mod tests {
         let db = UserDb::new(pool.clone());
         let group_db = crate::db::GroupDb::new(pool.clone());
 
-        // Group with chat_send + user_kick + ban_create
         let group = group_db
             .create_group(
                 "Mods",
@@ -2801,7 +2614,6 @@ mod tests {
         let db = UserDb::new(pool.clone());
         let group_db = crate::db::GroupDb::new(pool.clone());
 
-        // Group with chat_send only
         let group = group_db
             .create_group(
                 "Basic",
@@ -2897,7 +2709,6 @@ mod tests {
         let db = UserDb::new(pool.clone());
         let group_db = crate::db::GroupDb::new(pool.clone());
 
-        // Group with no permissions
         let group = group_db
             .create_group("Empty", false, &Permissions::new(), 1)
             .await
@@ -2928,7 +2739,7 @@ mod tests {
         let db = UserDb::new(pool.clone());
         let group_db = crate::db::GroupDb::new(pool.clone());
 
-        // Group with no permissions, but user has a grant override
+        // Empty group, but the user has a grant override.
         let group = group_db
             .create_group("Empty", false, &Permissions::new(), 1)
             .await
@@ -3009,10 +2820,6 @@ mod tests {
         assert_eq!(bob.group_id, None);
     }
 
-    // ========================================================================
-    // update_user group change Tests (via UpdateUserParams)
-    // ========================================================================
-
     #[tokio::test]
     async fn test_update_user_assign_group() {
         let pool = create_test_db().await;
@@ -3055,7 +2862,6 @@ mod tests {
 
         assert_eq!(user.group_id, Some(group1.id));
 
-        // Reassign to group2 via update_user
         let UpdateUserResult::Updated { account, .. } = db
             .update_user(UpdateUserParams {
                 username: "alice",
@@ -3112,7 +2918,6 @@ mod tests {
         .await
         .unwrap();
 
-        // Remove group via update_user
         let UpdateUserResult::Updated { account, .. } = db
             .update_user(UpdateUserParams {
                 username: "alice",
@@ -3203,10 +3008,6 @@ mod tests {
         assert_eq!(account.group_id, None, "remove_group wins over group_id");
     }
 
-    // ========================================================================
-    // get_revoke_permissions Tests
-    // ========================================================================
-
     #[tokio::test]
     async fn test_get_revoke_permissions_empty() {
         let pool = create_test_db().await;
@@ -3267,10 +3068,6 @@ mod tests {
         assert!(revokes.contains(&Permission::UserKick));
     }
 
-    // ========================================================================
-    // set_revoke_permissions Tests
-    // ========================================================================
-
     #[tokio::test]
     async fn test_set_revoke_permissions_replaces_existing() {
         let pool = create_test_db().await;
@@ -3306,7 +3103,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Set initial revokes
         db.set_revoke_permissions(user.id, &[Permission::UserKick])
             .await
             .unwrap();
@@ -3314,7 +3110,6 @@ mod tests {
         assert_eq!(revokes.len(), 1);
         assert!(revokes.contains(&Permission::UserKick));
 
-        // Replace with different revokes
         db.set_revoke_permissions(user.id, &[Permission::BanCreate, Permission::ChatSend])
             .await
             .unwrap();
@@ -3357,19 +3152,13 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify revoke exists
         let revokes = db.get_revoke_permissions(user.id).await.unwrap();
         assert_eq!(revokes.len(), 1);
 
-        // Set empty revokes to clear
         db.set_revoke_permissions(user.id, &[]).await.unwrap();
         let revokes = db.get_revoke_permissions(user.id).await.unwrap();
         assert!(revokes.is_empty());
     }
-
-    // ========================================================================
-    // update_user group change override cleanup Tests (via UpdateUserParams)
-    // ========================================================================
 
     #[tokio::test]
     async fn test_update_user_assign_group_removes_duplicate_grants() {
@@ -3377,7 +3166,6 @@ mod tests {
         let db = UserDb::new(pool.clone());
         let group_db = crate::db::GroupDb::new(pool.clone());
 
-        // Group with chat_send and user_kick
         let group = group_db
             .create_group(
                 "Mods",
@@ -3388,7 +3176,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create user with no group initially
         let user = db
             .create_user(CreateUserParams {
                 username: "alice",
@@ -3467,7 +3254,6 @@ mod tests {
         let db = UserDb::new(pool.clone());
         let group_db = crate::db::GroupDb::new(pool.clone());
 
-        // Group with chat_send and user_kick
         let group = group_db
             .create_group(
                 "Mods",
@@ -3494,7 +3280,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add a grant override too
         sqlx::query(sql::SQL_INSERT_PERMISSION_OVERRIDE)
             .bind(user.id)
             .bind("user_list")
@@ -3503,7 +3288,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify revoke exists
         let revokes = db.get_revoke_permissions(user.id).await.unwrap();
         assert_eq!(revokes.len(), 1);
 
@@ -3555,7 +3339,6 @@ mod tests {
         let db = UserDb::new(pool.clone());
         let group_db = crate::db::GroupDb::new(pool.clone());
 
-        // Create two groups with different permissions
         let group1 = group_db
             .create_group(
                 "OldGroup",
@@ -3575,7 +3358,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create user in group1 with a direct grant override and a revoke
         let user = db
             .create_user(CreateUserParams {
                 username: "alice",
@@ -3657,12 +3439,11 @@ mod tests {
         );
         assert_eq!(final_perms.permissions.len(), 2);
 
-        // Verify revokes are stored correctly
         let revokes = db.get_revoke_permissions(user.id).await.unwrap();
         assert_eq!(revokes.len(), 1);
         assert!(revokes.contains(&Permission::UserKick));
 
-        // Verify raw override rows: voice_listen should remain as a grant
+        // Raw override rows: voice_listen should remain as a grant
         // (it doesn't overlap with group2's permissions, so cleanup shouldn't remove it)
         let override_rows: Vec<(String, String)> = sqlx::query_as(sql::SQL_SELECT_PERMISSIONS)
             .bind(user.id)
@@ -3688,10 +3469,6 @@ mod tests {
             "user_kick should be stored as a revoke override"
         );
     }
-
-    // ========================================================================
-    // Bandwidth Weight Tests
-    // ========================================================================
 
     /// Helper: build a minimal CreateUserParams with a given bandwidth_weight override.
     /// Lives next to its test users via a `static` so the returned reference satisfies
@@ -4332,10 +4109,6 @@ mod tests {
         assert!(matches!(result, UpdateUserResult::Updated { .. }));
     }
 
-    // ========================================================================
-    // OwnedSubset (non-admin surgical permission writes) tests
-    // ========================================================================
-
     /// Helper: snapshot a user's permission rows as `(permission, override_type)`
     /// pairs, sorted, for deterministic assertions.
     async fn snapshot_perm_rows(pool: &SqlitePool, user_id: i64) -> Vec<(String, String)> {
@@ -4668,10 +4441,6 @@ mod tests {
             "ReplaceAll revoke-only update must flip an existing grant row to a revoke"
         );
     }
-
-    // ========================================================================
-    // In-tx group-auth re-validation (non-admin race protection)
-    // ========================================================================
 
     /// API invariant: a non-admin caller must supply both an
     /// `OwnedSubset` scope and a `requester_bandwidth_max`. Violations
@@ -5219,15 +4988,12 @@ mod tests {
         assert_eq!(in_none, DEFAULT_BANDWIDTH_WEIGHT);
     }
 
-    // ========================================================================
     // In-transaction contract: update_user returns the post-update
     // effective weight resolved inside the same transaction as the write.
-    //
     // These tests pin the invariant that the value reported by
     // `UpdateUserResult::Updated.resolved_bandwidth_weight` matches what
     // `get_resolved_bandwidth_weight` would return immediately after the
     // commit — no torn states, no follow-up DB read needed for callers.
-    // ========================================================================
 
     /// Setting a new override → resolved equals the override.
     #[tokio::test]

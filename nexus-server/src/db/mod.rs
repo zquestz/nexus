@@ -27,8 +27,6 @@ pub use password::{hash_password_async, verify_password_async};
 #[allow(unused_imports)]
 pub use password::{hash_password, verify_password};
 pub use permissions::{Permission, Permissions};
-// Tracker re-exports are dead until chunk 4 (handlers consume them).
-#[allow(unused_imports)]
 pub use trackers::{
     CreateTrackerParams, TrackerDb, TrackerDbError, TrackerRecord, UpdateTrackerParams,
     is_transient_db_error,
@@ -59,7 +57,6 @@ pub struct Database {
 }
 
 impl Database {
-    /// Create a new Database instance from a connection pool
     pub fn new(pool: SqlitePool) -> Self {
         Self {
             users: UserDb::new(pool.clone()),
@@ -98,10 +95,6 @@ impl Database {
     /// the manager — or admin updates will silently fail to propagate
     /// until the tracker task is restarted. See
     /// `handlers/server_info_update.rs` for the write half.
-    ///
-    /// # Errors
-    ///
-    /// Returns `sqlx::Error` if either underlying query fails.
     pub async fn tracker_registration_fields(
         &self,
     ) -> Result<TrackerRegistrationFields, sqlx::Error> {
@@ -207,13 +200,11 @@ pub fn database_path(data_dir: &Path) -> PathBuf {
 pub async fn init_db(database_path: &Path) -> Result<SqlitePool, sqlx::Error> {
     let database_url = format!("sqlite://{}?mode=rwc", database_path.display());
 
-    // Create connection pool
     let pool = SqlitePoolOptions::new()
         .max_connections(MAX_DB_CONNECTIONS)
         .connect(&database_url)
         .await?;
 
-    // Run migrations
     sqlx::migrate!("./migrations").run(&pool).await?;
 
     Ok(pool)

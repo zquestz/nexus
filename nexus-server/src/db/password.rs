@@ -1,15 +1,8 @@
-//! Password hashing utilities using Argon2id
+//! Password hashing utilities using Argon2id.
 //!
-//! Provides secure password hashing for production use, with an optional fast
-//! mode for testing that avoids Argon2's intentional slowness.
-//!
-//! # Fast Mode
-//!
-//! When `fast: true` is passed to `hash_password`, it produces a simple hash
-//! with the format `$FAST$<password>`. This is detected automatically by
-//! `verify_password` for instant verification.
-//!
-//! **Never use fast mode in production** - it stores passwords in plaintext.
+//! `fast: true` produces a `$FAST$<password>` plaintext hash for tests only,
+//! detected automatically by `verify_password`. Never use fast mode in
+//! production.
 
 use argon2::{
     Argon2,
@@ -20,15 +13,11 @@ use std::fmt;
 
 use crate::constants::ERR_PASSWORD_TASK_JOIN;
 
-/// Prefix for fast (test-only) password hashes
 const FAST_HASH_PREFIX: &str = "$FAST$";
 
-/// Error type for password operations
 #[derive(Debug)]
 pub enum PasswordError {
-    /// Password validation failed
     Validation(validators::PasswordError),
-    /// Hashing or verification operation failed
     Hash(argon2::password_hash::Error),
     /// The blocking task that ran the Argon2 work panicked or was cancelled.
     /// Should never happen in practice; surfaces here so the caller fails
@@ -54,20 +43,7 @@ impl From<argon2::password_hash::Error> for PasswordError {
     }
 }
 
-/// Hash a password
-///
-/// # Arguments
-///
-/// * `password` - The plaintext password to hash
-/// * `min_strength` - Minimum password strength for defense-in-depth validation
-/// * `fast` - If true, use simple hash for testing. If false, use Argon2id.
-///
-/// # Returns
-///
-/// * `Ok(String)` - The password hash
-///   - Fast mode: `$FAST$<password>` (plaintext, for testing only)
-///   - Normal mode: Argon2id hash in PHC string format
-/// * `Err` - If validation or hashing fails
+/// Hash a password.
 ///
 /// # Security
 ///
@@ -79,8 +55,7 @@ pub fn hash_password(
     min_strength: PasswordStrength,
     fast: bool,
 ) -> Result<String, PasswordError> {
-    // Validate password format (failsafe - handlers should also validate)
-    // If this fails, it indicates a bug or attack bypassing handler validation
+    // Failsafe revalidation; handlers should also validate.
     if let Err(e) = validators::validate_password(password, min_strength, &[]) {
         return Err(PasswordError::Validation(e));
     }
@@ -95,40 +70,26 @@ pub fn hash_password(
     }
 }
 
-/// Verify a password against a stored hash
+/// Verify a password against a stored hash.
 ///
-/// Automatically detects the hash type:
-/// - Hashes starting with `$FAST$` use direct string comparison
-/// - All other hashes use Argon2 verification
-///
-/// # Arguments
-///
-/// * `password` - The plaintext password to verify
-/// * `password_hash` - The stored hash (from `hash_password`)
-///
-/// # Returns
-///
-/// * `Ok(true)` - Password matches the hash
-/// * `Ok(false)` - Password does not match the hash
-/// * `Err` - If the hash is malformed or verification fails for technical reasons
+/// Automatically detects the hash type: `$FAST$` prefix uses direct string
+/// comparison, all other hashes use Argon2 verification.
 ///
 /// # Security
 ///
 /// Argon2 verification uses constant-time comparison to prevent timing attacks.
 /// Fast hash verification does not, but fast hashes should only exist in tests.
 pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, PasswordError> {
-    // Validate password format (failsafe - handlers should also validate)
-    // Use validate_password_input since empty passwords are valid for guest accounts
+    // Failsafe revalidation; validate_password_input allows the empty
+    // passwords valid for guest accounts.
     if let Err(e) = validators::validate_password_input(password) {
         return Err(PasswordError::Validation(e));
     }
 
-    // Fast hash - direct comparison (test mode only)
     if let Some(stored) = password_hash.strip_prefix(FAST_HASH_PREFIX) {
         return Ok(stored == password);
     }
 
-    // Argon2 hash - full verification
     let parsed_hash = PasswordHash::new(password_hash)?;
     let argon2 = Argon2::default();
 
@@ -186,13 +147,9 @@ mod tests {
         let password = "my_secure_password";
         let hash = hash_password(password, PasswordStrength::Weak, false).unwrap();
 
-        // Should be Argon2 format
         assert!(hash.starts_with("$argon2"), "Should be Argon2 hash");
 
-        // Verify correct password
         assert!(verify_password(password, &hash).unwrap());
-
-        // Verify incorrect password
         assert!(!verify_password("wrong_password", &hash).unwrap());
     }
 
@@ -202,10 +159,8 @@ mod tests {
         let hash1 = hash_password(password, PasswordStrength::Weak, false).unwrap();
         let hash2 = hash_password(password, PasswordStrength::Weak, false).unwrap();
 
-        // Hashes should be different due to different salts
+        // Different salts produce different hashes that both still verify.
         assert_ne!(hash1, hash2);
-
-        // But both should verify correctly
         assert!(verify_password(password, &hash1).unwrap());
         assert!(verify_password(password, &hash2).unwrap());
     }
@@ -215,13 +170,9 @@ mod tests {
         let password = "test_password";
         let hash = hash_password(password, PasswordStrength::Weak, true).unwrap();
 
-        // Should be fast format
         assert_eq!(hash, "$FAST$test_password");
 
-        // Verify correct password
         assert!(verify_password(password, &hash).unwrap());
-
-        // Verify incorrect password
         assert!(!verify_password("wrong_password", &hash).unwrap());
     }
 
@@ -231,7 +182,7 @@ mod tests {
         let hash1 = hash_password(password, PasswordStrength::Weak, true).unwrap();
         let hash2 = hash_password(password, PasswordStrength::Weak, true).unwrap();
 
-        // Fast hashes should be identical (no salt)
+        // Fast hashes are identical (no salt).
         assert_eq!(hash1, hash2);
     }
 
@@ -239,15 +190,12 @@ mod tests {
     fn test_verify_auto_detects_hash_type() {
         let password = "test_password";
 
-        // Create both hash types
         let fast_hash = hash_password(password, PasswordStrength::Weak, true).unwrap();
         let argon2_hash = hash_password(password, PasswordStrength::Weak, false).unwrap();
 
-        // verify_password should handle both
         assert!(verify_password(password, &fast_hash).unwrap());
         assert!(verify_password(password, &argon2_hash).unwrap());
 
-        // And reject wrong passwords for both
         assert!(!verify_password("wrong", &fast_hash).unwrap());
         assert!(!verify_password("wrong", &argon2_hash).unwrap());
     }

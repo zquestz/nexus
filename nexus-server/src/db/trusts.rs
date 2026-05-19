@@ -10,7 +10,6 @@ use crate::constants::{ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK, ERR_VALID_IP_PR
 use crate::db::sql;
 use crate::ip_rule_cache::assert_canonical_target;
 
-/// A trust record from the database
 #[derive(Debug, Clone)]
 pub struct TrustRecord {
     /// Canonical lowercase IP address or CIDR (network address with host bits
@@ -30,7 +29,6 @@ pub struct TrustRecord {
     pub expires_at: Option<i64>,
 }
 
-/// Row type for trust queries
 type TrustRow = (
     String,
     Option<String>,
@@ -53,19 +51,16 @@ impl From<TrustRow> for TrustRecord {
     }
 }
 
-/// Database access for trust operations
 #[derive(Clone)]
 pub struct TrustDb {
     pool: SqlitePool,
 }
 
 impl TrustDb {
-    /// Create a new TrustDb instance
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
-    /// Get current Unix timestamp
     fn now() -> i64 {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -80,8 +75,6 @@ impl TrustDb {
     /// lookups (`has_trusts_for_nickname`, `delete_trusts_by_nickname`)
     /// round-trip cleanly. `created_by` is preserved as-typed since it's a
     /// display-only field.
-    ///
-    /// Returns the created/updated trust record.
     pub async fn create_or_update_trust(
         &self,
         ip_address: &str,
@@ -104,15 +97,13 @@ impl TrustDb {
             .execute(&self.pool)
             .await?;
 
-        // Fetch the record we just created/updated (without expiry filter)
+        // Re-read without the expiry filter so the just-written row is returned.
         self.get_trust_by_ip_unfiltered(ip_address)
             .await?
             .ok_or(sqlx::Error::RowNotFound)
     }
 
-    /// Get a trust entry by IP address (regardless of expiry status)
-    ///
-    /// Used internally after creating/updating a trust to return the record.
+    /// Get a trust entry by IP address regardless of expiry status.
     async fn get_trust_by_ip_unfiltered(
         &self,
         ip_address: &str,
@@ -125,17 +116,13 @@ impl TrustDb {
         Ok(row.map(TrustRecord::from))
     }
 
-    /// Check if a trust entry exists for a given IP/CIDR (regardless of expiry)
-    ///
-    /// Used in tests to verify trusts were created/deleted.
+    /// Check if a trust entry exists for a given IP/CIDR (regardless of expiry).
     #[cfg(test)]
     pub async fn trust_exists(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
         Ok(self.get_trust_by_ip_unfiltered(ip_address).await?.is_some())
     }
 
-    /// Check if an IP is currently trusted (not expired)
-    ///
-    /// Used in tests to verify trust expiry behavior.
+    /// Check if an IP is currently trusted (not expired).
     #[cfg(test)]
     pub async fn is_ip_trusted(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
         let now = Self::now();
@@ -149,9 +136,7 @@ impl TrustDb {
         Ok(row.is_some())
     }
 
-    /// Get a trust entry by IP address (only if not expired)
-    ///
-    /// Used in tests to verify trust details.
+    /// Get a trust entry by IP address (only if not expired).
     #[cfg(test)]
     pub async fn get_trust_by_ip(
         &self,
@@ -168,8 +153,6 @@ impl TrustDb {
         Ok(row.map(TrustRecord::from))
     }
 
-    /// Delete a trust entry by IP address
-    ///
     /// Returns true if a trust was deleted, false if no trust existed.
     pub async fn delete_trust_by_ip(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(sql::SQL_DELETE_TRUST_BY_IP)
@@ -180,7 +163,7 @@ impl TrustDb {
         Ok(result.rows_affected() > 0)
     }
 
-    /// Delete all trusts with a given nickname annotation
+    /// Delete all trusts with a given nickname annotation.
     ///
     /// Lookup is case-insensitive: the supplied nickname is lowercased to
     /// match the stored form. Returns the list of IP addresses that were
@@ -191,7 +174,7 @@ impl TrustDb {
     ) -> Result<Vec<String>, sqlx::Error> {
         let nickname_lower = nickname.to_lowercase();
 
-        // First, get the IPs we're about to delete
+        // Capture the matching IPs before deleting, so we can return them.
         let rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_TRUSTED_IPS_BY_NICKNAME)
             .bind(&nickname_lower)
             .fetch_all(&self.pool)
@@ -200,7 +183,6 @@ impl TrustDb {
         let ips: Vec<String> = rows.into_iter().map(|(ip,)| ip).collect();
 
         if !ips.is_empty() {
-            // Delete the trusts
             sqlx::query(sql::SQL_DELETE_TRUSTS_BY_NICKNAME)
                 .bind(&nickname_lower)
                 .execute(&self.pool)
@@ -210,7 +192,7 @@ impl TrustDb {
         Ok(ips)
     }
 
-    /// Check if any trusts exist with a given nickname annotation
+    /// Check if any trusts exist with a given nickname annotation.
     ///
     /// Lookup is case-insensitive: the supplied nickname is lowercased to
     /// match the stored form.
@@ -223,9 +205,7 @@ impl TrustDb {
         Ok(row.0 > 0)
     }
 
-    /// List all active (non-expired) trusts
-    ///
-    /// Results are sorted by creation time (newest first).
+    /// List all active (non-expired) trusts, sorted by creation time (newest first).
     pub async fn list_active_trusts(&self) -> Result<Vec<TrustRecord>, sqlx::Error> {
         let now = Self::now();
 
@@ -237,10 +217,6 @@ impl TrustDb {
         Ok(rows.into_iter().map(TrustRecord::from).collect())
     }
 
-    /// Delete all expired trusts
-    ///
-    /// Returns the number of trusts deleted.
-    /// Called on server startup to clean up stale entries.
     pub async fn cleanup_expired_trusts(&self) -> Result<u64, sqlx::Error> {
         let now = Self::now();
 
@@ -252,32 +228,24 @@ impl TrustDb {
         Ok(result.rows_affected())
     }
 
-    /// Load all active (non-expired) trusts for cache initialization
-    ///
-    /// This is used at server startup to populate the in-memory cache.
-    /// Results include both single IPs and CIDR ranges.
     pub async fn load_all_active_trusts(&self) -> Result<Vec<TrustRecord>, sqlx::Error> {
         self.list_active_trusts().await
     }
 
-    /// Delete all trusts whose IP/CIDR is contained within a given CIDR range
+    /// Delete every trust whose IP/CIDR is contained within `range`.
     ///
-    /// This is used when untrusting a CIDR range to also remove any single IPs
-    /// or smaller ranges that fall within the untrusted range.
-    ///
-    /// Returns the list of IP/CIDR strings that were deleted.
+    /// Cascades a CIDR untrust to the single IPs and smaller ranges nested
+    /// inside it. Returns the IP/CIDR strings that were deleted.
     pub async fn delete_trusts_in_range(&self, range: &IpNet) -> Result<Vec<String>, sqlx::Error> {
-        // Get all active trusts
         let all_trusts = self.list_active_trusts().await?;
 
         let mut deleted = Vec::new();
 
         for trust in all_trusts {
-            // Try to parse the trust's IP/CIDR
             let trust_net = if let Ok(net) = trust.ip_address.parse::<IpNet>() {
                 net
             } else if let Ok(ip) = trust.ip_address.parse::<IpAddr>() {
-                // Convert single IP to /32 or /128
+                // A bare IP is treated as a single-host /32 or /128.
                 match ip {
                     IpAddr::V4(v4) => {
                         IpNet::V4(ipnet::Ipv4Net::new(v4, 32).expect(ERR_VALID_IP_PREFIX))
@@ -287,11 +255,9 @@ impl TrustDb {
                     }
                 }
             } else {
-                // Can't parse, skip
                 continue;
             };
 
-            // Check if trust is contained within the range
             let is_contained = match (&trust_net, range) {
                 (IpNet::V4(trust_v4), IpNet::V4(range_v4)) => {
                     range_v4.contains(&trust_v4.network())
@@ -304,11 +270,8 @@ impl TrustDb {
                 _ => false, // IPv4/IPv6 mismatch
             };
 
-            if is_contained {
-                // Delete this trust
-                if self.delete_trust_by_ip(&trust.ip_address).await? {
-                    deleted.push(trust.ip_address);
-                }
+            if is_contained && self.delete_trust_by_ip(&trust.ip_address).await? {
+                deleted.push(trust.ip_address);
             }
         }
 
@@ -349,7 +312,7 @@ mod tests {
         let pool = create_test_db().await;
         let db = TrustDb::new(pool);
 
-        let expires = TrustDb::now() + 3600; // 1 hour from now
+        let expires = TrustDb::now() + 3600;
 
         let trust = db
             .create_or_update_trust("10.0.0.1", None, None, "admin", Some(expires))
@@ -365,7 +328,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = TrustDb::new(pool);
 
-        // Create initial trust
         db.create_or_update_trust(
             "192.168.1.100",
             Some("alice"),
@@ -376,7 +338,7 @@ mod tests {
         .await
         .expect("create trust");
 
-        // Update same IP
+        // Re-upsert the same IP with new field values.
         let trust = db
             .create_or_update_trust(
                 "192.168.1.100",
@@ -413,14 +375,13 @@ mod tests {
         let pool = create_test_db().await;
         let db = TrustDb::new(pool);
 
-        // Create an already-expired trust
         let expired = TrustDb::now() - 1;
 
         db.create_or_update_trust("192.168.1.100", None, None, "admin", Some(expired))
             .await
             .expect("create trust");
 
-        // Should not be considered trusted
+        // An expired trust is neither trusted nor returned.
         assert!(!db.is_ip_trusted("192.168.1.100").await.unwrap());
         assert!(db.get_trust_by_ip("192.168.1.100").await.unwrap().is_none());
     }
@@ -441,7 +402,7 @@ mod tests {
 
         assert!(!db.is_ip_trusted("192.168.1.100").await.unwrap());
 
-        // Deleting again returns false
+        // Deleting again returns false.
         let deleted = db.delete_trust_by_ip("192.168.1.100").await.unwrap();
         assert!(!deleted);
     }
@@ -451,7 +412,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = TrustDb::new(pool);
 
-        // Create multiple trusts with same nickname
         db.create_or_update_trust("192.168.1.100", Some("alice"), None, "admin", None)
             .await
             .expect("create trust 1");
@@ -468,7 +428,7 @@ mod tests {
         assert!(deleted_ips.contains(&"192.168.1.100".to_string()));
         assert!(deleted_ips.contains(&"192.168.1.101".to_string()));
 
-        // "other" trust should still exist
+        // The "other" nickname's trust is untouched.
         assert!(db.is_ip_trusted("192.168.1.102").await.unwrap());
     }
 
@@ -514,7 +474,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = TrustDb::new(pool);
 
-        // Create some trusts
         db.create_or_update_trust("192.168.1.100", Some("alice"), None, "admin", None)
             .await
             .expect("create trust 1");
@@ -522,7 +481,6 @@ mod tests {
             .await
             .expect("create trust 2");
 
-        // Create an expired trust
         let expired = TrustDb::now() - 1;
         db.create_or_update_trust("192.168.1.102", None, None, "admin", Some(expired))
             .await
@@ -530,7 +488,7 @@ mod tests {
 
         let trusts = db.list_active_trusts().await.unwrap();
 
-        // Should only return 2 active trusts (expired one excluded)
+        // The expired trust is excluded.
         assert_eq!(trusts.len(), 2);
     }
 
@@ -539,7 +497,6 @@ mod tests {
         let pool = create_test_db().await;
         let db = TrustDb::new(pool);
 
-        // Create expired trusts
         let expired = TrustDb::now() - 1;
         db.create_or_update_trust("192.168.1.100", None, None, "admin", Some(expired))
             .await
@@ -548,12 +505,10 @@ mod tests {
             .await
             .expect("create expired trust 2");
 
-        // Create a permanent trust
         db.create_or_update_trust("192.168.1.102", None, None, "admin", None)
             .await
             .expect("create permanent trust");
 
-        // Create a future trust
         let future = TrustDb::now() + 3600;
         db.create_or_update_trust("192.168.1.103", None, None, "admin", Some(future))
             .await
@@ -562,7 +517,7 @@ mod tests {
         let deleted = db.cleanup_expired_trusts().await.unwrap();
         assert_eq!(deleted, 2);
 
-        // Permanent and future trusts should still exist
+        // Permanent and future trusts survive cleanup.
         let trusts = db.list_active_trusts().await.unwrap();
         assert_eq!(trusts.len(), 2);
     }

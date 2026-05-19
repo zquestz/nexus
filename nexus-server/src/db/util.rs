@@ -6,14 +6,8 @@ use tracing::warn;
 use crate::constants::LOG_BANDWIDTH_WEIGHT_CLAMPED;
 
 /// Clamp a raw `i64` bandwidth weight from a DB row into the valid `u16`
-/// range. Belt-and-suspenders against corrupt rows (operator hand-edits,
-/// restored backup, etc.) — all writer paths validate, so under normal
-/// operation this is the identity function.
-///
-/// Both ends preserve operator intent: a value above 65535 clamps **down**
-/// to `u16::MAX`, while zero/negative clamps **up** to `MIN_BANDWIDTH_WEIGHT`.
-/// When the clamp actually fires, a `warn!` log line surfaces the original
-/// raw value so operators can trace the source of the corruption.
+/// range. Defends against corrupt rows (operator hand-edits, restored
+/// backup); all writer paths validate, so this is normally the identity.
 pub(super) fn clamp_db_bandwidth_weight(value: i64) -> u16 {
     let clamped = value.clamp(MIN_BANDWIDTH_WEIGHT as i64, u16::MAX as i64) as u16;
     if i64::from(clamped) != value {

@@ -9,7 +9,6 @@ use sqlx::SqlitePool;
 
 use crate::db::sql;
 
-/// Channel settings from database
 #[derive(Debug, Clone)]
 pub struct ChannelSettings {
     pub name: String,
@@ -18,21 +17,16 @@ pub struct ChannelSettings {
     pub secret: bool,
 }
 
-/// Database interface for channel settings
 #[derive(Clone)]
 pub struct ChannelDb {
     pool: SqlitePool,
 }
 
 impl ChannelDb {
-    /// Create a new ChannelDb instance
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
 
-    /// Get settings for a channel
-    ///
-    /// Returns None if the channel doesn't exist in the database.
     pub async fn get_channel_settings(&self, name: &str) -> io::Result<Option<ChannelSettings>> {
         let result =
             sqlx::query_as::<_, (String, String, String, bool)>(sql::SQL_SELECT_CHANNEL_SETTINGS)
@@ -72,9 +66,6 @@ impl ChannelDb {
         )
     }
 
-    /// Get all channel settings
-    ///
-    /// Returns settings for all persistent channels.
     pub async fn get_all_channel_settings(&self) -> io::Result<Vec<ChannelSettings>> {
         let results = sqlx::query_as::<_, (String, String, String, bool)>(
             sql::SQL_SELECT_ALL_CHANNEL_SETTINGS,
@@ -115,9 +106,6 @@ impl ChannelDb {
             .collect())
     }
 
-    /// Create or update channel settings
-    ///
-    /// Uses upsert semantics - creates if doesn't exist, updates if it does.
     pub async fn upsert_channel_settings(&self, settings: &ChannelSettings) -> io::Result<()> {
         let mut tx = self
             .pool
@@ -146,7 +134,6 @@ impl ChannelDb {
         Ok(())
     }
 
-    /// Update only the topic for a channel
     pub async fn set_topic(&self, name: &str, topic: &str, set_by: &str) -> io::Result<()> {
         sqlx::query(sql::SQL_UPDATE_CHANNEL_TOPIC)
             .bind(topic)
@@ -159,7 +146,6 @@ impl ChannelDb {
         Ok(())
     }
 
-    /// Update only the secret flag for a channel
     pub async fn set_secret(&self, name: &str, secret: bool) -> io::Result<()> {
         sqlx::query(sql::SQL_UPDATE_CHANNEL_SECRET)
             .bind(secret)
@@ -171,9 +157,6 @@ impl ChannelDb {
         Ok(())
     }
 
-    /// Delete channel settings
-    ///
-    /// Used when a channel is removed from the persistent channels list.
     pub async fn delete_channel_settings(&self, name: &str) -> io::Result<()> {
         let mut tx = self
             .pool
@@ -199,7 +182,6 @@ impl ChannelDb {
         Ok(())
     }
 
-    /// Check if a channel has settings in the database
     #[cfg(test)]
     pub async fn channel_exists(&self, name: &str) -> io::Result<bool> {
         let count: i32 = sqlx::query_scalar(sql::SQL_COUNT_CHANNEL_SETTINGS)

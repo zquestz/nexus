@@ -254,7 +254,6 @@ pub struct TrackerDb {
 }
 
 impl TrackerDb {
-    /// Construct a new wrapper around the shared connection pool.
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
@@ -688,7 +687,6 @@ mod tests {
             .expect("get")
             .expect("row exists");
         assert_eq!(fetched.fingerprint.as_deref(), Some(TEST_FINGERPRINT));
-        // Other fields untouched.
         assert_eq!(fetched.address, original.address);
         assert_eq!(fetched.name, original.name);
         assert_eq!(fetched.enabled, original.enabled);

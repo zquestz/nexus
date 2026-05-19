@@ -14,7 +14,6 @@ use crate::db::permissions::{Permission, Permissions};
 use crate::db::sql;
 use crate::db::util::clamp_db_bandwidth_weight;
 
-/// A group record from the database
 #[derive(Debug, Clone)]
 pub struct GroupRecord {
     pub id: i64,
@@ -61,21 +60,15 @@ impl From<GroupRow> for GroupRecord {
     }
 }
 
-/// Database access for group operations
 #[derive(Clone)]
 pub struct GroupDb {
     pool: SqlitePool,
 }
 
 impl GroupDb {
-    /// Create a new GroupDb instance
     pub fn new(pool: SqlitePool) -> Self {
         Self { pool }
     }
-
-    // ========================================================================
-    // Query Methods
-    // ========================================================================
 
     /// Get all groups ordered by name (case-insensitive)
     pub async fn get_all_groups(&self) -> Result<Vec<GroupRecord>, sqlx::Error> {
@@ -86,7 +79,6 @@ impl GroupDb {
         Ok(rows.into_iter().map(GroupRecord::from).collect())
     }
 
-    /// Get a single group by ID
     pub async fn get_group_by_id(&self, id: i64) -> Result<Option<GroupRecord>, sqlx::Error> {
         let mut conn = self.pool.acquire().await?;
         Self::get_group_by_id_in_tx(&mut conn, id).await
@@ -114,8 +106,6 @@ impl GroupDb {
         Ok(row.map(GroupRecord::from))
     }
 
-    /// Get all permissions for a group
-    ///
     /// Returns permissions sorted alphabetically.
     pub async fn get_group_permissions(
         &self,
@@ -132,7 +122,6 @@ impl GroupDb {
             .collect())
     }
 
-    /// Count the number of users assigned to a group
     pub async fn get_member_count(&self, group_id: i64) -> Result<u32, sqlx::Error> {
         let (count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_GROUP_MEMBERS)
             .bind(group_id)
@@ -142,15 +131,11 @@ impl GroupDb {
         Ok(count as u32)
     }
 
-    /// Get all groups with member counts and permissions in bulk (3 queries total)
-    ///
-    /// More efficient than calling `get_all_groups()` + `get_member_count()` +
-    /// `get_group_permissions()` per group (which is 1 + 2N queries).
+    /// Fetches all groups with member counts and permissions in 3
+    /// queries total, rather than the 1 + 2N of per-group lookups.
     pub async fn get_all_groups_with_details(&self) -> Result<Vec<GroupInfo>, sqlx::Error> {
-        // 1. Fetch all groups
         let groups = self.get_all_groups().await?;
 
-        // 2. Fetch all member counts in one query
         let count_rows: Vec<(i64, i64)> = sqlx::query_as(sql::SQL_COUNT_ALL_GROUP_MEMBERS)
             .fetch_all(&self.pool)
             .await?;
@@ -159,7 +144,6 @@ impl GroupDb {
             .map(|(gid, count)| (gid, count as u32))
             .collect();
 
-        // 3. Fetch all permissions in one query
         let perm_rows: Vec<(i64, String)> = sqlx::query_as(sql::SQL_SELECT_ALL_GROUP_PERMISSIONS)
             .fetch_all(&self.pool)
             .await?;
@@ -170,7 +154,6 @@ impl GroupDb {
             }
         }
 
-        // Assemble GroupInfo list
         Ok(groups
             .into_iter()
             .map(|g| GroupInfo {
@@ -183,10 +166,6 @@ impl GroupDb {
             })
             .collect())
     }
-
-    // ========================================================================
-    // Mutation Methods
-    // ========================================================================
 
     /// See [`GroupPermissionWriteScope`].
     async fn set_permissions_in_tx(
@@ -250,10 +229,6 @@ impl GroupDb {
         Ok(perms)
     }
 
-    /// Create a new group with permissions
-    ///
-    /// Returns the created group record.
-    ///
     /// # Errors
     ///
     /// Returns `sqlx::Error::Database` if a group with the same name already
@@ -265,7 +240,7 @@ impl GroupDb {
         permissions: &Permissions,
         bandwidth_weight: u16,
     ) -> Result<GroupRecord, sqlx::Error> {
-        // Validate group name (failsafe - handlers should also validate)
+        // Defense-in-depth (handlers also validate).
         if let Err(e) = validators::validate_group_name(name) {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
@@ -319,7 +294,7 @@ impl GroupDb {
         bandwidth_weight: u16,
         permission_write_scope: GroupPermissionWriteScope<'_>,
     ) -> Result<Option<UpdateGroupResult>, sqlx::Error> {
-        // Validate group name (failsafe - handlers should also validate)
+        // Defense-in-depth (handlers also validate).
         if let Err(e) = validators::validate_group_name(name) {
             return Err(sqlx::Error::Protocol(format!("{:?}", e)));
         }
@@ -394,10 +369,6 @@ mod tests {
     use crate::db::permissions::{Permission, Permissions};
     use crate::db::testing::create_test_db;
 
-    // ========================================================================
-    // Create
-    // ========================================================================
-
     #[tokio::test]
     async fn test_create_group() {
         let pool = create_test_db().await;
@@ -461,7 +432,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Same name (exact case) should fail
         let result = group_db
             .create_group("Admins", false, &Permissions::new(), 1)
             .await;
@@ -495,22 +465,16 @@ mod tests {
         let pool = create_test_db().await;
         let group_db = GroupDb::new(pool);
 
-        // Empty name
         let result = group_db
             .create_group("", false, &Permissions::new(), 1)
             .await;
         assert!(result.is_err());
 
-        // Name with forbidden characters
         let result = group_db
             .create_group("bad/name", false, &Permissions::new(), 1)
             .await;
         assert!(result.is_err());
     }
-
-    // ========================================================================
-    // Read
-    // ========================================================================
 
     #[tokio::test]
     async fn test_get_group_by_id() {
@@ -639,7 +603,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create users and assign them to the group
         let user1 = user_db
             .create_user(crate::db::CreateUserParams {
                 username: "alice",
@@ -686,10 +649,6 @@ mod tests {
         let count = group_db.get_member_count(group.id).await.unwrap();
         assert_eq!(count, 2);
     }
-
-    // ========================================================================
-    // Update
-    // ========================================================================
 
     #[tokio::test]
     async fn test_update_group_name() {
@@ -768,7 +727,6 @@ mod tests {
         let perms_before = group_db.get_group_permissions(group.id).await.unwrap();
         assert_eq!(perms_before, vec![Permission::ChatSend]);
 
-        // Replace permissions
         group_db
             .update_group(
                 group.id,
@@ -994,7 +952,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Try to rename GroupB to GroupA
         let result = group_db
             .update_group(
                 group_b.id,
@@ -1100,7 +1057,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Empty name
         let result = group_db
             .update_group(
                 group.id,
@@ -1113,7 +1069,6 @@ mod tests {
             .await;
         assert!(result.is_err());
 
-        // Forbidden characters
         let result = group_db
             .update_group(
                 group.id,
@@ -1126,10 +1081,6 @@ mod tests {
             .await;
         assert!(result.is_err());
     }
-
-    // ========================================================================
-    // Delete
-    // ========================================================================
 
     #[tokio::test]
     async fn test_delete_group() {
@@ -1149,7 +1100,6 @@ mod tests {
         let deleted = group_db.delete_group(group.id).await.unwrap();
         assert!(deleted);
 
-        // Verify it's gone
         let fetched = group_db.get_group_by_id(group.id).await.unwrap();
         assert!(fetched.is_none());
 
@@ -1195,7 +1145,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a user and assign to group
         let user = user_db
             .create_user(crate::db::CreateUserParams {
                 username: "alice",
@@ -1225,14 +1174,9 @@ mod tests {
             "delete_group should return false when group has members"
         );
 
-        // Group should still exist
         let fetched = group_db.get_group_by_id(group.id).await.unwrap();
         assert!(fetched.is_some());
     }
-
-    // ========================================================================
-    // Interaction with users
-    // ========================================================================
 
     #[tokio::test]
     async fn test_delete_group_after_unassigning_members() {
@@ -1260,7 +1204,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Assign then unassign
         sqlx::query("UPDATE users SET group_id = ? WHERE id = ?")
             .bind(group.id)
             .bind(user.id)
@@ -1274,7 +1217,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Now delete should succeed
         let deleted = group_db.delete_group(group.id).await.unwrap();
         assert!(deleted);
     }
@@ -1321,10 +1263,6 @@ mod tests {
             vec![Permission::FileDownload, Permission::FileList]
         );
     }
-
-    // ========================================================================
-    // Bandwidth Weight Tests
-    // ========================================================================
 
     #[tokio::test]
     async fn test_create_group_with_custom_bandwidth_weight() {
