@@ -1,14 +1,9 @@
 //! TLS client connector for outbound tracker registration connections.
 //!
-//! The tracker task connects to trackers over TLS, but doesn't rely
-//! on certificate-authority validation — trackers run with self-signed
-//! certs, and the BBS-side TOFU pinning machinery validates the cert
-//! manually after the handshake. So we configure a `rustls`
-//! `ClientConfig` with a permissive verifier and disable SNI; the
-//! pinning logic in [`super::task`] does the actual security check.
-//!
-//! Same posture as the BBS client's `nexus-client::network::tls`
-//! connector.
+//! Trackers run self-signed certs, so there's no CA path: the connector
+//! uses a permissive verifier and disables SNI, and TOFU pinning in
+//! [`super::task`] does the actual post-handshake security check. Same
+//! posture as the BBS client's `nexus-client::network::tls`.
 
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -23,33 +18,26 @@ use tokio_rustls::rustls::{DigitallySignedStruct, Error as RustlsError, Signatur
 
 /// Process-wide TLS connector for outbound tracker registration connections.
 ///
-/// Lazy-initialized on first use; the rustls `ClientConfig` is shared
-/// across all connection attempts (cheap to share — just shape state,
-/// no per-connection mutable bits).
+/// Lazy; the `ClientConfig` is shared across attempts (immutable shape state).
 ///
-/// **Caller contract:** a rustls crypto provider must be installed
-/// before this LazyLock is first accessed. Production does this in
-/// `main.rs` (during startup, before any tracker task spawns); tests
-/// do it in `MockTracker::start` (idempotent `install_default`). If a
-/// new code path triggers `TLS_CONNECTOR` initialization before either
-/// of those, rustls falls back to whatever default is current rather
-/// than the one this codebase chose.
+/// **Caller contract:** a rustls crypto provider must be installed before
+/// first access — `main.rs` at startup (before any task spawns), tests in
+/// `MockTracker::start`. Triggering init earlier leaves rustls on its
+/// current default rather than the one this codebase chose.
 pub static TLS_CONNECTOR: LazyLock<TlsConnector> = LazyLock::new(|| {
     let mut config = ClientConfig::builder()
         .dangerous()
         .with_custom_certificate_verifier(Arc::new(NoVerifier))
         .with_no_client_auth();
-    // SNI off — we accept any cert and TOFU-pin manually after the
-    // handshake; SNI would leak the destination hostname for no
-    // verification benefit.
+    // SNI off — we TOFU-pin manually post-handshake, so SNI would only
+    // leak the destination hostname for no verification benefit.
     config.enable_sni = false;
     TlsConnector::from(Arc::new(config))
 });
 
-/// Permissive cert verifier — accepts any cert. The tracker task
-/// validates the observed fingerprint against the row's pinned value
-/// (Stage 1) and the server-reported fingerprint in HandshakeResponse
-/// (Stage 2); no CA path is involved.
+/// Permissive verifier — accepts any cert; no CA path. The task validates
+/// the observed fingerprint vs the row's pin (Stage 1) and the
+/// server-reported one in HandshakeResponse (Stage 2).
 #[derive(Debug)]
 struct NoVerifier;
 

@@ -1,31 +1,16 @@
-//! Per-tracker task manager.
+//! Per-tracker task manager. One `TrackerHandle` per active task,
+//! indexed by tracker row `id`. Admin handlers spawn/replace/terminate;
+//! status is exposed via shared `Arc<RwLock<TrackerStatus>>` for
+//! `TrackerInfo` composition.
 //!
-//! Holds one `TrackerHandle` per active tracker task, indexed by the
-//! tracker row's `id`. Admin handlers call into the manager to spawn /
-//! replace / terminate tasks; the manager exposes runtime status via
-//! shared `Arc<RwLock<TrackerStatus>>` handles for compose-into-
-//! `TrackerInfo`-response paths.
+//! Two locks with intentionally different runtime types:
+//! - **`inner: std::sync::Mutex`** — the handle map. Critical sections
+//!   are short and never cross an `await`; a sync `Mutex` is correct.
+//! - **`lifecycle: tokio::sync::Mutex`** — must be tokio: handlers hold
+//!   it across DB awaits, and a sync guard held across `.await` would
+//!   block the worker and make the future `!Send`. Don't "fix" to std.
 //!
-//! Two distinct locks live on the manager, with intentionally
-//! different runtime types:
-//!
-//! - **`inner: std::sync::Mutex<HashMap<i64, TrackerHandle>>`** — the
-//!   per-id handle map. Every critical section is short and never
-//!   crosses an `await`: lock the map, mutate one entry, drop the
-//!   guard before any further async work. Using a sync `Mutex` here
-//!   is correct and intentional.
-//! - **`lifecycle: tokio::sync::Mutex<()>`** — the coordination lock
-//!   exposed via [`Self::lock_lifecycle`]. *Intentionally* a tokio
-//!   `Mutex` because handlers hold the guard across DB awaits (the
-//!   whole DB write + manager call sequence), and a sync `Mutex` held
-//!   across `.await` would block the tokio worker and would also
-//!   produce a `!Send` future. Do not "fix" this to a `std::sync`
-//!   mutex.
-//!
-//! The manager itself is `Clone`-able via `Arc` from the caller side
-//! (it holds shared inner state), but we don't `derive(Clone)` —
-//! callers wrap the whole struct in `Arc<TrackerManager>` and clone
-//! that.
+//! No `derive(Clone)` — callers wrap in `Arc<TrackerManager>`.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
@@ -46,17 +31,13 @@ use crate::db::TrackerRecord;
 /// Live handle to one tracker task. Held in the manager's HashMap
 /// keyed by tracker `id`.
 struct TrackerHandle {
-    /// Cancellation handle. Aborting drops the task at its next await
-    /// point; the TLS stream and any other resources clean up via
-    /// their `Drop` impls. The `JoinHandle` is also `await`-able
-    /// during graceful shutdown to wait for the task to actually
-    /// finish.
+    /// Aborting drops the task at its next await point (resources clean
+    /// up via `Drop`); also `await`-able during graceful shutdown.
     join: JoinHandle<()>,
-    /// Shared with the task itself. The task is the sole writer; the
-    /// manager / handlers read for `TrackerInfo` composition.
+    /// Task is sole writer; manager/handlers read for `TrackerInfo`.
     status: Arc<RwLock<TrackerStatus>>,
-    /// Snapshot of the tracker's display name at spawn time, for logs
-    /// in `terminate` / `replace` where the full record isn't in scope.
+    /// Display name snapshotted at spawn, for `terminate`/`replace` logs
+    /// where the full record isn't in scope.
     name: String,
 }
 
@@ -80,23 +61,18 @@ struct TrackerHandle {
 /// [`shutdown`]: TrackerManager::shutdown
 pub struct TrackerManager {
     inner: Mutex<HashMap<i64, TrackerHandle>>,
-    /// Serializes lifecycle-changing admin handlers
-    /// (`TrackerAdd`, `TrackerUpdate`, `TrackerRemove`,
-    /// `TrackerAcceptFingerprint`) end-to-end across both their DB write
-    /// and their follow-up `spawn` / `replace` / `terminate` call.
-    /// Without this, a `TrackerUpdate` that succeeded against the DB
-    /// can lose the runtime to a concurrent `TrackerRemove` and then
-    /// spawn an orphan task against a deleted row. `inner` only locks
-    /// the map for the duration of one manager method — it doesn't
-    /// protect the DB ↔ manager boundary. See
+    /// Serializes lifecycle-changing handlers across their DB write +
+    /// follow-up `spawn`/`replace`/`terminate`. `inner` only guards one
+    /// method, not the DB↔manager boundary; without this a `TrackerUpdate`
+    /// can lose to a concurrent `TrackerRemove` and orphan a task. See
     /// [`Self::lock_lifecycle`].
     lifecycle: tokio::sync::Mutex<()>,
     context: Arc<TrackerContext>,
 }
 
 impl TrackerManager {
-    /// Construct a fresh manager with no tasks running. Call
-    /// [`Self::bootstrap`] to load existing enabled rows from the DB.
+    /// Starts with no tasks running; call [`Self::bootstrap`] to load
+    /// existing enabled rows from the DB.
     #[must_use]
     pub fn new(context: Arc<TrackerContext>) -> Self {
         Self {
@@ -108,22 +84,14 @@ impl TrackerManager {
 
     /// Acquire the lifecycle coordination lock.
     ///
-    /// Lifecycle-changing handlers (`TrackerAdd`, `TrackerUpdate`,
-    /// `TrackerRemove`, `TrackerAcceptFingerprint`) **must** hold this
-    /// guard for the duration of *both* their DB lifecycle mutation
-    /// (insert / update / delete) and the follow-up manager call
-    /// (`spawn` / `replace` / `terminate`). That pairing is the
-    /// invariant this lock enforces — without it, a handler's DB write
-    /// can succeed and then lose the runtime to a concurrent handler
-    /// before its own manager call lands, producing an orphan task or
-    /// a missing one.
+    /// Lifecycle-changing handlers **must** hold this across *both* their
+    /// DB mutation and follow-up manager call — that pairing is the
+    /// invariant. Otherwise a successful DB write can lose the runtime to
+    /// a concurrent handler, orphaning or dropping a task.
     ///
-    /// Read-only handlers (`TrackerList`, `TrackerEdit`) don't take
-    /// this lock; the brief inconsistency window during a single admin
-    /// op is acceptable for display.
-    ///
-    /// Drop the guard *before* sending the response — the lock should
-    /// cover the DB+manager critical section, not the network write.
+    /// Read-only handlers (`TrackerList`, `TrackerEdit`) skip it; the brief
+    /// display inconsistency is acceptable. Drop *before* the response —
+    /// the lock covers the DB+manager section, not the network write.
     pub(crate) async fn lock_lifecycle(&self) -> tokio::sync::MutexGuard<'_, ()> {
         self.lifecycle.lock().await
     }
@@ -133,9 +101,8 @@ impl TrackerManager {
     ///
     /// # Errors
     ///
-    /// Returns `sqlx::Error` if the DB read fails (catastrophic;
-    /// startup should fail). Task spawn itself never fails — a task
-    /// that fails to connect just transitions to backoff/retry.
+    /// `sqlx::Error` if the DB read fails (catastrophic; startup should
+    /// fail). Spawn never fails — a task that can't connect just retries.
     pub async fn bootstrap(&self) -> Result<(), sqlx::Error> {
         let rows = self.context.db.trackers.list_all().await?;
         let total = rows.len();
@@ -155,8 +122,6 @@ impl TrackerManager {
         Ok(())
     }
 
-    /// Spawn a tracker task for a freshly-added tracker. Called
-    /// by the `TrackerAdd` handler after the DB insert succeeds.
     /// No-op if the record is disabled.
     pub fn spawn(&self, record: TrackerRecord) {
         if !record.enabled {
@@ -170,13 +135,12 @@ impl TrackerManager {
         self.spawn_internal(record);
     }
 
-    /// Abort the existing task (if any) and spawn a fresh one if the
-    /// new record is enabled. Called by the `TrackerUpdate` handler
-    /// after the DB update succeeds.
+    /// Abort the existing task (if any) and spawn a fresh one if enabled.
     ///
-    /// The abort and the optional respawn happen under a single map
-    /// lock so a concurrent `spawn` / `replace` / `terminate` for the
-    /// same id cannot interleave between the two halves.
+    /// Abort + respawn happen under one map lock so a concurrent
+    /// `spawn`/`replace`/`terminate` for the same id can't interleave —
+    /// preventing the old task's last DB write racing the new task's
+    /// first read.
     pub fn replace(&self, record: TrackerRecord) {
         let mut map = self
             .inner
@@ -190,16 +154,13 @@ impl TrackerManager {
                 "{}", LOG_TRACKER_REGISTRATION_TASK_ABORTED
             );
         }
-        // Spawn fresh only if still enabled. Disabled record means the
-        // admin paused this tracker; leave the slot empty.
+        // Disabled = admin paused this tracker; leave the slot empty.
         if record.enabled {
             self.spawn_locked(&mut map, record);
         }
     }
 
-    /// Abort the tracker task for this tracker and remove its
-    /// handle from the map. Idempotent — calling on an unknown id is
-    /// a no-op.
+    /// Idempotent — calling on an unknown id is a no-op.
     pub fn terminate(&self, id: i64) {
         let mut map = self
             .inner
@@ -215,8 +176,8 @@ impl TrackerManager {
         }
     }
 
-    /// Read the runtime status of one tracker. Returns `None` if no
-    /// task is running for this id (disabled tracker, or no row).
+    /// Returns `None` if no task is running for this id (disabled
+    /// tracker, or no row).
     #[must_use]
     pub fn status_for(&self, id: i64) -> Option<TrackerStatus> {
         let map = self
@@ -231,8 +192,7 @@ impl TrackerManager {
         })
     }
 
-    /// Snapshot of runtime status for every running task. Used by the
-    /// `TrackerList` admin handler to compose `TrackerInfo` rows.
+    /// Snapshot of runtime status for every running task.
     #[must_use]
     pub fn status_all(&self) -> HashMap<i64, TrackerStatus> {
         let map = self
@@ -251,12 +211,9 @@ impl TrackerManager {
             .collect()
     }
 
-    /// Test-only: directly set `pending_fingerprint` on a running
-    /// tracker's status, bypassing the real Stage 1 mismatch flow. Lets
-    /// handler unit tests exercise the
-    /// `TrackerAcceptFingerprint`-success path without spinning up a
-    /// `MockTracker` with a rotated cert. No-op if no task is running
-    /// for `id`.
+    /// Test-only: set `pending_fingerprint` directly, bypassing the Stage 1
+    /// mismatch flow so the `TrackerAcceptFingerprint`-success path can be
+    /// tested without a rotated-cert `MockTracker`. No-op if no task for `id`.
     #[cfg(test)]
     pub(crate) fn set_pending_fingerprint_for_test(&self, id: i64, fingerprint: String) {
         let map = self
@@ -272,11 +229,9 @@ impl TrackerManager {
         }
     }
 
-    /// Test-only: directly set `last_error_kind` on a running tracker's
-    /// status. Companion to [`Self::set_pending_fingerprint_for_test`]
-    /// for unit tests that simulate specific tracker error states
-    /// (e.g. Stage 2 interception detection) without driving a real
-    /// `MockTracker`. No-op if no task is running for `id`.
+    /// Test-only: set `last_error_kind` directly to simulate specific error
+    /// states (e.g. Stage 2 interception) without a `MockTracker`. Companion
+    /// to [`Self::set_pending_fingerprint_for_test`]. No-op if no task for `id`.
     #[cfg(test)]
     pub(crate) fn set_last_error_kind_for_test(&self, id: i64, kind: String) {
         let map = self
@@ -292,15 +247,9 @@ impl TrackerManager {
         }
     }
 
-    /// Abort every running task and await each `JoinHandle` to ensure
-    /// the tasks have actually finished before returning. Called from
-    /// `main.rs` shutdown branch.
-    ///
-    /// `JoinHandle::abort()` returns immediately (doesn't wait); we
-    /// await afterwards to give the runtime a chance to actually drop
-    /// each task at its next poll. Both lock and await are required:
-    /// take the joins out under the lock (so concurrent calls don't
-    /// race), drop the lock, then await each handle.
+    /// Abort every task and await each handle so they've actually finished
+    /// before returning (`abort()` itself doesn't wait). Take the joins out
+    /// under the lock (so concurrent calls don't race), then await unlocked.
     pub async fn shutdown(&self) {
         let joins: Vec<JoinHandle<()>> = {
             let mut map = self
@@ -318,9 +267,8 @@ impl TrackerManager {
         }
     }
 
-    /// Internal spawn helper that acquires the map lock itself. Used
-    /// by [`Self::spawn`] and [`Self::bootstrap`] where the caller
-    /// doesn't already hold the lock.
+    /// Spawn helper that acquires the map lock itself, for callers
+    /// ([`Self::spawn`], [`Self::bootstrap`]) that don't hold it.
     fn spawn_internal(&self, record: TrackerRecord) {
         let mut map = self
             .inner
@@ -329,11 +277,9 @@ impl TrackerManager {
         self.spawn_locked(&mut map, record);
     }
 
-    /// Spawn-and-insert under an already-held map lock. Used by
-    /// [`Self::replace`] to perform abort + respawn atomically.
-    /// If a handle already existed for this id (which shouldn't
-    /// happen — callers either terminate first or hold the lock
-    /// across a remove), the old one is aborted defensively.
+    /// Spawn-and-insert under an already-held map lock, so [`Self::replace`]
+    /// can abort + respawn atomically. Any pre-existing handle for this id
+    /// (shouldn't happen) is aborted defensively.
     fn spawn_locked(&self, map: &mut HashMap<i64, TrackerHandle>, record: TrackerRecord) {
         let id = record.id;
         let name = record.name.clone();
@@ -346,9 +292,8 @@ impl TrackerManager {
         });
 
         if let Some(old) = map.insert(id, TrackerHandle { join, status, name }) {
-            // Defensive: shouldn't happen given the documented call
-            // pattern, but if it does, the old task gets aborted to
-            // avoid a leak.
+            // Defensive: shouldn't happen given the call pattern; abort the
+            // old task to avoid a leak.
             warn!(
                 id = id,
                 name = %old.name,
@@ -369,10 +314,8 @@ mod tests {
     use crate::db::{CreateTrackerParams, Database};
     use crate::users::UserManager;
 
-    /// Build a minimal `TrackerContext` for manager tests. The
-    /// tracker task itself will fail to connect (no tracker is
-    /// running) but the manager-level assertions don't depend on
-    /// task progress — they just verify the HashMap shape.
+    /// Minimal `TrackerContext` for manager tests. Tasks fail to connect
+    /// (no tracker running), but assertions only verify the HashMap shape.
     async fn test_context() -> Arc<TrackerContext> {
         let pool = create_test_db().await;
         let db = Database::new(pool);
@@ -477,16 +420,13 @@ mod tests {
         manager.spawn(record.clone());
         let first_status = manager.status_for(record.id).expect("first status present");
 
-        // Replace with the same record but enabled still — should
-        // produce a fresh handle (we can't directly observe the
-        // abort, but the status entry should still be present).
+        // Replace (still enabled) should leave a handle present; the abort
+        // isn't directly observable.
         manager.replace(record.clone());
         let second_status = manager
             .status_for(record.id)
             .expect("second status present");
-        // Both should be at default (no progress yet); the test asserts
-        // the structural fact that a handle still exists, not that
-        // they're the same Arc (they shouldn't be).
+        // Asserts a handle still exists, not that it's the same Arc.
         assert!(!first_status.connected);
         assert!(!second_status.connected);
     }
@@ -565,9 +505,8 @@ mod tests {
 
     #[tokio::test]
     async fn shutdown_aborts_mid_handshake() {
-        // Wedged tracker: accepts TLS, never sends HandshakeResponse.
-        // The tracker task's H-1 timeout would otherwise hold this for 30s
-        // on its own — abort must propagate through that await sooner.
+        // Wedged tracker (accepts TLS, never replies): the task's 30s
+        // handshake read timeout must yield to abort sooner.
         let mock = MockTracker::start(MockBehavior {
             wedge_after_tls: true,
             ..Default::default()
@@ -591,9 +530,8 @@ mod tests {
             .expect("create");
         manager.spawn(record);
 
-        // Wait until the task has begun a cycle (i.e. is parked in the
-        // handshake-await wedge). last_attempted_at is set at the top
-        // of every cycle, so any non-None value means we're past idle.
+        // Wait until the task is parked in the wedge: last_attempted_at is
+        // set at the top of every cycle, so non-None means past idle.
         let started = tokio::time::timeout(Duration::from_secs(2), async {
             loop {
                 if manager
@@ -609,8 +547,7 @@ mod tests {
         .await;
         assert!(started.is_ok(), "task should have started a cycle");
 
-        // Shutdown must return promptly via abort, not block on the
-        // tracker task's 30s response timeout.
+        // Shutdown must return via abort, not the task's 30s timeout.
         tokio::time::timeout(Duration::from_secs(5), manager.shutdown())
             .await
             .expect("shutdown should complete despite parked task");

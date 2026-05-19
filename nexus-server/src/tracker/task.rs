@@ -6,9 +6,6 @@
 //! aborted via the `JoinHandle` it returns. The task is cancellation-
 //! safe at every await point — drop semantics on the TLS stream and
 //! the status `Arc<RwLock<TrackerStatus>>` handle cleanup.
-//!
-//! See `docs/TODO.md` § "Server-Side Tracker Registration Implementation Plan"
-//! for the design rationale.
 
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -62,69 +59,47 @@ use crate::constants::{
 };
 use crate::db::{TrackerRecord, is_transient_db_error};
 
-/// Base backoff between connection attempts on failure.
-///
-/// In tests this collapses to 100ms so retry-then-success scenarios
-/// run in well under the test's outer timeout, and existing tests
-/// don't risk overlap between the tracker task's backoff deadline and
-/// the test's `wait_for_status` deadline. Production behavior is
-/// unaffected.
+/// Base backoff between connection attempts. In tests, 100ms so retry
+/// scenarios finish well under the test timeout.
 #[cfg(not(test))]
 const BACKOFF_BASE: Duration = Duration::from_secs(5);
 #[cfg(test)]
 const BACKOFF_BASE: Duration = Duration::from_millis(100);
-/// Cap on backoff growth — even after many consecutive failures, we
-/// retry at this cadence.
+/// Cap on backoff growth — the slowest retry cadence.
 const BACKOFF_CAP: Duration = Duration::from_secs(300);
 /// Per-attempt jitter spread (±25%).
 const BACKOFF_JITTER_PCT: f64 = 0.25;
 
-/// Read timeout for tracker responses (both `HandshakeResponse` and
-/// `TrackerServerRegisterResponse`). Generous enough for normal
-/// latency; tight enough to recover from a wedged connection instead
-/// of hanging until the outer 60s frame-completion timeout.
+/// Read timeout for tracker responses (`HandshakeResponse` and
+/// `TrackerServerRegisterResponse`). Recovers from a wedged connection
+/// instead of hanging until the outer 60s frame-completion timeout.
 const TRACKER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Hard ceiling on a single `tokio::net::lookup_host` call. Defends
-/// against a hostile or wedged resolver hanging the tracker task
-/// indefinitely (the frame-completion timeout doesn't apply pre-frame).
-/// Generous on purpose — 15s comfortably accommodates slow upstream
-/// DNS chains while still failing in human-noticeable time.
+/// Ceiling on a single `lookup_host`. Defends against a wedged/hostile
+/// resolver hanging the task (the frame-completion timeout is pre-frame here).
 const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Floor for the tracker-supplied `refresh_interval`. Defends against
-/// a buggy or hostile tracker that asks for `0` or any value below the
-/// protocol's stated minimum, which would otherwise drive a tight
-/// refresh loop and burn CPU.
-///
-/// In tests this collapses to 1s so propagation tests can observe
-/// real refresh cycles without 2-minute waits. The shared
-/// `nexus_common::MIN_REFRESH_INTERVAL_SECS` constant (120) is the
-/// production floor and matches the tracker's CLI-side minimum.
+/// Floor for the tracker-supplied `refresh_interval`, against a buggy
+/// or hostile tracker asking for `0` and driving a tight refresh loop.
+/// In tests, 1s so propagation tests observe real cycles without long
+/// waits; production floor is the shared `MIN_REFRESH_INTERVAL_SECS` (120).
 #[cfg(not(test))]
 const MIN_REFRESH_INTERVAL_SECS: u32 = nexus_common::MIN_REFRESH_INTERVAL_SECS;
 #[cfg(test)]
 const MIN_REFRESH_INTERVAL_SECS: u32 = 1;
 
-/// Padding added to the mid-idle read's idle timeout so the refresh
-/// sleep always wins the `tokio::select!` on the happy path. The idle
-/// timeout is purely a backstop — its real value is letting the read
-/// arm fire promptly when the peer closes the connection (e.g. tracker
-/// restart), so we reconnect in seconds instead of waiting out the
-/// full refresh interval. 15s is gracious; loopback latency is
-/// microseconds and even satellite RTT is well under 1s.
+/// Padding so the refresh sleep wins the `select!` on the happy path.
+/// The idle timeout is a backstop: it fires the read arm promptly on
+/// peer close (tracker restart) so we reconnect in seconds, not a full interval.
 const IDLE_READ_PADDING: Duration = Duration::from_secs(15);
 
-/// Run the tracker task for one tracker. Loops forever (with
-/// backoff) until cancelled by the manager, or exits early on an
-/// unrecoverable error. The manager's `JoinHandle` carries the exit.
+/// Run the tracker task for one tracker. Loops with backoff until the
+/// manager cancels it, or exits early on an unrecoverable error.
 ///
 /// The task owns:
-/// - `record`: a snapshot of the tracker config at spawn time. If the
-///   admin updates the row, the manager aborts this task and spawns a
-///   fresh one with the new record — no in-place reconfiguration.
-/// - `status`: shared with the manager (for admin reads). The task
-///   updates fields as it transitions through phases.
+/// - `record`: config snapshot at spawn time. Admin row edits abort
+///   and respawn the task — no in-place reconfiguration.
+/// - `status`: shared with the manager for admin reads.
 /// - `context`: shared infrastructure (DB, UserManager, server fingerprint, ports).
 pub async fn run(
     mut record: TrackerRecord,
@@ -132,21 +107,17 @@ pub async fn run(
     context: Arc<TrackerContext>,
 ) {
     let mut backoff = BACKOFF_BASE;
-    // Tracks whether the admin-supplied hostname has resolved at least
-    // once in this task's lifetime. The first failed DNS lookup is
-    // treated as `Unrecoverable` (likely a typo); subsequent failures
-    // — after at least one success — are `Transient` (DNS server hiccup,
-    // network blip). Resets to false on task respawn after a row edit.
+    // Whether the hostname has resolved at least once this lifetime.
+    // First failed lookup → `Unrecoverable` (likely a typo); failures
+    // after a success → `Transient` (DNS/network blip). Resets on respawn.
     let mut has_resolved_once = false;
 
     loop {
-        // Reset transient connection state at the start of each attempt
-        // and stamp `last_attempted_at` so the admin UI can surface
-        // forward progress even when every recent attempt has failed.
-        // We don't touch `pending_fingerprint` here — it's set only on
-        // Unrecoverable Stage-1/Stage-2 mismatch (which `return`s out
-        // of the task) and cleared on successful TOFU commit, so a
-        // mid-loop reset would never apply.
+        // Reset transient state and stamp `last_attempted_at` so the
+        // admin UI shows forward progress even when attempts keep
+        // failing. `pending_fingerprint` is left alone — it's set only
+        // on Unrecoverable mismatch (which `return`s) and cleared on
+        // TOFU commit, so a mid-loop reset would never apply.
         {
             let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
             s.connected = false;
@@ -159,9 +130,8 @@ pub async fn run(
                 // Already logged + status-updated. Backoff and retry.
             }
             CycleOutcome::Unrecoverable => {
-                // Already logged + status-updated. Exit the task; admin
-                // intervention (TrackerUpdate or server restart) is the
-                // recovery path.
+                // Already logged + status-updated. Exit; recovery needs
+                // admin intervention (TrackerUpdate or server restart).
                 info!(
                     id = record.id,
                     name = %record.name,
@@ -195,25 +165,20 @@ enum CycleOutcome {
 }
 
 /// Run one connection cycle: TCP → TLS → fingerprint stages →
-/// tracker handshake → refresh loop. Returns when something exits.
+/// tracker handshake → refresh loop.
 ///
-/// `has_resolved_once` is set to `true` the first time DNS resolves
-/// the configured hostname — see [`run`] for the semantics. Pass-by-
-/// `&mut` so the flag persists across cycles within a task lifetime.
+/// `has_resolved_once` is set `true` on first DNS success (see [`run`])
+/// and passed `&mut` so it persists across cycles within a task lifetime.
 async fn attempt_connection_cycle(
     record: &mut TrackerRecord,
     status: &Arc<RwLock<TrackerStatus>>,
     context: &Arc<TrackerContext>,
     has_resolved_once: &mut bool,
 ) -> CycleOutcome {
-    // Phase 0: resolve the admin-supplied address into the form both
-    // the system resolver and rustls's `ServerName::try_from` expect
-    // — strips IPv6 URL brackets, passes IP literals through, and
-    // Punycode-encodes Unicode hostnames. The validator at
-    // `TrackerAdd`/`TrackerUpdate` already accepts the same set
-    // (via `domain_to_ascii_strict`), so a failure here means the row
-    // is structurally broken — admin must edit. Treat as Unrecoverable
-    // so the tracker task exits instead of tight-looping on a busted row.
+    // Phase 0: normalize the address for the resolver and rustls
+    // (strip IPv6 brackets, pass IP literals, Punycode Unicode hosts).
+    // The Add/Update validator accepts the same set, so failure here
+    // means a structurally broken row → Unrecoverable, not a tight loop.
     let resolved_host = match nexus_common::address::resolve_host_for_connection(&record.address) {
         Ok(h) => h,
         Err(e) => {
@@ -229,15 +194,10 @@ async fn attempt_connection_cycle(
         }
     };
 
-    // Phase 1a: DNS resolution. Split out from `TcpStream::connect` so
-    // we can distinguish "this hostname doesn't resolve" from "TCP
-    // connect failed."
-    //
-    // First-ever lookup fails → `Unrecoverable`: most likely a typo in
-    // the admin-supplied address; no point retrying until the row is
-    // edited. Subsequent lookup failures (after at least one success)
-    // are `Transient`: the hostname is real, the DNS server's just
-    // having a moment.
+    // Phase 1a: DNS resolution. Split from `TcpStream::connect` to
+    // distinguish "doesn't resolve" from "TCP connect failed".
+    // First-ever failure → `Unrecoverable` (likely a typo, retrying is
+    // pointless until the row is edited); later failures → `Transient`.
     let addrs: Vec<std::net::SocketAddr> = match tokio::time::timeout(
         DNS_LOOKUP_TIMEOUT,
         tokio::net::lookup_host((resolved_host.as_str(), record.port)),
@@ -292,9 +252,8 @@ async fn attempt_connection_cycle(
     }
     *has_resolved_once = true;
 
-    // Phase 1b: TCP connect to one of the resolved addresses. Failure
-    // here is `Transient` (server briefly unreachable, network glitch,
-    // etc.) and the next refresh cycle will retry with backoff.
+    // Phase 1b: TCP connect to a resolved address. Failure is
+    // `Transient` (briefly unreachable); next cycle retries with backoff.
     let tcp = match TcpStream::connect(&addrs[..]).await {
         Ok(s) => s,
         Err(e) => {
@@ -309,12 +268,9 @@ async fn attempt_connection_cycle(
         }
     };
 
-    // Phase 2: TLS handshake. SNI is disabled in the rustls config
-    // (`enable_sni = false`) and we TOFU-pin the cert post-handshake
-    // via `AcceptAnyVerifier`, so the `ServerName` value is purely
-    // internal — never sent on the wire and never compared against
-    // the cert. Use the literal `"localhost"` to match the BBS
-    // client's convention and avoid per-host parsing.
+    // Phase 2: TLS handshake. SNI is disabled and we TOFU-pin the cert
+    // via `AcceptAnyVerifier`, so `ServerName` is internal only — never
+    // on the wire, never compared. Use the BBS client's literal convention.
     let server_name =
         ServerName::try_from(SNI_SERVER_NAME).expect(EXPECT_SNI_SERVER_NAME_VALID_DNS);
     let tls = match TLS_CONNECTOR.connect(server_name, tcp).await {
@@ -364,9 +320,8 @@ async fn attempt_connection_cycle(
         return CycleOutcome::Unrecoverable;
     }
 
-    // Phase 5: tracker handshake. Send Handshake, read HandshakeResponse.
-    // Use BBS-protocol Handshake/HandshakeResponse — the tracker
-    // protocol reuses those at the handshake layer.
+    // Phase 5: tracker handshake. The tracker protocol reuses the
+    // BBS-protocol Handshake/HandshakeResponse at the handshake layer.
     let (read_half, write_half) = tokio::io::split(tls);
     let mut reader = FrameReader::new(tokio::io::BufReader::new(read_half));
     let mut writer = FrameWriter::new(write_half);
@@ -389,10 +344,8 @@ async fn attempt_connection_cycle(
         return CycleOutcome::Transient;
     }
 
-    // A wedged tracker that completes TLS but never sends the
-    // `HandshakeResponse` would otherwise park us in `await` forever
-    // — wrap the read in the same per-call deadline used for the
-    // register response.
+    // Wrap the read in a deadline so a wedged tracker that completes
+    // TLS but never replies can't park us in `await` forever.
     let server_reported = match tokio::time::timeout(
         TRACKER_RESPONSE_TIMEOUT,
         read_handshake_response(&mut reader),
@@ -450,12 +403,9 @@ async fn attempt_connection_cycle(
         }
     };
 
-    // Phase 6: Stage 2 — TLS-observed vs server-reported. The
-    // `server_reported` value is tracker-supplied: validate canonical
-    // form first (defends against terminal-control vandalism in logs
-    // and distinguishes "tracker is broken" from "tracker is being
-    // intercepted"). All log fields routed through tracker-supplied
-    // strings pass through `sanitize_for_log`.
+    // Phase 6: Stage 2 — TLS-observed vs server-reported. Validate
+    // canonical form first: defends logs against control-char vandalism
+    // and distinguishes "tracker broken" from "tracker intercepted".
     if !is_canonical_fingerprint(&server_reported) {
         warn!(
             id = record.id,
@@ -475,24 +425,17 @@ async fn attempt_connection_cycle(
             server_reported = %sanitize_for_log(&server_reported),
             "{}", LOG_TRACKER_REGISTRATION_STAGE2_MISMATCH
         );
-        // Stage 2 mismatch (TLS-observed cert disagrees with the
-        // tracker's self-reported fingerprint in HandshakeResponse) is
-        // an active-interception signal. We deliberately do NOT write
-        // the observed fingerprint into `pending_fingerprint`: that
-        // field is consumed by `TrackerAcceptFingerprint` as a
-        // one-click promote-to-active-pin, and offering that path here
-        // would let an admin pin the attacker's cert. The TLS-observed
-        // fingerprint is captured in the operator log line above.
-        // Recovery requires admin investigation (Edit / Remove), not a
-        // one-click accept.
+        // Stage 2 mismatch is an active-interception signal. Do NOT
+        // write `pending_fingerprint`: it feeds `TrackerAcceptFingerprint`
+        // as a one-click promote-to-pin, which would let an admin pin
+        // the attacker's cert. Recovery requires Edit / Remove.
         set_status_error(status, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED);
         return CycleOutcome::Unrecoverable;
     }
 
     // Phase 7: TOFU commit. Both stages passed; if no pin was stored,
-    // this is the first connect — write the now-trusted fingerprint to
-    // the DB and update the local record so subsequent iterations of
-    // this task see it.
+    // this is the first connect — persist the trusted fingerprint and
+    // update the local record so later iterations see it.
     if record.fingerprint.is_none() {
         match context
             .db
@@ -531,9 +474,8 @@ async fn attempt_connection_cycle(
         );
     }
 
-    // Clear pending_fingerprint now that both stages agree (covers the
-    // admin-accept-then-reconnect path, where a previous task left a
-    // pending observation in status before being respawned).
+    // Clear pending_fingerprint now both stages agree (covers the
+    // accept-then-reconnect path where a prior task left one in status).
     {
         let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
         s.pending_fingerprint = None;
@@ -544,9 +486,8 @@ async fn attempt_connection_cycle(
 }
 
 /// The inner refresh loop. Sends `TrackerServerRegister` immediately,
-/// then on each tracker-supplied refresh interval. `tokio::select!`
-/// between sleep and read so a connection drop mid-sleep is detected
-/// promptly.
+/// then each refresh interval. `select!`s sleep against read so a
+/// connection drop mid-sleep is detected promptly.
 async fn refresh_loop<R, W>(
     record: &TrackerRecord,
     status: &Arc<RwLock<TrackerStatus>>,
@@ -561,15 +502,12 @@ where
     let mut sleep_for = Duration::ZERO;
 
     loop {
-        // Wait until it's time to refresh, OR until the tracker sends
-        // us something (which is unexpected — the tracker only sends
-        // responses to our requests; any frame read here means the
-        // connection is closing). The read arm is a fast-path for
-        // tracker-restart detection: catching a clean peer-close
-        // immediately lets us reconnect within seconds instead of
-        // waiting out the full refresh interval. The idle timeout is
-        // padded past `sleep_for` so the sleep arm always wins on the
-        // happy path; it's only a backstop for the read.
+        // Wait to refresh, OR for any inbound frame — unexpected, since
+        // the tracker only replies to requests, so a frame here means
+        // the connection is closing. The read arm fast-paths
+        // tracker-restart detection (reconnect in seconds, not a full
+        // interval). The idle timeout is padded past `sleep_for` so the
+        // sleep arm wins the happy path; it's only a backstop.
         tokio::select! {
             _ = tokio::time::sleep(sleep_for) => {}
             frame = read_tracker_server_message_with_full_timeout(
@@ -579,8 +517,7 @@ where
             ) => {
                 match frame {
                     Ok(Some(_)) => {
-                        // Unexpected mid-idle frame; treat as connection
-                        // anomaly and reconnect.
+                        // Unexpected mid-idle frame; reconnect.
                         warn!(
                             id = record.id,
                             name = %record.name,
@@ -590,7 +527,6 @@ where
                         return CycleOutcome::Transient;
                     }
                     Ok(None) => {
-                        // Clean close from the peer.
                         debug!(
                             id = record.id,
                             name = %record.name,
@@ -613,7 +549,6 @@ where
             }
         }
 
-        // Build and send the register message.
         let payload = match build_register_payload(record, context).await {
             Ok(p) => p,
             Err(e) => {
@@ -683,12 +618,9 @@ where
                 refresh_interval,
                 ..
             } => {
-                // Floor the tracker-supplied interval at the protocol's
-                // minimum. A buggy or hostile tracker that asks for
-                // `Some(0)` or anything below the floor would otherwise
-                // drive a tight refresh loop here. The reference tracker
-                // enforces the same minimum on its CLI; this is
-                // defense-in-depth for the BBS-client side.
+                // Floor the interval at the protocol minimum so a buggy
+                // or hostile `Some(0)` can't drive a tight refresh loop.
+                // Defense-in-depth: the tracker enforces the same on its CLI.
                 let interval = refresh_interval
                     .unwrap_or(300)
                     .max(MIN_REFRESH_INTERVAL_SECS);
@@ -703,11 +635,9 @@ where
                     s.last_error_kind = None;
                     s.refresh_interval = Some(interval);
                 }
-                // First successful refresh after task start (or after a
-                // reconnect post-error) gets info-level so an operator
-                // running at info sees per-tracker confirmation. Steady-
-                // state refreshes stay at debug — at scale they would
-                // otherwise dominate the log volume.
+                // First refresh after start/reconnect logs at info so an
+                // operator sees per-tracker confirmation; steady-state
+                // refreshes stay at debug to keep log volume down.
                 if was_connected {
                     debug!(
                         id = record.id,
@@ -731,15 +661,12 @@ where
                 error_kind,
                 ..
             } => {
-                // Wire-format gate: a tracker-supplied `error_kind`
-                // must be ASCII snake_case bounded by
-                // `MAX_ERROR_KIND_LENGTH`. Anything else (control
-                // chars, embedded JSON, oversized blob) is a protocol
-                // violation — substitute our own
-                // `tracker_protocol_error` kind so junk never lands
-                // in the wire-visible `TrackerInfo.last_error_kind`,
-                // and exit Unrecoverable since a tracker that can't
-                // emit valid error kinds isn't going to start.
+                // Wire-format gate: `error_kind` must be ASCII
+                // snake_case within `MAX_ERROR_KIND_LENGTH`. Anything
+                // else is a protocol violation — substitute
+                // `tracker_protocol_error` so junk never reaches the
+                // wire-visible `last_error_kind`, and exit Unrecoverable
+                // (a tracker that can't emit valid kinds won't start).
                 if let Some(raw) = error_kind.as_deref()
                     && !is_valid_error_kind(raw)
                 {
@@ -752,30 +679,22 @@ where
                     set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR);
                     return CycleOutcome::Unrecoverable;
                 }
-                // Outcome decision happens against the *raw* tracker
-                // input: only an explicit, recognized unrecoverable
-                // kind kills the task. A missing or format-valid-but-
-                // unknown kind (e.g. forward-compat from a newer
-                // tracker) is treated as transient so a misbehaving
-                // tracker can't permanently take us out without admin
-                // intervention.
+                // Decide against the *raw* input: only a recognized
+                // unrecoverable kind kills the task. Missing or
+                // unknown-but-valid kinds (forward-compat) stay
+                // transient so a tracker can't permanently take us out.
                 let outcome = match error_kind.as_deref() {
                     Some(k) if is_unrecoverable_error_kind(k) => CycleOutcome::Unrecoverable,
                     _ => CycleOutcome::Transient,
                 };
-                // Default for `last_error_kind` when the tracker
-                // omitted one: surface "connection lost" to the admin
-                // (semantically the wire ate the response) rather
-                // than "invalid", which would falsely imply the
-                // tracker validated and rejected our payload.
+                // When the tracker omits a kind, default to "connection
+                // lost" (the wire ate the response) rather than
+                // "invalid", which would imply our payload was rejected.
                 let kind =
                     error_kind.unwrap_or_else(|| ERROR_KIND_TRACKER_CONNECTION_LOST.to_string());
-                // Tracker-supplied `error` text (already localized by
-                // the tracker to whatever locale we sent in the
-                // register; we hard-code `"en"`) is logged for the
-                // operator only — it never reaches the admin's UI,
-                // which renders the kind via the BBS server's own
-                // i18n bundle in the admin's locale.
+                // Tracker-supplied `error` text (localized to the "en"
+                // we send) is operator-log only — the admin UI renders
+                // the kind via the BBS server's own i18n in their locale.
                 let detail = error.unwrap_or_default();
                 warn!(
                     id = record.id,
@@ -787,10 +706,9 @@ where
                 set_status_error(status, &kind);
                 return outcome;
             }
-            // Tracker explicitly reported a protocol-level error (e.g.
-            // role-violation, unknown message type). The tracker has
-            // diagnosed something we did wrong, so retrying isn't
-            // going to help. Exit Unrecoverable; admin must fix.
+            // Tracker reported a protocol-level error (role violation,
+            // unknown message type). It diagnosed something we did
+            // wrong, so retrying won't help — exit Unrecoverable.
             TrackerServerMessage::Error { message, command } => {
                 warn!(
                     id = record.id,
@@ -802,9 +720,8 @@ where
                 set_status_error(status, ERROR_KIND_TRACKER_PROTOCOL_ERROR);
                 return CycleOutcome::Unrecoverable;
             }
-            // Tracker sent a client-flow response on our server
-            // connection — itself a role violation by the tracker.
-            // Exit Unrecoverable for the same reason as above.
+            // Client-flow response on our server connection — a tracker
+            // role violation. Exit Unrecoverable as above.
             TrackerServerMessage::TrackerServerListResponse { .. } => {
                 warn!(
                     id = record.id,
@@ -818,9 +735,9 @@ where
     }
 }
 
-/// Build the `TrackerServerRegister` payload from the record + the
-/// per-refresh field bundle (server name, description, public address,
-/// guest enabled) plus the live user_count from `UserManager`.
+/// Build the `TrackerServerRegister` payload from the record, the
+/// per-refresh field bundle (name, description, public address, guest
+/// enabled), and the live user_count from `UserManager`.
 async fn build_register_payload(
     record: &TrackerRecord,
     context: &Arc<TrackerContext>,
@@ -849,29 +766,25 @@ async fn build_register_payload(
 }
 
 /// Failure modes for [`read_handshake_response`]. Each variant carries
-/// only operator-log context — never raw `Debug` of arbitrary tracker
-/// payloads, which would let a malicious tracker amplify into the log
-/// stream. The caller maps each variant to a fixed log constant +
+/// only operator-log context — never raw `Debug` of tracker payloads
+/// (log amplification). The caller maps each to a fixed log constant +
 /// the same admin-facing kind (`tracker_handshake_failed`).
 enum HandshakeReadError {
     /// Frame/IO read failed. Carries the underlying error display.
     Io(String),
-    /// Tracker closed the connection cleanly without sending a
-    /// `HandshakeResponse`.
+    /// Tracker closed cleanly without sending a `HandshakeResponse`.
     Closed,
-    /// Tracker replied `HandshakeResponse { success: false }`. The
-    /// optional `error` is the tracker-supplied (length-bounded by
-    /// frame limits, English-localized by the tracker) text.
+    /// Tracker replied `HandshakeResponse { success: false }`; carries
+    /// the optional tracker-supplied error text.
     Rejected { error: Option<String> },
-    /// Tracker sent a different message type than `HandshakeResponse`.
-    /// Carries only the bounded message-type name — never the payload.
+    /// Tracker sent a different message type. Carries only the bounded
+    /// message-type name — never the payload.
     Unexpected { received: &'static str },
 }
 
 /// Read the tracker's `HandshakeResponse` and return its
-/// server-reported fingerprint. Errors are typed; the caller picks the
-/// log constant per variant so operator logs use fixed strings rather
-/// than `format!`-built English with unbounded `Debug` content.
+/// server-reported fingerprint. Errors are typed so the caller picks a
+/// fixed log constant per variant, not `format!`-built unbounded content.
 async fn read_handshake_response<R>(
     reader: &mut FrameReader<R>,
 ) -> Result<String, HandshakeReadError>
@@ -910,15 +823,9 @@ fn observed_fingerprint(stream: &tokio_rustls::client::TlsStream<TcpStream>) -> 
     ))
 }
 
-// =============================================================================
-// Status update helpers
-// =============================================================================
-//
-// These set only the machine-readable `last_error_kind`. The
-// human-readable message shown in admin UIs is translated at
-// handler compose-time using the requesting admin's locale; the
-// raw underlying error (if any) flows to operator logs separately
-// via `warn!(err = %e, …)` at the call site.
+// These set only the machine-readable `last_error_kind`. The admin-UI
+// message is translated at handler compose-time in the admin's locale;
+// the raw error flows to operator logs separately at the call site.
 
 fn set_status_error(status: &Arc<RwLock<TrackerStatus>>, kind: &str) {
     let mut s = status.write().expect(EXPECT_TRACKER_STATUS_LOCK_POISONED);
@@ -939,22 +846,13 @@ fn set_status_with_pending_fingerprint(
     s.refresh_interval = None;
 }
 
-// =============================================================================
-// Log-sanitization helper
-// =============================================================================
-
 /// Replace ASCII control characters with `?` so a tracker-supplied
-/// string can be safely embedded in operator logs without leaking
-/// terminal escape sequences (color, cursor moves, line clears) or
-/// other display vandalism. The tracker is in our trust boundary, but
-/// a compromised tracker the admin already added shouldn't be able to
-/// muck with operator pagers reading server logs.
+/// string can't leak terminal escape sequences into operator logs.
+/// A compromised tracker the admin added shouldn't muck with pagers
+/// reading server logs.
 ///
-/// Returns `Cow::Borrowed(s)` on the common path where no substitution
-/// is needed (no control characters present); only the malicious /
-/// vandalism path allocates. `Cow<str>: Display`, so `%`-formatted
-/// tracing fields write the borrowed slice directly without ever
-/// materializing a `String`.
+/// Borrows on the common (no-control-char) path; only the vandalism
+/// path allocates. `Cow<str>: Display` so tracing writes it directly.
 fn sanitize_for_log(s: &str) -> std::borrow::Cow<'_, str> {
     if s.chars().any(|c| c.is_control()) {
         std::borrow::Cow::Owned(
@@ -966,10 +864,6 @@ fn sanitize_for_log(s: &str) -> std::borrow::Cow<'_, str> {
         std::borrow::Cow::Borrowed(s)
     }
 }
-
-// =============================================================================
-// Backoff helpers
-// =============================================================================
 
 /// Apply ±25% jitter to a backoff duration.
 fn jitter(base: Duration) -> Duration {
@@ -995,8 +889,8 @@ mod tests {
 
     #[test]
     fn jitter_stays_within_25_percent_band() {
-        // Sample many to verify the band; not a statistical guarantee
-        // but tight enough to catch a misimplemented range.
+        // Sample many to catch a misimplemented range (not a
+        // statistical guarantee).
         let base = Duration::from_millis(1000);
         let lower = Duration::from_millis(700); // 30% below band edge for slack
         let upper = Duration::from_millis(1300);
@@ -1029,9 +923,8 @@ mod tests {
 
     #[test]
     fn sanitize_borrows_on_common_path() {
-        // The common path (no control chars) must not allocate. Lock in
-        // the invariant so a future regression to "always allocate"
-        // would fail this test.
+        // The common path (no control chars) must not allocate; locks
+        // in the invariant against a "always allocate" regression.
         use std::borrow::Cow;
         assert!(matches!(sanitize_for_log("normal text"), Cow::Borrowed(_)));
         assert!(matches!(sanitize_for_log(""), Cow::Borrowed(_)));
@@ -1049,9 +942,8 @@ mod tests {
         assert_eq!(backoff, BACKOFF_CAP);
     }
 
-    /// Build a `TrackerContext` over a fresh in-memory DB. Sets a
-    /// distinct `server_name` and `public_address` so payload tests can
-    /// verify the right values flow through.
+    /// Build a `TrackerContext` over a fresh in-memory DB with distinct
+    /// `server_name` / `public_address` so payload tests can verify flow.
     async fn setup_context() -> (Database, Arc<TrackerContext>) {
         let pool = create_test_db().await;
         let db = Database::new(pool);
@@ -1099,15 +991,12 @@ mod tests {
             .expect("seed tracker row")
     }
 
-    /// Poll the status until `pred` returns true, or until `timeout`
-    /// of *tokio time* elapses. Returns the final snapshot when `pred`
-    /// matched, else `None`.
+    /// Poll the status until `pred` is true or `timeout` of *tokio
+    /// time* elapses. Returns the matching snapshot, else `None`.
     ///
-    /// Uses `tokio::time::timeout` (not `std::time::Instant`) so the
-    /// deadline respects `#[tokio::test(start_paused = true)]`. Under
-    /// paused time, both the inner 25ms poll-sleep and the outer
-    /// timeout advance the virtual clock together, so backoff-driven
-    /// scenarios run in milliseconds of wallclock.
+    /// Uses `tokio::time::timeout` (not `Instant`) so the deadline
+    /// respects `start_paused = true` — both the poll-sleep and the
+    /// timeout advance virtual time together.
     async fn wait_for_status(
         status: &Arc<RwLock<TrackerStatus>>,
         timeout: Duration,
@@ -1242,8 +1131,7 @@ mod tests {
         let mock_fp = mock.fingerprint.clone();
         let (db, context) = setup_context().await;
 
-        // Seed with a wrong pin so Stage 1 fails when the tracker task
-        // compares it against the mock's actual TLS cert.
+        // Wrong pin so Stage 1 fails against the mock's actual cert.
         let wrong_pin = "11:22:33:44:55:66:77:88:99:00:AA:BB:CC:DD:EE:FF:\
             11:22:33:44:55:66:77:88:99:00:AA:BB:CC:DD:EE:FF";
         let record = seed_tracker(&db, mock.addr, Some(wrong_pin), None).await;
@@ -1273,11 +1161,9 @@ mod tests {
 
     #[tokio::test]
     async fn fingerprint_intercepted_parks_pending_and_exits() {
-        // Stage 2: TLS-observed cert disagrees with what the tracker
-        // self-reports in HandshakeResponse. Under interception this is
-        // the only signal — the attacker may hold a cert the client
-        // would otherwise accept, but they can't forge the real
-        // tracker's self-report.
+        // Stage 2: TLS-observed cert disagrees with the tracker's
+        // self-report. The only interception signal — an attacker may
+        // hold an acceptable cert but can't forge the real self-report.
         let lying_fingerprint = "11:22:33:44:55:66:77:88:99:00:AA:BB:CC:DD:EE:FF:\
             11:22:33:44:55:66:77:88:99:00:AA:BB:CC:DD:EE:FF";
         let mock = MockTracker::start(MockBehavior {
@@ -1286,8 +1172,7 @@ mod tests {
         })
         .await;
         let (db, context) = setup_context().await;
-        // No pin → Stage 1 skipped; we reach the handshake and Stage 2
-        // is what fires.
+        // No pin → Stage 1 skipped; Stage 2 is what fires.
         let record = seed_tracker(&db, mock.addr, None, None).await;
 
         let status = Arc::new(RwLock::new(TrackerStatus::default()));
@@ -1303,10 +1188,9 @@ mod tests {
         .await
         .expect("expected fingerprint_intercepted status within timeout");
 
-        // Stage 2 must NOT populate pending_fingerprint — that field
-        // gates the one-click `TrackerAcceptFingerprint` flow, and
-        // accepting the TLS-observed cert here would let an admin pin
-        // the attacker's certificate. Recovery requires Edit / Remove.
+        // Stage 2 must NOT populate pending_fingerprint — it gates the
+        // one-click accept flow, which here would pin the attacker's
+        // cert. Recovery requires Edit / Remove.
         assert!(snap.pending_fingerprint.is_none());
         assert!(!snap.connected);
 
@@ -1370,15 +1254,10 @@ mod tests {
 
     #[tokio::test]
     async fn malformed_error_kind_is_substituted_and_unrecoverable() {
-        // A hostile / buggy tracker ships an `error_kind` that fails
-        // wire-format validation (uppercase + control chars + newline).
-        // The tracker task must:
-        //   1. NOT store the raw value in `last_error_kind` (which is
-        //      a wire-visible field).
-        //   2. Substitute `tracker_protocol_error` so the admin UI
-        //      gets a clean kind to translate.
-        //   3. Exit the task — a tracker that ships malformed kinds
-        //      isn't going to start working.
+        // A tracker ships an `error_kind` that fails wire-format
+        // validation. The task must: (1) not store the raw value in
+        // wire-visible `last_error_kind`, (2) substitute
+        // `tracker_protocol_error`, (3) exit (it won't start working).
         let raw_kind = "BAD\nKIND\0<script>";
         let mock = MockTracker::start(MockBehavior {
             register_response: RegisterPolicy::Failure {
@@ -1414,10 +1293,8 @@ mod tests {
 
     #[tokio::test]
     async fn rate_limited_then_succeeds() {
-        // First connection: tracker rejects with `rate_limited` (a
-        // transient kind). Tracker task should backoff (~5s, jittered)
-        // and reconnect. Second connection: tracker accepts. Status
-        // should land at connected = true.
+        // First connection rejected with `rate_limited` (transient);
+        // task should backoff and reconnect, second connection accepts.
         let mut queue = VecDeque::new();
         queue.push_back(RegisterPolicy::Failure {
             error_kind: nexus_common::ERROR_KIND_RATE_LIMITED.to_string(),
@@ -1438,10 +1315,8 @@ mod tests {
             Arc::clone(&context),
         ));
 
-        // Test-mode `BACKOFF_BASE` is 100ms (cfg(test) override), so
-        // the retry happens well within the standard 5s timeout —
-        // backoff + reconnect + handshake all complete in <1s on
-        // loopback, leaving generous headroom for slow CI.
+        // Test-mode `BACKOFF_BASE` is 100ms, so the retry completes
+        // well within the 5s timeout even on slow CI.
         let snap = wait_for_status(&status, Duration::from_secs(5), |s| s.connected)
             .await
             .expect("expected eventual connected status after retry");
@@ -1455,9 +1330,8 @@ mod tests {
 
     #[tokio::test]
     async fn floor_clamps_low_refresh_interval() {
-        // A buggy / hostile tracker asks for `Some(0)` — the publisher
-        // must clamp to `MIN_REFRESH_INTERVAL_SECS` (1 in tests, 120 in
-        // production) rather than hot-looping at 0s sleep.
+        // Tracker asks for `Some(0)` — must clamp to
+        // `MIN_REFRESH_INTERVAL_SECS` rather than hot-loop at 0s sleep.
         let mock = MockTracker::start(MockBehavior {
             register_response: RegisterPolicy::Success {
                 refresh_interval: 0,
@@ -1491,12 +1365,10 @@ mod tests {
 
     #[tokio::test]
     async fn server_info_changes_propagate_to_next_refresh() {
-        // Verifies the propagation contract documented on
-        // `Database::tracker_registration_fields`: every refresh reads
-        // fresh values from the DB, so an admin's `ServerInfoUpdate`
-        // (or guest-account toggle) reaches the tracker on the next
-        // cycle without any explicit signal. Catches future regressions
-        // that "optimize" by caching across refreshes.
+        // Propagation contract from `tracker_registration_fields`:
+        // every refresh re-reads the DB, so an admin's `ServerInfoUpdate`
+        // reaches the tracker next cycle with no explicit signal.
+        // Catches regressions that "optimize" by caching across refreshes.
         let mock = MockTracker::start(MockBehavior {
             register_response: RegisterPolicy::Success {
                 refresh_interval: 1,
@@ -1571,9 +1443,8 @@ mod tests {
             .await
             .expect("enable guest");
 
-        // Wait for a register that arrived AFTER our mutations. The
-        // refresh fires every 1s, so the next register reflects the
-        // post-mutation DB state. We need at least 2 captures total.
+        // Wait for a register after our mutations (refresh fires every
+        // 1s, so the next one reflects post-mutation DB state).
         wait_for_capture_count(&captured, 2, Duration::from_secs(5))
             .await
             .expect("register #2 should arrive within 5s of refresh");
@@ -1613,10 +1484,8 @@ mod tests {
         mock.stop().await;
     }
 
-    /// First-ever DNS lookup failure short-circuits to `Unrecoverable` so
-    /// the task exits. Most likely the admin typed the address wrong;
-    /// tight-looping on a non-resolving hostname would just spam the
-    /// operator log.
+    /// First-ever DNS lookup failure short-circuits to `Unrecoverable`
+    /// (likely a typo'd address; tight-looping would spam the log).
     #[tokio::test]
     async fn dns_failure_first_time_is_unrecoverable() {
         let (_db, context) = setup_context().await;
@@ -1659,9 +1528,8 @@ mod tests {
         );
     }
 
-    /// DNS lookup failure *after* at least one successful resolution is
-    /// `Transient`. The hostname proved real once, so we treat this as a
-    /// network blip and let the next refresh cycle retry with backoff.
+    /// DNS failure *after* a prior success is `Transient` — the
+    /// hostname proved real, so treat it as a blip and retry with backoff.
     #[tokio::test]
     async fn dns_failure_after_resolved_once_is_transient() {
         let (_db, context) = setup_context().await;
@@ -1677,8 +1545,7 @@ mod tests {
             updated_at: 0,
         };
         let status = Arc::new(RwLock::new(TrackerStatus::default()));
-        // Simulate the real-life shape: a previous cycle succeeded, the
-        // task is mid-loop, and DNS has just started failing.
+        // Real-life shape: a prior cycle succeeded, now DNS starts failing.
         let mut has_resolved_once = true;
 
         let outcome = tokio::time::timeout(
@@ -1705,9 +1572,9 @@ mod tests {
         );
     }
 
-    /// Wait until `captured` contains at least `target` entries, or
-    /// the timeout elapses. Used by the propagation test to wait for
-    /// refresh-cycle captures without sleeping for fixed durations.
+    /// Wait until `captured` holds at least `target` entries, or the
+    /// timeout elapses. Lets the propagation test await captures without
+    /// fixed sleeps.
     async fn wait_for_capture_count(
         captured: &Arc<Mutex<Vec<TrackerClientMessage>>>,
         target: usize,

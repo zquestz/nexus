@@ -1,10 +1,9 @@
 //! Mock tracker for tracker-task lifecycle tests.
 //!
-//! Spawns a TLS listener on a random localhost port that speaks just
-//! enough of the tracker protocol to exercise the tracker task's state
-//! machine: TLS handshake, BBS-style `Handshake`/`HandshakeResponse`,
-//! one `TrackerServerRegister` cycle. Behavior (the self-reported
-//! fingerprint, the register response) is configurable per test.
+//! TLS listener on a random localhost port speaking just enough protocol
+//! to drive the task's state machine: TLS handshake, BBS-style
+//! `Handshake`/`HandshakeResponse`, one `TrackerServerRegister` cycle.
+//! Self-reported fingerprint and register response are per-test configurable.
 
 use std::collections::VecDeque;
 use std::net::SocketAddr;
@@ -29,32 +28,22 @@ use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs
 /// What the mock should do during one connection cycle.
 #[derive(Clone)]
 pub struct MockBehavior {
-    /// Fingerprint to self-report in `HandshakeResponse`. `None` means
-    /// "report my actual TLS cert fingerprint" — i.e. Stage 2 passes.
-    /// `Some(other)` simulates an interception scenario where the TLS
-    /// peer disagrees with what the tracker self-reports.
+    /// Fingerprint to self-report in `HandshakeResponse`. `None` = report
+    /// the real TLS cert fp (Stage 2 passes); `Some(other)` simulates
+    /// interception (TLS peer disagrees with self-report).
     pub reported_fingerprint: Option<String>,
-    /// Default response to the `TrackerServerRegister` frame, used for
-    /// every connection unless `queued_responses` has an entry.
+    /// Default `TrackerServerRegister` response when `queued_responses` empty.
     pub register_response: RegisterPolicy,
-    /// Per-connection response queue. Each new TLS connection pops one
-    /// from the front; once empty, falls back to `register_response`.
-    /// Use this to simulate a transient-then-success sequence where
-    /// the first connect rejects with `rate_limited` and the next
-    /// accepts. Wrapped in `Arc<Mutex>` so all connection-handler
-    /// clones share the same queue.
+    /// Per-connection response queue (front popped per connect, then falls
+    /// back to `register_response`) — e.g. simulate rate_limited-then-success.
+    /// `Arc<Mutex>` so handler clones share it.
     pub queued_responses: Arc<Mutex<VecDeque<RegisterPolicy>>>,
-    /// Captures every `TrackerServerRegister` payload the mock
-    /// receives, in order. Used by propagation tests that need to
-    /// inspect refresh-cycle payloads. Wrapped in `Arc<Mutex>` so the
-    /// test can read it after spawning.
+    /// Captures each received `TrackerServerRegister` payload in order, for
+    /// propagation tests. `Arc<Mutex>` so the test can read post-spawn.
     pub captured_registers: Arc<Mutex<Vec<TrackerClientMessage>>>,
-    /// When `true`, the mock accepts TLS and then parks (never reads
-    /// the publisher's `Handshake` request, never sends a
-    /// `HandshakeResponse`). The tracker task ends up parked in its
-    /// own `read_handshake_response` await waiting for bytes that
-    /// will never come. Used by the shutdown-mid-handshake test to
-    /// verify abort propagates through the deepest cycle await.
+    /// Accept TLS then park (never read `Handshake`, never send
+    /// `HandshakeResponse`), wedging the task in `read_handshake_response`.
+    /// Used to verify shutdown aborts the deepest cycle await.
     pub wedge_after_tls: bool,
 }
 
@@ -85,10 +74,9 @@ impl Default for MockBehavior {
 pub struct MockTracker {
     pub addr: SocketAddr,
     pub fingerprint: String,
-    /// Snapshot of the behavior the mock was started with. The Arc-
-    /// wrapped fields (`queued_responses`, `captured_registers`) are
-    /// shared with the connection-handler tasks, so tests can mutate /
-    /// read them through this handle.
+    /// Snapshot of the start behavior. Its `Arc` fields (`queued_responses`,
+    /// `captured_registers`) are shared with handler tasks, so tests can
+    /// mutate/read through this handle.
     pub behavior: MockBehavior,
     shutdown: Option<oneshot::Sender<()>>,
     join: Option<JoinHandle<()>>,
@@ -96,10 +84,8 @@ pub struct MockTracker {
 
 impl MockTracker {
     pub async fn start(behavior: MockBehavior) -> Self {
-        // Install the rustls crypto provider for this process. Idempotent
-        // — `install_default` returns Err if one is already installed,
-        // which we ignore. (Production binaries do this in main.rs;
-        // tests need to do it themselves.)
+        // Install the rustls crypto provider (idempotent; Err if already
+        // installed, ignored). Production does this in main.rs.
         let _ = tokio_rustls::rustls::crypto::ring::default_provider().install_default();
 
         let (cert_der, key_der, fingerprint) = generate_cert();
@@ -120,12 +106,9 @@ impl MockTracker {
         let exposed_behavior = behavior.clone();
 
         let join = tokio::spawn(async move {
-            // Track per-connection handler tasks in a JoinSet so the
-            // listener can abort them all on shutdown. Without this,
-            // a long-idle handler (e.g. wedged in a 600s read) would
-            // survive `MockTracker::stop`/`Drop` and only die when
-            // the runtime goes down — producing stderr noise from a
-            // slowly-failing TLS write in shared-runtime test setups.
+            // JoinSet so shutdown aborts all handlers. Otherwise a wedged
+            // handler (e.g. 600s read) outlives `stop`/`Drop` and only dies
+            // with the runtime, producing stderr noise in shared-runtime tests.
             let mut connections = JoinSet::new();
             loop {
                 tokio::select! {
@@ -136,15 +119,12 @@ impl MockTracker {
                         let behavior = behavior.clone();
                         let real_fp = real_fp.clone();
                         connections.spawn(async move {
-                            // Best-effort. Connection errors are expected
-                            // when the peer drops mid-protocol.
+                            // Best-effort; peer drops mid-protocol are expected.
                             let _ = handle_connection(tcp, acceptor, behavior, real_fp).await;
                         });
                     }
                 }
             }
-            // Shutdown reached: abort and drain every in-flight handler
-            // before the listener task itself returns.
             connections.abort_all();
             while connections.join_next().await.is_some() {}
         });
@@ -174,8 +154,7 @@ impl Drop for MockTracker {
         if let Some(tx) = self.shutdown.take() {
             let _ = tx.send(());
         }
-        // Don't await the join here; the listener task is well-behaved
-        // and will exit on the next accept loop iteration.
+        // Don't await; the listener exits on its next accept iteration.
     }
 }
 
@@ -187,16 +166,14 @@ async fn handle_connection(
 ) -> std::io::Result<()> {
     let tls = acceptor.accept(tcp).await?;
     if behavior.wedge_after_tls {
-        // Park forever; never send HandshakeResponse. The TLS stream
-        // and read/write halves drop on abort.
+        // Park forever; never send HandshakeResponse. Halves drop on abort.
         std::future::pending::<()>().await;
     }
     let (read_half, write_half) = tokio::io::split(tls);
     let mut reader = FrameReader::new(tokio::io::BufReader::new(read_half));
     let mut writer = FrameWriter::new(write_half);
 
-    // BBS-style Handshake / HandshakeResponse (the tracker protocol
-    // reuses these at the handshake layer).
+    // BBS-style Handshake/HandshakeResponse (reused at the handshake layer).
     let _handshake = read_client_message(&mut reader).await?;
     let reported = behavior
         .reported_fingerprint
@@ -213,12 +190,9 @@ async fn handle_connection(
     )
     .await?;
 
-    // TrackerServerRegister / TrackerServerRegisterResponse, plus any
-    // subsequent refresh cycles. Each register payload is captured in
-    // `behavior.captured_registers` so propagation tests can inspect
-    // refresh-cycle field updates. The idle timeout is set well past
-    // any plausible refresh interval; the loop exits cleanly when the
-    // tracker task drops the connection.
+    // TrackerServerRegister/Response plus refresh cycles. Each payload is
+    // captured for propagation tests. Idle timeout set well past any
+    // refresh interval; loop exits cleanly when the task drops the conn.
     loop {
         let received = match read_tracker_client_message_with_full_timeout(
             &mut reader,
