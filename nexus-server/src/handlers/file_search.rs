@@ -110,7 +110,7 @@ where
         };
 
         // Get user's area relative path (e.g., "/shared" or "/users/alice")
-        let area_root = resolve_user_area(file_root, &requesting_user.username);
+        let area_root = resolve_user_area(file_root, &requesting_user.username).await;
         let relative_area = area_root
             .strip_prefix(file_root)
             .map(|p| format!("/{}", p.to_string_lossy().replace('\\', "/")))

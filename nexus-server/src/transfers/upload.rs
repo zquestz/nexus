@@ -415,12 +415,16 @@ where
 
     let area_root = resolve_area_root(file_root, &user.username, use_root, locale).await?;
 
-    let candidate = build_validated_path(&area_root, destination, locale)?;
+    let candidate = build_validated_path(&area_root, destination, locale).await?;
 
     // Destination may not exist yet.
     let resolved_destination = match resolve_path(&area_root, &candidate).await {
         Ok(path) => {
-            if !path.is_dir() {
+            let path_is_dir = tokio::fs::metadata(&path)
+                .await
+                .map(|m| m.is_dir())
+                .unwrap_or(false);
+            if !path_is_dir {
                 return Err(TransferError::invalid(err_upload_path_invalid(locale)));
             }
 
@@ -454,7 +458,11 @@ where
                 }
             };
 
-            if !resolved_ancestor.is_dir() {
+            let ancestor_is_dir = tokio::fs::metadata(&resolved_ancestor)
+                .await
+                .map(|m| m.is_dir())
+                .unwrap_or(false);
+            if !ancestor_is_dir {
                 return Err(TransferError::invalid(err_upload_path_invalid(locale)));
             }
 
@@ -470,7 +478,8 @@ where
                 }
             }
 
-            std::fs::create_dir_all(&candidate)
+            tokio::fs::create_dir_all(&candidate)
+                .await
                 .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
 
             candidate

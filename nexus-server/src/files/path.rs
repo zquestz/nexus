@@ -2,7 +2,6 @@
 //!
 //! Provides secure path resolution that prevents directory traversal attacks.
 
-use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
@@ -129,7 +128,7 @@ pub fn build_candidate_path(area_root: &Path, client_path: &str) -> PathBuf {
 /// - A parent path segment cannot be resolved (`NotFound`)
 ///
 /// Note: The final segment is allowed to not exist (for operations that create files).
-pub fn build_and_validate_candidate_path(
+pub async fn build_and_validate_candidate_path(
     area_root: &Path,
     client_path: &str,
 ) -> Result<PathBuf, PathError> {
@@ -159,7 +158,7 @@ pub fn build_and_validate_candidate_path(
         let is_last_segment = i == segments.len() - 1;
 
         // Try to resolve this segment with suffix matching
-        match resolve_segment_in_dir(&current_path, segment) {
+        match resolve_segment_in_dir(&current_path, segment).await {
             Some(resolved_name) => {
                 current_path = current_path.join(resolved_name);
             }
@@ -461,20 +460,28 @@ fn strip_folder_suffix(name: &str) -> String {
 /// # Returns
 ///
 /// The actual filesystem name if found, or None if no match.
-fn resolve_segment_in_dir(parent_dir: &Path, segment: &str) -> Option<String> {
+async fn resolve_segment_in_dir(parent_dir: &Path, segment: &str) -> Option<String> {
     // First try exact match (fast path)
     let exact_path = parent_dir.join(segment);
-    if exact_path.exists() {
+    if tokio::fs::try_exists(&exact_path).await.unwrap_or(false) {
         return Some(segment.to_string());
     }
 
     // Fall back to suffix matching - read directory and find a match
-    let entries = match fs::read_dir(parent_dir) {
+    let mut entries = match tokio::fs::read_dir(parent_dir).await {
         Ok(e) => e,
         Err(_) => return None,
     };
 
-    for entry in entries.flatten() {
+    loop {
+        // Skip individual unreadable entries (matches the previous
+        // `read_dir(...).flatten()` behavior); only stop on `Ok(None)`.
+        let entry = match entries.next_entry().await {
+            Ok(Some(e)) => e,
+            Ok(None) => break,
+            Err(_) => continue,
+        };
+
         let name = match entry.file_name().into_string() {
             Ok(n) => n,
             Err(_) => continue, // Skip non-UTF-8 names
@@ -488,168 +495,6 @@ fn resolve_segment_in_dir(parent_dir: &Path, segment: &str) -> Option<String> {
     }
 
     None
-}
-
-/// Resolve a client path with folder suffix matching
-///
-/// This function resolves each segment of a client-provided path, allowing
-/// clients to use stripped names (e.g., "uploads") that match filesystem names
-/// with suffixes (e.g., "uploads [NEXUS-UL]").
-///
-/// # Resolution Rules
-///
-/// For each path segment:
-/// 1. **Exact match first**: If a file/folder with the exact name exists, use it
-/// 2. **Stripped match fallback**: Otherwise, find a file/folder whose name with
-///    suffix stripped matches the segment
-/// 3. **Case sensitive**: Matching is case-sensitive (follows filesystem behavior)
-///
-/// # Arguments
-///
-/// * `area_root` - The canonical root directory for the file area
-/// * `client_path` - The client-provided path (may use stripped names)
-///
-/// # Returns
-///
-/// Returns the resolved filesystem path if all segments resolve successfully.
-/// The returned path is NOT canonicalized (final component may not exist).
-///
-/// # Errors
-///
-/// - `InvalidAreaRoot` if area_root is not absolute
-/// - `InvalidPath` if path contains `..` or other invalid components
-/// - `NotFound` if any segment cannot be resolved
-///
-/// # Example
-///
-/// ```ignore
-/// // Filesystem has: /files/shared/uploads [NEXUS-UL]/docs/readme.txt
-/// let resolved = resolve_path_with_suffix_matching(
-///     Path::new("/files/shared"),
-///     "uploads/docs/readme.txt"
-/// )?;
-/// // resolved = /files/shared/uploads [NEXUS-UL]/docs/readme.txt
-/// ```
-pub fn resolve_path_with_suffix_matching(
-    area_root: &Path,
-    client_path: &str,
-) -> Result<PathBuf, PathError> {
-    // Verify area_root is absolute
-    if !area_root.is_absolute() {
-        return Err(PathError::InvalidAreaRoot);
-    }
-
-    // Validate for traversal attacks first
-    validate_client_path(client_path)?;
-
-    // Normalize the client path (strip leading slashes, handle backslashes)
-    let normalized = client_path
-        .trim_start_matches(['/', '\\'])
-        .replace('\\', "/");
-
-    // Empty path means area root itself
-    if normalized.is_empty() {
-        return Ok(area_root.to_path_buf());
-    }
-
-    // Split into segments and resolve each one
-    let segments: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
-
-    let mut current_path = area_root.to_path_buf();
-
-    for segment in segments {
-        // Skip current directory references
-        if segment == "." {
-            continue;
-        }
-
-        // Try to resolve this segment
-        match resolve_segment_in_dir(&current_path, segment) {
-            Some(resolved_name) => {
-                current_path = current_path.join(resolved_name);
-            }
-            None => {
-                return Err(PathError::NotFound);
-            }
-        }
-    }
-
-    Ok(current_path)
-}
-
-/// Resolve a client path for a new file/directory with folder suffix matching
-///
-/// Similar to `resolve_path_with_suffix_matching` but handles the case where
-/// the final component doesn't exist yet. All parent segments must resolve.
-///
-/// # Arguments
-///
-/// * `area_root` - The canonical root directory for the file area
-/// * `client_path` - The client-provided path (may use stripped names for parents)
-///
-/// # Returns
-///
-/// Returns the resolved path where the new item should be created.
-/// Parent directories are resolved with suffix matching, final component is used as-is.
-///
-/// # Errors
-///
-/// - `InvalidAreaRoot` if area_root is not absolute
-/// - `InvalidPath` if path contains `..`, is empty, or equals area_root
-/// - `NotFound` if any parent segment cannot be resolved
-pub fn resolve_new_path_with_suffix_matching(
-    area_root: &Path,
-    client_path: &str,
-) -> Result<PathBuf, PathError> {
-    // Verify area_root is absolute
-    if !area_root.is_absolute() {
-        return Err(PathError::InvalidAreaRoot);
-    }
-
-    // Validate for traversal attacks first
-    validate_client_path(client_path)?;
-
-    // Normalize the client path
-    let normalized = client_path
-        .trim_start_matches(['/', '\\'])
-        .replace('\\', "/");
-
-    // Empty path is invalid for new files
-    if normalized.is_empty() {
-        return Err(PathError::InvalidPath);
-    }
-
-    // Split into segments
-    let segments: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
-
-    if segments.is_empty() {
-        return Err(PathError::InvalidPath);
-    }
-
-    // Resolve all parent segments (all but the last)
-    let mut current_path = area_root.to_path_buf();
-    let parent_segments = &segments[..segments.len() - 1];
-    let final_segment = segments[segments.len() - 1];
-
-    for segment in parent_segments {
-        // Skip current directory references
-        if *segment == "." {
-            continue;
-        }
-
-        // Try to resolve this segment
-        match resolve_segment_in_dir(&current_path, segment) {
-            Some(resolved_name) => {
-                current_path = current_path.join(resolved_name);
-            }
-            None => {
-                return Err(PathError::NotFound);
-            }
-        }
-    }
-
-    // Append final segment as-is (it's the new item name)
-    Ok(current_path.join(final_segment))
 }
 
 pub fn normalize_client_path(path: &str) -> String {
@@ -725,7 +570,7 @@ pub fn allows_upload(area_root: &Path, path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::{self, File};
+    use std::fs;
     use tempfile::TempDir;
 
     // ==========================================================================
@@ -786,224 +631,6 @@ mod tests {
             "folder [NEXUS-DB-user"
         );
     }
-
-    // ==========================================================================
-    // Tests for resolve_path_with_suffix_matching
-    // ==========================================================================
-
-    fn setup_suffix_test_area() -> TempDir {
-        let temp = TempDir::new().unwrap();
-        let root = temp.path();
-
-        // Create directories with suffixes
-        fs::create_dir_all(root.join("uploads [NEXUS-UL]")).unwrap();
-        fs::create_dir_all(root.join("uploads [NEXUS-UL]/subdir")).unwrap();
-        fs::create_dir_all(root.join("inbox [NEXUS-DB]")).unwrap();
-        fs::create_dir_all(root.join("normal")).unwrap();
-
-        // Create some files
-        File::create(root.join("uploads [NEXUS-UL]/file.txt")).unwrap();
-        File::create(root.join("uploads [NEXUS-UL]/subdir/nested.txt")).unwrap();
-        File::create(root.join("normal/doc.txt")).unwrap();
-
-        temp
-    }
-
-    #[test]
-    fn test_resolve_suffix_exact_match_preferred() {
-        let temp = TempDir::new().unwrap();
-        let root = temp.path();
-
-        // Create both "uploads" and "uploads [NEXUS-UL]"
-        fs::create_dir(root.join("uploads")).unwrap();
-        fs::create_dir(root.join("uploads [NEXUS-UL]")).unwrap();
-
-        // Exact match should win
-        let resolved = resolve_path_with_suffix_matching(root, "uploads").unwrap();
-        assert_eq!(resolved, root.join("uploads"));
-    }
-
-    #[test]
-    fn test_resolve_suffix_single_segment() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // "uploads" should resolve to "uploads [NEXUS-UL]"
-        let resolved = resolve_path_with_suffix_matching(root, "uploads").unwrap();
-        assert_eq!(resolved, root.join("uploads [NEXUS-UL]"));
-
-        // "inbox" should resolve to "inbox [NEXUS-DB]"
-        let resolved = resolve_path_with_suffix_matching(root, "inbox").unwrap();
-        assert_eq!(resolved, root.join("inbox [NEXUS-DB]"));
-
-        // "normal" should resolve exactly
-        let resolved = resolve_path_with_suffix_matching(root, "normal").unwrap();
-        assert_eq!(resolved, root.join("normal"));
-    }
-
-    #[test]
-    fn test_resolve_suffix_multi_segment() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // "uploads/file.txt" should resolve to "uploads [NEXUS-UL]/file.txt"
-        let resolved = resolve_path_with_suffix_matching(root, "uploads/file.txt").unwrap();
-        assert_eq!(resolved, root.join("uploads [NEXUS-UL]/file.txt"));
-
-        // "uploads/subdir/nested.txt"
-        let resolved =
-            resolve_path_with_suffix_matching(root, "uploads/subdir/nested.txt").unwrap();
-        assert_eq!(resolved, root.join("uploads [NEXUS-UL]/subdir/nested.txt"));
-    }
-
-    #[test]
-    fn test_resolve_suffix_with_explicit_suffix() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // Client can also use the full name with suffix
-        let resolved =
-            resolve_path_with_suffix_matching(root, "uploads [NEXUS-UL]/file.txt").unwrap();
-        assert_eq!(resolved, root.join("uploads [NEXUS-UL]/file.txt"));
-    }
-
-    #[test]
-    fn test_resolve_suffix_empty_path() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // Empty path returns area root
-        let resolved = resolve_path_with_suffix_matching(root, "").unwrap();
-        assert_eq!(resolved, root);
-
-        let resolved = resolve_path_with_suffix_matching(root, "/").unwrap();
-        assert_eq!(resolved, root);
-    }
-
-    #[test]
-    fn test_resolve_suffix_not_found() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // Non-existent path
-        let result = resolve_path_with_suffix_matching(root, "nonexistent");
-        assert!(matches!(result, Err(PathError::NotFound)));
-
-        // Non-existent nested
-        let result = resolve_path_with_suffix_matching(root, "uploads/nonexistent");
-        assert!(matches!(result, Err(PathError::NotFound)));
-    }
-
-    #[test]
-    fn test_resolve_suffix_case_sensitive() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // "Uploads" (capital U) should NOT match "uploads [NEXUS-UL]"
-        let result = resolve_path_with_suffix_matching(root, "Uploads");
-        assert!(matches!(result, Err(PathError::NotFound)));
-    }
-
-    #[test]
-    fn test_resolve_suffix_rejects_traversal() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // Parent directory traversal should be rejected
-        let result = resolve_path_with_suffix_matching(root, "../etc/passwd");
-        assert!(matches!(result, Err(PathError::InvalidPath)));
-
-        let result = resolve_path_with_suffix_matching(root, "uploads/../../../etc");
-        assert!(matches!(result, Err(PathError::InvalidPath)));
-    }
-
-    #[test]
-    fn test_resolve_suffix_leading_slash() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // Leading slash should be handled
-        let resolved = resolve_path_with_suffix_matching(root, "/uploads").unwrap();
-        assert_eq!(resolved, root.join("uploads [NEXUS-UL]"));
-    }
-
-    #[test]
-    fn test_resolve_suffix_backslashes() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // Backslashes should be normalized to forward slashes
-        let resolved = resolve_path_with_suffix_matching(root, "uploads\\file.txt").unwrap();
-        assert_eq!(resolved, root.join("uploads [NEXUS-UL]/file.txt"));
-    }
-
-    // ==========================================================================
-    // Tests for resolve_new_path_with_suffix_matching
-    // ==========================================================================
-
-    #[test]
-    fn test_resolve_new_path_suffix_single_segment() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // New file in root
-        let resolved = resolve_new_path_with_suffix_matching(root, "newfile.txt").unwrap();
-        assert_eq!(resolved, root.join("newfile.txt"));
-    }
-
-    #[test]
-    fn test_resolve_new_path_suffix_in_suffixed_dir() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // New file in uploads (which has suffix)
-        let resolved = resolve_new_path_with_suffix_matching(root, "uploads/newfile.txt").unwrap();
-        assert_eq!(resolved, root.join("uploads [NEXUS-UL]/newfile.txt"));
-    }
-
-    #[test]
-    fn test_resolve_new_path_suffix_nested() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // New file in nested directory
-        let resolved =
-            resolve_new_path_with_suffix_matching(root, "uploads/subdir/newfile.txt").unwrap();
-        assert_eq!(resolved, root.join("uploads [NEXUS-UL]/subdir/newfile.txt"));
-    }
-
-    #[test]
-    fn test_resolve_new_path_suffix_parent_not_found() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // Parent doesn't exist
-        let result = resolve_new_path_with_suffix_matching(root, "nonexistent/file.txt");
-        assert!(matches!(result, Err(PathError::NotFound)));
-    }
-
-    #[test]
-    fn test_resolve_new_path_suffix_empty_invalid() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        // Empty path is invalid for new files
-        let result = resolve_new_path_with_suffix_matching(root, "");
-        assert!(matches!(result, Err(PathError::InvalidPath)));
-    }
-
-    #[test]
-    fn test_resolve_new_path_suffix_rejects_traversal() {
-        let temp = setup_suffix_test_area();
-        let root = temp.path();
-
-        let result = resolve_new_path_with_suffix_matching(root, "../newfile.txt");
-        assert!(matches!(result, Err(PathError::InvalidPath)));
-    }
-
-    // ==========================================================================
-    // Original tests (keep existing tests below)
-    // ==========================================================================
 
     fn setup_test_area() -> (TempDir, PathBuf) {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
@@ -1143,19 +770,20 @@ mod tests {
         assert_eq!(result.unwrap(), root);
     }
 
-    #[test]
-    fn test_reject_parent_directory() {
+    #[tokio::test]
+    async fn test_reject_parent_directory() {
         let (_temp, root) = setup_test_area();
         // Simulate client sending "../etc/passwd" - validate before building path
-        let result = build_and_validate_candidate_path(&root, "../etc/passwd");
+        let result = build_and_validate_candidate_path(&root, "../etc/passwd").await;
         assert_eq!(result, Err(PathError::InvalidPath));
     }
 
-    #[test]
-    fn test_reject_parent_in_middle() {
+    #[tokio::test]
+    async fn test_reject_parent_in_middle() {
         let (_temp, root) = setup_test_area();
         // Simulate client sending path with .. in the middle
-        let result = build_and_validate_candidate_path(&root, "documents/../../../etc/passwd");
+        let result =
+            build_and_validate_candidate_path(&root, "documents/../../../etc/passwd").await;
         assert_eq!(result, Err(PathError::InvalidPath));
     }
 
@@ -1282,11 +910,11 @@ mod tests {
         assert_eq!(result, Err(PathError::NotFound));
     }
 
-    #[test]
-    fn test_resolve_new_path_reject_traversal() {
+    #[tokio::test]
+    async fn test_resolve_new_path_reject_traversal() {
         let (_temp, root) = setup_test_area();
         // Simulate client sending "../newfile.txt" - validate before building path
-        let result = build_and_validate_candidate_path(&root, "../newfile.txt");
+        let result = build_and_validate_candidate_path(&root, "../newfile.txt").await;
         assert_eq!(result, Err(PathError::InvalidPath));
     }
 

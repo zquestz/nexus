@@ -140,7 +140,7 @@ where
     let source_area_root_path = if source_root {
         file_root.to_path_buf()
     } else {
-        resolve_user_area(file_root, &requesting_user.username)
+        resolve_user_area(file_root, &requesting_user.username).await
     };
 
     let source_area_root = match tokio::fs::canonicalize(&source_area_root_path).await {
@@ -165,7 +165,7 @@ where
     let dest_area_root_path = if destination_root {
         file_root.to_path_buf()
     } else {
-        resolve_user_area(file_root, &requesting_user.username)
+        resolve_user_area(file_root, &requesting_user.username).await
     };
 
     let dest_area_root = match tokio::fs::canonicalize(&dest_area_root_path).await {
@@ -185,31 +185,31 @@ where
         }
     };
 
-    let source_candidate = match build_and_validate_candidate_path(&source_area_root, &source_path)
-    {
-        Ok(p) => p,
-        Err(_) => {
-            let response = ServerMessage::FileMoveResponse {
-                success: false,
-                error: Some(err_file_path_invalid(ctx.locale)),
-                error_kind: Some(ErrorKind::InvalidPath.into()),
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
+    let source_candidate =
+        match build_and_validate_candidate_path(&source_area_root, &source_path).await {
+            Ok(p) => p,
+            Err(_) => {
+                let response = ServerMessage::FileMoveResponse {
+                    success: false,
+                    error: Some(err_file_path_invalid(ctx.locale)),
+                    error_kind: Some(ErrorKind::InvalidPath.into()),
+                };
+                return ctx.send_message(&response).await;
+            }
+        };
 
-    let dest_candidate = match build_and_validate_candidate_path(&dest_area_root, &destination_dir)
-    {
-        Ok(p) => p,
-        Err(_) => {
-            let response = ServerMessage::FileMoveResponse {
-                success: false,
-                error: Some(err_file_path_invalid(ctx.locale)),
-                error_kind: Some(ErrorKind::InvalidPath.into()),
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
+    let dest_candidate =
+        match build_and_validate_candidate_path(&dest_area_root, &destination_dir).await {
+            Ok(p) => p,
+            Err(_) => {
+                let response = ServerMessage::FileMoveResponse {
+                    success: false,
+                    error: Some(err_file_path_invalid(ctx.locale)),
+                    error_kind: Some(ErrorKind::InvalidPath.into()),
+                };
+                return ctx.send_message(&response).await;
+            }
+        };
 
     // Pre-lock: derive lock keys from candidates only (pure path arithmetic),
     // so source validation can happen AFTER acquisition using the
@@ -332,7 +332,11 @@ where
             }
         };
 
-        if !resolved_dest_dir.is_dir() {
+        let dest_is_dir = tokio::fs::metadata(&resolved_dest_dir)
+            .await
+            .map(|m| m.is_dir())
+            .unwrap_or(false);
+        if !dest_is_dir {
             break 'locked ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_destination_not_directory(ctx.locale)),
@@ -353,7 +357,11 @@ where
 
         let target_path = resolved_dest_dir.join(source_filename);
 
-        if resolved_source.is_dir() && is_subpath(&resolved_dest_dir, &resolved_source) {
+        let source_is_dir = tokio::fs::metadata(&resolved_source)
+            .await
+            .map(|m| m.is_dir())
+            .unwrap_or(false);
+        if source_is_dir && is_subpath(&resolved_dest_dir, &resolved_source) {
             break 'locked ServerMessage::FileMoveResponse {
                 success: false,
                 error: Some(err_cannot_move_into_itself(ctx.locale)),

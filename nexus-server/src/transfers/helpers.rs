@@ -184,7 +184,7 @@ pub(crate) async fn resolve_area_root(
     let area_root = if use_root {
         file_root.to_path_buf()
     } else {
-        resolve_user_area(file_root, username)
+        resolve_user_area(file_root, username).await
     };
 
     tokio::fs::canonicalize(&area_root)
@@ -195,12 +195,13 @@ pub(crate) async fn resolve_area_root(
 /// Build and validate a candidate path within an area root
 ///
 /// Converts `PathError` to `TransferError` with appropriate error kinds.
-pub(crate) fn build_validated_path(
+pub(crate) async fn build_validated_path(
     area_root: &Path,
     client_path: &str,
     locale: &str,
 ) -> Result<PathBuf, TransferError> {
     build_and_validate_candidate_path(area_root, client_path)
+        .await
         .map_err(|_| TransferError::invalid(err_transfer_path_invalid(locale)))
 }
 

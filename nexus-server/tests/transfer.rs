@@ -120,11 +120,11 @@ async fn test_resolve_user_area_with_personal_folder() {
     let root = temp_dir.path();
 
     // Alice has a personal folder
-    let alice_area = resolve_user_area(root, "alice");
+    let alice_area = resolve_user_area(root, "alice").await;
     assert!(alice_area.ends_with("users/alice"));
 
     // Charlie doesn't have a personal folder, gets shared
-    let charlie_area = resolve_user_area(root, "charlie");
+    let charlie_area = resolve_user_area(root, "charlie").await;
     assert!(charlie_area.ends_with("shared"));
 }
 
@@ -136,15 +136,16 @@ async fn test_path_validation_rejects_traversal() {
     let area_root = temp_dir.path().join("shared");
 
     // Normal path should work
-    let result = build_and_validate_candidate_path(&area_root, "/Documents/readme.txt");
+    let result = build_and_validate_candidate_path(&area_root, "/Documents/readme.txt").await;
     assert!(result.is_ok());
 
     // Path traversal should fail
-    let result = build_and_validate_candidate_path(&area_root, "/../../../etc/passwd");
+    let result = build_and_validate_candidate_path(&area_root, "/../../../etc/passwd").await;
     assert!(result.is_err());
 
     // Embedded traversal should fail
-    let result = build_and_validate_candidate_path(&area_root, "/Documents/../../../etc/passwd");
+    let result =
+        build_and_validate_candidate_path(&area_root, "/Documents/../../../etc/passwd").await;
     assert!(result.is_err());
 }
 

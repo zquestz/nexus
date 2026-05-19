@@ -121,7 +121,7 @@ where
     let area_root_path = if root {
         file_root.to_path_buf()
     } else {
-        resolve_user_area(file_root, &requesting_user.username)
+        resolve_user_area(file_root, &requesting_user.username).await
     };
 
     let area_root = match tokio::fs::canonicalize(&area_root_path).await {
@@ -143,7 +143,7 @@ where
         }
     };
 
-    let parent_candidate = match build_and_validate_candidate_path(&area_root, &path) {
+    let parent_candidate = match build_and_validate_candidate_path(&area_root, &path).await {
         Ok(p) => p,
         Err(_) => {
             let response = ServerMessage::FileCreateDirResponse {
@@ -175,7 +175,11 @@ where
         }
     };
 
-    if !parent_resolved.is_dir() {
+    let parent_is_dir = tokio::fs::metadata(&parent_resolved)
+        .await
+        .map(|m| m.is_dir())
+        .unwrap_or(false);
+    if !parent_is_dir {
         let response = ServerMessage::FileCreateDirResponse {
             success: false,
             error: Some(err_file_not_directory(ctx.locale)),
@@ -259,7 +263,7 @@ where
             }
         };
 
-        if let Err(e) = std::fs::create_dir(&new_dir_path) {
+        if let Err(e) = tokio::fs::create_dir(&new_dir_path).await {
             // Race-tight: `create_dir` is atomic-fails-if-exists under the lock.
             break 'locked if e.kind() == std::io::ErrorKind::AlreadyExists {
                 ServerMessage::FileCreateDirResponse {

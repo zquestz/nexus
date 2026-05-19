@@ -266,7 +266,7 @@ async fn validate_and_resolve_download_path(
     let area_root = resolve_area_root(file_root, &user.username, use_root, locale).await?;
 
     // Build candidate path
-    let candidate = build_validated_path(&area_root, download_path, locale)?;
+    let candidate = build_validated_path(&area_root, download_path, locale).await?;
 
     // Resolve to canonical path
     resolve_path(&area_root, &candidate)

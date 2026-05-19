@@ -44,10 +44,15 @@ use crate::constants::{FILES_SHARED_DIR, FILES_USERS_DIR};
 /// the user's personal folder exists. Directory creation is the
 /// admin's responsibility.
 #[must_use]
-pub fn resolve_user_area(root: &Path, username: &str) -> PathBuf {
+pub async fn resolve_user_area(root: &Path, username: &str) -> PathBuf {
     let user_dir = root.join(FILES_USERS_DIR).join(username);
 
-    if user_dir.is_dir() {
+    let is_dir = tokio::fs::metadata(&user_dir)
+        .await
+        .map(|m| m.is_dir())
+        .unwrap_or(false);
+
+    if is_dir {
         user_dir
     } else {
         root.join(FILES_SHARED_DIR)
@@ -76,18 +81,18 @@ mod tests {
         temp
     }
 
-    #[test]
-    fn test_user_without_personal_folder_gets_shared() {
+    #[tokio::test]
+    async fn test_user_without_personal_folder_gets_shared() {
         let temp = setup_test_root();
         let root = temp.path();
 
-        let area = resolve_user_area(root, "alice");
+        let area = resolve_user_area(root, "alice").await;
 
         assert_eq!(area, root.join(FILES_SHARED_DIR));
     }
 
-    #[test]
-    fn test_user_with_personal_folder_gets_personal() {
+    #[tokio::test]
+    async fn test_user_with_personal_folder_gets_personal() {
         let temp = setup_test_root();
         let root = temp.path();
 
@@ -95,13 +100,13 @@ mod tests {
         let alice_dir = root.join(FILES_USERS_DIR).join("alice");
         fs::create_dir(&alice_dir).expect("Failed to create alice dir");
 
-        let area = resolve_user_area(root, "alice");
+        let area = resolve_user_area(root, "alice").await;
 
         assert_eq!(area, alice_dir);
     }
 
-    #[test]
-    fn test_file_not_directory_falls_back_to_shared() {
+    #[tokio::test]
+    async fn test_file_not_directory_falls_back_to_shared() {
         let temp = setup_test_root();
         let root = temp.path();
 
@@ -110,13 +115,13 @@ mod tests {
         fs::write(&bob_file, "not a directory").expect("Failed to create bob file");
 
         // Should fall back to shared since it's not a directory
-        let area = resolve_user_area(root, "bob");
+        let area = resolve_user_area(root, "bob").await;
 
         assert_eq!(area, root.join(FILES_SHARED_DIR));
     }
 
-    #[test]
-    fn test_shared_account_uses_account_name() {
+    #[tokio::test]
+    async fn test_shared_account_uses_account_name() {
         let temp = setup_test_root();
         let root = temp.path();
 
@@ -125,13 +130,13 @@ mod tests {
         fs::create_dir(&guest_dir).expect("Failed to create guest dir");
 
         // Shared account users use their account username, not nickname
-        let area = resolve_user_area(root, "guest");
+        let area = resolve_user_area(root, "guest").await;
 
         assert_eq!(area, guest_dir);
     }
 
-    #[test]
-    fn test_unicode_username() {
+    #[tokio::test]
+    async fn test_unicode_username() {
         let temp = setup_test_root();
         let root = temp.path();
 
@@ -139,7 +144,7 @@ mod tests {
         let unicode_dir = root.join(FILES_USERS_DIR).join("用户");
         fs::create_dir(&unicode_dir).expect("Failed to create unicode dir");
 
-        let area = resolve_user_area(root, "用户");
+        let area = resolve_user_area(root, "用户").await;
 
         assert_eq!(area, unicode_dir);
     }

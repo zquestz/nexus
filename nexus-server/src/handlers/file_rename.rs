@@ -113,7 +113,7 @@ where
     let area_root_path = if root {
         file_root.to_path_buf()
     } else {
-        resolve_user_area(file_root, &requesting_user.username)
+        resolve_user_area(file_root, &requesting_user.username).await
     };
 
     let area_root = match tokio::fs::canonicalize(&area_root_path).await {
@@ -134,7 +134,7 @@ where
         }
     };
 
-    let candidate = match build_and_validate_candidate_path(&area_root, &path) {
+    let candidate = match build_and_validate_candidate_path(&area_root, &path).await {
         Ok(p) => p,
         Err(_) => {
             let response = ServerMessage::FileRenameResponse {
