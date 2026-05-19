@@ -18,20 +18,19 @@ use super::types::{Channel, ChannelListInfo, JoinError, JoinPolicy, JoinResult, 
 use crate::db::ChannelDb;
 use crate::users::UserManager;
 
-/// Manages all chat channels
 #[derive(Clone)]
 pub struct ChannelManager {
-    /// Map of channel name (lowercase) -> Channel
+    /// Keyed by lowercase channel name.
     channels: Arc<RwLock<HashMap<String, Channel>>>,
-    /// Set of persistent channel names (lowercase) - these are never deleted when empty
+    /// Lowercase names; persistent channels are never deleted when empty.
     persistent_channels: Arc<RwLock<HashSet<String>>>,
     db: ChannelDb,
-    /// User manager for resolving session_id -> nickname (for member counts/listing)
+    /// Resolves session_id → nickname for member counts/listing.
     user_manager: UserManager,
 }
 
 impl ChannelManager {
-    /// Use `initialize_persistent_channels` to set up persistent channels after creation.
+    /// Call `initialize_persistent_channels` after construction to set them up.
     pub fn new(db: ChannelDb, user_manager: UserManager) -> Self {
         Self {
             channels: Arc::new(RwLock::new(HashMap::new())),
@@ -41,8 +40,6 @@ impl ChannelManager {
         }
     }
 
-    /// Creates channels for each name in the list and marks them as persistent.
-    /// Called at server startup with channel names from config and settings from DB.
     pub async fn initialize_persistent_channels(&self, channels_with_settings: Vec<Channel>) {
         let mut channels = self.channels.write().await;
         let mut persistent = self.persistent_channels.write().await;
@@ -54,11 +51,8 @@ impl ChannelManager {
         }
     }
 
-    /// Reinitialize persistent channels (called when admin changes config)
-    ///
-    /// This clears the old persistent channel set and initializes new ones.
-    /// Channels that were persistent but are no longer will become ephemeral
-    /// (and will be deleted if empty). New persistent channels are created.
+    /// Channels dropped from the persistent set become ephemeral (deleted if
+    /// empty); newly listed ones are created. Existing members are preserved.
     pub async fn reinitialize_persistent_channels(&self, channels_with_settings: Vec<Channel>) {
         let mut channels = self.channels.write().await;
         let mut persistent = self.persistent_channels.write().await;
@@ -85,7 +79,7 @@ impl ChannelManager {
         for channel in channels_with_settings {
             let key = channel.name.to_lowercase();
             persistent.insert(key.clone());
-            // Only insert if it doesn't exist (preserve members)
+            // Don't overwrite an existing channel — preserve its members.
             channels.entry(key).or_insert(channel);
         }
     }
@@ -179,10 +173,7 @@ impl ChannelManager {
         })
     }
 
-    /// Remove a session from all channels (called on disconnect)
-    ///
-    /// Returns a list of channel names the user was in.
-    /// Caller can use `get_members()` to get remaining members for broadcasting.
+    /// Returns the names of channels the session was in.
     pub async fn remove_from_all(&self, session_id: u32) -> Vec<String> {
         let mut channels = self.channels.write().await;
         let persistent = self.persistent_channels.read().await;
@@ -789,16 +780,11 @@ mod tests {
         assert_eq!(channel.name, "#MyChannel");
     }
 
-    // ========================================================================
-    // Concurrent Operation Tests
-    // ========================================================================
-
     #[tokio::test]
     async fn test_concurrent_joins_same_channel() {
         let manager = create_test_manager().await;
         let manager = std::sync::Arc::new(manager);
 
-        // Spawn multiple tasks joining the same channel concurrently
         let mut handles = Vec::new();
         for i in 0..10 {
             let manager = manager.clone();
@@ -809,7 +795,6 @@ mod tests {
             }));
         }
 
-        // Wait for all joins to complete
         for handle in handles {
             let _ = handle.await.expect("Task panicked");
         }
@@ -852,7 +837,6 @@ mod tests {
             }));
         }
 
-        // Wait for all operations
         for handle in leave_handles {
             handle.await.expect("Task panicked");
         }
@@ -876,7 +860,6 @@ mod tests {
         let manager = create_test_manager().await;
         let manager = std::sync::Arc::new(manager);
 
-        // Multiple users try to create different channels concurrently
         let mut handles = Vec::new();
         for i in 0..10 {
             let manager = manager.clone();
@@ -886,7 +869,6 @@ mod tests {
             }));
         }
 
-        // Wait for all
         for handle in handles {
             let _ = handle.await.expect("Task panicked");
         }
@@ -947,10 +929,6 @@ mod tests {
             assert!(manager.is_member(&format!("#channel{}", i), 2).await);
         }
     }
-
-    // ========================================================================
-    // Edge Case Tests
-    // ========================================================================
 
     #[tokio::test]
     async fn test_join_at_boundary_channel_name() {

@@ -1,26 +1,20 @@
 //! Channel types for multi-channel chat
-//!
-//! This module contains the core data structures used by the channel manager.
 
 use std::collections::HashSet;
 
-/// State for a single channel
 #[derive(Debug, Clone)]
 pub struct Channel {
-    /// Channel name (e.g., "#general")
     pub name: String,
-    /// Channel topic (optional)
     pub topic: Option<String>,
-    /// Username who set the topic
+    /// Username (not nickname) who set the topic.
     pub topic_set_by: Option<String>,
-    /// Whether the channel is secret (hidden from non-members)
+    /// Hidden from non-members.
     pub secret: bool,
-    /// Session IDs of members in this channel
+    /// Session IDs of members.
     pub members: HashSet<u32>,
 }
 
 impl Channel {
-    /// Create a new channel with the given name
     pub fn new(name: String) -> Self {
         Self {
             name,
@@ -31,7 +25,6 @@ impl Channel {
         }
     }
 
-    /// Create a channel with settings
     pub fn with_settings(
         name: String,
         topic: Option<String>,
@@ -47,28 +40,23 @@ impl Channel {
         }
     }
 
-    /// Check if the channel is empty
     pub fn is_empty(&self) -> bool {
         self.members.is_empty()
     }
 
-    /// Check if a session is a member of this channel
     pub fn has_member(&self, session_id: u32) -> bool {
         self.members.contains(&session_id)
     }
 
-    /// Add a member to the channel
     pub fn add_member(&mut self, session_id: u32) -> bool {
         self.members.insert(session_id)
     }
 
-    /// Remove a member from the channel
     pub fn remove_member(&mut self, session_id: u32) -> bool {
         self.members.remove(&session_id)
     }
 }
 
-/// Error when joining a channel fails
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum JoinError {
     TooManyChannels,
@@ -82,29 +70,22 @@ pub enum JoinPolicy {
     ExistingOnly,
 }
 
-/// Result of joining a channel
 #[derive(Debug)]
 pub struct JoinResult {
-    /// Whether the user was already a member
     pub already_member: bool,
-    /// Current channel topic
     pub topic: Option<String>,
-    /// Who set the topic
     pub topic_set_by: Option<String>,
-    /// Whether the channel is secret
     pub secret: bool,
-    /// Current member session IDs (for looking up nicknames)
+    /// Session IDs, for looking up nicknames.
     pub member_session_ids: Vec<u32>,
 }
 
-/// Result of leaving a channel
 #[derive(Debug)]
 pub struct LeaveResult {
-    /// Remaining member session IDs (for broadcasting leave)
+    /// Session IDs, for broadcasting the leave.
     pub remaining_member_session_ids: Vec<u32>,
 }
 
-/// Info about a channel for listing
 #[derive(Debug, Clone)]
 pub struct ChannelListInfo {
     pub name: String,
