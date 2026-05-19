@@ -25,15 +25,12 @@ pub struct ChannelManager {
     channels: Arc<RwLock<HashMap<String, Channel>>>,
     /// Set of persistent channel names (lowercase) - these are never deleted when empty
     persistent_channels: Arc<RwLock<HashSet<String>>>,
-    /// Database for persisting channel settings
     db: ChannelDb,
     /// User manager for resolving session_id -> nickname (for member counts/listing)
     user_manager: UserManager,
 }
 
 impl ChannelManager {
-    /// Create a new empty channel manager
-    ///
     /// Use `initialize_persistent_channels` to set up persistent channels after creation.
     pub fn new(db: ChannelDb, user_manager: UserManager) -> Self {
         Self {
@@ -44,8 +41,6 @@ impl ChannelManager {
         }
     }
 
-    /// Initialize persistent channels
-    ///
     /// Creates channels for each name in the list and marks them as persistent.
     /// Called at server startup with channel names from config and settings from DB.
     pub async fn initialize_persistent_channels(&self, channels_with_settings: Vec<Channel>) {
@@ -68,13 +63,11 @@ impl ChannelManager {
         let mut channels = self.channels.write().await;
         let mut persistent = self.persistent_channels.write().await;
 
-        // Build new persistent set
         let new_persistent: HashSet<String> = channels_with_settings
             .iter()
             .map(|ch| ch.name.to_lowercase())
             .collect();
 
-        // Remove channels that are no longer persistent and are empty
         let old_persistent = std::mem::take(&mut *persistent);
         let mut to_delete = Vec::new();
         for key in &old_persistent {
@@ -89,7 +82,6 @@ impl ChannelManager {
             channels.remove(&key);
         }
 
-        // Add/update persistent channels
         for channel in channels_with_settings {
             let key = channel.name.to_lowercase();
             persistent.insert(key.clone());
@@ -98,7 +90,6 @@ impl ChannelManager {
         }
     }
 
-    /// Check if a channel is persistent
     #[cfg(test)]
     pub async fn is_persistent(&self, channel_name: &str) -> bool {
         let key = channel_name.to_lowercase();
@@ -161,8 +152,6 @@ impl ChannelManager {
         })
     }
 
-    /// Leave a channel
-    ///
     /// Returns None if the user wasn't a member or the channel doesn't exist.
     /// Returns Some(LeaveResult) with info about the leave operation.
     ///
@@ -175,13 +164,11 @@ impl ChannelManager {
         let channel = channels.get_mut(&key)?;
 
         if !channel.remove_member(session_id) {
-            // User wasn't a member
             return None;
         }
 
         let remaining_member_session_ids: Vec<u32> = channel.members.iter().copied().collect();
 
-        // Delete empty channels (except persistent ones)
         let is_persistent = persistent.contains(&key);
         if channel.is_empty() && !is_persistent {
             channels.remove(&key);
@@ -206,14 +193,12 @@ impl ChannelManager {
             if channel.remove_member(session_id) {
                 channel_names.push(channel.name.clone());
 
-                // Mark empty channels for deletion (except persistent ones)
                 if channel.is_empty() && !persistent.contains(key) {
                     to_delete.push(key.clone());
                 }
             }
         }
 
-        // Delete empty channels
         for key in to_delete {
             channels.remove(&key);
         }
@@ -231,10 +216,7 @@ impl ChannelManager {
             let channels = self.channels.read().await;
             channels
                 .values()
-                .filter(|ch| {
-                    // Show non-secret channels, or secret channels if admin or member
-                    !ch.secret || is_admin || ch.has_member(session_id)
-                })
+                .filter(|ch| !ch.secret || is_admin || ch.has_member(session_id))
                 .map(|ch| {
                     (
                         ch.name.clone(),
@@ -272,32 +254,32 @@ impl ChannelManager {
         results
     }
 
-    /// Set the secret mode for a channel
-    ///
     /// Returns Ok(true) if channel exists and was updated, Ok(false) if channel doesn't exist.
     /// Returns Err on database error (only possible for persistent channels).
     pub async fn set_secret(&self, channel_name: &str, secret: bool) -> io::Result<bool> {
         let key = channel_name.to_lowercase();
         let mut channels = self.channels.write().await;
 
-        let Some(channel) = channels.get_mut(&key) else {
+        if !channels.contains_key(&key) {
             return Ok(false);
-        };
+        }
 
-        channel.secret = secret;
-
-        // Persist to database for persistent channels
-        let persistent = self.persistent_channels.read().await;
-        if persistent.contains(&key) {
-            drop(channels); // Release lock before async DB call
+        // For persistent channels, write DB first while still holding the channels lock.
+        // Holding the lock across the DB await serializes concurrent updates on the same
+        // channel (lock order = DB write order = final memory state) and ensures a DB
+        // failure can't leave memory ahead of disk.
+        let is_persistent = self.persistent_channels.read().await.contains(&key);
+        if is_persistent {
             self.db.set_secret(channel_name, secret).await?;
+        }
+
+        if let Some(channel) = channels.get_mut(&key) {
+            channel.secret = secret;
         }
 
         Ok(true)
     }
 
-    /// Set the topic for a channel
-    ///
     /// Returns Ok(true) if channel exists and was updated, Ok(false) if channel doesn't exist.
     /// Returns Err on database error (only possible for persistent channels).
     pub async fn set_topic(
@@ -309,17 +291,16 @@ impl ChannelManager {
         let key = channel_name.to_lowercase();
         let mut channels = self.channels.write().await;
 
-        let Some(channel) = channels.get_mut(&key) else {
+        if !channels.contains_key(&key) {
             return Ok(false);
-        };
+        }
 
-        channel.topic = topic.clone();
-        channel.topic_set_by = set_by.clone();
-
-        // Persist to database for persistent channels
-        let persistent = self.persistent_channels.read().await;
-        if persistent.contains(&key) {
-            drop(channels); // Release lock before async DB call
+        // For persistent channels, write DB first while still holding the channels lock.
+        // Holding the lock across the DB await serializes concurrent updates on the same
+        // channel (lock order = DB write order = final memory state) and ensures a DB
+        // failure can't leave memory ahead of disk.
+        let is_persistent = self.persistent_channels.read().await.contains(&key);
+        if is_persistent {
             let topic_str = topic.as_deref().unwrap_or("");
             let set_by_str = set_by.as_deref().unwrap_or("");
             self.db
@@ -327,10 +308,14 @@ impl ChannelManager {
                 .await?;
         }
 
+        if let Some(channel) = channels.get_mut(&key) {
+            channel.topic = topic;
+            channel.topic_set_by = set_by;
+        }
+
         Ok(true)
     }
 
-    /// Check if a session is a member of a channel
     pub async fn is_member(&self, channel_name: &str, session_id: u32) -> bool {
         let key = channel_name.to_lowercase();
         let channels = self.channels.read().await;
@@ -340,8 +325,6 @@ impl ChannelManager {
             .is_some_and(|ch| ch.has_member(session_id))
     }
 
-    /// Get member session IDs for a channel
-    ///
     /// Returns None if the channel doesn't exist.
     pub async fn get_members(&self, channel_name: &str) -> Option<Vec<u32>> {
         let key = channel_name.to_lowercase();
@@ -352,8 +335,6 @@ impl ChannelManager {
             .map(|ch| ch.members.iter().copied().collect())
     }
 
-    /// Get all channels a session is a member of
-    ///
     /// If `is_admin` is true, returns all channels including secret ones.
     /// Otherwise, secret channels are excluded from the result.
     ///
@@ -372,7 +353,6 @@ impl ChannelManager {
         result
     }
 
-    /// Get channel info (for checking secret status, etc.)
     #[cfg(test)]
     pub async fn get_channel(&self, channel_name: &str) -> Option<Channel> {
         let key = channel_name.to_lowercase();
@@ -387,7 +367,6 @@ mod tests {
     use crate::db::testing::create_test_db;
     use nexus_common::validators::DEFAULT_CHANNEL;
 
-    /// Helper to create a ChannelManager with a test database
     async fn create_test_manager() -> ChannelManager {
         let pool = create_test_db().await;
         let db = ChannelDb::new(pool);
@@ -444,13 +423,11 @@ mod tests {
     async fn test_join_existing_channel() {
         let manager = create_test_manager().await;
 
-        // First user creates the channel
         manager
             .join("#general", 1, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
-        // Second user joins existing channel
         let result = manager
             .join("#general", 2, JoinPolicy::CreateIfMissing)
             .await
@@ -850,7 +827,6 @@ mod tests {
         let manager = create_test_manager().await;
         let manager = std::sync::Arc::new(manager);
 
-        // First, have some users join
         for i in 0..5 {
             manager
                 .join("#concurrent", i, JoinPolicy::CreateIfMissing)
@@ -931,7 +907,6 @@ mod tests {
         let manager = create_test_manager().await;
         let manager = std::sync::Arc::new(manager);
 
-        // User 1 joins many channels
         for i in 0..20 {
             manager
                 .join(&format!("#channel{}", i), 1, JoinPolicy::CreateIfMissing)
@@ -939,7 +914,6 @@ mod tests {
                 .unwrap();
         }
 
-        // User 2 joins some of them
         for i in 0..10 {
             manager
                 .join(&format!("#channel{}", i), 2, JoinPolicy::CreateIfMissing)
@@ -999,7 +973,6 @@ mod tests {
     async fn test_unicode_channel_names() {
         let manager = create_test_manager().await;
 
-        // Test various Unicode channel names
         let unicode_channels = vec![
             "#日本語",
             "#Россия",
@@ -1016,7 +989,6 @@ mod tests {
                 .unwrap();
         }
 
-        // Verify all exist
         for channel in &unicode_channels {
             assert!(
                 manager.get_channel(channel).await.is_some(),
@@ -1034,7 +1006,6 @@ mod tests {
     async fn test_reinitialize_with_overlapping_channels() {
         let manager = create_test_manager().await;
 
-        // Initialize with channels A, B, C
         manager
             .initialize_persistent_channels(vec![
                 Channel::new("#channelA".to_string()),
@@ -1043,7 +1014,6 @@ mod tests {
             ])
             .await;
 
-        // Join some users
         manager
             .join("#channelA", 1, JoinPolicy::CreateIfMissing)
             .await
@@ -1070,7 +1040,6 @@ mod tests {
         assert!(manager.get_channel("#channelA").await.is_some());
         assert!(!manager.is_persistent("#channelA").await);
 
-        // B, C, D should be persistent
         assert!(manager.is_persistent("#channelB").await);
         assert!(manager.is_persistent("#channelC").await);
         assert!(manager.is_persistent("#channelD").await);
@@ -1085,7 +1054,6 @@ mod tests {
     async fn test_reinitialize_deletes_empty_non_persistent() {
         let manager = create_test_manager().await;
 
-        // Initialize with channels A, B
         manager
             .initialize_persistent_channels(vec![
                 Channel::new("#channelA".to_string()),
@@ -1107,7 +1075,6 @@ mod tests {
         // A should be deleted (was empty and no longer persistent)
         assert!(manager.get_channel("#channelA").await.is_none());
 
-        // B should still exist
         assert!(manager.get_channel("#channelB").await.is_some());
     }
 
@@ -1191,7 +1158,6 @@ mod tests {
     async fn test_secret_channel_visibility_for_non_member() {
         let manager = create_test_manager().await;
 
-        // User 1 creates a secret channel
         manager
             .join("#secret", 1, JoinPolicy::CreateIfMissing)
             .await
@@ -1215,7 +1181,6 @@ mod tests {
 
         let manager = create_test_manager().await;
 
-        // Join MAX_CHANNELS_PER_USER channels
         for i in 0..MAX_CHANNELS_PER_USER {
             let result = manager
                 .join(&format!("#channel{}", i), 1, JoinPolicy::CreateIfMissing)
@@ -1246,7 +1211,6 @@ mod tests {
     async fn test_get_channels_for_session_returns_joined_channels() {
         let manager = create_test_manager().await;
 
-        // Join some channels
         manager
             .join("#alpha", 1, JoinPolicy::CreateIfMissing)
             .await
@@ -1270,7 +1234,6 @@ mod tests {
     async fn test_get_channels_for_session_excludes_secret_for_non_admin() {
         let manager = create_test_manager().await;
 
-        // Join channels
         manager
             .join("#public", 1, JoinPolicy::CreateIfMissing)
             .await
@@ -1280,7 +1243,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Make #secret secret
         let _ = manager.set_secret("#secret", true).await;
 
         // Non-admin should not see secret channel
@@ -1292,7 +1254,6 @@ mod tests {
     async fn test_get_channels_for_session_includes_secret_for_admin() {
         let manager = create_test_manager().await;
 
-        // Join channels
         manager
             .join("#public", 1, JoinPolicy::CreateIfMissing)
             .await
@@ -1302,7 +1263,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Make #secret secret
         let _ = manager.set_secret("#secret", true).await;
 
         // Admin should see all channels including secret
@@ -1339,7 +1299,6 @@ mod tests {
     async fn test_already_member_does_not_count_against_limit() {
         let manager = create_test_manager().await;
 
-        // Join MAX_CHANNELS_PER_USER channels
         for i in 0..MAX_CHANNELS_PER_USER {
             manager
                 .join(&format!("#channel{}", i), 1, JoinPolicy::CreateIfMissing)
