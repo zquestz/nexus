@@ -219,10 +219,6 @@ impl UserDb {
         Self { pool }
     }
 
-    pub async fn begin(&self) -> Result<sqlx::Transaction<'_, sqlx::Sqlite>, sqlx::Error> {
-        self.pool.begin().await
-    }
-
     // ========================================================================
     // Query Methods - User Lookup
     // ========================================================================
@@ -230,10 +226,10 @@ impl UserDb {
     /// Get a user by ID
     pub async fn get_user_by_id(&self, user_id: i64) -> Result<Option<UserAccount>, sqlx::Error> {
         let mut conn = self.pool.acquire().await?;
-        Self::get_user_by_id_on(&mut conn, user_id).await
+        Self::get_user_by_id_in_tx(&mut conn, user_id).await
     }
 
-    pub async fn get_user_by_id_on(
+    pub async fn get_user_by_id_in_tx(
         conn: &mut SqliteConnection,
         user_id: i64,
     ) -> Result<Option<UserAccount>, sqlx::Error> {
@@ -329,10 +325,10 @@ impl UserDb {
     #[cfg(test)]
     pub async fn get_resolved_bandwidth_weight(&self, user_id: i64) -> Result<u16, sqlx::Error> {
         let mut conn = self.pool.acquire().await?;
-        Self::get_resolved_bandwidth_weight_on(&mut conn, user_id).await
+        Self::get_resolved_bandwidth_weight_in_tx(&mut conn, user_id).await
     }
 
-    pub async fn get_resolved_bandwidth_weight_on(
+    pub async fn get_resolved_bandwidth_weight_in_tx(
         conn: &mut SqliteConnection,
         user_id: i64,
     ) -> Result<u16, sqlx::Error> {
@@ -409,12 +405,12 @@ impl UserDb {
     /// - If user has no group: grant overrides only (legacy behavior)
     pub async fn get_user_permissions(&self, user_id: i64) -> Result<Permissions, sqlx::Error> {
         let mut conn = self.pool.acquire().await?;
-        Self::get_user_permissions_on(&mut conn, user_id).await
+        Self::get_user_permissions_in_tx(&mut conn, user_id).await
     }
 
     /// The three internal reads share the connection, so a shared
     /// read tx sees a coherent group+overrides view.
-    pub async fn get_user_permissions_on(
+    pub async fn get_user_permissions_in_tx(
         conn: &mut SqliteConnection,
         user_id: i64,
     ) -> Result<Permissions, sqlx::Error> {

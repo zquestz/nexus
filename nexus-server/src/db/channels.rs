@@ -51,6 +51,27 @@ impl ChannelDb {
         )
     }
 
+    pub async fn get_channel_settings_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        name: &str,
+    ) -> io::Result<Option<ChannelSettings>> {
+        let result =
+            sqlx::query_as::<_, (String, String, String, bool)>(sql::SQL_SELECT_CHANNEL_SETTINGS)
+                .bind(name)
+                .fetch_optional(&mut **tx)
+                .await
+                .map_err(|e| io::Error::other(e.to_string()))?;
+
+        Ok(
+            result.map(|(name, topic, topic_set_by, secret)| ChannelSettings {
+                name,
+                topic,
+                topic_set_by,
+                secret,
+            }),
+        )
+    }
+
     /// Get all channel settings
     ///
     /// Returns settings for all persistent channels.
@@ -73,16 +94,52 @@ impl ChannelDb {
             .collect())
     }
 
+    pub async fn get_all_channel_settings_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    ) -> io::Result<Vec<ChannelSettings>> {
+        let results = sqlx::query_as::<_, (String, String, String, bool)>(
+            sql::SQL_SELECT_ALL_CHANNEL_SETTINGS,
+        )
+        .fetch_all(&mut **tx)
+        .await
+        .map_err(|e| io::Error::other(e.to_string()))?;
+
+        Ok(results
+            .into_iter()
+            .map(|(name, topic, topic_set_by, secret)| ChannelSettings {
+                name,
+                topic,
+                topic_set_by,
+                secret,
+            })
+            .collect())
+    }
+
     /// Create or update channel settings
     ///
     /// Uses upsert semantics - creates if doesn't exist, updates if it does.
     pub async fn upsert_channel_settings(&self, settings: &ChannelSettings) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::upsert_channel_settings_in_tx(&mut tx, settings).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn upsert_channel_settings_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        settings: &ChannelSettings,
+    ) -> io::Result<()> {
         sqlx::query(sql::SQL_UPSERT_CHANNEL_SETTINGS)
             .bind(&settings.name)
             .bind(&settings.topic)
             .bind(&settings.topic_set_by)
             .bind(settings.secret)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -118,9 +175,24 @@ impl ChannelDb {
     ///
     /// Used when a channel is removed from the persistent channels list.
     pub async fn delete_channel_settings(&self, name: &str) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::delete_channel_settings_in_tx(&mut tx, name).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn delete_channel_settings_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        name: &str,
+    ) -> io::Result<()> {
         sqlx::query(sql::SQL_DELETE_CHANNEL_SETTINGS)
             .bind(name)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 

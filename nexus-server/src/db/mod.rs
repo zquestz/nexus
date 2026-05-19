@@ -47,6 +47,7 @@ use crate::constants::*;
 /// Combined database access for all database operations
 #[derive(Clone)]
 pub struct Database {
+    pool: SqlitePool,
     pub users: UserDb,
     pub config: ConfigDb,
     pub news: NewsDb,
@@ -68,8 +69,15 @@ impl Database {
             trusts: TrustDb::new(pool.clone()),
             channels: ChannelDb::new(pool.clone()),
             groups: GroupDb::new(pool.clone()),
-            trackers: TrackerDb::new(pool),
+            trackers: TrackerDb::new(pool.clone()),
+            pool,
         }
+    }
+
+    /// Begin a transaction against the shared pool — the entry point for
+    /// cross-table work, staged via the sub-Db `_in_tx` helpers.
+    pub async fn begin(&self) -> Result<sqlx::Transaction<'_, sqlx::Sqlite>, sqlx::Error> {
+        self.pool.begin().await
     }
 
     /// Bundle the per-table fields the tracker task needs to build
@@ -114,9 +122,9 @@ impl Database {
         &self,
         user_id: i64,
     ) -> Result<Option<LoginSessionSnapshot>, LoginSnapshotError> {
-        let mut tx = self.users.begin().await.map_err(LoginSnapshotError::User)?;
+        let mut tx = self.begin().await.map_err(LoginSnapshotError::User)?;
 
-        let Some(account) = users::UserDb::get_user_by_id_on(&mut tx, user_id)
+        let Some(account) = users::UserDb::get_user_by_id_in_tx(&mut tx, user_id)
             .await
             .map_err(LoginSnapshotError::User)?
         else {
@@ -126,13 +134,13 @@ impl Database {
         let permissions = if account.is_admin {
             Permissions::new()
         } else {
-            users::UserDb::get_user_permissions_on(&mut tx, user_id)
+            users::UserDb::get_user_permissions_in_tx(&mut tx, user_id)
                 .await
                 .map_err(LoginSnapshotError::Permissions)?
         };
 
         let group_name = if let Some(gid) = account.group_id {
-            groups::GroupDb::get_group_by_id_on(&mut tx, gid)
+            groups::GroupDb::get_group_by_id_in_tx(&mut tx, gid)
                 .await
                 .map_err(LoginSnapshotError::Group)?
                 .map(|g| g.name)
@@ -141,7 +149,7 @@ impl Database {
         };
 
         let resolved_bandwidth_weight =
-            users::UserDb::get_resolved_bandwidth_weight_on(&mut tx, user_id)
+            users::UserDb::get_resolved_bandwidth_weight_in_tx(&mut tx, user_id)
                 .await
                 .map_err(LoginSnapshotError::BandwidthWeight)?;
 

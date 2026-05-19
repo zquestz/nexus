@@ -151,18 +151,50 @@ impl ConfigDb {
     }
 
     /// Set the maximum outbound bandwidth cap in bytes/sec (0 = unlimited).
+    #[cfg(test)]
     pub async fn set_max_outbound_rate(&self, value: u64) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_max_outbound_rate_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_max_outbound_rate_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        value: u64,
+    ) -> io::Result<()> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_MAX_OUTBOUND_RATE)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
         Ok(())
     }
 
     /// Set the WF2Q+ scheduler chunk size in bytes (1024..=65536).
+    #[cfg(test)]
     pub async fn set_scheduler_chunk_size(&self, value: u32) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_scheduler_chunk_size_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_scheduler_chunk_size_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        value: u32,
+    ) -> io::Result<()> {
         // Defense-in-depth (handler also validates).
         if let Err(e) = validate_bandwidth_chunk_size(value) {
             let msg = match e {
@@ -179,7 +211,7 @@ impl ConfigDb {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_SCHEDULER_CHUNK_SIZE)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
         Ok(())
@@ -239,11 +271,27 @@ impl ConfigDb {
     /// # Errors
     ///
     /// Returns an error if the database update fails.
+    #[cfg(test)]
     pub async fn set_max_connections_per_ip(&self, value: u32) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_max_connections_per_ip_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_max_connections_per_ip_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        value: u32,
+    ) -> io::Result<()> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_MAX_CONNECTIONS_PER_IP)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -270,11 +318,27 @@ impl ConfigDb {
     /// # Errors
     ///
     /// Returns an error if the database update fails.
+    #[cfg(test)]
     pub async fn set_max_transfers_per_ip(&self, value: u32) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_max_transfers_per_ip_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_max_transfers_per_ip_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        value: u32,
+    ) -> io::Result<()> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_MAX_TRANSFERS_PER_IP)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -298,7 +362,23 @@ impl ConfigDb {
     /// # Errors
     ///
     /// Returns an error if validation fails or if the database update fails.
+    #[cfg(test)]
     pub async fn set_server_name(&self, name: &str) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_server_name_in_tx(&mut tx, name).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_server_name_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        name: &str,
+    ) -> io::Result<()> {
         // Defense-in-depth validation
         if let Err(e) = validate_server_name(name) {
             let msg = match e {
@@ -313,7 +393,7 @@ impl ConfigDb {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(name)
             .bind(CONFIG_KEY_SERVER_NAME)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -337,7 +417,23 @@ impl ConfigDb {
     /// # Errors
     ///
     /// Returns an error if validation fails or if the database update fails.
+    #[cfg(test)]
     pub async fn set_server_description(&self, description: &str) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_server_description_in_tx(&mut tx, description).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_server_description_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        description: &str,
+    ) -> io::Result<()> {
         // Defense-in-depth validation
         if let Err(e) = validate_server_description(description) {
             let msg = match e {
@@ -351,7 +447,7 @@ impl ConfigDb {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(description)
             .bind(CONFIG_KEY_SERVER_DESCRIPTION)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -376,7 +472,23 @@ impl ConfigDb {
     ///
     /// Returns an error if validation fails or if the database update fails.
     /// An empty string is allowed to clear the image.
+    #[cfg(test)]
     pub async fn set_server_image(&self, image: &str) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_server_image_in_tx(&mut tx, image).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_server_image_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        image: &str,
+    ) -> io::Result<()> {
         // Defense-in-depth validation (empty string is allowed to clear image)
         if !image.is_empty()
             && let Err(e) = validate_server_image(image)
@@ -392,7 +504,7 @@ impl ConfigDb {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(image)
             .bind(CONFIG_KEY_SERVER_IMAGE)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -418,7 +530,23 @@ impl ConfigDb {
     /// # Errors
     ///
     /// Returns an error if validation fails or if the database update fails.
+    #[cfg(test)]
     pub async fn set_public_address(&self, value: &str) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_public_address_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_public_address_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        value: &str,
+    ) -> io::Result<()> {
         // Defense-in-depth validation (empty string is allowed to clear)
         if let Err(e) = validate_public_address(value) {
             let msg = match e {
@@ -438,7 +566,7 @@ impl ConfigDb {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value)
             .bind(CONFIG_KEY_PUBLIC_ADDRESS)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -466,11 +594,27 @@ impl ConfigDb {
     /// # Errors
     ///
     /// Returns an error if the database update fails.
+    #[cfg(test)]
     pub async fn set_file_reindex_interval(&self, value: u32) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_file_reindex_interval_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_file_reindex_interval_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        value: u32,
+    ) -> io::Result<()> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_FILE_REINDEX_INTERVAL)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -497,7 +641,23 @@ impl ConfigDb {
     /// # Errors
     ///
     /// Returns an error if validation fails or the database update fails.
+    #[cfg(test)]
     pub async fn set_persistent_channels(&self, value: &str) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_persistent_channels_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_persistent_channels_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        value: &str,
+    ) -> io::Result<()> {
         // Defense-in-depth validation
         if let Err(e) = validate_persistent_channels(value) {
             let msg = match e {
@@ -513,7 +673,7 @@ impl ConfigDb {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value)
             .bind(CONFIG_KEY_PERSISTENT_CHANNELS)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -541,7 +701,23 @@ impl ConfigDb {
     /// # Errors
     ///
     /// Returns an error if validation fails or the database update fails.
+    #[cfg(test)]
     pub async fn set_auto_join_channels(&self, value: &str) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_auto_join_channels_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_auto_join_channels_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        value: &str,
+    ) -> io::Result<()> {
         // Defense-in-depth validation
         if let Err(e) = validate_auto_join_channels(value) {
             let msg = match e {
@@ -557,7 +733,7 @@ impl ConfigDb {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value)
             .bind(CONFIG_KEY_AUTO_JOIN_CHANNELS)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -583,11 +759,27 @@ impl ConfigDb {
     /// # Errors
     ///
     /// Returns an error if the database update fails.
+    #[cfg(test)]
     pub async fn set_min_password_strength(&self, value: PasswordStrength) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_min_password_strength_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_min_password_strength_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        value: PasswordStrength,
+    ) -> io::Result<()> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.score().to_string())
             .bind(CONFIG_KEY_MIN_PASSWORD_STRENGTH)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
 
@@ -613,11 +805,27 @@ impl ConfigDb {
     /// # Errors
     ///
     /// Returns an error if the database update fails.
+    #[cfg(test)]
     pub async fn set_chat_burst_limit(&self, value: u32) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_chat_burst_limit_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_chat_burst_limit_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        value: u32,
+    ) -> io::Result<()> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_CHAT_BURST_LIMIT)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
         Ok(())
@@ -642,11 +850,27 @@ impl ConfigDb {
     /// # Errors
     ///
     /// Returns an error if the database update fails.
+    #[cfg(test)]
     pub async fn set_chat_rate_limit(&self, value: u32) -> io::Result<()> {
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::set_chat_rate_limit_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_chat_rate_limit_in_tx(
+        tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+        value: u32,
+    ) -> io::Result<()> {
         sqlx::query(sql::SQL_SET_CONFIG)
             .bind(value.to_string())
             .bind(CONFIG_KEY_CHAT_RATE_LIMIT)
-            .execute(&self.pool)
+            .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
         Ok(())
@@ -1124,6 +1348,18 @@ mod tests {
         config_db.set_chat_rate_limit(0).await.unwrap();
         let limit = config_db.get_chat_rate_limit().await;
         assert_eq!(limit, 0);
+    }
+
+    #[tokio::test]
+    async fn test_set_persistent_channels() {
+        let pool = create_test_db().await;
+        let config_db = ConfigDb::new(pool);
+        config_db
+            .set_persistent_channels("#general #support")
+            .await
+            .unwrap();
+        let value = config_db.get_persistent_channels().await;
+        assert_eq!(value, "#general #support");
     }
 
     #[tokio::test]

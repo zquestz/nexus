@@ -89,10 +89,10 @@ impl GroupDb {
     /// Get a single group by ID
     pub async fn get_group_by_id(&self, id: i64) -> Result<Option<GroupRecord>, sqlx::Error> {
         let mut conn = self.pool.acquire().await?;
-        Self::get_group_by_id_on(&mut conn, id).await
+        Self::get_group_by_id_in_tx(&mut conn, id).await
     }
 
-    pub async fn get_group_by_id_on(
+    pub async fn get_group_by_id_in_tx(
         conn: &mut SqliteConnection,
         id: i64,
     ) -> Result<Option<GroupRecord>, sqlx::Error> {

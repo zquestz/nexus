@@ -1110,6 +1110,10 @@ pub const LOG_SERVER_INFO_CHANNEL_CREATE_FAILED: &str =
     "ServerInfoUpdate: failed to create channel settings";
 pub const LOG_SERVER_INFO_CHANNEL_DELETE_FAILED: &str =
     "ServerInfoUpdate: failed to delete channel settings";
+pub const LOG_SERVER_INFO_CHANNEL_READ_FAILED: &str =
+    "ServerInfoUpdate: failed to read existing channel settings";
+pub const LOG_SERVER_INFO_DB_BEGIN: &str = "ServerInfoUpdate: failed to begin transaction";
+pub const LOG_SERVER_INFO_DB_COMMIT: &str = "ServerInfoUpdate: failed to commit transaction";
 pub const LOG_SERVER_INFO_SUCCESS: &str = "ServerInfoUpdate: success";
 
 // --- Handler: Connection Monitor ---
