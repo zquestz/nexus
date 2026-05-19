@@ -175,7 +175,7 @@ pub(crate) fn check_root_permission(
 ///
 /// If `use_root` is true, returns the file root directly.
 /// Otherwise, returns the user's personal area (or shared area).
-pub(crate) fn resolve_area_root(
+pub(crate) async fn resolve_area_root(
     file_root: &Path,
     username: &str,
     use_root: bool,
@@ -187,7 +187,8 @@ pub(crate) fn resolve_area_root(
         resolve_user_area(file_root, username)
     };
 
-    std::fs::canonicalize(&area_root)
+    tokio::fs::canonicalize(&area_root)
+        .await
         .map_err(|_| TransferError::not_found(err_file_area_not_accessible(locale)))
 }
 

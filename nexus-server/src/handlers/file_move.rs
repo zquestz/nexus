@@ -287,7 +287,7 @@ where
                 // Move the symlink, not its target.
                 source_candidate.clone()
             }
-            Ok(_) => match resolve_path(&source_area_root, &source_candidate) {
+            Ok(_) => match resolve_path(&source_area_root, &source_candidate).await {
                 Ok(p) => p,
                 Err(_) => {
                     break 'locked ServerMessage::FileMoveResponse {
@@ -321,7 +321,7 @@ where
             };
         }
 
-        let resolved_dest_dir = match resolve_path(&dest_area_root, &dest_candidate) {
+        let resolved_dest_dir = match resolve_path(&dest_area_root, &dest_candidate).await {
             Ok(p) => p,
             Err(_) => {
                 break 'locked ServerMessage::FileMoveResponse {

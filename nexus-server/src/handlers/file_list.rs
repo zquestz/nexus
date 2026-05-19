@@ -258,7 +258,7 @@ where
             return ctx.send_message(&response).await;
         }
     };
-    let resolved = match resolve_path(&area_root, &candidate) {
+    let resolved = match resolve_path(&area_root, &candidate).await {
         Ok(p) => p,
         Err(PathError::NotFound) => {
             let response = ServerMessage::FileListResponse {

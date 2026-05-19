@@ -247,7 +247,7 @@ where
         .unwrap_or(false);
 
     // Resolve and validate the path (follows symlinks, checks it's within area)
-    let resolved = match resolve_path(&area_root, &candidate) {
+    let resolved = match resolve_path(&area_root, &candidate).await {
         Ok(p) => p,
         Err(_) => {
             let response = ServerMessage::FileInfoResponse {

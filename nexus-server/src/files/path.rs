@@ -242,13 +242,13 @@ pub fn validate_and_build_candidate_path(
 /// # Example
 ///
 /// ```ignore
-/// let root = std::fs::canonicalize("/data/files/users/alice")?;
+/// let root = tokio::fs::canonicalize("/data/files/users/alice").await?;
 /// let candidate = build_candidate_path(&root, "/documents/readme.txt");
-/// let resolved = resolve_path(&root, &candidate)?;
+/// let resolved = resolve_path(&root, &candidate).await?;
 /// // resolved is the canonical path (may be outside area_root if symlinks are involved)
 /// ```
 #[must_use = "use the returned path; reusing the input bypasses the area-root containment check"]
-pub fn resolve_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, PathError> {
+pub async fn resolve_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, PathError> {
     // Verify area_root is absolute (we can't verify it's canonical, but absolute is required)
     if !area_root.is_absolute() {
         return Err(PathError::InvalidAreaRoot);
@@ -266,7 +266,7 @@ pub fn resolve_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, PathE
     validate_path_components(candidate)?;
 
     // Layer 1: Canonicalize to resolve symlinks and get absolute path
-    let canonical = candidate.canonicalize().map_err(|e| {
+    let canonical = tokio::fs::canonicalize(candidate).await.map_err(|e| {
         if e.kind() == io::ErrorKind::NotFound {
             PathError::NotFound
         } else {
@@ -336,7 +336,7 @@ fn validate_path_components(path: &Path) -> Result<(), PathError> {
 ///
 /// Returns `InvalidPath` if `candidate` equals `area_root` (can't create nameless files).
 #[must_use = "use the returned path; reusing the input bypasses the area-root containment check"]
-pub fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, PathError> {
+pub async fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, PathError> {
     // Verify area_root is absolute
     if !area_root.is_absolute() {
         return Err(PathError::InvalidAreaRoot);
@@ -368,7 +368,7 @@ pub fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, P
 
     // Canonicalize the parent to verify it exists
     // Note: We don't check if it's under area_root - symlinks are trusted (admin-created)
-    let canonical_parent = parent.canonicalize().map_err(|e| {
+    let canonical_parent = tokio::fs::canonicalize(parent).await.map_err(|e| {
         if e.kind() == io::ErrorKind::NotFound {
             PathError::NotFound
         } else {
@@ -1091,54 +1091,54 @@ mod tests {
     // resolve_path tests
     // =========================================================================
 
-    #[test]
-    fn test_resolve_valid_file() {
+    #[tokio::test]
+    async fn test_resolve_valid_file() {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "documents/readme.txt");
 
-        let result = resolve_path(&root, &candidate);
+        let result = resolve_path(&root, &candidate).await;
         assert!(result.is_ok());
         assert!(result.unwrap().ends_with("documents/readme.txt"));
     }
 
-    #[test]
-    fn test_resolve_valid_file_with_leading_slash() {
+    #[tokio::test]
+    async fn test_resolve_valid_file_with_leading_slash() {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "/documents/readme.txt");
 
-        let result = resolve_path(&root, &candidate);
+        let result = resolve_path(&root, &candidate).await;
         assert!(result.is_ok());
         assert!(result.unwrap().ends_with("documents/readme.txt"));
     }
 
-    #[test]
-    fn test_resolve_valid_directory() {
+    #[tokio::test]
+    async fn test_resolve_valid_directory() {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "documents");
 
-        let result = resolve_path(&root, &candidate);
+        let result = resolve_path(&root, &candidate).await;
         assert!(result.is_ok());
         assert!(result.unwrap().ends_with("documents"));
     }
 
-    #[test]
-    fn test_resolve_empty_path() {
+    #[tokio::test]
+    async fn test_resolve_empty_path() {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "");
 
         // Empty path should resolve to the root itself
-        let result = resolve_path(&root, &candidate);
+        let result = resolve_path(&root, &candidate).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), root);
     }
 
-    #[test]
-    fn test_resolve_just_slash() {
+    #[tokio::test]
+    async fn test_resolve_just_slash() {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "/");
 
         // Just "/" should resolve to the root itself
-        let result = resolve_path(&root, &candidate);
+        let result = resolve_path(&root, &candidate).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), root);
     }
@@ -1159,17 +1159,17 @@ mod tests {
         assert_eq!(result, Err(PathError::InvalidPath));
     }
 
-    #[test]
-    fn test_not_found() {
+    #[tokio::test]
+    async fn test_not_found() {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "nonexistent/file.txt");
 
-        let result = resolve_path(&root, &candidate);
+        let result = resolve_path(&root, &candidate).await;
         assert_eq!(result, Err(PathError::NotFound));
     }
 
-    #[test]
-    fn test_symlink_to_external_allowed() {
+    #[tokio::test]
+    async fn test_symlink_to_external_allowed() {
         let (_temp, _root) = setup_test_area();
 
         // Symlinks pointing outside the area are allowed (admin-created, trusted)
@@ -1188,14 +1188,14 @@ mod tests {
 
             // Should be allowed - admin-created symlink
             let candidate = build_candidate_path(&_root, "documents/external_link/external.txt");
-            let result = resolve_path(&_root, &candidate);
+            let result = resolve_path(&_root, &candidate).await;
             assert!(result.is_ok());
             assert!(result.unwrap().ends_with("external.txt"));
         }
     }
 
-    #[test]
-    fn test_symlink_within_area_allowed() {
+    #[tokio::test]
+    async fn test_symlink_within_area_allowed() {
         let (_temp, _root) = setup_test_area();
 
         // Symlink that stays within the area root should work
@@ -1208,32 +1208,32 @@ mod tests {
             symlink(_root.join("documents"), &link_path).expect("Failed to create symlink");
 
             let candidate = build_candidate_path(&_root, "doc_link/readme.txt");
-            let result = resolve_path(&_root, &candidate);
+            let result = resolve_path(&_root, &candidate).await;
             assert!(result.is_ok());
         }
     }
 
-    #[test]
-    fn test_current_dir_allowed() {
+    #[tokio::test]
+    async fn test_current_dir_allowed() {
         let (_temp, root) = setup_test_area();
         let candidate = root.join("./documents/./readme.txt");
 
-        let result = resolve_path(&root, &candidate);
+        let result = resolve_path(&root, &candidate).await;
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_reject_non_absolute_area_root() {
+    #[tokio::test]
+    async fn test_reject_non_absolute_area_root() {
         let candidate = Path::new("/absolute/path/file.txt");
-        let result = resolve_path(Path::new("relative/path"), candidate);
+        let result = resolve_path(Path::new("relative/path"), candidate).await;
         assert_eq!(result, Err(PathError::InvalidAreaRoot));
     }
 
-    #[test]
-    fn test_reject_non_absolute_candidate() {
+    #[tokio::test]
+    async fn test_reject_non_absolute_candidate() {
         let (_temp, root) = setup_test_area();
         let candidate = Path::new("relative/path/file.txt");
-        let result = resolve_path(&root, candidate);
+        let result = resolve_path(&root, candidate).await;
         assert_eq!(result, Err(PathError::InvalidPath));
     }
 
@@ -1241,44 +1241,44 @@ mod tests {
     // resolve_new_path tests
     // =========================================================================
 
-    #[test]
-    fn test_resolve_new_path_valid() {
+    #[tokio::test]
+    async fn test_resolve_new_path_valid() {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "documents/newfile.txt");
 
-        let result = resolve_new_path(&root, &candidate);
+        let result = resolve_new_path(&root, &candidate).await;
         assert!(result.is_ok());
         let path = result.unwrap();
         assert!(path.ends_with("newfile.txt"));
         assert!(path.parent().unwrap().ends_with("documents"));
     }
 
-    #[test]
-    fn test_resolve_new_path_with_leading_slash() {
+    #[tokio::test]
+    async fn test_resolve_new_path_with_leading_slash() {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "/documents/newfile.txt");
 
-        let result = resolve_new_path(&root, &candidate);
+        let result = resolve_new_path(&root, &candidate).await;
         assert!(result.is_ok());
         let path = result.unwrap();
         assert!(path.ends_with("newfile.txt"));
     }
 
-    #[test]
-    fn test_resolve_new_path_in_root() {
+    #[tokio::test]
+    async fn test_resolve_new_path_in_root() {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "newfile.txt");
 
-        let result = resolve_new_path(&root, &candidate);
+        let result = resolve_new_path(&root, &candidate).await;
         assert!(result.is_ok());
     }
 
-    #[test]
-    fn test_resolve_new_path_parent_not_found() {
+    #[tokio::test]
+    async fn test_resolve_new_path_parent_not_found() {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "nonexistent/newfile.txt");
 
-        let result = resolve_new_path(&root, &candidate);
+        let result = resolve_new_path(&root, &candidate).await;
         assert_eq!(result, Err(PathError::NotFound));
     }
 
@@ -1290,24 +1290,24 @@ mod tests {
         assert_eq!(result, Err(PathError::InvalidPath));
     }
 
-    #[test]
-    fn test_resolve_new_path_empty_is_invalid() {
+    #[tokio::test]
+    async fn test_resolve_new_path_empty_is_invalid() {
         let (_temp, root) = setup_test_area();
         // Candidate equals area_root - no filename
         let candidate = root.clone();
 
-        let result = resolve_new_path(&root, &candidate);
+        let result = resolve_new_path(&root, &candidate).await;
         assert_eq!(result, Err(PathError::InvalidPath));
     }
 
-    #[test]
-    fn test_resolve_new_path_just_slash_is_invalid() {
+    #[tokio::test]
+    async fn test_resolve_new_path_just_slash_is_invalid() {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "/");
 
         // This resolves to root with trailing slash, which after normalization equals root
         // The function should reject this since there's no filename
-        let result = resolve_new_path(&root, &candidate);
+        let result = resolve_new_path(&root, &candidate).await;
         // Note: "/data/root/" != "/data/root" as Path, so this may succeed or fail
         // depending on path normalization. Let's check what we actually get:
         // build_candidate_path returns root.join("") which adds a trailing component
@@ -1315,23 +1315,23 @@ mod tests {
         assert!(result.is_err() || result.unwrap().file_name().is_some());
     }
 
-    #[test]
-    fn test_resolve_new_path_reject_non_absolute_root() {
+    #[tokio::test]
+    async fn test_resolve_new_path_reject_non_absolute_root() {
         let candidate = Path::new("/absolute/path/file.txt");
-        let result = resolve_new_path(Path::new("relative/path"), candidate);
+        let result = resolve_new_path(Path::new("relative/path"), candidate).await;
         assert_eq!(result, Err(PathError::InvalidAreaRoot));
     }
 
-    #[test]
-    fn test_resolve_new_path_reject_non_absolute_candidate() {
+    #[tokio::test]
+    async fn test_resolve_new_path_reject_non_absolute_candidate() {
         let (_temp, root) = setup_test_area();
         let candidate = Path::new("relative/path/file.txt");
-        let result = resolve_new_path(&root, candidate);
+        let result = resolve_new_path(&root, candidate).await;
         assert_eq!(result, Err(PathError::InvalidPath));
     }
 
-    #[test]
-    fn test_resolve_new_path_via_symlink_allowed() {
+    #[tokio::test]
+    async fn test_resolve_new_path_via_symlink_allowed() {
         let (_temp, _root) = setup_test_area();
 
         // Symlinks are trusted (admin-created), so creating files through them is allowed
@@ -1349,7 +1349,7 @@ mod tests {
 
             // Creating a new file through the symlink should succeed
             let candidate = build_candidate_path(&_root, "external_link/newfile.txt");
-            let result = resolve_new_path(&_root, &candidate);
+            let result = resolve_new_path(&_root, &candidate).await;
             assert!(result.is_ok());
             assert!(result.unwrap().ends_with("newfile.txt"));
         }

@@ -176,7 +176,7 @@ where
                 (candidate.clone(), false)
             }
             Ok(_) => {
-                let resolved = match resolve_path(&area_root, &candidate) {
+                let resolved = match resolve_path(&area_root, &candidate).await {
                     Ok(p) => p,
                     Err(PathError::NotFound) => {
                         break 'locked ServerMessage::FileDeleteResponse {

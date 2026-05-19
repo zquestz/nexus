@@ -71,7 +71,9 @@ where
     }
 
     let (area_root, resolved_destination) =
-        match validate_and_resolve_upload_destination(transfer, &destination, use_root, &locale) {
+        match validate_and_resolve_upload_destination(transfer, &destination, use_root, &locale)
+            .await
+        {
             Ok(result) => result,
             Err(e) => return send_upload_transfer_error(transfer.writer(), &e).await,
         };
@@ -384,7 +386,7 @@ fn check_upload_access(user: &AuthenticatedUser, area_root: &Path, path: &Path) 
 }
 
 /// Validate and resolve upload destination path
-fn validate_and_resolve_upload_destination<R, W>(
+async fn validate_and_resolve_upload_destination<R, W>(
     transfer: &Transfer<'_, R, W>,
     destination: &str,
     use_root: bool,
@@ -411,12 +413,12 @@ where
 
     check_root_permission(user, use_root, locale)?;
 
-    let area_root = resolve_area_root(file_root, &user.username, use_root, locale)?;
+    let area_root = resolve_area_root(file_root, &user.username, use_root, locale).await?;
 
     let candidate = build_validated_path(&area_root, destination, locale)?;
 
     // Destination may not exist yet.
-    let resolved_destination = match resolve_path(&area_root, &candidate) {
+    let resolved_destination = match resolve_path(&area_root, &candidate).await {
         Ok(path) => {
             if !path.is_dir() {
                 return Err(TransferError::invalid(err_upload_path_invalid(locale)));
@@ -445,7 +447,7 @@ where
                     .parent()
                     .ok_or_else(|| TransferError::invalid(err_upload_path_invalid(locale)))?;
 
-                match resolve_path(&area_root, ancestor) {
+                match resolve_path(&area_root, ancestor).await {
                     Ok(resolved) => break resolved,
                     Err(crate::files::path::PathError::NotFound) => continue,
                     Err(e) => return Err(path_error_to_transfer_error(e, locale)),

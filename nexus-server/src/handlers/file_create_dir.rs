@@ -155,7 +155,7 @@ where
         }
     };
 
-    let parent_resolved = match resolve_path(&area_root, &parent_candidate) {
+    let parent_resolved = match resolve_path(&area_root, &parent_candidate).await {
         Ok(p) => p,
         Err(PathError::NotFound) => {
             let response = ServerMessage::FileCreateDirResponse {
@@ -213,7 +213,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    let new_dir_path = match resolve_new_path(&area_root, &new_dir_candidate) {
+    let new_dir_path = match resolve_new_path(&area_root, &new_dir_candidate).await {
         Ok(p) => p,
         Err(_) => {
             let response = ServerMessage::FileCreateDirResponse {

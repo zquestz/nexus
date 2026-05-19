@@ -231,7 +231,7 @@ where
                 // Rename the symlink, not its target.
                 candidate.clone()
             }
-            Ok(_) => match resolve_path(&area_root, &candidate) {
+            Ok(_) => match resolve_path(&area_root, &candidate).await {
                 Ok(p) => p,
                 Err(_) => {
                     break 'locked ServerMessage::FileRenameResponse {

@@ -67,7 +67,9 @@ where
         &locale,
         &download_path,
         use_root,
-    ) {
+    )
+    .await
+    {
         Ok(path) => path,
         Err(e) => return send_download_transfer_error(transfer.writer(), &e).await,
     };
@@ -244,7 +246,7 @@ impl From<StreamError> for StreamFileError {
 ///
 /// This helper consolidates path validation, permission checks, and resolution
 /// into a single function to reduce code duplication.
-fn validate_and_resolve_download_path(
+async fn validate_and_resolve_download_path(
     user: &AuthenticatedUser,
     file_root: &Path,
     locale: &str,
@@ -261,13 +263,15 @@ fn validate_and_resolve_download_path(
     check_root_permission(user, use_root, locale)?;
 
     // Resolve area root
-    let area_root = resolve_area_root(file_root, &user.username, use_root, locale)?;
+    let area_root = resolve_area_root(file_root, &user.username, use_root, locale).await?;
 
     // Build candidate path
     let candidate = build_validated_path(&area_root, download_path, locale)?;
 
     // Resolve to canonical path
-    resolve_path(&area_root, &candidate).map_err(|e| path_error_to_transfer_error(e, locale))
+    resolve_path(&area_root, &candidate)
+        .await
+        .map_err(|e| path_error_to_transfer_error(e, locale))
 }
 
 /// Check if a path can be accessed for download (dropbox restrictions)
