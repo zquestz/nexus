@@ -1,9 +1,5 @@
-//! File index module for building and searching the file index
-//!
-//! This module provides functionality to:
-//! - Build a CSV index of all files in the file area using `walkdir`
-//! - Search the index using `grep-searcher` for fast streaming search
-//! - Handle atomic index updates via temp file + rename
+//! File index: build a CSV index of the file area (`walkdir`), search it with
+//! `grep-searcher`, and swap it atomically via temp file + rename.
 //!
 //! ## Index Format
 //!
@@ -24,6 +20,7 @@ use tracing::{error, info};
 use crate::constants::*;
 
 use std::fs::{self, File};
+#[cfg(test)]
 use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -41,34 +38,24 @@ use nexus_common::validators::extract_search_terms;
 
 use super::path::is_hidden_name;
 
-/// Maximum number of search results to return
 pub const MAX_SEARCH_RESULTS: usize = 100;
 
-/// Index file name
 const INDEX_FILE_NAME: &str = "files.idx";
 
-/// Temporary index file name (for atomic swap)
+/// Temporary index file written then renamed over `INDEX_FILE_NAME` (atomic swap).
 const INDEX_TEMP_FILE_NAME: &str = "files.idx.tmp";
 
-/// File index state
 pub struct FileIndex {
-    /// Path to the index file
     index_path: PathBuf,
-    /// Path to the temporary index file
     temp_path: PathBuf,
-    /// Root path of the file area
     file_root: PathBuf,
-    /// Whether the index needs to be rebuilt
     dirty: AtomicBool,
-    /// Whether a reindex is currently in progress
     reindexing: AtomicBool,
     /// Unix timestamp (seconds) of the last successful rebuild; 0 means never.
     last_rebuild_secs: AtomicU64,
 }
 
 impl FileIndex {
-    /// Create a new file index
-    ///
     /// The index file is stored in the data directory (alongside the
     /// database), not in the file area — so it isn't moved by `--file-root`.
     pub fn new(data_dir: &Path, file_root: &Path) -> Self {
@@ -82,24 +69,19 @@ impl FileIndex {
         }
     }
 
-    /// Mark the index as dirty (needs rebuild)
-    ///
-    /// Called after file uploads, deletes, renames, or moves.
     pub fn mark_dirty(&self) {
         self.dirty.store(true, Ordering::SeqCst);
     }
 
-    /// Check if the index is dirty
     pub fn is_dirty(&self) -> bool {
         self.dirty.load(Ordering::SeqCst)
     }
 
-    /// Check if a reindex is currently in progress
     pub fn is_reindexing(&self) -> bool {
         self.reindexing.load(Ordering::SeqCst)
     }
 
-    /// Check if the index file exists
+    #[cfg(test)]
     pub fn exists(&self) -> bool {
         self.index_path.exists()
     }
@@ -115,24 +97,20 @@ impl FileIndex {
         now.saturating_sub(last) >= max_age.as_secs()
     }
 
-    /// Trigger a reindex if not already running
-    ///
-    /// Returns `true` if reindex was started, `false` if one is already running.
-    /// This method is non-blocking - the actual reindex runs in the background.
+    /// Returns `true` if a reindex was started, `false` if one is already
+    /// running. Non-blocking — the actual reindex runs in the background.
     pub fn trigger_reindex(self: &Arc<Self>) -> bool {
-        // Try to set reindexing flag - if already true, another reindex is running
+        // Single-reindex guard: a losing swap leaves dirty set so we retry later.
         if self.reindexing.swap(true, Ordering::SeqCst) {
-            // Already reindexing, keep dirty flag set
             return false;
         }
 
-        // Clear dirty flag now that we're starting
+        // Clear dirty only after winning the race to start.
         self.dirty.store(false, Ordering::SeqCst);
 
-        // Clone Arc for the spawned task
         let index = Arc::clone(self);
 
-        // Spawn on blocking thread pool since build_index does synchronous I/O
+        // build_index does synchronous I/O, so keep it off the async runtime.
         tokio::task::spawn_blocking(move || {
             match index.build_index() {
                 Ok(count) => {
@@ -140,28 +118,24 @@ impl FileIndex {
                 }
                 Err(e) => {
                     error!(err = %e, "{}", LOG_FILE_INDEX_BUILD_FAILED);
-                    // Mark dirty again so we retry
+                    // Re-mark dirty so the failed build is retried.
                     index.mark_dirty();
                 }
             }
 
-            // Clear reindexing flag
             index.reindexing.store(false, Ordering::SeqCst);
         });
 
         true
     }
 
-    /// Build the index synchronously
-    ///
-    /// Walks the file area, writes to temp file, then atomically swaps.
-    /// Returns the number of entries indexed.
+    /// Walks the file area into a temp file, then atomically swaps it into
+    /// place. Returns the number of entries indexed.
     fn build_index(&self) -> Result<usize, String> {
-        // Create temp file with CSV writer
         let file = File::create(&self.temp_path)
             .map_err(|e| format!("{}{}", ERR_FILE_INDEX_CREATE_TEMP, e))?;
 
-        // Set restrictive permissions on index file (contains file tree structure)
+        // The index lists the whole file tree, so keep it owner-only.
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -174,8 +148,8 @@ impl FileIndex {
 
         let mut count = 0;
 
-        // Walk the file area, skipping hidden entries and their subtrees
-        // Hidden: dotfiles (.), NAS metadata (@eaDir, @tmp), NAS recycle (#recycle)
+        // Skip hidden entries and their subtrees: dotfiles, NAS metadata
+        // (@eaDir, @tmp), NAS recycle (#recycle).
         for entry in WalkDir::new(&self.file_root)
             .min_depth(1) // Skip the root itself
             .follow_links(true) // Follow symlinks (admin-trusted)
@@ -189,20 +163,19 @@ impl FileIndex {
         {
             let path = entry.path();
 
-            // Get metadata (follows symlinks)
+            // metadata (not symlink_metadata) so we record the symlink target.
             let metadata = match fs::metadata(path) {
                 Ok(m) => m,
-                Err(_) => continue, // Skip files we can't stat
+                Err(_) => continue,
             };
 
-            // Get size (0 for directories)
+            // Size is 0 for directories.
             let size = if metadata.is_file() {
                 metadata.len()
             } else {
                 0
             };
 
-            // Get modified time as Unix timestamp
             let modified = metadata
                 .modified()
                 .unwrap_or(SystemTime::UNIX_EPOCH)
@@ -210,22 +183,20 @@ impl FileIndex {
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
 
-            // Get path relative to file_root
             let relative_path = match path.strip_prefix(&self.file_root) {
                 Ok(p) => p,
                 Err(_) => continue,
             };
 
-            // Convert to forward slashes and add leading /
+            // Normalize to forward slashes with a leading / for the index path.
             let path_str = format!("/{}", relative_path.to_string_lossy().replace('\\', "/"));
 
-            // Get filename
             let name = entry.file_name().to_string_lossy().into_owned();
             let size_str = size.to_string();
             let modified_str = modified.to_string();
             let is_dir_str = if metadata.is_dir() { "1" } else { "0" };
 
-            // Write CSV record: path, name, size, modified, is_directory
+            // CSV columns: path, name, size, modified, is_directory.
             writer
                 .write_record([
                     path_str.as_str(),
@@ -239,13 +210,12 @@ impl FileIndex {
             count += 1;
         }
 
-        // Flush and close
         writer
             .flush()
             .map_err(|e| format!("{}{}", ERR_FILE_INDEX_FLUSH, e))?;
         drop(writer);
 
-        // Atomic rename
+        // Atomic swap so readers never observe a half-written index.
         fs::rename(&self.temp_path, &self.index_path)
             .map_err(|e| format!("{}{}", ERR_FILE_INDEX_SWAP, e))?;
 
@@ -258,68 +228,58 @@ impl FileIndex {
         Ok(count)
     }
 
-    /// Search the index for matching files
-    ///
-    /// Returns up to `MAX_SEARCH_RESULTS` matching entries.
-    /// If `area_prefix` is provided, only returns results within that area.
-    ///
-    /// If the index is corrupted, it will be deleted and marked dirty for rebuild,
-    /// and empty results will be returned.
+    /// Returns up to `MAX_SEARCH_RESULTS` entries, optionally restricted to
+    /// `area_prefix`. A corrupted index is deleted and marked dirty for
+    /// rebuild, returning empty results.
     pub fn search(
         &self,
         query: &str,
         area_prefix: Option<&str>,
     ) -> Result<Vec<FileSearchResult>, String> {
-        // If index doesn't exist, return empty results
         if !self.index_path.exists() {
             return Ok(vec![]);
         }
 
-        // Extract valid search terms (3+ chars, plus 2-char terms if there's a primary term)
-        // Single-character terms are ignored
+        // 3+ char terms, plus 2-char terms when there's a primary term;
+        // single-character terms are ignored.
         let terms = extract_search_terms(query);
 
-        // Must have at least one valid term
         if terms.is_empty() {
             return Ok(vec![]);
         }
 
-        // Use first term for initial grep search (fastest filter)
+        // First term drives the grep pass (fastest filter); the rest are
+        // applied as a case-insensitive AND filter below.
         let first_term = regex::escape(terms[0]);
         let pattern = format!("(?i){}", first_term);
         let matcher = RegexMatcher::new(&pattern)
             .map_err(|e| format!("{}{}", ERR_FILE_INDEX_SEARCH_PATTERN, e))?;
 
-        // Prepare remaining terms for secondary filtering (lowercase for case-insensitive)
         let remaining_terms: Vec<String> = terms[1..].iter().map(|t| t.to_lowercase()).collect();
 
         let mut results = Vec::new();
 
-        // Search the index file
         let search_result = Searcher::new().search_path(
             &matcher,
             &self.index_path,
             UTF8(|_line_num, line| {
-                // Stop if we have enough results
                 if results.len() >= MAX_SEARCH_RESULTS {
                     return Ok(false);
                 }
 
-                // Parse CSV line using csv crate
                 if let Some(entry) = parse_csv_line(line.trim()) {
-                    // Filter by area if specified
                     if let Some(prefix) = area_prefix
                         && !entry.path.starts_with(prefix)
                     {
-                        return Ok(true); // Continue searching
+                        return Ok(true);
                     }
 
-                    // Check that ALL remaining terms match (AND logic)
-                    // We check against the path which includes the filename
+                    // ALL remaining terms must match (AND), checked against the
+                    // full path so filename matches count too.
                     let path_lower = entry.path.to_lowercase();
                     let all_match = remaining_terms.iter().all(|term| path_lower.contains(term));
                     if !all_match {
-                        return Ok(true); // Continue searching
+                        return Ok(true);
                     }
 
                     results.push(entry);
@@ -330,7 +290,8 @@ impl FileIndex {
         );
 
         if let Err(e) = search_result {
-            // Index may be corrupted - delete it and mark dirty for rebuild
+            // A search error means the index is likely corrupt: drop it and
+            // mark dirty so the next trigger rebuilds from scratch.
             error!(err = %e, "{}", LOG_FILE_INDEX_SEARCH_FAILED);
             if let Err(del_err) = fs::remove_file(&self.index_path) {
                 error!(err = %del_err, "{}", LOG_FILE_INDEX_DELETE_FAILED);
@@ -343,9 +304,9 @@ impl FileIndex {
     }
 }
 
-/// Parse a CSV line into a FileSearchResult using the csv crate
+/// Parse one CSV index line; returns `None` for malformed lines (fewer than 5
+/// fields or unparseable numerics) so a few bad rows don't fail the search.
 fn parse_csv_line(line: &str) -> Option<FileSearchResult> {
-    // Use csv reader to parse single line
     let mut reader = ReaderBuilder::new()
         .has_headers(false)
         .from_reader(line.as_bytes());
@@ -488,7 +449,6 @@ mod tests {
         fs::create_dir_all(&data_dir).unwrap();
         fs::create_dir_all(&file_root).unwrap();
 
-        // Create some test files
         fs::create_dir_all(file_root.join("shared/docs")).unwrap();
         fs::write(file_root.join("shared/docs/report.pdf"), "test content").unwrap();
         fs::write(file_root.join("shared/readme.txt"), "readme").unwrap();
@@ -510,14 +470,12 @@ mod tests {
         fs::create_dir_all(&data_dir).unwrap();
         fs::create_dir_all(&file_root).unwrap();
 
-        // Create file with comma in name
         fs::create_dir_all(file_root.join("shared")).unwrap();
         fs::write(file_root.join("shared/file,with,commas.txt"), "content").unwrap();
 
         let index = FileIndex::new(&data_dir, &file_root);
         index.build_index().unwrap();
 
-        // Search for it
         let results = index.search("commas", None).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].name, "file,with,commas.txt");
@@ -528,7 +486,6 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let index = FileIndex::new(temp_dir.path(), temp_dir.path());
 
-        // No index file exists
         let results = index.search("test", None).unwrap();
         assert!(results.is_empty());
     }
@@ -542,7 +499,6 @@ mod tests {
         fs::create_dir_all(&data_dir).unwrap();
         fs::create_dir_all(&file_root).unwrap();
 
-        // Create test files
         fs::create_dir_all(file_root.join("shared")).unwrap();
         fs::write(file_root.join("shared/report.pdf"), "content").unwrap();
         fs::write(file_root.join("shared/notes.txt"), "content").unwrap();
@@ -551,7 +507,6 @@ mod tests {
         let index = FileIndex::new(&data_dir, &file_root);
         index.build_index().unwrap();
 
-        // Search for "report"
         let results = index.search("report", None).unwrap();
         assert_eq!(results.len(), 1);
         assert!(results[0].path.contains("report"));
@@ -572,7 +527,6 @@ mod tests {
         let index = FileIndex::new(&data_dir, &file_root);
         index.build_index().unwrap();
 
-        // Search with different case
         let results = index.search("REPORT", None).unwrap();
         assert_eq!(results.len(), 1);
 
@@ -589,7 +543,6 @@ mod tests {
         fs::create_dir_all(&data_dir).unwrap();
         fs::create_dir_all(&file_root).unwrap();
 
-        // Create files in different areas
         fs::create_dir_all(file_root.join("shared")).unwrap();
         fs::create_dir_all(file_root.join("users/alice")).unwrap();
         fs::write(file_root.join("shared/doc.txt"), "content").unwrap();
@@ -598,16 +551,13 @@ mod tests {
         let index = FileIndex::new(&data_dir, &file_root);
         index.build_index().unwrap();
 
-        // Search all areas
         let results = index.search("doc", None).unwrap();
         assert_eq!(results.len(), 2);
 
-        // Search only shared
         let results = index.search("doc", Some("/shared")).unwrap();
         assert_eq!(results.len(), 1);
         assert!(results[0].path.starts_with("/shared"));
 
-        // Search only alice's area
         let results = index.search("doc", Some("/users/alice")).unwrap();
         assert_eq!(results.len(), 1);
         assert!(results[0].path.starts_with("/users/alice"));
@@ -674,7 +624,6 @@ mod tests {
         let index = FileIndex::new(&data_dir, &file_root);
         index.build_index().unwrap();
 
-        // Read back and verify
         let file = File::open(&index.index_path).unwrap();
         let mut reader = ReaderBuilder::new()
             .has_headers(false)
@@ -699,7 +648,6 @@ mod tests {
         fs::create_dir_all(&data_dir).unwrap();
         fs::create_dir_all(file_root.join("shared/music")).unwrap();
 
-        // Create test files
         fs::write(
             file_root.join("shared/music/Derrick Carter - Live Mix.mp3"),
             "content",
@@ -748,7 +696,6 @@ mod tests {
         fs::create_dir_all(&data_dir).unwrap();
         fs::create_dir_all(file_root.join("shared")).unwrap();
 
-        // Create files with various name patterns
         fs::write(file_root.join("shared/test_file.txt"), "content").unwrap();
         fs::write(file_root.join("shared/test_ab_cd.txt"), "content").unwrap();
         fs::write(file_root.join("shared/other.txt"), "content").unwrap();
@@ -790,7 +737,6 @@ mod tests {
         fs::create_dir_all(&data_dir).unwrap();
         fs::create_dir_all(file_root.join("shared")).unwrap();
 
-        // Create visible files
         fs::write(file_root.join("shared/visible.txt"), "content").unwrap();
 
         // Create hidden entries that should be skipped
@@ -816,7 +762,6 @@ mod tests {
         let results = index.search("hidden", None).unwrap();
         assert_eq!(results.len(), 0);
 
-        // But should find visible files
         let results = index.search("visible", None).unwrap();
         assert_eq!(results.len(), 1);
     }
@@ -835,7 +780,6 @@ mod tests {
         let index = FileIndex::new(&data_dir, &file_root);
         index.build_index().unwrap();
 
-        // Mixed case search should work
         let results = index.search("DERRICK carter MP3", None).unwrap();
         assert_eq!(results.len(), 1);
 

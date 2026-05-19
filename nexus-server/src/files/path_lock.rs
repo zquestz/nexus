@@ -234,8 +234,6 @@ mod tests {
     use std::time::Duration;
     use tempfile::TempDir;
 
-    // ---- lock_key tests ----
-
     #[tokio::test]
     async fn lock_key_canonicalizes_parent() {
         let temp = TempDir::new().unwrap();
@@ -325,8 +323,6 @@ mod tests {
         let target = PathBuf::from("/");
         assert!(lock_key(&target).await.is_err());
     }
-
-    // ---- acquire / mode semantics tests ----
 
     fn k(s: &str) -> PathBuf {
         PathBuf::from(s)

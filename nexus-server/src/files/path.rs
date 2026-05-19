@@ -12,9 +12,6 @@ use crate::constants::{
 };
 use crate::files::folder_type::{FolderType, parse_folder_type};
 
-/// Type alias for file operation errors (for API consistency)
-pub type FileError = PathError;
-
 /// Error type for path resolution failures
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PathError {
@@ -64,13 +61,8 @@ impl From<PathError> for io::Error {
 ///
 /// This MUST be called on the raw client path string BEFORE joining with area_root,
 /// because Windows normalizes paths during join, removing `..` components.
-///
-/// # Returns
-///
-/// Returns `Ok(())` if the path is safe, `Err(PathError::InvalidPath)` if it contains `..`.
 fn validate_client_path(client_path: &str) -> Result<(), PathError> {
-    // Check for ".." in the path - this catches traversal attempts before Windows can normalize them
-    // We check for common patterns: standalone "..", or ".." with path separators
+    // Catch traversal attempts before Windows can normalize them away
     for segment in client_path.split(['/', '\\']) {
         if segment == ".." {
             return Err(PathError::InvalidPath);
@@ -83,23 +75,7 @@ fn validate_client_path(client_path: &str) -> Result<(), PathError> {
 ///
 /// This function handles the translation from client virtual paths (e.g., `/Documents/file.txt`)
 /// to filesystem paths by stripping leading path separators and joining with the area root.
-///
-/// # Arguments
-///
-/// * `area_root` - The root directory for the user's file area
-/// * `client_path` - The client-provided path (may have leading `/` or `\`)
-///
-/// # Returns
-///
-/// Returns the joined path (not yet validated or canonicalized).
-///
-/// # Example
-///
-/// ```ignore
-/// let root = Path::new("/data/files/shared");
-/// let candidate = build_candidate_path(&root, "/Documents/readme.txt");
-/// // candidate is /data/files/shared/Documents/readme.txt
-/// ```
+/// The result is not yet validated or canonicalized.
 #[must_use]
 pub fn build_candidate_path(area_root: &Path, client_path: &str) -> PathBuf {
     let normalized = client_path.trim_start_matches(['/', '\\']);
@@ -116,25 +92,14 @@ pub fn build_candidate_path(area_root: &Path, client_path: &str) -> PathBuf {
 /// "uploads [NEXUS-UL]/file.txt", this function will resolve it correctly. Exact matches
 /// take priority over suffix-stripped matches.
 ///
-/// # Arguments
-///
-/// * `area_root` - The root directory for the user's file area
-/// * `client_path` - The client-provided path (may have leading `/` or `\`)
-///
-/// # Returns
-///
-/// Returns the resolved path if valid, or an error if:
-/// - Path contains directory traversal attempts (`InvalidPath`)
-/// - A parent path segment cannot be resolved (`NotFound`)
-///
-/// Note: The final segment is allowed to not exist (for operations that create files).
+/// A parent path segment that cannot be resolved is an error (`NotFound`); the final
+/// segment is allowed to not exist (for operations that create files).
 pub async fn build_and_validate_candidate_path(
     area_root: &Path,
     client_path: &str,
 ) -> Result<PathBuf, PathError> {
     validate_client_path(client_path)?;
 
-    // Normalize the client path
     let normalized = client_path
         .trim_start_matches(['/', '\\'])
         .replace('\\', "/");
@@ -144,33 +109,27 @@ pub async fn build_and_validate_candidate_path(
         return Ok(area_root.to_path_buf());
     }
 
-    // Split into segments and resolve each one with suffix matching
     let segments: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
 
     let mut current_path = area_root.to_path_buf();
 
     for (i, segment) in segments.iter().enumerate() {
-        // Skip current directory references
         if *segment == "." {
             continue;
         }
 
         let is_last_segment = i == segments.len() - 1;
 
-        // Try to resolve this segment with suffix matching
         match resolve_segment_in_dir(&current_path, segment).await {
             Some(resolved_name) => {
                 current_path = current_path.join(resolved_name);
             }
             None => {
-                // Segment not found on disk
                 if is_last_segment {
-                    // Final segment not found - this is OK for operations
-                    // that create new files. Return the path with the literal segment.
-                    // The caller (resolve_path) will handle NotFound appropriately.
+                    // Final segment may legitimately not exist (create operations);
+                    // the caller handles NotFound.
                     current_path = current_path.join(segment);
                 } else {
-                    // Parent segment not found - this is an error
                     return Err(PathError::NotFound);
                 }
             }
@@ -185,16 +144,6 @@ pub async fn build_and_validate_candidate_path(
 /// This is used for operations where the path doesn't need to exist yet (e.g., uploads).
 /// It validates the path for traversal attacks but doesn't try to resolve segments
 /// against the filesystem.
-///
-/// # Arguments
-///
-/// * `area_root` - The root directory for the user's file area
-/// * `client_path` - The client-provided path (may have leading `/` or `\`)
-///
-/// # Returns
-///
-/// Returns the joined path if valid, or `Err(PathError::InvalidPath)` if the path
-/// contains directory traversal attempts.
 pub fn validate_and_build_candidate_path(
     area_root: &Path,
     client_path: &str,
@@ -210,19 +159,8 @@ pub fn validate_and_build_candidate_path(
 /// 1. **Component validation**: Rejects `..` to prevent client-initiated escapes
 /// 2. **Canonicalization**: Resolves symlinks to get the real filesystem path
 ///
-/// # Arguments
-///
-/// * `area_root` - The root directory for the user's file area. This **must** be an
-///   absolute, canonical path (e.g., from `fs::canonicalize()`). The function will
-///   return `InvalidAreaRoot` if this is not absolute.
-/// * `candidate` - The absolute candidate path to resolve (typically from `build_candidate_path`)
-///
-/// # Returns
-///
-/// Returns the canonicalized absolute path if valid, or an error if:
-/// - The area_root is not absolute
-/// - The path contains `..` or other disallowed components
-/// - The path does not exist
+/// `area_root` **must** be an absolute, canonical path (e.g., from `fs::canonicalize()`);
+/// a non-absolute root returns `InvalidAreaRoot`.
 ///
 /// # Symlink Policy
 ///
@@ -237,34 +175,23 @@ pub fn validate_and_build_candidate_path(
 /// The caller is responsible for ensuring `area_root` is canonical. While this
 /// function checks that it's absolute, it cannot verify canonicalization (e.g.,
 /// that symlinks are resolved). Always obtain `area_root` from `fs::canonicalize()`.
-///
-/// # Example
-///
-/// ```ignore
-/// let root = tokio::fs::canonicalize("/data/files/users/alice").await?;
-/// let candidate = build_candidate_path(&root, "/documents/readme.txt");
-/// let resolved = resolve_path(&root, &candidate).await?;
-/// // resolved is the canonical path (may be outside area_root if symlinks are involved)
-/// ```
 #[must_use = "use the returned path; reusing the input bypasses the area-root containment check"]
 pub async fn resolve_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, PathError> {
-    // Verify area_root is absolute (we can't verify it's canonical, but absolute is required)
+    // area_root must be absolute (canonicalization can't be verified here)
     if !area_root.is_absolute() {
         return Err(PathError::InvalidAreaRoot);
     }
 
-    // Verify candidate is absolute (should always be true if using build_candidate_path)
     if !candidate.is_absolute() {
         return Err(PathError::InvalidPath);
     }
 
-    // Early rejection: Check entire path for parent directory traversal (..)
-    // This must happen BEFORE canonicalize() because:
-    // 1. On Windows, path normalization may cause strip_prefix to fail
-    // 2. We want to reject malicious paths before touching the filesystem
+    // Reject `..` BEFORE canonicalize(): on Windows, normalization can defeat a
+    // post-hoc strip_prefix check, and we want to reject malicious paths before
+    // touching the filesystem.
     validate_path_components(candidate)?;
 
-    // Layer 1: Canonicalize to resolve symlinks and get absolute path
+    // Canonicalize to resolve symlinks and get absolute path
     let canonical = tokio::fs::canonicalize(candidate).await.map_err(|e| {
         if e.kind() == io::ErrorKind::NotFound {
             PathError::NotFound
@@ -280,27 +207,17 @@ pub async fn resolve_path(area_root: &Path, candidate: &Path) -> Result<PathBuf,
     Ok(canonical)
 }
 
-/// Validate path components without touching the filesystem
+/// Validate path components without touching the filesystem.
 ///
-/// Rejects paths containing:
-/// - Parent directory references (`..`)
-///
-/// Allows:
-/// - Empty paths (refers to root itself)
-/// - Normal path components
-/// - Current directory (`.`)
+/// Rejects parent directory references (`..`). Empty paths, normal components, and
+/// current-directory (`.`) are allowed.
 fn validate_path_components(path: &Path) -> Result<(), PathError> {
     for component in path.components() {
         match component {
-            // Normal path segment - allowed
             Component::Normal(_) => {}
-            // Current directory (.) - allowed (harmless)
             Component::CurDir => {}
-            // Parent directory (..) - REJECTED
             Component::ParentDir => return Err(PathError::InvalidPath),
-            // Root directory (/) - allowed (absolute paths are fine)
             Component::RootDir => {}
-            // Windows prefix (C:, \\server) - allowed (absolute paths are fine)
             Component::Prefix(_) => {}
         }
     }
@@ -311,62 +228,44 @@ fn validate_path_components(path: &Path) -> Result<(), PathError> {
 /// Resolve a path for a new file/directory that doesn't exist yet
 ///
 /// Similar to `resolve_path` but handles the case where the final component
-/// doesn't exist. Validates the parent directory exists.
-///
-/// # Arguments
-///
-/// * `area_root` - The root directory for the user's file area. This **must** be an
-///   absolute, canonical path (e.g., from `fs::canonicalize()`).
-/// * `candidate` - The absolute candidate path for the new item (typically from `build_candidate_path`).
-///   Must not equal `area_root` (you can't create nameless files).
+/// doesn't exist. Validates the parent directory exists. `candidate` must not equal
+/// `area_root` (can't create nameless files), which returns `InvalidPath`.
 ///
 /// # Security
 ///
 /// Like `resolve_path`, this function validates components before filesystem access
 /// to ensure cross-platform consistency (especially important on Windows).
 ///
-/// # Returns
-///
-/// Returns the path where the new item should be created if valid.
-/// The returned path uses the canonicalized parent joined with the filename.
-/// The parent directory is verified to exist (may be outside area_root via symlink).
-///
-/// # Errors
-///
-/// Returns `InvalidPath` if `candidate` equals `area_root` (can't create nameless files).
+/// The returned path is the canonicalized parent joined with the filename; the parent
+/// is verified to exist and may be outside area_root via symlink.
 #[must_use = "use the returned path; reusing the input bypasses the area-root containment check"]
 pub async fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<PathBuf, PathError> {
-    // Verify area_root is absolute
     if !area_root.is_absolute() {
         return Err(PathError::InvalidAreaRoot);
     }
 
-    // Verify candidate is absolute (should always be true if using build_candidate_path)
     if !candidate.is_absolute() {
         return Err(PathError::InvalidPath);
     }
 
-    // Can't create a file with no name (candidate == area_root)
+    // Can't create a file with no name
     if candidate == area_root {
         return Err(PathError::InvalidPath);
     }
 
-    // Early rejection: Check entire path for parent directory traversal (..)
-    // This must happen BEFORE canonicalize() because:
-    // 1. On Windows, path normalization may cause strip_prefix to fail
-    // 2. We want to reject malicious paths before touching the filesystem
+    // Reject `..` BEFORE canonicalize(): on Windows, normalization can defeat a
+    // post-hoc strip_prefix check, and we want to reject malicious paths before
+    // touching the filesystem.
     validate_path_components(candidate)?;
 
-    // Get the parent directory
     let parent = candidate.parent().ok_or(PathError::InvalidPath)?;
 
-    // If the parent is the area_root itself, just verify and return
     if parent == area_root {
         return Ok(candidate.to_path_buf());
     }
 
-    // Canonicalize the parent to verify it exists
-    // Note: We don't check if it's under area_root - symlinks are trusted (admin-created)
+    // Canonicalize the parent to verify it exists. We don't check it's under
+    // area_root - symlinks are trusted (admin-created).
     let canonical_parent = tokio::fs::canonicalize(parent).await.map_err(|e| {
         if e.kind() == io::ErrorKind::NotFound {
             PathError::NotFound
@@ -375,8 +274,7 @@ pub async fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<Path
         }
     })?;
 
-    // Return the non-canonicalized path (file doesn't exist yet)
-    // Join the canonical parent with the filename
+    // Join the canonical parent with the filename (the file doesn't exist yet)
     let filename = candidate.file_name().ok_or(PathError::InvalidPath)?;
 
     Ok(canonical_parent.join(filename))
@@ -391,54 +289,27 @@ pub async fn resolve_new_path(area_root: &Path, candidate: &Path) -> Result<Path
 ///
 /// This is purely cosmetic normalization for response paths, not security validation.
 /// Security validation should be done via `build_and_validate_candidate_path()` and `resolve_path()`.
-///
-/// # Arguments
-///
-/// * `path` - The client-provided path string
-///
-/// # Returns
-///
-/// A normalized path string with consistent forward slashes and no redundant segments.
-///
-/// # Example
-///
-/// ```ignore
-/// assert_eq!(normalize_client_path("foo//bar"), "foo/bar");
-/// assert_eq!(normalize_client_path("foo\\bar"), "foo/bar");
-/// assert_eq!(normalize_client_path("./foo/./bar"), "foo/bar");
-/// assert_eq!(normalize_client_path(""), "");
-/// ```
 #[must_use]
 /// Strip folder type suffix from a name to get the display name
 ///
 /// This is the inverse of how folders are named with suffixes like `[NEXUS-UL]`.
 /// Used for matching client paths that use stripped names against filesystem names.
-///
-/// # Examples
-///
-/// ```ignore
-/// assert_eq!(strip_folder_suffix("uploads [NEXUS-UL]"), "uploads");
-/// assert_eq!(strip_folder_suffix("dropbox [NEXUS-DB]"), "dropbox");
-/// assert_eq!(strip_folder_suffix("inbox [NEXUS-DB-alice]"), "inbox");
-/// assert_eq!(strip_folder_suffix("normal"), "normal");
-/// ```
 fn strip_folder_suffix(name: &str) -> String {
     let name_upper = name.to_uppercase();
 
-    // Check for user-specific dropbox suffix first (e.g., " [NEXUS-DB-alice]")
+    // User-specific dropbox suffix (e.g., " [NEXUS-DB-alice]") must be checked
+    // before the generic dropbox suffix.
     if let Some(pos) = name_upper.rfind(FOLDER_SUFFIX_DROPBOX_PREFIX)
         && name_upper.ends_with(']')
     {
         return name[..pos].to_string();
     }
 
-    // Check for generic dropbox suffix
     if name_upper.ends_with(FOLDER_SUFFIX_DROPBOX) {
         let suffix_start = name.len() - FOLDER_SUFFIX_DROPBOX.len();
         return name[..suffix_start].to_string();
     }
 
-    // Check for upload suffix
     if name_upper.ends_with(FOLDER_SUFFIX_UPLOAD) {
         let suffix_start = name.len() - FOLDER_SUFFIX_UPLOAD.len();
         return name[..suffix_start].to_string();
@@ -450,32 +321,23 @@ fn strip_folder_suffix(name: &str) -> String {
 /// Resolve a single path segment within a directory, with suffix matching
 ///
 /// Tries exact match first, then falls back to matching against stripped suffix names.
-/// Case-sensitive matching (matches filesystem behavior).
-///
-/// # Arguments
-///
-/// * `parent_dir` - The directory to search in
-/// * `segment` - The segment name to find
-///
-/// # Returns
-///
-/// The actual filesystem name if found, or None if no match.
+/// Case-sensitive matching (matches filesystem behavior). Returns the actual
+/// filesystem name if found.
 async fn resolve_segment_in_dir(parent_dir: &Path, segment: &str) -> Option<String> {
-    // First try exact match (fast path)
+    // Exact match (fast path)
     let exact_path = parent_dir.join(segment);
     if tokio::fs::try_exists(&exact_path).await.unwrap_or(false) {
         return Some(segment.to_string());
     }
 
-    // Fall back to suffix matching - read directory and find a match
+    // Fall back to suffix matching
     let mut entries = match tokio::fs::read_dir(parent_dir).await {
         Ok(e) => e,
         Err(_) => return None,
     };
 
     loop {
-        // Skip individual unreadable entries (matches the previous
-        // `read_dir(...).flatten()` behavior); only stop on `Ok(None)`.
+        // Skip individual unreadable entries; only stop on `Ok(None)`.
         let entry = match entries.next_entry().await {
             Ok(Some(e)) => e,
             Ok(None) => break,
@@ -487,7 +349,6 @@ async fn resolve_segment_in_dir(parent_dir: &Path, segment: &str) -> Option<Stri
             Err(_) => continue, // Skip non-UTF-8 names
         };
 
-        // Check if stripping the suffix gives us the requested segment
         let stripped = strip_folder_suffix(&name);
         if stripped == segment {
             return Some(name);
@@ -527,25 +388,13 @@ pub fn is_hidden_name(name: &str) -> bool {
 /// Upload permission is inherited - if any ancestor folder has an upload
 /// or dropbox suffix, uploads are allowed.
 ///
-/// # Arguments
-///
-/// * `area_root` - The canonicalized root directory for the user's file area
-/// * `path` - The canonicalized path to check
-///
-/// # Returns
-///
-/// Returns `true` if uploads are allowed at this path, `false` otherwise.
-///
-/// # Note
-///
-/// This function assumes `path` has already been validated via `resolve_path`.
+/// Assumes `path` has already been validated via `resolve_path`.
 #[must_use]
 pub fn allows_upload(area_root: &Path, path: &Path) -> bool {
-    // Start from the path and walk up to (but not including) the area root
+    // Walk up from the path to (but not including) the area root
     let mut current = path;
 
     while current != area_root {
-        // Get the folder name
         if let Some(name) = current.file_name()
             && let Some(name_str) = name.to_str()
         {
@@ -557,7 +406,6 @@ pub fn allows_upload(area_root: &Path, path: &Path) -> bool {
             }
         }
 
-        // Move up to parent
         match current.parent() {
             Some(parent) => current = parent,
             None => break,
@@ -572,10 +420,6 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::TempDir;
-
-    // ==========================================================================
-    // Tests for strip_folder_suffix
-    // ==========================================================================
 
     #[test]
     fn test_strip_folder_suffix_upload() {
@@ -639,19 +483,13 @@ mod tests {
             .canonicalize()
             .expect("Failed to canonicalize");
 
-        // Create some test directories
         fs::create_dir_all(root.join("documents")).expect("Failed to create documents");
         fs::create_dir_all(root.join("uploads")).expect("Failed to create uploads");
 
-        // Create a test file
         fs::write(root.join("documents/readme.txt"), "test").expect("Failed to create file");
 
         (temp_dir, root)
     }
-
-    // =========================================================================
-    // build_candidate_path tests
-    // =========================================================================
 
     #[test]
     fn test_build_candidate_path_no_leading_slash() {
@@ -714,10 +552,6 @@ mod tests {
         assert_eq!(result, PathBuf::from("/data/files/shared/"));
     }
 
-    // =========================================================================
-    // resolve_path tests
-    // =========================================================================
-
     #[tokio::test]
     async fn test_resolve_valid_file() {
         let (_temp, root) = setup_test_area();
@@ -753,7 +587,6 @@ mod tests {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "");
 
-        // Empty path should resolve to the root itself
         let result = resolve_path(&root, &candidate).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), root);
@@ -764,7 +597,6 @@ mod tests {
         let (_temp, root) = setup_test_area();
         let candidate = build_candidate_path(&root, "/");
 
-        // Just "/" should resolve to the root itself
         let result = resolve_path(&root, &candidate).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), root);
@@ -805,16 +637,14 @@ mod tests {
         {
             use std::os::unix::fs::symlink;
 
-            // Create a temp directory outside the area to link to
             let external = TempDir::new().expect("Failed to create external dir");
             let external_path = external.path().canonicalize().unwrap();
             fs::write(external_path.join("external.txt"), "external").unwrap();
 
-            // Create symlink pointing outside
+            // Symlink pointing outside the area
             let link_path = _root.join("documents/external_link");
             symlink(&external_path, &link_path).expect("Failed to create symlink");
 
-            // Should be allowed - admin-created symlink
             let candidate = build_candidate_path(&_root, "documents/external_link/external.txt");
             let result = resolve_path(&_root, &candidate).await;
             assert!(result.is_ok());
@@ -831,7 +661,6 @@ mod tests {
         {
             use std::os::unix::fs::symlink;
 
-            // Create symlink from one folder to another (both within area)
             let link_path = _root.join("doc_link");
             symlink(_root.join("documents"), &link_path).expect("Failed to create symlink");
 
@@ -864,10 +693,6 @@ mod tests {
         let result = resolve_path(&root, candidate).await;
         assert_eq!(result, Err(PathError::InvalidPath));
     }
-
-    // =========================================================================
-    // resolve_new_path tests
-    // =========================================================================
 
     #[tokio::test]
     async fn test_resolve_new_path_valid() {
@@ -967,25 +792,19 @@ mod tests {
         {
             use std::os::unix::fs::symlink;
 
-            // Create a temp directory outside the area
             let external = TempDir::new().expect("Failed to create external dir");
             let external_path = external.path().canonicalize().unwrap();
 
-            // Create symlink pointing outside
+            // Symlink pointing outside the area
             let link_path = _root.join("external_link");
             symlink(&external_path, &link_path).expect("Failed to create symlink");
 
-            // Creating a new file through the symlink should succeed
             let candidate = build_candidate_path(&_root, "external_link/newfile.txt");
             let result = resolve_new_path(&_root, &candidate).await;
             assert!(result.is_ok());
             assert!(result.unwrap().ends_with("newfile.txt"));
         }
     }
-
-    // =========================================================================
-    // allows_upload tests
-    // =========================================================================
 
     #[test]
     fn test_upload_not_allowed_in_default_folder() {
@@ -999,7 +818,6 @@ mod tests {
     fn test_upload_allowed_in_upload_folder() {
         let (_temp, root) = setup_test_area();
 
-        // Create an upload folder
         let upload_dir = root.join("Uploads [NEXUS-UL]");
         fs::create_dir(&upload_dir).expect("Failed to create upload dir");
 
@@ -1010,7 +828,6 @@ mod tests {
     fn test_upload_allowed_in_nested_under_upload_folder() {
         let (_temp, root) = setup_test_area();
 
-        // Create an upload folder with a subfolder
         let upload_dir = root.join("Uploads [NEXUS-UL]");
         let nested_dir = upload_dir.join("subfolder");
         fs::create_dir_all(&nested_dir).expect("Failed to create dirs");
@@ -1023,7 +840,6 @@ mod tests {
     fn test_upload_allowed_in_deeply_nested_under_upload_folder() {
         let (_temp, root) = setup_test_area();
 
-        // Create an upload folder with deeply nested subfolders
         let upload_dir = root.join("Uploads [NEXUS-UL]");
         let deeply_nested = upload_dir.join("a").join("b").join("c").join("d");
         fs::create_dir_all(&deeply_nested).expect("Failed to create dirs");
@@ -1069,10 +885,6 @@ mod tests {
         // The area root itself should not allow uploads
         assert!(!allows_upload(&root, &root));
     }
-
-    // =========================================================================
-    // normalize_client_path tests
-    // =========================================================================
 
     #[test]
     fn test_normalize_client_path_simple() {

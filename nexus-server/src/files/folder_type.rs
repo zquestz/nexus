@@ -55,9 +55,9 @@ pub enum FolderType {
 pub fn parse_folder_type(name: &str) -> FolderType {
     let name_upper = name.to_uppercase();
 
-    // Check for upload suffix first (exact match at end)
-    // Note: FOLDER_SUFFIX_* constants are already uppercase ASCII, so direct comparison works
-    // Require actual folder name before suffix (not just whitespace)
+    // FOLDER_SUFFIX_* constants are uppercase ASCII, so comparison against
+    // name_upper works. Require an actual folder name before the suffix (not
+    // just whitespace) so a bare `[NEXUS-UL]` isn't treated as writable.
     if name_upper.ends_with(FOLDER_SUFFIX_UPLOAD) && name.len() > FOLDER_SUFFIX_UPLOAD.len() {
         let prefix_end = name.len() - FOLDER_SUFFIX_UPLOAD.len();
         if !name[..prefix_end].trim().is_empty() {
@@ -65,37 +65,33 @@ pub fn parse_folder_type(name: &str) -> FolderType {
         }
     }
 
-    // Check for user-specific drop box suffix: [NEXUS-DB-username]
-    // This must end with ] and contain [NEXUS-DB- before the username
-    if name_upper.ends_with(']') {
-        // Find the last occurrence of the prefix
-        if let Some(prefix_pos) = name_upper.rfind(FOLDER_SUFFIX_DROPBOX_PREFIX) {
-            // The closing bracket should be at the end
-            let bracket_pos = name.len() - 1;
+    // User-specific drop box `[NEXUS-DB-username]`: must end with `]` and
+    // contain `[NEXUS-DB-` before the username.
+    if name_upper.ends_with(']')
+        && let Some(prefix_pos) = name_upper.rfind(FOLDER_SUFFIX_DROPBOX_PREFIX)
+    {
+        let bracket_pos = name.len() - 1;
 
-            // Extract username: from after prefix to before closing bracket
-            let username_start = prefix_pos + FOLDER_SUFFIX_DROPBOX_PREFIX.len();
-            let username_end = bracket_pos;
+        let username_start = prefix_pos + FOLDER_SUFFIX_DROPBOX_PREFIX.len();
+        let username_end = bracket_pos;
 
-            // Verify there's content between prefix and bracket, and no other brackets in between
-            // Also require actual folder name before the suffix (not just whitespace)
-            if username_start < username_end && prefix_pos > 0 {
-                let username = &name[username_start..username_end];
-                // Make sure the username doesn't contain brackets (which would indicate
-                // this isn't actually a valid suffix)
-                if !username.contains('[')
-                    && !username.contains(']')
-                    && !username.is_empty()
-                    && !name[..prefix_pos].trim().is_empty()
-                {
-                    return FolderType::UserDropBox(username.to_string());
-                }
+        // Require username content between prefix and bracket, and an
+        // actual folder name (not just whitespace) before the suffix.
+        if username_start < username_end && prefix_pos > 0 {
+            let username = &name[username_start..username_end];
+            // Reject brackets in the username — that means this isn't a
+            // well-formed suffix (e.g. `[NEXUS-DB-alice] extra]`).
+            if !username.contains('[')
+                && !username.contains(']')
+                && !username.is_empty()
+                && !name[..prefix_pos].trim().is_empty()
+            {
+                return FolderType::UserDropBox(username.to_string());
             }
         }
     }
 
-    // Check for generic drop box suffix (exact match at end)
-    // Require actual folder name before suffix (not just whitespace)
+    // Generic drop box: require an actual folder name before the suffix.
     if name_upper.ends_with(FOLDER_SUFFIX_DROPBOX) && name.len() > FOLDER_SUFFIX_DROPBOX.len() {
         let prefix_end = name.len() - FOLDER_SUFFIX_DROPBOX.len();
         if !name[..prefix_end].trim().is_empty() {
@@ -173,16 +169,14 @@ mod tests {
 
     #[test]
     fn test_suffix_only_is_default() {
-        // Suffix-only names (no folder name before suffix) are treated as Default
-        // Without leading space
+        // A bare suffix with no real folder name before it must NOT be a
+        // writable folder type — regardless of leading whitespace.
         assert_eq!(parse_folder_type("[NEXUS-UL]"), FolderType::Default);
         assert_eq!(parse_folder_type("[NEXUS-DB]"), FolderType::Default);
         assert_eq!(parse_folder_type("[NEXUS-DB-alice]"), FolderType::Default);
-        // With leading space (matches the constant, but no actual folder name)
         assert_eq!(parse_folder_type(" [NEXUS-UL]"), FolderType::Default);
         assert_eq!(parse_folder_type(" [NEXUS-DB]"), FolderType::Default);
         assert_eq!(parse_folder_type(" [NEXUS-DB-alice]"), FolderType::Default);
-        // With multiple leading spaces (only whitespace before suffix)
         assert_eq!(parse_folder_type("   [NEXUS-UL]"), FolderType::Default);
         assert_eq!(parse_folder_type("   [NEXUS-DB]"), FolderType::Default);
         assert_eq!(parse_folder_type("  [NEXUS-DB-alice]"), FolderType::Default);
@@ -237,13 +231,13 @@ mod tests {
 
     #[test]
     fn test_empty_user_dropbox_is_default() {
-        // [NEXUS-DB-] with no username should not match as UserDropBox
+        // `[NEXUS-DB-]` with no username must not match as UserDropBox.
         assert_eq!(parse_folder_type("Files [NEXUS-DB-]"), FolderType::Default);
     }
 
     #[test]
     fn test_suffix_must_be_at_end() {
-        // Suffix in the middle should not match
+        // A suffix anywhere but the end must not match.
         assert_eq!(
             parse_folder_type("[NEXUS-UL] Documents"),
             FolderType::Default
@@ -264,8 +258,8 @@ mod tests {
 
     #[test]
     fn test_user_dropbox_with_extra_brackets_is_rejected() {
-        // This was a bug: username should not contain brackets
-        // "Folder [NEXUS-DB-alice] extra]" should NOT match as UserDropBox
+        // A username containing brackets means the suffix is malformed and
+        // must not match as UserDropBox.
         assert_eq!(
             parse_folder_type("Folder [NEXUS-DB-alice] extra]"),
             FolderType::Default
@@ -278,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_multiple_suffixes_last_wins() {
-        // If multiple valid suffixes, the one at the end determines type
+        // With multiple valid suffixes, the trailing one determines the type.
         assert_eq!(
             parse_folder_type("Folder [NEXUS-UL] [NEXUS-DB]"),
             FolderType::DropBox
