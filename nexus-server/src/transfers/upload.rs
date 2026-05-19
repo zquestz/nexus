@@ -224,10 +224,10 @@ where
     // immediately rather than block on a multi-hour transfer. Lock both
     // target AND `.part` so a rename of `.part` can't be promoted to the
     // final target mid-upload.
-    let target_key = files::lock_key(&target_path).map_err(|_| {
+    let target_key = files::lock_key(&target_path).await.map_err(|_| {
         ReceiveFileError::Transfer(TransferError::invalid(err_upload_path_invalid(locale)))
     })?;
-    let part_key = files::lock_key(&part_path).map_err(|_| {
+    let part_key = files::lock_key(&part_path).await.map_err(|_| {
         ReceiveFileError::Transfer(TransferError::invalid(err_upload_path_invalid(locale)))
     })?;
     let _lock_guards = transfer

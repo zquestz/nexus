@@ -144,7 +144,7 @@ where
     //
     // Guards live only inside this block; all socket sends happen after it.
     let response = 'locked: {
-        let target_key = match lock_key(&candidate) {
+        let target_key = match lock_key(&candidate).await {
             Ok(k) => k,
             Err(_) => {
                 break 'locked ServerMessage::FileDeleteResponse {

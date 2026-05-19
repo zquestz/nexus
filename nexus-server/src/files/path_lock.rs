@@ -198,10 +198,10 @@ impl PathLockMap {
 /// For symlink deletion, pass the symlink path itself (not its target) —
 /// the symlink's own basename is the resource being mutated.
 ///
-/// `Path::exists()` follows symlinks, so a dangling intermediate symlink
-/// passes through to the next existing ancestor — widens serialization,
-/// never narrows it.
-pub fn lock_key(target: &Path) -> io::Result<PathBuf> {
+/// `tokio::fs::try_exists` follows symlinks, so a dangling intermediate
+/// symlink passes through to the next existing ancestor — widens
+/// serialization, never narrows it.
+pub async fn lock_key(target: &Path) -> io::Result<PathBuf> {
     let invalid = || io::Error::new(io::ErrorKind::InvalidInput, ERR_FILE_LOCK_INVALID_PATH);
 
     let parent = target.parent().ok_or_else(invalid)?;
@@ -213,13 +213,13 @@ pub fn lock_key(target: &Path) -> io::Result<PathBuf> {
     // (delete locks on the symlink's own basename).
     let mut tail: Vec<OsString> = Vec::new();
     let mut existing: &Path = parent;
-    while !existing.exists() {
+    while !tokio::fs::try_exists(existing).await.unwrap_or(false) {
         let name = existing.file_name().ok_or_else(invalid)?;
         tail.push(name.to_os_string());
         existing = existing.parent().ok_or_else(invalid)?;
     }
 
-    let mut key = existing.canonicalize()?;
+    let mut key = tokio::fs::canonicalize(existing).await?;
     for name in tail.into_iter().rev() {
         key.push(name);
     }
@@ -242,7 +242,7 @@ mod tests {
         let nested = temp.path().join("a");
         std::fs::create_dir(&nested).unwrap();
         let target = nested.join("file.txt");
-        let key = lock_key(&target).unwrap();
+        let key = lock_key(&target).await.unwrap();
         assert_eq!(key.parent().unwrap(), nested.canonicalize().unwrap());
         assert_eq!(key.file_name().unwrap(), "file.txt");
     }
@@ -251,7 +251,7 @@ mod tests {
     async fn lock_key_target_need_not_exist() {
         let temp = TempDir::new().unwrap();
         let target = temp.path().join("not-yet-created.txt");
-        let key = lock_key(&target).unwrap();
+        let key = lock_key(&target).await.unwrap();
         assert_eq!(
             key.parent().unwrap(),
             temp.path().canonicalize().unwrap().as_path()
@@ -265,7 +265,7 @@ mod tests {
         let temp = TempDir::new().unwrap();
         let canonical = temp.path().canonicalize().unwrap();
         let target = temp.path().join("proj/src/main.rs");
-        let key = lock_key(&target).unwrap();
+        let key = lock_key(&target).await.unwrap();
         assert_eq!(key, canonical.join("proj/src/main.rs"));
     }
 
@@ -277,10 +277,11 @@ mod tests {
         let sub = temp.path().join("sub");
         std::fs::create_dir(&sub).unwrap();
 
-        let plain = lock_key(&sub.join("file.txt")).unwrap();
-        let dot = lock_key(&temp.path().join("sub/./file.txt")).unwrap();
-        let double_slash =
-            lock_key(&PathBuf::from(format!("{}//file.txt", sub.display()))).unwrap();
+        let plain = lock_key(&sub.join("file.txt")).await.unwrap();
+        let dot = lock_key(&temp.path().join("sub/./file.txt")).await.unwrap();
+        let double_slash = lock_key(&PathBuf::from(format!("{}//file.txt", sub.display())))
+            .await
+            .unwrap();
 
         assert_eq!(plain, dot);
         assert_eq!(plain, double_slash);
@@ -298,8 +299,8 @@ mod tests {
         let link = temp.path().join("link");
         std::os::unix::fs::symlink(&real_dir, &link).unwrap();
 
-        let via_link = lock_key(&link.join("file.txt")).unwrap();
-        let via_real = lock_key(&real_dir.join("file.txt")).unwrap();
+        let via_link = lock_key(&link.join("file.txt")).await.unwrap();
+        let via_real = lock_key(&real_dir.join("file.txt")).await.unwrap();
         assert_eq!(via_link, via_real);
     }
 
@@ -315,14 +316,14 @@ mod tests {
         let link = temp.path().join("link.txt");
         std::os::unix::fs::symlink(&target_file, &link).unwrap();
 
-        let key = lock_key(&link).unwrap();
+        let key = lock_key(&link).await.unwrap();
         assert_eq!(key.file_name().unwrap(), "link.txt");
     }
 
     #[tokio::test]
     async fn lock_key_rejects_root_path() {
         let target = PathBuf::from("/");
-        assert!(lock_key(&target).is_err());
+        assert!(lock_key(&target).await.is_err());
     }
 
     // ---- acquire / mode semantics tests ----

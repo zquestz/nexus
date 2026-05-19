@@ -226,7 +226,7 @@ where
         }
     };
     let target_path_for_lock = dest_candidate.join(&source_basename);
-    let source_lock_key = match lock_key(&source_candidate) {
+    let source_lock_key = match lock_key(&source_candidate).await {
         Ok(k) => k,
         Err(_) => {
             let response = ServerMessage::FileMoveResponse {
@@ -237,7 +237,7 @@ where
             return ctx.send_message(&response).await;
         }
     };
-    let target_lock_key = match lock_key(&target_path_for_lock) {
+    let target_lock_key = match lock_key(&target_path_for_lock).await {
         Ok(k) => k,
         Err(_) => {
             let response = ServerMessage::FileMoveResponse {

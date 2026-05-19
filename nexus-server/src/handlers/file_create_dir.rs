@@ -190,7 +190,10 @@ where
     // catches name=`.` (which `validate_dir_name` accepts but `resolve_new_path`
     // rejects). Post-lock `create_dir` still catches the create-between-here-
     // and-lock race.
-    if new_dir_candidate.exists() {
+    if tokio::fs::try_exists(&new_dir_candidate)
+        .await
+        .unwrap_or(false)
+    {
         let response = ServerMessage::FileCreateDirResponse {
             success: false,
             error: Some(err_dir_already_exists(ctx.locale)),
@@ -230,7 +233,7 @@ where
     //
     // Guards live only inside this block; all socket sends happen after it.
     let response = 'locked: {
-        let target_key = match lock_key(&new_dir_path) {
+        let target_key = match lock_key(&new_dir_path).await {
             Ok(k) => k,
             Err(_) => {
                 break 'locked ServerMessage::FileCreateDirResponse {

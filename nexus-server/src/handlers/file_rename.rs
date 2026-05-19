@@ -174,7 +174,7 @@ where
         }
     };
     let target_path_for_lock = candidate_parent.join(&new_name);
-    let source_lock_key = match lock_key(&candidate) {
+    let source_lock_key = match lock_key(&candidate).await {
         Ok(k) => k,
         Err(_) => {
             let response = ServerMessage::FileRenameResponse {
@@ -184,7 +184,7 @@ where
             return ctx.send_message(&response).await;
         }
     };
-    let target_lock_key = match lock_key(&target_path_for_lock) {
+    let target_lock_key = match lock_key(&target_path_for_lock).await {
         Ok(k) => k,
         Err(_) => {
             let response = ServerMessage::FileRenameResponse {
