@@ -8,9 +8,7 @@ use tracing::warn;
 use nexus_common::protocol::ServerMessage;
 
 use super::{HandlerContext, err_not_logged_in};
-use crate::constants::{
-    ERR_AT_LEAST_ONE_SESSION_EXISTS, HANDLER_USER_BACK, LOG_USER_BACK_NOT_LOGGED_IN,
-};
+use crate::constants::{HANDLER_USER_BACK, LOG_USER_BACK_NOT_LOGGED_IN};
 use crate::users::manager::UserManager;
 
 /// Handle UserBack command - clear away status for all sessions of this user
@@ -54,8 +52,13 @@ where
             .user_manager
             .get_sessions_by_username(&session.username)
             .await;
-        UserManager::build_aggregated_user_info(&all_sessions)
-            .expect(ERR_AT_LEAST_ONE_SESSION_EXISTS)
+        // All sessions for this user were removed between set_status and
+        // aggregation (e.g. concurrent disconnect). UserDisconnected will
+        // follow; skip the stale UserUpdated.
+        let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) else {
+            return Ok(());
+        };
+        user_info
     };
 
     let user_updated = ServerMessage::UserUpdated {

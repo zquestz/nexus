@@ -535,11 +535,6 @@ pub const ERR_IPV4_PREFIX_FROM_MAPPED: &str = "ipv6 prefix - 96 yields IPv4 pref
 /// session in the line above). Used by `users::manager::helpers`.
 pub const ERR_SESSIONS_NOT_EMPTY: &str = "sessions is not empty";
 
-/// Panic message: the user-status code paths require at least one
-/// active session for the target user. Used by handlers/user_away,
-/// user_back, user_status.
-pub const ERR_AT_LEAST_ONE_SESSION_EXISTS: &str = "at least one session exists";
-
 /// Panic message: handlers/user_info expected `target_sessions` to be
 /// non-empty — checked just upstream.
 pub const ERR_TARGET_SESSIONS_NON_EMPTY: &str = "target_sessions is non-empty";

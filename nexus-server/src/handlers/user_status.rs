@@ -12,9 +12,7 @@ use super::{
     HandlerContext, err_not_logged_in, err_status_contains_newlines, err_status_invalid_characters,
     err_status_too_long,
 };
-use crate::constants::{
-    ERR_AT_LEAST_ONE_SESSION_EXISTS, HANDLER_USER_STATUS, LOG_USER_STATUS_NOT_LOGGED_IN,
-};
+use crate::constants::{HANDLER_USER_STATUS, LOG_USER_STATUS_NOT_LOGGED_IN};
 use crate::users::manager::UserManager;
 
 /// Handle UserStatus command - set status message and clear away status
@@ -83,8 +81,13 @@ where
             .user_manager
             .get_sessions_by_username(&session.username)
             .await;
-        UserManager::build_aggregated_user_info(&all_sessions)
-            .expect(ERR_AT_LEAST_ONE_SESSION_EXISTS)
+        // All sessions for this user were removed between set_status and
+        // aggregation (e.g. concurrent disconnect). UserDisconnected will
+        // follow; skip the stale UserUpdated.
+        let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) else {
+            return Ok(());
+        };
+        user_info
     };
 
     let user_updated = ServerMessage::UserUpdated {
