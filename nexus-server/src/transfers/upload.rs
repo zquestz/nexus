@@ -530,7 +530,9 @@ where
     W: AsyncWriteExt + Unpin,
 {
     // Complete file already exists, no .part.
-    if target_path.exists() && !part_path.exists() {
+    if tokio::fs::try_exists(target_path).await.unwrap_or(false)
+        && !tokio::fs::try_exists(part_path).await.unwrap_or(false)
+    {
         let existing_metadata = tokio::fs::metadata(target_path).await.ok();
         let existing_len = existing_metadata.map(|m| m.len()).unwrap_or(0);
 
@@ -555,7 +557,7 @@ where
         return Ok((file_size, Some(hash), hasher, true));
     }
 
-    if part_path.exists() {
+    if tokio::fs::try_exists(part_path).await.unwrap_or(false) {
         let metadata = tokio::fs::metadata(part_path)
             .await
             .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
@@ -750,7 +752,7 @@ async fn finalize_part_file_if_exists(
     target_path: &Path,
     locale: &str,
 ) -> Result<(), TransferError> {
-    if part_path.exists() {
+    if tokio::fs::try_exists(part_path).await.unwrap_or(false) {
         tokio::fs::rename(part_path, target_path)
             .await
             .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;

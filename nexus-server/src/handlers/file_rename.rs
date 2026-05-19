@@ -272,7 +272,9 @@ where
         };
         let target_path = parent_dir.join(&new_name);
 
-        if target_path.exists() || target_path.symlink_metadata().is_ok() {
+        if tokio::fs::try_exists(&target_path).await.unwrap_or(false)
+            || tokio::fs::symlink_metadata(&target_path).await.is_ok()
+        {
             break 'locked ServerMessage::FileRenameResponse {
                 success: false,
                 error: Some(err_rename_target_exists(ctx.locale)),

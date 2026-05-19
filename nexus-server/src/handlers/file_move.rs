@@ -370,7 +370,9 @@ where
             };
         }
 
-        if target_path.exists() || target_path.symlink_metadata().is_ok() {
+        if tokio::fs::try_exists(&target_path).await.unwrap_or(false)
+            || tokio::fs::symlink_metadata(&target_path).await.is_ok()
+        {
             if !overwrite {
                 break 'locked ServerMessage::FileMoveResponse {
                     success: false,
