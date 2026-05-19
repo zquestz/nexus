@@ -9,7 +9,7 @@ use crate::constants::{HANDLER_VOICE_LEAVE, LOG_VOICE_LEAVE_NOT_LOGGED_IN};
 
 use nexus_common::protocol::ServerMessage;
 
-use super::{HandlerContext, err_authentication, err_not_logged_in, err_voice_not_joined};
+use super::{HandlerContext, err_not_logged_in, err_voice_not_joined};
 use crate::voice::send_voice_leave_notifications;
 
 /// Handle VoiceLeave command - leave current voice session
@@ -23,7 +23,6 @@ pub async fn handle_voice_leave<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_VOICE_LEAVE_NOT_LOGGED_IN);
         return ctx
@@ -39,7 +38,7 @@ where
         .is_none()
     {
         return ctx
-            .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_VOICE_LEAVE))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_VOICE_LEAVE))
             .await;
     }
 

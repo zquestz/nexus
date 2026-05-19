@@ -9,7 +9,7 @@ use crate::constants::*;
 
 use nexus_common::protocol::{ServerMessage, TrustInfo};
 
-use super::{HandlerContext, err_authentication, err_not_logged_in, err_permission_denied};
+use super::{HandlerContext, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
 
 /// Handle TrustList command
@@ -22,7 +22,6 @@ pub async fn handle_trust_list<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_TRUST_LIST_NOT_LOGGED_IN);
         return ctx
@@ -35,10 +34,7 @@ where
         Some(user) => user,
         None => {
             return ctx
-                .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
-                    Some(HANDLER_TRUST_LIST),
-                )
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_TRUST_LIST))
                 .await;
         }
     };

@@ -9,8 +9,8 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, TargetError};
 
 use super::{
-    HandlerContext, err_authentication, err_not_logged_in, err_permission_denied,
-    err_target_too_long, err_trust_not_found,
+    HandlerContext, err_not_logged_in, err_permission_denied, err_target_too_long,
+    err_trust_not_found,
 };
 use crate::constants::*;
 use crate::db::Permission;
@@ -30,7 +30,6 @@ pub async fn handle_trust_delete<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_TRUST_DELETE_NOT_LOGGED_IN);
         return ctx
@@ -44,7 +43,7 @@ where
         None => {
             return ctx
                 .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
+                    &err_not_logged_in(ctx.locale),
                     Some(HANDLER_TRUST_DELETE),
                 )
                 .await;

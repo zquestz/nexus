@@ -25,7 +25,6 @@ pub async fn handle_news_list<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_NEWS_LIST_NOT_LOGGED_IN);
         return ctx
@@ -67,9 +66,12 @@ where
         Ok(records) => records,
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_NEWS_LIST_DB_ERROR);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_NEWS_LIST))
-                .await;
+            let response = ServerMessage::NewsListResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                items: None,
+            };
+            return ctx.send_message(&response).await;
         }
     };
 

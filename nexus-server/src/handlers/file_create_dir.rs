@@ -9,8 +9,9 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, DirNameError, FilePathError};
 
 use super::{
-    HandlerContext, err_dir_already_exists, err_dir_create_failed, err_dir_name_empty,
-    err_dir_name_invalid, err_dir_name_too_long, err_file_not_directory, err_file_not_found,
+    HandlerContext, err_destination_busy, err_dir_already_exists, err_dir_create_failed,
+    err_dir_name_empty, err_dir_name_invalid, err_dir_name_too_long, err_file_area_not_accessible,
+    err_file_area_not_configured, err_file_not_directory, err_file_not_found,
     err_file_path_invalid, err_file_path_too_long, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
@@ -21,11 +22,10 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::files::path::PathError;
 use crate::files::{
-    allows_upload, build_and_validate_candidate_path, normalize_client_path, resolve_new_path,
-    resolve_path, resolve_user_area,
+    PathLockMode, allows_upload, build_and_validate_candidate_path, lock_key,
+    normalize_client_path, resolve_new_path, resolve_path, resolve_user_area,
 };
 
-/// Handle a file create directory request
 pub async fn handle_file_create_dir<W>(
     path: String,
     name: String,
@@ -36,7 +36,6 @@ pub async fn handle_file_create_dir<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_CREATE_DIR_NOT_LOGGED_IN);
         return ctx
@@ -47,7 +46,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -55,7 +53,7 @@ where
     {
         Some(u) => u,
         None => {
-            // Session not found - likely a race condition, not a security event
+            // Race, not a security event — don't log.
             let response = ServerMessage::FileCreateDirResponse {
                 success: false,
                 error: Some(err_not_logged_in(ctx.locale)),
@@ -65,18 +63,15 @@ where
         }
     };
 
-    // Check file root (cheap check, should always be set in production)
     let Some(file_root) = ctx.file_root else {
-        // File area not configured
         let response = ServerMessage::FileCreateDirResponse {
             success: false,
-            error: Some(err_file_not_found(ctx.locale)),
+            error: Some(err_file_area_not_configured(ctx.locale)),
             path: None,
         };
         return ctx.send_message(&response).await;
     };
 
-    // Check FileRoot permission if root browsing requested
     if root && !requesting_user.has_permission(Permission::FileRoot) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_CREATE_DIR_ROOT_DENIED);
         let response = ServerMessage::FileCreateDirResponse {
@@ -87,7 +82,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate parent path
     if let Err(e) = validators::validate_file_path(&path) {
         let error_msg = match e {
             FilePathError::TooLong => {
@@ -105,7 +99,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate directory name
     if let Err(e) = validators::validate_dir_name(&name) {
         let error_msg = match e {
             DirNameError::Empty => err_dir_name_empty(ctx.locale),
@@ -125,28 +118,31 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Resolve area root - either file root (if root browsing) or user's area
     let area_root_path = if root {
         file_root.to_path_buf()
     } else {
         resolve_user_area(file_root, &requesting_user.username)
     };
 
-    // Canonicalize area_root (it might not exist yet for new users)
     let area_root = match area_root_path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
-            // User's area doesn't exist
+            // Root mode: admin's file_root is broken. Non-root: the user's
+            // personal area dir doesn't exist yet, so the parent can't either.
+            let error_msg = if root {
+                err_file_area_not_accessible(ctx.locale)
+            } else {
+                err_file_not_found(ctx.locale)
+            };
             let response = ServerMessage::FileCreateDirResponse {
                 success: false,
-                error: Some(err_file_not_found(ctx.locale)),
+                error: Some(error_msg),
                 path: None,
             };
             return ctx.send_message(&response).await;
         }
     };
 
-    // Build and validate candidate path for the parent directory
     let parent_candidate = match build_and_validate_candidate_path(&area_root, &path) {
         Ok(p) => p,
         Err(_) => {
@@ -159,7 +155,6 @@ where
         }
     };
 
-    // Resolve the parent directory (must exist)
     let parent_resolved = match resolve_path(&area_root, &parent_candidate) {
         Ok(p) => p,
         Err(PathError::NotFound) => {
@@ -180,7 +175,6 @@ where
         }
     };
 
-    // Verify parent is a directory
     if !parent_resolved.is_dir() {
         let response = ServerMessage::FileCreateDirResponse {
             success: false,
@@ -190,10 +184,12 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Build the full path for the new directory
     let new_dir_candidate = parent_resolved.join(&name);
 
-    // Check if the new directory already exists
+    // Pre-resolve `exists()` check: fast path for the common case, and also
+    // catches name=`.` (which `validate_dir_name` accepts but `resolve_new_path`
+    // rejects). Post-lock `create_dir` still catches the create-between-here-
+    // and-lock race.
     if new_dir_candidate.exists() {
         let response = ServerMessage::FileCreateDirResponse {
             success: false,
@@ -203,7 +199,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check permission: either file_create_dir OR parent allows upload
+    // Either `file_create_dir` OR an upload-allowed parent (e.g. `[NEXUS-UL]`).
     let has_create_permission = requesting_user.has_permission(Permission::FileCreateDir);
     let parent_allows_upload = allows_upload(&area_root, &parent_resolved);
 
@@ -217,7 +213,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate the new path using resolve_new_path (ensures parent is valid)
     let new_dir_path = match resolve_new_path(&area_root, &new_dir_candidate) {
         Ok(p) => p,
         Err(_) => {
@@ -230,31 +225,67 @@ where
         }
     };
 
-    // Create the directory
-    if let Err(e) = std::fs::create_dir(&new_dir_path) {
-        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_CREATE_DIR_FAILED);
-        let response = ServerMessage::FileCreateDirResponse {
-            success: false,
-            error: Some(err_dir_create_failed(ctx.locale)),
-            path: None,
+    // Lock for serialization parity; `create_dir` is itself atomic-fails-
+    // if-exists. A `Fail`-mode lock on this path surfaces as `err_destination_busy`.
+    //
+    // Guards live only inside this block; all socket sends happen after it.
+    let response = 'locked: {
+        let target_key = match lock_key(&new_dir_path) {
+            Ok(k) => k,
+            Err(_) => {
+                break 'locked ServerMessage::FileCreateDirResponse {
+                    success: false,
+                    error: Some(err_file_path_invalid(ctx.locale)),
+                    path: None,
+                };
+            }
         };
-        return ctx.send_message(&response).await;
-    }
+        let _lock_guard = match ctx
+            .file_mutation_locks
+            .acquire(target_key, PathLockMode::Wait)
+            .await
+        {
+            Ok(g) => g,
+            Err(_) => {
+                // Destination path held by a `Fail`-mode lock.
+                break 'locked ServerMessage::FileCreateDirResponse {
+                    success: false,
+                    error: Some(err_destination_busy(ctx.locale)),
+                    path: None,
+                };
+            }
+        };
 
-    // Build the response path (relative to user's view)
-    let normalized_path = normalize_client_path(&path);
-    let response_path = if normalized_path.is_empty() {
-        name.clone()
-    } else {
-        format!("{}/{}", normalized_path, name)
-    };
+        if let Err(e) = std::fs::create_dir(&new_dir_path) {
+            // Race-tight: `create_dir` is atomic-fails-if-exists under the lock.
+            break 'locked if e.kind() == std::io::ErrorKind::AlreadyExists {
+                ServerMessage::FileCreateDirResponse {
+                    success: false,
+                    error: Some(err_dir_already_exists(ctx.locale)),
+                    path: None,
+                }
+            } else {
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_CREATE_DIR_FAILED);
+                ServerMessage::FileCreateDirResponse {
+                    success: false,
+                    error: Some(err_dir_create_failed(ctx.locale)),
+                    path: None,
+                }
+            };
+        }
 
-    debug!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %response_path, "{}", LOG_FILE_CREATE_DIR_SUCCESS);
-
-    let response = ServerMessage::FileCreateDirResponse {
-        success: true,
-        error: None,
-        path: Some(response_path),
+        let normalized_path = normalize_client_path(&path);
+        let response_path = if normalized_path.is_empty() {
+            name.clone()
+        } else {
+            format!("{}/{}", normalized_path, name)
+        };
+        debug!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %response_path, "{}", LOG_FILE_CREATE_DIR_SUCCESS);
+        ServerMessage::FileCreateDirResponse {
+            success: true,
+            error: None,
+            path: Some(response_path),
+        }
     };
     ctx.send_message(&response).await
 }
@@ -359,7 +390,6 @@ mod tests {
             _ => panic!("Expected FileCreateDirResponse"),
         }
 
-        // Verify directory was actually created
         assert!(
             file_area
                 .path()
@@ -410,7 +440,6 @@ mod tests {
             _ => panic!("Expected FileCreateDirResponse"),
         }
 
-        // Verify directory was actually created
         assert!(
             file_area
                 .path()
@@ -458,7 +487,6 @@ mod tests {
             _ => panic!("Expected FileCreateDirResponse"),
         }
 
-        // Verify directory was actually created
         assert!(file_area.path().join("shared/MyNewFolder").exists());
     }
 
@@ -467,7 +495,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create the directory first
         fs::create_dir(file_area.path().join("shared/ExistingFolder"))
             .expect("Failed to create dir");
 
@@ -742,7 +769,6 @@ mod tests {
             _ => panic!("Expected FileCreateDirResponse"),
         }
 
-        // Verify directory was actually created
         assert!(file_area.path().join("shared/日本語フォルダ").exists());
     }
 
@@ -751,7 +777,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create a subdirectory first
         fs::create_dir(file_area.path().join("shared/Subdir")).expect("Failed to create subdir");
 
         let session_id = login_user(
@@ -789,7 +814,6 @@ mod tests {
             _ => panic!("Expected FileCreateDirResponse"),
         }
 
-        // Verify directory was actually created
         assert!(file_area.path().join("shared/Subdir/NewFolder").exists());
     }
 
@@ -831,7 +855,6 @@ mod tests {
             _ => panic!("Expected FileCreateDirResponse"),
         }
 
-        // Verify directory was actually created
         assert!(file_area.path().join("shared/My New Folder").exists());
     }
 
@@ -914,7 +937,6 @@ mod tests {
             _ => panic!("Expected FileCreateDirResponse"),
         }
 
-        // Verify directory was created
         assert!(
             file_area
                 .path()
@@ -973,7 +995,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create a subdirectory first
         fs::create_dir(file_area.path().join("shared/Subdir")).expect("Failed to create subdir");
 
         let session_id = login_user(
@@ -1011,7 +1032,6 @@ mod tests {
             _ => panic!("Expected FileCreateDirResponse"),
         }
 
-        // Verify directory was actually created
         assert!(file_area.path().join("shared/Subdir/NewFolder").exists());
     }
 
@@ -1095,7 +1115,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create a subdirectory first
         fs::create_dir(file_area.path().join("shared/Subdir")).expect("Failed to create subdir");
 
         let session_id = login_user(
@@ -1137,7 +1156,6 @@ mod tests {
             _ => panic!("Expected FileCreateDirResponse"),
         }
 
-        // Verify directory was actually created
         assert!(file_area.path().join("shared/Subdir/NewFolder").exists());
     }
 }

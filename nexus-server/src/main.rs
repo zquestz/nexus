@@ -35,7 +35,7 @@ use channels::{Channel, ChannelManager};
 use connection::ConnectionParams;
 use connection_tracker::ConnectionTracker;
 use constants::*;
-use files::FileIndex;
+use files::{FileIndex, PathLockMap};
 use flood::FloodConfig;
 use ip_rule_cache::IpRuleCache;
 use nexus_common::address::normalize_socket_addr;
@@ -246,6 +246,9 @@ async fn main() {
     // Trigger initial index build in background
     file_index.trigger_reindex();
 
+    // Shared between BBS handlers and transfer-port upload finalization.
+    let file_mutation_locks = Arc::new(PathLockMap::new());
+
     // Create transfer registry for tracking active transfers (enables ban disconnection)
     let transfer_registry = Arc::new(TransferRegistry::new());
 
@@ -416,6 +419,7 @@ async fn main() {
                             connection_tracker: connection_tracker.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
                             file_index: file_index.clone(),
+                            file_mutation_locks: file_mutation_locks.clone(),
                             channel_manager: channel_manager.clone(),
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: voice_registry.clone(),
@@ -496,6 +500,7 @@ async fn main() {
                             db: database.clone(),
                             file_root: Some(file_root),
                             file_index: file_index.clone(),
+                            file_mutation_locks: file_mutation_locks.clone(),
                             transfer_registry: transfer_registry.clone(),
                             fingerprint,
                         };
@@ -579,6 +584,7 @@ async fn main() {
                             connection_tracker: connection_tracker.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
                             file_index: file_index.clone(),
+                            file_mutation_locks: file_mutation_locks.clone(),
                             channel_manager: channel_manager.clone(),
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: voice_registry.clone(),
@@ -653,6 +659,7 @@ async fn main() {
                             db: database.clone(),
                             file_root: Some(file_root),
                             file_index: file_index.clone(),
+                            file_mutation_locks: file_mutation_locks.clone(),
                             transfer_registry: transfer_registry.clone(),
                             fingerprint,
                         };

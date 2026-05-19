@@ -62,6 +62,7 @@ err-channel-list-invalid = 无效频道 '{ $channel }': { $reason }
 
 # 数据库错误
 err-database = 数据库错误
+err-internal-error = 发生内部错误。请稍后再试。
 err-login-permissions-failed = 无法加载账户权限
 err-login-group-failed = 无法加载账户分组
 err-login-bandwidth-failed = 无法加载账户带宽设置
@@ -213,6 +214,8 @@ err-destination-exists = 目标位置已存在同名文件或目录
 err-cannot-move-into-itself = 无法将目录移动到其自身内部
 err-cannot-copy-into-itself = 无法将目录复制到其自身内部
 err-destination-not-directory = 目标路径不是目录
+err-source-busy = 文件正在使用中。请稍后再试。
+err-destination-busy = 目标位置正在使用中。请稍后再试。
 
 # Transfer Errors
 err-file-area-not-configured = 文件区域未配置

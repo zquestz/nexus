@@ -51,6 +51,7 @@ err-chat-feature-not-enabled = Chat feature not enabled
 
 # Database Errors
 err-database = Database error
+err-internal-error = An internal error occurred. Please try again later.
 err-login-permissions-failed = Failed to load account permissions
 err-login-group-failed = Failed to load account group
 err-login-bandwidth-failed = Failed to load account bandwidth settings
@@ -211,6 +212,8 @@ err-destination-exists = A file or directory with that name already exists at th
 err-cannot-move-into-itself = Cannot move a directory into itself
 err-cannot-copy-into-itself = Cannot copy a directory into itself
 err-destination-not-directory = Destination path is not a directory
+err-source-busy = The file is currently in use. Please try again.
+err-destination-busy = The destination is currently in use. Please try again.
 
 # Transfer Errors
 err-file-area-not-configured = File area not configured

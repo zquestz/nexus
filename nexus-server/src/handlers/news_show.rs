@@ -28,7 +28,6 @@ pub async fn handle_news_show<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_NEWS_SHOW_NOT_LOGGED_IN);
         return ctx
@@ -78,9 +77,12 @@ where
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_NEWS_SHOW_DB_ERROR);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_NEWS_SHOW))
-                .await;
+            let response = ServerMessage::NewsShowResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                news: None,
+            };
+            return ctx.send_message(&response).await;
         }
     };
 

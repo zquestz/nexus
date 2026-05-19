@@ -10,10 +10,10 @@ use nexus_common::validators::{self, BanReasonError, DurationError, TargetError}
 
 use super::duration::{format_duration_remaining, parse_duration};
 use super::{
-    HandlerContext, cleanup_voice_for_ip, cleanup_voice_for_range, err_authentication,
-    err_ban_admin_by_ip, err_ban_admin_by_nickname, err_ban_invalid_duration,
-    err_ban_invalid_target, err_ban_self, err_database, err_not_logged_in, err_permission_denied,
-    err_reason_invalid, err_reason_too_long, err_target_too_long,
+    HandlerContext, cleanup_voice_for_ip, cleanup_voice_for_range, err_ban_admin_by_ip,
+    err_ban_admin_by_nickname, err_ban_invalid_duration, err_ban_invalid_target, err_ban_self,
+    err_database, err_not_logged_in, err_permission_denied, err_reason_invalid,
+    err_reason_too_long, err_target_too_long,
 };
 use crate::constants::*;
 use crate::db::Permission;
@@ -37,7 +37,6 @@ pub async fn handle_ban_create<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_BAN_CREATE_NOT_LOGGED_IN);
         return ctx
@@ -50,10 +49,7 @@ where
         Some(user) => user,
         None => {
             return ctx
-                .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
-                    Some(HANDLER_BAN_CREATE),
-                )
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_BAN_CREATE))
                 .await;
         }
     };

@@ -62,6 +62,7 @@ err-channel-list-invalid = Недопустимый канал '{ $channel }': {
 
 # Ошибки базы данных
 err-database = Ошибка базы данных
+err-internal-error = Произошла внутренняя ошибка. Пожалуйста, попробуйте позже.
 err-login-permissions-failed = Не удалось загрузить разрешения учётной записи
 err-login-group-failed = Не удалось загрузить группу учётной записи
 err-login-bandwidth-failed = Не удалось загрузить настройки пропускной способности
@@ -213,6 +214,8 @@ err-destination-exists = Файл или каталог с таким имене
 err-cannot-move-into-itself = Невозможно переместить каталог внутрь самого себя
 err-cannot-copy-into-itself = Невозможно скопировать каталог внутрь самого себя
 err-destination-not-directory = Путь назначения не является каталогом
+err-source-busy = Файл в данный момент используется. Пожалуйста, попробуйте позже.
+err-destination-busy = Путь назначения в данный момент используется. Пожалуйста, попробуйте позже.
 
 # Transfer Errors
 err-file-area-not-configured = Файловая область не настроена

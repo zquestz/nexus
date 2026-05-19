@@ -7,7 +7,7 @@ use tracing::warn;
 
 use nexus_common::protocol::ServerMessage;
 
-use super::{HandlerContext, err_authentication, err_not_logged_in};
+use super::{HandlerContext, err_not_logged_in};
 use crate::constants::{
     ERR_AT_LEAST_ONE_SESSION_EXISTS, HANDLER_USER_BACK, LOG_USER_BACK_NOT_LOGGED_IN,
 };
@@ -21,7 +21,6 @@ pub async fn handle_user_back<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_BACK_NOT_LOGGED_IN);
         return ctx
@@ -32,7 +31,7 @@ where
     // Update away status for this session
     let Some(session) = ctx.user_manager.set_status(session_id, false, None).await else {
         return ctx
-            .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_USER_BACK))
+            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_BACK))
             .await;
     };
 

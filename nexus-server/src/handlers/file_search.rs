@@ -32,7 +32,6 @@ pub async fn handle_file_search<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_SEARCH_NOT_LOGGED_IN);
         return ctx

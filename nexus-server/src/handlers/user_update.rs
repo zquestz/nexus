@@ -15,8 +15,9 @@ use nexus_common::validators::{
 
 use crate::constants::{
     DEFAULT_LOCALE, HANDLER_USER_UPDATE, LOG_USER_UPDATE_ADMIN, LOG_USER_UPDATE_DB_ERROR,
-    LOG_USER_UPDATE_DB_ERROR_GROUP, LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS,
-    LOG_USER_UPDATE_DB_ERROR_LOOKUP, LOG_USER_UPDATE_DB_ERROR_TARGET,
+    LOG_USER_UPDATE_DB_ERROR_DUPLICATE_CHECK, LOG_USER_UPDATE_DB_ERROR_GROUP,
+    LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS, LOG_USER_UPDATE_DB_ERROR_LOOKUP,
+    LOG_USER_UPDATE_DB_ERROR_PERMISSIONS, LOG_USER_UPDATE_DB_ERROR_TARGET,
     LOG_USER_UPDATE_DB_ERROR_USER, LOG_USER_UPDATE_HASH_ERROR, LOG_USER_UPDATE_NOT_LOGGED_IN,
     LOG_USER_UPDATE_PASSWORD_VERIFY, LOG_USER_UPDATE_PERMISSION_DENIED, LOG_USER_UPDATE_SUCCESS,
     LOG_USER_UPDATE_UNOWNED_PERMISSION, LOG_USER_UPDATE_UNOWNED_REVOKE,
@@ -25,12 +26,13 @@ use crate::constants::{
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_account_disabled_by_admin, err_admin_cannot_have_group, err_authentication,
-    err_bandwidth_weight_delegation, err_bandwidth_weight_inherit_would_elevate,
-    err_bandwidth_weight_zero, err_cannot_change_guest_password, err_cannot_demote_last_admin,
-    err_cannot_disable_last_admin, err_cannot_edit_admin, err_cannot_edit_self,
-    err_cannot_rename_guest, err_current_password_incorrect, err_current_password_required,
-    err_database, err_group_not_found, err_group_shared_mismatch, err_not_logged_in,
+    HandlerContext, Outcome, dispatch_outcome, err_account_disabled_by_admin,
+    err_admin_cannot_have_group, err_bandwidth_weight_delegation,
+    err_bandwidth_weight_inherit_would_elevate, err_bandwidth_weight_zero,
+    err_cannot_change_guest_password, err_cannot_demote_last_admin, err_cannot_disable_last_admin,
+    err_cannot_edit_admin, err_cannot_edit_self, err_cannot_rename_guest,
+    err_current_password_incorrect, err_current_password_required, err_database,
+    err_group_not_found, err_group_shared_mismatch, err_internal_error, err_not_logged_in,
     err_password_empty, err_password_too_long, err_password_too_weak, err_permission_denied,
     err_permission_grant_revoke_conflict, err_permissions_contains_newlines,
     err_permissions_empty_permission, err_permissions_invalid_characters,
@@ -73,7 +75,6 @@ pub async fn handle_user_update<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = request.session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_NOT_LOGGED_IN);
         return ctx
@@ -81,1392 +82,1373 @@ where
             .await;
     };
 
-    // Acquire the state lock before fetching the requester so all
-    // requester-dependent authorization + cache reconciliation runs
-    // against a snapshot that can't drift mid-handler. Dropped at
-    // every early-reject path before any socket I/O, and at the end
-    // of the success arm before the final broadcast.
-    let _state_guard = ctx.user_manager.lock_user_state().await;
-    let requesting_user = match ctx
-        .user_manager
-        .get_user_by_session_id(requesting_session_id)
-        .await
-    {
-        Some(u) => u,
-        None => {
-            drop(_state_guard);
-            return ctx
-                .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
-                    Some(HANDLER_USER_UPDATE),
-                )
-                .await;
-        }
-    };
-
-    // Look up target user by ID
-    let target_account = match ctx.db.users.get_user_by_id(request.id).await {
-        Ok(Some(account)) => account,
-        Ok(None) => {
-            let response = ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(err_user_not_found(ctx.locale, &request.id.to_string())),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-        Err(e) => {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %request.id, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_LOOKUP);
-            drop(_state_guard);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
-                .await;
-        }
-    };
-    let target_username = target_account.username.clone();
-
-    // Validate target username format
-    if let Err(e) = validators::validate_username(&target_username) {
-        let error_msg = match e {
-            UsernameError::Empty => err_username_empty(ctx.locale),
-            UsernameError::TooLong => {
-                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+    // Guard lives only inside this block; all socket sends happen after it.
+    let outcome = 'locked: {
+        let _state_guard = ctx.user_manager.lock_user_state().await;
+        let requesting_user = match ctx
+            .user_manager
+            .get_user_by_session_id(requesting_session_id)
+            .await
+        {
+            Some(u) => u,
+            None => {
+                break 'locked Outcome::Disconnect;
             }
-            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
         };
-        let response = ServerMessage::UserUpdateResponse {
-            success: false,
-            error: Some(error_msg),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
 
-    // Self-edit gate: a non-admin can edit only their own account, and the
-    // set of fields they may change is more restrictive than for an admin
-    // editing someone else. Drives the password / shared-account / forbidden-
-    // field branches below.
-    let is_self_edit = target_username.to_lowercase() == requesting_user.username.to_lowercase();
-
-    if is_self_edit {
-        // Shared accounts cannot self-edit (no password to change, no other
-        // fields admissible).
-        if requesting_user.is_shared {
-            let response = ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(err_shared_cannot_self_edit(ctx.locale)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-
-        // Defense in depth: these fields are never accepted on self-edit,
-        // even from an admin. Client UI hard-disables them on self-rows.
-        if request.is_admin.is_some()
-            || request.enabled.is_some()
-            || request.permissions.is_some()
-            || request.revokes.is_some()
-            || request.remove_group == Some(true)
-        {
-            let response = ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(err_cannot_edit_self(ctx.locale)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-
-        // Admin self-edit: group_id is rejected by the admin XOR group
-        // invariant (admins cannot be members of a group). Non-admin self
-        // edits also can't set group_id, but that's caught by the
-        // non-admin-restriction block below with a different error.
-        if requesting_user.is_admin && request.group_id.is_some() {
-            let response = ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(err_admin_cannot_have_group(ctx.locale)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-
-        // Non-admin self-edits are restricted to password change. Admin
-        // self-edits additionally permit username and the bandwidth-weight
-        // fields. (group_id rejected above for admins; admins can't have
-        // groups.)
-        if !requesting_user.is_admin
-            && (request.username.is_some()
-                || request.group_id.is_some()
-                || request.bandwidth_weight.is_some()
-                || request.inherit_bandwidth_weight.is_some())
-        {
-            let response = ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(err_cannot_edit_self(ctx.locale)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-
-        // Password change (admin or non-admin) requires current_password
-        // verification. Skipped entirely when no password change requested.
-        if let Some(ref new_password) = request.password
-            && !new_password.trim().is_empty()
-        {
-            let Some(ref current_password) = request.current_password else {
-                let response = ServerMessage::UserUpdateResponse {
+        // Look up target user by ID
+        let target_account = match ctx.db.users.get_user_by_id(request.id).await {
+            Ok(Some(account)) => account,
+            Ok(None) => {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                     success: false,
-                    error: Some(err_current_password_required(ctx.locale)),
+                    error: Some(err_user_not_found(ctx.locale, &request.id.to_string())),
                     id: None,
                     username: None,
-                };
-                drop(_state_guard);
-                return ctx.send_message(&response).await;
-            };
-
-            let password_hash = match ctx.db.users.get_user_by_username(&target_username).await {
-                Ok(Some(user)) => user.hashed_password,
-                Ok(None) => {
-                    let response = ServerMessage::UserUpdateResponse {
-                        success: false,
-                        error: Some(err_user_not_found(ctx.locale, &target_username)),
-                        id: None,
-                        username: None,
-                    };
-                    drop(_state_guard);
-                    return ctx.send_message(&response).await;
-                }
-                Err(e) => {
-                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_USER);
-                    drop(_state_guard);
-                    return ctx
-                        .send_error_and_disconnect(
-                            &err_database(ctx.locale),
-                            Some(HANDLER_USER_UPDATE),
-                        )
-                        .await;
-                }
-            };
-
-            match verify_password_async(current_password.to_string(), password_hash.clone()).await {
-                Ok(true) => {}
-                Ok(false) => {
-                    let response = ServerMessage::UserUpdateResponse {
-                        success: false,
-                        error: Some(err_current_password_incorrect(ctx.locale)),
-                        id: None,
-                        username: None,
-                    };
-                    drop(_state_guard);
-                    return ctx.send_message(&response).await;
-                }
-                Err(e) => {
-                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_PASSWORD_VERIFY);
-                    drop(_state_guard);
-                    return ctx
-                        .send_error_and_disconnect(
-                            &err_database(ctx.locale),
-                            Some(HANDLER_USER_UPDATE),
-                        )
-                        .await;
-                }
+                }));
             }
-        }
-    } else {
-        // Editing another user: check UserEdit permission
-        if !requesting_user.has_permission(Permission::UserEdit) {
-            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
-            let response = ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(err_permission_denied(ctx.locale)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-
-        // Prevent non-admins from editing admin users
-        // Look up target user to check their admin status
-        if !requesting_user.is_admin {
-            match ctx.db.users.get_user_by_username(&target_username).await {
-                Ok(Some(target_user)) if target_user.is_admin => {
-                    warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_ADMIN);
-                    let response = ServerMessage::UserUpdateResponse {
-                        success: false,
-                        error: Some(err_cannot_edit_admin(ctx.locale)),
-                        id: None,
-                        username: None,
-                    };
-                    drop(_state_guard);
-                    return ctx.send_message(&response).await;
-                }
-                Ok(Some(_)) => {} // Target is not admin, proceed
-                Ok(None) => {
-                    let response = ServerMessage::UserUpdateResponse {
-                        success: false,
-                        error: Some(err_user_not_found(ctx.locale, &target_username)),
-                        id: None,
-                        username: None,
-                    };
-                    drop(_state_guard);
-                    return ctx.send_message(&response).await;
-                }
-                Err(e) => {
-                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
-                    drop(_state_guard);
-                    return ctx
-                        .send_error_and_disconnect(
-                            &err_database(ctx.locale),
-                            Some(HANDLER_USER_UPDATE),
-                        )
-                        .await;
-                }
-            }
-        }
-    }
-
-    // Validate new username format if it's being changed
-    if let Some(ref new_username) = request.username
-        && let Err(e) = validators::validate_username(new_username)
-    {
-        let error_msg = match e {
-            UsernameError::Empty => err_username_empty(ctx.locale),
-            UsernameError::TooLong => {
-                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
-            }
-            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
-        };
-        let response = ServerMessage::UserUpdateResponse {
-            success: false,
-            error: Some(error_msg),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Prevent renaming the guest account
-    if let Some(ref new_username) = request.username
-        && target_username.to_lowercase() == GUEST_USERNAME
-        && new_username.to_lowercase() != GUEST_USERNAME
-    {
-        let response = ServerMessage::UserUpdateResponse {
-            success: false,
-            error: Some(err_cannot_rename_guest(ctx.locale)),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Prevent changing the guest account password
-    if let Some(ref new_password) = request.password
-        && !new_password.trim().is_empty()
-        && target_username.to_lowercase() == GUEST_USERNAME
-    {
-        let response = ServerMessage::UserUpdateResponse {
-            success: false,
-            error: Some(err_cannot_change_guest_password(ctx.locale)),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Note: Last admin protection is now handled atomically at the database level
-    // in update_user() SQL query to prevent race conditions
-
-    // Verify admin flag modification privilege (use is_admin from UserManager)
-    // Skip for self-edit since we already rejected admin changes above
-    if !is_self_edit && request.is_admin.is_some() && !requesting_user.is_admin {
-        let response = ServerMessage::UserUpdateResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Fetch target user to check if they're a shared account (needed for permission validation)
-    let target_user_account = match ctx.db.users.get_user_by_username(&target_username).await {
-        Ok(Some(account)) => Some(account),
-        Ok(None) => {
-            let response = ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(err_user_not_found(ctx.locale, &target_username)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-        Err(e) => {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
-            drop(_state_guard);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
-                .await;
-        }
-    };
-
-    // Admin XOR group invariant. Reject requests that would leave the target
-    // as admin AND set a group_id. Promotion from non-admin to admin is fine
-    // (DB layer auto-clears group_id); the rejection only fires when
-    // group_id assignment coincides with the target ending up admin.
-    let target_final_is_admin = request
-        .is_admin
-        .unwrap_or_else(|| target_user_account.as_ref().is_some_and(|a| a.is_admin));
-    if target_final_is_admin && request.group_id.is_some() {
-        let response = ServerMessage::UserUpdateResponse {
-            success: false,
-            error: Some(err_admin_cannot_have_group(ctx.locale)),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Admin XOR shared invariant. `is_shared` is set at create-time and
-    // never modified by UserUpdate, so the only path into the bad
-    // combination is promoting an existing shared account to admin.
-    //
-    // Note the asymmetry with admin XOR group: that invariant auto-cleans
-    // in `db/users.rs::update_user` (nulls group_id + wipes permission
-    // rows on promotion) because clearing a group is benign — admins
-    // resolve to all permissions regardless. Admin XOR shared instead
-    // rejects here because demoting `is_shared` orphans the per-session
-    // nicknames a shared account carries; we make the admin explicitly
-    // delete and recreate rather than silently destroy that identity.
-    if request.is_admin == Some(true) && target_user_account.as_ref().is_some_and(|a| a.is_shared) {
-        let response = ServerMessage::UserUpdateResponse {
-            success: false,
-            error: Some(err_shared_cannot_be_admin(ctx.locale)),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Bandwidth weight delegation: non-admins can change a user's effective
-    // bandwidth only to a value at or below their own resolved weight.
-    // - `bandwidth_weight: Some(N)` → reject when `N > requester`.
-    // - `inherit_bandwidth_weight: Some(true)` → reject when the target's
-    //   inherited weight (admin-default → group → 1) > requester. Clearing
-    //   the override would let the user fall back to a higher tier.
-    // Admins bypass both checks.
-    //
-    // When `inherit_bandwidth_weight: Some(true)`, the `bandwidth_weight`
-    // value is discarded by the DB layer (inherit wins). Skip the value
-    // check in that case so a defensive client sending both fields isn't
-    // rejected on a moot value.
-    if !requesting_user.is_admin {
-        let requester_weight = requesting_user.bandwidth_weight.load(Ordering::Relaxed);
-        // Track the rejection reason as an already-translated error string —
-        // the two paths use distinct i18n keys (see `errors.rs` for the
-        // contract). The set path fires on `bandwidth_weight: Some(w > req)`;
-        // the inherit path fires when clearing the override would land the
-        // target on an inherited tier above the requester.
-        let mut delegation_error: Option<String> = None;
-        if request.inherit_bandwidth_weight != Some(true)
-            && let Some(w) = request.bandwidth_weight
-            && w > requester_weight
-        {
-            delegation_error = Some(err_bandwidth_weight_delegation(ctx.locale));
-        }
-        if delegation_error.is_none() && request.inherit_bandwidth_weight == Some(true) {
-            // The inherited weight to compare against must reflect the
-            // POST-update group: if the same request also changes group_id
-            // or sets remove_group, the OLD group's weight is irrelevant.
-            // Otherwise (group unchanged), pass the target's current
-            // group_id so the resolver joins on the same row it would
-            // post-update.
-            let proposed_group_id: Option<i64> = if request.remove_group == Some(true) {
-                None
-            } else if let Some(new_gid) = request.group_id {
-                Some(new_gid)
-            } else {
-                target_user_account.as_ref().and_then(|a| a.group_id)
-            };
-            let inherited = match ctx
-                .db
-                .users
-                .get_inherited_bandwidth_weight(request.id, proposed_group_id)
-                .await
-            {
-                Ok(w) => w,
-                Err(e) => {
-                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
-                    drop(_state_guard);
-                    return ctx
-                        .send_error_and_disconnect(
-                            &err_database(ctx.locale),
-                            Some(HANDLER_USER_UPDATE),
-                        )
-                        .await;
-                }
-            };
-            if inherited > requester_weight {
-                delegation_error = Some(err_bandwidth_weight_inherit_would_elevate(ctx.locale));
-            }
-        }
-        if let Some(error) = delegation_error {
-            let response = ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(error),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-    }
-    // Skip zero-validation too when inherit takes precedence (value discarded).
-    if request.inherit_bandwidth_weight != Some(true)
-        && let Some(w) = request.bandwidth_weight
-        && let Err(BandwidthWeightError::Zero) = validate_bandwidth_weight(w)
-    {
-        let response = ServerMessage::UserUpdateResponse {
-            success: false,
-            error: Some(err_bandwidth_weight_zero(ctx.locale, MIN_BANDWIDTH_WEIGHT)),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Validate and parse requested permissions
-    let parsed_permissions = if let Some(ref perm_strings) = request.permissions {
-        // For shared accounts, validate that only allowed permissions are requested
-        if let Some(ref account) = target_user_account
-            && account.is_shared
-        {
-            let forbidden: Vec<&str> = perm_strings
-                .iter()
-                .map(|s| s.as_str())
-                .filter(|p| !is_shared_account_permission(p))
-                .collect();
-
-            if !forbidden.is_empty() {
-                let response = ServerMessage::UserUpdateResponse {
+            Err(e) => {
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %request.id, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_LOOKUP);
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                     success: false,
-                    error: Some(err_shared_invalid_permissions(
-                        ctx.locale,
-                        &forbidden.join(", "),
-                    )),
+                    error: Some(err_database(ctx.locale)),
                     id: None,
                     username: None,
-                };
-                drop(_state_guard);
-                return ctx.send_message(&response).await;
+                }));
             }
-        }
+        };
+        let target_username = target_account.username.clone();
 
-        // Validate permissions format first
-        if let Err(e) = validators::validate_permissions(perm_strings) {
+        // Validate target username format
+        if let Err(e) = validators::validate_username(&target_username) {
             let error_msg = match e {
-                PermissionsError::TooMany => {
-                    err_permissions_too_many(ctx.locale, nexus_common::PERMISSIONS_COUNT)
+                UsernameError::Empty => err_username_empty(ctx.locale),
+                UsernameError::TooLong => {
+                    err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
                 }
-                PermissionsError::EmptyPermission => err_permissions_empty_permission(ctx.locale),
-                PermissionsError::PermissionTooLong => err_permissions_permission_too_long(
-                    ctx.locale,
-                    validators::MAX_PERMISSION_LENGTH,
-                ),
-                PermissionsError::ContainsNewlines => err_permissions_contains_newlines(ctx.locale),
-                PermissionsError::InvalidCharacters => {
-                    err_permissions_invalid_characters(ctx.locale)
-                }
+                UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
             };
-            let response = ServerMessage::UserUpdateResponse {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(error_msg),
                 id: None,
                 username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
+            }));
         }
 
-        let mut perms = Permissions::new();
-        for perm_str in perm_strings {
-            let perm = match Permission::parse(perm_str) {
-                Some(p) => p,
-                None => {
-                    let response = ServerMessage::UserUpdateResponse {
+        // Self-edit gate: a non-admin can edit only their own account, and the
+        // set of fields they may change is more restrictive than for an admin
+        // editing someone else. Drives the password / shared-account / forbidden-
+        // field branches below.
+        let is_self_edit =
+            target_username.to_lowercase() == requesting_user.username.to_lowercase();
+
+        if is_self_edit {
+            // Shared accounts cannot self-edit (no password to change, no other
+            // fields admissible).
+            if requesting_user.is_shared {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_shared_cannot_self_edit(ctx.locale)),
+                    id: None,
+                    username: None,
+                }));
+            }
+
+            // Defense in depth: these fields are never accepted on self-edit,
+            // even from an admin. Client UI hard-disables them on self-rows.
+            if request.is_admin.is_some()
+                || request.enabled.is_some()
+                || request.permissions.is_some()
+                || request.revokes.is_some()
+                || request.remove_group == Some(true)
+            {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_cannot_edit_self(ctx.locale)),
+                    id: None,
+                    username: None,
+                }));
+            }
+
+            // Admin self-edit: group_id is rejected by the admin XOR group
+            // invariant (admins cannot be members of a group). Non-admin self
+            // edits also can't set group_id, but that's caught by the
+            // non-admin-restriction block below with a different error.
+            if requesting_user.is_admin && request.group_id.is_some() {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_admin_cannot_have_group(ctx.locale)),
+                    id: None,
+                    username: None,
+                }));
+            }
+
+            // Non-admin self-edits are restricted to password change. Admin
+            // self-edits additionally permit username and the bandwidth-weight
+            // fields. (group_id rejected above for admins; admins can't have
+            // groups.)
+            if !requesting_user.is_admin
+                && (request.username.is_some()
+                    || request.group_id.is_some()
+                    || request.bandwidth_weight.is_some()
+                    || request.inherit_bandwidth_weight.is_some())
+            {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_cannot_edit_self(ctx.locale)),
+                    id: None,
+                    username: None,
+                }));
+            }
+
+            // Password change (admin or non-admin) requires current_password
+            // verification. Skipped entirely when no password change requested.
+            if let Some(ref new_password) = request.password
+                && !new_password.trim().is_empty()
+            {
+                let Some(ref current_password) = request.current_password else {
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                         success: false,
-                        error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                        error: Some(err_current_password_required(ctx.locale)),
                         id: None,
                         username: None,
-                    };
-                    drop(_state_guard);
-                    return ctx.send_message(&response).await;
-                }
-            };
+                    }));
+                };
 
-            // Check permission delegation authority (uses cached permissions, admin bypass built-in)
-            if !requesting_user.has_permission(perm) {
-                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_UPDATE_UNOWNED_PERMISSION);
-                let response = ServerMessage::UserUpdateResponse {
+                let password_hash = match ctx.db.users.get_user_by_username(&target_username).await
+                {
+                    Ok(Some(user)) => user.hashed_password,
+                    Ok(None) => {
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_user_not_found(ctx.locale, &target_username)),
+                            id: None,
+                            username: None,
+                        }));
+                    }
+                    Err(e) => {
+                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_USER);
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_database(ctx.locale)),
+                            id: None,
+                            username: None,
+                        }));
+                    }
+                };
+
+                match verify_password_async(current_password.to_string(), password_hash.clone())
+                    .await
+                {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_current_password_incorrect(ctx.locale)),
+                            id: None,
+                            username: None,
+                        }));
+                    }
+                    Err(e) => {
+                        // Argon2id failure isn't a protocol violation.
+                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_PASSWORD_VERIFY);
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_internal_error(ctx.locale)),
+                            id: None,
+                            username: None,
+                        }));
+                    }
+                }
+            }
+        } else {
+            // Editing another user: check UserEdit permission
+            if !requesting_user.has_permission(Permission::UserEdit) {
+                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                     success: false,
                     error: Some(err_permission_denied(ctx.locale)),
                     id: None,
                     username: None,
-                };
-                drop(_state_guard);
-                return ctx.send_message(&response).await;
+                }));
             }
 
-            perms.permissions.insert(perm);
+            // Prevent non-admins from editing admin users
+            // Look up target user to check their admin status
+            if !requesting_user.is_admin {
+                match ctx.db.users.get_user_by_username(&target_username).await {
+                    Ok(Some(target_user)) if target_user.is_admin => {
+                        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_ADMIN);
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_cannot_edit_admin(ctx.locale)),
+                            id: None,
+                            username: None,
+                        }));
+                    }
+                    Ok(Some(_)) => {} // Target is not admin, proceed
+                    Ok(None) => {
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_user_not_found(ctx.locale, &target_username)),
+                            id: None,
+                            username: None,
+                        }));
+                    }
+                    Err(e) => {
+                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_database(ctx.locale)),
+                            id: None,
+                            username: None,
+                        }));
+                    }
+                }
+            }
         }
 
-        // No pre-tx merge for non-admins: the surgical
-        // `OwnedSubset` write path inside `update_user` only touches
-        // rows for permissions in the requester's owned set, so
-        // unowned rows (including any an admin just granted) are
-        // preserved automatically. The old snapshot-merge-then-replace
-        // approach raced against concurrent admin writes; this passes
-        // the requester's literal request straight through.
-
-        Some(perms)
-    } else {
-        None
-    };
-
-    // Validate group assignment/removal. DB writes happen atomically inside
-    // update_user's transaction via remove_group + group_id.
-    let (validated_remove_group, validated_group_id): (bool, Option<i64>) = if !is_self_edit {
-        if request.remove_group == Some(true) {
-            // Remove from group — takes precedence over group_id
-            if let Some(ref account) = target_user_account {
-                if let Some(current_group_id) = account.group_id {
-                    // Non-admin delegation: requester must have all current group
-                    // permissions (removal changes effective perms the editor can't grant back)
-                    if !requesting_user.is_admin {
-                        let group_perms = match ctx
-                            .db
-                            .groups
-                            .get_group_permissions(current_group_id)
-                            .await
-                        {
-                            Ok(p) => p,
-                            Err(e) => {
-                                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS);
-                                let response = ServerMessage::UserUpdateResponse {
-                                    success: false,
-                                    error: Some(err_database(ctx.locale)),
-                                    id: None,
-                                    username: None,
-                                };
-                                drop(_state_guard);
-                                return ctx.send_message(&response).await;
-                            }
-                        };
-                        for perm in &group_perms {
-                            if !requesting_user.has_permission(*perm) {
-                                let response = ServerMessage::UserUpdateResponse {
-                                    success: false,
-                                    error: Some(err_permission_denied(ctx.locale)),
-                                    id: None,
-                                    username: None,
-                                };
-                                drop(_state_guard);
-                                return ctx.send_message(&response).await;
-                            }
-                        }
-                    }
-                    (true, None)
-                } else {
-                    (false, None) // Already no group
+        // Validate new username format if it's being changed
+        if let Some(ref new_username) = request.username
+            && let Err(e) = validators::validate_username(new_username)
+        {
+            let error_msg = match e {
+                UsernameError::Empty => err_username_empty(ctx.locale),
+                UsernameError::TooLong => {
+                    err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
                 }
-            } else {
-                (false, None)
+                UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+            };
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(error_msg),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // Prevent renaming the guest account
+        if let Some(ref new_username) = request.username
+            && target_username.to_lowercase() == GUEST_USERNAME
+            && new_username.to_lowercase() != GUEST_USERNAME
+        {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_cannot_rename_guest(ctx.locale)),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // Prevent changing the guest account password
+        if let Some(ref new_password) = request.password
+            && !new_password.trim().is_empty()
+            && target_username.to_lowercase() == GUEST_USERNAME
+        {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_cannot_change_guest_password(ctx.locale)),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // Note: Last admin protection is now handled atomically at the database level
+        // in update_user() SQL query to prevent race conditions
+
+        // Verify admin flag modification privilege (use is_admin from UserManager)
+        // Skip for self-edit since we already rejected admin changes above
+        if !is_self_edit && request.is_admin.is_some() && !requesting_user.is_admin {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // Fetch target user to check if they're a shared account (needed for permission validation)
+        let target_user_account = match ctx.db.users.get_user_by_username(&target_username).await {
+            Ok(Some(account)) => Some(account),
+            Ok(None) => {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_user_not_found(ctx.locale, &target_username)),
+                    id: None,
+                    username: None,
+                }));
             }
-        } else if let Some(new_group_id) = request.group_id {
-            if let Some(ref account) = target_user_account {
-                // Skip if already in this group
-                if account.group_id == Some(new_group_id) {
-                    (false, None)
+            Err(e) => {
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_database(ctx.locale)),
+                    id: None,
+                    username: None,
+                }));
+            }
+        };
+
+        // Admin XOR group invariant. Reject requests that would leave the target
+        // as admin AND set a group_id. Promotion from non-admin to admin is fine
+        // (DB layer auto-clears group_id); the rejection only fires when
+        // group_id assignment coincides with the target ending up admin.
+        let target_final_is_admin = request
+            .is_admin
+            .unwrap_or_else(|| target_user_account.as_ref().is_some_and(|a| a.is_admin));
+        if target_final_is_admin && request.group_id.is_some() {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_admin_cannot_have_group(ctx.locale)),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // Admin XOR shared invariant. `is_shared` is set at create-time and
+        // never modified by UserUpdate, so the only path into the bad
+        // combination is promoting an existing shared account to admin.
+        //
+        // Note the asymmetry with admin XOR group: that invariant auto-cleans
+        // in `db/users.rs::update_user` (nulls group_id + wipes permission
+        // rows on promotion) because clearing a group is benign — admins
+        // resolve to all permissions regardless. Admin XOR shared instead
+        // rejects here because demoting `is_shared` orphans the per-session
+        // nicknames a shared account carries; we make the admin explicitly
+        // delete and recreate rather than silently destroy that identity.
+        if request.is_admin == Some(true)
+            && target_user_account.as_ref().is_some_and(|a| a.is_shared)
+        {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_shared_cannot_be_admin(ctx.locale)),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // Bandwidth weight delegation: non-admins can change a user's effective
+        // bandwidth only to a value at or below their own resolved weight.
+        // - `bandwidth_weight: Some(N)` → reject when `N > requester`.
+        // - `inherit_bandwidth_weight: Some(true)` → reject when the target's
+        //   inherited weight (admin-default → group → 1) > requester. Clearing
+        //   the override would let the user fall back to a higher tier.
+        // Admins bypass both checks.
+        //
+        // When `inherit_bandwidth_weight: Some(true)`, the `bandwidth_weight`
+        // value is discarded by the DB layer (inherit wins). Skip the value
+        // check in that case so a defensive client sending both fields isn't
+        // rejected on a moot value.
+        if !requesting_user.is_admin {
+            let requester_weight = requesting_user.bandwidth_weight.load(Ordering::Relaxed);
+            // Track the rejection reason as an already-translated error string —
+            // the two paths use distinct i18n keys (see `errors.rs` for the
+            // contract). The set path fires on `bandwidth_weight: Some(w > req)`;
+            // the inherit path fires when clearing the override would land the
+            // target on an inherited tier above the requester.
+            let mut delegation_error: Option<String> = None;
+            if request.inherit_bandwidth_weight != Some(true)
+                && let Some(w) = request.bandwidth_weight
+                && w > requester_weight
+            {
+                delegation_error = Some(err_bandwidth_weight_delegation(ctx.locale));
+            }
+            if delegation_error.is_none() && request.inherit_bandwidth_weight == Some(true) {
+                // The inherited weight to compare against must reflect the
+                // POST-update group: if the same request also changes group_id
+                // or sets remove_group, the OLD group's weight is irrelevant.
+                // Otherwise (group unchanged), pass the target's current
+                // group_id so the resolver joins on the same row it would
+                // post-update.
+                let proposed_group_id: Option<i64> = if request.remove_group == Some(true) {
+                    None
+                } else if let Some(new_gid) = request.group_id {
+                    Some(new_gid)
                 } else {
-                    // Non-admin delegation: requester must have all current group
-                    // permissions (moving away removes them, same check as remove_group)
-                    if !requesting_user.is_admin
-                        && let Some(current_group_id) = account.group_id
-                    {
-                        let old_group_perms = match ctx
-                            .db
-                            .groups
-                            .get_group_permissions(current_group_id)
-                            .await
-                        {
-                            Ok(p) => p,
-                            Err(e) => {
-                                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS);
-                                let response = ServerMessage::UserUpdateResponse {
-                                    success: false,
-                                    error: Some(err_database(ctx.locale)),
-                                    id: None,
-                                    username: None,
-                                };
-                                drop(_state_guard);
-                                return ctx.send_message(&response).await;
-                            }
-                        };
-                        for perm in &old_group_perms {
-                            if !requesting_user.has_permission(*perm) {
-                                let response = ServerMessage::UserUpdateResponse {
-                                    success: false,
-                                    error: Some(err_permission_denied(ctx.locale)),
-                                    id: None,
-                                    username: None,
-                                };
-                                drop(_state_guard);
-                                return ctx.send_message(&response).await;
-                            }
-                        }
+                    target_user_account.as_ref().and_then(|a| a.group_id)
+                };
+                let inherited = match ctx
+                    .db
+                    .users
+                    .get_inherited_bandwidth_weight(request.id, proposed_group_id)
+                    .await
+                {
+                    Ok(w) => w,
+                    Err(e) => {
+                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_database(ctx.locale)),
+                            id: None,
+                            username: None,
+                        }));
                     }
+                };
+                if inherited > requester_weight {
+                    delegation_error = Some(err_bandwidth_weight_inherit_would_elevate(ctx.locale));
+                }
+            }
+            if let Some(error) = delegation_error {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(error),
+                    id: None,
+                    username: None,
+                }));
+            }
+        }
+        // Skip zero-validation too when inherit takes precedence (value discarded).
+        if request.inherit_bandwidth_weight != Some(true)
+            && let Some(w) = request.bandwidth_weight
+            && let Err(BandwidthWeightError::Zero) = validate_bandwidth_weight(w)
+        {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_bandwidth_weight_zero(ctx.locale, MIN_BANDWIDTH_WEIGHT)),
+                id: None,
+                username: None,
+            }));
+        }
 
-                    // Fetch the group
-                    let group = match ctx.db.groups.get_group_by_id(new_group_id).await {
-                        Ok(Some(g)) => g,
-                        Ok(None) => {
-                            let response = ServerMessage::UserUpdateResponse {
-                                success: false,
-                                error: Some(err_group_not_found(ctx.locale)),
-                                id: None,
-                                username: None,
+        // Validate and parse requested permissions
+        let parsed_permissions = if let Some(ref perm_strings) = request.permissions {
+            // For shared accounts, validate that only allowed permissions are requested
+            if let Some(ref account) = target_user_account
+                && account.is_shared
+            {
+                let forbidden: Vec<&str> = perm_strings
+                    .iter()
+                    .map(|s| s.as_str())
+                    .filter(|p| !is_shared_account_permission(p))
+                    .collect();
+
+                if !forbidden.is_empty() {
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_shared_invalid_permissions(
+                            ctx.locale,
+                            &forbidden.join(", "),
+                        )),
+                        id: None,
+                        username: None,
+                    }));
+                }
+            }
+
+            // Validate permissions format first
+            if let Err(e) = validators::validate_permissions(perm_strings) {
+                let error_msg = match e {
+                    PermissionsError::TooMany => {
+                        err_permissions_too_many(ctx.locale, nexus_common::PERMISSIONS_COUNT)
+                    }
+                    PermissionsError::EmptyPermission => {
+                        err_permissions_empty_permission(ctx.locale)
+                    }
+                    PermissionsError::PermissionTooLong => err_permissions_permission_too_long(
+                        ctx.locale,
+                        validators::MAX_PERMISSION_LENGTH,
+                    ),
+                    PermissionsError::ContainsNewlines => {
+                        err_permissions_contains_newlines(ctx.locale)
+                    }
+                    PermissionsError::InvalidCharacters => {
+                        err_permissions_invalid_characters(ctx.locale)
+                    }
+                };
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(error_msg),
+                    id: None,
+                    username: None,
+                }));
+            }
+
+            let mut perms = Permissions::new();
+            for perm_str in perm_strings {
+                let perm = match Permission::parse(perm_str) {
+                    Some(p) => p,
+                    None => {
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                            id: None,
+                            username: None,
+                        }));
+                    }
+                };
+
+                // Check permission delegation authority (uses cached permissions, admin bypass built-in)
+                if !requesting_user.has_permission(perm) {
+                    warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_UPDATE_UNOWNED_PERMISSION);
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_permission_denied(ctx.locale)),
+                        id: None,
+                        username: None,
+                    }));
+                }
+
+                perms.permissions.insert(perm);
+            }
+
+            // No pre-tx merge for non-admins: the surgical
+            // `OwnedSubset` write path inside `update_user` only touches
+            // rows for permissions in the requester's owned set, so
+            // unowned rows (including any an admin just granted) are
+            // preserved automatically. The old snapshot-merge-then-replace
+            // approach raced against concurrent admin writes; this passes
+            // the requester's literal request straight through.
+
+            Some(perms)
+        } else {
+            None
+        };
+
+        // Validate group assignment/removal. DB writes happen atomically inside
+        // update_user's transaction via remove_group + group_id.
+        let (validated_remove_group, validated_group_id): (bool, Option<i64>) = if !is_self_edit {
+            if request.remove_group == Some(true) {
+                // Remove from group — takes precedence over group_id
+                if let Some(ref account) = target_user_account {
+                    if let Some(current_group_id) = account.group_id {
+                        // Non-admin delegation: requester must have all current group
+                        // permissions (removal changes effective perms the editor can't grant back)
+                        if !requesting_user.is_admin {
+                            let group_perms = match ctx
+                                .db
+                                .groups
+                                .get_group_permissions(current_group_id)
+                                .await
+                            {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS);
+                                    break 'locked Outcome::Send(Box::new(
+                                        ServerMessage::UserUpdateResponse {
+                                            success: false,
+                                            error: Some(err_database(ctx.locale)),
+                                            id: None,
+                                            username: None,
+                                        },
+                                    ));
+                                }
                             };
-                            drop(_state_guard);
-                            return ctx.send_message(&response).await;
+                            for perm in &group_perms {
+                                if !requesting_user.has_permission(*perm) {
+                                    break 'locked Outcome::Send(Box::new(
+                                        ServerMessage::UserUpdateResponse {
+                                            success: false,
+                                            error: Some(err_permission_denied(ctx.locale)),
+                                            id: None,
+                                            username: None,
+                                        },
+                                    ));
+                                }
+                            }
                         }
-                        Err(e) => {
-                            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP);
-                            drop(_state_guard);
-                            return ctx
-                                .send_error_and_disconnect(
-                                    &err_database(ctx.locale),
-                                    Some(HANDLER_USER_UPDATE),
-                                )
-                                .await;
-                        }
-                    };
-
-                    // Shared compatibility check
-                    if account.is_shared && !group.is_shared {
-                        let response = ServerMessage::UserUpdateResponse {
-                            success: false,
-                            error: Some(err_group_shared_mismatch(ctx.locale)),
-                            id: None,
-                            username: None,
-                        };
-                        drop(_state_guard);
-                        return ctx.send_message(&response).await;
+                        (true, None)
+                    } else {
+                        (false, None) // Already no group
                     }
-                    if !account.is_shared && group.is_shared {
-                        let response = ServerMessage::UserUpdateResponse {
-                            success: false,
-                            error: Some(err_group_shared_mismatch(ctx.locale)),
-                            id: None,
-                            username: None,
-                        };
-                        drop(_state_guard);
-                        return ctx.send_message(&response).await;
-                    }
-
-                    // Non-admin delegation: cannot promote a user to a group
-                    // whose bandwidth weight exceeds the requester's own
-                    // resolved weight. Closes the escalation where a moderator
-                    // could move themselves (or others) into a higher-weight
-                    // group whose permissions they happen to fully possess.
-                    if !requesting_user.is_admin
-                        && group.bandwidth_weight
-                            > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
-                    {
-                        let response = ServerMessage::UserUpdateResponse {
-                            success: false,
-                            error: Some(err_bandwidth_weight_delegation(ctx.locale)),
-                            id: None,
-                            username: None,
-                        };
-                        drop(_state_guard);
-                        return ctx.send_message(&response).await;
-                    }
-
-                    // Non-admin delegation: requester must have all group permissions
-                    if !requesting_user.is_admin {
-                        let group_perms = match ctx
-                            .db
-                            .groups
-                            .get_group_permissions(new_group_id)
-                            .await
+                } else {
+                    (false, None)
+                }
+            } else if let Some(new_group_id) = request.group_id {
+                if let Some(ref account) = target_user_account {
+                    // Skip if already in this group
+                    if account.group_id == Some(new_group_id) {
+                        (false, None)
+                    } else {
+                        // Non-admin delegation: requester must have all current group
+                        // permissions (moving away removes them, same check as remove_group)
+                        if !requesting_user.is_admin
+                            && let Some(current_group_id) = account.group_id
                         {
-                            Ok(p) => p,
-                            Err(e) => {
-                                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS);
-                                let response = ServerMessage::UserUpdateResponse {
-                                    success: false,
-                                    error: Some(err_database(ctx.locale)),
-                                    id: None,
-                                    username: None,
-                                };
-                                drop(_state_guard);
-                                return ctx.send_message(&response).await;
-                            }
-                        };
-                        for perm in &group_perms {
-                            if !requesting_user.has_permission(*perm) {
-                                let response = ServerMessage::UserUpdateResponse {
-                                    success: false,
-                                    error: Some(err_permission_denied(ctx.locale)),
-                                    id: None,
-                                    username: None,
-                                };
-                                drop(_state_guard);
-                                return ctx.send_message(&response).await;
+                            let old_group_perms = match ctx
+                                .db
+                                .groups
+                                .get_group_permissions(current_group_id)
+                                .await
+                            {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS);
+                                    break 'locked Outcome::Send(Box::new(
+                                        ServerMessage::UserUpdateResponse {
+                                            success: false,
+                                            error: Some(err_database(ctx.locale)),
+                                            id: None,
+                                            username: None,
+                                        },
+                                    ));
+                                }
+                            };
+                            for perm in &old_group_perms {
+                                if !requesting_user.has_permission(*perm) {
+                                    break 'locked Outcome::Send(Box::new(
+                                        ServerMessage::UserUpdateResponse {
+                                            success: false,
+                                            error: Some(err_permission_denied(ctx.locale)),
+                                            id: None,
+                                            username: None,
+                                        },
+                                    ));
+                                }
                             }
                         }
-                    }
 
-                    (false, Some(new_group_id))
+                        // Fetch the group
+                        let group = match ctx.db.groups.get_group_by_id(new_group_id).await {
+                            Ok(Some(g)) => g,
+                            Ok(None) => {
+                                break 'locked Outcome::Send(Box::new(
+                                    ServerMessage::UserUpdateResponse {
+                                        success: false,
+                                        error: Some(err_group_not_found(ctx.locale)),
+                                        id: None,
+                                        username: None,
+                                    },
+                                ));
+                            }
+                            Err(e) => {
+                                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP);
+                                break 'locked Outcome::Send(Box::new(
+                                    ServerMessage::UserUpdateResponse {
+                                        success: false,
+                                        error: Some(err_database(ctx.locale)),
+                                        id: None,
+                                        username: None,
+                                    },
+                                ));
+                            }
+                        };
+
+                        // Shared compatibility check
+                        if account.is_shared && !group.is_shared {
+                            break 'locked Outcome::Send(Box::new(
+                                ServerMessage::UserUpdateResponse {
+                                    success: false,
+                                    error: Some(err_group_shared_mismatch(ctx.locale)),
+                                    id: None,
+                                    username: None,
+                                },
+                            ));
+                        }
+                        if !account.is_shared && group.is_shared {
+                            break 'locked Outcome::Send(Box::new(
+                                ServerMessage::UserUpdateResponse {
+                                    success: false,
+                                    error: Some(err_group_shared_mismatch(ctx.locale)),
+                                    id: None,
+                                    username: None,
+                                },
+                            ));
+                        }
+
+                        // Non-admin delegation: cannot promote a user to a group
+                        // whose bandwidth weight exceeds the requester's own
+                        // resolved weight. Closes the escalation where a moderator
+                        // could move themselves (or others) into a higher-weight
+                        // group whose permissions they happen to fully possess.
+                        if !requesting_user.is_admin
+                            && group.bandwidth_weight
+                                > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
+                        {
+                            break 'locked Outcome::Send(Box::new(
+                                ServerMessage::UserUpdateResponse {
+                                    success: false,
+                                    error: Some(err_bandwidth_weight_delegation(ctx.locale)),
+                                    id: None,
+                                    username: None,
+                                },
+                            ));
+                        }
+
+                        // Non-admin delegation: requester must have all group permissions
+                        if !requesting_user.is_admin {
+                            let group_perms = match ctx
+                                .db
+                                .groups
+                                .get_group_permissions(new_group_id)
+                                .await
+                            {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS);
+                                    break 'locked Outcome::Send(Box::new(
+                                        ServerMessage::UserUpdateResponse {
+                                            success: false,
+                                            error: Some(err_database(ctx.locale)),
+                                            id: None,
+                                            username: None,
+                                        },
+                                    ));
+                                }
+                            };
+                            for perm in &group_perms {
+                                if !requesting_user.has_permission(*perm) {
+                                    break 'locked Outcome::Send(Box::new(
+                                        ServerMessage::UserUpdateResponse {
+                                            success: false,
+                                            error: Some(err_permission_denied(ctx.locale)),
+                                            id: None,
+                                            username: None,
+                                        },
+                                    ));
+                                }
+                            }
+                        }
+
+                        (false, Some(new_group_id))
+                    }
+                } else {
+                    (false, None)
                 }
             } else {
                 (false, None)
             }
         } else {
             (false, None)
-        }
-    } else {
-        (false, None)
-    };
-
-    // Handle revoke override changes
-    // Parse and validate revoke permissions here; DB write happens atomically
-    // inside update_user's transaction via the revokes parameter.
-    let parsed_revokes: Option<Vec<Permission>> = if !is_self_edit
-        && let Some(ref revoke_strings) = request.revokes
-        && let Some(ref account) = target_user_account
-    {
-        // Determine effective group_id after any group change
-        let effective_group_id = if request.remove_group == Some(true) {
-            None
-        } else if let Some(gid) = request.group_id {
-            Some(gid)
-        } else {
-            account.group_id
         };
 
-        if effective_group_id.is_some() {
-            // Parse revoke permissions
-            let mut parsed_revokes = Vec::new();
-            for perm_str in revoke_strings {
-                match Permission::parse(perm_str) {
-                    Some(perm) => {
-                        // Non-admins can only set revokes for permissions they have
-                        if !requesting_user.is_admin && !requesting_user.has_permission(perm) {
-                            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_UPDATE_UNOWNED_REVOKE);
-                            let response = ServerMessage::UserUpdateResponse {
-                                success: false,
-                                error: Some(err_permission_denied(ctx.locale)),
-                                id: None,
-                                username: None,
-                            };
-                            drop(_state_guard);
-                            return ctx.send_message(&response).await;
+        // Handle revoke override changes
+        // Parse and validate revoke permissions here; DB write happens atomically
+        // inside update_user's transaction via the revokes parameter.
+        let parsed_revokes: Option<Vec<Permission>> = if !is_self_edit
+            && let Some(ref revoke_strings) = request.revokes
+            && let Some(ref account) = target_user_account
+        {
+            // Determine effective group_id after any group change
+            let effective_group_id = if request.remove_group == Some(true) {
+                None
+            } else if let Some(gid) = request.group_id {
+                Some(gid)
+            } else {
+                account.group_id
+            };
+
+            if effective_group_id.is_some() {
+                // Parse revoke permissions
+                let mut parsed_revokes = Vec::new();
+                for perm_str in revoke_strings {
+                    match Permission::parse(perm_str) {
+                        Some(perm) => {
+                            // Non-admins can only set revokes for permissions they have
+                            if !requesting_user.is_admin && !requesting_user.has_permission(perm) {
+                                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_UPDATE_UNOWNED_REVOKE);
+                                break 'locked Outcome::Send(Box::new(
+                                    ServerMessage::UserUpdateResponse {
+                                        success: false,
+                                        error: Some(err_permission_denied(ctx.locale)),
+                                        id: None,
+                                        username: None,
+                                    },
+                                ));
+                            }
+                            parsed_revokes.push(perm);
                         }
-                        parsed_revokes.push(perm);
+                        None => {
+                            break 'locked Outcome::Send(Box::new(
+                                ServerMessage::UserUpdateResponse {
+                                    success: false,
+                                    error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                                    id: None,
+                                    username: None,
+                                },
+                            ));
+                        }
                     }
-                    None => {
-                        let response = ServerMessage::UserUpdateResponse {
+                }
+
+                // No pre-tx merge for non-admins — same reasoning as the
+                // grant-merge removal above. The `OwnedSubset` write path
+                // inside `update_user` only touches revoke rows for
+                // permissions in the requester's owned set, so unowned
+                // revoke rows survive untouched. (The old merge also
+                // silently swallowed DB read errors via `if let Ok(...)`,
+                // which dropped all unowned-revoke preservation on any
+                // transient read failure; that path is gone.)
+
+                Some(parsed_revokes)
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Process password change request
+        let requested_password_hash = if let Some(ref password) = request.password {
+            // Empty/whitespace password = no change
+            if password.trim().is_empty() {
+                None
+            } else {
+                // Validate password format
+                let min_strength = ctx.db.config.get_min_password_strength().await;
+                if let Err(e) =
+                    validators::validate_password(password, min_strength, &[&target_username])
+                {
+                    let error_msg = match e {
+                        PasswordError::Empty => err_password_empty(ctx.locale),
+                        PasswordError::TooLong => {
+                            err_password_too_long(ctx.locale, validators::MAX_PASSWORD_LENGTH)
+                        }
+                        PasswordError::TooWeak { required, .. } => {
+                            err_password_too_weak(ctx.locale, required.score())
+                        }
+                    };
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(error_msg),
+                        id: None,
+                        username: None,
+                    }));
+                }
+                // Argon2id failure isn't a protocol violation.
+                match hash_password_async(password.clone(), min_strength, false).await {
+                    Ok(hash) => Some(hash),
+                    Err(e) => {
+                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_HASH_ERROR);
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                             success: false,
-                            error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                            error: Some(err_internal_error(ctx.locale)),
                             id: None,
                             username: None,
-                        };
-                        drop(_state_guard);
-                        return ctx.send_message(&response).await;
+                        }));
                     }
                 }
             }
-
-            // No pre-tx merge for non-admins — same reasoning as the
-            // grant-merge removal above. The `OwnedSubset` write path
-            // inside `update_user` only touches revoke rows for
-            // permissions in the requester's owned set, so unowned
-            // revoke rows survive untouched. (The old merge also
-            // silently swallowed DB read errors via `if let Ok(...)`,
-            // which dropped all unowned-revoke preservation on any
-            // transient read failure; that path is gone.)
-
-            Some(parsed_revokes)
         } else {
             None
-        }
-    } else {
-        None
-    };
+        };
 
-    // Process password change request
-    let requested_password_hash = if let Some(ref password) = request.password {
-        // Empty/whitespace password = no change
-        if password.trim().is_empty() {
-            None
-        } else {
-            // Validate password format
-            let min_strength = ctx.db.config.get_min_password_strength().await;
-            if let Err(e) =
-                validators::validate_password(password, min_strength, &[&target_username])
-            {
-                let error_msg = match e {
-                    PasswordError::Empty => err_password_empty(ctx.locale),
-                    PasswordError::TooLong => {
-                        err_password_too_long(ctx.locale, validators::MAX_PASSWORD_LENGTH)
-                    }
-                    PasswordError::TooWeak { required, .. } => {
-                        err_password_too_weak(ctx.locale, required.score())
+        // Note: Username validation is already done earlier, so no need to check for empty here
+
+        // Old state captured BEFORE the update so the post-update diff drives
+        // PermissionsUpdated / UserUpdated correctly. A DB read failure here
+        // can't fall back to empty permissions — that would silently skip the
+        // permission cascade and any required voice cleanup.
+        let (old_username, old_is_admin, old_enabled, old_permissions) = {
+            if let Some(ref account) = target_user_account {
+                let perms = match ctx.db.users.get_user_permissions(account.id).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_PERMISSIONS);
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_database(ctx.locale)),
+                            id: None,
+                            username: None,
+                        }));
                     }
                 };
-                let response = ServerMessage::UserUpdateResponse {
-                    success: false,
-                    error: Some(error_msg),
-                    id: None,
-                    username: None,
-                };
-                drop(_state_guard);
-                return ctx.send_message(&response).await;
+                (
+                    account.username.clone(),
+                    account.is_admin,
+                    account.enabled,
+                    perms,
+                )
+            } else {
+                // Pre-checked above; defensive fallback only.
+                (target_username.clone(), false, true, Permissions::new())
             }
-            match hash_password_async(password.clone(), min_strength, false).await {
-                Ok(hash) => Some(hash),
-                Err(e) => {
-                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_HASH_ERROR);
-                    drop(_state_guard);
-                    return ctx
-                        .send_error_and_disconnect(
-                            &err_database(ctx.locale),
-                            Some(HANDLER_USER_UPDATE),
+        };
+
+        // The `(user_id, permission)` PK allows only one row per permission;
+        // a request that names the same permission as both grant and revoke
+        // would otherwise be resolved by write order. Fail upfront instead.
+        if let (Some(grants), Some(revokes)) =
+            (parsed_permissions.as_ref(), parsed_revokes.as_ref())
+        {
+            for revoke in revokes {
+                if grants.permissions.contains(revoke) {
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_permission_grant_revoke_conflict(
+                            ctx.locale,
+                            revoke.as_str(),
+                        )),
+                        id: None,
+                        username: None,
+                    }));
+                }
+            }
+        }
+
+        let owned_for_scope: Vec<Permission> = if requesting_user.is_admin {
+            Vec::new()
+        } else {
+            requesting_user.permissions.iter().copied().collect()
+        };
+        let permission_write_scope = if requesting_user.is_admin {
+            crate::db::PermissionWriteScope::ReplaceAll
+        } else {
+            crate::db::PermissionWriteScope::OwnedSubset(&owned_for_scope)
+        };
+        let requester_bandwidth_max = if requesting_user.is_admin {
+            None
+        } else {
+            Some(requesting_user.bandwidth_weight.load(Ordering::Relaxed))
+        };
+
+        // Attempt to update the user (with atomic last-admin protection in SQL)
+        match ctx
+            .db
+            .users
+            .update_user(UpdateUserParams {
+                username: &target_username,
+                new_username: request.username.as_deref(),
+                new_password_hash: requested_password_hash.as_deref(),
+                is_admin: request.is_admin,
+                enabled: request.enabled,
+                permissions: parsed_permissions.as_ref(),
+                revokes: parsed_revokes.as_deref(),
+                remove_group: validated_remove_group,
+                group_id: validated_group_id,
+                bandwidth_weight: request.bandwidth_weight,
+                inherit_bandwidth_weight: request.inherit_bandwidth_weight == Some(true),
+                requester_is_admin: requesting_user.is_admin,
+                permission_write_scope,
+                requester_bandwidth_max,
+            })
+            .await
+        {
+            Ok(crate::db::UpdateUserResult::Updated {
+                account: updated_account,
+                resolved_bandwidth_weight,
+                permissions: final_permissions,
+            }) => {
+                info!(
+                    user = %requesting_user.username,
+                    ip = %ctx.peer_addr,
+                    target = %updated_account.username,
+                    is_admin = updated_account.is_admin,
+                    "{}", LOG_USER_UPDATE_SUCCESS
+                );
+                // Response is sent in the tail dispatch after the labelled
+                // block exits — a slow admin socket must not stall the
+                // security-relevant cascades performed below.
+                let response = ServerMessage::UserUpdateResponse {
+                    success: true,
+                    error: None,
+                    id: Some(request.id),
+                    username: Some(updated_account.username.clone()),
+                };
+
+                let group_changed = validated_remove_group || validated_group_id.is_some();
+                let admin_status_changed = old_is_admin != updated_account.is_admin;
+                let permissions_changed =
+                    old_permissions.permissions != final_permissions.permissions;
+
+                // Atomic flip: `UserSession::has_permission` short-circuits
+                // on `is_admin`, so a split write would widen the
+                // demoted-admin window across every await between the two.
+                if admin_status_changed || permissions_changed {
+                    ctx.user_manager
+                        .update_auth_state(
+                            updated_account.id,
+                            updated_account.is_admin,
+                            final_permissions.permissions.clone(),
                         )
                         .await;
                 }
-            }
-        }
-    } else {
-        None
-    };
 
-    // Note: Username validation is already done earlier, so no need to check for empty here
-
-    // Get old state before update (to detect actual changes for PermissionsUpdated and UserUpdated)
-    // We need: username, is_admin, enabled, and permissions
-    // NOTE: This must be captured BEFORE the group change is applied so the diff is accurate
-    let (old_username, old_is_admin, old_enabled, old_permissions) = {
-        // We already fetched target_user_account above, use it
-        if let Some(ref account) = target_user_account {
-            let perms = ctx
-                .db
-                .users
-                .get_user_permissions(account.id)
-                .await
-                .unwrap_or_else(|_| Permissions::new());
-            (
-                account.username.clone(),
-                account.is_admin,
-                account.enabled,
-                perms,
-            )
-        } else {
-            // Should not happen - we already checked user exists above
-            (target_username.clone(), false, true, Permissions::new())
-        }
-    };
-
-    // The `(user_id, permission)` PK allows only one row per permission;
-    // a request that names the same permission as both grant and revoke
-    // would otherwise be resolved by write order. Fail upfront instead.
-    if let (Some(grants), Some(revokes)) = (parsed_permissions.as_ref(), parsed_revokes.as_ref()) {
-        for revoke in revokes {
-            if grants.permissions.contains(revoke) {
-                let response = ServerMessage::UserUpdateResponse {
-                    success: false,
-                    error: Some(err_permission_grant_revoke_conflict(
-                        ctx.locale,
-                        revoke.as_str(),
-                    )),
-                    id: None,
-                    username: None,
-                };
-                drop(_state_guard);
-                return ctx.send_message(&response).await;
-            }
-        }
-    }
-
-    let owned_for_scope: Vec<Permission> = if requesting_user.is_admin {
-        Vec::new()
-    } else {
-        requesting_user.permissions.iter().copied().collect()
-    };
-    let permission_write_scope = if requesting_user.is_admin {
-        crate::db::PermissionWriteScope::ReplaceAll
-    } else {
-        crate::db::PermissionWriteScope::OwnedSubset(&owned_for_scope)
-    };
-    let requester_bandwidth_max = if requesting_user.is_admin {
-        None
-    } else {
-        Some(requesting_user.bandwidth_weight.load(Ordering::Relaxed))
-    };
-
-    // Attempt to update the user (with atomic last-admin protection in SQL)
-    match ctx
-        .db
-        .users
-        .update_user(UpdateUserParams {
-            username: &target_username,
-            new_username: request.username.as_deref(),
-            new_password_hash: requested_password_hash.as_deref(),
-            is_admin: request.is_admin,
-            enabled: request.enabled,
-            permissions: parsed_permissions.as_ref(),
-            revokes: parsed_revokes.as_deref(),
-            remove_group: validated_remove_group,
-            group_id: validated_group_id,
-            bandwidth_weight: request.bandwidth_weight,
-            inherit_bandwidth_weight: request.inherit_bandwidth_weight == Some(true),
-            requester_is_admin: requesting_user.is_admin,
-            permission_write_scope,
-            requester_bandwidth_max,
-        })
-        .await
-    {
-        Ok(crate::db::UpdateUserResult::Updated {
-            account: updated_account,
-            resolved_bandwidth_weight,
-            permissions: final_permissions,
-        }) => {
-            info!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                target = %updated_account.username,
-                is_admin = updated_account.is_admin,
-                "{}", LOG_USER_UPDATE_SUCCESS
-            );
-            // Response is sent at the end of this arm — a slow admin
-            // socket must not stall the security-relevant cascades.
-            let response = ServerMessage::UserUpdateResponse {
-                success: true,
-                error: None,
-                id: Some(request.id),
-                username: Some(updated_account.username.clone()),
-            };
-
-            let group_changed = validated_remove_group || validated_group_id.is_some();
-            let admin_status_changed = old_is_admin != updated_account.is_admin;
-            let permissions_changed = old_permissions.permissions != final_permissions.permissions;
-
-            // Atomic flip: `UserSession::has_permission` short-circuits
-            // on `is_admin`, so a split write would widen the
-            // demoted-admin window across every await between the two.
-            if admin_status_changed || permissions_changed {
-                ctx.user_manager
-                    .update_auth_state(
-                        updated_account.id,
-                        updated_account.is_admin,
-                        final_permissions.permissions.clone(),
-                    )
-                    .await;
-            }
-
-            let (updated_group_id, updated_group_name) = if let Some(gid) = updated_account.group_id
-            {
-                match ctx.db.groups.get_group_by_id(gid).await {
-                    Ok(Some(g)) => (Some(gid), Some(g.name)),
-                    _ => (None, None),
-                }
-            } else {
-                (None, None)
-            };
-
-            // Rename the cache identity before any username-keyed
-            // cascade below — otherwise PermissionsUpdated / voice
-            // cleanup / disable disconnect would miss every session.
-            let username_changed =
-                old_username.to_lowercase() != updated_account.username.to_lowercase();
-
-            if username_changed {
-                ctx.user_manager
-                    .update_username(updated_account.id, updated_account.username.clone())
-                    .await;
-
-                // Shared accounts keep per-session nicknames (chosen at
-                // login) — same invariant `UserManager::update_username`
-                // honors for `user.nickname`.
-                if !updated_account.is_shared {
-                    let sessions = ctx
-                        .user_manager
-                        .get_sessions_by_user_id(updated_account.id)
-                        .await;
-                    for session in sessions {
-                        ctx.voice_registry
-                            .update_nickname(session.session_id, updated_account.username.clone())
-                            .await;
-                    }
-                }
-            }
-
-            {
-                let enabled_changed = old_enabled != updated_account.enabled;
-                let actually_changed =
-                    admin_status_changed || enabled_changed || permissions_changed || group_changed;
-
-                if actually_changed {
-                    let permission_strings: Vec<String> = final_permissions
-                        .permissions
-                        .iter()
-                        .map(|p| p.as_str().to_string())
-                        .collect();
-
-                    let has_file_reindex = updated_account.is_admin
-                        || final_permissions
-                            .permissions
-                            .contains(&Permission::FileReindex);
-                    let has_chat_join = updated_account.is_admin
-                        || final_permissions
-                            .permissions
-                            .contains(&Permission::ChatJoin);
-
-                    let config = ctx.db.config.get_all().await;
-
-                    let info_values = ServerInfoValues {
-                        name: config.server_name,
-                        description: config.server_description,
-                        public_address: config.public_address,
-                        version: env!("CARGO_PKG_VERSION").to_string(),
-                        image: config.server_image,
-                        max_connections_per_ip: config.max_connections_per_ip,
-                        max_transfers_per_ip: config.max_transfers_per_ip,
-                        transfer_port: ctx.transfer_port,
-                        transfer_websocket_port: ctx.transfer_websocket_port,
-                        file_reindex_interval: config.file_reindex_interval,
-                        persistent_channels: config.persistent_channels,
-                        auto_join_channels: config.auto_join_channels,
-                        min_password_strength: config.min_password_strength.score(),
-                        chat_burst_limit: config.chat_burst_limit,
-                        chat_rate_limit: config.chat_rate_limit,
-                        max_outbound_rate: config.max_outbound_rate,
-                        scheduler_chunk_size: config.scheduler_chunk_size,
+                let (updated_group_id, updated_group_name) =
+                    if let Some(gid) = updated_account.group_id {
+                        match ctx.db.groups.get_group_by_id(gid).await {
+                            Ok(Some(g)) => (Some(gid), Some(g.name)),
+                            _ => (None, None),
+                        }
+                    } else {
+                        (None, None)
                     };
 
-                    let info_options = ServerInfoOptions {
-                        is_admin: updated_account.is_admin,
-                        has_file_reindex,
-                        has_chat_join,
-                        include_image: false,
-                    };
+                // Rename the cache identity before any username-keyed
+                // cascade below — otherwise PermissionsUpdated / voice
+                // cleanup / disable disconnect would miss every session.
+                let username_changed =
+                    old_username.to_lowercase() != updated_account.username.to_lowercase();
 
-                    let server_info = Some(build_server_info(&info_values, &info_options));
-
-                    let permissions_update = ServerMessage::PermissionsUpdated {
-                        is_admin: updated_account.is_admin,
-                        permissions: permission_strings,
-                        server_info,
-                        group_id: updated_group_id,
-                        group_name: updated_group_name.clone(),
-                    };
-
-                    // Send to all sessions belonging to the updated user
+                if username_changed {
                     ctx.user_manager
-                        .broadcast_to_user_id(updated_account.id, &permissions_update)
+                        .update_username(updated_account.id, updated_account.username.clone())
                         .await;
 
-                    // Admin-aware: admins hold `VoiceListen` implicitly
-                    // via the `has_permission` bypass, so a demoted admin
-                    // without an explicit grant still loses it.
-                    let had_voice_listen = old_is_admin
-                        || old_permissions
-                            .permissions
-                            .contains(&Permission::VoiceListen);
-                    let has_voice_listen = updated_account.is_admin
-                        || final_permissions
-                            .permissions
-                            .contains(&Permission::VoiceListen);
-
-                    if had_voice_listen && !has_voice_listen {
-                        for session in ctx
+                    // Shared accounts keep per-session nicknames (chosen at
+                    // login) — same invariant `UserManager::update_username`
+                    // honors for `user.nickname`.
+                    if !updated_account.is_shared {
+                        let sessions = ctx
                             .user_manager
                             .get_sessions_by_user_id(updated_account.id)
-                            .await
-                        {
-                            if let Some(info) = ctx
-                                .voice_registry
-                                .remove_by_session_id(session.session_id)
-                                .await
-                            {
-                                send_voice_leave_notifications(
-                                    &info,
-                                    Some(&session.tx),
-                                    ctx.user_manager,
-                                    ctx.channel_manager,
+                            .await;
+                        for session in sessions {
+                            ctx.voice_registry
+                                .update_nickname(
+                                    session.session_id,
+                                    updated_account.username.clone(),
                                 )
                                 .await;
+                        }
+                    }
+                }
+
+                {
+                    let enabled_changed = old_enabled != updated_account.enabled;
+                    let actually_changed = admin_status_changed
+                        || enabled_changed
+                        || permissions_changed
+                        || group_changed;
+
+                    if actually_changed {
+                        let permission_strings: Vec<String> = final_permissions
+                            .permissions
+                            .iter()
+                            .map(|p| p.as_str().to_string())
+                            .collect();
+
+                        let has_file_reindex = updated_account.is_admin
+                            || final_permissions
+                                .permissions
+                                .contains(&Permission::FileReindex);
+                        let has_chat_join = updated_account.is_admin
+                            || final_permissions
+                                .permissions
+                                .contains(&Permission::ChatJoin);
+
+                        let config = ctx.db.config.get_all().await;
+
+                        let info_values = ServerInfoValues {
+                            name: config.server_name,
+                            description: config.server_description,
+                            public_address: config.public_address,
+                            version: env!("CARGO_PKG_VERSION").to_string(),
+                            image: config.server_image,
+                            max_connections_per_ip: config.max_connections_per_ip,
+                            max_transfers_per_ip: config.max_transfers_per_ip,
+                            transfer_port: ctx.transfer_port,
+                            transfer_websocket_port: ctx.transfer_websocket_port,
+                            file_reindex_interval: config.file_reindex_interval,
+                            persistent_channels: config.persistent_channels,
+                            auto_join_channels: config.auto_join_channels,
+                            min_password_strength: config.min_password_strength.score(),
+                            chat_burst_limit: config.chat_burst_limit,
+                            chat_rate_limit: config.chat_rate_limit,
+                            max_outbound_rate: config.max_outbound_rate,
+                            scheduler_chunk_size: config.scheduler_chunk_size,
+                        };
+
+                        let info_options = ServerInfoOptions {
+                            is_admin: updated_account.is_admin,
+                            has_file_reindex,
+                            has_chat_join,
+                            include_image: false,
+                        };
+
+                        let server_info = Some(build_server_info(&info_values, &info_options));
+
+                        let permissions_update = ServerMessage::PermissionsUpdated {
+                            is_admin: updated_account.is_admin,
+                            permissions: permission_strings,
+                            server_info,
+                            group_id: updated_group_id,
+                            group_name: updated_group_name.clone(),
+                        };
+
+                        // Send to all sessions belonging to the updated user
+                        ctx.user_manager
+                            .broadcast_to_user_id(updated_account.id, &permissions_update)
+                            .await;
+
+                        // Admin-aware: admins hold `VoiceListen` implicitly
+                        // via the `has_permission` bypass, so a demoted admin
+                        // without an explicit grant still loses it.
+                        let had_voice_listen = old_is_admin
+                            || old_permissions
+                                .permissions
+                                .contains(&Permission::VoiceListen);
+                        let has_voice_listen = updated_account.is_admin
+                            || final_permissions
+                                .permissions
+                                .contains(&Permission::VoiceListen);
+
+                        if had_voice_listen && !has_voice_listen {
+                            for session in ctx
+                                .user_manager
+                                .get_sessions_by_user_id(updated_account.id)
+                                .await
+                            {
+                                if let Some(info) = ctx
+                                    .voice_registry
+                                    .remove_by_session_id(session.session_id)
+                                    .await
+                                {
+                                    send_voice_leave_notifications(
+                                        &info,
+                                        Some(&session.tx),
+                                        ctx.user_manager,
+                                        ctx.channel_manager,
+                                    )
+                                    .await;
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // Send a disabled-by-admin Error then drop the tx. The
-            // connection loop's `rx.recv()` returns None once all
-            // senders are dropped and the TCP connection closes.
-            // `connection.rs` cleanup won't re-broadcast
-            // UserDisconnected because the user is already gone from
-            // the manager.
-            if let Some(false) = request.enabled {
-                for user in ctx
-                    .user_manager
-                    .get_sessions_by_user_id(updated_account.id)
-                    .await
-                {
-                    let disconnect_msg = ServerMessage::Error {
-                        message: err_account_disabled_by_admin(&user.locale),
-                        command: None,
-                    };
-                    let _ = user.tx.send((disconnect_msg, None));
-
-                    remove_user_with_voice_cleanup(
-                        ctx.user_manager,
-                        ctx.voice_registry,
-                        ctx.channel_manager,
-                        user.session_id,
-                        &user,
-                    )
-                    .await;
-                }
-            }
-
-            // Promotion auto-clears group_id in the DB, so admin status
-            // change must refresh the cached group too even when the
-            // request didn't touch group_id directly.
-            if group_changed || admin_status_changed {
-                ctx.user_manager
-                    .update_group(
-                        updated_account.id,
-                        updated_group_id,
-                        updated_group_name.clone(),
-                    )
-                    .await;
-            }
-
-            // Inherit wins over an explicit weight (matches the DB
-            // layer's precedence) — check it first so a request that
-            // also carries the pre-update value still registers as a
-            // change.
-            let bandwidth_weight_request_change = if request.inherit_bandwidth_weight == Some(true)
-            {
-                target_account.bandwidth_weight.is_some()
-            } else if let Some(new) = request.bandwidth_weight {
-                target_account.bandwidth_weight != Some(new)
-            } else {
-                false
-            };
-
-            let broadcast_should_fire = username_changed
-                || admin_status_changed
-                || group_changed
-                || bandwidth_weight_request_change;
-            let cache_should_refresh =
-                bandwidth_weight_request_change || group_changed || admin_status_changed;
-            let bw_only_trigger = bandwidth_weight_request_change
-                && !username_changed
-                && !admin_status_changed
-                && !group_changed;
-
-            let sessions = if broadcast_should_fire {
-                ctx.user_manager
-                    .get_sessions_by_user_id(updated_account.id)
-                    .await
-            } else {
-                Vec::new()
-            };
-
-            // All sessions of one user agree on the cached weight
-            // (`update_bandwidth_state` fan-out invariant); first
-            // session is authoritative. `None` means offline.
-            let old_resolved: Option<u16> = sessions
-                .first()
-                .map(|s| s.bandwidth_weight.load(Ordering::Relaxed));
-
-            if cache_should_refresh {
-                ctx.user_manager
-                    .update_bandwidth_state(
-                        updated_account.id,
-                        updated_account.bandwidth_weight,
-                        resolved_bandwidth_weight,
-                    )
-                    .await;
-            }
-
-            // Suppress a bandwidth-only broadcast when the effective
-            // weight didn't move for an online user. Offline users
-            // (`None`) always broadcast — `None != Some(_)` — so
-            // observers converge once the user logs in.
-            let suppress_for_bw_only =
-                bw_only_trigger && old_resolved == Some(resolved_bandwidth_weight);
-
-            if broadcast_should_fire && !suppress_for_bw_only {
-                let session_ids: Vec<u32> = sessions.iter().map(|s| s.session_id).collect();
-
-                let (login_time, locale, avatar, is_away, status) = if !sessions.is_empty() {
-                    let login_time = sessions.iter().map(|u| u.login_time).min().unwrap_or(0);
-
-                    // Avatar, locale: latest login wins (stable)
-                    let latest_login = sessions.iter().max_by_key(|u| u.login_time);
-
-                    let locale = latest_login
-                        .map(|u| u.locale.clone())
-                        .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
-
-                    let avatar = latest_login.and_then(|u| u.avatar.clone());
-
-                    // Away/status: most recently active wins (accurate presence)
-                    let most_active = sessions.iter().max_by_key(|u| u.last_activity);
-
-                    let is_away = most_active.is_some_and(|u| u.is_away);
-                    let status = most_active.and_then(|u| u.status.clone());
-
-                    (login_time, locale, avatar, is_away, status)
-                } else {
-                    (0, DEFAULT_LOCALE.to_string(), None, false, None)
-                };
-
-                let user_info = UserInfo {
-                    id: updated_account.id,
-                    username: updated_account.username.clone(),
-                    // For account-level updates, nickname == username
-                    // (we're broadcasting about the account, not a specific session)
-                    nickname: updated_account.username.clone(),
-                    login_time,
-                    is_admin: updated_account.is_admin,
-                    is_shared: updated_account.is_shared,
-                    session_ids,
-                    locale,
-                    avatar,
-                    is_away,
-                    status,
-                    group_id: updated_group_id,
-                    group_name: updated_group_name,
-                    // Resolved in-transaction by `update_user`, so
-                    // it's always Some — no admin-aware fallback
-                    // layer needed.
-                    bandwidth_weight: Some(resolved_bandwidth_weight),
-                };
-
-                let user_updated = ServerMessage::UserUpdated {
-                    previous_username: old_username.clone(),
-                    user: user_info,
-                };
-                ctx.user_manager
-                    .broadcast_to_permission(user_updated, Permission::UserList)
-                    .await;
-            }
-
-            drop(_state_guard);
-            ctx.send_message(&response).await
-        }
-        Ok(crate::db::UpdateUserResult::BlockedForGroupAuth) => {
-            // In-tx group-auth race — admin altered the target group
-            // between the handler's pre-check and the tx. Conservative
-            // message: we don't know which of the four conditions raced.
-            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
-            let response = ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(err_update_failed(ctx.locale, &target_username)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            ctx.send_message(&response).await
-        }
-        Ok(crate::db::UpdateUserResult::Blocked) => {
-            // Update was blocked (user not found, last admin, duplicate
-            // username, or non-admin requester racing a concurrent
-            // promotion of the target).
-            let target_after = ctx
-                .db
-                .users
-                .get_user_by_username(&target_username)
-                .await
-                .ok()
-                .flatten();
-            let error_message = if target_after.is_none() {
-                err_user_not_found(ctx.locale, &target_username)
-            } else if !requesting_user.is_admin && target_after.as_ref().is_some_and(|u| u.is_admin)
-            {
-                // Race: handler's pre-check at the top saw target as
-                // non-admin; an admin promoted them between then and the
-                // SQL UPDATE, which then refused the write. Surface the
-                // same error the pre-check would have produced.
-                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_ADMIN);
-                err_cannot_edit_admin(ctx.locale)
-            } else if let Some(ref new_username) = request.username {
-                // Check if the new username already exists (and it's not the same user)
-                if new_username != &target_username
-                    && ctx
-                        .db
-                        .users
-                        .get_user_by_username(new_username)
+                // Send a disabled-by-admin Error then drop the tx. The
+                // connection loop's `rx.recv()` returns None once all
+                // senders are dropped and the TCP connection closes.
+                // `connection.rs` cleanup won't re-broadcast
+                // UserDisconnected because the user is already gone from
+                // the manager.
+                if let Some(false) = request.enabled {
+                    for user in ctx
+                        .user_manager
+                        .get_sessions_by_user_id(updated_account.id)
                         .await
-                        .ok()
-                        .flatten()
-                        .is_some()
-                {
-                    err_username_exists(ctx.locale, new_username)
-                } else {
-                    // Username change was blocked but not due to duplicate - must be admin protection
-                    err_cannot_demote_last_admin(ctx.locale)
-                }
-            } else if request.is_admin == Some(false) {
-                err_cannot_demote_last_admin(ctx.locale)
-            } else if request.enabled == Some(false) {
-                err_cannot_disable_last_admin(ctx.locale)
-            } else {
-                err_update_failed(ctx.locale, &target_username)
-            };
+                    {
+                        let disconnect_msg = ServerMessage::Error {
+                            message: err_account_disabled_by_admin(&user.locale),
+                            command: None,
+                        };
+                        let _ = user.tx.send((disconnect_msg, None));
 
-            let response = ServerMessage::UserUpdateResponse {
-                success: false,
-                error: Some(error_message),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            ctx.send_message(&response).await
+                        remove_user_with_voice_cleanup(
+                            ctx.user_manager,
+                            ctx.voice_registry,
+                            ctx.channel_manager,
+                            user.session_id,
+                            &user,
+                        )
+                        .await;
+                    }
+                }
+
+                // Promotion auto-clears group_id in the DB, so admin status
+                // change must refresh the cached group too even when the
+                // request didn't touch group_id directly.
+                if group_changed || admin_status_changed {
+                    ctx.user_manager
+                        .update_group(
+                            updated_account.id,
+                            updated_group_id,
+                            updated_group_name.clone(),
+                        )
+                        .await;
+                }
+
+                // Inherit wins over an explicit weight (matches the DB
+                // layer's precedence) — check it first so a request that
+                // also carries the pre-update value still registers as a
+                // change.
+                let bandwidth_weight_request_change =
+                    if request.inherit_bandwidth_weight == Some(true) {
+                        target_account.bandwidth_weight.is_some()
+                    } else if let Some(new) = request.bandwidth_weight {
+                        target_account.bandwidth_weight != Some(new)
+                    } else {
+                        false
+                    };
+
+                let broadcast_should_fire = username_changed
+                    || admin_status_changed
+                    || group_changed
+                    || bandwidth_weight_request_change;
+                let cache_should_refresh =
+                    bandwidth_weight_request_change || group_changed || admin_status_changed;
+                let bw_only_trigger = bandwidth_weight_request_change
+                    && !username_changed
+                    && !admin_status_changed
+                    && !group_changed;
+
+                let sessions = if broadcast_should_fire {
+                    ctx.user_manager
+                        .get_sessions_by_user_id(updated_account.id)
+                        .await
+                } else {
+                    Vec::new()
+                };
+
+                // All sessions of one user agree on the cached weight
+                // (`update_bandwidth_state` fan-out invariant); first
+                // session is authoritative. `None` means offline.
+                let old_resolved: Option<u16> = sessions
+                    .first()
+                    .map(|s| s.bandwidth_weight.load(Ordering::Relaxed));
+
+                if cache_should_refresh {
+                    ctx.user_manager
+                        .update_bandwidth_state(
+                            updated_account.id,
+                            updated_account.bandwidth_weight,
+                            resolved_bandwidth_weight,
+                        )
+                        .await;
+                }
+
+                // Suppress a bandwidth-only broadcast when the effective
+                // weight didn't move for an online user. Offline users
+                // (`None`) always broadcast — `None != Some(_)` — so
+                // observers converge once the user logs in.
+                let suppress_for_bw_only =
+                    bw_only_trigger && old_resolved == Some(resolved_bandwidth_weight);
+
+                if broadcast_should_fire && !suppress_for_bw_only {
+                    let session_ids: Vec<u32> = sessions.iter().map(|s| s.session_id).collect();
+
+                    let (login_time, locale, avatar, is_away, status) = if !sessions.is_empty() {
+                        let login_time = sessions.iter().map(|u| u.login_time).min().unwrap_or(0);
+
+                        // Avatar, locale: latest login wins (stable)
+                        let latest_login = sessions.iter().max_by_key(|u| u.login_time);
+
+                        let locale = latest_login
+                            .map(|u| u.locale.clone())
+                            .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
+
+                        let avatar = latest_login.and_then(|u| u.avatar.clone());
+
+                        // Away/status: most recently active wins (accurate presence)
+                        let most_active = sessions.iter().max_by_key(|u| u.last_activity);
+
+                        let is_away = most_active.is_some_and(|u| u.is_away);
+                        let status = most_active.and_then(|u| u.status.clone());
+
+                        (login_time, locale, avatar, is_away, status)
+                    } else {
+                        (0, DEFAULT_LOCALE.to_string(), None, false, None)
+                    };
+
+                    let user_info = UserInfo {
+                        id: updated_account.id,
+                        username: updated_account.username.clone(),
+                        // For account-level updates, nickname == username
+                        // (we're broadcasting about the account, not a specific session)
+                        nickname: updated_account.username.clone(),
+                        login_time,
+                        is_admin: updated_account.is_admin,
+                        is_shared: updated_account.is_shared,
+                        session_ids,
+                        locale,
+                        avatar,
+                        is_away,
+                        status,
+                        group_id: updated_group_id,
+                        group_name: updated_group_name,
+                        // Resolved in-transaction by `update_user`, so
+                        // it's always Some — no admin-aware fallback
+                        // layer needed.
+                        bandwidth_weight: Some(resolved_bandwidth_weight),
+                    };
+
+                    let user_updated = ServerMessage::UserUpdated {
+                        previous_username: old_username.clone(),
+                        user: user_info,
+                    };
+                    ctx.user_manager
+                        .broadcast_to_permission(user_updated, Permission::UserList)
+                        .await;
+                }
+
+                Outcome::Send(Box::new(response))
+            }
+            Ok(crate::db::UpdateUserResult::BlockedForGroupAuth) => {
+                // In-tx group-auth race — admin altered the target group
+                // between the handler's pre-check and the tx. Conservative
+                // message: we don't know which of the four conditions raced.
+                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
+                let response = ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_update_failed(ctx.locale, &target_username)),
+                    id: None,
+                    username: None,
+                };
+                Outcome::Send(Box::new(response))
+            }
+            Ok(crate::db::UpdateUserResult::Blocked) => {
+                // Update was blocked (user not found, last admin, duplicate
+                // username, or non-admin requester racing a concurrent
+                // promotion of the target). Disambiguate with explicit DB
+                // reads — silent `.ok().flatten()` would let a DB error
+                // masquerade as "user not found" or "username exists".
+                let target_after = match ctx.db.users.get_user_by_username(&target_username).await {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                            success: false,
+                            error: Some(err_database(ctx.locale)),
+                            id: None,
+                            username: None,
+                        }));
+                    }
+                };
+                let error_message = if target_after.is_none() {
+                    err_user_not_found(ctx.locale, &target_username)
+                } else if !requesting_user.is_admin
+                    && target_after.as_ref().is_some_and(|u| u.is_admin)
+                {
+                    // Race: pre-check saw non-admin; an admin promoted them
+                    // before the SQL UPDATE.
+                    warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_ADMIN);
+                    err_cannot_edit_admin(ctx.locale)
+                } else if let Some(ref new_username) = request.username {
+                    // Check if the new username already exists (and it's not the same user).
+                    let duplicate = if new_username != &target_username {
+                        match ctx.db.users.get_user_by_username(new_username).await {
+                            Ok(t) => t.is_some(),
+                            Err(e) => {
+                                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_DUPLICATE_CHECK);
+                                break 'locked Outcome::Send(Box::new(
+                                    ServerMessage::UserUpdateResponse {
+                                        success: false,
+                                        error: Some(err_database(ctx.locale)),
+                                        id: None,
+                                        username: None,
+                                    },
+                                ));
+                            }
+                        }
+                    } else {
+                        false
+                    };
+                    if duplicate {
+                        err_username_exists(ctx.locale, new_username)
+                    } else {
+                        // Username change was blocked but not due to duplicate - must be admin protection
+                        err_cannot_demote_last_admin(ctx.locale)
+                    }
+                } else if request.is_admin == Some(false) {
+                    err_cannot_demote_last_admin(ctx.locale)
+                } else if request.enabled == Some(false) {
+                    err_cannot_disable_last_admin(ctx.locale)
+                } else {
+                    err_update_failed(ctx.locale, &target_username)
+                };
+
+                let response = ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(error_message),
+                    id: None,
+                    username: None,
+                };
+                Outcome::Send(Box::new(response))
+            }
+            Err(e) => {
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR);
+                Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                    success: false,
+                    error: Some(err_database(ctx.locale)),
+                    id: None,
+                    username: None,
+                }))
+            }
         }
-        Err(e) => {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR);
-            drop(_state_guard);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_UPDATE))
-                .await;
-        }
-    }
+    };
+
+    dispatch_outcome(outcome, ctx, HANDLER_USER_UPDATE).await
 }
 
 #[cfg(test)]

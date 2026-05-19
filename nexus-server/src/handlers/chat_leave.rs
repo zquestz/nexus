@@ -11,8 +11,8 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators;
 
 use super::{
-    HandlerContext, channel_error_to_message, err_authentication, err_channel_not_found,
-    err_chat_feature_not_enabled, err_not_logged_in,
+    HandlerContext, channel_error_to_message, err_channel_not_found, err_chat_feature_not_enabled,
+    err_not_logged_in,
 };
 use crate::voice::send_voice_leave_notifications;
 
@@ -27,7 +27,6 @@ pub async fn handle_chat_leave<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_LEAVE_NOT_LOGGED_IN);
         return ctx
@@ -50,10 +49,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
-                    Some(HANDLER_CHAT_LEAVE),
-                )
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_LEAVE))
                 .await;
         }
     };

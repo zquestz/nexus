@@ -31,7 +31,6 @@ pub async fn handle_news_delete<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_NEWS_DELETE_NOT_LOGGED_IN);
         return ctx
@@ -70,9 +69,12 @@ where
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_NEWS_DELETE_DB_ERROR_GET);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_NEWS_DELETE))
-                .await;
+            let response = ServerMessage::NewsDeleteResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                id: None,
+            };
+            return ctx.send_message(&response).await;
         }
     };
 
@@ -115,9 +117,12 @@ where
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_NEWS_DELETE_DB_ERROR_DELETE);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_NEWS_DELETE))
-                .await;
+            let response = ServerMessage::NewsDeleteResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                id: None,
+            };
+            return ctx.send_message(&response).await;
         }
     };
 

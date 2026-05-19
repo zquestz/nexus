@@ -14,9 +14,9 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, ChatTopicError};
 
 use super::{
-    HandlerContext, channel_error_to_message, err_authentication, err_channel_not_found,
-    err_chat_feature_not_enabled, err_database, err_not_logged_in, err_permission_denied,
-    err_topic_contains_newlines, err_topic_invalid_characters, err_topic_too_long,
+    HandlerContext, channel_error_to_message, err_channel_not_found, err_chat_feature_not_enabled,
+    err_database, err_not_logged_in, err_permission_denied, err_topic_contains_newlines,
+    err_topic_invalid_characters, err_topic_too_long,
 };
 use crate::constants::FEATURE_CHAT;
 use crate::db::Permission;
@@ -31,7 +31,6 @@ pub async fn handle_chat_topic_update<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_TOPIC_NOT_LOGGED_IN);
         return ctx
@@ -48,7 +47,7 @@ where
         None => {
             return ctx
                 .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
+                    &err_not_logged_in(ctx.locale),
                     Some(HANDLER_CHAT_TOPIC_UPDATE),
                 )
                 .await;

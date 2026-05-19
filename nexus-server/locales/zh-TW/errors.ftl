@@ -62,6 +62,7 @@ err-channel-list-invalid = 無效頻道 '{ $channel }': { $reason }
 
 # 資料庫錯誤
 err-database = 資料庫錯誤
+err-internal-error = 發生內部錯誤。請稍後再試。
 err-login-permissions-failed = 無法載入帳戶權限
 err-login-group-failed = 無法載入帳戶分組
 err-login-bandwidth-failed = 無法載入帳戶頻寬設定
@@ -213,6 +214,8 @@ err-destination-exists = 目的地已存在同名的檔案或目錄
 err-cannot-move-into-itself = 無法將目錄移動到其自身內部
 err-cannot-copy-into-itself = 無法將目錄複製到其自身內部
 err-destination-not-directory = 目標路徑不是目錄
+err-source-busy = 檔案正在使用中。請稍後再試。
+err-destination-busy = 目標位置正在使用中。請稍後再試。
 
 # Transfer Errors
 err-file-area-not-configured = 檔案區域未設定

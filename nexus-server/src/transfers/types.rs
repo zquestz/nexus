@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::db::{Database, Permission};
-use crate::files::FileIndex;
+use crate::files::{FileIndex, PathLockMap};
 
 use super::registry::TransferRegistry;
 
@@ -18,6 +18,8 @@ pub struct TransferParams {
     pub db: Database,
     pub file_root: Option<&'static Path>,
     pub file_index: Arc<FileIndex>,
+    /// See `files::path_lock`.
+    pub file_mutation_locks: Arc<PathLockMap>,
     /// Transfer registry for ban signal handling
     pub transfer_registry: Arc<TransferRegistry>,
     /// Server certificate fingerprint, included in HandshakeResponse so the

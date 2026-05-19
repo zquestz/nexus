@@ -62,6 +62,7 @@ err-channel-list-invalid = Ongeldig kanaal '{ $channel }': { $reason }
 
 # Databasefouten
 err-database = Databasefout
+err-internal-error = Er is een interne fout opgetreden. Probeer het later opnieuw.
 err-login-permissions-failed = Kan accountmachtigingen niet laden
 err-login-group-failed = Kan accountgroep niet laden
 err-login-bandwidth-failed = Kan bandbreedte-instellingen niet laden
@@ -213,6 +214,8 @@ err-destination-exists = Een bestand of map met deze naam bestaat al op de beste
 err-cannot-move-into-itself = Kan een map niet naar zichzelf verplaatsen
 err-cannot-copy-into-itself = Kan een map niet naar zichzelf kopiëren
 err-destination-not-directory = Bestemmingspad is geen map
+err-source-busy = Het bestand is momenteel in gebruik. Probeer het opnieuw.
+err-destination-busy = De bestemming is momenteel in gebruik. Probeer het opnieuw.
 
 # Transfer Errors
 err-file-area-not-configured = Bestandsgebied niet geconfigureerd

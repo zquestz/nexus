@@ -23,11 +23,11 @@ use nexus_common::validators::{
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_admin_cannot_have_group, err_authentication,
+    HandlerContext, Outcome, dispatch_outcome, err_admin_cannot_have_group,
     err_bandwidth_weight_delegation, err_bandwidth_weight_zero, err_cannot_create_admin,
-    err_database, err_group_not_found, err_group_shared_mismatch, err_not_logged_in,
-    err_password_empty, err_password_too_long, err_password_too_weak, err_permission_denied,
-    err_permissions_contains_newlines, err_permissions_empty_permission,
+    err_database, err_group_not_found, err_group_shared_mismatch, err_internal_error,
+    err_not_logged_in, err_password_empty, err_password_too_long, err_password_too_weak,
+    err_permission_denied, err_permissions_contains_newlines, err_permissions_empty_permission,
     err_permissions_invalid_characters, err_permissions_permission_too_long,
     err_permissions_too_many, err_shared_cannot_be_admin, err_shared_invalid_permissions,
     err_unknown_permission, err_username_empty, err_username_exists, err_username_invalid,
@@ -71,7 +71,6 @@ where
         inherit_bandwidth_weight,
     } = request;
 
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_CREATE_NOT_LOGGED_IN);
         return ctx
@@ -79,313 +78,287 @@ where
             .await;
     };
 
-    // Acquire the state lock before fetching the requester so
-    // requester-dependent authorization sees a snapshot that can't
-    // drift mid-handler. Dropped at every early-reject path before
-    // socket I/O, and at the end of the success arm.
-    let _state_guard = ctx.user_manager.lock_user_state().await;
-    let requesting_user = match ctx
-        .user_manager
-        .get_user_by_session_id(requesting_session_id)
-        .await
-    {
-        Some(u) => u,
-        None => {
-            drop(_state_guard);
-            return ctx
-                .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
-                    Some(HANDLER_USER_CREATE),
-                )
-                .await;
-        }
-    };
+    // Guard lives only inside this block; all socket sends happen after it.
+    let outcome = 'locked: {
+        let _state_guard = ctx.user_manager.lock_user_state().await;
+        let requesting_user = match ctx
+            .user_manager
+            .get_user_by_session_id(requesting_session_id)
+            .await
+        {
+            Some(u) => u,
+            None => break 'locked Outcome::Disconnect,
+        };
 
-    // Check UserCreate permission (uses cached permissions, admin bypass built-in)
-    if !requesting_user.has_permission(Permission::UserCreate) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_CREATE_PERMISSION_DENIED);
-        let response = ServerMessage::UserCreateResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Validate username format
-    if let Err(e) = validators::validate_username(&username) {
-        let error_msg = match e {
-            UsernameError::Empty => err_username_empty(ctx.locale),
-            UsernameError::TooLong => {
-                err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
-            }
-            UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
-        };
-        let response = ServerMessage::UserCreateResponse {
-            success: false,
-            error: Some(error_msg),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Verify admin creation privilege (use is_admin from UserManager).
-    // Matches `user_update.rs`'s analogous gate: typed response, not
-    // disconnect — privilege escalation by a non-admin client should
-    // be rejected cleanly, not by terminating the session.
-    if is_admin && !requesting_user.is_admin {
-        let response = ServerMessage::UserCreateResponse {
-            success: false,
-            error: Some(err_cannot_create_admin(ctx.locale)),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Shared accounts cannot be admins
-    if is_shared && is_admin {
-        let response = ServerMessage::UserCreateResponse {
-            success: false,
-            error: Some(err_shared_cannot_be_admin(ctx.locale)),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Admin XOR group invariant: admins cannot be members of a group.
-    // Schema CHECK is the safety net; the handler check gives a clean
-    // translated error instead of a generic DB-constraint failure.
-    // Reject before the expensive password hashing further below.
-    if is_admin && group_id.is_some() {
-        let response = ServerMessage::UserCreateResponse {
-            success: false,
-            error: Some(err_admin_cannot_have_group(ctx.locale)),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Validate password (zxcvbn-scored — non-trivial)
-    let min_strength = ctx.db.config.get_min_password_strength().await;
-    if let Err(e) = validators::validate_password(&password, min_strength, &[&username]) {
-        let error_msg = match e {
-            PasswordError::Empty => err_password_empty(ctx.locale),
-            PasswordError::TooLong => {
-                err_password_too_long(ctx.locale, validators::MAX_PASSWORD_LENGTH)
-            }
-            PasswordError::TooWeak { required, .. } => {
-                err_password_too_weak(ctx.locale, required.score())
-            }
-        };
-        let response = ServerMessage::UserCreateResponse {
-            success: false,
-            error: Some(error_msg),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Validate permissions format
-    if let Err(e) = validators::validate_permissions(&permissions) {
-        let error_msg = match e {
-            PermissionsError::TooMany => {
-                err_permissions_too_many(ctx.locale, nexus_common::PERMISSIONS_COUNT)
-            }
-            PermissionsError::EmptyPermission => err_permissions_empty_permission(ctx.locale),
-            PermissionsError::PermissionTooLong => {
-                err_permissions_permission_too_long(ctx.locale, validators::MAX_PERMISSION_LENGTH)
-            }
-            PermissionsError::ContainsNewlines => err_permissions_contains_newlines(ctx.locale),
-            PermissionsError::InvalidCharacters => err_permissions_invalid_characters(ctx.locale),
-        };
-        let response = ServerMessage::UserCreateResponse {
-            success: false,
-            error: Some(error_msg),
-            id: None,
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // For shared accounts, validate that only allowed permissions are requested
-    if is_shared {
-        let forbidden: Vec<&str> = permissions
-            .iter()
-            .map(|s| s.as_str())
-            .filter(|p| !is_shared_account_permission(p))
-            .collect();
-
-        if !forbidden.is_empty() {
-            let response = ServerMessage::UserCreateResponse {
+        // Check UserCreate permission (uses cached permissions, admin bypass built-in)
+        if !requesting_user.has_permission(Permission::UserCreate) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_CREATE_PERMISSION_DENIED);
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                 success: false,
-                error: Some(err_shared_invalid_permissions(
-                    ctx.locale,
-                    &forbidden.join(", "),
-                )),
+                error: Some(err_permission_denied(ctx.locale)),
                 id: None,
                 username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
+            }));
         }
-    }
 
-    // Validate group assignment if provided
-    let validated_group_id = if let Some(gid) = group_id {
-        // Fetch the group to verify it exists and check shared compatibility
-        let group = match ctx.db.groups.get_group_by_id(gid).await {
-            Ok(Some(g)) => g,
-            Ok(None) => {
-                let response = ServerMessage::UserCreateResponse {
+        // Validate username format
+        if let Err(e) = validators::validate_username(&username) {
+            let error_msg = match e {
+                UsernameError::Empty => err_username_empty(ctx.locale),
+                UsernameError::TooLong => {
+                    err_username_too_long(ctx.locale, validators::MAX_USERNAME_LENGTH)
+                }
+                UsernameError::InvalidCharacters => err_username_invalid(ctx.locale),
+            };
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(error_msg),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // Verify admin creation privilege (use is_admin from UserManager).
+        // Matches `user_update.rs`'s analogous gate: typed response, not
+        // disconnect — privilege escalation by a non-admin client should
+        // be rejected cleanly, not by terminating the session.
+        if is_admin && !requesting_user.is_admin {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(err_cannot_create_admin(ctx.locale)),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // Shared accounts cannot be admins
+        if is_shared && is_admin {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(err_shared_cannot_be_admin(ctx.locale)),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // Admin XOR group invariant: admins cannot be members of a group.
+        // Schema CHECK is the safety net; the handler check gives a clean
+        // translated error instead of a generic DB-constraint failure.
+        // Reject before the expensive password hashing further below.
+        if is_admin && group_id.is_some() {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(err_admin_cannot_have_group(ctx.locale)),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // Validate password (zxcvbn-scored — non-trivial)
+        let min_strength = ctx.db.config.get_min_password_strength().await;
+        if let Err(e) = validators::validate_password(&password, min_strength, &[&username]) {
+            let error_msg = match e {
+                PasswordError::Empty => err_password_empty(ctx.locale),
+                PasswordError::TooLong => {
+                    err_password_too_long(ctx.locale, validators::MAX_PASSWORD_LENGTH)
+                }
+                PasswordError::TooWeak { required, .. } => {
+                    err_password_too_weak(ctx.locale, required.score())
+                }
+            };
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(error_msg),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // Validate permissions format
+        if let Err(e) = validators::validate_permissions(&permissions) {
+            let error_msg = match e {
+                PermissionsError::TooMany => {
+                    err_permissions_too_many(ctx.locale, nexus_common::PERMISSIONS_COUNT)
+                }
+                PermissionsError::EmptyPermission => err_permissions_empty_permission(ctx.locale),
+                PermissionsError::PermissionTooLong => err_permissions_permission_too_long(
+                    ctx.locale,
+                    validators::MAX_PERMISSION_LENGTH,
+                ),
+                PermissionsError::ContainsNewlines => err_permissions_contains_newlines(ctx.locale),
+                PermissionsError::InvalidCharacters => {
+                    err_permissions_invalid_characters(ctx.locale)
+                }
+            };
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(error_msg),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // For shared accounts, validate that only allowed permissions are requested
+        if is_shared {
+            let forbidden: Vec<&str> = permissions
+                .iter()
+                .map(|s| s.as_str())
+                .filter(|p| !is_shared_account_permission(p))
+                .collect();
+
+            if !forbidden.is_empty() {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                     success: false,
-                    error: Some(err_group_not_found(ctx.locale)),
+                    error: Some(err_shared_invalid_permissions(
+                        ctx.locale,
+                        &forbidden.join(", "),
+                    )),
                     id: None,
                     username: None,
-                };
-                drop(_state_guard);
-                return ctx.send_message(&response).await;
+                }));
             }
-            Err(e) => {
-                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
-                drop(_state_guard);
-                return ctx
-                    .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_CREATE))
-                    .await;
-            }
-        };
-
-        // Shared account / shared group compatibility
-        if is_shared && !group.is_shared {
-            let response = ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(err_group_shared_mismatch(ctx.locale)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-        if !is_shared && group.is_shared {
-            let response = ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(err_group_shared_mismatch(ctx.locale)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
         }
 
-        // Non-admin delegation: cannot assign a group whose bandwidth weight
-        // exceeds the requester's own resolved weight. Closes the escalation
-        // where a moderator could create users in a higher-weight group whose
-        // permissions they happen to fully possess.
-        if !requesting_user.is_admin
-            && group.bandwidth_weight > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
-        {
-            let response = ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(err_bandwidth_weight_delegation(ctx.locale)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-
-        // Non-admin group assignment check: requester must have all group permissions
-        if !requesting_user.is_admin {
-            let group_perms = match ctx.db.groups.get_group_permissions(gid).await {
-                Ok(p) => p,
+        // Validate group assignment if provided
+        let validated_group_id = if let Some(gid) = group_id {
+            // Fetch the group to verify it exists and check shared compatibility
+            let group = match ctx.db.groups.get_group_by_id(gid).await {
+                Ok(Some(g)) => g,
+                Ok(None) => {
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                        success: false,
+                        error: Some(err_group_not_found(ctx.locale)),
+                        id: None,
+                        username: None,
+                    }));
+                }
                 Err(e) => {
                     error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
-                    let response = ServerMessage::UserCreateResponse {
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                         success: false,
                         error: Some(err_database(ctx.locale)),
                         id: None,
                         username: None,
-                    };
-                    drop(_state_guard);
-                    return ctx.send_message(&response).await;
+                    }));
                 }
             };
-            for perm in &group_perms {
-                if !requesting_user.has_permission(*perm) {
+
+            // Shared account / shared group compatibility
+            if is_shared && !group.is_shared {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_group_shared_mismatch(ctx.locale)),
+                    id: None,
+                    username: None,
+                }));
+            }
+            if !is_shared && group.is_shared {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_group_shared_mismatch(ctx.locale)),
+                    id: None,
+                    username: None,
+                }));
+            }
+
+            // Non-admin delegation: cannot assign a group whose bandwidth weight
+            // exceeds the requester's own resolved weight. Closes the escalation
+            // where a moderator could create users in a higher-weight group whose
+            // permissions they happen to fully possess.
+            if !requesting_user.is_admin
+                && group.bandwidth_weight > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
+            {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_bandwidth_weight_delegation(ctx.locale)),
+                    id: None,
+                    username: None,
+                }));
+            }
+
+            // Non-admin group assignment check: requester must have all group permissions
+            if !requesting_user.is_admin {
+                let group_perms = match ctx.db.groups.get_group_permissions(gid).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                            success: false,
+                            error: Some(err_database(ctx.locale)),
+                            id: None,
+                            username: None,
+                        }));
+                    }
+                };
+                let mut unowned: Option<Permission> = None;
+                for perm in &group_perms {
+                    if !requesting_user.has_permission(*perm) {
+                        unowned = Some(*perm);
+                        break;
+                    }
+                }
+                if let Some(perm) = unowned {
                     warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm.as_str(), "{}", LOG_USER_CREATE_UNOWNED_GROUP);
-                    let response = ServerMessage::UserCreateResponse {
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                         success: false,
                         error: Some(err_permission_denied(ctx.locale)),
                         id: None,
                         username: None,
-                    };
-                    drop(_state_guard);
-                    return ctx.send_message(&response).await;
+                    }));
                 }
+            }
+
+            Some(gid)
+        } else {
+            None
+        };
+
+        // Bandwidth weight delegation: non-admins can set a per-user override
+        // only if the requested value does not exceed their own resolved
+        // bandwidth weight. Admins bypass the check. Skipped entirely when
+        // `inherit_bandwidth_weight: Some(true)` is set — that flag wins and
+        // the override value would be discarded, so checking it would reject
+        // moot values from a defensive client.
+        //
+        // Checked here — before password hashing — so a malicious non-admin
+        // can't burn server CPU on Argon2id by submitting an over-cap weight
+        // and forcing a rejection mid-flight.
+        if inherit_bandwidth_weight != Some(true) {
+            if !requesting_user.is_admin
+                && let Some(w) = bandwidth_weight
+                && w > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
+            {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_bandwidth_weight_delegation(ctx.locale)),
+                    id: None,
+                    username: None,
+                }));
+            }
+            if let Some(w) = bandwidth_weight
+                && let Err(BandwidthWeightError::Zero) = validate_bandwidth_weight(w)
+            {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_bandwidth_weight_zero(ctx.locale, MIN_BANDWIDTH_WEIGHT)),
+                    id: None,
+                    username: None,
+                }));
             }
         }
 
-        Some(gid)
-    } else {
-        None
-    };
-
-    // Bandwidth weight delegation: non-admins can set a per-user override
-    // only if the requested value does not exceed their own resolved
-    // bandwidth weight. Admins bypass the check. Skipped entirely when
-    // `inherit_bandwidth_weight: Some(true)` is set — that flag wins and
-    // the override value would be discarded, so checking it would reject
-    // moot values from a defensive client.
-    //
-    // Checked here — before password hashing — so a malicious non-admin
-    // can't burn server CPU on Argon2id by submitting an over-cap weight
-    // and forcing a rejection mid-flight.
-    if inherit_bandwidth_weight != Some(true) {
-        if !requesting_user.is_admin
-            && let Some(w) = bandwidth_weight
-            && w > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
-        {
-            let response = ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(err_bandwidth_weight_delegation(ctx.locale)),
-                id: None,
-                username: None,
+        // Parse and validate revoke permissions (only meaningful with a group).
+        // The early-revoke parsing checks owe a `break 'locked` from inside a
+        // `let X = if ... { ... }` expression; collect into a Result-like
+        // intermediate so the break flows cleanly out of the block expression.
+        let parsed_revokes: Vec<Permission> = 'revokes: {
+            let Some(ref revoke_strings) = revokes else {
+                break 'revokes Vec::new();
             };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-        if let Some(w) = bandwidth_weight
-            && let Err(BandwidthWeightError::Zero) = validate_bandwidth_weight(w)
-        {
-            let response = ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(err_bandwidth_weight_zero(ctx.locale, MIN_BANDWIDTH_WEIGHT)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-    }
-
-    // Parse and validate revoke permissions (only meaningful with a group)
-    let parsed_revokes: Vec<Permission> = if let Some(ref revoke_strings) = revokes {
-        if validated_group_id.is_none() {
-            // Revokes without a group are ignored
-            Vec::new()
-        } else {
+            if validated_group_id.is_none() {
+                // Revokes without a group are ignored
+                break 'revokes Vec::new();
+            }
             let mut parsed = Vec::new();
             for perm_str in revoke_strings {
                 match Permission::parse(perm_str) {
@@ -393,150 +366,146 @@ where
                         // Non-admins can only revoke permissions they themselves have
                         if !requesting_user.has_permission(perm) {
                             warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_CREATE_UNOWNED_REVOKE);
-                            let response = ServerMessage::UserCreateResponse {
-                                success: false,
-                                error: Some(err_permission_denied(ctx.locale)),
-                                id: None,
-                                username: None,
-                            };
-                            drop(_state_guard);
-                            return ctx.send_message(&response).await;
+                            break 'locked Outcome::Send(Box::new(
+                                ServerMessage::UserCreateResponse {
+                                    success: false,
+                                    error: Some(err_permission_denied(ctx.locale)),
+                                    id: None,
+                                    username: None,
+                                },
+                            ));
                         }
                         parsed.push(perm);
                     }
                     None => {
-                        let response = ServerMessage::UserCreateResponse {
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                             success: false,
                             error: Some(err_unknown_permission(ctx.locale, perm_str)),
                             id: None,
                             username: None,
-                        };
-                        drop(_state_guard);
-                        return ctx.send_message(&response).await;
+                        }));
                     }
                 }
             }
             parsed
-        }
-    } else {
-        Vec::new()
-    };
+        };
 
-    // Parse and validate requested permissions
-    let mut perms = Permissions::new();
-    for perm_str in &permissions {
-        let perm = match Permission::parse(perm_str) {
-            Some(p) => p,
-            None => {
-                // Unknown permission - return error to client
-                let response = ServerMessage::UserCreateResponse {
+        // Parse and validate requested permissions
+        let mut perms = Permissions::new();
+        for perm_str in &permissions {
+            let perm = match Permission::parse(perm_str) {
+                Some(p) => p,
+                None => {
+                    // Unknown permission - return error to client
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                        success: false,
+                        error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                        id: None,
+                        username: None,
+                    }));
+                }
+            };
+
+            // Non-admins can only grant permissions they have
+            // Check permission delegation authority (uses cached permissions, admin bypass built-in)
+            if !requesting_user.has_permission(perm) {
+                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_CREATE_UNOWNED_PERMISSION);
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                     success: false,
-                    error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                    error: Some(err_permission_denied(ctx.locale)),
                     id: None,
                     username: None,
-                };
-                drop(_state_guard);
-                return ctx.send_message(&response).await;
+                }));
+            }
+
+            perms.permissions.insert(perm);
+        }
+
+        // Check for duplicate username
+        match ctx.db.users.get_user_by_username(&username).await {
+            Ok(Some(_)) => {
+                // Username already exists
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_username_exists(ctx.locale, &username)),
+                    id: None,
+                    username: None,
+                }));
+            }
+            Ok(None) => {
+                // Username doesn't exist, proceed with creation
+            }
+            Err(e) => {
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_database(ctx.locale)),
+                    id: None,
+                    username: None,
+                }));
+            }
+        }
+
+        // Argon2id failure isn't a protocol violation.
+        let password_hash = match hash_password_async(password.clone(), min_strength, false).await {
+            Ok(hash) => hash,
+            Err(e) => {
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_HASH_ERROR);
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_internal_error(ctx.locale)),
+                    id: None,
+                    username: None,
+                }));
             }
         };
 
-        // Non-admins can only grant permissions they have
-        // Check permission delegation authority (uses cached permissions, admin bypass built-in)
-        if !requesting_user.has_permission(perm) {
-            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_CREATE_UNOWNED_PERMISSION);
-            let response = ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(err_permission_denied(ctx.locale)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
+        let final_bandwidth_weight = if inherit_bandwidth_weight == Some(true) {
+            None
+        } else {
+            bandwidth_weight
+        };
 
-        perms.permissions.insert(perm);
-    }
-
-    // Check for duplicate username
-    match ctx.db.users.get_user_by_username(&username).await {
-        Ok(Some(_)) => {
-            // Username already exists
-            let response = ServerMessage::UserCreateResponse {
-                success: false,
-                error: Some(err_username_exists(ctx.locale, &username)),
-                id: None,
-                username: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
-        }
-        Ok(None) => {
-            // Username doesn't exist, proceed with creation
-        }
-        Err(e) => {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
-            drop(_state_guard);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_CREATE))
-                .await;
-        }
-    }
-
-    // Hash password for secure storage
-    let password_hash = match hash_password_async(password.clone(), min_strength, false).await {
-        Ok(hash) => hash,
-        Err(e) => {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_HASH_ERROR);
-            drop(_state_guard);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_CREATE))
-                .await;
+        // Create user in database
+        match ctx
+            .db
+            .users
+            .create_user(CreateUserParams {
+                username: &username,
+                hashed_password: &password_hash,
+                is_admin,
+                is_shared,
+                enabled,
+                permissions: &perms,
+                group_id: validated_group_id,
+                revokes: &parsed_revokes,
+                bandwidth_weight: final_bandwidth_weight,
+            })
+            .await
+        {
+            Ok(user) => {
+                // Success (group override cleanup is handled atomically inside create_user)
+                info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %username, "{}", LOG_USER_CREATE_SUCCESS);
+                Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                    success: true,
+                    error: None,
+                    id: Some(user.id),
+                    username: Some(username),
+                }))
+            }
+            Err(e) => {
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
+                Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_database(ctx.locale)),
+                    id: None,
+                    username: None,
+                }))
+            }
         }
     };
 
-    let final_bandwidth_weight = if inherit_bandwidth_weight == Some(true) {
-        None
-    } else {
-        bandwidth_weight
-    };
-
-    // Create user in database
-    match ctx
-        .db
-        .users
-        .create_user(CreateUserParams {
-            username: &username,
-            hashed_password: &password_hash,
-            is_admin,
-            is_shared,
-            enabled,
-            permissions: &perms,
-            group_id: validated_group_id,
-            revokes: &parsed_revokes,
-            bandwidth_weight: final_bandwidth_weight,
-        })
-        .await
-    {
-        Ok(user) => {
-            // Success (group override cleanup is handled atomically inside create_user)
-            info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %username, "{}", LOG_USER_CREATE_SUCCESS);
-            let response = ServerMessage::UserCreateResponse {
-                success: true,
-                error: None,
-                id: Some(user.id),
-                username: Some(username),
-            };
-            drop(_state_guard);
-            ctx.send_message(&response).await
-        }
-        Err(e) => {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
-            drop(_state_guard);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_CREATE))
-                .await;
-        }
-    }
+    dispatch_outcome(outcome, ctx, HANDLER_USER_CREATE).await
 }
 
 #[cfg(test)]

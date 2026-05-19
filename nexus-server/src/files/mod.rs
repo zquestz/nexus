@@ -19,6 +19,7 @@ pub mod folder_type;
 pub mod index;
 pub mod operations;
 pub mod path;
+pub mod path_lock;
 
 pub use area::resolve_user_area;
 pub use folder_type::{FolderType, in_owned_dropbox, parse_folder_type};
@@ -32,6 +33,7 @@ pub use path::{
     is_hidden_name, normalize_client_path, resolve_new_path, resolve_path,
     validate_and_build_candidate_path,
 };
+pub use path_lock::{PathBusy, PathLockMap, PathLockMode, lock_key};
 
 /// Get the default file root path under the given server data directory
 /// (`<data_dir>/files/`).

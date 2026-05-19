@@ -18,12 +18,12 @@ use nexus_common::validators::{
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_authentication, err_bandwidth_weight_delegation, err_bandwidth_weight_zero,
-    err_database, err_group_already_exists, err_group_name_empty, err_group_name_invalid,
-    err_group_name_too_long, err_group_shared_permission, err_not_logged_in, err_permission_denied,
-    err_permissions_contains_newlines, err_permissions_empty_permission,
-    err_permissions_invalid_characters, err_permissions_permission_too_long,
-    err_permissions_too_many, err_unknown_permission,
+    HandlerContext, Outcome, dispatch_outcome, err_bandwidth_weight_delegation,
+    err_bandwidth_weight_zero, err_database, err_group_already_exists, err_group_name_empty,
+    err_group_name_invalid, err_group_name_too_long, err_group_shared_permission,
+    err_not_logged_in, err_permission_denied, err_permissions_contains_newlines,
+    err_permissions_empty_permission, err_permissions_invalid_characters,
+    err_permissions_permission_too_long, err_permissions_too_many, err_unknown_permission,
 };
 use crate::db::{Permission, Permissions};
 
@@ -39,7 +39,6 @@ pub async fn handle_group_create<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_GROUP_CREATE_NOT_LOGGED_IN);
         return ctx
@@ -47,203 +46,179 @@ where
             .await;
     };
 
-    // Acquire the state lock before fetching the requester so
-    // requester-dependent authorization sees a snapshot that can't
-    // drift mid-handler. Dropped at every early-reject path before
-    // socket I/O, and at the end of the success arm.
-    let _state_guard = ctx.user_manager.lock_user_state().await;
-    let requesting_user = match ctx
-        .user_manager
-        .get_user_by_session_id(requesting_session_id)
-        .await
-    {
-        Some(u) => u,
-        None => {
-            drop(_state_guard);
-            return ctx
-                .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
-                    Some(HANDLER_GROUP_CREATE),
-                )
-                .await;
-        }
-    };
-
-    // Check GroupCreate permission (uses cached permissions, admin bypass built-in)
-    if !requesting_user.has_permission(Permission::GroupCreate) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_GROUP_CREATE_PERMISSION_DENIED);
-        let response = ServerMessage::GroupCreateResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            id: None,
-            name: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Bandwidth weight delegation: a non-admin creating a group can set
-    // its weight only at or below their own resolved bandwidth weight.
-    // Admins bypass.
-    if !requesting_user.is_admin
-        && bandwidth_weight > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
-    {
-        let response = ServerMessage::GroupCreateResponse {
-            success: false,
-            error: Some(err_bandwidth_weight_delegation(ctx.locale)),
-            id: None,
-            name: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-    if let Err(BandwidthWeightError::Zero) = validate_bandwidth_weight(bandwidth_weight) {
-        let response = ServerMessage::GroupCreateResponse {
-            success: false,
-            error: Some(err_bandwidth_weight_zero(ctx.locale, MIN_BANDWIDTH_WEIGHT)),
-            id: None,
-            name: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Validate group name format
-    if let Err(e) = validators::validate_group_name(&name) {
-        let error_msg = match e {
-            GroupNameError::Empty => err_group_name_empty(ctx.locale),
-            GroupNameError::TooLong => {
-                err_group_name_too_long(ctx.locale, validators::MAX_GROUP_NAME_LENGTH)
-            }
-            GroupNameError::InvalidCharacters => err_group_name_invalid(ctx.locale),
-        };
-        let response = ServerMessage::GroupCreateResponse {
-            success: false,
-            error: Some(error_msg),
-            id: None,
-            name: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Validate permissions format
-    if let Err(e) = validators::validate_permissions(&permissions) {
-        let error_msg = match e {
-            PermissionsError::TooMany => {
-                err_permissions_too_many(ctx.locale, nexus_common::PERMISSIONS_COUNT)
-            }
-            PermissionsError::EmptyPermission => err_permissions_empty_permission(ctx.locale),
-            PermissionsError::PermissionTooLong => {
-                err_permissions_permission_too_long(ctx.locale, validators::MAX_PERMISSION_LENGTH)
-            }
-            PermissionsError::ContainsNewlines => err_permissions_contains_newlines(ctx.locale),
-            PermissionsError::InvalidCharacters => err_permissions_invalid_characters(ctx.locale),
-        };
-        let response = ServerMessage::GroupCreateResponse {
-            success: false,
-            error: Some(error_msg),
-            id: None,
-            name: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // For shared groups, validate that only shared-account permissions are requested
-    if is_shared {
-        for perm_str in &permissions {
-            if !is_shared_account_permission(perm_str) {
-                let response = ServerMessage::GroupCreateResponse {
-                    success: false,
-                    error: Some(err_group_shared_permission(ctx.locale)),
-                    id: None,
-                    name: None,
-                };
-                drop(_state_guard);
-                return ctx.send_message(&response).await;
-            }
-        }
-    }
-
-    // Parse and validate requested permissions
-    let mut parsed_permissions = Permissions::new();
-    for perm_str in &permissions {
-        let perm = match Permission::parse(perm_str) {
-            Some(p) => p,
-            None => {
-                let response = ServerMessage::GroupCreateResponse {
-                    success: false,
-                    error: Some(err_unknown_permission(ctx.locale, perm_str)),
-                    id: None,
-                    name: None,
-                };
-                drop(_state_guard);
-                return ctx.send_message(&response).await;
-            }
+    // Guard lives only inside this block; all socket sends happen after it.
+    let outcome = 'locked: {
+        let _state_guard = ctx.user_manager.lock_user_state().await;
+        let requesting_user = match ctx
+            .user_manager
+            .get_user_by_session_id(requesting_session_id)
+            .await
+        {
+            Some(u) => u,
+            None => break 'locked Outcome::Disconnect,
         };
 
-        // Non-admins can only grant permissions they have
-        if !requesting_user.has_permission(perm) {
-            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_GROUP_CREATE_UNOWNED_PERMISSION);
-            let response = ServerMessage::GroupCreateResponse {
+        if !requesting_user.has_permission(Permission::GroupCreate) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_GROUP_CREATE_PERMISSION_DENIED);
+            break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
                 success: false,
                 error: Some(err_permission_denied(ctx.locale)),
                 id: None,
                 name: None,
-            };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
+            }));
         }
 
-        parsed_permissions.add(perm);
-    }
-
-    // Create group in database
-    match ctx
-        .db
-        .groups
-        .create_group(&name, is_shared, &parsed_permissions, bandwidth_weight)
-        .await
-    {
-        Ok(group) => {
-            info!(user = %requesting_user.username, ip = %ctx.peer_addr, group = %group.name, "{}", LOG_GROUP_CREATE_SUCCESS);
-            let response = ServerMessage::GroupCreateResponse {
-                success: true,
-                error: None,
-                id: Some(group.id),
-                name: Some(group.name),
-            };
-            drop(_state_guard);
-            ctx.send_message(&response).await
+        // Bandwidth weight delegation: a non-admin creating a group can set
+        // its weight only at or below their own resolved bandwidth weight.
+        // Admins bypass.
+        if !requesting_user.is_admin
+            && bandwidth_weight > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
+        {
+            break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
+                success: false,
+                error: Some(err_bandwidth_weight_delegation(ctx.locale)),
+                id: None,
+                name: None,
+            }));
         }
-        Err(e) => {
-            // Check if failure was due to duplicate name
-            if ctx
-                .db
-                .groups
-                .get_group_by_name(&name)
-                .await
-                .ok()
-                .flatten()
-                .is_some()
-            {
-                let response = ServerMessage::GroupCreateResponse {
+        if let Err(BandwidthWeightError::Zero) = validate_bandwidth_weight(bandwidth_weight) {
+            break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
+                success: false,
+                error: Some(err_bandwidth_weight_zero(ctx.locale, MIN_BANDWIDTH_WEIGHT)),
+                id: None,
+                name: None,
+            }));
+        }
+
+        if let Err(e) = validators::validate_group_name(&name) {
+            let error_msg = match e {
+                GroupNameError::Empty => err_group_name_empty(ctx.locale),
+                GroupNameError::TooLong => {
+                    err_group_name_too_long(ctx.locale, validators::MAX_GROUP_NAME_LENGTH)
+                }
+                GroupNameError::InvalidCharacters => err_group_name_invalid(ctx.locale),
+            };
+            break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
+                success: false,
+                error: Some(error_msg),
+                id: None,
+                name: None,
+            }));
+        }
+
+        if let Err(e) = validators::validate_permissions(&permissions) {
+            let error_msg = match e {
+                PermissionsError::TooMany => {
+                    err_permissions_too_many(ctx.locale, nexus_common::PERMISSIONS_COUNT)
+                }
+                PermissionsError::EmptyPermission => err_permissions_empty_permission(ctx.locale),
+                PermissionsError::PermissionTooLong => err_permissions_permission_too_long(
+                    ctx.locale,
+                    validators::MAX_PERMISSION_LENGTH,
+                ),
+                PermissionsError::ContainsNewlines => err_permissions_contains_newlines(ctx.locale),
+                PermissionsError::InvalidCharacters => {
+                    err_permissions_invalid_characters(ctx.locale)
+                }
+            };
+            break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
+                success: false,
+                error: Some(error_msg),
+                id: None,
+                name: None,
+            }));
+        }
+
+        // For shared groups, only shared-account permissions are accepted.
+        if is_shared {
+            for perm_str in &permissions {
+                if !is_shared_account_permission(perm_str) {
+                    break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
+                        success: false,
+                        error: Some(err_group_shared_permission(ctx.locale)),
+                        id: None,
+                        name: None,
+                    }));
+                }
+            }
+        }
+
+        // Parse and validate requested permissions
+        let mut parsed_permissions = Permissions::new();
+        for perm_str in &permissions {
+            let perm = match Permission::parse(perm_str) {
+                Some(p) => p,
+                None => {
+                    break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
+                        success: false,
+                        error: Some(err_unknown_permission(ctx.locale, perm_str)),
+                        id: None,
+                        name: None,
+                    }));
+                }
+            };
+
+            // Non-admins can only grant permissions they have
+            if !requesting_user.has_permission(perm) {
+                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_GROUP_CREATE_UNOWNED_PERMISSION);
+                break 'locked Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
                     success: false,
-                    error: Some(err_group_already_exists(ctx.locale)),
+                    error: Some(err_permission_denied(ctx.locale)),
                     id: None,
                     name: None,
-                };
-                drop(_state_guard);
-                return ctx.send_message(&response).await;
+                }));
             }
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_CREATE_DB_ERROR);
-            drop(_state_guard);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_GROUP_CREATE))
-                .await;
+
+            parsed_permissions.add(perm);
         }
-    }
+
+        match ctx
+            .db
+            .groups
+            .create_group(&name, is_shared, &parsed_permissions, bandwidth_weight)
+            .await
+        {
+            Ok(group) => {
+                info!(user = %requesting_user.username, ip = %ctx.peer_addr, group = %group.name, "{}", LOG_GROUP_CREATE_SUCCESS);
+                Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
+                    success: true,
+                    error: None,
+                    id: Some(group.id),
+                    name: Some(group.name),
+                }))
+            }
+            Err(e) => {
+                // Disambiguate duplicate-name failures (recoverable) from
+                // other DB errors (fatal).
+                if ctx
+                    .db
+                    .groups
+                    .get_group_by_name(&name)
+                    .await
+                    .ok()
+                    .flatten()
+                    .is_some()
+                {
+                    Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
+                        success: false,
+                        error: Some(err_group_already_exists(ctx.locale)),
+                        id: None,
+                        name: None,
+                    }))
+                } else {
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_CREATE_DB_ERROR);
+                    Outcome::Send(Box::new(ServerMessage::GroupCreateResponse {
+                        success: false,
+                        error: Some(err_database(ctx.locale)),
+                        id: None,
+                        name: None,
+                    }))
+                }
+            }
+        }
+    };
+
+    dispatch_outcome(outcome, ctx, HANDLER_GROUP_CREATE).await
 }
 
 #[cfg(test)]

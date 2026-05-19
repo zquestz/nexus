@@ -12,8 +12,7 @@ use crate::constants::{
 use nexus_common::protocol::{ChannelInfo, ServerMessage};
 
 use super::{
-    HandlerContext, err_authentication, err_chat_feature_not_enabled, err_not_logged_in,
-    err_permission_denied,
+    HandlerContext, err_chat_feature_not_enabled, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::FEATURE_CHAT;
 use crate::db::Permission;
@@ -26,7 +25,6 @@ pub async fn handle_chat_list<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_LIST_NOT_LOGGED_IN);
         return ctx
@@ -39,7 +37,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_CHAT_LIST))
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_LIST))
                 .await;
         }
     };

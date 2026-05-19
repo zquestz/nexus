@@ -26,6 +26,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::db::Permission;
 use crate::files::path::{allows_upload, validate_and_build_candidate_path};
+use crate::files::{self, PathLockMode};
 use crate::handlers::{
     err_upload_conflict, err_upload_connection_lost, err_upload_destination_not_allowed,
     err_upload_empty, err_upload_file_exists, err_upload_hash_mismatch, err_upload_path_invalid,
@@ -45,11 +46,6 @@ use super::helpers::{
 use super::transfer::{StreamError, Transfer};
 use super::types::{AuthenticatedUser, ReceiveFileParams, UploadParams};
 
-// =============================================================================
-// Main Handler
-// =============================================================================
-
-/// Handle a file upload request
 pub(crate) async fn handle_upload<R, W>(
     transfer: &mut Transfer<'_, R, W>,
     params: UploadParams,
@@ -65,25 +61,21 @@ where
         root: use_root,
     } = params;
 
-    // Extract values to avoid borrow checker issues
     let locale = transfer.locale().to_string();
     let peer_addr = transfer.peer_addr();
     let username = transfer.user().username.clone();
 
-    // Reject empty uploads - must have at least one file
     if file_count == 0 {
         let err = TransferError::invalid(err_upload_empty(&locale));
         return send_upload_transfer_error(transfer.writer(), &err).await;
     }
 
-    // Validate and resolve destination path
     let (area_root, resolved_destination) =
         match validate_and_resolve_upload_destination(transfer, &destination, use_root, &locale) {
             Ok(result) => result,
             Err(e) => return send_upload_transfer_error(transfer.writer(), &e).await,
         };
 
-    // Generate transfer ID for logging
     let log_transfer_id = generate_transfer_id();
 
     debug!(
@@ -96,7 +88,6 @@ where
         "{}", LOG_UPLOAD_STARTING
     );
 
-    // Send FileUploadResponse
     let response = ServerMessage::FileUploadResponse {
         success: true,
         error: None,
@@ -108,7 +99,6 @@ where
         return Ok(());
     }
 
-    // Receive each file
     let mut transfer_success = true;
     let mut transfer_error: Option<String> = None;
     let mut transfer_error_kind: Option<String> = None;
@@ -127,7 +117,7 @@ where
                 uploaded_files.push(relative_path);
             }
             Err(ReceiveFileError::Banned) => {
-                // Just close the socket - client gets ban reason on BBS connection
+                // Client gets the ban reason on the BBS connection.
                 info!(id = %log_transfer_id, user = %username, ip = %peer_addr, "{}", LOG_UPLOAD_BANNED);
                 let _ = transfer.writer().get_mut().shutdown().await;
                 return Ok(());
@@ -149,13 +139,13 @@ where
         }
     }
 
-    // Send TransferComplete
     let complete = ServerMessage::TransferComplete {
         success: transfer_success,
         error: transfer_error,
         error_kind: transfer_error_kind,
     };
-    let _ = transfer.send(&complete).await; // Best effort - connection may be closing
+    // Best effort — connection may be closing.
+    let _ = transfer.send(&complete).await;
 
     if transfer_success {
         info!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %destination, files = ?uploaded_files, "{}", LOG_UPLOAD_COMPLETE);
@@ -163,22 +153,15 @@ where
         warn!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %destination, files = ?uploaded_files, "{}", LOG_UPLOAD_FAILED);
     }
 
-    // Mark file index as dirty on successful upload so it gets rebuilt
     if transfer_success {
         transfer.file_index().mark_dirty();
     }
 
-    // Close connection
     let _ = transfer.writer().get_mut().shutdown().await;
 
     Ok(())
 }
 
-// =============================================================================
-// File Reception Errors
-// =============================================================================
-
-/// Error type for receive_file
 enum ReceiveFileError {
     Transfer(TransferError),
     Banned,
@@ -204,14 +187,7 @@ impl From<StreamError> for ReceiveFileError {
     }
 }
 
-// =============================================================================
-// File Reception
-// =============================================================================
-
-/// Receive a single file from the client
-///
-/// Returns `Ok(relative_path)` of the successfully received file on success,
-/// or `Err(ReceiveFileError)` on failure.
+/// Returns the relative path of the received file on success.
 async fn receive_file<R, W>(
     transfer: &mut Transfer<'_, R, W>,
     params: ReceiveFileParams<'_>,
@@ -228,7 +204,7 @@ where
         file_index,
     } = params;
 
-    // Read FileStart from client (no sha256 — hash arrives later in FileHash)
+    // sha256 arrives later in a separate FileHash frame.
     let (relative_path, file_size) = read_client_file_start(transfer.reader(), locale).await?;
 
     debug!(
@@ -239,13 +215,29 @@ where
         "{}", LOG_UPLOAD_RECEIVING
     );
 
-    // Validate the relative path and build target paths
     let (target_path, part_path) =
         validate_and_build_upload_paths(&relative_path, destination, area_root, locale)?;
 
-    // Check for conflicts and get existing file state with StreamingHasher
-    // The hasher is pre-fed with existing .part content for single-pass hashing.
-    // Sends FileHashing keepalives to client while hashing large existing files.
+    // Uploads use `Fail` mode — BBS handlers and other uploads bounce
+    // immediately rather than block on a multi-hour transfer. Lock both
+    // target AND `.part` so a rename of `.part` can't be promoted to the
+    // final target mid-upload.
+    let target_key = files::lock_key(&target_path).map_err(|_| {
+        ReceiveFileError::Transfer(TransferError::invalid(err_upload_path_invalid(locale)))
+    })?;
+    let part_key = files::lock_key(&part_path).map_err(|_| {
+        ReceiveFileError::Transfer(TransferError::invalid(err_upload_path_invalid(locale)))
+    })?;
+    let _lock_guards = transfer
+        .file_mutation_locks()
+        .acquire_many(vec![target_key, part_key], PathLockMode::Fail)
+        .await
+        .map_err(|_| {
+            ReceiveFileError::Transfer(TransferError::conflict(err_upload_conflict(locale)))
+        })?;
+
+    // Hasher is pre-fed with existing .part content for single-pass hashing.
+    // Sends FileHashing keepalives while hashing large existing files.
     let (existing_size, existing_hash, mut hasher, complete_file_exists) =
         check_upload_conflicts_and_get_state(
             transfer.writer(),
@@ -256,47 +248,39 @@ where
         )
         .await?;
 
-    // Send FileStartResponse with our current state
     send_file_start_response(transfer.writer(), existing_size, existing_hash, locale).await?;
 
-    // Read next frame from client: FileData (data transfer) or FileHash (skip)
-    // FileHashing keepalives are skipped automatically
+    // FileHashing keepalives are skipped automatically.
     let client_frame = read_file_data_or_file_hash(transfer.reader(), locale).await?;
 
     match client_frame {
         ClientFileFrame::FileHash {
             sha256: client_hash,
         } => {
-            // Client says: zero-byte or already complete — no FileData
+            // Client says: zero-byte or already complete — no FileData coming.
             if file_size == 0 {
-                // Zero-byte file
                 create_empty_file(&target_path, locale).await?;
                 debug!(id = %transfer_id, path = %relative_path, "{}", LOG_UPLOAD_EMPTY_FILE);
             } else {
-                // Already complete — verify hashes match
                 let server_hash = hasher.finalize();
                 if server_hash != client_hash {
                     return Err(ReceiveFileError::Transfer(TransferError::hash_mismatch(
                         err_upload_hash_mismatch(locale),
                     )));
                 }
-                // No-op when complete file already exists at target_path (no .part to rename).
-                // Handles the edge case where a .part file was left behind alongside the complete file.
+                // Handles the edge case of a leftover .part alongside the complete file.
                 finalize_part_file_if_exists(&part_path, &target_path, locale).await?;
                 debug!(id = %transfer_id, path = %relative_path, "{}", LOG_UPLOAD_ALREADY_COMPLETE);
             }
         }
         ClientFileFrame::FileData(header) => {
-            // Client is sending file data
-
-            // If a complete file already exists, reject — client should have sent FileHash
+            // If a complete file already exists, client should have sent FileHash.
             if complete_file_exists {
                 return Err(ReceiveFileError::Transfer(TransferError::exists(
                     err_upload_file_exists(locale),
                 )));
             }
 
-            // Calculate offset from FileData payload size
             let incoming_bytes = header.payload_length;
             if incoming_bytes > file_size {
                 return Err(ReceiveFileError::Transfer(TransferError::protocol_error(
@@ -305,7 +289,6 @@ where
             }
             let offset = file_size - incoming_bytes;
 
-            // Check for concurrent upload conflict
             check_resume_conflict(offset, existing_size, locale)?;
 
             if offset > 0 {
@@ -318,7 +301,6 @@ where
                 );
             }
 
-            // Stream file data to .part file with ban checking and hasher
             let bytes_written = stream_to_part_file(
                 transfer,
                 &header,
@@ -337,7 +319,6 @@ where
                 "{}", LOG_UPLOAD_RECEIVED
             );
 
-            // Read FileHash from client (sent after FileData)
             let client_frame = read_file_data_or_file_hash(transfer.reader(), locale).await?;
             let client_hash = match client_frame {
                 ClientFileFrame::FileHash { sha256 } => sha256,
@@ -348,7 +329,6 @@ where
                 }
             };
 
-            // Verify: server-computed hash must match client's FileHash
             let server_hash = hasher.finalize();
             if server_hash != client_hash {
                 let _ = tokio::fs::remove_file(&part_path).await;
@@ -357,7 +337,6 @@ where
                 )));
             }
 
-            // Rename .part to final destination
             tokio::fs::rename(&part_path, &target_path)
                 .await
                 .map_err(|_| {
@@ -377,10 +356,6 @@ where
 
     Ok(relative_path)
 }
-
-// =============================================================================
-// Validation Helpers
-// =============================================================================
 
 /// Result of an upload folder-access check.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -424,37 +399,30 @@ where
     let user = transfer.user();
     let file_root = transfer.file_root();
 
-    // Validate destination path
     validate_transfer_path(destination, locale)?;
 
-    // Check upload permission — either FileUpload or FileUploadAnywhere suffices.
-    // FileUploadAnywhere implies upload capability plus folder-restriction bypass,
-    // so it stands alone as a complete grant.
+    // FileUploadAnywhere implies upload capability plus folder-restriction
+    // bypass, so it stands alone as a complete grant.
     check_any_permission(
         user,
         &[Permission::FileUpload, Permission::FileUploadAnywhere],
         locale,
     )?;
 
-    // Check file_root permission if using root mode
     check_root_permission(user, use_root, locale)?;
 
-    // Resolve area root
     let area_root = resolve_area_root(file_root, &user.username, use_root, locale)?;
 
-    // Build candidate path
     let candidate = build_validated_path(&area_root, destination, locale)?;
 
-    // Try to resolve the destination - it may or may not exist yet
+    // Destination may not exist yet.
     let resolved_destination = match resolve_path(&area_root, &candidate) {
         Ok(path) => {
-            // Destination exists - verify it's a directory
             if !path.is_dir() {
                 return Err(TransferError::invalid(err_upload_path_invalid(locale)));
             }
 
-            // Check that existing destination allows uploads
-            // (bypassed by FileUploadAnywhere permission)
+            // FileUploadAnywhere bypasses the upload-folder check.
             match check_upload_access(user, &area_root, &path) {
                 UploadAccess::Allowed => {}
                 UploadAccess::Bypassed => {
@@ -470,7 +438,7 @@ where
             path
         }
         Err(crate::files::path::PathError::NotFound) => {
-            // Destination doesn't exist - find nearest existing ancestor and check if it allows uploads
+            // Walk up to the nearest existing ancestor; new dirs inherit its upload-allowed status.
             let mut ancestor = candidate.as_path();
             let resolved_ancestor = loop {
                 ancestor = ancestor
@@ -484,13 +452,10 @@ where
                 }
             };
 
-            // Verify ancestor is a directory
             if !resolved_ancestor.is_dir() {
                 return Err(TransferError::invalid(err_upload_path_invalid(locale)));
             }
 
-            // Check that ancestor allows uploads (new directories inherit this)
-            // (bypassed by FileUploadAnywhere permission)
             match check_upload_access(user, &area_root, &resolved_ancestor) {
                 UploadAccess::Allowed => {}
                 UploadAccess::Bypassed => {
@@ -503,11 +468,9 @@ where
                 }
             }
 
-            // Create the destination directory and any intermediate directories
             std::fs::create_dir_all(&candidate)
                 .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
 
-            // Return the candidate path (now exists)
             candidate
         }
         Err(e) => {
@@ -525,11 +488,8 @@ fn validate_and_build_upload_paths(
     area_root: &Path,
     locale: &str,
 ) -> Result<(PathBuf, PathBuf), TransferError> {
-    // Validate the relative path (security critical!)
-    // - Empty paths are invalid (no filename)
-    // - Absolute paths are invalid (must be relative)
-    // - validate_file_path checks for null bytes, control chars, Windows drive letters
-    // - Path traversal (..) is rejected by build_and_validate_candidate_path below
+    // Security-critical: reject empty/absolute/null/control/drive-letter/traversal.
+    // The `validate_and_build_candidate_path` call below catches `..`.
     if relative_path.is_empty()
         || relative_path.starts_with('/')
         || relative_path.starts_with('\\')
@@ -538,34 +498,20 @@ fn validate_and_build_upload_paths(
         return Err(TransferError::invalid(err_upload_path_invalid(locale)));
     }
 
-    // Build the target path
     let target_path = destination.join(relative_path);
     let part_path = PathBuf::from(format!("{}{}", target_path.display(), PART_SUFFIX));
 
-    // Validate `relative_path` for ".." traversal.
-    //
-    // We intentionally do NOT reconstruct "area_root-relative" by stripping
-    // area_root from destination: `destination` is the canonicalized path
-    // returned from `resolve_path`, and may point outside area_root when a
-    // path segment is an admin-created symlink to external storage (e.g.
-    // `shared/Music -> /home/user/Music`). Admin-created symlinks are
-    // trusted by design, so a canonical destination outside area_root is
-    // legitimate here. strip_prefix would spuriously reject those uploads.
-    //
-    // Security: `destination` contains no ".." (canonical paths can't);
-    // `relative_path` is explicitly validated for ".." below. The joined
-    // `target_path` therefore cannot introduce traversal. Parent directories
-    // for nested `relative_path` values are created on demand during stream.
+    // `destination` may be outside area_root via an admin-created symlink
+    // (e.g. `shared/Music -> /home/user/Music`), so we validate
+    // `relative_path` against area_root directly instead of stripping —
+    // strip_prefix would spuriously reject those uploads. The relative_path
+    // call below catches `..` traversal; canonical `destination` has none.
     if validate_and_build_candidate_path(area_root, relative_path).is_err() {
         return Err(TransferError::invalid(err_upload_path_invalid(locale)));
     }
 
     Ok((target_path, part_path))
 }
-
-// =============================================================================
-// Conflict Detection
-// =============================================================================
 
 /// Check for upload conflicts and get existing file state
 ///
@@ -581,23 +527,20 @@ async fn check_upload_conflicts_and_get_state<W>(
 where
     W: AsyncWriteExt + Unpin,
 {
-    // Check if complete file already exists (no .part)
+    // Complete file already exists, no .part.
     if target_path.exists() && !part_path.exists() {
         let existing_metadata = tokio::fs::metadata(target_path).await.ok();
         let existing_len = existing_metadata.map(|m| m.len()).unwrap_or(0);
 
         if existing_len == 0 && file_size == 0 {
-            // Both are empty files — "already complete"
             return Ok((0, None, StreamingHasher::new(), true));
         }
 
         if existing_len != file_size {
-            // Different sizes — definitely different file, reject
             return Err(TransferError::exists(err_upload_file_exists(locale)));
         }
 
-        // Same size — hash the existing file into a StreamingHasher
-        // Client will compare and decide (already complete or conflict)
+        // Same size — hash and let the client decide (already complete or conflict).
         let file_name = target_path
             .file_name()
             .and_then(|n| n.to_str())
@@ -610,7 +553,6 @@ where
         return Ok((file_size, Some(hash), hasher, true));
     }
 
-    // Check for existing .part file for resume
     if part_path.exists() {
         let metadata = tokio::fs::metadata(part_path)
             .await
@@ -641,18 +583,15 @@ fn check_resume_conflict(
     existing_size: u64,
     locale: &str,
 ) -> Result<(), TransferError> {
-    // CONFLICT DETECTION: If client is sending full file (offset == 0) but a .part file
-    // already existed with data (existing_size > 0), this is a DIFFERENT uploader.
-    // Return an error instead of overwriting - the original uploader can still resume.
+    // Full file with an existing .part = different uploader; don't overwrite,
+    // the original uploader can still resume.
     if offset == 0 && existing_size > 0 {
         return Err(TransferError::conflict(err_upload_conflict(locale)));
     }
 
-    // SECURITY: Verify client's claimed offset matches actual .part file size.
-    // A malicious client could claim offset=1000 when .part is only 500 bytes,
-    // causing corrupt data (server would append, resulting in wrong file content).
-    // The offset is derived from: offset = file_size - incoming_bytes
-    // For a valid resume, this must equal the existing .part file size.
+    // Security: a malicious client could claim offset=1000 when .part is only
+    // 500 bytes, causing the server to append corrupt data. Valid resume
+    // requires offset == existing .part size.
     if offset > 0 && offset != existing_size {
         return Err(TransferError::protocol_error(err_upload_protocol_error(
             locale,
@@ -660,10 +599,6 @@ fn check_resume_conflict(
     }
     Ok(())
 }
-
-// =============================================================================
-// Protocol Helpers
-// =============================================================================
 
 /// Read FileStart message from client
 async fn read_client_file_start<R>(
@@ -673,7 +608,7 @@ async fn read_client_file_start<R>(
 where
     R: AsyncReadExt + Unpin,
 {
-    // Loop to skip any FileHashing keepalive messages
+    // Loop to skip FileHashing keepalives.
     loop {
         let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
             Ok(Some(msg)) => msg,
@@ -723,22 +658,17 @@ where
         .map_err(|_| TransferError::io_error(err_upload_connection_lost(locale)))
 }
 
-/// Result of reading the next client frame after FileStartResponse
 #[derive(Debug)]
 enum ClientFileFrame {
-    /// Client is sending file data
     FileData(FrameHeader),
-    /// Client says file is already complete (or zero-byte) — no FileData
-    FileHash { sha256: String },
+    /// File was already complete or zero-byte — no FileData coming.
+    FileHash {
+        sha256: String,
+    },
 }
 
-/// Read the next client frame: FileData or FileHash
-///
-/// After the FileStartResponse exchange, the client sends one of:
-/// - `FileData` then `FileHash` — data transfer with post-hash verification
-/// - `FileHash` alone — file was already complete or zero-byte
-///
-/// Automatically skips `FileHashing` keepalive messages.
+/// After FileStartResponse, the client sends either `FileData` then `FileHash`,
+/// or `FileHash` alone. `FileHashing` keepalives are skipped.
 async fn read_file_data_or_file_hash<R>(
     frame_reader: &mut FrameReader<R>,
     locale: &str,
@@ -761,7 +691,7 @@ where
 
         match h.message_type.as_str() {
             "FileHashing" => {
-                // Keepalive — consume payload and continue
+                // Consume keepalive payload and wait for the next frame.
                 if frame_reader.read_payload_into_vec(&h).await.is_err() {
                     return Err(TransferError::protocol_error(err_upload_protocol_error(
                         locale,
@@ -773,7 +703,6 @@ where
                 return Ok(ClientFileFrame::FileData(h));
             }
             "FileHash" => {
-                // Read payload and deserialize
                 let payload = frame_reader.read_payload_into_vec(&h).await.map_err(|_| {
                     TransferError::protocol_error(err_upload_protocol_error(locale))
                 })?;
@@ -800,13 +729,8 @@ where
     }
 }
 
-// =============================================================================
-// File Operations
-// =============================================================================
-
 /// Create an empty file at the target path
 async fn create_empty_file(target_path: &Path, locale: &str) -> Result<(), TransferError> {
-    // Create parent directories if needed
     if let Some(parent) = target_path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
@@ -845,26 +769,24 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    // Create parent directories if needed
     if let Some(parent) = target_path.parent() {
         tokio::fs::create_dir_all(parent).await.map_err(|_| {
             ReceiveFileError::Transfer(TransferError::io_error(err_upload_write_failed(locale)))
         })?;
     }
 
-    // Open .part file for writing
-    // For fresh uploads (offset == 0), use create_new(true) to atomically fail if the file
-    // already exists. This prevents TOCTOU race conditions.
+    // Fresh uploads use `create_new` so two uploaders can't race the .part file.
+    // Resume opens the existing .part for append.
     let file_result = if offset == 0 {
         tokio::fs::OpenOptions::new()
-            .create_new(true) // Atomic: fails if file exists
+            .create_new(true)
             .write(true)
             .open(part_path)
             .await
     } else {
         tokio::fs::OpenOptions::new()
             .create(true)
-            .append(true) // Resume: append to existing .part file
+            .append(true)
             .open(part_path)
             .await
     };
@@ -872,7 +794,7 @@ where
     let file = match file_result {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-            // Race condition: another uploader created the .part file
+            // Another uploader raced us to the .part file.
             return Err(ReceiveFileError::Transfer(TransferError::conflict(
                 err_upload_conflict(locale),
             )));
@@ -892,27 +814,20 @@ where
         .stream_file_from_client(header, &mut hashing_writer, DEFAULT_PROGRESS_TIMEOUT)
         .await;
 
-    // Extract the inner file for flushing/syncing
     let file = hashing_writer.into_inner();
 
     let bytes_written = result?;
 
-    // Check if we were banned mid-stream
     if transfer.is_banned() {
         return Err(ReceiveFileError::Banned);
     }
 
-    // Ensure all data is flushed to disk
     file.sync_all().await.map_err(|_| {
         ReceiveFileError::Transfer(TransferError::io_error(err_upload_write_failed(locale)))
     })?;
 
     Ok(bytes_written)
 }
-
-// =============================================================================
-// Tests
-// =============================================================================
 
 #[cfg(test)]
 mod tests {
@@ -929,18 +844,12 @@ mod tests {
         FrameWriter::new(Vec::new())
     }
 
-    // =========================================================================
-    // validate_and_build_upload_paths tests
-    // =========================================================================
-
     #[test]
     fn test_validate_paths_valid_simple() {
         let temp_dir = TempDir::new().unwrap();
         let area_root = temp_dir.path().canonicalize().unwrap();
         let destination = area_root.join("uploads");
-        // Create destination directory (parent of target file)
         std::fs::create_dir_all(&destination).unwrap();
-        // Canonicalize destination after creation for path comparison
         let destination = destination.canonicalize().unwrap();
 
         let result =
@@ -957,10 +866,8 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let area_root = temp_dir.path().canonicalize().unwrap();
         let destination = area_root.join("uploads");
-        // Only create the destination directory - parent directories for nested files
-        // don't need to exist during validation (they're created during streaming)
+        // Parent dirs for nested paths are created during streaming, not validation.
         std::fs::create_dir_all(&destination).unwrap();
-        // Canonicalize destination after creation
         let destination = destination.canonicalize().unwrap();
 
         let result = validate_and_build_upload_paths(
@@ -1021,7 +928,6 @@ mod tests {
         let area_root = temp_dir.path().canonicalize().unwrap();
         let destination = area_root.join("uploads");
         std::fs::create_dir_all(&destination).unwrap();
-        // Canonicalize destination after creation
         let destination = destination.canonicalize().unwrap();
 
         // File with extension
@@ -1152,10 +1058,6 @@ mod tests {
         assert_eq!(target, destination.join("📁folder/🎵music.mp3"));
     }
 
-    // =========================================================================
-    // check_resume_conflict tests
-    // =========================================================================
-
     #[test]
     fn test_resume_conflict_fresh_upload_no_existing() {
         // Fresh upload (offset=0), no existing .part file (existing_size=0)
@@ -1201,10 +1103,6 @@ mod tests {
         let result = check_resume_conflict(500, 500, TEST_LOCALE);
         assert!(result.is_ok());
     }
-
-    // =========================================================================
-    // check_upload_conflicts_and_get_state tests
-    // =========================================================================
 
     #[tokio::test]
     async fn test_conflicts_no_existing_files() {
@@ -1283,10 +1181,6 @@ mod tests {
         assert!(hash.is_some());
         assert!(!complete_exists);
     }
-
-    // =========================================================================
-    // File operation tests
-    // =========================================================================
 
     #[tokio::test]
     async fn test_create_empty_file() {
@@ -1376,10 +1270,6 @@ mod tests {
         let full = hasher.finalize();
         assert_eq!(partial, full);
     }
-
-    // =========================================================================
-    // read_file_data_or_file_hash tests
-    // =========================================================================
 
     /// Helper: build a raw protocol frame from type name and payload bytes
     fn build_frame(type_name: &str, payload: &[u8]) -> Vec<u8> {
@@ -1493,10 +1383,6 @@ mod tests {
         let err = result.unwrap_err();
         assert_eq!(err.kind, nexus_common::ERROR_KIND_PROTOCOL_ERROR);
     }
-
-    // =========================================================================
-    // check_upload_access tests
-    // =========================================================================
 
     #[test]
     fn test_upload_access_normal_upload_folder() {

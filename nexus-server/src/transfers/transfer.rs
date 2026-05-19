@@ -16,7 +16,7 @@ use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::send_server_message_with_id;
 use nexus_common::protocol::ServerMessage;
 
-use crate::files::FileIndex;
+use crate::files::{FileIndex, PathLockMap};
 
 #[cfg(test)]
 use super::registry::TransferRegistration;
@@ -73,6 +73,7 @@ pub struct TransferContext<'a> {
     pub locale: String,
     pub file_root: &'a Path,
     pub file_index: &'a Arc<FileIndex>,
+    pub file_mutation_locks: &'a Arc<PathLockMap>,
     pub registry: &'a TransferRegistry,
 }
 
@@ -104,6 +105,7 @@ pub struct Transfer<'a, R, W> {
     locale: String,
     file_root: &'a Path,
     file_index: &'a Arc<FileIndex>,
+    file_mutation_locks: &'a Arc<PathLockMap>,
 
     // RAII cleanup (must be last so it drops after other fields)
     _guard: TransferRegistryGuard<'a>,
@@ -138,6 +140,7 @@ where
             locale: ctx.locale,
             file_root: ctx.file_root,
             file_index: ctx.file_index,
+            file_mutation_locks: ctx.file_mutation_locks,
             _guard: TransferRegistryGuard::new(ctx.registry, id),
         }
     }
@@ -195,6 +198,10 @@ where
     /// Get the file index
     pub fn file_index(&self) -> &Arc<FileIndex> {
         self.file_index
+    }
+
+    pub fn file_mutation_locks(&self) -> &Arc<PathLockMap> {
+        self.file_mutation_locks
     }
 
     /// Send a server message
@@ -542,6 +549,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
         let file_index = make_test_file_index(&temp_dir);
+        let file_mutation_locks = Arc::new(PathLockMap::new());
 
         let transfer = Transfer::new(
             FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -553,6 +561,7 @@ mod tests {
                 locale: "en".to_string(),
                 file_root,
                 file_index: &file_index,
+                file_mutation_locks: &file_mutation_locks,
                 registry: &registry,
             },
         );
@@ -589,6 +598,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
         let file_index = make_test_file_index(&temp_dir);
+        let file_mutation_locks = Arc::new(PathLockMap::new());
 
         let mut transfer = Transfer::new(
             FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -600,6 +610,7 @@ mod tests {
                 locale: "en".to_string(),
                 file_root,
                 file_index: &file_index,
+                file_mutation_locks: &file_mutation_locks,
                 registry: &registry,
             },
         );
@@ -641,6 +652,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
         let file_index = make_test_file_index(&temp_dir);
+        let file_mutation_locks = Arc::new(PathLockMap::new());
 
         let mut transfer = Transfer::new(
             FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -652,6 +664,7 @@ mod tests {
                 locale: "en".to_string(),
                 file_root,
                 file_index: &file_index,
+                file_mutation_locks: &file_mutation_locks,
                 registry: &registry,
             },
         );
@@ -693,6 +706,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
         let file_index = make_test_file_index(&temp_dir);
+        let file_mutation_locks = Arc::new(PathLockMap::new());
 
         let mut transfer = Transfer::new(
             FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -704,6 +718,7 @@ mod tests {
                 locale: "en".to_string(),
                 file_root,
                 file_index: &file_index,
+                file_mutation_locks: &file_mutation_locks,
                 registry: &registry,
             },
         );
@@ -743,6 +758,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
         let file_index = make_test_file_index(&temp_dir);
+        let file_mutation_locks = Arc::new(PathLockMap::new());
 
         let mut transfer = Transfer::new(
             FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -754,6 +770,7 @@ mod tests {
                 locale: "en".to_string(),
                 file_root,
                 file_index: &file_index,
+                file_mutation_locks: &file_mutation_locks,
                 registry: &registry,
             },
         );
@@ -797,6 +814,7 @@ mod tests {
             let temp_dir = TempDir::new().unwrap();
             let file_root = temp_dir.path();
             let file_index = make_test_file_index(&temp_dir);
+            let file_mutation_locks = Arc::new(PathLockMap::new());
 
             let _transfer = Transfer::new(
                 FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -808,6 +826,7 @@ mod tests {
                     locale: "en".to_string(),
                     file_root,
                     file_index: &file_index,
+                    file_mutation_locks: &file_mutation_locks,
                     registry: &registry,
                 },
             );
@@ -840,6 +859,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
         let file_index = make_test_file_index(&temp_dir);
+        let file_mutation_locks = Arc::new(PathLockMap::new());
 
         let mut transfer = Transfer::new(
             FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -851,6 +871,7 @@ mod tests {
                 locale: "en".to_string(),
                 file_root,
                 file_index: &file_index,
+                file_mutation_locks: &file_mutation_locks,
                 registry: &registry,
             },
         );

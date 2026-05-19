@@ -12,8 +12,8 @@ use nexus_common::protocol::ServerMessage;
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_authentication, err_database, err_group_not_empty_delete,
-    err_group_not_found, err_not_logged_in, err_permission_denied,
+    HandlerContext, err_database, err_group_not_empty_delete, err_group_not_found,
+    err_not_logged_in, err_permission_denied,
 };
 use crate::db::Permission;
 
@@ -26,7 +26,6 @@ pub async fn handle_group_delete<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_GROUP_DELETE_NOT_LOGGED_IN);
         return ctx
@@ -44,7 +43,7 @@ where
         None => {
             return ctx
                 .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
+                    &err_not_logged_in(ctx.locale),
                     Some(HANDLER_GROUP_DELETE),
                 )
                 .await;
@@ -77,9 +76,13 @@ where
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_DELETE_DB_ERROR);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_GROUP_DELETE))
-                .await;
+            let response = ServerMessage::GroupDeleteResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                id: None,
+                name: None,
+            };
+            return ctx.send_message(&response).await;
         }
     };
 
@@ -97,9 +100,13 @@ where
         Ok(_) => {}
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_DELETE_DB_ERROR);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_GROUP_DELETE))
-                .await;
+            let response = ServerMessage::GroupDeleteResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                id: None,
+                name: None,
+            };
+            return ctx.send_message(&response).await;
         }
     }
 
@@ -119,9 +126,13 @@ where
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_DELETE_DB_ERROR);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_GROUP_DELETE))
-                .await;
+            let response = ServerMessage::GroupDeleteResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                id: None,
+                name: None,
+            };
+            return ctx.send_message(&response).await;
         }
     };
 

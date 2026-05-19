@@ -575,6 +575,13 @@ pub const ERR_FILE_OP_REMOVE_TASK: &str = "remove task failed: ";
 pub const ERR_FILE_OP_COPY_TASK: &str = "copy task failed: ";
 pub const ERR_FILE_OP_RENAME_TASK: &str = "rename task failed: ";
 
+// --- Path lock errors ---
+//
+// `files::path_lock` internals. `io::Error` payload returned when
+// `lock_key()` is given a path without both a parent and a filename.
+// Not user-facing — no locale strings.
+pub const ERR_FILE_LOCK_INVALID_PATH: &str = "lock key requires a path with parent and filename";
+
 // --- Transfer-port handshake / login / DB errors ---
 //
 // Internal `io::Error` messages emitted by the transfer-port auth flow
@@ -815,6 +822,10 @@ pub const LOG_USER_UPDATE_DB_ERROR_USER: &str = "UserUpdate: database error gett
 pub const LOG_USER_UPDATE_DB_ERROR_GROUP: &str = "UserUpdate: database error fetching group";
 pub const LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS: &str =
     "UserUpdate: database error fetching group permissions";
+pub const LOG_USER_UPDATE_DB_ERROR_PERMISSIONS: &str =
+    "UserUpdate: database error reading user permissions";
+pub const LOG_USER_UPDATE_DB_ERROR_DUPLICATE_CHECK: &str =
+    "UserUpdate: database error checking duplicate username";
 pub const LOG_USER_UPDATE_PASSWORD_VERIFY: &str = "UserUpdate: password verification error";
 pub const LOG_USER_UPDATE_HASH_ERROR: &str = "UserUpdate: password hashing error";
 pub const LOG_USER_UPDATE_SUCCESS: &str = "UserUpdate: success";
@@ -1026,6 +1037,8 @@ pub const LOG_FILE_COPY_ROOT_DENIED: &str = "FileCopy: file_root permission deni
 pub const LOG_FILE_COPY_DELETE_DENIED: &str = "FileCopy: file_delete permission denied";
 pub const LOG_FILE_COPY_REMOVE_FAILED: &str = "FileCopy: failed to remove existing target";
 pub const LOG_FILE_COPY_FAILED: &str = "FileCopy: failed";
+pub const LOG_FILE_COPY_SOURCE_BUSY: &str = "FileCopy: source path is busy";
+pub const LOG_FILE_COPY_DESTINATION_BUSY: &str = "FileCopy: destination path is busy";
 pub const LOG_FILE_COPY_SUCCESS: &str = "FileCopy: success";
 pub const LOG_FILE_CREATE_DIR_NOT_LOGGED_IN: &str = "FileCreateDir: not logged in";
 pub const LOG_FILE_CREATE_DIR_ROOT_DENIED: &str = "FileCreateDir: file_root permission denied";
@@ -1049,11 +1062,15 @@ pub const LOG_FILE_MOVE_ROOT_DENIED: &str = "FileMove: file_root permission deni
 pub const LOG_FILE_MOVE_DELETE_DENIED: &str = "FileMove: file_delete permission denied";
 pub const LOG_FILE_MOVE_REMOVE_FAILED: &str = "FileMove: failed to remove existing target";
 pub const LOG_FILE_MOVE_FAILED: &str = "FileMove: failed";
+pub const LOG_FILE_MOVE_SOURCE_BUSY: &str = "FileMove: source path is busy";
+pub const LOG_FILE_MOVE_DESTINATION_BUSY: &str = "FileMove: destination path is busy";
 pub const LOG_FILE_MOVE_SUCCESS: &str = "FileMove: success";
 pub const LOG_FILE_RENAME_NOT_LOGGED_IN: &str = "FileRename: not logged in";
 pub const LOG_FILE_RENAME_PERMISSION_DENIED: &str = "FileRename: permission denied";
 pub const LOG_FILE_RENAME_ROOT_DENIED: &str = "FileRename: file_root permission denied";
 pub const LOG_FILE_RENAME_FAILED: &str = "FileRename: failed";
+pub const LOG_FILE_RENAME_SOURCE_BUSY: &str = "FileRename: source path is busy";
+pub const LOG_FILE_RENAME_DESTINATION_BUSY: &str = "FileRename: destination path is busy";
 pub const LOG_FILE_RENAME_SUCCESS: &str = "FileRename: success";
 pub const LOG_FILE_REINDEX_NOT_LOGGED_IN: &str = "FileReindex: not logged in";
 pub const LOG_FILE_REINDEX_PERMISSION_DENIED: &str = "FileReindex: permission denied";

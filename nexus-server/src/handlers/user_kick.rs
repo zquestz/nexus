@@ -9,7 +9,7 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, KickReasonError, NicknameError};
 
 use super::{
-    HandlerContext, err_authentication, err_cannot_kick_admin, err_cannot_kick_self, err_database,
+    HandlerContext, err_cannot_kick_admin, err_cannot_kick_self, err_database,
     err_kick_reason_invalid_characters, err_kick_reason_too_long, err_kicked_by,
     err_kicked_by_with_reason, err_nickname_empty, err_nickname_invalid, err_nickname_not_online,
     err_nickname_too_long, err_not_logged_in, err_permission_denied,
@@ -31,7 +31,6 @@ pub async fn handle_user_kick<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_KICK_NOT_LOGGED_IN);
         return ctx
@@ -44,7 +43,7 @@ where
         Some(user) => user,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_USER_KICK))
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_KICK))
                 .await;
         }
     };
@@ -132,9 +131,12 @@ where
         Ok(user) => user,
         Err(e) => {
             error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_KICK_DB_ERROR);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_KICK))
-                .await;
+            let response = ServerMessage::UserKickResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                nickname: None,
+            };
+            return ctx.send_message(&response).await;
         }
     };
 

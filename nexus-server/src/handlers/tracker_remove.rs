@@ -8,8 +8,7 @@ use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use super::{
-    HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
-    err_tracker_not_found,
+    HandlerContext, err_database, err_not_logged_in, err_permission_denied, err_tracker_not_found,
 };
 use crate::constants::{
     HANDLER_TRACKER_REMOVE, LOG_TRACKER_REMOVE_DB_ERROR, LOG_TRACKER_REMOVE_NOT_LOGGED_IN,
@@ -41,7 +40,7 @@ where
         None => {
             return ctx
                 .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
+                    &err_not_logged_in(ctx.locale),
                     Some(HANDLER_TRACKER_REMOVE),
                 )
                 .await;
@@ -82,9 +81,12 @@ where
                 err = %e,
                 "{}", LOG_TRACKER_REMOVE_DB_ERROR
             );
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_TRACKER_REMOVE))
-                .await;
+            let response = ServerMessage::TrackerRemoveResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                name: None,
+            };
+            return ctx.send_message(&response).await;
         }
     };
 
@@ -110,9 +112,12 @@ where
                 err = %e,
                 "{}", LOG_TRACKER_REMOVE_DB_ERROR
             );
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_TRACKER_REMOVE))
-                .await;
+            let response = ServerMessage::TrackerRemoveResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                name: None,
+            };
+            return ctx.send_message(&response).await;
         }
     }
 

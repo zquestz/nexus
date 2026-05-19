@@ -11,10 +11,9 @@ use nexus_common::protocol::{ChatAction, ServerMessage};
 use nexus_common::validators::{self, MessageError};
 
 use super::{
-    HandlerContext, channel_error_to_message, err_authentication, err_channel_not_found,
-    err_chat_feature_not_enabled, err_chat_too_long, err_flood_disconnect, err_flood_warning,
-    err_message_contains_newlines, err_message_empty, err_message_invalid_characters,
-    err_not_logged_in, err_permission_denied,
+    HandlerContext, channel_error_to_message, err_channel_not_found, err_chat_feature_not_enabled,
+    err_chat_too_long, err_flood_disconnect, err_flood_warning, err_message_contains_newlines,
+    err_message_empty, err_message_invalid_characters, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
     FEATURE_CHAT, HANDLER_CHAT_SEND, LOG_CHAT_SEND_NOT_LOGGED_IN, LOG_CHAT_SEND_PERMISSION_DENIED,
@@ -35,7 +34,6 @@ pub async fn handle_chat_send<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_SEND_NOT_LOGGED_IN);
         return ctx
@@ -48,15 +46,15 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_CHAT_SEND))
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_SEND))
                 .await;
         }
     };
 
-    // Check chat feature
+    // Disabled-by-admin isn't a protocol violation.
     if !user.has_feature(FEATURE_CHAT) {
         return ctx
-            .send_error_and_disconnect(
+            .send_error(
                 &err_chat_feature_not_enabled(ctx.locale),
                 Some(HANDLER_CHAT_SEND),
             )
@@ -106,7 +104,8 @@ where
         }
     }
 
-    // Validate message content
+    // Content rules (empty / over the char cap / newlines / invalid chars) —
+    // the framing layer already rejected oversized payloads.
     if let Err(e) = validators::validate_message(&message) {
         let error_msg = match e {
             MessageError::Empty => err_message_empty(ctx.locale),
@@ -114,9 +113,7 @@ where
             MessageError::ContainsNewlines => err_message_contains_newlines(ctx.locale),
             MessageError::InvalidCharacters => err_message_invalid_characters(ctx.locale),
         };
-        return ctx
-            .send_error_and_disconnect(&error_msg, Some(HANDLER_CHAT_SEND))
-            .await;
+        return ctx.send_error(&error_msg, Some(HANDLER_CHAT_SEND)).await;
     }
 
     // Validate channel name
@@ -306,8 +303,14 @@ mod tests {
         )
         .await;
 
-        // Should fail
-        assert!(result.is_err(), "Empty message should be rejected");
+        // Should send a non-disconnect error response
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::Error { command, .. } => {
+                assert_eq!(command, Some(HANDLER_CHAT_SEND.to_string()));
+            }
+            other => panic!("Expected Error for empty message, got {other:?}"),
+        }
 
         // Try to send whitespace-only message
         let result = handle_chat_send(
@@ -320,11 +323,14 @@ mod tests {
         )
         .await;
 
-        // Should fail
-        assert!(
-            result.is_err(),
-            "Whitespace-only message should be rejected"
-        );
+        // Should send a non-disconnect error response
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::Error { command, .. } => {
+                assert_eq!(command, Some(HANDLER_CHAT_SEND.to_string()));
+            }
+            other => panic!("Expected Error for whitespace message, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -353,8 +359,14 @@ mod tests {
         )
         .await;
 
-        // Should fail
-        assert!(result.is_err(), "Message with newline should be rejected");
+        // Should send a non-disconnect error response
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::Error { command, .. } => {
+                assert_eq!(command, Some(HANDLER_CHAT_SEND.to_string()));
+            }
+            other => panic!("Expected Error for newline message, got {other:?}"),
+        }
 
         // Try to send message with \r
         let result = handle_chat_send(
@@ -367,11 +379,14 @@ mod tests {
         )
         .await;
 
-        // Should fail
-        assert!(
-            result.is_err(),
-            "Message with carriage return should be rejected"
-        );
+        // Should send a non-disconnect error response
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::Error { command, .. } => {
+                assert_eq!(command, Some(HANDLER_CHAT_SEND.to_string()));
+            }
+            other => panic!("Expected Error for carriage-return message, got {other:?}"),
+        }
 
         // Try to send message with \r\n
         let result = handle_chat_send(
@@ -384,8 +399,14 @@ mod tests {
         )
         .await;
 
-        // Should fail
-        assert!(result.is_err(), "Message with CRLF should be rejected");
+        // Should send a non-disconnect error response
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::Error { command, .. } => {
+                assert_eq!(command, Some(HANDLER_CHAT_SEND.to_string()));
+            }
+            other => panic!("Expected Error for CRLF message, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -454,8 +475,15 @@ mod tests {
         )
         .await;
 
-        // Should fail
-        assert!(result.is_err(), "Chat should require chat feature");
+        // Should send a non-disconnect error response (feature is admin-toggleable,
+        // not a protocol violation — keep the session alive)
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::Error { command, .. } => {
+                assert_eq!(command, Some(HANDLER_CHAT_SEND.to_string()));
+            }
+            other => panic!("Expected Error for chat-without-feature, got {other:?}"),
+        }
     }
 
     #[tokio::test]

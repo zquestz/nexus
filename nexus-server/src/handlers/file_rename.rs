@@ -9,21 +9,22 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, DirNameError, FilePathError};
 
 use super::{
-    HandlerContext, err_dir_name_empty, err_dir_name_invalid, err_dir_name_too_long,
+    HandlerContext, err_destination_busy, err_dir_name_empty, err_dir_name_invalid,
+    err_dir_name_too_long, err_file_area_not_accessible, err_file_area_not_configured,
     err_file_not_found, err_file_path_invalid, err_file_path_too_long, err_not_logged_in,
-    err_permission_denied, err_rename_failed, err_rename_target_exists,
+    err_permission_denied, err_rename_failed, err_rename_target_exists, err_source_busy,
 };
 use crate::constants::{
-    HANDLER_FILE_RENAME, LOG_FILE_RENAME_FAILED, LOG_FILE_RENAME_NOT_LOGGED_IN,
-    LOG_FILE_RENAME_PERMISSION_DENIED, LOG_FILE_RENAME_ROOT_DENIED, LOG_FILE_RENAME_SUCCESS,
+    HANDLER_FILE_RENAME, LOG_FILE_RENAME_DESTINATION_BUSY, LOG_FILE_RENAME_FAILED,
+    LOG_FILE_RENAME_NOT_LOGGED_IN, LOG_FILE_RENAME_PERMISSION_DENIED, LOG_FILE_RENAME_ROOT_DENIED,
+    LOG_FILE_RENAME_SOURCE_BUSY, LOG_FILE_RENAME_SUCCESS,
 };
 use crate::db::Permission;
 use crate::files::{
-    build_and_validate_candidate_path, in_owned_dropbox, rename_path_async, resolve_path,
-    resolve_user_area,
+    PathLockMode, build_and_validate_candidate_path, in_owned_dropbox, lock_key, rename_path_async,
+    resolve_path, resolve_user_area,
 };
 
-/// Handle a file rename request
 pub async fn handle_file_rename<W>(
     path: String,
     new_name: String,
@@ -34,7 +35,6 @@ pub async fn handle_file_rename<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_NOT_LOGGED_IN);
         return ctx
@@ -42,7 +42,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -50,7 +49,7 @@ where
     {
         Some(u) => u,
         None => {
-            // Session not found - likely a race condition, not a security event
+            // Race, not a security event — don't log.
             let response = ServerMessage::FileRenameResponse {
                 success: false,
                 error: Some(err_not_logged_in(ctx.locale)),
@@ -59,17 +58,14 @@ where
         }
     };
 
-    // Check file root (cheap check, should always be set in production)
     let Some(file_root) = ctx.file_root else {
-        // File area not configured
         let response = ServerMessage::FileRenameResponse {
             success: false,
-            error: Some(err_file_not_found(ctx.locale)),
+            error: Some(err_file_area_not_configured(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     };
 
-    // Check FileRoot permission if root browsing requested
     if root && !requesting_user.has_permission(Permission::FileRoot) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_ROOT_DENIED);
         let response = ServerMessage::FileRenameResponse {
@@ -79,7 +75,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate path
     if let Err(e) = validators::validate_file_path(&path) {
         let error_msg = match e {
             FilePathError::TooLong => {
@@ -96,7 +91,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate new name (same rules as directory names - no path separators, no .., etc.)
+    // New name uses dir-name rules (no path separators, no .., etc.).
     if let Err(e) = validators::validate_dir_name(&new_name) {
         let error_msg = match e {
             DirNameError::Empty => err_dir_name_empty(ctx.locale),
@@ -115,27 +110,30 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Resolve area root - either file root (if root browsing) or user's area
     let area_root_path = if root {
         file_root.to_path_buf()
     } else {
         resolve_user_area(file_root, &requesting_user.username)
     };
 
-    // Canonicalize area_root (it might not exist yet for new users)
     let area_root = match area_root_path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
-            // User's area doesn't exist
+            // Root mode: admin's file_root is broken. Non-root: the user's
+            // personal area dir doesn't exist yet, so the file can't either.
+            let error_msg = if root {
+                err_file_area_not_accessible(ctx.locale)
+            } else {
+                err_file_not_found(ctx.locale)
+            };
             let response = ServerMessage::FileRenameResponse {
                 success: false,
-                error: Some(err_file_not_found(ctx.locale)),
+                error: Some(error_msg),
             };
             return ctx.send_message(&response).await;
         }
     };
 
-    // Build and validate candidate path
     let candidate = match build_and_validate_candidate_path(&area_root, &path) {
         Ok(p) => p,
         Err(_) => {
@@ -147,14 +145,10 @@ where
         }
     };
 
-    // Permission check: either the global `file_rename` permission, or
-    // ownership of an enclosing `[NEXUS-DB-username]` folder. The owner
-    // bypass uses the virtual `candidate` path so drop boxes implemented
-    // as symlinks are still recognized. Bypass is non-root-mode only.
-    //
-    // Rename is safe to allow under the bypass because the destination is
-    // always `source.parent().join(new_name)` — the entry stays in the
-    // same parent directory, so it cannot escape the drop box.
+    // Owner-of-`[NEXUS-DB-username]` bypass: rename is safe because the
+    // destination is always `source.parent().join(new_name)`, so the entry
+    // can't escape the drop box. Uses virtual `candidate` so symlinked drop
+    // boxes still match. Non-root-mode only.
     let bypass_via_ownership =
         !root && in_owned_dropbox(&candidate, &area_root, &requesting_user.username);
     if !requesting_user.has_permission(Permission::FileRename) && !bypass_via_ownership {
@@ -166,55 +160,10 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check if the candidate path exists (using symlink_metadata to not follow symlinks)
-    let symlink_meta = std::fs::symlink_metadata(&candidate);
-
-    // Determine the source path
-    let source_path = match &symlink_meta {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            // It's a symlink - rename the symlink itself, not the target
-            candidate.clone()
-        }
-        Ok(_) => {
-            // Not a symlink - resolve and use the canonical path
-            match resolve_path(&area_root, &candidate) {
-                Ok(p) => p,
-                Err(_) => {
-                    let response = ServerMessage::FileRenameResponse {
-                        success: false,
-                        error: Some(err_file_not_found(ctx.locale)),
-                    };
-                    return ctx.send_message(&response).await;
-                }
-            }
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let response = ServerMessage::FileRenameResponse {
-                success: false,
-                error: Some(err_file_not_found(ctx.locale)),
-            };
-            return ctx.send_message(&response).await;
-        }
-        Err(_) => {
-            let response = ServerMessage::FileRenameResponse {
-                success: false,
-                error: Some(err_file_path_invalid(ctx.locale)),
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
-
-    // Prevent renaming the area root itself
-    if source_path == area_root || candidate == area_root {
-        let response = ServerMessage::FileRenameResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Build the target path (same directory, new name)
-    let parent_dir = match source_path.parent() {
+    // See `files::path_lock`. Derive lock keys from `candidate` + `new_name`
+    // (pure path arithmetic) so source validation can run AFTER acquisition
+    // under the lock — closing the resolve-then-mutate race.
+    let candidate_parent = match candidate.parent() {
         Some(p) => p,
         None => {
             let response = ServerMessage::FileRenameResponse {
@@ -224,40 +173,131 @@ where
             return ctx.send_message(&response).await;
         }
     };
-    let target_path = parent_dir.join(&new_name);
-
-    // Check if target already exists
-    if target_path.exists() || target_path.symlink_metadata().is_ok() {
-        let response = ServerMessage::FileRenameResponse {
-            success: false,
-            error: Some(err_rename_target_exists(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Perform the rename (async to avoid blocking runtime)
-    match rename_path_async(&source_path, &target_path).await {
-        Ok(()) => {
-            // Mark file index as dirty so it gets rebuilt
-            ctx.file_index.mark_dirty();
-
-            debug!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %path, "{}", LOG_FILE_RENAME_SUCCESS);
-
-            let response = ServerMessage::FileRenameResponse {
-                success: true,
-                error: None,
-            };
-            ctx.send_message(&response).await
-        }
-        Err(e) => {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_RENAME_FAILED);
+    let target_path_for_lock = candidate_parent.join(&new_name);
+    let source_lock_key = match lock_key(&candidate) {
+        Ok(k) => k,
+        Err(_) => {
             let response = ServerMessage::FileRenameResponse {
                 success: false,
-                error: Some(err_rename_failed(ctx.locale)),
+                error: Some(err_file_path_invalid(ctx.locale)),
             };
-            ctx.send_message(&response).await
+            return ctx.send_message(&response).await;
         }
-    }
+    };
+    let target_lock_key = match lock_key(&target_path_for_lock) {
+        Ok(k) => k,
+        Err(_) => {
+            let response = ServerMessage::FileRenameResponse {
+                success: false,
+                error: Some(err_file_path_invalid(ctx.locale)),
+            };
+            return ctx.send_message(&response).await;
+        }
+    };
+    // Clone before moving into `acquire_many` so we can identify which side
+    // (source vs target) the busy lock was on, and report a meaningful error.
+    let busy_source_key = source_lock_key.clone();
+
+    // Guards live only inside this block; all socket sends happen after it.
+    let response = 'locked: {
+        let _lock_guards = match ctx
+            .file_mutation_locks
+            .acquire_many(vec![source_lock_key, target_lock_key], PathLockMode::Wait)
+            .await
+        {
+            Ok(g) => g,
+            Err(e) if e.key() == busy_source_key.as_path() => {
+                // Source path held by a `Fail`-mode lock.
+                debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_SOURCE_BUSY);
+                break 'locked ServerMessage::FileRenameResponse {
+                    success: false,
+                    error: Some(err_source_busy(ctx.locale)),
+                };
+            }
+            Err(_) => {
+                // Destination path held by a `Fail`-mode lock.
+                debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_DESTINATION_BUSY);
+                break 'locked ServerMessage::FileRenameResponse {
+                    success: false,
+                    error: Some(err_destination_busy(ctx.locale)),
+                };
+            }
+        };
+
+        // Under lock: resolve source from the authoritative filesystem state.
+        let symlink_meta = std::fs::symlink_metadata(&candidate);
+        let source_path = match &symlink_meta {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                // Rename the symlink, not its target.
+                candidate.clone()
+            }
+            Ok(_) => match resolve_path(&area_root, &candidate) {
+                Ok(p) => p,
+                Err(_) => {
+                    break 'locked ServerMessage::FileRenameResponse {
+                        success: false,
+                        error: Some(err_file_not_found(ctx.locale)),
+                    };
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                break 'locked ServerMessage::FileRenameResponse {
+                    success: false,
+                    error: Some(err_file_not_found(ctx.locale)),
+                };
+            }
+            Err(_) => {
+                break 'locked ServerMessage::FileRenameResponse {
+                    success: false,
+                    error: Some(err_file_path_invalid(ctx.locale)),
+                };
+            }
+        };
+
+        if source_path == area_root || candidate == area_root {
+            break 'locked ServerMessage::FileRenameResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+            };
+        }
+
+        let parent_dir = match source_path.parent() {
+            Some(p) => p,
+            None => {
+                break 'locked ServerMessage::FileRenameResponse {
+                    success: false,
+                    error: Some(err_file_path_invalid(ctx.locale)),
+                };
+            }
+        };
+        let target_path = parent_dir.join(&new_name);
+
+        if target_path.exists() || target_path.symlink_metadata().is_ok() {
+            break 'locked ServerMessage::FileRenameResponse {
+                success: false,
+                error: Some(err_rename_target_exists(ctx.locale)),
+            };
+        }
+
+        match rename_path_async(&source_path, &target_path).await {
+            Ok(()) => {
+                ctx.file_index.mark_dirty();
+                debug!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %path, "{}", LOG_FILE_RENAME_SUCCESS);
+                ServerMessage::FileRenameResponse {
+                    success: true,
+                    error: None,
+                }
+            }
+            Err(e) => {
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_RENAME_FAILED);
+                ServerMessage::FileRenameResponse {
+                    success: false,
+                    error: Some(err_rename_failed(ctx.locale)),
+                }
+            }
+        }
+    };
+    ctx.send_message(&response).await
 }
 
 #[cfg(test)]
@@ -292,7 +332,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a file to rename
         fs::write(file_area.path().join("shared/test.txt"), "content")
             .expect("Failed to create test file");
 
@@ -325,7 +364,6 @@ mod tests {
             _ => panic!("Expected FileRenameResponse"),
         }
 
-        // File should still exist
         assert!(file_area.path().join("shared/test.txt").exists());
     }
 
@@ -334,7 +372,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a file to rename
         fs::write(file_area.path().join("shared/original.txt"), "content")
             .expect("Failed to create file");
         assert!(file_area.path().join("shared/original.txt").exists());
@@ -367,7 +404,6 @@ mod tests {
             _ => panic!("Expected FileRenameResponse"),
         }
 
-        // Verify file was renamed
         assert!(!file_area.path().join("shared/original.txt").exists());
         assert!(file_area.path().join("shared/renamed.txt").exists());
     }
@@ -377,7 +413,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a directory to rename
         fs::create_dir(file_area.path().join("shared/original_dir")).expect("Failed to create dir");
 
         let session_id = login_user(
@@ -408,7 +443,6 @@ mod tests {
             _ => panic!("Expected FileRenameResponse"),
         }
 
-        // Verify directory was renamed
         assert!(!file_area.path().join("shared/original_dir").exists());
         assert!(file_area.path().join("shared/renamed_dir").exists());
     }
@@ -418,7 +452,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create two files
         fs::write(file_area.path().join("shared/file1.txt"), "content1").unwrap();
         fs::write(file_area.path().join("shared/file2.txt"), "content2").unwrap();
 
@@ -623,7 +656,6 @@ mod tests {
             _ => panic!("Expected FileRenameResponse"),
         }
 
-        // File should still exist with original name
         assert!(file_area.path().join("shared/test.txt").exists());
     }
 
@@ -632,7 +664,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a file with unicode name
         fs::write(file_area.path().join("shared/文件.txt"), "content").unwrap();
 
         let session_id = login_user(
@@ -663,7 +694,6 @@ mod tests {
             _ => panic!("Expected FileRenameResponse"),
         }
 
-        // Verify file was renamed
         assert!(!file_area.path().join("shared/文件.txt").exists());
         assert!(file_area.path().join("shared/新文件.txt").exists());
     }
@@ -673,7 +703,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a file in shared
         fs::write(file_area.path().join("shared/test.txt"), "content")
             .expect("Failed to create file");
 
@@ -687,11 +716,10 @@ mod tests {
         )
         .await;
 
-        // Try to rename with root=true
         handle_file_rename(
             "shared/test.txt".to_string(),
             "renamed.txt".to_string(),
-            true, // root = true
+            true,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -707,7 +735,6 @@ mod tests {
             _ => panic!("Expected FileRenameResponse"),
         }
 
-        // File should still exist with original name
         assert!(file_area.path().join("shared/test.txt").exists());
     }
 
@@ -716,7 +743,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a file in shared (accessible via root mode)
         fs::write(file_area.path().join("shared/root_test.txt"), "content")
             .expect("Failed to create file");
 
@@ -737,7 +763,7 @@ mod tests {
         handle_file_rename(
             "shared/root_test.txt".to_string(),
             "renamed_root.txt".to_string(),
-            true, // root = true
+            true,
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
@@ -753,7 +779,6 @@ mod tests {
             _ => panic!("Expected FileRenameResponse"),
         }
 
-        // File should be renamed
         assert!(!file_area.path().join("shared/root_test.txt").exists());
         assert!(file_area.path().join("shared/renamed_root.txt").exists());
     }
@@ -766,7 +791,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a target file and a symlink to it
         let target = file_area.path().join("shared/target.txt");
         let link = file_area.path().join("shared/link.txt");
         fs::write(&target, "target content").expect("Failed to create target");
@@ -784,7 +808,6 @@ mod tests {
         )
         .await;
 
-        // Rename the symlink
         handle_file_rename(
             "link.txt".to_string(),
             "renamed_link.txt".to_string(),
@@ -804,10 +827,9 @@ mod tests {
             _ => panic!("Expected FileRenameResponse"),
         }
 
-        // Old symlink name should be gone, new name should exist
         assert!(!link.exists());
         assert!(file_area.path().join("shared/renamed_link.txt").exists());
-        // Target should still exist (we renamed the link, not the target)
+        // We renamed the link, not the target.
         assert!(target.exists(), "Target file should not be affected");
     }
 
@@ -816,7 +838,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a user's personal area with a file
         fs::create_dir_all(file_area.path().join("users/testuser"))
             .expect("Failed to create user dir");
         fs::write(
@@ -834,7 +855,7 @@ mod tests {
         )
         .await;
 
-        // Rename from personal area (user sees it as root)
+        // User sees personal area as root.
         handle_file_rename(
             "myfile.txt".to_string(),
             "renamed_personal.txt".to_string(),
@@ -858,7 +879,6 @@ mod tests {
             _ => panic!("Expected FileRenameResponse"),
         }
 
-        // File should be renamed
         assert!(!file_area.path().join("users/testuser/myfile.txt").exists());
         assert!(
             file_area

@@ -15,7 +15,7 @@ use crate::constants::{
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_account_deleted, err_authentication, err_cannot_delete_admin,
+    HandlerContext, Outcome, dispatch_outcome, err_account_deleted, err_cannot_delete_admin,
     err_cannot_delete_guest, err_cannot_delete_last_admin, err_cannot_delete_self, err_database,
     err_not_logged_in, err_permission_denied, err_user_not_found, remove_user_with_voice_cleanup,
 };
@@ -31,7 +31,6 @@ pub async fn handle_user_delete<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_NOT_LOGGED_IN);
         return ctx
@@ -39,170 +38,150 @@ where
             .await;
     };
 
-    // Acquire the state lock so a concurrent admin user/group update
-    // can't interleave its cache reconciliation / broadcasts with our
-    // delete + sweep. Dropped before each direct writer-socket I/O.
-    let _state_guard = ctx.user_manager.lock_user_state().await;
-    let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
-        Some(user) => user,
-        None => {
-            drop(_state_guard);
-            return ctx
-                .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
-                    Some(HANDLER_USER_DELETE),
-                )
-                .await;
-        }
-    };
-
-    // Check UserDelete permission (uses cached permissions, admin bypass built-in)
-    if !requesting_user_session.has_permission(Permission::UserDelete) {
-        warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_PERMISSION_DENIED);
-        let response = ServerMessage::UserDeleteResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // Look up target user by ID
-    let target_user = match ctx.db.users.get_user_by_id(id).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            let response = ServerMessage::UserDeleteResponse {
-                success: false,
-                error: Some(err_user_not_found(ctx.locale, &id.to_string())),
-                username: None,
+    // Guard lives only inside this block; all socket sends happen after it.
+    let outcome = 'locked: {
+        let _state_guard = ctx.user_manager.lock_user_state().await;
+        let requesting_user_session =
+            match ctx.user_manager.get_user_by_session_id(session_id).await {
+                Some(user) => user,
+                None => break 'locked Outcome::Disconnect,
             };
-            drop(_state_guard);
-            return ctx.send_message(&response).await;
+
+        if !requesting_user_session.has_permission(Permission::UserDelete) {
+            warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_PERMISSION_DENIED);
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                username: None,
+            }));
         }
-        Err(e) => {
-            error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
-            drop(_state_guard);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_DELETE))
-                .await;
-        }
-    };
 
-    // ID-based identity check — username compare leaks on rename.
-    if target_user.id == requesting_user_session.user_id {
-        let response = ServerMessage::UserDeleteResponse {
-            success: false,
-            error: Some(err_cannot_delete_self(ctx.locale)),
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    if target_user.username.to_lowercase() == GUEST_USERNAME {
-        let response = ServerMessage::UserDeleteResponse {
-            success: false,
-            error: Some(err_cannot_delete_guest(ctx.locale)),
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    if target_user.is_admin && !requesting_user_session.is_admin {
-        warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_ADMIN);
-        let response = ServerMessage::UserDeleteResponse {
-            success: false,
-            error: Some(err_cannot_delete_admin(ctx.locale)),
-            username: None,
-        };
-        drop(_state_guard);
-        return ctx.send_message(&response).await;
-    }
-
-    // DB delete first; the by-user_id disconnect sweep below runs
-    // only on Ok(true). On Blocked / Err the user stays online.
-    match ctx
-        .db
-        .users
-        .delete_user(target_user.id, requesting_user_session.is_admin)
-        .await
-    {
-        Ok(true) => {
-            info!(user = %requesting_user_session.username, ip = %ctx.peer_addr, target = %target_user.username, "{}", LOG_USER_DELETE_SUCCESS);
-
-            let online_users = ctx
-                .user_manager
-                .get_sessions_by_user_id(target_user.id)
-                .await;
-            for online_user in online_users {
-                let disconnect_msg = ServerMessage::Error {
-                    message: err_account_deleted(&online_user.locale),
-                    command: None,
-                };
-                let _ = online_user.tx.send((disconnect_msg, None));
-
-                let session_id = online_user.session_id;
-                remove_user_with_voice_cleanup(
-                    ctx.user_manager,
-                    ctx.voice_registry,
-                    ctx.channel_manager,
-                    session_id,
-                    &online_user,
-                )
-                .await;
+        let target_user = match ctx.db.users.get_user_by_id(id).await {
+            Ok(Some(user)) => user,
+            Ok(None) => {
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
+                    success: false,
+                    error: Some(err_user_not_found(ctx.locale, &id.to_string())),
+                    username: None,
+                }));
             }
+            Err(e) => {
+                error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
+                break 'locked Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
+                    success: false,
+                    error: Some(err_database(ctx.locale)),
+                    username: None,
+                }));
+            }
+        };
 
-            let response = ServerMessage::UserDeleteResponse {
-                success: true,
-                error: None,
-                username: Some(target_user.username),
-            };
-            drop(_state_guard);
-            ctx.send_message(&response).await
-        }
-        Ok(false) => {
-            // Atomic guard blocked. Re-read target to disambiguate:
-            //   None                  → another delete raced ahead
-            //   Some(admin), !req.adm → admin-target SQL guard fired
-            //   else                  → last-admin SQL guard fired
-            let target_now = match ctx.db.users.get_user_by_id(target_user.id).await {
-                Ok(t) => t,
-                Err(e) => {
-                    error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
-                    drop(_state_guard);
-                    return ctx
-                        .send_error_and_disconnect(
-                            &err_database(ctx.locale),
-                            Some(HANDLER_USER_DELETE),
-                        )
-                        .await;
-                }
-            };
-            let error = match target_now {
-                None => err_user_not_found(ctx.locale, &id.to_string()),
-                Some(u) if u.is_admin && !requesting_user_session.is_admin => {
-                    warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_ADMIN);
-                    err_cannot_delete_admin(ctx.locale)
-                }
-                _ => err_cannot_delete_last_admin(ctx.locale),
-            };
-            let response = ServerMessage::UserDeleteResponse {
+        // ID-based identity check — username compare leaks on rename.
+        if target_user.id == requesting_user_session.user_id {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
                 success: false,
-                error: Some(error),
+                error: Some(err_cannot_delete_self(ctx.locale)),
                 username: None,
-            };
-            drop(_state_guard);
-            ctx.send_message(&response).await
+            }));
         }
-        Err(e) => {
-            error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
-            drop(_state_guard);
-            ctx.send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_DELETE))
-                .await
+
+        if target_user.username.to_lowercase() == GUEST_USERNAME {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
+                success: false,
+                error: Some(err_cannot_delete_guest(ctx.locale)),
+                username: None,
+            }));
         }
-    }
+
+        if target_user.is_admin && !requesting_user_session.is_admin {
+            warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_ADMIN);
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
+                success: false,
+                error: Some(err_cannot_delete_admin(ctx.locale)),
+                username: None,
+            }));
+        }
+
+        // DB delete first; the by-user_id disconnect sweep below runs
+        // only on Ok(true). On Blocked / Err the user stays online.
+        match ctx
+            .db
+            .users
+            .delete_user(target_user.id, requesting_user_session.is_admin)
+            .await
+        {
+            Ok(true) => {
+                info!(user = %requesting_user_session.username, ip = %ctx.peer_addr, target = %target_user.username, "{}", LOG_USER_DELETE_SUCCESS);
+
+                let online_users = ctx
+                    .user_manager
+                    .get_sessions_by_user_id(target_user.id)
+                    .await;
+                for online_user in online_users {
+                    let disconnect_msg = ServerMessage::Error {
+                        message: err_account_deleted(&online_user.locale),
+                        command: None,
+                    };
+                    let _ = online_user.tx.send((disconnect_msg, None));
+
+                    let session_id = online_user.session_id;
+                    remove_user_with_voice_cleanup(
+                        ctx.user_manager,
+                        ctx.voice_registry,
+                        ctx.channel_manager,
+                        session_id,
+                        &online_user,
+                    )
+                    .await;
+                }
+
+                Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
+                    success: true,
+                    error: None,
+                    username: Some(target_user.username),
+                }))
+            }
+            Ok(false) => {
+                // Atomic guard blocked. Re-read target to disambiguate:
+                //   None                  → another delete raced ahead
+                //   Some(admin), !req.adm → admin-target SQL guard fired
+                //   else                  → last-admin SQL guard fired
+                let target_now = match ctx.db.users.get_user_by_id(target_user.id).await {
+                    Ok(t) => t,
+                    Err(e) => {
+                        error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
+                        break 'locked Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
+                            success: false,
+                            error: Some(err_database(ctx.locale)),
+                            username: None,
+                        }));
+                    }
+                };
+                let error = match target_now {
+                    None => err_user_not_found(ctx.locale, &id.to_string()),
+                    Some(u) if u.is_admin && !requesting_user_session.is_admin => {
+                        warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_DELETE_ADMIN);
+                        err_cannot_delete_admin(ctx.locale)
+                    }
+                    _ => err_cannot_delete_last_admin(ctx.locale),
+                };
+                Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
+                    success: false,
+                    error: Some(error),
+                    username: None,
+                }))
+            }
+            Err(e) => {
+                error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_DELETE_DB_ERROR);
+                Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
+                    success: false,
+                    error: Some(err_database(ctx.locale)),
+                    username: None,
+                }))
+            }
+        }
+    };
+
+    dispatch_outcome(outcome, ctx, HANDLER_USER_DELETE).await
 }
 
 #[cfg(test)]

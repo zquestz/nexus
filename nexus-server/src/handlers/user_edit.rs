@@ -10,8 +10,8 @@ use nexus_common::protocol::ServerMessage;
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, err_authentication, err_cannot_edit_admin, err_cannot_edit_self, err_database,
-    err_not_logged_in, err_permission_denied, err_user_not_found,
+    HandlerContext, err_cannot_edit_admin, err_cannot_edit_self, err_database, err_not_logged_in,
+    err_permission_denied, err_user_not_found,
 };
 use crate::constants::{
     HANDLER_USER_EDIT, LOG_USER_EDIT_ADMIN, LOG_USER_EDIT_DB_ERROR, LOG_USER_EDIT_NOT_LOGGED_IN,
@@ -28,7 +28,6 @@ pub async fn handle_user_edit<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_EDIT_NOT_LOGGED_IN);
         return ctx
@@ -45,7 +44,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_USER_EDIT))
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_EDIT))
                 .await;
         }
     };
@@ -54,73 +53,34 @@ where
     // their own bandwidth weight; field-level restrictions on what can
     // actually change are enforced by the UserUpdate handler.
     if requesting_user.user_id == id && !requesting_user.is_admin {
-        let response = ServerMessage::UserEditResponse {
-            success: false,
-            error: Some(err_cannot_edit_self(ctx.locale)),
-            id: None,
-            username: None,
-            is_admin: None,
-            is_shared: None,
-            enabled: None,
-            permissions: None,
-            group_id: None,
-            group_name: None,
-            group_permissions: None,
-            revoked_permissions: None,
-            available_groups: None,
-            bandwidth_weight: None,
-        };
-        return ctx.send_message(&response).await;
+        return ctx
+            .send_message(&reject_edit(err_cannot_edit_self(ctx.locale)))
+            .await;
     }
 
     // Check UserEdit permission (uses cached permissions, admin bypass built-in)
     if !requesting_user.has_permission(Permission::UserEdit) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_EDIT_PERMISSION_DENIED);
-        let response = ServerMessage::UserEditResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            id: None,
-            username: None,
-            is_admin: None,
-            is_shared: None,
-            enabled: None,
-            permissions: None,
-            group_id: None,
-            group_name: None,
-            group_permissions: None,
-            revoked_permissions: None,
-            available_groups: None,
-            bandwidth_weight: None,
-        };
-        return ctx.send_message(&response).await;
+        return ctx
+            .send_message(&reject_edit(err_permission_denied(ctx.locale)))
+            .await;
     }
 
     // Look up target user by ID
     let target_user = match ctx.db.users.get_user_by_id(id).await {
         Ok(Some(user)) => user,
         Ok(None) => {
-            let response = ServerMessage::UserEditResponse {
-                success: false,
-                error: Some(err_user_not_found(ctx.locale, &id.to_string())),
-                id: None,
-                username: None,
-                is_admin: None,
-                is_shared: None,
-                enabled: None,
-                permissions: None,
-                group_id: None,
-                group_name: None,
-                group_permissions: None,
-                revoked_permissions: None,
-                available_groups: None,
-                bandwidth_weight: None,
-            };
-            return ctx.send_message(&response).await;
+            return ctx
+                .send_message(&reject_edit(err_user_not_found(
+                    ctx.locale,
+                    &id.to_string(),
+                )))
+                .await;
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_EDIT_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_EDIT))
+                .send_message(&reject_edit(err_database(ctx.locale)))
                 .await;
         }
     };
@@ -128,23 +88,9 @@ where
     // Prevent non-admins from viewing admin user details for editing
     if target_user.is_admin && !requesting_user.is_admin {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_EDIT_ADMIN);
-        let response = ServerMessage::UserEditResponse {
-            success: false,
-            error: Some(err_cannot_edit_admin(ctx.locale)),
-            id: None,
-            username: None,
-            is_admin: None,
-            is_shared: None,
-            enabled: None,
-            permissions: None,
-            group_id: None,
-            group_name: None,
-            group_permissions: None,
-            revoked_permissions: None,
-            available_groups: None,
-            bandwidth_weight: None,
-        };
-        return ctx.send_message(&response).await;
+        return ctx
+            .send_message(&reject_edit(err_cannot_edit_admin(ctx.locale)))
+            .await;
     }
 
     // Fetch user permissions for response
@@ -153,7 +99,7 @@ where
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_EDIT_DB_ERROR);
             return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_EDIT))
+                .send_message(&reject_edit(err_database(ctx.locale)))
                 .await;
         }
     };
@@ -226,6 +172,26 @@ where
     };
 
     ctx.send_message(&response).await
+}
+
+/// Build an error-shaped `UserEditResponse` with all detail fields nulled out.
+fn reject_edit(error: String) -> ServerMessage {
+    ServerMessage::UserEditResponse {
+        success: false,
+        error: Some(error),
+        id: None,
+        username: None,
+        is_admin: None,
+        is_shared: None,
+        enabled: None,
+        permissions: None,
+        group_id: None,
+        group_name: None,
+        group_permissions: None,
+        revoked_permissions: None,
+        available_groups: None,
+        bandwidth_weight: None,
+    }
 }
 
 #[cfg(test)]

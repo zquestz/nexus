@@ -23,7 +23,6 @@ pub async fn handle_file_reindex<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_REINDEX_NOT_LOGGED_IN);
         return ctx

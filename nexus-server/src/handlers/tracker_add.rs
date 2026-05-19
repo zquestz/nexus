@@ -9,7 +9,7 @@ use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use super::{
-    HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
+    HandlerContext, err_database, err_not_logged_in, err_permission_denied,
     err_tracker_endpoint_duplicate, err_tracker_name_duplicate, err_tracker_too_many,
     validate_tracker_inputs,
 };
@@ -64,7 +64,7 @@ where
         None => {
             return ctx
                 .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
+                    &err_not_logged_in(ctx.locale),
                     Some(HANDLER_TRACKER_ADD),
                 )
                 .await;
@@ -152,9 +152,8 @@ where
                 err = %e,
                 "{}", LOG_TRACKER_ADD_DB_ERROR
             );
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_TRACKER_ADD))
-                .await;
+            let response = reject_add(err_database(ctx.locale));
+            return ctx.send_message(&response).await;
         }
     };
 

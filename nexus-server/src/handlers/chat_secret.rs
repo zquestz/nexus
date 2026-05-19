@@ -9,8 +9,8 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators;
 
 use super::{
-    HandlerContext, channel_error_to_message, err_authentication, err_channel_not_found,
-    err_chat_feature_not_enabled, err_database, err_not_logged_in, err_permission_denied,
+    HandlerContext, channel_error_to_message, err_channel_not_found, err_chat_feature_not_enabled,
+    err_database, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
     FEATURE_CHAT, HANDLER_CHAT_SECRET, LOG_CHAT_SECRET_DB_ERROR, LOG_CHAT_SECRET_NOT_LOGGED_IN,
@@ -28,7 +28,6 @@ pub async fn handle_chat_secret<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_CHAT_SECRET_NOT_LOGGED_IN);
         return ctx
@@ -42,7 +41,7 @@ where
         None => {
             return ctx
                 .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
+                    &err_not_logged_in(ctx.locale),
                     Some(HANDLER_CHAT_SECRET),
                 )
                 .await;

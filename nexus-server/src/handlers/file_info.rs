@@ -10,8 +10,8 @@ use nexus_common::protocol::{FileInfoDetails, ServerMessage};
 use nexus_common::validators::{self, FilePathError};
 
 use super::{
-    HandlerContext, err_file_not_found, err_file_path_invalid, err_file_path_too_long,
-    err_not_logged_in, err_permission_denied,
+    HandlerContext, err_file_area_not_accessible, err_file_area_not_configured, err_file_not_found,
+    err_file_path_invalid, err_file_path_too_long, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
     HANDLER_FILE_INFO, LOG_FILE_INFO_NOT_LOGGED_IN, LOG_FILE_INFO_PERMISSION_DENIED,
@@ -126,7 +126,6 @@ pub async fn handle_file_info<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_INFO_NOT_LOGGED_IN);
         return ctx
@@ -154,10 +153,9 @@ where
 
     // Check file root (cheap check, should always be set in production)
     let Some(file_root) = ctx.file_root else {
-        // File area not configured
         let response = ServerMessage::FileInfoResponse {
             success: false,
-            error: Some(err_file_not_found(ctx.locale)),
+            error: Some(err_file_area_not_configured(ctx.locale)),
             info: None,
         };
         return ctx.send_message(&response).await;
@@ -210,14 +208,19 @@ where
         resolve_user_area(file_root, &requesting_user.username)
     };
 
-    // Canonicalize area_root (it might not exist yet for new users)
     let area_root = match area_root_path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
-            // User's area doesn't exist
+            // Root mode: admin's file_root is broken. Non-root: the user's
+            // personal area dir doesn't exist yet, so the file can't either.
+            let error_msg = if root {
+                err_file_area_not_accessible(ctx.locale)
+            } else {
+                err_file_not_found(ctx.locale)
+            };
             let response = ServerMessage::FileInfoResponse {
                 success: false,
-                error: Some(err_file_not_found(ctx.locale)),
+                error: Some(error_msg),
                 info: None,
             };
             return ctx.send_message(&response).await;

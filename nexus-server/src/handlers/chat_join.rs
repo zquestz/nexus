@@ -9,7 +9,7 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, MAX_CHANNELS_PER_USER};
 
 use super::{
-    HandlerContext, channel_error_to_message, err_authentication, err_channel_already_member,
+    HandlerContext, channel_error_to_message, err_channel_already_member,
     err_channel_limit_exceeded, err_not_logged_in, err_permission_denied,
 };
 use crate::channels::{JoinError, JoinPolicy};
@@ -57,7 +57,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_CHAT_JOIN))
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_JOIN))
                 .await;
         }
     };

@@ -11,9 +11,7 @@ use crate::constants::*;
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
-use super::{
-    HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
-};
+use super::{HandlerContext, err_database, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
 
 /// Handle a group list request
@@ -28,7 +26,6 @@ pub async fn handle_group_list<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_GROUP_LIST_NOT_LOGGED_IN);
         return ctx
@@ -41,10 +38,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
-                    Some(HANDLER_GROUP_LIST),
-                )
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_GROUP_LIST))
                 .await;
         }
     };
@@ -71,9 +65,12 @@ where
         Ok(groups) => groups,
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_LIST_DB_ERROR);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_GROUP_LIST))
-                .await;
+            let response = ServerMessage::GroupListResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                groups: None,
+            };
+            return ctx.send_message(&response).await;
         }
     };
 

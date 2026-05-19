@@ -10,7 +10,7 @@ use nexus_common::protocol::{ServerMessage, UserInfoDetailed};
 use nexus_common::validators::{self, NicknameError};
 
 use super::{
-    HandlerContext, err_authentication, err_database, err_nickname_empty, err_nickname_invalid,
+    HandlerContext, err_database, err_nickname_empty, err_nickname_invalid,
     err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
@@ -33,7 +33,6 @@ pub async fn handle_user_info<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_INFO_NOT_LOGGED_IN);
         return ctx
@@ -46,7 +45,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_USER_INFO))
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_INFO))
                 .await;
         }
     };
@@ -100,19 +99,31 @@ where
         .map(|s| s.username.clone())
         .expect(ERR_TARGET_SESSIONS_NON_EMPTY);
 
-    // Fetch target user account for admin status and created_at
+    // Fetch target user account for admin status and created_at. Both
+    // Ok(None) and Err are reported as DB errors so the user can retry
+    // without losing the session:
+    //   - Ok(None): the row disappeared between session lookup and the DB
+    //     read (rare race); functionally indistinguishable to the user from
+    //     a transient DB failure.
+    //   - Err: actual DB failure.
     let target_account = match ctx.db.users.get_user_by_username(&db_lookup_username).await {
         Ok(Some(acc)) => acc,
         Ok(None) => {
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_INFO))
-                .await;
+            let response = ServerMessage::UserInfoResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                user: None,
+            };
+            return ctx.send_message(&response).await;
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_INFO_DB_ERROR);
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_USER_INFO))
-                .await;
+            let response = ServerMessage::UserInfoResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                user: None,
+            };
+            return ctx.send_message(&response).await;
         }
     };
 

@@ -62,6 +62,7 @@ err-channel-list-invalid = 잘못된 채널 '{ $channel }': { $reason }
 
 # 데이터베이스 오류
 err-database = 데이터베이스 오류
+err-internal-error = 내부 오류가 발생했습니다. 나중에 다시 시도해 주세요.
 err-login-permissions-failed = 계정 권한을 불러오지 못했습니다
 err-login-group-failed = 계정 그룹을 불러오지 못했습니다
 err-login-bandwidth-failed = 계정 대역폭 설정을 불러오지 못했습니다
@@ -213,6 +214,8 @@ err-destination-exists = 해당 이름의 파일 또는 디렉토리가 대상 �
 err-cannot-move-into-itself = 폴더를 자기 자신 안으로 이동할 수 없습니다
 err-cannot-copy-into-itself = 폴더를 자기 자신 안으로 복사할 수 없습니다
 err-destination-not-directory = 대상 경로가 디렉토리가 아닙니다
+err-source-busy = 파일이 현재 사용 중입니다. 다시 시도해 주세요.
+err-destination-busy = 대상이 현재 사용 중입니다. 다시 시도해 주세요.
 
 # Transfer Errors
 err-file-area-not-configured = 파일 영역이 구성되지 않았습니다

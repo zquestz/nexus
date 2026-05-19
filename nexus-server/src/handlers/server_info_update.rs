@@ -15,7 +15,7 @@ use nexus_common::validators::{
 
 use super::{
     HandlerContext, ServerInfoValues, channel_error_to_message, err_admin_required,
-    err_authentication, err_bandwidth_chunk_size_too_large, err_bandwidth_chunk_size_too_small,
+    err_bandwidth_chunk_size_too_large, err_bandwidth_chunk_size_too_small,
     err_channel_list_invalid, err_database, err_invalid_password_strength, err_no_fields_to_update,
     err_not_logged_in, err_public_address_contains_brackets, err_public_address_contains_path,
     err_public_address_contains_port, err_public_address_contains_scheme,
@@ -98,7 +98,6 @@ where
         session_id,
     } = request;
 
-    // Verify authentication
     let Some(id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_NOT_LOGGED_IN);
         return ctx
@@ -113,7 +112,7 @@ where
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
-            return send_failure(ctx, err_authentication(ctx.locale)).await;
+            return send_failure(ctx, err_not_logged_in(ctx.locale)).await;
         }
     };
 

@@ -62,6 +62,7 @@ err-channel-list-invalid = 無効なチャンネル '{ $channel }': { $reason }
 
 # データベースエラー
 err-database = データベースエラー
+err-internal-error = 内部エラーが発生しました。後でもう一度お試しください。
 err-login-permissions-failed = アカウントの権限を読み込めませんでした
 err-login-group-failed = アカウントのグループを読み込めませんでした
 err-login-bandwidth-failed = アカウントの帯域幅設定を読み込めませんでした
@@ -213,6 +214,8 @@ err-destination-exists = その名前のファイルまたはディレクトリ�
 err-cannot-move-into-itself = フォルダを自分自身の中に移動することはできません
 err-cannot-copy-into-itself = フォルダを自分自身の中にコピーすることはできません
 err-destination-not-directory = 宛先パスはディレクトリではありません
+err-source-busy = ファイルは現在使用中です。もう一度お試しください。
+err-destination-busy = 宛先は現在使用中です。もう一度お試しください。
 
 # Transfer Errors
 err-file-area-not-configured = ファイルエリアが設定されていません

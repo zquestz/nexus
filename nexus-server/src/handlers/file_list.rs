@@ -10,8 +10,8 @@ use nexus_common::protocol::{FileEntry, ServerMessage};
 use nexus_common::validators::{self, FilePathError};
 
 use super::{
-    HandlerContext, err_file_not_directory, err_file_not_found, err_file_path_invalid,
-    err_file_path_too_long, err_not_logged_in, err_permission_denied,
+    HandlerContext, err_file_area_not_configured, err_file_not_directory, err_file_not_found,
+    err_file_path_invalid, err_file_path_too_long, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
     HANDLER_FILE_LIST, LOG_FILE_LIST_NOT_LOGGED_IN, LOG_FILE_LIST_PERMISSION_DENIED,
@@ -129,7 +129,6 @@ pub async fn handle_file_list<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_LIST_NOT_LOGGED_IN);
         return ctx
@@ -160,10 +159,9 @@ where
 
     // Check file root (cheap check, should always be set in production)
     let Some(file_root) = ctx.file_root else {
-        // File area not configured
         let response = ServerMessage::FileListResponse {
             success: false,
-            error: Some(err_file_not_found(ctx.locale)),
+            error: Some(err_file_area_not_configured(ctx.locale)),
             path: None,
             entries: None,
             can_upload: false,

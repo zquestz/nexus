@@ -11,7 +11,7 @@ use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use super::{
-    HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
+    HandlerContext, err_database, err_not_logged_in, err_permission_denied,
     err_tracker_no_pending_fingerprint, err_tracker_not_found,
 };
 use crate::constants::{
@@ -60,7 +60,7 @@ where
         None => {
             return ctx
                 .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
+                    &err_not_logged_in(ctx.locale),
                     Some(HANDLER_TRACKER_ACCEPT_FINGERPRINT),
                 )
                 .await;
@@ -155,10 +155,7 @@ where
                 "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_DB_ERROR
             );
             return ctx
-                .send_error_and_disconnect(
-                    &err_database(ctx.locale),
-                    Some(HANDLER_TRACKER_ACCEPT_FINGERPRINT),
-                )
+                .send_message(&reject_accept(err_database(ctx.locale)))
                 .await;
         }
     }
@@ -183,10 +180,7 @@ where
                 "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_DB_ERROR
             );
             return ctx
-                .send_error_and_disconnect(
-                    &err_database(ctx.locale),
-                    Some(HANDLER_TRACKER_ACCEPT_FINGERPRINT),
-                )
+                .send_message(&reject_accept(err_database(ctx.locale)))
                 .await;
         }
     };

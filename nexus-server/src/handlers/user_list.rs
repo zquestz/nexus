@@ -36,9 +36,7 @@ use tokio::io::AsyncWrite;
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use nexus_common::validators::resolve_bandwidth_weight;
 
-use super::{
-    HandlerContext, err_authentication, err_database, err_not_logged_in, err_permission_denied,
-};
+use super::{HandlerContext, err_database, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
 
 /// Handle a userlist request from the client
@@ -54,7 +52,6 @@ pub async fn handle_user_list<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_LIST_NOT_LOGGED_IN);
         return ctx
@@ -67,7 +64,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(&err_authentication(ctx.locale), Some(HANDLER_USER_LIST))
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_LIST))
                 .await;
         }
     };

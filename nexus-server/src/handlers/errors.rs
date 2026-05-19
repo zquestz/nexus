@@ -347,6 +347,13 @@ pub fn err_database(locale: &str) -> String {
     t(locale, "err-database")
 }
 
+/// Get translated "internal error" message. Surfaced when an operation
+/// fails for reasons that aren't the user's fault and aren't database
+/// errors — e.g. password hashing (Argon2id) fails to allocate or run.
+pub fn err_internal_error(locale: &str) -> String {
+    t(locale, "err-internal-error")
+}
+
 /// Get translated "login permissions failed" error
 pub fn err_login_permissions_failed(locale: &str) -> String {
     t(locale, "err-login-permissions-failed")
@@ -1020,6 +1027,20 @@ pub fn err_cannot_copy_into_itself(locale: &str) -> String {
 /// Get translated "destination not a directory" error
 pub fn err_destination_not_directory(locale: &str) -> String {
     t(locale, "err-destination-not-directory")
+}
+
+/// Get translated "source path is busy" error. Fires when a BBS
+/// mutation (copy/move/rename source, or delete target) collides with
+/// a `Fail`-mode lock on the same path.
+pub fn err_source_busy(locale: &str) -> String {
+    t(locale, "err-source-busy")
+}
+
+/// Get translated "destination path is busy" error. Fires when a BBS
+/// mutation (copy/move/rename target, or create-dir target) collides
+/// with a `Fail`-mode lock on the same destination path.
+pub fn err_destination_busy(locale: &str) -> String {
+    t(locale, "err-destination-busy")
 }
 
 // =============================================================================

@@ -46,7 +46,7 @@ use super::HandlerContext;
 use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::{CreateUserParams, Database, Permissions};
-use crate::files::FileIndex;
+use crate::files::{FileIndex, PathLockMap};
 use crate::ip_rule_cache::IpRuleCache;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
@@ -138,6 +138,7 @@ pub struct TestContext {
     pub connection_tracker: Arc<ConnectionTracker>,
     pub ip_rule_cache: Arc<RwLock<IpRuleCache>>,
     pub file_index: Arc<FileIndex>,
+    pub file_mutation_locks: Arc<PathLockMap>,
     pub channel_manager: ChannelManager,
     pub transfer_registry: Arc<TransferRegistry>,
     pub voice_registry: VoiceRegistry,
@@ -165,6 +166,7 @@ impl TestContext {
             connection_tracker: self.connection_tracker.clone(),
             ip_rule_cache: self.ip_rule_cache.clone(),
             file_index: self.file_index.clone(),
+            file_mutation_locks: self.file_mutation_locks.clone(),
             channel_manager: &self.channel_manager,
             transfer_registry: self.transfer_registry.clone(),
             voice_registry: &self.voice_registry,
@@ -238,6 +240,7 @@ pub async fn create_test_context() -> TestContext {
     // Create temp directory for file index
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let file_index = Arc::new(FileIndex::new(temp_dir.path(), temp_dir.path()));
+    let file_mutation_locks = Arc::new(PathLockMap::new());
 
     // Create channel manager for tests
     let channel_manager = ChannelManager::new(db.channels.clone(), user_manager.clone());
@@ -275,6 +278,7 @@ pub async fn create_test_context() -> TestContext {
         connection_tracker,
         ip_rule_cache,
         file_index,
+        file_mutation_locks,
         channel_manager,
         transfer_registry,
         voice_registry,

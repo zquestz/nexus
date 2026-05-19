@@ -12,9 +12,8 @@ use crate::constants::{
 };
 
 use super::{
-    HandlerContext, err_authentication, err_not_logged_in, err_voice_already_joined,
-    err_voice_invalid_target, err_voice_listen_required, err_voice_not_channel_member,
-    err_voice_target_not_online,
+    HandlerContext, err_not_logged_in, err_voice_already_joined, err_voice_invalid_target,
+    err_voice_listen_required, err_voice_not_channel_member, err_voice_target_not_online,
 };
 use crate::db::Permission;
 use crate::voice::VoiceSession;
@@ -47,10 +46,7 @@ where
         Some(u) => u,
         None => {
             return ctx
-                .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
-                    Some(HANDLER_VOICE_JOIN),
-                )
+                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_VOICE_JOIN))
                 .await;
         }
     };

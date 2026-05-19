@@ -8,8 +8,7 @@ use tokio::io::AsyncWrite;
 use tracing::{error, warn};
 
 use super::{
-    HandlerContext, compose_tracker_info, err_authentication, err_database, err_not_logged_in,
-    err_permission_denied,
+    HandlerContext, compose_tracker_info, err_database, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
     HANDLER_TRACKER_LIST, LOG_TRACKER_LIST_DB_ERROR, LOG_TRACKER_LIST_NOT_LOGGED_IN,
@@ -38,7 +37,7 @@ where
         None => {
             return ctx
                 .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
+                    &err_not_logged_in(ctx.locale),
                     Some(HANDLER_TRACKER_LIST),
                 )
                 .await;
@@ -68,9 +67,12 @@ where
                 err = %e,
                 "{}", LOG_TRACKER_LIST_DB_ERROR
             );
-            return ctx
-                .send_error_and_disconnect(&err_database(ctx.locale), Some(HANDLER_TRACKER_LIST))
-                .await;
+            let response = ServerMessage::TrackerListResponse {
+                success: false,
+                error: Some(err_database(ctx.locale)),
+                trackers: Vec::new(),
+            };
+            return ctx.send_message(&response).await;
         }
     };
 

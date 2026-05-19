@@ -84,6 +84,7 @@ where
         db,
         file_root,
         file_index,
+        file_mutation_locks,
         transfer_registry,
         fingerprint,
     } = params;
@@ -177,6 +178,7 @@ where
             locale,
             file_root,
             file_index: &file_index,
+            file_mutation_locks: &file_mutation_locks,
             registry: &transfer_registry,
         },
     );

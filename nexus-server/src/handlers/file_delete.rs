@@ -9,8 +9,9 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, FilePathError};
 
 use super::{
-    HandlerContext, err_delete_failed, err_dir_not_empty, err_file_not_found,
-    err_file_path_invalid, err_file_path_too_long, err_not_logged_in, err_permission_denied,
+    HandlerContext, err_delete_failed, err_dir_not_empty, err_file_area_not_accessible,
+    err_file_area_not_configured, err_file_not_found, err_file_path_invalid,
+    err_file_path_too_long, err_not_logged_in, err_permission_denied, err_source_busy,
 };
 use crate::constants::{
     HANDLER_FILE_DELETE, LOG_FILE_DELETE_FAILED, LOG_FILE_DELETE_NOT_LOGGED_IN,
@@ -19,10 +20,10 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::files::path::PathError;
 use crate::files::{
-    build_and_validate_candidate_path, in_owned_dropbox, resolve_path, resolve_user_area,
+    PathLockMode, build_and_validate_candidate_path, in_owned_dropbox, lock_key, resolve_path,
+    resolve_user_area,
 };
 
-/// Handle a file delete request
 pub async fn handle_file_delete<W>(
     path: String,
     root: bool,
@@ -32,7 +33,6 @@ pub async fn handle_file_delete<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_DELETE_NOT_LOGGED_IN);
         return ctx
@@ -40,7 +40,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -48,7 +47,7 @@ where
     {
         Some(u) => u,
         None => {
-            // Session not found - likely a race condition, not a security event
+            // Race, not a security event — don't log.
             let response = ServerMessage::FileDeleteResponse {
                 success: false,
                 error: Some(err_not_logged_in(ctx.locale)),
@@ -57,17 +56,14 @@ where
         }
     };
 
-    // Check file root (cheap check, should always be set in production)
     let Some(file_root) = ctx.file_root else {
-        // File area not configured
         let response = ServerMessage::FileDeleteResponse {
             success: false,
-            error: Some(err_file_not_found(ctx.locale)),
+            error: Some(err_file_area_not_configured(ctx.locale)),
         };
         return ctx.send_message(&response).await;
     };
 
-    // Check FileRoot permission if root browsing requested
     if root && !requesting_user.has_permission(Permission::FileRoot) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_DELETE_ROOT_DENIED);
         let response = ServerMessage::FileDeleteResponse {
@@ -77,7 +73,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate path
     if let Err(e) = validators::validate_file_path(&path) {
         let error_msg = match e {
             FilePathError::TooLong => {
@@ -94,27 +89,30 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Resolve area root - either file root (if root browsing) or user's area
     let area_root_path = if root {
         file_root.to_path_buf()
     } else {
         resolve_user_area(file_root, &requesting_user.username)
     };
 
-    // Canonicalize area_root (it might not exist yet for new users)
     let area_root = match area_root_path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
-            // User's area doesn't exist
+            // Root mode: admin's file_root is broken. Non-root: the user's
+            // personal area dir doesn't exist yet, so the file can't either.
+            let error_msg = if root {
+                err_file_area_not_accessible(ctx.locale)
+            } else {
+                err_file_not_found(ctx.locale)
+            };
             let response = ServerMessage::FileDeleteResponse {
                 success: false,
-                error: Some(err_file_not_found(ctx.locale)),
+                error: Some(error_msg),
             };
             return ctx.send_message(&response).await;
         }
     };
 
-    // Build and validate candidate path
     let candidate = match build_and_validate_candidate_path(&area_root, &path) {
         Ok(p) => p,
         Err(_) => {
@@ -126,11 +124,8 @@ where
         }
     };
 
-    // Permission check: either the global `file_delete` permission, or
-    // ownership of an enclosing `[NEXUS-DB-username]` folder. The owner
-    // bypass uses the virtual `candidate` path (not the canonical resolved
-    // path) so drop boxes implemented as symlinks are still recognized.
-    // Bypass is non-root-mode only — root mode is admin territory.
+    // Owner-of-`[NEXUS-DB-username]` bypass. Uses virtual `candidate` so
+    // symlinked drop boxes still match. Non-root-mode only.
     let bypass_via_ownership =
         !root && in_owned_dropbox(&candidate, &area_root, &requesting_user.username);
     if !requesting_user.has_permission(Permission::FileDelete) && !bypass_via_ownership {
@@ -142,108 +137,123 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check if the candidate path is a symlink (without following it)
-    // We use symlink_metadata to avoid following the final symlink component
-    let symlink_meta = std::fs::symlink_metadata(&candidate);
-
-    // Determine what to delete and whether it's a directory
-    let (path_to_delete, is_dir) = match &symlink_meta {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            // It's a symlink - delete the symlink itself, not the target
-            // Symlinks are treated as files for deletion purposes
-            (candidate.clone(), false)
-        }
-        Ok(_) => {
-            // Not a symlink - resolve and use the canonical path
-            let resolved = match resolve_path(&area_root, &candidate) {
-                Ok(p) => p,
-                Err(PathError::NotFound) => {
-                    let response = ServerMessage::FileDeleteResponse {
-                        success: false,
-                        error: Some(err_file_not_found(ctx.locale)),
-                    };
-                    return ctx.send_message(&response).await;
-                }
-                Err(_) => {
-                    let response = ServerMessage::FileDeleteResponse {
-                        success: false,
-                        error: Some(err_file_path_invalid(ctx.locale)),
-                    };
-                    return ctx.send_message(&response).await;
-                }
-            };
-
-            // Prevent deleting the area root itself
-            if resolved == area_root {
-                let response = ServerMessage::FileDeleteResponse {
+    // See `files::path_lock`. Acquire before any metadata/resolve/type check
+    // so a concurrent locked rename/move/copy can't replace the target between
+    // inspection and removal. An upload still claiming this path reports as
+    // upload-in-progress — the file isn't fully on disk yet.
+    //
+    // Guards live only inside this block; all socket sends happen after it.
+    let response = 'locked: {
+        let target_key = match lock_key(&candidate) {
+            Ok(k) => k,
+            Err(_) => {
+                break 'locked ServerMessage::FileDeleteResponse {
                     success: false,
-                    error: Some(err_permission_denied(ctx.locale)),
+                    error: Some(err_file_path_invalid(ctx.locale)),
                 };
-                return ctx.send_message(&response).await;
             }
-
-            let is_dir = resolved.is_dir();
-            (resolved, is_dir)
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let response = ServerMessage::FileDeleteResponse {
-                success: false,
-                error: Some(err_file_not_found(ctx.locale)),
-            };
-            return ctx.send_message(&response).await;
-        }
-        Err(_) => {
-            let response = ServerMessage::FileDeleteResponse {
-                success: false,
-                error: Some(err_file_path_invalid(ctx.locale)),
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
-
-    // Prevent deleting the area root itself (also check candidate for symlink case)
-    if candidate == area_root {
-        let response = ServerMessage::FileDeleteResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
         };
-        return ctx.send_message(&response).await;
-    }
+        let _lock_guard = match ctx
+            .file_mutation_locks
+            .acquire(target_key, PathLockMode::Wait)
+            .await
+        {
+            Ok(g) => g,
+            Err(_) => {
+                // Path held by a `Fail`-mode lock.
+                break 'locked ServerMessage::FileDeleteResponse {
+                    success: false,
+                    error: Some(err_source_busy(ctx.locale)),
+                };
+            }
+        };
 
-    // Try to delete - file, symlink, or empty directory
-    let result = if is_dir {
-        std::fs::remove_dir(&path_to_delete)
-    } else {
-        std::fs::remove_file(&path_to_delete)
-    };
+        // `symlink_metadata` so we don't follow the final symlink component.
+        let symlink_meta = std::fs::symlink_metadata(&candidate);
+        let (path_to_delete, is_dir) = match &symlink_meta {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                // Delete the symlink, not its target.
+                (candidate.clone(), false)
+            }
+            Ok(_) => {
+                let resolved = match resolve_path(&area_root, &candidate) {
+                    Ok(p) => p,
+                    Err(PathError::NotFound) => {
+                        break 'locked ServerMessage::FileDeleteResponse {
+                            success: false,
+                            error: Some(err_file_not_found(ctx.locale)),
+                        };
+                    }
+                    Err(_) => {
+                        break 'locked ServerMessage::FileDeleteResponse {
+                            success: false,
+                            error: Some(err_file_path_invalid(ctx.locale)),
+                        };
+                    }
+                };
 
-    match result {
-        Ok(()) => {
-            // Mark file index as dirty so it gets rebuilt
-            ctx.file_index.mark_dirty();
+                if resolved == area_root {
+                    break 'locked ServerMessage::FileDeleteResponse {
+                        success: false,
+                        error: Some(err_permission_denied(ctx.locale)),
+                    };
+                }
 
-            info!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %path, "{}", LOG_FILE_DELETE_SUCCESS);
-            let response = ServerMessage::FileDeleteResponse {
-                success: true,
-                error: None,
-            };
-            ctx.send_message(&response).await
-        }
-        Err(e) => {
-            // Check for "directory not empty" error
-            let error_msg = if is_dir && e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
-                err_dir_not_empty(ctx.locale)
-            } else {
-                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_DELETE_FAILED);
-                err_delete_failed(ctx.locale)
-            };
-            let response = ServerMessage::FileDeleteResponse {
+                let is_dir = resolved.is_dir();
+                (resolved, is_dir)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                break 'locked ServerMessage::FileDeleteResponse {
+                    success: false,
+                    error: Some(err_file_not_found(ctx.locale)),
+                };
+            }
+            Err(_) => {
+                break 'locked ServerMessage::FileDeleteResponse {
+                    success: false,
+                    error: Some(err_file_path_invalid(ctx.locale)),
+                };
+            }
+        };
+
+        // Symlink branch also checks the virtual candidate against area_root.
+        if candidate == area_root {
+            break 'locked ServerMessage::FileDeleteResponse {
                 success: false,
-                error: Some(error_msg),
+                error: Some(err_permission_denied(ctx.locale)),
             };
-            ctx.send_message(&response).await
         }
-    }
+
+        let result = if is_dir {
+            std::fs::remove_dir(&path_to_delete)
+        } else {
+            std::fs::remove_file(&path_to_delete)
+        };
+
+        match result {
+            Ok(()) => {
+                ctx.file_index.mark_dirty();
+                info!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %path, "{}", LOG_FILE_DELETE_SUCCESS);
+                ServerMessage::FileDeleteResponse {
+                    success: true,
+                    error: None,
+                }
+            }
+            Err(e) => {
+                let error_msg = if is_dir && e.kind() == std::io::ErrorKind::DirectoryNotEmpty {
+                    err_dir_not_empty(ctx.locale)
+                } else {
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_DELETE_FAILED);
+                    err_delete_failed(ctx.locale)
+                };
+                ServerMessage::FileDeleteResponse {
+                    success: false,
+                    error: Some(error_msg),
+                }
+            }
+        }
+    };
+    ctx.send_message(&response).await
 }
 
 #[cfg(test)]
@@ -277,7 +287,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a file to delete
         fs::write(file_area.path().join("shared/test.txt"), "content")
             .expect("Failed to create test file");
 
@@ -309,7 +318,6 @@ mod tests {
             _ => panic!("Expected FileDeleteResponse"),
         }
 
-        // File should still exist
         assert!(file_area.path().join("shared/test.txt").exists());
     }
 
@@ -318,7 +326,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a file to delete
         fs::write(file_area.path().join("shared/test.txt"), "content")
             .expect("Failed to create file");
         assert!(file_area.path().join("shared/test.txt").exists());
@@ -350,7 +357,6 @@ mod tests {
             _ => panic!("Expected FileDeleteResponse"),
         }
 
-        // File should be gone
         assert!(!file_area.path().join("shared/test.txt").exists());
     }
 
@@ -359,7 +365,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create an empty directory
         fs::create_dir(file_area.path().join("shared/empty_dir")).expect("Failed to create dir");
         assert!(file_area.path().join("shared/empty_dir").exists());
 
@@ -390,7 +395,6 @@ mod tests {
             _ => panic!("Expected FileDeleteResponse"),
         }
 
-        // Directory should be gone
         assert!(!file_area.path().join("shared/empty_dir").exists());
     }
 
@@ -399,7 +403,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a directory with a file inside
         fs::create_dir(file_area.path().join("shared/non_empty")).expect("Failed to create dir");
         fs::write(
             file_area.path().join("shared/non_empty/file.txt"),
@@ -434,7 +437,6 @@ mod tests {
             _ => panic!("Expected FileDeleteResponse"),
         }
 
-        // Directory should still exist
         assert!(file_area.path().join("shared/non_empty").exists());
     }
 
@@ -518,7 +520,6 @@ mod tests {
         )
         .await;
 
-        // Try to delete the root itself
         handle_file_delete(
             "/".to_string(),
             false,
@@ -543,7 +544,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a file in shared
         fs::write(file_area.path().join("shared/test.txt"), "content")
             .expect("Failed to create file");
 
@@ -557,7 +557,6 @@ mod tests {
         )
         .await;
 
-        // Try to delete with root=true
         handle_file_delete(
             "shared/test.txt".to_string(),
             true, // root = true
@@ -576,7 +575,6 @@ mod tests {
             _ => panic!("Expected FileDeleteResponse"),
         }
 
-        // File should still exist
         assert!(file_area.path().join("shared/test.txt").exists());
     }
 
@@ -585,7 +583,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a file to delete
         fs::write(file_area.path().join("shared/admin_test.txt"), "content")
             .expect("Failed to create file");
 
@@ -610,7 +607,6 @@ mod tests {
             _ => panic!("Expected FileDeleteResponse"),
         }
 
-        // File should be gone
         assert!(!file_area.path().join("shared/admin_test.txt").exists());
     }
 
@@ -619,7 +615,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a nested file
         fs::create_dir_all(file_area.path().join("shared/docs/archive"))
             .expect("Failed to create dirs");
         fs::write(
@@ -706,7 +701,6 @@ mod tests {
             _ => panic!("Expected FileDeleteResponse"),
         }
 
-        // File should be gone
         assert!(!file_area.path().join("shared/root_test.txt").exists());
     }
 
@@ -718,7 +712,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a target file and a symlink to it
         let target = file_area.path().join("shared/target.txt");
         let link = file_area.path().join("shared/link.txt");
         fs::write(&target, "target content").expect("Failed to create target");
@@ -736,7 +729,6 @@ mod tests {
         )
         .await;
 
-        // Delete the symlink
         handle_file_delete(
             "link.txt".to_string(),
             false,
@@ -765,7 +757,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a user's personal area with a file
         fs::create_dir_all(file_area.path().join("users/testuser"))
             .expect("Failed to create user dir");
         fs::write(
@@ -783,7 +774,6 @@ mod tests {
         )
         .await;
 
-        // Delete from personal area (user sees it as root)
         handle_file_delete(
             "myfile.txt".to_string(),
             false,
@@ -806,7 +796,6 @@ mod tests {
             _ => panic!("Expected FileDeleteResponse"),
         }
 
-        // File should be gone
         assert!(!file_area.path().join("users/testuser/myfile.txt").exists());
     }
 
@@ -852,7 +841,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a target directory with contents and a symlink to it
         let target_dir = file_area.path().join("shared/target_dir");
         let link_dir = file_area.path().join("shared/link_dir");
         fs::create_dir(&target_dir).expect("Failed to create target dir");
@@ -871,7 +859,6 @@ mod tests {
         )
         .await;
 
-        // Delete the symlink to directory
         handle_file_delete(
             "link_dir".to_string(),
             false,
@@ -910,7 +897,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a target directory with a file, and a symlink to the directory
         let target_dir = file_area.path().join("shared/real_docs");
         let link_dir = file_area.path().join("shared/docs");
         fs::create_dir(&target_dir).expect("Failed to create target dir");
@@ -963,7 +949,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Create a file with unicode characters in the name
         let unicode_filename = "文档_ドキュメント_документ.txt";
         fs::write(
             file_area.path().join("shared").join(unicode_filename),
@@ -1009,7 +994,6 @@ mod tests {
             _ => panic!("Expected FileDeleteResponse"),
         }
 
-        // File should be gone
         assert!(
             !file_area
                 .path()

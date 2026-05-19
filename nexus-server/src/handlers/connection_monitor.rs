@@ -7,7 +7,7 @@ use tracing::warn;
 
 use nexus_common::protocol::{ConnectionInfo, ServerMessage};
 
-use super::{HandlerContext, err_authentication, err_not_logged_in, err_permission_denied};
+use super::{HandlerContext, err_not_logged_in, err_permission_denied};
 use crate::constants::{
     HANDLER_CONNECTION_MONITOR, LOG_CONN_MONITOR_NOT_LOGGED_IN, LOG_CONN_MONITOR_PERMISSION_DENIED,
 };
@@ -23,7 +23,6 @@ pub async fn handle_connection_monitor<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_CONN_MONITOR_NOT_LOGGED_IN);
         return ctx
@@ -40,7 +39,7 @@ where
         None => {
             return ctx
                 .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
+                    &err_not_logged_in(ctx.locale),
                     Some(HANDLER_CONNECTION_MONITOR),
                 )
                 .await;

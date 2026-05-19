@@ -10,8 +10,8 @@ use nexus_common::protocol::{ChatAction, ServerMessage};
 use nexus_common::validators::{self, MessageError, NicknameError};
 
 use super::{
-    HandlerContext, err_authentication, err_cannot_message_self, err_chat_too_long,
-    err_flood_disconnect, err_flood_warning, err_message_contains_newlines, err_message_empty,
+    HandlerContext, err_cannot_message_self, err_chat_too_long, err_flood_disconnect,
+    err_flood_warning, err_message_contains_newlines, err_message_empty,
     err_message_invalid_characters, err_nickname_empty, err_nickname_invalid,
     err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
@@ -34,7 +34,6 @@ pub async fn handle_user_message<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_MESSAGE_NOT_LOGGED_IN);
         return ctx
@@ -48,7 +47,7 @@ where
         None => {
             return ctx
                 .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
+                    &err_not_logged_in(ctx.locale),
                     Some(HANDLER_USER_MESSAGE),
                 )
                 .await;

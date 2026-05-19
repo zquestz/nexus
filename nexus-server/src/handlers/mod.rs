@@ -145,7 +145,7 @@ use ipnet::IpNet;
 use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::Database;
-use crate::files::FileIndex;
+use crate::files::{FileIndex, PathLockMap};
 use crate::flood::FloodConfig;
 use crate::ip_rule_cache::IpRuleCache;
 use crate::tracker::TrackerManager;
@@ -176,6 +176,8 @@ pub struct HandlerContext<'a, W> {
     pub ip_rule_cache: Arc<RwLock<IpRuleCache>>,
     /// File index for searching files
     pub file_index: Arc<FileIndex>,
+    /// See `files::path_lock`.
+    pub file_mutation_locks: Arc<PathLockMap>,
     /// Channel manager for multi-channel chat
     pub channel_manager: &'a ChannelManager,
     /// Transfer registry for disconnecting active transfers on ban
@@ -224,6 +226,32 @@ impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {
     ) -> io::Result<()> {
         self.send_error(message, command).await?;
         Err(io::Error::other(message))
+    }
+}
+
+/// Terminal action chosen under a state lock; dispatched by `dispatch_outcome`
+/// after the lock guard is dropped. DB errors flow through `Send`; only a
+/// missing session uses `Disconnect`.
+pub(super) enum Outcome {
+    Send(Box<ServerMessage>),
+    Disconnect,
+}
+
+/// Tail dispatch for admin handlers using the labelled-block + `Outcome` pattern.
+pub(super) async fn dispatch_outcome<W>(
+    outcome: Outcome,
+    ctx: &mut HandlerContext<'_, W>,
+    handler_name: &'static str,
+) -> io::Result<()>
+where
+    W: AsyncWrite + Unpin,
+{
+    match outcome {
+        Outcome::Send(response) => ctx.send_message(&response).await,
+        Outcome::Disconnect => {
+            ctx.send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(handler_name))
+                .await
+        }
     }
 }
 

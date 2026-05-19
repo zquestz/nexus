@@ -10,22 +10,23 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, FilePathError};
 
 use super::{
-    HandlerContext, err_cannot_copy_into_itself, err_copy_failed, err_destination_exists,
-    err_destination_not_directory, err_file_not_found, err_file_path_invalid,
-    err_file_path_too_long, err_not_logged_in, err_permission_denied,
+    HandlerContext, err_cannot_copy_into_itself, err_copy_failed, err_destination_busy,
+    err_destination_exists, err_destination_not_directory, err_file_area_not_accessible,
+    err_file_area_not_configured, err_file_not_found, err_file_path_invalid,
+    err_file_path_too_long, err_not_logged_in, err_permission_denied, err_source_busy,
 };
 use crate::constants::{
-    HANDLER_FILE_COPY, LOG_FILE_COPY_DELETE_DENIED, LOG_FILE_COPY_FAILED,
-    LOG_FILE_COPY_NOT_LOGGED_IN, LOG_FILE_COPY_PERMISSION_DENIED, LOG_FILE_COPY_REMOVE_FAILED,
-    LOG_FILE_COPY_ROOT_DENIED, LOG_FILE_COPY_SUCCESS,
+    HANDLER_FILE_COPY, LOG_FILE_COPY_DELETE_DENIED, LOG_FILE_COPY_DESTINATION_BUSY,
+    LOG_FILE_COPY_FAILED, LOG_FILE_COPY_NOT_LOGGED_IN, LOG_FILE_COPY_PERMISSION_DENIED,
+    LOG_FILE_COPY_REMOVE_FAILED, LOG_FILE_COPY_ROOT_DENIED, LOG_FILE_COPY_SOURCE_BUSY,
+    LOG_FILE_COPY_SUCCESS,
 };
 use crate::db::Permission;
 use crate::files::{
-    build_and_validate_candidate_path, copy_path_recursive_async, is_subpath, remove_path_async,
-    resolve_path, resolve_user_area,
+    PathLockMode, build_and_validate_candidate_path, copy_path_recursive_async, is_subpath,
+    lock_key, remove_path_async, resolve_path, resolve_user_area,
 };
 
-/// Handle a file copy request
 pub async fn handle_file_copy<W>(
     source_path: String,
     destination_dir: String,
@@ -38,7 +39,6 @@ pub async fn handle_file_copy<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(requesting_session_id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_NOT_LOGGED_IN);
         return ctx
@@ -46,7 +46,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -54,7 +53,7 @@ where
     {
         Some(u) => u,
         None => {
-            // Session not found - likely a race condition, not a security event
+            // Race, not a security event — don't log.
             let response = ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_not_logged_in(ctx.locale)),
@@ -64,18 +63,15 @@ where
         }
     };
 
-    // Check file root (cheap check, should always be set in production)
     let Some(file_root) = ctx.file_root else {
-        // File area not configured
         let response = ServerMessage::FileCopyResponse {
             success: false,
-            error: Some(err_file_not_found(ctx.locale)),
+            error: Some(err_file_area_not_configured(ctx.locale)),
             error_kind: Some(ErrorKind::NotFound.into()),
         };
         return ctx.send_message(&response).await;
     };
 
-    // Check FileCopy permission
     if !requesting_user.has_permission(Permission::FileCopy) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_PERMISSION_DENIED);
         let response = ServerMessage::FileCopyResponse {
@@ -86,7 +82,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check FileRoot permission if either root flag is set
     if (source_root || destination_root) && !requesting_user.has_permission(Permission::FileRoot) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_ROOT_DENIED);
         let response = ServerMessage::FileCopyResponse {
@@ -97,7 +92,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check FileDelete permission if overwrite is requested
+    // Overwrite removes the existing target, so it requires file_delete.
     if overwrite && !requesting_user.has_permission(Permission::FileDelete) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_DELETE_DENIED);
         let response = ServerMessage::FileCopyResponse {
@@ -108,7 +103,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate source path
     if let Err(e) = validators::validate_file_path(&source_path) {
         let error_msg = match e {
             FilePathError::TooLong => {
@@ -126,7 +120,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate destination path
     if let Err(e) = validators::validate_file_path(&destination_dir) {
         let error_msg = match e {
             FilePathError::TooLong => {
@@ -144,7 +137,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Resolve source area root
     let source_area_root_path = if source_root {
         file_root.to_path_buf()
     } else {
@@ -154,16 +146,22 @@ where
     let source_area_root = match source_area_root_path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
+            // Root mode: admin's file_root is broken. Non-root: the user's
+            // personal area dir doesn't exist yet, so the file can't either.
+            let error_msg = if source_root {
+                err_file_area_not_accessible(ctx.locale)
+            } else {
+                err_file_not_found(ctx.locale)
+            };
             let response = ServerMessage::FileCopyResponse {
                 success: false,
-                error: Some(err_file_not_found(ctx.locale)),
+                error: Some(error_msg),
                 error_kind: Some(ErrorKind::NotFound.into()),
             };
             return ctx.send_message(&response).await;
         }
     };
 
-    // Resolve destination area root
     let dest_area_root_path = if destination_root {
         file_root.to_path_buf()
     } else {
@@ -173,16 +171,20 @@ where
     let dest_area_root = match dest_area_root_path.canonicalize() {
         Ok(p) => p,
         Err(_) => {
+            let error_msg = if destination_root {
+                err_file_area_not_accessible(ctx.locale)
+            } else {
+                err_file_not_found(ctx.locale)
+            };
             let response = ServerMessage::FileCopyResponse {
                 success: false,
-                error: Some(err_file_not_found(ctx.locale)),
+                error: Some(error_msg),
                 error_kind: Some(ErrorKind::NotFound.into()),
             };
             return ctx.send_message(&response).await;
         }
     };
 
-    // Build and validate source candidate path
     let source_candidate = match build_and_validate_candidate_path(&source_area_root, &source_path)
     {
         Ok(p) => p,
@@ -196,7 +198,6 @@ where
         }
     };
 
-    // Build and validate destination candidate path
     let dest_candidate = match build_and_validate_candidate_path(&dest_area_root, &destination_dir)
     {
         Ok(p) => p,
@@ -210,83 +211,13 @@ where
         }
     };
 
-    // Check if source exists (using symlink_metadata to not follow symlinks)
-    let source_symlink_meta = std::fs::symlink_metadata(&source_candidate);
-
-    // Determine source path (handle symlinks vs regular files)
-    let resolved_source = match &source_symlink_meta {
-        Ok(meta) if meta.file_type().is_symlink() => {
-            // It's a symlink - copy the symlink itself
-            source_candidate.clone()
-        }
-        Ok(_) => {
-            // Not a symlink - resolve and validate
-            match resolve_path(&source_area_root, &source_candidate) {
-                Ok(p) => p,
-                Err(_) => {
-                    let response = ServerMessage::FileCopyResponse {
-                        success: false,
-                        error: Some(err_file_not_found(ctx.locale)),
-                        error_kind: Some(ErrorKind::NotFound.into()),
-                    };
-                    return ctx.send_message(&response).await;
-                }
-            }
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let response = ServerMessage::FileCopyResponse {
-                success: false,
-                error: Some(err_file_not_found(ctx.locale)),
-                error_kind: Some(ErrorKind::NotFound.into()),
-            };
-            return ctx.send_message(&response).await;
-        }
-        Err(_) => {
-            let response = ServerMessage::FileCopyResponse {
-                success: false,
-                error: Some(err_file_path_invalid(ctx.locale)),
-                error_kind: Some(ErrorKind::InvalidPath.into()),
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
-
-    // Prevent copying area root itself
-    if resolved_source == source_area_root || source_candidate == source_area_root {
-        let response = ServerMessage::FileCopyResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            error_kind: Some(ErrorKind::Permission.into()),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Resolve destination directory (must exist and be a directory)
-    let resolved_dest_dir = match resolve_path(&dest_area_root, &dest_candidate) {
-        Ok(p) => p,
-        Err(_) => {
-            let response = ServerMessage::FileCopyResponse {
-                success: false,
-                error: Some(err_file_not_found(ctx.locale)),
-                error_kind: Some(ErrorKind::NotFound.into()),
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
-
-    // Check that destination is a directory
-    if !resolved_dest_dir.is_dir() {
-        let response = ServerMessage::FileCopyResponse {
-            success: false,
-            error: Some(err_destination_not_directory(ctx.locale)),
-            error_kind: Some(ErrorKind::InvalidPath.into()),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Get the source filename
-    let source_filename = match resolved_source.file_name() {
-        Some(name) => name,
+    // Derive lock keys from candidates (pure path math) so source validation
+    // runs AFTER acquisition under the lock — closes the resolve-then-mutate
+    // race. Source is locked alongside target so a concurrent rename / delete
+    // / overwrite can't race the recursive walk; per-child subtree races
+    // remain out of scope.
+    let source_basename = match source_candidate.file_name() {
+        Some(name) => name.to_owned(),
         None => {
             let response = ServerMessage::FileCopyResponse {
                 success: false,
@@ -296,78 +227,191 @@ where
             return ctx.send_message(&response).await;
         }
     };
-
-    // Build target path (destination directory + source filename)
-    let target_path = resolved_dest_dir.join(source_filename);
-
-    // Check if copying file to itself (no-op success)
-    if resolved_source == target_path {
-        let response = ServerMessage::FileCopyResponse {
-            success: true,
-            error: None,
-            error_kind: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Check if source is a directory and prevent copying into itself
-    if resolved_source.is_dir() && is_subpath(&resolved_dest_dir, &resolved_source) {
-        let response = ServerMessage::FileCopyResponse {
-            success: false,
-            error: Some(err_cannot_copy_into_itself(ctx.locale)),
-            error_kind: Some(ErrorKind::InvalidPath.into()),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Check if target already exists
-    if target_path.exists() || target_path.symlink_metadata().is_ok() {
-        if !overwrite {
+    let target_path_for_lock = dest_candidate.join(&source_basename);
+    let source_lock_key = match lock_key(&source_candidate) {
+        Ok(k) => k,
+        Err(_) => {
             let response = ServerMessage::FileCopyResponse {
                 success: false,
-                error: Some(err_destination_exists(ctx.locale)),
-                error_kind: Some(ErrorKind::Exists.into()),
+                error: Some(err_file_path_invalid(ctx.locale)),
+                error_kind: Some(ErrorKind::InvalidPath.into()),
             };
             return ctx.send_message(&response).await;
         }
-
-        // Remove existing target for overwrite (async to avoid blocking runtime)
-        if let Err(e) = remove_path_async(&target_path).await {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_COPY_REMOVE_FAILED);
+    };
+    let target_lock_key = match lock_key(&target_path_for_lock) {
+        Ok(k) => k,
+        Err(_) => {
             let response = ServerMessage::FileCopyResponse {
                 success: false,
-                error: Some(err_copy_failed(ctx.locale)),
-                error_kind: None,
+                error: Some(err_file_path_invalid(ctx.locale)),
+                error_kind: Some(ErrorKind::InvalidPath.into()),
             };
             return ctx.send_message(&response).await;
         }
-    }
+    };
+    // Clone before moving into `acquire_many` so we can identify which side
+    // (source vs target) the busy lock was on, and report a meaningful error.
+    let busy_source_key = source_lock_key.clone();
 
-    // Perform the copy (async to avoid blocking runtime for large directories)
-    match copy_path_recursive_async(&resolved_source, &target_path).await {
-        Ok(()) => {
-            // Mark file index as dirty so it gets rebuilt
-            ctx.file_index.mark_dirty();
+    // Guards live only inside this block; all socket sends happen after it.
+    let response = 'locked: {
+        let _lock_guards = match ctx
+            .file_mutation_locks
+            .acquire_many(vec![source_lock_key, target_lock_key], PathLockMode::Wait)
+            .await
+        {
+            Ok(g) => g,
+            Err(e) if e.key() == busy_source_key.as_path() => {
+                // Source path held by a `Fail`-mode lock.
+                debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_SOURCE_BUSY);
+                break 'locked ServerMessage::FileCopyResponse {
+                    success: false,
+                    error: Some(err_source_busy(ctx.locale)),
+                    error_kind: Some(ErrorKind::Conflict.into()),
+                };
+            }
+            Err(_) => {
+                // Destination path held by a `Fail`-mode lock.
+                debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_DESTINATION_BUSY);
+                break 'locked ServerMessage::FileCopyResponse {
+                    success: false,
+                    error: Some(err_destination_busy(ctx.locale)),
+                    error_kind: Some(ErrorKind::Conflict.into()),
+                };
+            }
+        };
 
-            debug!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %source_path, "{}", LOG_FILE_COPY_SUCCESS);
+        // Under lock: resolve source from the authoritative filesystem state.
+        let source_symlink_meta = std::fs::symlink_metadata(&source_candidate);
+        let resolved_source = match &source_symlink_meta {
+            Ok(meta) if meta.file_type().is_symlink() => {
+                // Copy the symlink, not its target.
+                source_candidate.clone()
+            }
+            Ok(_) => match resolve_path(&source_area_root, &source_candidate) {
+                Ok(p) => p,
+                Err(_) => {
+                    break 'locked ServerMessage::FileCopyResponse {
+                        success: false,
+                        error: Some(err_file_not_found(ctx.locale)),
+                        error_kind: Some(ErrorKind::NotFound.into()),
+                    };
+                }
+            },
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                break 'locked ServerMessage::FileCopyResponse {
+                    success: false,
+                    error: Some(err_file_not_found(ctx.locale)),
+                    error_kind: Some(ErrorKind::NotFound.into()),
+                };
+            }
+            Err(_) => {
+                break 'locked ServerMessage::FileCopyResponse {
+                    success: false,
+                    error: Some(err_file_path_invalid(ctx.locale)),
+                    error_kind: Some(ErrorKind::InvalidPath.into()),
+                };
+            }
+        };
 
-            let response = ServerMessage::FileCopyResponse {
+        if resolved_source == source_area_root || source_candidate == source_area_root {
+            break 'locked ServerMessage::FileCopyResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                error_kind: Some(ErrorKind::Permission.into()),
+            };
+        }
+
+        let resolved_dest_dir = match resolve_path(&dest_area_root, &dest_candidate) {
+            Ok(p) => p,
+            Err(_) => {
+                break 'locked ServerMessage::FileCopyResponse {
+                    success: false,
+                    error: Some(err_file_not_found(ctx.locale)),
+                    error_kind: Some(ErrorKind::NotFound.into()),
+                };
+            }
+        };
+
+        if !resolved_dest_dir.is_dir() {
+            break 'locked ServerMessage::FileCopyResponse {
+                success: false,
+                error: Some(err_destination_not_directory(ctx.locale)),
+                error_kind: Some(ErrorKind::InvalidPath.into()),
+            };
+        }
+
+        let source_filename = match resolved_source.file_name() {
+            Some(name) => name,
+            None => {
+                break 'locked ServerMessage::FileCopyResponse {
+                    success: false,
+                    error: Some(err_file_path_invalid(ctx.locale)),
+                    error_kind: Some(ErrorKind::InvalidPath.into()),
+                };
+            }
+        };
+
+        let target_path = resolved_dest_dir.join(source_filename);
+
+        // No-op self-copy.
+        if resolved_source == target_path {
+            break 'locked ServerMessage::FileCopyResponse {
                 success: true,
                 error: None,
                 error_kind: None,
             };
-            ctx.send_message(&response).await
         }
-        Err(e) => {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_COPY_FAILED);
-            let response = ServerMessage::FileCopyResponse {
+
+        if resolved_source.is_dir() && is_subpath(&resolved_dest_dir, &resolved_source) {
+            break 'locked ServerMessage::FileCopyResponse {
                 success: false,
-                error: Some(err_copy_failed(ctx.locale)),
-                error_kind: None,
+                error: Some(err_cannot_copy_into_itself(ctx.locale)),
+                error_kind: Some(ErrorKind::InvalidPath.into()),
             };
-            ctx.send_message(&response).await
         }
-    }
+
+        if target_path.exists() || target_path.symlink_metadata().is_ok() {
+            if !overwrite {
+                break 'locked ServerMessage::FileCopyResponse {
+                    success: false,
+                    error: Some(err_destination_exists(ctx.locale)),
+                    error_kind: Some(ErrorKind::Exists.into()),
+                };
+            }
+
+            if let Err(e) = remove_path_async(&target_path).await {
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_COPY_REMOVE_FAILED);
+                break 'locked ServerMessage::FileCopyResponse {
+                    success: false,
+                    error: Some(err_copy_failed(ctx.locale)),
+                    error_kind: None,
+                };
+            }
+        }
+
+        match copy_path_recursive_async(&resolved_source, &target_path).await {
+            Ok(()) => {
+                ctx.file_index.mark_dirty();
+                debug!(user = %requesting_user.username, ip = %ctx.peer_addr, path = %source_path, "{}", LOG_FILE_COPY_SUCCESS);
+                ServerMessage::FileCopyResponse {
+                    success: true,
+                    error: None,
+                    error_kind: None,
+                }
+            }
+            Err(e) => {
+                error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_COPY_FAILED);
+                ServerMessage::FileCopyResponse {
+                    success: false,
+                    error: Some(err_copy_failed(ctx.locale)),
+                    error_kind: None,
+                }
+            }
+        }
+    };
+    ctx.send_message(&response).await
 }
 
 #[cfg(test)]
@@ -438,7 +482,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let temp_dir = setup_file_area_basic(&mut test_ctx);
 
-        // Create source file and destination directory
         let shared_dir = temp_dir.path().join("shared");
         fs::write(shared_dir.join("test.txt"), "content").unwrap();
         fs::create_dir(shared_dir.join("dest")).unwrap();
@@ -473,7 +516,6 @@ mod tests {
             _ => panic!("Expected FileCopyResponse"),
         }
 
-        // Verify file was copied (original still exists)
         assert!(shared_dir.join("test.txt").exists());
         assert!(shared_dir.join("dest/test.txt").exists());
         assert_eq!(
@@ -487,7 +529,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let temp_dir = setup_file_area_basic(&mut test_ctx);
 
-        // Create source directory with contents and destination directory
         let shared_dir = temp_dir.path().join("shared");
         let source_dir = shared_dir.join("source");
         fs::create_dir(&source_dir).unwrap();
@@ -524,7 +565,6 @@ mod tests {
             _ => panic!("Expected FileCopyResponse"),
         }
 
-        // Verify directory was copied (original still exists)
         assert!(source_dir.exists());
         assert!(source_dir.join("file.txt").exists());
         assert!(shared_dir.join("dest/source/file.txt").exists());
@@ -621,7 +661,6 @@ mod tests {
             _ => panic!("Expected FileCopyResponse"),
         }
 
-        // Verify files unchanged
         assert_eq!(
             fs::read_to_string(shared_dir.join("test.txt")).unwrap(),
             "source"
@@ -734,7 +773,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let temp_dir = setup_file_area_basic(&mut test_ctx);
 
-        // Create test file
         let shared_dir = temp_dir.path().join("shared");
         fs::write(shared_dir.join("test.txt"), "content").unwrap();
         fs::create_dir(shared_dir.join("dest")).unwrap();
@@ -827,7 +865,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let temp_dir = setup_file_area_basic(&mut test_ctx);
 
-        // Create test file
         let shared_dir = temp_dir.path().join("shared");
         fs::write(shared_dir.join("test.txt"), "content").unwrap();
         fs::create_dir(shared_dir.join("dest")).unwrap();
@@ -874,7 +911,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let temp_dir = setup_file_area_basic(&mut test_ctx);
 
-        // Create test file in shared area
         let shared_dir = temp_dir.path().join("shared");
         fs::write(shared_dir.join("test.txt"), "content").unwrap();
         fs::create_dir(shared_dir.join("dest")).unwrap();
@@ -909,7 +945,6 @@ mod tests {
             _ => panic!("Expected FileCopyResponse"),
         }
 
-        // Verify file was copied (original still exists)
         assert!(shared_dir.join("test.txt").exists());
         assert!(shared_dir.join("dest/test.txt").exists());
     }
@@ -966,7 +1001,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let temp_dir = setup_file_area_basic(&mut test_ctx);
 
-        // Create source file with unicode name
         let shared_dir = temp_dir.path().join("shared");
         fs::write(shared_dir.join("文件.txt"), "content").unwrap();
         fs::create_dir(shared_dir.join("目录")).unwrap();
@@ -1001,7 +1035,6 @@ mod tests {
             _ => panic!("Expected FileCopyResponse"),
         }
 
-        // Verify file was copied (original still exists)
         assert!(shared_dir.join("文件.txt").exists());
         assert!(shared_dir.join("目录/文件.txt").exists());
     }
@@ -1012,7 +1045,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let temp_dir = setup_file_area_basic(&mut test_ctx);
 
-        // Create a symlink
         let shared_dir = temp_dir.path().join("shared");
         fs::write(shared_dir.join("target.txt"), "content").unwrap();
         std::os::unix::fs::symlink(shared_dir.join("target.txt"), shared_dir.join("link.txt"))
@@ -1060,7 +1092,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let temp_dir = setup_file_area_basic(&mut test_ctx);
 
-        // Create user's personal area
         let users_dir = temp_dir.path().join("users");
         let alice_dir = users_dir.join("alice");
         fs::create_dir_all(&alice_dir).unwrap();
@@ -1107,7 +1138,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let temp_dir = setup_file_area_basic(&mut test_ctx);
 
-        // Create destination
         let shared_dir = temp_dir.path().join("shared");
         fs::create_dir(shared_dir.join("dest")).unwrap();
 
@@ -1193,7 +1223,6 @@ mod tests {
             _ => panic!("Expected FileCopyResponse"),
         }
 
-        // Verify files unchanged
         assert!(shared_dir.join("source.txt").exists());
         assert!(shared_dir.join("dest").exists());
     }
@@ -1203,7 +1232,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let temp_dir = setup_file_area_basic(&mut test_ctx);
 
-        // Create source file
         let shared_dir = temp_dir.path().join("shared");
         fs::write(shared_dir.join("test.txt"), "content").unwrap();
 
@@ -1245,7 +1273,6 @@ mod tests {
             _ => panic!("Expected FileCopyResponse"),
         }
 
-        // File should still exist
         assert!(shared_dir.join("test.txt").exists());
     }
 

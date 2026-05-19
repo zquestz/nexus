@@ -62,6 +62,7 @@ err-channel-list-invalid = Ungültiger Kanal '{ $channel }': { $reason }
 
 # Datenbankfehler
 err-database = Datenbankfehler
+err-internal-error = Ein interner Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.
 err-login-permissions-failed = Fehler beim Laden der Kontoberechtigungen
 err-login-group-failed = Fehler beim Laden der Kontogruppe
 err-login-bandwidth-failed = Fehler beim Laden der Bandbreiten-Einstellungen
@@ -213,6 +214,8 @@ err-destination-exists = Eine Datei oder ein Verzeichnis mit diesem Namen existi
 err-cannot-move-into-itself = Ein Verzeichnis kann nicht in sich selbst verschoben werden
 err-cannot-copy-into-itself = Ein Verzeichnis kann nicht in sich selbst kopiert werden
 err-destination-not-directory = Zielpfad ist kein Verzeichnis
+err-source-busy = Die Datei wird derzeit verwendet. Bitte versuchen Sie es erneut.
+err-destination-busy = Das Ziel wird derzeit verwendet. Bitte versuchen Sie es erneut.
 
 # Transfer Errors
 err-file-area-not-configured = Dateibereich nicht konfiguriert

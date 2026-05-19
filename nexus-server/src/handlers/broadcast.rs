@@ -9,8 +9,8 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, MessageError};
 
 use super::{
-    HandlerContext, err_authentication, err_broadcast_too_long, err_message_contains_newlines,
-    err_message_empty, err_message_invalid_characters, err_not_logged_in, err_permission_denied,
+    HandlerContext, err_broadcast_too_long, err_message_contains_newlines, err_message_empty,
+    err_message_invalid_characters, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
     HANDLER_USER_BROADCAST, LOG_USER_BROADCAST_NOT_LOGGED_IN, LOG_USER_BROADCAST_PERMISSION_DENIED,
@@ -29,7 +29,6 @@ pub async fn handle_user_broadcast<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Verify authentication
     let Some(id) = session_id else {
         warn!(ip = %ctx.peer_addr, "{}", LOG_USER_BROADCAST_NOT_LOGGED_IN);
         return ctx
@@ -43,7 +42,7 @@ where
         None => {
             return ctx
                 .send_error_and_disconnect(
-                    &err_authentication(ctx.locale),
+                    &err_not_logged_in(ctx.locale),
                     Some(HANDLER_USER_BROADCAST),
                 )
                 .await;
@@ -60,7 +59,8 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate message content
+    // Content rules (empty / over the char cap / newlines / invalid chars) —
+    // the framing layer already rejected oversized payloads.
     if let Err(e) = validators::validate_message(&message) {
         let error_msg = match e {
             MessageError::Empty => err_message_empty(ctx.locale),
@@ -70,9 +70,11 @@ where
             MessageError::ContainsNewlines => err_message_contains_newlines(ctx.locale),
             MessageError::InvalidCharacters => err_message_invalid_characters(ctx.locale),
         };
-        return ctx
-            .send_error_and_disconnect(&error_msg, Some(HANDLER_USER_BROADCAST))
-            .await;
+        let response = ServerMessage::UserBroadcastResponse {
+            success: false,
+            error: Some(error_msg),
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Send broadcast to all users
@@ -96,7 +98,7 @@ where
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::{create_test_context, login_user};
+    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
 
     #[tokio::test]
     async fn test_broadcast_requires_login() {
@@ -186,8 +188,15 @@ mod tests {
         )
         .await;
 
-        // Should fail
-        assert!(result.is_err(), "Empty message should be rejected");
+        // Should send typed error response (no disconnect)
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserBroadcastResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
+            }
+            other => panic!("Expected UserBroadcastResponse for empty message, got {other:?}"),
+        }
 
         // Try to send whitespace-only message
         let result = handle_user_broadcast(
@@ -197,11 +206,17 @@ mod tests {
         )
         .await;
 
-        // Should fail
-        assert!(
-            result.is_err(),
-            "Whitespace-only message should be rejected"
-        );
+        // Should send typed error response (no disconnect)
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserBroadcastResponse { success, error } => {
+                assert!(!success);
+                assert!(error.is_some());
+            }
+            other => {
+                panic!("Expected UserBroadcastResponse for whitespace message, got {other:?}")
+            }
+        }
     }
 
     #[tokio::test]
