@@ -100,79 +100,78 @@ where
         return ctx.send_message(&reject_add(error)).await;
     }
 
-    // Insert into the DB. The `MAX_TRACKERS_PER_SERVER` cap is enforced
-    // atomically inside the insert (see `SQL_INSERT_TRACKER`); a row
-    // count at or above the cap surfaces as `TrackerDbError::TooMany`
-    // here. The atomic check closes the race where two concurrent
-    // creates at `count == cap - 1` could both pass a pre-check and
-    // both insert.
-    let result = ctx
-        .db
-        .trackers
-        .create(CreateTrackerParams {
-            address: &address,
-            port,
-            fingerprint: fingerprint.as_deref(),
-            password: password.as_deref(),
-            name: &name,
-            enabled,
-        })
-        .await;
+    // Hold the lifecycle lock across the DB insert and the manager
+    // spawn so a concurrent TrackerRemove targeting the newly-assigned
+    // id can't terminate the slot before we've populated it (which
+    // would leave the row in the DB with no task in the manager).
+    // Drop the guard before the network write — see
+    // TrackerManager::lock_lifecycle. The `MAX_TRACKERS_PER_SERVER`
+    // cap is enforced atomically inside the insert (see
+    // `SQL_INSERT_TRACKER`); the lock doesn't replace that.
+    let response: ServerMessage = 'lifecycle: {
+        let _guard = ctx.tracker_manager.lock_lifecycle().await;
 
-    let record = match result {
-        Ok(r) => r,
-        Err(TrackerDbError::TooMany) => {
-            warn!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                max = MAX_TRACKERS_PER_SERVER,
-                "{}", LOG_TRACKER_ADD_LIMIT_REACHED
-            );
-            return ctx
-                .send_message(&reject_add(err_tracker_too_many(
+        let result = ctx
+            .db
+            .trackers
+            .create(CreateTrackerParams {
+                address: &address,
+                port,
+                fingerprint: fingerprint.as_deref(),
+                password: password.as_deref(),
+                name: &name,
+                enabled,
+            })
+            .await;
+
+        let record = match result {
+            Ok(r) => r,
+            Err(TrackerDbError::TooMany) => {
+                warn!(
+                    user = %requesting_user.username,
+                    ip = %ctx.peer_addr,
+                    max = MAX_TRACKERS_PER_SERVER,
+                    "{}", LOG_TRACKER_ADD_LIMIT_REACHED
+                );
+                break 'lifecycle reject_add(err_tracker_too_many(
                     ctx.locale,
                     MAX_TRACKERS_PER_SERVER,
-                )))
-                .await;
-        }
-        Err(TrackerDbError::EndpointDuplicate) => {
-            return ctx
-                .send_message(&reject_add(err_tracker_endpoint_duplicate(ctx.locale)))
-                .await;
-        }
-        Err(TrackerDbError::NameDuplicate) => {
-            return ctx
-                .send_message(&reject_add(err_tracker_name_duplicate(ctx.locale)))
-                .await;
-        }
-        Err(TrackerDbError::Other(e)) => {
-            error!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                err = %e,
-                "{}", LOG_TRACKER_ADD_DB_ERROR
-            );
-            let response = reject_add(err_database(ctx.locale));
-            return ctx.send_message(&response).await;
-        }
-    };
+                ));
+            }
+            Err(TrackerDbError::EndpointDuplicate) => {
+                break 'lifecycle reject_add(err_tracker_endpoint_duplicate(ctx.locale));
+            }
+            Err(TrackerDbError::NameDuplicate) => {
+                break 'lifecycle reject_add(err_tracker_name_duplicate(ctx.locale));
+            }
+            Err(TrackerDbError::Other(e)) => {
+                error!(
+                    user = %requesting_user.username,
+                    ip = %ctx.peer_addr,
+                    err = %e,
+                    "{}", LOG_TRACKER_ADD_DB_ERROR
+                );
+                break 'lifecycle reject_add(err_database(ctx.locale));
+            }
+        };
 
-    info!(
-        user = %requesting_user.username,
-        ip = %ctx.peer_addr,
-        id = record.id,
-        name = %record.name,
-        "{}", LOG_TRACKER_ADD_SUCCESS
-    );
+        info!(
+            user = %requesting_user.username,
+            ip = %ctx.peer_addr,
+            id = record.id,
+            name = %record.name,
+            "{}", LOG_TRACKER_ADD_SUCCESS
+        );
 
-    // Spawn a tracker task for the new row. No-op if disabled.
-    ctx.tracker_manager.spawn(record.clone());
+        // Spawn a tracker task for the new row. No-op if disabled.
+        ctx.tracker_manager.spawn(record.clone());
 
-    let response = ServerMessage::TrackerAddResponse {
-        success: true,
-        error: None,
-        id: Some(record.id),
-        name: Some(record.name),
+        ServerMessage::TrackerAddResponse {
+            success: true,
+            error: None,
+            id: Some(record.id),
+            name: Some(record.name),
+        }
     };
     ctx.send_message(&response).await
 }
@@ -190,7 +189,10 @@ fn reject_add(error: String) -> ServerMessage {
 mod tests {
     use super::*;
     use crate::db;
-    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use crate::handlers::testing::{
+        CONCURRENT_LIFECYCLE_ITERATIONS, assert_tracker_db_and_manager_consistent,
+        concurrent_handler_context, create_test_context, login_user, read_server_message,
+    };
     use crate::handlers::tracker_list::handle_tracker_list;
     use crate::handlers::tracker_remove::handle_tracker_remove;
     use crate::handlers::tracker_update::{TrackerUpdateRequest, handle_tracker_update};
@@ -645,6 +647,69 @@ mod tests {
                 assert!(trackers.is_empty(), "list should be empty after remove");
             }
             other => panic!("expected empty list, got {other:?}"),
+        }
+    }
+
+    /// Concurrent-lifecycle regression: TrackerAdd inserts a new row
+    /// and then `spawn()`s its task; a concurrent TrackerRemove
+    /// targeting the just-assigned id can delete the row and call
+    /// `terminate()` (a no-op while the slot is still empty), letting
+    /// TrackerAdd's later `spawn()` land against a missing row.
+    ///
+    /// Setup is intentionally contrived to make the race targetable:
+    /// SQLite `INTEGER PRIMARY KEY` advances by 1 per successful
+    /// INSERT, so we can predict the id `TrackerAdd` will assign and
+    /// pre-target it from the concurrent TrackerRemove. This simulates
+    /// a client that guessed or observed the id immediately after
+    /// creation (rather than racing two independent admin requests
+    /// "naturally"). It's lower-stakes than the update / accept races
+    /// but worth covering since the handler shape is identical.
+    #[tokio::test]
+    async fn concurrent_add_and_remove_preserve_invariant() {
+        use nexus_common::framing::FrameWriter;
+        use tokio::io::sink;
+
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::TrackerAdd, db::Permission::TrackerRemove],
+            false,
+        )
+        .await;
+
+        // SQLite rowid starts at 1 on a fresh DB and advances on every
+        // successful INSERT. `TrackerAdd` is the only inserter in this
+        // test, and its name/address values are unique per iteration so
+        // every INSERT succeeds — iteration `i` predicts id `i + 1`.
+        for i in 0..CONCURRENT_LIFECYCLE_ITERATIONS {
+            let predicted_id = (i as i64) + 1;
+            let add_request = TrackerAddRequest {
+                address: format!("added{i}.example.com"),
+                port: 7510,
+                fingerprint: None,
+                password: None,
+                name: format!("Added {i}"),
+                enabled: true,
+            };
+
+            {
+                let mut fw_add = FrameWriter::new(sink());
+                let mut fw_remove = FrameWriter::new(sink());
+                let mut ctx_add = concurrent_handler_context(&test_ctx, &mut fw_add);
+                let mut ctx_remove = concurrent_handler_context(&test_ctx, &mut fw_remove);
+
+                let _ = tokio::join!(
+                    handle_tracker_add(add_request, Some(session_id), &mut ctx_add),
+                    handle_tracker_remove(predicted_id, Some(session_id), &mut ctx_remove),
+                );
+            }
+
+            assert_tracker_db_and_manager_consistent(&test_ctx).await;
+
+            let _ = test_ctx.db.trackers.delete(predicted_id).await;
+            test_ctx.tracker_manager.terminate(predicted_id);
         }
     }
 }

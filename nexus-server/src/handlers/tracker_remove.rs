@@ -53,91 +53,84 @@ where
             ip = %ctx.peer_addr,
             "{}", LOG_TRACKER_REMOVE_PERMISSION_DENIED
         );
-        let response = ServerMessage::TrackerRemoveResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            name: None,
+        return ctx
+            .send_message(&reject_remove(err_permission_denied(ctx.locale)))
+            .await;
+    }
+
+    // Hold the lifecycle lock across the DB read, the DB delete, and the
+    // manager terminate call so a concurrent TrackerUpdate /
+    // TrackerAcceptFingerprint can't slip a `replace()` in after we've
+    // already deleted the row (which would leave an orphan task running
+    // against a missing row). Drop the guard before the network write —
+    // see TrackerManager::lock_lifecycle.
+    let response: ServerMessage = 'lifecycle: {
+        let _guard = ctx.tracker_manager.lock_lifecycle().await;
+
+        // Fetch the existing row first so we can echo its name back for
+        // the confirmation toast. Returns "not found" if the id is unknown.
+        let existing = match ctx.db.trackers.get_by_id(id).await {
+            Ok(Some(r)) => r,
+            Ok(None) => break 'lifecycle reject_remove(err_tracker_not_found(ctx.locale)),
+            Err(e) => {
+                error!(
+                    user = %requesting_user.username,
+                    ip = %ctx.peer_addr,
+                    id = id,
+                    err = %e,
+                    "{}", LOG_TRACKER_REMOVE_DB_ERROR
+                );
+                break 'lifecycle reject_remove(err_database(ctx.locale));
+            }
         };
-        return ctx.send_message(&response).await;
-    }
 
-    // Fetch the existing row first so we can echo its name back for
-    // the confirmation toast. Returns "not found" if the id is unknown.
-    let existing = match ctx.db.trackers.get_by_id(id).await {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            let response = ServerMessage::TrackerRemoveResponse {
-                success: false,
-                error: Some(err_tracker_not_found(ctx.locale)),
-                name: None,
-            };
-            return ctx.send_message(&response).await;
+        match ctx.db.trackers.delete(id).await {
+            Ok(true) => {}
+            Ok(false) => {
+                // Race: row vanished between the get and the delete. Treat
+                // as not-found rather than success (nothing was actually
+                // deleted on this call).
+                break 'lifecycle reject_remove(err_tracker_not_found(ctx.locale));
+            }
+            Err(e) => {
+                error!(
+                    user = %requesting_user.username,
+                    ip = %ctx.peer_addr,
+                    id = id,
+                    name = %existing.name,
+                    err = %e,
+                    "{}", LOG_TRACKER_REMOVE_DB_ERROR
+                );
+                break 'lifecycle reject_remove(err_database(ctx.locale));
+            }
         }
-        Err(e) => {
-            error!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                id = id,
-                err = %e,
-                "{}", LOG_TRACKER_REMOVE_DB_ERROR
-            );
-            let response = ServerMessage::TrackerRemoveResponse {
-                success: false,
-                error: Some(err_database(ctx.locale)),
-                name: None,
-            };
-            return ctx.send_message(&response).await;
+
+        info!(
+            user = %requesting_user.username,
+            ip = %ctx.peer_addr,
+            id = id,
+            name = %existing.name,
+            "{}", LOG_TRACKER_REMOVE_SUCCESS
+        );
+
+        // Abort the tracker task (idempotent; no-op if disabled or never spawned).
+        ctx.tracker_manager.terminate(id);
+
+        ServerMessage::TrackerRemoveResponse {
+            success: true,
+            error: None,
+            name: Some(existing.name),
         }
-    };
-
-    match ctx.db.trackers.delete(id).await {
-        Ok(true) => {}
-        Ok(false) => {
-            // Race: row vanished between the get and the delete. Treat
-            // as not-found rather than success (nothing was actually
-            // deleted on this call).
-            let response = ServerMessage::TrackerRemoveResponse {
-                success: false,
-                error: Some(err_tracker_not_found(ctx.locale)),
-                name: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-        Err(e) => {
-            error!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                id = id,
-                name = %existing.name,
-                err = %e,
-                "{}", LOG_TRACKER_REMOVE_DB_ERROR
-            );
-            let response = ServerMessage::TrackerRemoveResponse {
-                success: false,
-                error: Some(err_database(ctx.locale)),
-                name: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-    }
-
-    info!(
-        user = %requesting_user.username,
-        ip = %ctx.peer_addr,
-        id = id,
-        name = %existing.name,
-        "{}", LOG_TRACKER_REMOVE_SUCCESS
-    );
-
-    // Abort the tracker task (idempotent; no-op if disabled or never spawned).
-    ctx.tracker_manager.terminate(id);
-
-    let response = ServerMessage::TrackerRemoveResponse {
-        success: true,
-        error: None,
-        name: Some(existing.name),
     };
     ctx.send_message(&response).await
+}
+
+fn reject_remove(error: String) -> ServerMessage {
+    ServerMessage::TrackerRemoveResponse {
+        success: false,
+        error: Some(error),
+        name: None,
+    }
 }
 
 #[cfg(test)]

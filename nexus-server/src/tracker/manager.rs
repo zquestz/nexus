@@ -6,10 +6,21 @@
 //! shared `Arc<RwLock<TrackerStatus>>` handles for compose-into-
 //! `TrackerInfo`-response paths.
 //!
-//! Locks held in this module are `std::sync::Mutex` (not
-//! `tokio::sync`) — every critical section is short and never crosses
-//! an `await`. The map gets locked, an entry mutated, the lock dropped
-//! before any further async work.
+//! Two distinct locks live on the manager, with intentionally
+//! different runtime types:
+//!
+//! - **`inner: std::sync::Mutex<HashMap<i64, TrackerHandle>>`** — the
+//!   per-id handle map. Every critical section is short and never
+//!   crosses an `await`: lock the map, mutate one entry, drop the
+//!   guard before any further async work. Using a sync `Mutex` here
+//!   is correct and intentional.
+//! - **`lifecycle: tokio::sync::Mutex<()>`** — the coordination lock
+//!   exposed via [`Self::lock_lifecycle`]. *Intentionally* a tokio
+//!   `Mutex` because handlers hold the guard across DB awaits (the
+//!   whole DB write + manager call sequence), and a sync `Mutex` held
+//!   across `.await` would block the tokio worker and would also
+//!   produce a `!Send` future. Do not "fix" this to a `std::sync`
+//!   mutex.
 //!
 //! The manager itself is `Clone`-able via `Arc` from the caller side
 //! (it holds shared inner state), but we don't `derive(Clone)` —
@@ -69,6 +80,17 @@ struct TrackerHandle {
 /// [`shutdown`]: TrackerManager::shutdown
 pub struct TrackerManager {
     inner: Mutex<HashMap<i64, TrackerHandle>>,
+    /// Serializes lifecycle-changing admin handlers
+    /// (`TrackerAdd`, `TrackerUpdate`, `TrackerRemove`,
+    /// `TrackerAcceptFingerprint`) end-to-end across both their DB write
+    /// and their follow-up `spawn` / `replace` / `terminate` call.
+    /// Without this, a `TrackerUpdate` that succeeded against the DB
+    /// can lose the runtime to a concurrent `TrackerRemove` and then
+    /// spawn an orphan task against a deleted row. `inner` only locks
+    /// the map for the duration of one manager method — it doesn't
+    /// protect the DB ↔ manager boundary. See
+    /// [`Self::lock_lifecycle`].
+    lifecycle: tokio::sync::Mutex<()>,
     context: Arc<TrackerContext>,
 }
 
@@ -79,8 +101,31 @@ impl TrackerManager {
     pub fn new(context: Arc<TrackerContext>) -> Self {
         Self {
             inner: Mutex::new(HashMap::new()),
+            lifecycle: tokio::sync::Mutex::new(()),
             context,
         }
+    }
+
+    /// Acquire the lifecycle coordination lock.
+    ///
+    /// Lifecycle-changing handlers (`TrackerAdd`, `TrackerUpdate`,
+    /// `TrackerRemove`, `TrackerAcceptFingerprint`) **must** hold this
+    /// guard for the duration of *both* their DB lifecycle mutation
+    /// (insert / update / delete) and the follow-up manager call
+    /// (`spawn` / `replace` / `terminate`). That pairing is the
+    /// invariant this lock enforces — without it, a handler's DB write
+    /// can succeed and then lose the runtime to a concurrent handler
+    /// before its own manager call lands, producing an orphan task or
+    /// a missing one.
+    ///
+    /// Read-only handlers (`TrackerList`, `TrackerEdit`) don't take
+    /// this lock; the brief inconsistency window during a single admin
+    /// op is acceptable for display.
+    ///
+    /// Drop the guard *before* sending the response — the lock should
+    /// cover the DB+manager critical section, not the network write.
+    pub(crate) async fn lock_lifecycle(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.lifecycle.lock().await
     }
 
     /// Load all enabled tracker rows from the DB and spawn one

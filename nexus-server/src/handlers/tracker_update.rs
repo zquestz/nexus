@@ -101,84 +101,83 @@ where
         return ctx.send_message(&reject_update(error)).await;
     }
 
-    let result = ctx
-        .db
-        .trackers
-        .update(
-            id,
-            UpdateTrackerParams {
-                address: &address,
-                port,
-                fingerprint: fingerprint.as_deref(),
-                password: password.as_deref(),
-                name: &name,
-                enabled,
-            },
-        )
-        .await;
+    // Hold the lifecycle lock across the DB update and the manager
+    // replace so a concurrent TrackerRemove can't delete the row
+    // between the two halves and leave us spawning an orphan task.
+    // Drop the guard before the network write — see
+    // TrackerManager::lock_lifecycle.
+    let response: ServerMessage = 'lifecycle: {
+        let _guard = ctx.tracker_manager.lock_lifecycle().await;
 
-    let record = match result {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            return ctx
-                .send_message(&reject_update(err_tracker_not_found(ctx.locale)))
-                .await;
-        }
-        Err(TrackerDbError::EndpointDuplicate) => {
-            return ctx
-                .send_message(&reject_update(err_tracker_endpoint_duplicate(ctx.locale)))
-                .await;
-        }
-        Err(TrackerDbError::NameDuplicate) => {
-            return ctx
-                .send_message(&reject_update(err_tracker_name_duplicate(ctx.locale)))
-                .await;
-        }
-        Err(TrackerDbError::TooMany) => {
-            // `update()` doesn't enforce the row cap — only `create()`
-            // does. This arm is unreachable in practice; route it
-            // through the generic DB-error path so an unexpected
-            // future regression doesn't silently fall through.
-            error!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                id = id,
-                "{}", LOG_TRACKER_UPDATE_DB_ERROR
-            );
-            let response = reject_update(err_database(ctx.locale));
-            return ctx.send_message(&response).await;
-        }
-        Err(TrackerDbError::Other(e)) => {
-            error!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                id = id,
-                err = %e,
-                "{}", LOG_TRACKER_UPDATE_DB_ERROR
-            );
-            let response = reject_update(err_database(ctx.locale));
-            return ctx.send_message(&response).await;
-        }
-    };
+        let result = ctx
+            .db
+            .trackers
+            .update(
+                id,
+                UpdateTrackerParams {
+                    address: &address,
+                    port,
+                    fingerprint: fingerprint.as_deref(),
+                    password: password.as_deref(),
+                    name: &name,
+                    enabled,
+                },
+            )
+            .await;
 
-    info!(
-        user = %requesting_user.username,
-        ip = %ctx.peer_addr,
-        id = record.id,
-        name = %record.name,
-        enabled = record.enabled,
-        "{}", LOG_TRACKER_UPDATE_SUCCESS
-    );
+        let record = match result {
+            Ok(Some(r)) => r,
+            Ok(None) => break 'lifecycle reject_update(err_tracker_not_found(ctx.locale)),
+            Err(TrackerDbError::EndpointDuplicate) => {
+                break 'lifecycle reject_update(err_tracker_endpoint_duplicate(ctx.locale));
+            }
+            Err(TrackerDbError::NameDuplicate) => {
+                break 'lifecycle reject_update(err_tracker_name_duplicate(ctx.locale));
+            }
+            Err(TrackerDbError::TooMany) => {
+                // `update()` doesn't enforce the row cap — only `create()`
+                // does. This arm is unreachable in practice; route it
+                // through the generic DB-error path so an unexpected
+                // future regression doesn't silently fall through.
+                error!(
+                    user = %requesting_user.username,
+                    ip = %ctx.peer_addr,
+                    id = id,
+                    "{}", LOG_TRACKER_UPDATE_DB_ERROR
+                );
+                break 'lifecycle reject_update(err_database(ctx.locale));
+            }
+            Err(TrackerDbError::Other(e)) => {
+                error!(
+                    user = %requesting_user.username,
+                    ip = %ctx.peer_addr,
+                    id = id,
+                    err = %e,
+                    "{}", LOG_TRACKER_UPDATE_DB_ERROR
+                );
+                break 'lifecycle reject_update(err_database(ctx.locale));
+            }
+        };
 
-    // Abort the old task and spawn a fresh one (or just abort, if the
-    // record is now disabled). The manager handles both cases.
-    ctx.tracker_manager.replace(record.clone());
+        info!(
+            user = %requesting_user.username,
+            ip = %ctx.peer_addr,
+            id = record.id,
+            name = %record.name,
+            enabled = record.enabled,
+            "{}", LOG_TRACKER_UPDATE_SUCCESS
+        );
 
-    let response = ServerMessage::TrackerUpdateResponse {
-        success: true,
-        error: None,
-        id: Some(record.id),
-        name: Some(record.name),
+        // Abort the old task and spawn a fresh one (or just abort, if the
+        // record is now disabled). The manager handles both cases.
+        ctx.tracker_manager.replace(record.clone());
+
+        ServerMessage::TrackerUpdateResponse {
+            success: true,
+            error: None,
+            id: Some(record.id),
+            name: Some(record.name),
+        }
     };
     ctx.send_message(&response).await
 }
@@ -196,7 +195,10 @@ fn reject_update(error: String) -> ServerMessage {
 mod tests {
     use super::*;
     use crate::db::{self, CreateTrackerParams};
-    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use crate::handlers::testing::{
+        CONCURRENT_LIFECYCLE_ITERATIONS, assert_tracker_db_and_manager_consistent,
+        concurrent_handler_context, create_test_context, login_user, read_server_message,
+    };
 
     async fn seed_tracker(test_ctx: &mut crate::handlers::testing::TestContext) -> i64 {
         test_ctx
@@ -475,6 +477,79 @@ mod tests {
                 assert!(error.is_some());
             }
             other => panic!("Expected TrackerUpdateResponse, got {other:?}"),
+        }
+    }
+
+    /// Concurrent-lifecycle regression: TrackerUpdate's DB write and
+    /// manager `replace()` can interleave with a concurrent
+    /// TrackerRemove. Without `TrackerManager::lock_lifecycle` the
+    /// stale update can respawn a task for a row that was just deleted
+    /// (orphan task) or skip the respawn that should have happened
+    /// (missing task). The invariant helper catches either case.
+    #[tokio::test]
+    async fn concurrent_update_and_remove_preserve_invariant() {
+        use nexus_common::framing::FrameWriter;
+        use tokio::io::sink;
+
+        use crate::handlers::handle_tracker_remove;
+
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::TrackerEdit, db::Permission::TrackerRemove],
+            false,
+        )
+        .await;
+
+        for i in 0..CONCURRENT_LIFECYCLE_ITERATIONS {
+            let address = format!("seed{i}.example.com");
+            let name = format!("Seed {i}");
+            let record = test_ctx
+                .db
+                .trackers
+                .create(CreateTrackerParams {
+                    address: &address,
+                    port: 7510,
+                    fingerprint: None,
+                    password: None,
+                    name: &name,
+                    enabled: true,
+                })
+                .await
+                .expect("seed tracker create");
+            test_ctx.tracker_manager.spawn(record.clone());
+            let id = record.id;
+
+            let update_request = TrackerUpdateRequest {
+                id,
+                address: format!("renamed{i}.example.com"),
+                port: 7511,
+                fingerprint: None,
+                password: None,
+                name: format!("Renamed {i}"),
+                enabled: true,
+            };
+
+            {
+                let mut fw_update = FrameWriter::new(sink());
+                let mut fw_remove = FrameWriter::new(sink());
+                let mut ctx_update = concurrent_handler_context(&test_ctx, &mut fw_update);
+                let mut ctx_remove = concurrent_handler_context(&test_ctx, &mut fw_remove);
+
+                let _ = tokio::join!(
+                    handle_tracker_update(update_request, Some(session_id), &mut ctx_update),
+                    handle_tracker_remove(id, Some(session_id), &mut ctx_remove),
+                );
+            }
+
+            assert_tracker_db_and_manager_consistent(&test_ctx).await;
+
+            // Best-effort cleanup so the next iteration starts clean
+            // regardless of which interleaving the join produced.
+            let _ = test_ctx.db.trackers.delete(id).await;
+            test_ctx.tracker_manager.terminate(id);
         }
     }
 }

@@ -78,35 +78,50 @@ where
             .await;
     }
 
-    // Pull the pending fingerprint out of the running task's status.
-    // No status (id unknown or task disabled) → reject as "no pending"
-    // since there's no observation to accept either way.
-    //
-    // Defense-in-depth: if `last_error_kind` indicates a Stage 2
-    // mismatch (`tracker_fingerprint_intercepted`), reject regardless
-    // of `pending_fingerprint`. The tracker task is supposed to leave
-    // `pending_fingerprint` unset on Stage 2, but a regression there
-    // would otherwise let an admin one-click pin an attacker's cert.
-    // This guard catches that class of bug at the handler boundary.
-    let pending = match ctx.tracker_manager.status_for(id) {
-        Some(status)
-            if status.last_error_kind.as_deref()
-                == Some(ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED) =>
-        {
-            warn!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                id = id,
-                "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_NO_PENDING
-            );
-            return ctx
-                .send_message(&reject_accept(err_tracker_no_pending_fingerprint(
-                    ctx.locale,
-                )))
-                .await;
-        }
-        Some(status) => match status.pending_fingerprint {
-            Some(fp) => fp,
+    // Hold the lifecycle lock across the status_for snapshot, the
+    // update_fingerprint write, the row re-fetch, and the manager
+    // replace. The pending fingerprint we read out of status_for is
+    // part of the decision being committed, so it must be in the same
+    // critical section as the DB write. Drop the guard before the
+    // network write — see TrackerManager::lock_lifecycle.
+    let response: ServerMessage = 'lifecycle: {
+        let _guard = ctx.tracker_manager.lock_lifecycle().await;
+
+        // Pull the pending fingerprint out of the running task's status.
+        // No status (id unknown or task disabled) → reject as "no pending"
+        // since there's no observation to accept either way.
+        //
+        // Defense-in-depth: if `last_error_kind` indicates a Stage 2
+        // mismatch (`tracker_fingerprint_intercepted`), reject regardless
+        // of `pending_fingerprint`. The tracker task is supposed to leave
+        // `pending_fingerprint` unset on Stage 2, but a regression there
+        // would otherwise let an admin one-click pin an attacker's cert.
+        // This guard catches that class of bug at the handler boundary.
+        let pending = match ctx.tracker_manager.status_for(id) {
+            Some(status)
+                if status.last_error_kind.as_deref()
+                    == Some(ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED) =>
+            {
+                warn!(
+                    user = %requesting_user.username,
+                    ip = %ctx.peer_addr,
+                    id = id,
+                    "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_NO_PENDING
+                );
+                break 'lifecycle reject_accept(err_tracker_no_pending_fingerprint(ctx.locale));
+            }
+            Some(status) => match status.pending_fingerprint {
+                Some(fp) => fp,
+                None => {
+                    warn!(
+                        user = %requesting_user.username,
+                        ip = %ctx.peer_addr,
+                        id = id,
+                        "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_NO_PENDING
+                    );
+                    break 'lifecycle reject_accept(err_tracker_no_pending_fingerprint(ctx.locale));
+                }
+            },
             None => {
                 warn!(
                     user = %requesting_user.username,
@@ -114,94 +129,68 @@ where
                     id = id,
                     "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_NO_PENDING
                 );
-                return ctx
-                    .send_message(&reject_accept(err_tracker_no_pending_fingerprint(
-                        ctx.locale,
-                    )))
-                    .await;
+                break 'lifecycle reject_accept(err_tracker_no_pending_fingerprint(ctx.locale));
             }
-        },
-        None => {
-            warn!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                id = id,
-                "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_NO_PENDING
-            );
-            return ctx
-                .send_message(&reject_accept(err_tracker_no_pending_fingerprint(
-                    ctx.locale,
-                )))
-                .await;
-        }
-    };
+        };
 
-    match ctx.db.trackers.update_fingerprint(id, &pending).await {
-        Ok(true) => {}
-        Ok(false) => {
-            // Row vanished between `status_for` and the UPDATE
-            // (concurrent `TrackerRemove`). The UPDATE affected 0
-            // rows, so no state change to roll back.
-            return ctx
-                .send_message(&reject_accept(err_tracker_not_found(ctx.locale)))
-                .await;
+        match ctx.db.trackers.update_fingerprint(id, &pending).await {
+            Ok(true) => {}
+            Ok(false) => {
+                // Row vanished before we acquired the lifecycle lock
+                // (concurrent `TrackerRemove`). The UPDATE affected 0
+                // rows, so no state change to roll back.
+                break 'lifecycle reject_accept(err_tracker_not_found(ctx.locale));
+            }
+            Err(e) => {
+                error!(
+                    user = %requesting_user.username,
+                    ip = %ctx.peer_addr,
+                    id = id,
+                    err = %e,
+                    "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_DB_ERROR
+                );
+                break 'lifecycle reject_accept(err_database(ctx.locale));
+            }
         }
-        Err(e) => {
-            error!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                id = id,
-                err = %e,
-                "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_DB_ERROR
-            );
-            return ctx
-                .send_message(&reject_accept(err_database(ctx.locale)))
-                .await;
+
+        // Re-fetch the row so we can hand a fresh `TrackerRecord` to the
+        // manager (it owns task lifecycle keyed by the full record).
+        // Under the lifecycle lock the row can't be deleted out from
+        // under us between the UPDATE and this read, but a DB-layer
+        // error (I/O) still has to be handled.
+        let record = match ctx.db.trackers.get_by_id(id).await {
+            Ok(Some(r)) => r,
+            Ok(None) => break 'lifecycle reject_accept(err_tracker_not_found(ctx.locale)),
+            Err(e) => {
+                error!(
+                    user = %requesting_user.username,
+                    ip = %ctx.peer_addr,
+                    id = id,
+                    err = %e,
+                    "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_DB_ERROR
+                );
+                break 'lifecycle reject_accept(err_database(ctx.locale));
+            }
+        };
+
+        info!(
+            user = %requesting_user.username,
+            ip = %ctx.peer_addr,
+            id = record.id,
+            name = %record.name,
+            "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_SUCCESS
+        );
+
+        // Abort the existing task and respawn with the new pin so the next
+        // refresh cycle uses the freshly-promoted fingerprint.
+        ctx.tracker_manager.replace(record.clone());
+
+        ServerMessage::TrackerAcceptFingerprintResponse {
+            success: true,
+            error: None,
+            id: Some(record.id),
+            name: Some(record.name),
         }
-    }
-
-    // Re-fetch the row so we can hand a fresh `TrackerRecord` to the
-    // manager (it owns task lifecycle keyed by the full record). The
-    // row could still vanish between the UPDATE and this read (another
-    // concurrent `TrackerRemove`); surface as not-found in that case.
-    let record = match ctx.db.trackers.get_by_id(id).await {
-        Ok(Some(r)) => r,
-        Ok(None) => {
-            return ctx
-                .send_message(&reject_accept(err_tracker_not_found(ctx.locale)))
-                .await;
-        }
-        Err(e) => {
-            error!(
-                user = %requesting_user.username,
-                ip = %ctx.peer_addr,
-                id = id,
-                err = %e,
-                "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_DB_ERROR
-            );
-            return ctx
-                .send_message(&reject_accept(err_database(ctx.locale)))
-                .await;
-        }
-    };
-
-    info!(
-        user = %requesting_user.username,
-        ip = %ctx.peer_addr,
-        id = record.id,
-        name = %record.name,
-        "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_SUCCESS
-    );
-
-    // Abort the existing task and respawn with the new pin so the next
-    // refresh cycle uses the freshly-promoted fingerprint.
-    ctx.tracker_manager.replace(record.clone());
-
-    let response = ServerMessage::TrackerAcceptFingerprintResponse {
-        success: true,
-        error: None,
-        id: Some(record.id),
-        name: Some(record.name),
     };
     ctx.send_message(&response).await
 }
@@ -219,7 +208,10 @@ fn reject_accept(error: String) -> ServerMessage {
 mod tests {
     use super::*;
     use crate::db::{self, CreateTrackerParams};
-    use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use crate::handlers::testing::{
+        CONCURRENT_LIFECYCLE_ITERATIONS, assert_tracker_db_and_manager_consistent,
+        concurrent_handler_context, create_test_context, login_user, read_server_message,
+    };
 
     /// The fingerprint a tracker was originally pinned with — the
     /// "old" cert before rotation.
@@ -483,5 +475,74 @@ mod tests {
         // Manager should still have a task for this id (the replace
         // re-spawned with the new pin; pre-replace status is gone).
         assert!(test_ctx.tracker_manager.status_for(created.id).is_some());
+    }
+
+    /// Concurrent-lifecycle regression: TrackerAcceptFingerprint reads
+    /// a pending fingerprint from manager status, runs
+    /// `update_fingerprint`, re-fetches the row, then `replace()`s the
+    /// task — and at any of those await points a concurrent
+    /// TrackerRemove could delete the row and terminate the task.
+    /// `TrackerManager::lock_lifecycle` keeps these two ops sequential;
+    /// the invariant helper confirms it.
+    #[tokio::test]
+    async fn concurrent_accept_fingerprint_and_remove_preserve_invariant() {
+        use nexus_common::framing::FrameWriter;
+        use tokio::io::sink;
+
+        use crate::handlers::handle_tracker_remove;
+
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::TrackerEdit, db::Permission::TrackerRemove],
+            false,
+        )
+        .await;
+
+        for i in 0..CONCURRENT_LIFECYCLE_ITERATIONS {
+            let address = format!("rotate{i}.example.com");
+            let name = format!("Rotate {i}");
+            let record = test_ctx
+                .db
+                .trackers
+                .create(CreateTrackerParams {
+                    address: &address,
+                    port: 7510,
+                    fingerprint: Some(OLD_FINGERPRINT),
+                    password: None,
+                    name: &name,
+                    enabled: true,
+                })
+                .await
+                .expect("create");
+            test_ctx.tracker_manager.spawn(record.clone());
+            // Simulate a Stage 1 mismatch: the running task observed a
+            // new cert and stashed its fingerprint. Without the lock,
+            // TrackerAcceptFingerprint and TrackerRemove can interleave
+            // between the DB write and the manager replace.
+            test_ctx
+                .tracker_manager
+                .set_pending_fingerprint_for_test(record.id, NEW_FINGERPRINT.to_string());
+            let id = record.id;
+
+            {
+                let mut fw_accept = FrameWriter::new(sink());
+                let mut fw_remove = FrameWriter::new(sink());
+                let mut ctx_accept = concurrent_handler_context(&test_ctx, &mut fw_accept);
+                let mut ctx_remove = concurrent_handler_context(&test_ctx, &mut fw_remove);
+
+                let _ = tokio::join!(
+                    handle_tracker_accept_fingerprint(id, Some(session_id), &mut ctx_accept),
+                    handle_tracker_remove(id, Some(session_id), &mut ctx_remove),
+                );
+            }
+
+            assert_tracker_db_and_manager_consistent(&test_ctx).await;
+
+            let _ = test_ctx.db.trackers.delete(id).await;
+            test_ctx.tracker_manager.terminate(id);
+        }
     }
 }

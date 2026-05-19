@@ -23,7 +23,7 @@
 //! handler check that runs before any resync, session-cache-only is
 //! fine, but verify by reading the handler.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -32,7 +32,7 @@ use std::time::Duration;
 
 use tempfile::TempDir;
 
-use tokio::io::BufReader;
+use tokio::io::{BufReader, Sink};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
@@ -582,6 +582,80 @@ pub async fn login_shared_user(
         })
         .await
         .expect("Failed to add shared user to UserManager")
+}
+
+// ========================================================================
+// Concurrent-handler test helpers
+// ========================================================================
+
+/// Default iteration count for concurrent-handler regression tests
+/// (see [`concurrent_handler_context`]). With the lifecycle lock in
+/// place the invariant holds on every iteration; the loop is defensive
+/// coverage so a future regression that removes a `lock_lifecycle()`
+/// call fails reliably even if a single iteration's scheduler
+/// interleaving happens to mask the race.
+pub const CONCURRENT_LIFECYCLE_ITERATIONS: usize = 25;
+
+/// Build a [`HandlerContext`] sharing all immutable resources with the
+/// `TestContext` but using a caller-supplied (typically discard)
+/// writer. Lets multiple `HandlerContext`s coexist for tests that
+/// drive concurrent handlers (e.g. via `tokio::join!`) without
+/// contending over the single `test_ctx.frame_writer`.
+///
+/// The caller owns `writer` so multiple contexts with distinct writers
+/// can be alive at the same time. Each handler call writes its
+/// response into the supplied sink, where it's discarded — these tests
+/// assert on observable side effects (DB rows, manager handles) rather
+/// than the response payload.
+pub fn concurrent_handler_context<'a>(
+    test_ctx: &'a TestContext,
+    writer: &'a mut nexus_common::framing::FrameWriter<Sink>,
+) -> HandlerContext<'a, Sink> {
+    HandlerContext {
+        writer,
+        peer_addr: test_ctx.peer_addr,
+        user_manager: &test_ctx.user_manager,
+        db: &test_ctx.db,
+        tx: &test_ctx.tx,
+        locale: DEFAULT_TEST_LOCALE,
+        message_id: test_ctx.message_id,
+        file_root: test_ctx.file_root,
+        transfer_port: nexus_common::DEFAULT_TRANSFER_PORT,
+        transfer_websocket_port: Some(nexus_common::DEFAULT_TRANSFER_WEBSOCKET_PORT),
+        connection_tracker: test_ctx.connection_tracker.clone(),
+        ip_rule_cache: test_ctx.ip_rule_cache.clone(),
+        file_index: test_ctx.file_index.clone(),
+        file_mutation_locks: test_ctx.file_mutation_locks.clone(),
+        channel_manager: &test_ctx.channel_manager,
+        transfer_registry: test_ctx.transfer_registry.clone(),
+        voice_registry: &test_ctx.voice_registry,
+        tracker_manager: &test_ctx.tracker_manager,
+        fingerprint: TEST_FINGERPRINT,
+        flood_config: test_ctx.flood_config.clone(),
+    }
+}
+
+/// Tracker-lifecycle invariant: every enabled DB row has a manager
+/// handle, and every manager handle corresponds to an enabled DB row.
+/// Disabled rows have no manager handle. This is the consistency
+/// property `TrackerManager::lock_lifecycle` exists to preserve.
+pub async fn assert_tracker_db_and_manager_consistent(test_ctx: &TestContext) {
+    let rows = test_ctx
+        .db
+        .trackers
+        .list_all()
+        .await
+        .expect("list_all should not fail in test");
+    let statuses = test_ctx.tracker_manager.status_all();
+
+    let enabled_ids: HashSet<i64> = rows.iter().filter(|r| r.enabled).map(|r| r.id).collect();
+    let manager_ids: HashSet<i64> = statuses.keys().copied().collect();
+
+    assert_eq!(
+        enabled_ids, manager_ids,
+        "DB-enabled tracker ids must match manager handle ids; \
+         enabled in DB: {enabled_ids:?}, in manager: {manager_ids:?}",
+    );
 }
 
 /// Helper to read a ServerMessage from the test context's frame reader.
