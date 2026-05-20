@@ -10,21 +10,17 @@ use crate::db::Permission;
 use crate::users::user::UserSession;
 
 impl UserManager {
-    /// Remove disconnected users from the manager with permission checking
-    ///
-    /// Takes a list of session IDs whose channels have closed and removes them
-    /// from the UserManager. This is called by broadcast methods when they detect
-    /// that a user's channel has been closed.
-    ///
-    /// This method broadcasts UserDisconnected messages to all remaining clients
-    /// who have the user_list permission so their user lists stay in sync.
-    /// We send messages directly to avoid infinite recursion (since broadcast() calls remove_disconnected()).
+    /// Remove sessions whose channels have closed, then notify remaining
+    /// user_list clients with UserDisconnected so their lists stay in sync.
+    /// Called by the broadcast methods. Sends directly rather than via
+    /// `broadcast_user_event()` to break the type-level recursion (broadcast →
+    /// remove_disconnected → broadcast).
     pub(super) async fn remove_disconnected(&self, session_ids: Vec<u32>) {
         if session_ids.is_empty() {
             return;
         }
 
-        // Collect user info before removing them (nickname for proper identification)
+        // Capture nicknames before removal (needed for the notification).
         let users_to_remove: Vec<(u32, String)> = {
             let users = self.users.read().await;
             session_ids
@@ -37,7 +33,6 @@ impl UserManager {
                 .collect()
         };
 
-        // Remove users from the manager
         {
             let mut users = self.users.write().await;
             for session_id in &session_ids {
@@ -45,37 +40,30 @@ impl UserManager {
             }
         }
 
-        // Broadcast disconnection to all remaining clients who have user_list permission
-        // We send directly instead of using broadcast_user_event() to avoid infinite recursion
-        // at the type level (even though runtime would be safe since users are already removed)
         for (session_id, nickname) in users_to_remove {
             let message = ServerMessage::UserDisconnected {
                 session_id,
                 nickname,
             };
 
-            // Send to users who have user_list permission (ignore send errors)
             let users = self.users.read().await;
             for user in users.values() {
-                // Skip the disconnecting user (already removed, but be explicit)
                 if user.session_id == session_id {
                     continue;
                 }
 
-                // Check if user has user_list permission (uses cached permissions, admin bypass)
+                // Cached permissions, admin bypass.
                 if user.has_permission(Permission::UserList) {
-                    // Ignore send errors - if this user's channel is also closed, they'll be
-                    // cleaned up on the next broadcast. We don't recurse here to avoid complexity.
+                    // Ignore send errors: a closed channel here is cleaned up on
+                    // the next broadcast. We don't recurse.
                     let _ = user.tx.send((message.clone(), None));
                 }
             }
         }
     }
 
-    /// Build UserInfo from a single session (for shared accounts)
-    ///
-    /// Shared accounts have unique nicknames per session, so each session is
-    /// broadcast separately without aggregation.
+    /// Build UserInfo from a single session (shared accounts). Each session has
+    /// a unique nickname, so they're broadcast separately without aggregation.
     pub fn build_user_info_from_session(session: &UserSession) -> UserInfo {
         UserInfo {
             id: session.user_id,
@@ -95,49 +83,38 @@ impl UserManager {
         }
     }
 
-    /// Build aggregated UserInfo for a regular account with split selection
-    ///
-    /// For regular accounts with multiple sessions, we need to aggregate data:
-    /// - username, is_admin, is_shared: same for all sessions
-    /// - nickname: equals username for regular accounts
-    /// - login_time: earliest session's login time (for "connected since" display)
-    /// - session_ids: all session IDs
-    /// - avatar, locale: from latest login session (stable, no flickering)
-    /// - is_away, status: from most recently active session (accurate presence)
-    ///
-    /// For shared accounts (is_shared=true), this method should NOT be used - each session
-    /// is a separate entry with its own nickname.
+    /// Aggregate the multiple sessions of one regular account into a single
+    /// UserInfo. Field sources: identity (username/avatar/locale/group) from the
+    /// latest login (stable, no flicker); login_time = earliest (for "connected
+    /// since"); is_away/status = most recently active (accurate presence).
+    /// Not for shared accounts — each of their sessions is its own entry.
     pub fn build_aggregated_user_info(sessions: &[UserSession]) -> Option<UserInfo> {
         if sessions.is_empty() {
             return None;
         }
 
-        // Latest login: used for avatar, locale, and identity fields (stable)
         let latest_login = sessions
             .iter()
             .max_by_key(|s| s.login_time)
             .expect(ERR_SESSIONS_NOT_EMPTY);
 
-        // Most recently active: used for is_away, status (accurate presence)
         let most_active = sessions
             .iter()
             .max_by_key(|s| s.last_activity)
             .expect(ERR_SESSIONS_NOT_EMPTY);
 
-        // Find the earliest login time for display
         let earliest_login_time = sessions
             .iter()
             .map(|s| s.login_time)
             .min()
             .expect(ERR_SESSIONS_NOT_EMPTY);
 
-        // Collect all session IDs
         let session_ids: Vec<u32> = sessions.iter().map(|s| s.session_id).collect();
 
         Some(UserInfo {
             id: latest_login.user_id,
             username: latest_login.username.clone(),
-            nickname: latest_login.nickname.clone(), // For regular accounts, nickname == username
+            nickname: latest_login.nickname.clone(), // == username for regular accounts
             login_time: earliest_login_time,
             is_admin: latest_login.is_admin,
             is_shared: latest_login.is_shared,

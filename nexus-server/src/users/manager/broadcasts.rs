@@ -8,10 +8,8 @@ use super::UserManager;
 use crate::db::Permission;
 
 impl UserManager {
-    /// Send a message to a specific session by session ID
-    ///
-    /// Returns true if the message was sent, false if the session doesn't exist
-    /// or the channel is closed.
+    /// Send a message to a specific session. Returns false if the session
+    /// doesn't exist or the channel is closed.
     pub async fn send_to_session(&self, session_id: u32, message: ServerMessage) -> bool {
         let users = self.users.read().await;
         if let Some(user) = users.get(&session_id) {
@@ -21,10 +19,8 @@ impl UserManager {
         }
     }
 
-    /// Broadcast a message to all connected users with proper disconnect notification
-    ///
-    /// Automatically removes users whose channels have closed and notifies other clients
-    /// with user_list permission about the disconnection.
+    /// Broadcast to all connected users. Removes users whose channels have
+    /// closed and notifies user_list clients of the disconnect.
     pub async fn broadcast(&self, message: ServerMessage) {
         let mut disconnected = Vec::new();
 
@@ -40,15 +36,9 @@ impl UserManager {
         self.remove_disconnected(disconnected).await;
     }
 
-    /// Broadcast a message to all users with a specific feature and permission
-    ///
-    /// This method checks both that the user has requested the feature (client preference)
-    /// and that they have permission to receive it (server enforcement).
-    ///
-    /// Optionally excludes a specific session_id (e.g., the originator of an action who
-    /// already received an authoritative typed response and doesn't need the broadcast).
-    ///
-    /// Automatically removes users whose channels have closed (disconnected connections).
+    /// Broadcast to users who both requested `feature` (client preference)
+    /// and hold `required_permission` (server enforcement). Optionally excludes
+    /// one session (e.g. the originator who already got a typed response).
     pub async fn broadcast_to_feature(
         &self,
         feature: &str,
@@ -61,24 +51,21 @@ impl UserManager {
         {
             let users = self.users.read().await;
             for user in users.values() {
-                // Skip excluded session
                 if let Some(excluded) = exclude_session_id
                     && user.session_id == excluded
                 {
                     continue;
                 }
 
-                // Check if user has the required feature
                 if !user.has_feature(feature) {
                     continue;
                 }
 
-                // Check if user has the required permission (uses cached permissions, admin bypass)
+                // Cached permissions, admin bypass.
                 if !user.has_permission(required_permission) {
                     continue;
                 }
 
-                // Send message to this user
                 if user.tx.send((message.clone(), None)).is_err() {
                     disconnected.push(user.session_id);
                 }
@@ -88,10 +75,8 @@ impl UserManager {
         self.remove_disconnected(disconnected).await;
     }
 
-    /// Broadcast to every session of `user_id`. Keyed on the
-    /// immutable PK so a concurrent rename can't make the lookup miss
-    /// sessions. Automatically removes sessions whose channels have
-    /// closed (disconnected connections).
+    /// Broadcast to every session of `user_id`. Keyed on the immutable PK so a
+    /// concurrent rename can't make the lookup miss sessions.
     pub async fn broadcast_to_user_id(&self, user_id: i64, message: &ServerMessage) {
         let mut disconnected = Vec::new();
 
@@ -107,13 +92,9 @@ impl UserManager {
         self.remove_disconnected(disconnected).await;
     }
 
-    /// Broadcast a message to all sessions with a specific nickname (case-insensitive)
-    ///
-    /// This works correctly for both regular and shared accounts:
-    /// - Regular accounts: nickname == username, so all sessions of the user receive the message
-    /// - Shared accounts: each session has a unique nickname, so only that session receives it
-    ///
-    /// Automatically removes users whose channels have closed (disconnected connections).
+    /// Broadcast to all sessions with `nickname` (case-insensitive). Regular
+    /// accounts (nickname == username) reach every session; shared accounts have
+    /// unique per-session nicknames so only that one session matches.
     pub async fn broadcast_to_nickname(&self, nickname: &str, message: &ServerMessage) {
         let mut disconnected = Vec::new();
 
@@ -133,12 +114,8 @@ impl UserManager {
         self.remove_disconnected(disconnected).await;
     }
 
-    /// Broadcast a message to all users with a specific permission
-    ///
-    /// This method checks that users have the required permission (server enforcement).
-    /// Used for broadcasting events like topic updates to users who have permission to see them.
-    ///
-    /// Automatically removes users whose channels have closed (disconnected connections).
+    /// Broadcast to all users holding `required_permission` (e.g. topic updates
+    /// to those allowed to see them).
     pub async fn broadcast_to_permission(
         &self,
         message: ServerMessage,
@@ -149,12 +126,11 @@ impl UserManager {
         {
             let users = self.users.read().await;
             for user in users.values() {
-                // Check if user has the required permission (uses cached permissions, admin bypass)
+                // Cached permissions, admin bypass.
                 if !user.has_permission(required_permission) {
                     continue;
                 }
 
-                // Send message to this user
                 if user.tx.send((message.clone(), None)).is_err() {
                     disconnected.push(user.session_id);
                 }
@@ -164,14 +140,8 @@ impl UserManager {
         self.remove_disconnected(disconnected).await;
     }
 
-    /// Broadcast a user event (UserConnected/UserDisconnected) to users with user_list permission
-    ///
-    /// This method should be used for broadcasting UserConnected and UserDisconnected messages
-    /// to ensure only users with the user_list permission receive these updates.
-    ///
-    /// Optionally excludes a specific session_id (e.g., to not send UserConnected to the connecting user).
-    ///
-    /// Automatically removes users whose channels have closed (disconnected connections).
+    /// Broadcast a UserConnected/UserDisconnected event to user_list holders.
+    /// Optionally excludes one session (e.g. the connecting user).
     pub async fn broadcast_user_event(
         &self,
         message: ServerMessage,
@@ -182,19 +152,17 @@ impl UserManager {
         {
             let users = self.users.read().await;
             for user in users.values() {
-                // Skip excluded session
                 if let Some(excluded) = exclude_session_id
                     && user.session_id == excluded
                 {
                     continue;
                 }
 
-                // Check if user has user_list permission (uses cached permissions, admin bypass)
+                // Cached permissions, admin bypass.
                 if !user.has_permission(Permission::UserList) {
                     continue;
                 }
 
-                // Send message to this user
                 if user.tx.send((message.clone(), None)).is_err() {
                     disconnected.push(user.session_id);
                 }
@@ -204,13 +172,8 @@ impl UserManager {
         self.remove_disconnected(disconnected).await;
     }
 
-    /// Broadcast ServerInfoUpdated to all connected users
-    ///
-    /// All users receive the full server info including connection/transfer limits.
-    /// file_reindex_interval is only sent to admins or users with file_reindex permission.
-    /// This is called when server configuration is updated via ServerUpdate.
-    ///
-    /// Automatically removes users whose channels have closed (disconnected connections).
+    /// Broadcast ServerInfoUpdated to all users. Everyone gets full server info;
+    /// file_reindex_interval is included only for admins / file_reindex holders.
     pub async fn broadcast_server_info_updated(&self, values: ServerInfoValues) {
         let mut disconnected = Vec::new();
 
@@ -276,16 +239,14 @@ mod tests {
         }
     }
 
-    /// `broadcast_to_user_id` delivers to every session of the given
-    /// user_id (multi-session case) and skips other users. Pins the
-    /// PK-keyed dispatch contract that the rename-race fix depends on.
+    /// Pins the PK-keyed dispatch contract the rename-race fix depends on:
+    /// `broadcast_to_user_id` hits every session of the target user_id only.
     #[tokio::test]
     async fn test_broadcast_to_user_id_hits_all_sessions_of_one_user_only() {
         let manager = UserManager::new();
 
-        // user_id=1 has two sessions (test fixture exercising the
-        // multi-session-per-user fan-out — not a production state for
-        // a regular account); user_id=2 has one.
+        // user_id=1 has two sessions (fixture-only multi-session fan-out, not a
+        // production state for a regular account); user_id=2 has one.
         let (tx_a1, mut rx_a1) = mpsc::unbounded_channel();
         let (tx_a2, mut rx_a2) = mpsc::unbounded_channel();
         let (tx_b, mut rx_b) = mpsc::unbounded_channel();

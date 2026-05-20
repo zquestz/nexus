@@ -14,23 +14,15 @@ use std::net::SocketAddr;
 use tokio::sync::mpsc;
 
 impl UserManager {
-    /// Get all connected users
     pub async fn get_all_users(&self) -> Vec<UserSession> {
         let users = self.users.read().await;
         users.values().cloned().collect()
     }
 
-    /// Count of distinct online users for the protocol-level
-    /// `user_count` field (`UserList` and tracker registration both
-    /// use this semantic).
-    ///
-    /// Per the protocol spec: regular accounts with multiple sessions
-    /// collapse to one (single nickname); shared / guest sessions
-    /// count individually (each has its own nickname); pre-login
-    /// connections are excluded (they aren't in `UserManager`).
-    ///
-    /// Saturating cast to `u32` — `UserSession`s in memory cap well
-    /// below 2³² in any realistic deployment.
+    /// Distinct online users for the protocol `user_count` (`UserList`,
+    /// tracker registration). Regular accounts collapse to one (single
+    /// nickname); shared/guest sessions count individually (each has its own
+    /// nickname); pre-login connections aren't in `UserManager`.
     #[must_use]
     pub async fn user_count(&self) -> u32 {
         let users = self.users.read().await;
@@ -41,33 +33,27 @@ impl UserManager {
         u32::try_from(nicknames.len()).unwrap_or(u32::MAX)
     }
 
-    /// Get a user by session ID
     pub async fn get_user_by_session_id(&self, session_id: u32) -> Option<UserSession> {
         let users = self.users.read().await;
         users.get(&session_id).cloned()
     }
 
-    /// Check if a user has a specific permission (without cloning the session)
-    ///
-    /// This is optimized for hot paths like voice packet relay where we don't need
-    /// the full UserSession, just a permission check. Returns None if user not found.
+    /// Permission check without cloning the session, for hot paths like voice
+    /// packet relay. `None` if the user is not found.
     pub async fn has_permission(&self, session_id: u32, permission: Permission) -> Option<bool> {
         let users = self.users.read().await;
         users.get(&session_id).map(|u| u.has_permission(permission))
     }
 
-    /// Check if a user session exists (without cloning)
-    ///
-    /// Useful for checking if a user is still connected without the overhead of cloning.
+    /// Check if a user session exists, without cloning it.
     #[allow(dead_code)] // Useful helper for future use
     pub async fn session_exists(&self, session_id: u32) -> bool {
         let users = self.users.read().await;
         users.contains_key(&session_id)
     }
 
-    /// Get all sessions for a username (case-insensitive)
-    ///
-    /// Returns all sessions for a user who may be logged in from multiple devices.
+    /// All sessions for a username (case-insensitive); a user may be logged in
+    /// from multiple devices.
     pub async fn get_sessions_by_username(&self, username: &str) -> Vec<UserSession> {
         let users = self.users.read().await;
         let username_lower = username.to_lowercase();
@@ -90,10 +76,7 @@ impl UserManager {
             .collect()
     }
 
-    /// Get all sessions for users assigned to a specific group
-    ///
-    /// Returns cloned sessions for all online users whose `group_id` matches.
-    /// Used for group edit cascade (updating permissions for all group members).
+    /// All online sessions whose `group_id` matches, for the group edit cascade.
     pub async fn get_sessions_by_group_id(&self, group_id: i64) -> Vec<UserSession> {
         let users = self.users.read().await;
         users
@@ -103,11 +86,10 @@ impl UserManager {
             .collect()
     }
 
-    /// Check if a nickname is already in use by an active session (case-insensitive)
-    ///
-    /// Used during login to ensure nickname uniqueness for shared accounts.
-    /// Since nickname is always populated (equals username for regular accounts),
-    /// this effectively checks against all display names of logged-in users.
+    /// Whether a nickname is in use by an active session (case-insensitive), to
+    /// enforce shared-account nickname uniqueness at login. Nickname is always
+    /// populated (equals username for regular accounts), so this checks against
+    /// all logged-in display names.
     pub async fn is_nickname_in_use(&self, nickname: &str) -> bool {
         let users = self.users.read().await;
         let nickname_lower = nickname.to_lowercase();
@@ -116,11 +98,8 @@ impl UserManager {
             .any(|u| u.nickname.to_lowercase() == nickname_lower)
     }
 
-    /// Get a session by nickname (case-insensitive)
-    ///
-    /// Since nickname is always populated (equals username for regular accounts),
-    /// this finds any user by their display name.
-    /// Returns None if no session with that nickname is found.
+    /// Find a session by display nickname (case-insensitive). Nickname is always
+    /// populated (equals username for regular accounts).
     pub async fn get_session_by_nickname(&self, nickname: &str) -> Option<UserSession> {
         let users = self.users.read().await;
         let nickname_lower = nickname.to_lowercase();
@@ -130,14 +109,10 @@ impl UserManager {
             .cloned()
     }
 
-    /// Get all sessions with a specific nickname (case-insensitive)
-    ///
-    /// This works correctly for both regular and shared accounts:
-    /// - Regular accounts: nickname == username, so returns all sessions of the user
-    /// - Shared accounts: each session has a unique nickname, so returns just that session
-    ///
-    /// This is useful for operations that need to affect all sessions of a "user"
-    /// as identified by their display name (e.g., kicking, disconnecting).
+    /// All sessions with a given nickname (case-insensitive) — every session of
+    /// a "user" identified by display name, for kick/disconnect. Regular
+    /// accounts (nickname == username) return all of the user's sessions; shared
+    /// accounts have a unique nickname per session, so this returns just one.
     pub async fn get_sessions_by_nickname(&self, nickname: &str) -> Vec<UserSession> {
         let users = self.users.read().await;
         let nickname_lower = nickname.to_lowercase();
@@ -148,9 +123,7 @@ impl UserManager {
             .collect()
     }
 
-    /// Check if any admin is connected from a given IP address
-    ///
-    /// Used by the ban system to prevent banning an IP that has an admin connected.
+    /// Whether any admin is connected from `ip`, so the ban system won't ban it.
     pub async fn is_admin_connected_from_ip(&self, ip: &str) -> bool {
         let users = self.users.read().await;
         users
@@ -158,9 +131,7 @@ impl UserManager {
             .any(|u| u.is_admin && u.address.ip().to_string() == ip)
     }
 
-    /// Check if any admin is connected from an IP within a given CIDR range
-    ///
-    /// Used by the ban system to prevent banning a CIDR range that contains an admin's IP.
+    /// Whether any admin's IP falls within `range`, so the ban system won't ban it.
     pub async fn is_admin_connected_in_range(&self, range: &IpNet) -> bool {
         let users = self.users.read().await;
         users
@@ -168,12 +139,8 @@ impl UserManager {
             .any(|u| u.is_admin && range.contains(&u.address.ip()))
     }
 
-    /// Get sorted nicknames for a list of session IDs
-    ///
-    /// Looks up the nickname for each session ID and returns them sorted
-    /// alphabetically (case-insensitive). Sessions that don't exist are skipped.
-    ///
-    /// Used by channel join handlers to build member lists.
+    /// Nicknames for the given session IDs, sorted alphabetically
+    /// (case-insensitive). Nonexistent sessions are skipped.
     pub async fn get_nicknames_for_sessions(&self, session_ids: &[u32]) -> Vec<String> {
         let users = self.users.read().await;
         let mut nicknames: Vec<String> = session_ids
@@ -184,29 +151,22 @@ impl UserManager {
         nicknames
     }
 
-    /// Get sorted unique nicknames for a list of session IDs (case-insensitive dedup)
-    ///
-    /// This is useful when multiple sessions map to the same visible nickname and you
-    /// want one entry per nickname (e.g., channel member lists).
-    ///
-    /// Sessions that don't exist are skipped. The output is sorted alphabetically
-    /// (case-insensitive) and deduplicated case-insensitively.
+    /// One entry per visible nickname (e.g. channel member lists): sorted
+    /// alphabetically and deduplicated, both case-insensitive. Nonexistent
+    /// sessions are skipped.
     pub async fn get_unique_nicknames_for_sessions(&self, session_ids: &[u32]) -> Vec<String> {
         let mut nicknames = self.get_nicknames_for_sessions(session_ids).await;
 
-        // `dedup_by_key` only removes adjacent items.
-        // `get_nicknames_for_sessions()` already sorts case-insensitively (by `to_lowercase()`),
-        // so duplicates will be adjacent and dedup is safe here.
+        // `dedup_by_key` only removes adjacent items, but the source is already
+        // sorted case-insensitively, so duplicates are adjacent.
         nicknames.dedup_by_key(|n| n.to_lowercase());
 
         nicknames
     }
 
-    /// Return true if any session in `session_ids` has a nickname equal to `nickname`
-    /// (case-insensitive), excluding an optional `skip_session_id`.
-    ///
-    /// This is useful for nickname-based channel presence gating when channel membership
-    /// is tracked by session id.
+    /// Whether any session in `session_ids` (excluding `skip_session_id`) has
+    /// `nickname` (case-insensitive). For nickname-based channel presence gating
+    /// when membership is tracked by session id.
     pub async fn sessions_contain_nickname(
         &self,
         session_ids: &[u32],
@@ -233,9 +193,7 @@ impl UserManager {
         false
     }
 
-    /// Get all unique IP addresses for sessions with a given nickname
-    ///
-    /// Used by the ban system to get IPs when banning by nickname.
+    /// Unique IPs across all sessions with `nickname`, for banning by nickname.
     pub async fn get_ips_for_nickname(&self, nickname: &str) -> Vec<String> {
         let users = self.users.read().await;
         let nickname_lower = nickname.to_lowercase();
@@ -255,7 +213,6 @@ mod tests {
     use super::*;
     use crate::users::user::NewSessionParams;
 
-    /// Create a test session params with the given username and nickname
     fn test_session_params(username: &str, nickname: &str, is_shared: bool) -> NewSessionParams {
         let (tx, _rx) = mpsc::unbounded_channel();
         NewSessionParams {
@@ -282,15 +239,10 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // is_nickname_in_use tests
-    // =========================================================================
-
     #[tokio::test]
     async fn test_is_nickname_in_use_empty_manager() {
         let manager = UserManager::new();
 
-        // No users, so no nicknames in use
         assert!(!manager.is_nickname_in_use("alice").await);
         assert!(!manager.is_nickname_in_use("Bob").await);
     }
@@ -299,20 +251,17 @@ mod tests {
     async fn test_is_nickname_in_use_matches_nickname() {
         let manager = UserManager::new();
 
-        // Add a shared account user with nickname "Nick1"
         let params = test_session_params("shared_acct", "Nick1", true);
         manager
             .add_user(params)
             .await
             .expect("add_user should succeed");
 
-        // The nickname should be in use
         assert!(manager.is_nickname_in_use("Nick1").await);
         // Case-insensitive
         assert!(manager.is_nickname_in_use("nick1").await);
         assert!(manager.is_nickname_in_use("NICK1").await);
 
-        // Different nicknames should not be in use
         assert!(!manager.is_nickname_in_use("Nick2").await);
     }
 
@@ -320,22 +269,18 @@ mod tests {
     async fn test_is_nickname_in_use_matches_username() {
         let manager = UserManager::new();
 
-        // Add a regular user (nickname == username) with username "alice"
         let params = test_session_params("alice", "alice", false);
         manager
             .add_user(params)
             .await
             .expect("add_user should succeed");
 
-        // The nickname (which equals username for regular users) should be in use
-        // This prevents a shared account from using a nickname that matches
-        // a logged-in regular user's username/nickname
+        // Regular user's nickname == username, so a shared account can't reuse it
         assert!(manager.is_nickname_in_use("alice").await);
         // Case-insensitive
         assert!(manager.is_nickname_in_use("Alice").await);
         assert!(manager.is_nickname_in_use("ALICE").await);
 
-        // Different names should not be in use
         assert!(!manager.is_nickname_in_use("bob").await);
     }
 
@@ -343,29 +288,24 @@ mod tests {
     async fn test_is_nickname_in_use_multiple_users() {
         let manager = UserManager::new();
 
-        // Add a regular user "alice" (nickname == username)
         let params1 = test_session_params("alice", "alice", false);
         manager
             .add_user(params1)
             .await
             .expect("add_user should succeed");
 
-        // Add a shared account user with nickname "Nick1"
         let params2 = test_session_params("shared_acct", "Nick1", true);
         manager
             .add_user(params2)
             .await
             .expect("add_user should succeed");
 
-        // Both nicknames should be detected
         assert!(manager.is_nickname_in_use("alice").await);
         assert!(manager.is_nickname_in_use("Nick1").await);
 
-        // The shared account's username is NOT the nickname, so not detected
-        // (the nickname "Nick1" is what's checked, not "shared_acct")
+        // Shared account's username is not its nickname, so it's not detected
         assert!(!manager.is_nickname_in_use("shared_acct").await);
 
-        // Other names should not be in use
         assert!(!manager.is_nickname_in_use("bob").await);
     }
 
@@ -373,45 +313,34 @@ mod tests {
     async fn test_is_nickname_in_use_shared_account_username_not_blocked() {
         let manager = UserManager::new();
 
-        // Add a shared account user with nickname "Nick1"
-        // The shared account's username is "shared_acct"
         let params = test_session_params("shared_acct", "Nick1", true);
         manager
             .add_user(params)
             .await
             .expect("add_user should succeed");
 
-        // The nickname "Nick1" should be in use
         assert!(manager.is_nickname_in_use("Nick1").await);
 
-        // The shared account's username is NOT checked - only nicknames are.
-        // For shared accounts, nickname != username, so shared_acct is available.
-        // (The DB username uniqueness check prevents collisions with account names)
+        // Only nicknames are checked, not usernames; the DB's username uniqueness
+        // check prevents collisions with account names.
         assert!(!manager.is_nickname_in_use("shared_acct").await);
     }
-
-    // =========================================================================
-    // get_session_by_nickname tests
-    // =========================================================================
 
     #[tokio::test]
     async fn test_get_session_by_nickname_not_found() {
         let manager = UserManager::new();
 
-        // Empty manager
         assert!(manager.get_session_by_nickname("alice").await.is_none());
 
-        // Add a regular user (nickname == username)
         let params = test_session_params("alice", "alice", false);
         manager
             .add_user(params)
             .await
             .expect("add_user should succeed");
 
-        // Regular users have nickname == username, so this WILL find them
+        // Regular users have nickname == username, so this finds them
         assert!(manager.get_session_by_nickname("alice").await.is_some());
 
-        // But searching for a different name won't find them
         assert!(manager.get_session_by_nickname("bob").await.is_none());
     }
 
@@ -419,14 +348,12 @@ mod tests {
     async fn test_get_session_by_nickname_found() {
         let manager = UserManager::new();
 
-        // Add a shared account user with nickname "Nick1"
         let params = test_session_params("shared_acct", "Nick1", true);
         let session_id = manager
             .add_user(params)
             .await
             .expect("add_user should succeed");
 
-        // Should find by nickname
         let session = manager.get_session_by_nickname("Nick1").await;
         assert!(session.is_some());
         let session = session.unwrap();
@@ -439,7 +366,6 @@ mod tests {
     async fn test_get_session_by_nickname_case_insensitive() {
         let manager = UserManager::new();
 
-        // Add a shared account user with nickname "Nick1"
         let params = test_session_params("shared_acct", "Nick1", true);
         let session_id = manager
             .add_user(params)
@@ -477,14 +403,13 @@ mod tests {
     async fn test_get_session_by_nickname_does_not_match_username() {
         let manager = UserManager::new();
 
-        // Add a shared account user with nickname "Nick1"
         let params = test_session_params("shared_acct", "Nick1", true);
         manager
             .add_user(params)
             .await
             .expect("add_user should succeed");
 
-        // Should NOT find by the account's username (nickname is "Nick1", not "shared_acct")
+        // Not found by the account's username, only by nickname
         assert!(
             manager
                 .get_session_by_nickname("shared_acct")
@@ -492,7 +417,6 @@ mod tests {
                 .is_none()
         );
 
-        // Should find by nickname
         assert!(manager.get_session_by_nickname("Nick1").await.is_some());
     }
 
@@ -500,7 +424,6 @@ mod tests {
     async fn test_get_session_by_nickname_multiple_shared_users() {
         let manager = UserManager::new();
 
-        // Add two shared account users with different nicknames
         let params1 = test_session_params("shared_acct", "Nick1", true);
         let session_id1 = manager
             .add_user(params1)
@@ -531,13 +454,8 @@ mod tests {
             session_id2
         );
 
-        // Should not find non-existent nicknames
         assert!(manager.get_session_by_nickname("Nick3").await.is_none());
     }
-
-    // =========================================================================
-    // get_unique_nicknames_for_sessions tests
-    // =========================================================================
 
     #[tokio::test]
     async fn test_get_unique_nicknames_empty_list() {
@@ -589,7 +507,6 @@ mod tests {
             .get_unique_nicknames_for_sessions(&[session1, session2, session3])
             .await;
 
-        // Should be sorted alphabetically
         assert_eq!(nicknames, vec!["alice", "bob", "charlie"]);
     }
 
@@ -614,7 +531,6 @@ mod tests {
             .get_unique_nicknames_for_sessions(&[session1, session2])
             .await;
 
-        // Should deduplicate to single entry
         assert_eq!(nicknames, vec!["alice"]);
     }
 
@@ -622,15 +538,13 @@ mod tests {
     async fn test_get_unique_nicknames_case_insensitive_dedup() {
         let manager = UserManager::new();
 
-        // Regular user with two sessions (same username = same nickname)
-        // This tests case-insensitive dedup when the same user has multiple sessions
+        // Same regular user, two sessions: case-insensitive dedup
         let params1 = test_session_params("Alice", "Alice", false);
         let session1 = manager
             .add_user(params1)
             .await
             .expect("add_user should succeed");
 
-        // Second session for same user - nickname uniqueness doesn't apply to same user
         let params2 = test_session_params("Alice", "Alice", false);
         let session2 = manager
             .add_user(params2)
@@ -641,7 +555,6 @@ mod tests {
             .get_unique_nicknames_for_sessions(&[session1, session2])
             .await;
 
-        // Should deduplicate (both sessions have "Alice")
         assert_eq!(nicknames.len(), 1);
         assert_eq!(nicknames[0], "Alice");
     }
@@ -656,7 +569,6 @@ mod tests {
             .await
             .expect("add_user should succeed");
 
-        // Include a nonexistent session ID
         let nicknames = manager
             .get_unique_nicknames_for_sessions(&[session_id, 99999])
             .await;
@@ -675,14 +587,13 @@ mod tests {
             .await
             .expect("add_user should succeed");
 
-        // Shared account with different nickname
+        // Two shared-account sessions, each with its own nickname
         let params2 = test_session_params("shared_acct", "Guest123", true);
         let session2 = manager
             .add_user(params2)
             .await
             .expect("add_user should succeed");
 
-        // Another shared account session
         let params3 = test_session_params("shared_acct", "Visitor", true);
         let session3 = manager
             .add_user(params3)
@@ -693,13 +604,9 @@ mod tests {
             .get_unique_nicknames_for_sessions(&[session1, session2, session3])
             .await;
 
-        // Should be sorted alphabetically (case-insensitive)
+        // Sorted alphabetically (case-insensitive)
         assert_eq!(nicknames, vec!["alice", "Guest123", "Visitor"]);
     }
-
-    // =========================================================================
-    // sessions_contain_nickname tests
-    // =========================================================================
 
     #[tokio::test]
     async fn test_sessions_contain_nickname_empty_list() {
@@ -785,14 +692,12 @@ mod tests {
             .await
             .expect("add_user should succeed");
 
-        // Both sessions have nickname "alice"
-        // If we skip session1, session2 still has "alice"
+        // Both sessions are "alice"; skipping one still leaves the other
         let result = manager
             .sessions_contain_nickname(&[session1, session2], "alice", Some(session1))
             .await;
         assert!(result);
 
-        // If we skip session2, session1 still has "alice"
         let result = manager
             .sessions_contain_nickname(&[session1, session2], "alice", Some(session2))
             .await;
@@ -815,7 +720,7 @@ mod tests {
             .await
             .expect("add_user should succeed");
 
-        // Only session1 has "alice", if we skip session1, result should be false
+        // Only session1 is "alice"; skipping it leaves no match
         let result = manager
             .sessions_contain_nickname(&[session1, session2], "alice", Some(session1))
             .await;
@@ -832,13 +737,12 @@ mod tests {
             .await
             .expect("add_user should succeed");
 
-        // Nonexistent session should be skipped
+        // Nonexistent sessions are skipped
         let result = manager
             .sessions_contain_nickname(&[99999, session_id], "alice", None)
             .await;
         assert!(result);
 
-        // All nonexistent sessions
         let result = manager
             .sessions_contain_nickname(&[99998, 99999], "alice", None)
             .await;
@@ -849,14 +753,13 @@ mod tests {
     async fn test_sessions_contain_nickname_shared_account() {
         let manager = UserManager::new();
 
-        // Shared account with custom nickname
         let params = test_session_params("shared_acct", "Guest123", true);
         let session_id = manager
             .add_user(params)
             .await
             .expect("add_user should succeed");
 
-        // Should match by nickname, not username
+        // Matches by nickname, not username
         assert!(
             manager
                 .sessions_contain_nickname(&[session_id], "Guest123", None)
@@ -873,7 +776,7 @@ mod tests {
     async fn test_sessions_contain_nickname_multiple_sessions_different_nicknames() {
         let manager = UserManager::new();
 
-        // Multiple shared account sessions with different nicknames
+        // Multiple shared-account sessions, each with its own nickname
         let params1 = test_session_params("shared_acct", "Guest1", true);
         let session1 = manager
             .add_user(params1)
@@ -915,13 +818,12 @@ mod tests {
                 .await
         );
 
-        // Skip session1, Guest1 should not be found
+        // Skipping session1 hides Guest1 but not the other nicknames
         assert!(
             !manager
                 .sessions_contain_nickname(&sessions, "Guest1", Some(session1))
                 .await
         );
-        // But Guest2 and Guest3 should still be found
         assert!(
             manager
                 .sessions_contain_nickname(&sessions, "Guest2", Some(session1))

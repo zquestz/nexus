@@ -28,91 +28,63 @@ pub struct NewSessionParams {
     pub avatar: Option<String>,
     /// Display name (always populated; equals username for regular accounts)
     pub nickname: String,
-    /// Whether the user is away
     pub is_away: bool,
-    /// Optional status message (used for both away messages and general status)
+    /// Status message (used for both away messages and general status)
     pub status: Option<String>,
-    /// Group ID (if user belongs to a group)
     pub group_id: Option<i64>,
-    /// Group name (if user belongs to a group)
     pub group_name: Option<String>,
     /// Resolved effective bandwidth weight at session creation.
     pub bandwidth_weight: u16,
-    /// Per-user override column value (`None` if NULL). Group cascades
-    /// skip sessions where this is `Some(_)` even if the value matches
-    /// the group's weight.
+    /// Per-user override column value (`None` if NULL). Group cascades skip
+    /// sessions where this is `Some(_)` even if the value matches the group's.
     pub bandwidth_weight_override: Option<u16>,
-    /// Last meaningful activity time (for idle tracking)
     pub last_activity: std::time::Instant,
 }
 
 /// Represents a logged-in user session
 #[derive(Debug)]
 pub struct UserSession {
-    /// Session ID (unique identifier for this connection)
     pub session_id: u32,
-    /// Database user ID
     pub user_id: i64,
-    /// Username
     pub username: String,
-    /// Whether the user is an admin
     pub is_admin: bool,
-    /// Whether this is a shared account
     pub is_shared: bool,
-    /// Cached permissions for this user (admins bypass this check)
+    /// Cached effective permissions; admins bypass this set entirely.
     pub permissions: HashSet<Permission>,
-    /// Remote address of the user's connection
     pub address: SocketAddr,
-    /// When the user account was created (Unix timestamp from database)
-    ///
-    /// This field is stored for potential future features like account age display,
-    /// statistics, or audit logging.
+    /// Account creation timestamp; reserved for future account-age/audit use.
     #[allow(dead_code)]
     pub created_at: i64,
-    /// When the user logged in (Unix timestamp)
     pub login_time: i64,
-    /// Channel sender for sending messages to this user
     pub tx: mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
-    /// Features enabled for this user
     pub features: Vec<String>,
-    /// User's preferred locale (e.g., "en", "en-US", "zh-CN")
     pub locale: String,
     /// User's avatar as a data URI (ephemeral, not stored in DB)
     pub avatar: Option<String>,
     /// Display name (always populated; equals username for regular accounts)
     pub nickname: String,
-    /// Whether the user is away
     pub is_away: bool,
-    /// Optional status message (used for both away messages and general status)
+    /// Status message (used for both away messages and general status)
     pub status: Option<String>,
-    /// Group ID (if user belongs to a group)
     pub group_id: Option<i64>,
-    /// Group name (if user belongs to a group)
     pub group_name: Option<String>,
-    /// Live cache of this user's resolved effective bandwidth weight. The
-    /// scheduler reads this on every dispatch — lock-free `Relaxed` is fine,
-    /// the value is advisory for fairness (not a correctness invariant).
-    ///
-    /// Multi-session invariant: every session of a given `user_id` holds
-    /// the same value, kept in lockstep by `UserManager::update_bandwidth_state`
-    /// fanning out the new value to every session in a single pass. The
-    /// atomic is **not** shared between sessions (each `UserSession` owns
-    /// its own); the convergence is by value, not by memory. Readers that
-    /// aggregate across sessions of one user can read any one session.
+    /// Live cache of this user's resolved effective bandwidth weight; read by
+    /// the scheduler each dispatch (advisory fairness, not correctness, so
+    /// `Relaxed` is fine). Multi-session invariant: every session of a `user_id`
+    /// holds the same value, kept in lockstep by
+    /// `UserManager::update_bandwidth_state`. The atomic is per-session, not
+    /// shared — convergence is by value, so aggregating readers can use any one.
     pub bandwidth_weight: AtomicU16,
-    /// Per-user override column value (`None` if NULL). Group cascades
-    /// skip sessions where this is `Some(_)` even if the value matches
-    /// the group's weight.
+    /// Per-user override column value (`None` if NULL). Group cascades skip
+    /// sessions where this is `Some(_)` even if the value matches the group's.
     pub bandwidth_weight_override: Option<u16>,
-    /// Last meaningful activity time (for idle tracking, excludes passive messages like Ping/UserAway)
+    /// Last meaningful activity (idle tracking; excludes passive messages like Ping/UserAway).
     pub last_activity: std::time::Instant,
 }
 
-// Manual `Clone` impl: `AtomicU16` doesn't derive `Clone` (cloning an
-// atomic isn't atomic). The clone snapshots the current value into a
-// fresh atomic, so the clone is independent of the original — subsequent
-// writes through `update_bandwidth_state` don't propagate to the clone.
-// This matches every caller's intent (queries return snapshots; live
+// Manual `Clone`: `AtomicU16` isn't `Clone`. The clone snapshots the current
+// weight into a fresh, independent atomic — later `update_bandwidth_state`
+// writes don't reach it. Matches caller intent (queries return snapshots; live
 // updates flow through the manager lock).
 impl Clone for UserSession {
     fn clone(&self) -> Self {
@@ -146,7 +118,6 @@ impl Clone for UserSession {
 }
 
 impl UserSession {
-    /// Create a new user session
     pub fn new(params: NewSessionParams) -> Self {
         Self {
             session_id: params.session_id,
@@ -173,12 +144,11 @@ impl UserSession {
         }
     }
 
-    /// Check if user has a specific feature enabled
     pub fn has_feature(&self, feature: &str) -> bool {
         self.features.iter().any(|f| f == feature)
     }
 
-    /// Check if user has a specific permission (admins have all permissions)
+    /// Admins implicitly have every permission.
     pub fn has_permission(&self, permission: Permission) -> bool {
         if self.is_admin {
             true
@@ -188,12 +158,8 @@ impl UserSession {
     }
 }
 
-/// Get current Unix timestamp in seconds
-///
-/// # Panics
-///
-/// Panics if system time is set before Unix epoch (January 1, 1970).
-/// This should never happen on properly configured systems.
+/// Current Unix timestamp in seconds. Panics only if the system clock is set
+/// before the Unix epoch.
 fn current_timestamp() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

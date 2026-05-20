@@ -20,23 +20,18 @@ use crate::users::user::UserSession;
 pub struct UserManager {
     pub(super) users: Arc<RwLock<HashMap<u32, UserSession>>>,
     pub(super) next_id: Arc<AtomicU32>,
-    /// Serializes admin user-state mutations (user/group create,
-    /// update, delete) across the span where they make
-    /// requester-authority decisions and reconcile authority-related
-    /// session cache (is_admin, permissions, group_id,
-    /// bandwidth_weight + override). Held across the DB write itself
-    /// (the central SQL UPDATE/DELETE plus any authority-relevant DB
-    /// reads like `get_user_permissions` / `get_group_by_id`) so
-    /// concurrent same-target handlers serialize on the write. Held
-    /// across in-memory channel sends (`tx.send`, `broadcast_to_*`,
-    /// voice-leave notifications) that enqueue to writer tasks.
-    /// Always dropped before any direct writer-socket I/O
-    /// (`ctx.send_message`, `ctx.send_error_and_disconnect`).
+    /// Serializes admin user-state mutations (user/group create/update/delete)
+    /// across requester-authority decisions and the authority session-cache
+    /// reconciliation (is_admin, permissions, group_id, bandwidth_weight +
+    /// override). Held across the DB write and any authority-relevant reads
+    /// (`get_user_permissions` / `get_group_by_id`) so same-target handlers
+    /// serialize, and across in-memory channel sends (`tx.send`,
+    /// `broadcast_to_*`, voice-leave). Always dropped before direct
+    /// writer-socket I/O (`ctx.send_message`, `ctx.send_error_and_disconnect`).
     user_state_lock: Arc<Mutex<()>>,
 }
 
 impl UserManager {
-    /// Create a new user manager
     pub fn new() -> Self {
         Self {
             users: Arc::new(RwLock::new(HashMap::new())),
@@ -45,7 +40,6 @@ impl UserManager {
         }
     }
 
-    /// Generate the next session ID
     pub(super) fn next_session_id(&self) -> u32 {
         self.next_id.fetch_add(1, Ordering::Relaxed)
     }
