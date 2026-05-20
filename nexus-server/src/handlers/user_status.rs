@@ -1,4 +1,4 @@
-//! Handler for UserStatus command - set status message and clear away flag
+//! Handler for UserStatus command
 
 use std::io;
 
@@ -15,11 +15,8 @@ use super::{
 use crate::constants::{HANDLER_USER_STATUS, LOG_USER_STATUS_NOT_LOGGED_IN};
 use crate::users::manager::UserManager;
 
-/// Handle UserStatus command - set status message and clear away status
-///
-/// Unlike `/away`, this command always clears the away flag:
-/// - `/status` - Clear away, clear status (same effect as `/back`)
-/// - `/status <message>` - Clear away, set status message (present but not "away")
+/// Set status message and always clear the away flag (unlike `/away`).
+/// `/status` with no message clears status too (same as `/back`).
 pub async fn handle_user_status<W>(
     status: Option<String>,
     session_id: Option<u32>,
@@ -35,7 +32,6 @@ where
             .await;
     };
 
-    // Validate status message if provided
     if let Some(ref msg) = status
         && let Err(e) = validators::validate_status(msg)
     {
@@ -51,7 +47,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Update status and clear away flag for this session
     let Some(session) = ctx
         .user_manager
         .set_status(session_id, false, status.clone())
@@ -62,28 +57,23 @@ where
             .await;
     };
 
-    // Send success response
     let response = ServerMessage::UserStatusResponse {
         success: true,
         error: None,
     };
     ctx.send_message(&response).await?;
 
-    // Broadcast UserUpdated
-    // For regular accounts with multiple sessions, use aggregated data with split selection
-    // For shared accounts, each session is separate (use single session data)
+    // Broadcast UserUpdated. Shared accounts broadcast this session directly;
+    // regular accounts aggregate across all their sessions.
     let user_info = if session.is_shared {
-        // Shared account: use this session's data directly
         UserManager::build_user_info_from_session(&session)
     } else {
-        // Regular account: aggregate all sessions (latest login for avatar, most recently active for away/status)
         let all_sessions = ctx
             .user_manager
             .get_sessions_by_username(&session.username)
             .await;
-        // All sessions for this user were removed between set_status and
-        // aggregation (e.g. concurrent disconnect). UserDisconnected will
-        // follow; skip the stale UserUpdated.
+        // All sessions vanished between set_status and aggregation (concurrent
+        // disconnect). UserDisconnected will follow; skip the stale UserUpdated.
         let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) else {
             return Ok(());
         };

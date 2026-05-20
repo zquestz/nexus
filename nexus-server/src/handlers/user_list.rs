@@ -39,11 +39,9 @@ use nexus_common::validators::resolve_bandwidth_weight;
 use super::{HandlerContext, err_database, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
 
-/// Handle a userlist request from the client
-///
-/// If `all` is false (default), returns only online users.
-/// If `all` is true, returns all users from database (online + offline).
-/// The `all` option requires additional permissions: user_edit OR user_delete.
+/// `all=false`: online sessions only (requires `user_list`).
+/// `all=true`: all DB accounts for the management panel (requires
+/// `user_create` OR `user_edit` OR `user_delete`).
 pub async fn handle_user_list<W>(
     all: bool,
     session_id: Option<u32>,
@@ -59,7 +57,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
@@ -69,9 +66,6 @@ where
         }
     };
 
-    // Permission check depends on whether requesting all users or just online users
-    // - all: true -> requires user_create OR user_edit OR user_delete (for user management panel)
-    // - all: false -> requires user_list (for online user list)
     let has_permission = if all {
         requesting_user.has_permission(Permission::UserCreate)
             || requesting_user.has_permission(Permission::UserEdit)
@@ -87,10 +81,7 @@ where
             .await;
     }
 
-    // Handle "all" (database accounts) vs "online only" (connected sessions) separately
     if all {
-        // For /list all: return all accounts from database sorted alphabetically
-        // This is used by the user management panel and /list all command
         let db_users = match ctx.db.users.get_all_users().await {
             Ok(users) => users,
             Err(e) => {
@@ -112,7 +103,6 @@ where
             .map(|g| (g.id, (g.name, g.bandwidth_weight)))
             .collect();
 
-        // Convert to UserInfo and sort by username (nickname == username for accounts)
         let mut user_infos: Vec<UserInfo> = db_users
             .into_iter()
             .map(|db_user| {
@@ -130,7 +120,7 @@ where
                     login_time: db_user.created_at,
                     is_admin: db_user.is_admin,
                     is_shared: db_user.is_shared,
-                    session_ids: vec![], // Not tracking online status for /list all
+                    session_ids: vec![], // /list all reports accounts, not sessions
                     locale: String::new(),
                     avatar: None,
                     is_away: false,
@@ -142,7 +132,7 @@ where
             })
             .collect();
 
-        // Sort by username case-insensitively
+        // Clients require a sorted list (case-insensitive by username).
         user_infos.sort_by_key(|u| u.username.to_lowercase());
 
         let response = ServerMessage::UserListResponse {
@@ -153,19 +143,15 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // For online user list: aggregate connected sessions
     let online_users = ctx.user_manager.get_all_users().await;
 
-    // Separate handling for regular vs shared accounts:
-    // - Regular accounts: aggregate by username (multiple sessions = one entry)
-    // - Shared accounts: each session is a separate entry with its nickname
+    // Regular accounts aggregate by username (one entry for all sessions);
+    // shared accounts stay per-session (each has its own nickname).
     let mut user_map: HashMap<String, UserAggregateData> = HashMap::new();
     let mut shared_user_infos: Vec<UserInfo> = Vec::new();
 
     for user in online_users {
         if user.is_shared {
-            // Shared accounts are NOT aggregated - each session is a separate entry
-            // For shared accounts, nickname is the session's display name
             shared_user_infos.push(UserInfo {
                 id: user.user_id,
                 username: user.username.clone(),
@@ -186,16 +172,12 @@ where
                 ),
             });
         } else {
-            // Regular accounts: deduplicate by username and aggregate sessions
-            // Use is_admin from UserManager instead of querying DB for each user
-            // Avatar: latest login wins (stable). Away/status: most recently active wins (accurate presence).
             user_map
                 .entry(user.username.clone())
                 .and_modify(|agg| {
-                    // Keep earliest login time for display
                     agg.login_time = agg.login_time.min(user.login_time);
                     agg.session_ids.push(user.session_id);
-                    // Avatar, locale, group info, bandwidth weight: latest login wins (stable)
+                    // Avatar/locale/group/weight track the latest login (stable).
                     if user.login_time > agg.latest_session_login_time {
                         agg.avatar = user.avatar.clone();
                         agg.locale = user.locale.clone();
@@ -206,7 +188,7 @@ where
                             .bandwidth_weight
                             .load(std::sync::atomic::Ordering::Relaxed);
                     }
-                    // Away/status: most recently active wins (accurate presence)
+                    // Away/status track the most recently active session (accurate presence).
                     if user.last_activity > agg.most_recent_activity {
                         agg.is_away = user.is_away;
                         agg.status = user.status.clone();
@@ -216,7 +198,7 @@ where
                 .or_insert(UserAggregateData {
                     login_time: user.login_time,
                     is_admin: user.is_admin,
-                    is_shared: false, // Regular accounts are not shared
+                    is_shared: false,
                     session_ids: vec![user.session_id],
                     locale: user.locale.clone(),
                     avatar: user.avatar.clone(),
@@ -234,13 +216,11 @@ where
         }
     }
 
-    // Build user info list from aggregated online users
     let mut user_infos: Vec<UserInfo> = user_map
         .into_iter()
         .map(|(username, agg)| UserInfo {
             id: agg.user_id,
-            // For regular accounts, nickname == username
-            nickname: username.clone(),
+            nickname: username.clone(), // Regular account: nickname == username
             username,
             login_time: agg.login_time,
             is_admin: agg.is_admin,
@@ -256,13 +236,11 @@ where
         })
         .collect();
 
-    // Add shared account sessions (each session is a separate entry)
     user_infos.extend(shared_user_infos);
 
-    // Sort by nickname (display name) case-insensitively
+    // Clients require a sorted list (case-insensitive by display nickname).
     user_infos.sort_by_key(|u| u.nickname.to_lowercase());
 
-    // Send user list response
     let response = ServerMessage::UserListResponse {
         success: true,
         error: None,
@@ -281,10 +259,8 @@ mod tests {
     async fn test_userlist_requires_login() {
         let mut test_ctx = create_test_context().await;
 
-        // Try to get user list without being logged in
         let result = handle_user_list(false, None, &mut test_ctx.handler_context()).await;
 
-        // Should fail
         assert!(result.is_err(), "UserList should require login");
     }
 
@@ -292,14 +268,11 @@ mod tests {
     async fn test_userlist_invalid_session() {
         let mut test_ctx = create_test_context().await;
 
-        // Use a session ID that doesn't exist in UserManager
         let invalid_session_id = Some(999);
 
-        // Try to get user list with invalid session
         let result =
             handle_user_list(false, invalid_session_id, &mut test_ctx.handler_context()).await;
 
-        // Should fail (ERR_AUTHENTICATION)
         assert!(
             result.is_err(),
             "UserList with invalid session should be rejected"
@@ -310,14 +283,12 @@ mod tests {
     async fn test_userlist_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITHOUT UserList permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
-        // Try to get user list without permission
         let result =
             handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
 
-        // Should succeed (send error but not disconnect)
+        // Sends an error but does not disconnect.
         assert!(
             result.is_ok(),
             "Should send error message but not disconnect"
@@ -328,7 +299,6 @@ mod tests {
     async fn test_userlist_with_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH UserList permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -338,14 +308,11 @@ mod tests {
         )
         .await;
 
-        // Get user list with permission
         let result =
             handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
 
-        // Should succeed
         assert!(result.is_ok(), "Valid userlist request should succeed");
 
-        // Verify response contains the user
         use crate::handlers::testing::read_server_message;
         let response = read_server_message(&mut test_ctx).await;
         match response {
@@ -371,21 +338,17 @@ mod tests {
     async fn test_userlist_admin_has_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user WITHOUT explicit UserList permission
-        // Admins should have all permissions automatically
+        // Admin has all permissions implicitly (no explicit UserList grant).
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Admin should be able to list users
         let result =
             handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
 
-        // Should succeed
         assert!(
             result.is_ok(),
             "Admin should be able to list users without explicit permission"
         );
 
-        // Verify admin flag is set
         use crate::handlers::testing::read_server_message;
         let response = read_server_message(&mut test_ctx).await;
         match response {
@@ -407,10 +370,6 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // Avatar aggregation tests
-    // =========================================================================
-
     #[tokio::test]
     async fn test_userlist_includes_avatar() {
         use crate::handlers::testing::read_server_message;
@@ -418,7 +377,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create user with avatar
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
@@ -442,7 +400,6 @@ mod tests {
 
         let avatar_data = "data:image/png;base64,iVBORw0KGgo=".to_string();
 
-        // Add session with avatar
         let session_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -470,7 +427,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Get user list
         let result =
             handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
@@ -497,7 +453,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create user
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
@@ -522,7 +477,7 @@ mod tests {
         let old_avatar = "data:image/png;base64,OLD_AVATAR".to_string();
         let new_avatar = "data:image/png;base64,NEW_AVATAR".to_string();
 
-        // Add first session with old avatar (earlier login time)
+        // Session 1: old avatar, earlier login.
         let _session1 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -550,10 +505,10 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Delay of 1.1 seconds to ensure different login timestamps (timestamps are in seconds)
+        // Login timestamps are second-granularity, so force a >1s gap.
         tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
 
-        // Add second session with new avatar (later login time)
+        // Session 2: new avatar, later login.
         let session2 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -581,7 +536,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Get user list
         let result = handle_user_list(false, Some(session2), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
@@ -608,7 +562,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create user without avatar
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
@@ -630,7 +583,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add session without avatar
         let session_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -658,7 +610,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Get user list
         let result =
             handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
@@ -674,15 +625,11 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // /list all tests
-    // =========================================================================
-
     #[tokio::test]
     async fn test_userlist_all_requires_additional_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH UserList permission but WITHOUT user_edit or user_delete
+        // UserList alone is not enough for all=true.
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -692,11 +639,10 @@ mod tests {
         )
         .await;
 
-        // Try to get all users - should fail due to missing permission
         let result =
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
 
-        // Should succeed (send error but not disconnect)
+        // Sends an error but does not disconnect.
         assert!(
             result.is_ok(),
             "Should send error message but not disconnect"
@@ -709,7 +655,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH user_edit permission (user_list not needed for all: true)
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -719,7 +664,6 @@ mod tests {
         )
         .await;
 
-        // Get all users - should succeed
         let result =
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok(), "UserList all with user_edit should succeed");
@@ -739,7 +683,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH user_delete permission (user_list not needed for all: true)
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -749,7 +692,6 @@ mod tests {
         )
         .await;
 
-        // Get all users - should succeed
         let result =
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(
@@ -772,7 +714,7 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create a user in the database (not logged in)
+        // bob exists in the DB but never logs in.
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let perms = db::Permissions::new();
@@ -793,7 +735,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a logged-in user with necessary permissions
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -803,7 +744,6 @@ mod tests {
         )
         .await;
 
-        // Get all users - returns database accounts, not sessions
         let result =
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
@@ -820,12 +760,11 @@ mod tests {
                 let users = users.unwrap();
                 assert_eq!(users.len(), 3, "Should have 3 accounts (guest, alice, bob)");
 
-                // All accounts should be present
                 assert!(users.iter().any(|u| u.username == "guest"));
                 assert!(users.iter().any(|u| u.username == "bob"));
                 assert!(users.iter().any(|u| u.username == "alice"));
 
-                // /list all returns database accounts - no session info
+                // DB accounts carry no session info; nickname == username.
                 for user in &users {
                     assert!(user.session_ids.is_empty(), "Accounts have no session IDs");
                     assert_eq!(
@@ -844,7 +783,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH user_create permission (user_list not needed for all: true)
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -854,7 +792,6 @@ mod tests {
         )
         .await;
 
-        // Get all users - should succeed
         let result =
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(
@@ -877,10 +814,9 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Admin should be able to list all users without explicit user_edit/user_delete/user_create
+        // Admin bypasses the user_edit/user_delete/user_create gate.
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Get all users - should succeed (admin bypass)
         let result =
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok(), "Admin should be able to list all users");
@@ -900,10 +836,8 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a shared account in the database
         let hashed = get_cached_password_hash("sharedpass");
         test_ctx
             .db
@@ -922,7 +856,6 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // Get all users - returns database accounts
         let result =
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok(), "UserList all should succeed");
@@ -933,14 +866,12 @@ mod tests {
                 assert!(success);
                 let users = users.expect("users should be present");
 
-                // Should include guest, the admin, and the shared account
                 assert_eq!(
                     users.len(),
                     3,
                     "Should have guest, admin and shared account"
                 );
 
-                // Find the shared account
                 let shared_account = users.iter().find(|u| u.username == "shared_acct");
                 assert!(shared_account.is_some(), "Shared account should be in list");
 
@@ -958,9 +889,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_userlist_all_sorted_alphabetically_with_shared_account() {
-        // Test case based on real-world scenario:
-        // alice, bob, shared (offline shared account), @kalani, love, Lovelady, @quest, steve
-        // Expected sorted: alice, bob, @kalani, love, Lovelady, @quest, shared, steve
+        // Real-world scenario: a mix of regular accounts, an admin, and an
+        // offline shared account must sort case-insensitively by nickname.
         use crate::handlers::testing::read_server_message;
 
         let mut test_ctx = create_test_context().await;
@@ -969,7 +899,6 @@ mod tests {
         let hashed = get_cached_password_hash(password);
         let perms = db::Permissions::new();
 
-        // Create regular users
         test_ctx
             .db
             .users
@@ -1015,7 +944,7 @@ mod tests {
                 group_id: None,
                 revokes: &[],
                 bandwidth_weight: None,
-            }) // admin
+            })
             .await
             .unwrap();
         test_ctx
@@ -1067,7 +996,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Create shared account (offline - no sessions)
+        // Offline shared account (no sessions).
         test_ctx
             .db
             .users
@@ -1085,17 +1014,15 @@ mod tests {
             .await
             .unwrap();
 
-        // Create admin user to make the request
         let session_id = login_user(
             &mut test_ctx,
             "quest",
             "password",
             &[db::Permission::UserEdit],
-            true, // admin
+            true,
         )
         .await;
 
-        // Get all users
         let result =
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
@@ -1112,11 +1039,9 @@ mod tests {
                 let users = users.unwrap();
                 assert_eq!(users.len(), 9, "Should have 9 users (including guest)");
 
-                // Extract usernames in order
                 let usernames: Vec<&str> = users.iter().map(|u| u.username.as_str()).collect();
 
-                // Verify alphabetical order (case-insensitive)
-                // guest comes between bob and kalani, shared comes between quest and steve
+                // guest sorts between bob and kalani; shared between quest and steve.
                 assert_eq!(
                     usernames,
                     vec![
@@ -1136,13 +1061,11 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create users with names that would be out of order if not sorted
-        // Using different cases to verify case-insensitive sorting
+        // Mixed-case names inserted out of order to exercise case-insensitive sort.
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let perms = db::Permissions::new();
 
-        // Create users in non-alphabetical order
         test_ctx
             .db
             .users
@@ -1208,7 +1131,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create an admin user to make the request
         let session_id = login_user(
             &mut test_ctx,
             "Admin",
@@ -1218,7 +1140,6 @@ mod tests {
         )
         .await;
 
-        // Get all users
         let result =
             handle_user_list(true, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
@@ -1235,10 +1156,8 @@ mod tests {
                 let users = users.unwrap();
                 assert_eq!(users.len(), 6, "Should have 6 users (including guest)");
 
-                // Extract nicknames in order (nickname == username for regular accounts)
                 let nicknames: Vec<&str> = users.iter().map(|u| u.nickname.as_str()).collect();
 
-                // Verify alphabetical order (case-insensitive)
                 assert_eq!(
                     nicknames,
                     vec!["Admin", "apple", "Banana", "cherry", "guest", "Zebra"],
@@ -1256,7 +1175,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create user
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
@@ -1278,7 +1196,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Add first session (older login) with is_away=true
+        // Session 1: older login, away=true.
         let session1 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -1306,10 +1224,10 @@ mod tests {
             .await
             .expect("Failed to add first session");
 
-        // Delay to ensure different login timestamps (timestamps are in seconds)
+        // Login timestamps are second-granularity, so force a >1s gap.
         tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
 
-        // Add second session (newer login) with is_away=false
+        // Session 2: newer login, away=false.
         let session2 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -1337,10 +1255,10 @@ mod tests {
             .await
             .expect("Failed to add second session");
 
-        // Make session1 the most recently active (simulates typing on an older session)
+        // Make the OLDER session most recently active — away/status should
+        // follow activity, not login time.
         test_ctx.user_manager.update_last_activity(session1).await;
 
-        // Get user list
         let result = handle_user_list(false, Some(session2), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
@@ -1371,7 +1289,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create shared account
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
@@ -1393,7 +1310,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Add first session with is_away=true
+        // Session 1: away=true.
         let session1 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -1421,7 +1338,7 @@ mod tests {
             .await
             .expect("Failed to add first session");
 
-        // Add second session with is_away=false
+        // Session 2: away=false.
         let _session2 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -1449,7 +1366,6 @@ mod tests {
             .await
             .expect("Failed to add second session");
 
-        // Get user list
         let result = handle_user_list(false, Some(session1), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
@@ -1457,14 +1373,13 @@ mod tests {
         match response {
             ServerMessage::UserListResponse { users, .. } => {
                 let users = users.unwrap();
-                // Shared accounts are NOT aggregated - each session is separate
+                // Shared sessions are not aggregated: one entry each, own away/status.
                 assert_eq!(
                     users.len(),
                     2,
                     "Should have 2 separate entries for shared account sessions"
                 );
 
-                // Find each user by nickname
                 let user_one = users
                     .iter()
                     .find(|u| u.nickname == "user_one")
@@ -1474,7 +1389,6 @@ mod tests {
                     .find(|u| u.nickname == "user_two")
                     .expect("user_two should exist");
 
-                // Each should have their own away/status
                 assert!(user_one.is_away, "user_one should be away");
                 assert_eq!(user_one.status, Some("user one away".to_string()));
                 assert!(!user_two.is_away, "user_two should NOT be away");
@@ -1491,7 +1405,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create a group
         let group = test_ctx
             .db
             .groups
@@ -1504,7 +1417,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create bob in the group
         let hashed = get_cached_password_hash("password");
         let mut perms = db::Permissions::new();
         perms.permissions.insert(db::Permission::UserList);
@@ -1525,7 +1437,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Get effective permissions for bob (includes group permissions)
         let effective = test_ctx
             .db
             .users
@@ -1533,7 +1444,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add bob to UserManager with group info so he's online
         let session_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -1561,7 +1471,6 @@ mod tests {
             .await
             .expect("Failed to add bob");
 
-        // Request user list (online only, not all)
         let result =
             handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
@@ -1595,7 +1504,7 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Promote an admin account directly in the DB (no session, no cache).
+        // Admin account created directly in the DB (offline, no cache).
         let hashed = get_cached_password_hash("password");
         test_ctx
             .db

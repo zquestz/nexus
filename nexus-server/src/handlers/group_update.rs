@@ -32,7 +32,6 @@ use crate::users::manager::UserManager;
 use crate::users::user::UserSession;
 use crate::voice::send_voice_leave_notifications;
 
-/// Handle a group update request
 pub async fn handle_group_update<W>(
     id: i64,
     name: Option<String>,
@@ -195,10 +194,8 @@ where
         let final_name = name.unwrap_or_else(|| group.name.clone());
         let final_is_shared = is_shared.unwrap_or(group.is_shared);
 
-        // Parse the requested permissions, if any. For non-admins, also
-        // collect the requester's owned permissions — the `OwnedSubset`
-        // write below only touches rows in that slice, so a concurrent
-        // admin grant of an unowned permission survives.
+        // Parse requested permissions. Non-admins' `OwnedSubset` write only
+        // touches rows they own, so a concurrent admin grant survives.
         let parsed_requested: Option<Vec<Permission>> = if let Some(ref requested_perms) =
             permissions
         {
@@ -219,8 +216,7 @@ where
                 }
             }
 
-            // Reject if requesting a permission the non-admin editor
-            // doesn't hold.
+            // Non-admins can't grant a permission they don't hold.
             if !requesting_user.is_admin {
                 for perm in &parsed {
                     if !requesting_user.has_permission(*perm) {
@@ -241,15 +237,11 @@ where
             None
         };
 
-        // Project the expected final set for shared-compatibility validation.
-        // For admin requests this is just the requested set. For non-admin
-        // requests it's (current ∖ owned) ∪ (owned ∩ requested) — i.e. the
-        // unowned perms we'll leave in place plus the owned perms the
-        // requester is asking for. The projection is snapshot-based: a
-        // racing admin grant of an incompatible perm between this read and
-        // our tx could land an unvalidated state. Same race window as the
-        // pre-OwnedSubset code; closing it requires in-tx validation
-        // (deferred).
+        // Project the final set for shared-compat validation. Admin: the
+        // requested set. Non-admin: (current ∖ owned) ∪ (owned ∩ requested),
+        // i.e. preserved unowned perms plus requested owned perms. Snapshot-
+        // based, so a racing admin grant could slip past validation (closing
+        // it needs in-tx validation; deferred).
         let requester_owned: Vec<Permission> = if requesting_user.is_admin {
             Vec::new()
         } else {
@@ -273,7 +265,7 @@ where
             (None, _) => current_permissions.clone(),
         };
 
-        // Shared group permission validation against the projected final set.
+        // Shared groups may only hold shared-account permissions.
         if final_is_shared {
             for perm in &projected_final {
                 if !is_shared_account_permission(perm.as_str()) {
@@ -287,20 +279,15 @@ where
             }
         }
 
-        // Capture old state for diff detection. `old_permissions` is
-        // sourced from the in-tx `previous_permissions` returned by
-        // `update_group` below, not the pre-tx `current_permissions`,
-        // because a concurrent group update can land between our
-        // pre-tx read and our tx and a snapshot-based diff would
-        // misclassify "we re-wrote the value the other update already
-        // cascaded" as "no change" and skip our cascade, leaving caches
-        // stale.
+        // Old name/weight for diff detection. (Permission diffing uses the
+        // in-tx `previous_permissions` from `update_group`, not the pre-tx
+        // snapshot — see below — to avoid missing a cascade after a
+        // concurrent update.)
         let old_name = group.name.clone();
         let old_bandwidth_weight = group.bandwidth_weight;
 
-        // What we hand to the DB: the requested set as-is (DB layer handles
-        // ReplaceAll vs OwnedSubset semantics). When no permissions change
-        // was requested we pass an empty set with NoChange scope.
+        // Requested set as-is; the DB layer applies ReplaceAll / OwnedSubset /
+        // NoChange per `permission_write_scope`.
         let requested_permissions: Permissions = match &parsed_requested {
             Some(p) => Permissions::from(p.as_slice()),
             None => Permissions::new(),
@@ -352,10 +339,9 @@ where
                 previous_permissions,
                 final_permissions,
             })) => {
-                // Source of truth for everything below is `updated_group`,
-                // `previous_permissions`, and `final_permissions` — all
-                // read in the same tx as the write — not the request
-                // values we asked it to write or the pre-tx snapshot.
+                // Diffs below use the in-tx `updated_group` /
+                // `previous_permissions` / `final_permissions`, not the
+                // requested values or pre-tx snapshot.
                 info!(user = %requesting_user.username, ip = %ctx.peer_addr, group = %updated_group.name, "{}", LOG_GROUP_UPDATE_SUCCESS);
                 let response = ServerMessage::GroupUpdateResponse {
                     success: true,
@@ -397,9 +383,8 @@ where
                         Vec::new()
                     };
 
-                // (user_id, payload, voice_cleanup_needed). Keyed on the
-                // immutable user_id so the dispatch loop below can't miss
-                // sessions due to a concurrent rename.
+                // (user_id, payload, voice_cleanup_needed) — keyed on the
+                // immutable user_id so a concurrent rename can't drop sessions.
                 let mut perm_updates: Vec<(i64, ServerMessage, bool)> = Vec::new();
                 if permissions_changed {
                     let config = ctx.db.config.get_all().await;
@@ -485,13 +470,9 @@ where
                     }
                 }
 
-                // Broadcasts + voice cleanup stay under the lock so a
-                // concurrent locked UserUpdate can't re-grant a permission
-                // (e.g., VoiceListen) between our cache write and our
-                // side-effect dispatch. All are in-memory channel sends;
-                // the socket write happens after the labelled block ends.
-                // Lookups key on the immutable user_id so a rename can't
-                // make them miss sessions.
+                // Broadcasts + voice cleanup run under the lock (in-memory
+                // sends) so a concurrent UserUpdate can't re-grant VoiceListen
+                // between our cache write and cleanup. Keyed on user_id.
                 if name_changed || !inheriting_set.is_empty() {
                     broadcast_user_updated_for_members(ctx, &member_sessions, |session| {
                         name_changed || inheriting_set.contains(&session.user_id)
@@ -525,11 +506,9 @@ where
                 Outcome::Send(Box::new(response))
             }
             Ok(None) => {
-                // 0 rows affected — either group was deleted by another admin
-                // between our fetch and the update, or the atomic shared-toggle
-                // protection blocked the update (members exist).
-                // Disambiguate with an explicit Err arm so a DB read failure
-                // doesn't masquerade as "group not found".
+                // 0 rows: group deleted concurrently, or the atomic shared-
+                // toggle protection blocked it (members exist). The explicit
+                // Err arm keeps a DB read failure from looking like "not found".
                 let error = match ctx.db.groups.get_member_count(id).await {
                     Ok(count) if count > 0 => err_group_not_empty_modify(ctx.locale),
                     Ok(_) => err_group_not_found(ctx.locale),
@@ -546,7 +525,6 @@ where
                 }))
             }
             Err(e) => {
-                // Check if failure was due to duplicate name
                 if ctx
                     .db
                     .groups
@@ -578,12 +556,9 @@ where
     dispatch_outcome(outcome, ctx, HANDLER_GROUP_UPDATE).await
 }
 
-/// Fan out one `UserUpdated` per affected member to everyone with
-/// `Permission::UserList`. Shared accounts broadcast per-session (each
-/// session is a distinct identity with its own nickname); regular accounts
-/// dedup by username and broadcast an aggregated `UserInfo`. `should_emit`
-/// decides which members participate — typically a predicate built from the
-/// trigger flags (name change, bandwidth change set).
+/// Fan out one `UserUpdated` per affected member (filtered by `should_emit`)
+/// to all `UserList` holders. Shared accounts broadcast per-session;
+/// regular accounts dedup by username with an aggregated `UserInfo`.
 async fn broadcast_user_updated_for_members<W, F>(
     ctx: &HandlerContext<'_, W>,
     member_sessions: &[UserSession],
@@ -767,7 +742,6 @@ mod tests {
         )
         .await;
 
-        // Create a group
         let group = test_ctx
             .db
             .groups
@@ -803,7 +777,6 @@ mod tests {
             _ => panic!("Expected GroupUpdateResponse success"),
         }
 
-        // Verify in database
         let updated = test_ctx
             .db
             .groups
@@ -827,7 +800,6 @@ mod tests {
         )
         .await;
 
-        // Create two groups
         let _group_a = test_ctx
             .db
             .groups
@@ -842,7 +814,7 @@ mod tests {
             .await
             .expect("Failed to create GroupB");
 
-        // Try to rename GroupB to GroupA
+        // Rename GroupB to the name GroupA already holds.
         let result = handle_group_update(
             group_b.id,
             Some("GroupA".to_string()),
@@ -882,7 +854,6 @@ mod tests {
         )
         .await;
 
-        // Create a group with initial permissions
         let group = test_ctx
             .db
             .groups
@@ -895,7 +866,6 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Update permissions
         let result = handle_group_update(
             group.id,
             None,
@@ -920,7 +890,6 @@ mod tests {
             _ => panic!("Expected GroupUpdateResponse success"),
         }
 
-        // Verify permissions in database
         let perms = test_ctx
             .db
             .groups
@@ -945,7 +914,6 @@ mod tests {
         )
         .await;
 
-        // Create a non-shared group
         let group = test_ctx
             .db
             .groups
@@ -953,7 +921,7 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Assign a user to this group via create_user with group_id
+        // A member blocks the is_shared toggle below.
         test_ctx
             .db
             .users
@@ -971,7 +939,6 @@ mod tests {
             .await
             .expect("Failed to create member");
 
-        // Try to toggle is_shared — should fail because group has members
         let result = handle_group_update(
             group.id,
             None,
@@ -1007,7 +974,6 @@ mod tests {
         )
         .await;
 
-        // Create a non-shared group with no members
         let group = test_ctx
             .db
             .groups
@@ -1015,7 +981,6 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Toggle is_shared — should succeed (no members)
         let result = handle_group_update(
             group.id,
             None,
@@ -1040,7 +1005,6 @@ mod tests {
             _ => panic!("Expected GroupUpdateResponse success"),
         }
 
-        // Verify in database
         let updated = test_ctx
             .db
             .groups
@@ -1058,7 +1022,6 @@ mod tests {
         // Login as admin so permission delegation doesn't interfere
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a non-shared group with no members
         let group = test_ctx
             .db
             .groups
@@ -1071,7 +1034,7 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Try to make it shared while keeping user_kick (forbidden for shared)
+        // Make it shared while keeping user_kick (forbidden for shared groups).
         let result = handle_group_update(
             group.id,
             None,
@@ -1104,7 +1067,6 @@ mod tests {
         // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group
         let group = test_ctx
             .db
             .groups
@@ -1112,7 +1074,6 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Update name and permissions as admin
         let result = handle_group_update(
             group.id,
             Some("Moderators".to_string()),
@@ -1141,7 +1102,6 @@ mod tests {
             _ => panic!("Expected GroupUpdateResponse success"),
         }
 
-        // Verify in database
         let updated = test_ctx
             .db
             .groups
@@ -1166,7 +1126,7 @@ mod tests {
     async fn test_group_update_non_admin_cannot_set_unowned_permissions() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as non-admin with GroupEdit + ChatSend (but NOT UserKick)
+        // Editor has GroupEdit + ChatSend but NOT UserKick (delegation boundary).
         let editor_session = login_user(
             &mut test_ctx,
             "editor",
@@ -1176,7 +1136,7 @@ mod tests {
         )
         .await;
 
-        // Create a group (must be done via DB since editor can't create groups)
+        // Created via DB: the editor lacks group-create permission.
         let group = test_ctx
             .db
             .groups
@@ -1189,7 +1149,7 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Try to update permissions including one the editor doesn't have
+        // Request includes user_kick, which the editor doesn't own.
         let result = handle_group_update(
             group.id,
             None,
@@ -1211,7 +1171,6 @@ mod tests {
             _ => panic!("Expected GroupUpdateResponse"),
         }
 
-        // Verify permissions unchanged in DB
         let perms = test_ctx
             .db
             .groups
@@ -1226,7 +1185,7 @@ mod tests {
     async fn test_group_update_non_admin_can_set_owned_permissions() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as non-admin with GroupEdit + ChatSend + UserList
+        // Editor owns GroupEdit + ChatSend + UserList.
         let editor_session = login_user(
             &mut test_ctx,
             "editor",
@@ -1240,7 +1199,6 @@ mod tests {
         )
         .await;
 
-        // Create a group with ChatSend
         let group = test_ctx
             .db
             .groups
@@ -1253,7 +1211,7 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Update to ChatSend + UserList — both owned by editor
+        // Both requested perms are owned by the editor.
         let result = handle_group_update(
             group.id,
             None,
@@ -1275,7 +1233,6 @@ mod tests {
             _ => panic!("Expected GroupUpdateResponse"),
         }
 
-        // Verify permissions updated in DB
         let perms = test_ctx
             .db
             .groups
@@ -1291,7 +1248,7 @@ mod tests {
     async fn test_group_update_non_admin_merge_preserves_unowned_permissions() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as non-admin with GroupEdit + ChatSend (but NOT UserKick)
+        // Editor has GroupEdit + ChatSend but NOT UserKick (delegation boundary).
         let editor_session = login_user(
             &mut test_ctx,
             "editor",
@@ -1301,7 +1258,6 @@ mod tests {
         )
         .await;
 
-        // Create a group with ChatSend + UserKick
         let group = test_ctx
             .db
             .groups
@@ -1314,8 +1270,7 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Editor sends only ChatSend (the one they control)
-        // UserKick should be preserved automatically
+        // Editor sends only ChatSend; the unowned UserKick is preserved.
         let result = handle_group_update(
             group.id,
             None,
@@ -1337,7 +1292,6 @@ mod tests {
             _ => panic!("Expected GroupUpdateResponse"),
         }
 
-        // Verify: ChatSend kept (requested), UserKick preserved (unowned by editor)
         let perms = test_ctx
             .db
             .groups
@@ -1353,7 +1307,7 @@ mod tests {
     async fn test_group_update_non_admin_merge_can_remove_owned_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as non-admin with GroupEdit + ChatSend + UserList (but NOT UserKick)
+        // Editor owns GroupEdit + ChatSend + UserList but NOT UserKick.
         let editor_session = login_user(
             &mut test_ctx,
             "editor",
@@ -1367,7 +1321,6 @@ mod tests {
         )
         .await;
 
-        // Create a group with ChatSend + UserList + UserKick
         let group = test_ctx
             .db
             .groups
@@ -1384,8 +1337,7 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Editor sends only ChatSend — removing UserList (which they control)
-        // UserKick should be preserved (editor can't control it)
+        // Editor drops the owned UserList; the unowned UserKick stays.
         let result = handle_group_update(
             group.id,
             None,
@@ -1407,7 +1359,6 @@ mod tests {
             _ => panic!("Expected GroupUpdateResponse"),
         }
 
-        // Verify: ChatSend kept, UserList removed (editor's choice), UserKick preserved
         let perms = test_ctx
             .db
             .groups
@@ -1420,15 +1371,10 @@ mod tests {
         assert!(!perms.contains(&Permission::UserList));
     }
 
-    // ========================================================================
-    // Cascade tests (Step 7)
-    // ========================================================================
-
     #[tokio::test]
     async fn test_group_update_permission_cascade_sends_permissions_updated() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a group with chat_send
@@ -1444,7 +1390,6 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Create bob assigned to the group (no individual grants — relies on group)
         let bob = test_ctx
             .db
             .users
@@ -1462,7 +1407,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Resolve effective permissions from DB (group provides them)
         let bob_effective = test_ctx
             .db
             .users
@@ -1470,7 +1414,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add bob to UserManager so he's "online"
         let bob_session = test_ctx
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
@@ -1498,7 +1441,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Update group permissions: add user_kick
+        // Add user_kick to the group.
         let result = handle_group_update(
             group.id,
             None,
@@ -1512,14 +1455,12 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read GroupUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
             _ => panic!("Expected GroupUpdateResponse"),
         }
 
-        // Read PermissionsUpdated sent to bob via the broadcast channel
         let (msg, _) = test_ctx
             .rx
             .recv()
@@ -1539,24 +1480,20 @@ mod tests {
                 assert_eq!(group_id, Some(group.id));
                 assert_eq!(group_name, Some("Staff".to_string()));
 
-                // Verify server_info is included in group cascade
                 let info = server_info.expect("server_info should be included");
-                // All-user fields should be populated
+                // All-user fields populated; admin-only fields and image omitted for non-admin bob.
                 assert!(info.name.is_some());
                 assert!(info.version.is_some());
                 assert!(info.chat_burst_limit.is_some());
                 assert!(info.chat_rate_limit.is_some());
                 assert!(info.min_password_strength.is_some());
                 assert!(info.log_level.is_some());
-                // Admin-only fields should be None for non-admin bob
                 assert!(info.persistent_channels.is_none());
-                // Image not included in PermissionsUpdated
                 assert!(info.image.is_none());
             }
             _ => panic!("Expected PermissionsUpdated, got {:?}", msg),
         }
 
-        // Verify session cache was updated
         let updated_bob = test_ctx
             .user_manager
             .get_user_by_session_id(bob_session)
@@ -1570,10 +1507,8 @@ mod tests {
     async fn test_group_update_name_cascade_sends_user_updated() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group
         let group = test_ctx
             .db
             .groups
@@ -1586,7 +1521,6 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Create bob assigned to the group (no individual grants — relies on group)
         let bob = test_ctx
             .db
             .users
@@ -1604,7 +1538,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Resolve effective permissions from DB, then add user_list for receiving UserUpdated
+        // Grant UserList on top of group perms so bob receives UserUpdated.
         let bob_effective = test_ctx
             .db
             .users
@@ -1640,7 +1574,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Rename group (no permission changes)
+        // Rename only (no permission change).
         let result = handle_group_update(
             group.id,
             Some("Moderators".to_string()),
@@ -1654,7 +1588,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read GroupUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::GroupUpdateResponse { success, name, .. } => {
@@ -1664,7 +1597,6 @@ mod tests {
             _ => panic!("Expected GroupUpdateResponse"),
         }
 
-        // Read UserUpdated broadcast (sent to users with user_list permission)
         let (msg, _) = test_ctx
             .rx
             .recv()
@@ -1683,7 +1615,6 @@ mod tests {
             _ => panic!("Expected UserUpdated, got {:?}", msg),
         }
 
-        // Verify session cache was updated
         let updated_bob = test_ctx
             .user_manager
             .get_user_by_session_id(bob_session)
@@ -1696,10 +1627,9 @@ mod tests {
     async fn test_group_update_no_cascade_when_no_online_members() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group with a member in DB (but NOT in UserManager — offline)
+        // Member exists in DB only (offline — not in UserManager).
         let group = test_ctx
             .db
             .groups
@@ -1731,7 +1661,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Update group permissions — bob is offline so no PermissionsUpdated should be sent
+        // bob is offline, so no PermissionsUpdated should fire.
         let result = handle_group_update(
             group.id,
             None,
@@ -1745,7 +1675,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read GroupUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
@@ -1763,10 +1692,8 @@ mod tests {
     async fn test_group_update_voice_listen_revoked_kicks_from_voice() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group with voice_listen
         let group = test_ctx
             .db
             .groups
@@ -1779,7 +1706,6 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Create bob assigned to the group (no individual grants — relies on group)
         let bob = test_ctx
             .db
             .users
@@ -1797,7 +1723,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Resolve effective permissions from DB (group provides them)
         let bob_effective = test_ctx
             .db
             .users
@@ -1805,7 +1730,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add bob to UserManager
         let bob_session = test_ctx
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
@@ -1833,7 +1757,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Have bob join a channel and voice
+        // bob joins a channel and voice.
         let _ = test_ctx
             .channel_manager
             .join("#general", bob_session, JoinPolicy::CreateIfMissing)
@@ -1851,10 +1775,9 @@ mod tests {
             .await
             .expect("test setup: session_id is unique");
 
-        // Verify bob is in voice
         assert!(test_ctx.voice_registry.has_session(bob_session).await);
 
-        // Remove voice_listen from group (keep only chat_send)
+        // Drop voice_listen from the group (keep chat_send).
         let result = handle_group_update(
             group.id,
             None,
@@ -1868,14 +1791,12 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read GroupUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
             _ => panic!("Expected GroupUpdateResponse"),
         }
 
-        // Verify bob was kicked from voice
         assert!(
             !test_ctx.voice_registry.has_session(bob_session).await,
             "User should be kicked from voice when voice_listen is revoked via group edit"
@@ -1886,7 +1807,6 @@ mod tests {
     async fn test_group_update_permission_cascade_with_member_overrides() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a group with chat_send and user_kick
@@ -1902,10 +1822,9 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Create bob assigned to the group with a grant override (user_list)
-        // and a revoke override (user_kick)
+        // bob: grant override user_list, revoke override user_kick.
+        // Effective before: (chat_send, user_kick) ∪ (user_list) − (user_kick) = chat_send, user_list
         let mut bob_perms = db::Permissions::new();
-        // Effective before: (chat_send, user_kick) ∪ (user_list) - (user_kick) = chat_send, user_list
         bob_perms.permissions.insert(db::Permission::ChatSend);
         bob_perms.permissions.insert(db::Permission::UserList);
         let bob = test_ctx
@@ -1925,7 +1844,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add bob to UserManager with effective permissions
         let mut effective = std::collections::HashSet::new();
         effective.insert(db::Permission::ChatSend);
         effective.insert(db::Permission::UserList);
@@ -1956,10 +1874,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Update group: add ban_create, remove user_kick
-        // New group perms: chat_send, ban_create
-        // Bob's effective: (chat_send, ban_create) ∪ (user_list) - (user_kick) = chat_send, ban_create, user_list
-        // (user_kick revoke is now a no-op since group no longer has it)
+        // New group perms chat_send + ban_create; bob's effective becomes
+        // chat_send, ban_create, user_list (the user_kick revoke is now a no-op).
         let result = handle_group_update(
             group.id,
             None,
@@ -1973,14 +1889,12 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read GroupUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
             _ => panic!("Expected GroupUpdateResponse"),
         }
 
-        // Read PermissionsUpdated
         let (msg, _) = test_ctx
             .rx
             .recv()
@@ -1991,13 +1905,12 @@ mod tests {
                 assert!(permissions.contains(&"chat_send".to_string()));
                 assert!(permissions.contains(&"ban_create".to_string()));
                 assert!(permissions.contains(&"user_list".to_string()));
-                // user_kick should NOT be present (revoke override + removed from group)
+                // Absent: revoke override + dropped from group.
                 assert!(!permissions.contains(&"user_kick".to_string()));
             }
             _ => panic!("Expected PermissionsUpdated, got {:?}", msg),
         }
 
-        // Verify session cache
         let updated_bob = test_ctx
             .user_manager
             .get_user_by_session_id(bob_session)
@@ -2013,7 +1926,6 @@ mod tests {
     async fn test_group_update_no_permissions_updated_when_effective_unchanged() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a group with chat_send and user_kick
@@ -2029,8 +1941,7 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Create bob with a revoke on user_kick
-        // Effective: (chat_send, user_kick) - (user_kick) = chat_send
+        // bob revokes user_kick → effective (chat_send, user_kick) − (user_kick) = chat_send.
         let mut bob_perms = db::Permissions::new();
         bob_perms.permissions.insert(db::Permission::ChatSend);
         let bob = test_ctx
@@ -2050,7 +1961,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add bob to UserManager with effective permissions (just chat_send)
         let mut effective = std::collections::HashSet::new();
         effective.insert(db::Permission::ChatSend);
         let bob_session = test_ctx
@@ -2080,10 +1990,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Remove user_kick from group (bob already had it revoked)
-        // New group: chat_send only
-        // Bob's effective: (chat_send) - (user_kick revoke is now no-op) = chat_send
-        // No effective change for bob!
+        // Drop user_kick from the group — bob already revoked it, so his
+        // effective set stays chat_send (no change → no cascade).
         let result = handle_group_update(
             group.id,
             None,
@@ -2097,20 +2005,17 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read GroupUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
             _ => panic!("Expected GroupUpdateResponse"),
         }
 
-        // No PermissionsUpdated should be sent — bob's effective permissions didn't change
         assert!(
             test_ctx.rx.try_recv().is_err(),
             "No PermissionsUpdated when effective permissions unchanged for member"
         );
 
-        // Verify bob still has only chat_send
         let updated_bob = test_ctx
             .user_manager
             .get_user_by_session_id(bob_session)
@@ -2124,10 +2029,8 @@ mod tests {
     async fn test_group_update_name_and_permissions_cascade_together() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group
         let group = test_ctx
             .db
             .groups
@@ -2140,7 +2043,6 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Create bob assigned to the group (no individual grants — relies on group)
         let bob = test_ctx
             .db
             .users
@@ -2158,7 +2060,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Resolve effective permissions from DB, then add user_list for receiving broadcasts
+        // Grant UserList on top of group perms so bob receives broadcasts.
         let bob_effective = test_ctx
             .db
             .users
@@ -2194,7 +2096,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Update both name and permissions
         let result = handle_group_update(
             group.id,
             Some("Moderators".to_string()),
@@ -2208,21 +2109,18 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read GroupUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
             _ => panic!("Expected GroupUpdateResponse"),
         }
 
-        // Should receive UserUpdated (name change) and PermissionsUpdated (perm change)
-        // Note: broadcast_to_permission sends UserUpdated to ALL users with user_list
-        // (both admin and bob share the same tx in tests), so we may get multiple messages.
-        // Drain all messages and check we got both types.
+        // Expect both UserUpdated (rename) and PermissionsUpdated (perm change).
+        // broadcast_to_permission fans out to all UserList holders on the
+        // shared tx, so drain everything and check both types appear.
         let mut got_user_updated = false;
         let mut got_permissions_updated = false;
 
-        // Drain available messages (broadcasts are synchronous in test context)
         while let Ok((msg, _)) = test_ctx.rx.try_recv() {
             match msg {
                 ServerMessage::UserUpdated {
@@ -2242,7 +2140,7 @@ mod tests {
                     assert_eq!(*group_name, Some("Moderators".to_string()));
                     got_permissions_updated = true;
                 }
-                _ => {} // Ignore other broadcast messages
+                _ => {}
             }
         }
 
@@ -2252,7 +2150,6 @@ mod tests {
             "Should have received PermissionsUpdated"
         );
 
-        // Verify session cache
         let updated_bob = test_ctx
             .user_manager
             .get_user_by_session_id(bob_session)
@@ -2267,10 +2164,8 @@ mod tests {
     async fn test_group_update_no_cascade_for_name_only_no_change() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group
         let group = test_ctx
             .db
             .groups
@@ -2283,7 +2178,6 @@ mod tests {
             .await
             .expect("Failed to create group");
 
-        // Create bob assigned to the group (no individual grants — relies on group)
         let bob = test_ctx
             .db
             .users
@@ -2301,7 +2195,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Resolve effective permissions from DB (group provides them)
         let bob_effective = test_ctx
             .db
             .users
@@ -2309,7 +2202,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add bob to UserManager
         let _bob_session = test_ctx
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
@@ -2337,7 +2229,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Update with same name and same permissions — no cascade should happen
+        // Same name and permissions → no cascade.
         let result = handle_group_update(
             group.id,
             Some("Staff".to_string()),
@@ -2351,14 +2243,12 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read GroupUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::GroupUpdateResponse { success, .. } => assert!(success),
             _ => panic!("Expected GroupUpdateResponse"),
         }
 
-        // No cascade messages — nothing changed
         assert!(
             test_ctx.rx.try_recv().is_err(),
             "No cascade when name and permissions are unchanged"

@@ -1,4 +1,4 @@
-//! Handler for ChatTopicUpdate command
+//! Updates a channel topic.
 
 use std::io;
 
@@ -21,7 +21,6 @@ use super::{
 use crate::constants::FEATURE_CHAT;
 use crate::db::Permission;
 
-/// Handle ChatTopicUpdate command
 pub async fn handle_chat_topic_update<W>(
     topic: String,
     channel: String,
@@ -41,7 +40,6 @@ where
             .await;
     };
 
-    // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
@@ -54,7 +52,6 @@ where
         }
     };
 
-    // Check chat feature
     if !user.has_feature(FEATURE_CHAT) {
         let response = ServerMessage::ChatTopicUpdateResponse {
             success: false,
@@ -63,7 +60,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check ChatTopicEdit permission (uses cached permissions, admin bypass built-in)
     if !user.has_permission(Permission::ChatTopicEdit) {
         warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_TOPIC_PERMISSION_DENIED);
         let response = ServerMessage::ChatTopicUpdateResponse {
@@ -73,7 +69,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate topic format
     if let Err(e) = validators::validate_chat_topic(&topic) {
         let error_msg = match e {
             ChatTopicError::TooLong => {
@@ -89,7 +84,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate channel name
     if let Err(e) = validators::validate_channel(&channel) {
         let response = ServerMessage::ChatTopicUpdateResponse {
             success: false,
@@ -98,9 +92,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check if user is a member of the channel
-    // For security, always return "not found" to non-members to avoid leaking
-    // existence of secret channels
+    // Non-members get "not found" so secret-channel existence isn't leaked.
     if !ctx.channel_manager.is_member(&channel, id).await {
         let response = ServerMessage::ChatTopicUpdateResponse {
             success: false,
@@ -109,7 +101,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Update topic in channel manager (handles persistence for persistent channels)
+    // Channel manager handles persistence for persistent channels.
     let (topic_value, set_by) = if topic.is_empty() {
         (None, None)
     } else {
@@ -121,9 +113,9 @@ where
         .set_topic(&channel, topic_value, set_by)
         .await
     {
-        Ok(true) => {} // Success, channel exists
+        Ok(true) => {}
         Ok(false) => {
-            // Channel doesn't exist (race condition - was deleted after membership check)
+            // Channel deleted between the membership check and here.
             let response = ServerMessage::ChatTopicUpdateResponse {
                 success: false,
                 error: Some(err_channel_not_found(ctx.locale, &channel)),
@@ -140,14 +132,12 @@ where
         }
     }
 
-    // Get channel members for broadcast
     let members = ctx
         .channel_manager
         .get_members(&channel)
         .await
         .unwrap_or_default();
 
-    // Build the topic update message
     let topic_message = ServerMessage::ChatUpdated {
         channel,
         topic: Some(topic.clone()),
@@ -156,23 +146,21 @@ where
         secret_set_by: None,
     };
 
-    // Broadcast ChatUpdated to all channel members with chat feature and ChatTopic permission
+    // Broadcast only to members with the chat feature and ChatTopic permission.
     for member_session_id in members {
         if let Some(member) = ctx
             .user_manager
             .get_user_by_session_id(member_session_id)
             .await
+            && member.has_feature(FEATURE_CHAT)
+            && member.has_permission(Permission::ChatTopic)
         {
-            // Check if member has chat feature and topic permission
-            if member.has_feature(FEATURE_CHAT) && member.has_permission(Permission::ChatTopic) {
-                ctx.user_manager
-                    .send_to_session(member_session_id, topic_message.clone())
-                    .await;
-            }
+            ctx.user_manager
+                .send_to_session(member_session_id, topic_message.clone())
+                .await;
         }
     }
 
-    // Send success response to updater
     ctx.send_message(&ServerMessage::ChatTopicUpdateResponse {
         success: true,
         error: None,

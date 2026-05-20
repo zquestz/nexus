@@ -1,4 +1,4 @@
-//! NewsList message handler - Returns all news items
+//! NewsList message handler
 
 use std::io;
 
@@ -17,7 +17,6 @@ use super::testing::DEFAULT_TEST_LOCALE;
 use super::{HandlerContext, err_database, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
 
-/// Handle a news list request
 pub async fn handle_news_list<W>(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -32,7 +31,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -40,7 +38,7 @@ where
     {
         Some(u) => u,
         None => {
-            // Session not found - likely a race condition, not a security event
+            // Session not found — likely a race, not a security event.
             let response = ServerMessage::NewsListResponse {
                 success: false,
                 error: Some(err_not_logged_in(ctx.locale)),
@@ -50,7 +48,6 @@ where
         }
     };
 
-    // Check NewsList permission
     if !requesting_user.has_permission(Permission::NewsList) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_NEWS_LIST_PERMISSION_DENIED);
         let response = ServerMessage::NewsListResponse {
@@ -61,7 +58,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Fetch all news from database
     let news_records = match ctx.db.news.get_all_news().await {
         Ok(records) => records,
         Err(e) => {
@@ -75,7 +71,6 @@ where
         }
     };
 
-    // Convert to protocol format
     let items: Vec<NewsItem> = news_records
         .into_iter()
         .map(|record| NewsItem {
@@ -117,7 +112,6 @@ mod tests {
     async fn test_news_list_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user without NewsList permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_news_list(Some(session_id), &mut test_ctx.handler_context()).await;
@@ -137,7 +131,6 @@ mod tests {
     async fn test_news_list_empty() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsList permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -169,7 +162,6 @@ mod tests {
     async fn test_news_list_returns_items_newest_first() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsList permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -179,7 +171,6 @@ mod tests {
         )
         .await;
 
-        // Get the user's database ID
         let user = test_ctx
             .db
             .users
@@ -188,7 +179,6 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Create some news items
         test_ctx
             .db
             .news
@@ -235,7 +225,6 @@ mod tests {
     async fn test_news_list_admin_has_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin (no explicit permissions needed)
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_news_list(Some(session_id), &mut test_ctx.handler_context()).await;
@@ -267,7 +256,6 @@ mod tests {
         )
         .await;
 
-        // Get database IDs
         let admin = test_ctx
             .db
             .users
@@ -283,7 +271,6 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Create news from both users
         test_ctx
             .db
             .news

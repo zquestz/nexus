@@ -24,7 +24,6 @@ use super::testing::DEFAULT_TEST_LOCALE;
 #[cfg(test)]
 use crate::constants::FEATURE_CHAT;
 
-/// Handle a userinfo request from the client
 pub async fn handle_user_info<W>(
     nickname: String,
     session_id: Option<u32>,
@@ -40,7 +39,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
@@ -50,7 +48,6 @@ where
         }
     };
 
-    // Check UserInfo permission (uses cached permissions, admin bypass built-in)
     if !requesting_user.has_permission(Permission::UserInfo) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_INFO_PERMISSION_DENIED);
         let response = ServerMessage::UserInfoResponse {
@@ -61,7 +58,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate nickname format
     if let Err(e) = validators::validate_nickname(&nickname) {
         let error_msg = match e {
             NicknameError::Empty => err_nickname_empty(ctx.locale),
@@ -78,12 +74,10 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Get all sessions by nickname
-    // - Regular accounts: nickname == username, so all sessions are returned
-    // - Shared accounts: unique nickname, so only that session is returned
+    // Regular accounts (nickname == username) match all their sessions;
+    // shared accounts have a unique nickname, so just the one.
     let target_sessions = ctx.user_manager.get_sessions_by_nickname(&nickname).await;
 
-    // Check if user is online
     if target_sessions.is_empty() {
         let response = ServerMessage::UserInfoResponse {
             success: false,
@@ -93,19 +87,13 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Get username for database lookup from the session
     let db_lookup_username = target_sessions
         .first()
         .map(|s| s.username.clone())
         .expect(ERR_TARGET_SESSIONS_NON_EMPTY);
 
-    // Fetch target user account for admin status and created_at. Both
-    // Ok(None) and Err are reported as DB errors so the user can retry
-    // without losing the session:
-    //   - Ok(None): the row disappeared between session lookup and the DB
-    //     read (rare race); functionally indistinguishable to the user from
-    //     a transient DB failure.
-    //   - Err: actual DB failure.
+    // Both Ok(None) (row vanished mid-request, rare race) and Err report a DB
+    // error so the user can retry without losing the session.
     let target_account = match ctx.db.users.get_user_by_username(&db_lookup_username).await {
         Ok(Some(acc)) => acc,
         Ok(None) => {
@@ -127,7 +115,6 @@ where
         }
     };
 
-    // Aggregate session data
     let session_ids: Vec<u32> = target_sessions.iter().map(|s| s.session_id).collect();
     let earliest_login = target_sessions
         .iter()
@@ -140,7 +127,6 @@ where
         .map(|s| s.locale.clone())
         .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
 
-    // Collect unique features from all sessions
     let mut all_features = std::collections::HashSet::new();
     for session in &target_sessions {
         for feature in &session.features {
@@ -149,23 +135,21 @@ where
     }
     let features: Vec<String> = all_features.into_iter().collect();
 
-    // Get avatar from most recent login session ("latest login wins")
+    // Latest login wins.
     let avatar = target_sessions
         .iter()
         .max_by_key(|s| s.login_time)
         .and_then(|s| s.avatar.clone());
 
-    // Get away status from most recently active session
-    // Regular accounts: most recently active session wins (accurate presence)
-    // Shared accounts: per-session (only one session per nickname)
+    // Most recently active session wins (shared accounts have only one).
     let (is_away, status) = target_sessions
         .iter()
         .max_by_key(|s| s.last_activity)
         .map(|s| (s.is_away, s.status.clone()))
         .unwrap_or((false, None));
 
-    // Get group info from most recent login session ("latest login wins"),
-    // falling back to account group_id + DB lookup if no session has it
+    // Latest login wins; fall back to the account's group_id + a name lookup
+    // when no session carries group info.
     let (group_id, group_name) = target_sessions
         .iter()
         .max_by_key(|s| s.login_time)
@@ -174,7 +158,6 @@ where
     let (group_id, group_name) = if group_id.is_some() {
         (group_id, group_name)
     } else if let Some(gid) = target_account.group_id {
-        // Session didn't have group info; fall back to account's group_id and look up the name
         let gname = match ctx.db.groups.get_group_by_id(gid).await {
             Ok(Some(record)) => Some(record.name),
             _ => None,
@@ -184,21 +167,18 @@ where
         (None, None)
     };
 
-    // Get nickname (display name) for the user from the session
-    // (nickname is always populated - equals username for regular accounts)
     let display_nickname = target_sessions
         .first()
         .map(|s| s.nickname.clone())
         .unwrap_or_else(|| target_account.username.clone());
 
-    // Collect IP addresses from all sessions (for admins only)
+    // Admins-only (gated below).
     let addresses: Vec<String> = target_sessions
         .iter()
         .map(|s| s.address.to_string())
         .collect();
 
-    // Collect channels for all sessions of the target user
-    // Secret channels are only visible to admins
+    // Secret channels are filtered out here for non-admins.
     let mut all_channels = std::collections::HashSet::new();
     for session in &target_sessions {
         let session_channels = ctx
@@ -215,24 +195,18 @@ where
         Some(channels)
     };
 
-    // Use the actual username from the database (preserves original casing)
+    // DB casing is authoritative.
     let actual_username = target_account.username.clone();
 
-    // Bandwidth weight: read from the session cache. Reading the first
-    // session is sufficient because `update_bandwidth_state` fans out
-    // the resolved value to every session of a given user_id atomically,
-    // so all sessions of the same user agree. The `err_nickname_not_online`
-    // gate above guarantees at least one session exists.
+    // First session suffices: `update_bandwidth_state` fans the resolved
+    // weight out to every session of a user_id atomically, and the
+    // not-online gate above guarantees ≥1 session.
     let resolved_weight = target_sessions
         .first()
         .map(|s| s.bandwidth_weight.load(Ordering::Relaxed));
 
-    // Build response with appropriate visibility level
-    // is_admin is visible to everyone (same as in user list)
-    // addresses are only visible to admins
-    // channels are visible to everyone (secret channels filtered above based on admin status)
+    // is_admin and channels are visible to everyone; addresses are admin-only.
     let user_info = if requesting_user.is_admin {
-        // Admin gets all fields including addresses
         UserInfoDetailed {
             id: target_account.id,
             username: actual_username,
@@ -254,7 +228,6 @@ where
             bandwidth_weight: resolved_weight,
         }
     } else {
-        // Non-admin gets all fields except addresses
         UserInfoDetailed {
             id: target_account.id,
             username: actual_username,
@@ -300,11 +273,9 @@ mod tests {
     async fn test_userinfo_requires_login() {
         let mut test_ctx = create_test_context().await;
 
-        // Try to get user info without being logged in
         let result =
             handle_user_info("alice".to_string(), None, &mut test_ctx.handler_context()).await;
 
-        // Should fail with disconnect
         assert!(result.is_err(), "UserInfo should require login");
     }
 
@@ -312,7 +283,7 @@ mod tests {
     async fn test_userinfo_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITHOUT UserInfo permission (non-admin)
+        // No UserInfo permission.
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let user = test_ctx
@@ -332,7 +303,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add user to UserManager
         let user_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -360,7 +330,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Try to get user info without permission
         let result = handle_user_info(
             "alice".to_string(),
             Some(user_id),
@@ -368,7 +337,6 @@ mod tests {
         )
         .await;
 
-        // Should fail with disconnect
         assert!(
             result.is_ok(),
             "Should send error message but not disconnect"
@@ -379,7 +347,7 @@ mod tests {
     async fn test_userinfo_user_not_found() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH UserInfo permission
+        // Has UserInfo permission.
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
@@ -406,7 +374,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add user to UserManager
         let user_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -434,7 +401,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Request info for non-existent username
         let result = handle_user_info(
             "nonexistent".to_string(),
             Some(user_id),
@@ -442,15 +408,11 @@ mod tests {
         )
         .await;
 
-        // Should succeed (sends error response, doesn't disconnect)
         assert!(
             result.is_ok(),
             "Should send error response for non-existent user"
         );
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse {
@@ -477,7 +439,7 @@ mod tests {
     async fn test_userinfo_non_admin_sees_filtered_fields() {
         let mut test_ctx = create_test_context().await;
 
-        // Create non-admin user WITH UserInfo permission
+        // Requester: non-admin with UserInfo.
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
@@ -504,7 +466,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create target user
         let target = test_ctx
             .db
             .users
@@ -522,8 +483,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add both users to UserManager
-        // Add requester to UserManager
         let requester_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -551,7 +510,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Add target to UserManager
         let target_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -579,7 +537,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Request info about target as non-admin
         let result = handle_user_info(
             "target".to_string(),
             Some(requester_id),
@@ -587,12 +544,8 @@ mod tests {
         )
         .await;
 
-        // Should succeed
         assert!(result.is_ok(), "Should successfully get user info");
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse {
@@ -605,7 +558,6 @@ mod tests {
                 assert!(user.is_some(), "Should have user info");
                 let user_info = user.unwrap();
 
-                // Verify all basic fields are present
                 assert_eq!(user_info.username, "target");
                 assert_eq!(user_info.session_ids.len(), 1);
                 assert_eq!(user_info.session_ids[0], target_id);
@@ -655,7 +607,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create target user (non-admin)
         let target = test_ctx
             .db
             .users
@@ -673,8 +624,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add both users to UserManager
-        // Add admin to UserManager
         let admin_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -702,7 +651,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Add target to UserManager
         let target_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -730,8 +678,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Admin requests info about target
-        // Request info about target as admin
         let result = handle_user_info(
             "target".to_string(),
             Some(admin_id),
@@ -739,12 +685,8 @@ mod tests {
         )
         .await;
 
-        // Should succeed
         assert!(result.is_ok(), "Should successfully get user info");
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse {
@@ -757,7 +699,6 @@ mod tests {
                 assert!(user.is_some(), "Should have user info");
                 let user_info = user.unwrap();
 
-                // Verify all basic fields are present
                 assert_eq!(user_info.username, "target");
                 assert_eq!(user_info.session_ids.len(), 1);
                 assert_eq!(user_info.session_ids[0], target_id);
@@ -792,7 +733,6 @@ mod tests {
     async fn test_userinfo_admin_viewing_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Create two admin users
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let admin1 = test_ctx
@@ -829,7 +769,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add admin1 to UserManager
         let admin1_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -857,7 +796,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Add admin2 to UserManager
         let admin2_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -885,7 +823,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Admin1 requests info about admin2
         let result = handle_user_info(
             "admin2".to_string(),
             Some(admin1_id),
@@ -893,12 +830,8 @@ mod tests {
         )
         .await;
 
-        // Should succeed
         assert!(result.is_ok(), "Should successfully get user info");
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse {
@@ -911,7 +844,6 @@ mod tests {
                 assert!(user.is_some(), "Should have user info");
                 let user_info = user.unwrap();
 
-                // Verify basic fields
                 assert_eq!(user_info.session_ids.len(), 1);
                 assert_eq!(user_info.session_ids[0], admin2_id);
                 assert_eq!(user_info.username, "admin2");
@@ -936,13 +868,11 @@ mod tests {
     async fn test_userinfo_case_insensitive() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user to make requests
         let _admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create target user with specific casing
         let _target_id = login_user(&mut test_ctx, "Alice", "password", &[], false).await;
 
-        // Request user info with different casing
         let result = handle_user_info(
             "alice".to_string(), // lowercase
             Some(1),
@@ -952,7 +882,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserInfoResponse {
@@ -972,18 +901,12 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // Avatar tests
-    // =========================================================================
-
     #[tokio::test]
     async fn test_userinfo_includes_avatar() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user to make requests
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create target user with avatar
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let account = test_ctx
@@ -1005,7 +928,6 @@ mod tests {
 
         let avatar_data = "data:image/png;base64,iVBORw0KGgo=".to_string();
 
-        // Add session with avatar
         test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -1033,7 +955,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Request user info
         let result = handle_user_info(
             "alice".to_string(),
             Some(admin_id),
@@ -1061,10 +982,8 @@ mod tests {
     async fn test_userinfo_avatar_latest_login_wins() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user to make requests
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create target user
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let account = test_ctx
@@ -1146,7 +1065,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Request user info
         let result = handle_user_info(
             "alice".to_string(),
             Some(admin_id),
@@ -1175,13 +1093,10 @@ mod tests {
     async fn test_userinfo_no_avatar() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user to make requests
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create target user without avatar
         let _target_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
-        // Request user info
         let result = handle_user_info(
             "alice".to_string(),
             Some(admin_id),
@@ -1201,19 +1116,13 @@ mod tests {
         }
     }
 
-    // ========================================================================
-    // Shared Account Tests
-    // ========================================================================
-
     #[tokio::test]
     async fn test_userinfo_shared_account_lookup_by_nickname() {
         let mut test_ctx = create_test_context().await;
         use crate::handlers::login::{LoginRequest, handle_login};
 
-        // Create admin user to make requests
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a shared account in the database
         let hashed = get_cached_password_hash("password");
         test_ctx
             .db
@@ -1232,7 +1141,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login to the shared account with a nickname
         let mut shared_session_id = None;
         let login_request = LoginRequest {
             username: "shared_acct".to_string(),
@@ -1251,7 +1159,6 @@ mod tests {
         .await;
         let _ = read_login_response(&mut test_ctx).await; // consume login response
 
-        // Look up by nickname
         let result = handle_user_info(
             "Nick1".to_string(),
             Some(admin_id),
@@ -1287,10 +1194,8 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         use crate::handlers::login::{LoginRequest, handle_login};
 
-        // Create admin user to make requests
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a shared account in the database
         let hashed = get_cached_password_hash("password");
         test_ctx
             .db
@@ -1309,7 +1214,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login to the shared account with a nickname
         let mut shared_session_id = None;
         let login_request = LoginRequest {
             username: "shared_acct".to_string(),
@@ -1328,8 +1232,7 @@ mod tests {
         .await;
         let _ = read_login_response(&mut test_ctx).await; // consume login response
 
-        // Look up by username (not nickname) - should fail
-        // Shared accounts can only be looked up by their display name (nickname)
+        // Shared accounts resolve by nickname only, so username lookup fails.
         let result = handle_user_info(
             "shared_acct".to_string(),
             Some(admin_id),
@@ -1356,13 +1259,10 @@ mod tests {
     async fn test_userinfo_regular_account_is_shared_false() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user to make requests
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create regular (non-shared) user
         let _target_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
-        // Request user info
         let result = handle_user_info(
             "alice".to_string(),
             Some(admin_id),
@@ -1391,10 +1291,8 @@ mod tests {
     async fn test_userinfo_includes_channels() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user to make requests
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create target user with UserInfo permission
         let target_id = login_user(
             &mut test_ctx,
             "alice",
@@ -1404,7 +1302,6 @@ mod tests {
         )
         .await;
 
-        // Initialize channels
         test_ctx
             .channel_manager
             .initialize_persistent_channels(vec![
@@ -1413,7 +1310,6 @@ mod tests {
             ])
             .await;
 
-        // Alice joins two channels
         test_ctx
             .channel_manager
             .join("#general", target_id, JoinPolicy::CreateIfMissing)
@@ -1425,7 +1321,6 @@ mod tests {
             .await
             .expect("Alice should join #support");
 
-        // Request user info as admin
         let result = handle_user_info(
             "alice".to_string(),
             Some(admin_id),
@@ -1461,7 +1356,7 @@ mod tests {
     async fn test_userinfo_hides_secret_channels_from_non_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Create non-admin user with UserInfo permission to make requests
+        // Requester is a non-admin (Bob), not a member of #secret.
         let requester_id = login_user(
             &mut test_ctx,
             "bob",
@@ -1471,10 +1366,8 @@ mod tests {
         )
         .await;
 
-        // Create target user
         let target_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
-        // Initialize channels
         test_ctx
             .channel_manager
             .initialize_persistent_channels(vec![
@@ -1483,7 +1376,6 @@ mod tests {
             ])
             .await;
 
-        // Alice joins both channels
         test_ctx
             .channel_manager
             .join("#public", target_id, JoinPolicy::CreateIfMissing)
@@ -1495,10 +1387,8 @@ mod tests {
             .await
             .expect("Alice should join #secret");
 
-        // Make #secret channel secret
         let _ = test_ctx.channel_manager.set_secret("#secret", true).await;
 
-        // Request user info as non-admin (Bob is not in #secret)
         let result = handle_user_info(
             "alice".to_string(),
             Some(requester_id),
@@ -1538,13 +1428,10 @@ mod tests {
     async fn test_userinfo_shows_secret_channels_to_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user to make requests
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create target user
         let target_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
-        // Initialize channels
         test_ctx
             .channel_manager
             .initialize_persistent_channels(vec![
@@ -1553,7 +1440,6 @@ mod tests {
             ])
             .await;
 
-        // Alice joins both channels
         test_ctx
             .channel_manager
             .join("#public", target_id, JoinPolicy::CreateIfMissing)
@@ -1565,10 +1451,8 @@ mod tests {
             .await
             .expect("Alice should join #secret");
 
-        // Make #secret channel secret
         let _ = test_ctx.channel_manager.set_secret("#secret", true).await;
 
-        // Request user info as admin
         let result = handle_user_info(
             "alice".to_string(),
             Some(admin_id),
@@ -1604,10 +1488,8 @@ mod tests {
     async fn test_userinfo_includes_group_fields() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group
         let group = test_ctx
             .db
             .groups
@@ -1620,7 +1502,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a user in the group and log them in
         let _bob_session = login_user(
             &mut test_ctx,
             "bob",
@@ -1630,7 +1511,7 @@ mod tests {
         )
         .await;
 
-        // Assign bob to the group in DB and update session cache
+        // Assign bob to the group in both the DB and the session cache.
         test_ctx
             .db
             .users
@@ -1668,7 +1549,6 @@ mod tests {
             )
             .await;
 
-        // Admin requests info about bob
         let result = handle_user_info(
             "bob".to_string(),
             Some(admin_session),

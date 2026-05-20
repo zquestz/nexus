@@ -1,4 +1,4 @@
-//! GroupList message handler - Returns all groups
+//! GroupList message handler
 
 use std::io;
 
@@ -14,11 +14,8 @@ use super::testing::DEFAULT_TEST_LOCALE;
 use super::{HandlerContext, err_database, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
 
-/// Handle a group list request
-///
-/// Returns all groups with their permissions and member counts.
-/// Requires any one of: `user_create`, `user_edit`, `group_create`,
-/// `group_edit`, or `group_delete` permission.
+/// Returns all groups with permissions and member counts. Requires any of
+/// `user_create`, `user_edit`, `group_create`, `group_edit`, `group_delete`.
 pub async fn handle_group_list<W>(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -33,7 +30,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(u) => u,
         None => {
@@ -43,7 +39,6 @@ where
         }
     };
 
-    // Check permission — any one of 5 permissions grants access
     let has_access = requesting_user.has_permission(Permission::UserCreate)
         || requesting_user.has_permission(Permission::UserEdit)
         || requesting_user.has_permission(Permission::GroupCreate)
@@ -102,7 +97,6 @@ mod tests {
     async fn test_group_list_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user without any relevant permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_group_list(Some(session_id), &mut test_ctx.handler_context()).await;
@@ -122,7 +116,6 @@ mod tests {
     async fn test_group_list_empty() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with GroupEdit permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -154,7 +147,6 @@ mod tests {
     async fn test_group_list_returns_groups() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with GroupEdit permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -221,7 +213,6 @@ mod tests {
     async fn test_group_list_admin_has_access() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin (no explicit permissions needed)
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_group_list(Some(session_id), &mut test_ctx.handler_context()).await;
@@ -240,7 +231,6 @@ mod tests {
     async fn test_group_list_user_create_has_access() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with only UserCreate permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -266,7 +256,6 @@ mod tests {
     async fn test_group_list_user_edit_has_access() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with only UserEdit permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",

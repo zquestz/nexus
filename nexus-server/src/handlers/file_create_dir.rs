@@ -1,4 +1,4 @@
-//! FileCreateDir message handler - Creates a new directory in the file area
+//! Creates a new directory in the file area.
 
 use std::io;
 
@@ -190,10 +190,8 @@ where
 
     let new_dir_candidate = parent_resolved.join(&name);
 
-    // Pre-resolve `exists()` check: fast path for the common case, and also
-    // catches name=`.` (which `validate_dir_name` accepts but `resolve_new_path`
-    // rejects). Post-lock `create_dir` still catches the create-between-here-
-    // and-lock race.
+    // Fast path, and also catches name=`.` (which `validate_dir_name` accepts
+    // but `resolve_new_path` rejects). Post-lock `create_dir` still wins the race.
     if tokio::fs::try_exists(&new_dir_candidate)
         .await
         .unwrap_or(false)
@@ -232,9 +230,7 @@ where
         }
     };
 
-    // Lock for serialization parity; `create_dir` is itself atomic-fails-
-    // if-exists. A `Fail`-mode lock on this path surfaces as `err_destination_busy`.
-    //
+    // Lock for serialization parity; `create_dir` is itself atomic-fails-if-exists.
     // Guards live only inside this block; all socket sends happen after it.
     let response = 'locked: {
         let target_key = match lock_key(&new_dir_path).await {

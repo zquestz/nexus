@@ -1,4 +1,4 @@
-//! Handler for VoiceJoin command - join voice chat for a channel or user message
+//! Handler for VoiceJoin command — join voice for a channel or user message
 
 use std::io;
 
@@ -18,15 +18,9 @@ use super::{
 use crate::db::Permission;
 use crate::voice::VoiceSession;
 
-/// Handle VoiceJoin command - join voice chat for a channel or user message
-///
-/// Target format (from client):
-/// - Channel: `"#general"` (user must be a member)
-/// - User message: `"bob"` (target must be online)
-///
-/// Internally, the server converts user message targets to a canonical array
-/// format `["alice", "bob"]` (sorted) for registry lookups. Clients only see
-/// simple string targets.
+/// Join voice. Client target is `"#general"` (must be a member) or `"bob"`
+/// (must be online). User-message targets are stored internally as a sorted
+/// canonical array `["alice", "bob"]`; clients only see the simple string.
 pub async fn handle_voice_join<W>(
     target: String,
     session_id: Option<u32>,
@@ -156,14 +150,13 @@ where
         }
     };
 
-    // Add self to participants list (sorted by lowercase)
     participants.push(user.nickname.clone());
     participants.sort_by_key(|a| a.to_lowercase());
 
     if broadcast_joined {
         if is_channel {
-            // For channels: broadcast to ALL channel members with voice_listen permission
-            // (not just voice participants) so everyone can see who's in voice
+            // Notify ALL channel members with voice_listen (not just voice
+            // participants) so everyone sees who's in voice.
             let channel_name = client_target.clone();
             let members = ctx
                 .channel_manager
@@ -190,7 +183,7 @@ where
                 }
             }
         } else {
-            // For user messages: only notify the other participant
+            // User messages: only notify the other participant.
             for participant_nickname in &participants {
                 if participant_nickname.to_lowercase() == user.nickname.to_lowercase() {
                     continue;

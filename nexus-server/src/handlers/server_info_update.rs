@@ -64,7 +64,6 @@ enum StageFail {
     Channel(&'static str, String, String),
 }
 
-/// Request parameters for ServerInfoUpdate command
 pub struct ServerInfoUpdateRequest {
     pub name: Option<String>,
     pub description: Option<String>,
@@ -83,7 +82,6 @@ pub struct ServerInfoUpdateRequest {
     pub session_id: Option<u32>,
 }
 
-/// Handle ServerInfoUpdate command
 pub async fn handle_server_info_update<W>(
     request: ServerInfoUpdateRequest,
     ctx: &mut HandlerContext<'_, W>,
@@ -119,7 +117,6 @@ where
             .await;
     };
 
-    // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
@@ -127,7 +124,7 @@ where
         }
     };
 
-    // Admin-only - check if user is admin (before validation to not reveal validation rules)
+    // Admin gate before validation, so validation rules aren't leaked to non-admins.
     if !user.is_admin {
         warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_ADMIN_REQUIRED);
         return send_failure(ctx, err_admin_required(ctx.locale)).await;
@@ -152,7 +149,6 @@ where
         return send_failure(ctx, err_no_fields_to_update(ctx.locale)).await;
     }
 
-    // Validate name if provided
     if let Some(ref n) = name
         && let Err(e) = validate_server_name(n)
     {
@@ -167,7 +163,6 @@ where
         return send_failure(ctx, error_msg).await;
     }
 
-    // Validate description if provided
     if let Some(ref d) = description
         && let Err(e) = validate_server_description(d)
     {
@@ -186,7 +181,7 @@ where
         return send_failure(ctx, error_msg).await;
     }
 
-    // Validate public_address if provided (empty string clears the advertised value)
+    // Empty string clears the advertised value.
     if let Some(ref addr) = public_address
         && let Err(e) = validate_public_address(addr)
     {
@@ -212,10 +207,9 @@ where
         return send_failure(ctx, error_msg).await;
     }
 
-    // Note: max_connections_per_ip and max_transfers_per_ip allow 0 (meaning unlimited)
-    // No validation needed beyond Option<u32> type checking
+    // max_connections_per_ip / max_transfers_per_ip: 0 means unlimited, so no range check.
 
-    // Validate image if provided (empty string is allowed to clear image)
+    // Empty string clears the image (skip validation in that case).
     if let Some(ref img) = image
         && !img.is_empty()
         && let Err(e) = validate_server_image(img)
@@ -228,7 +222,6 @@ where
         return send_failure(ctx, error_msg).await;
     }
 
-    // Validate persistent_channels if provided
     if let Some(ref channels_str) = persistent_channels {
         let channel_names = crate::db::ConfigDb::parse_channel_list(channels_str);
         for name in &channel_names {
@@ -240,7 +233,6 @@ where
         }
     }
 
-    // Validate auto_join_channels if provided
     if let Some(ref channels_str) = auto_join_channels {
         let channel_names = crate::db::ConfigDb::parse_channel_list(channels_str);
         for name in &channel_names {
@@ -252,7 +244,7 @@ where
         }
     }
 
-    // Validate min password strength if provided (must be 0-4)
+    // Strength must be 0-4 (zxcvbn score range).
     if let Some(strength) = min_password_strength
         && strength > validators::PasswordStrength::Excellent.score()
     {
@@ -328,7 +320,7 @@ where
         {
             break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_REINDEX, e.to_string()));
         }
-        // Note: The timer task reads from config each cycle, so no runtime update needed
+        // No runtime update needed: the timer task re-reads config each cycle.
 
         // Reconcile per-channel settings rows in-tx so the materialized
         // `channels_to_init` reflects the staged (not yet committed) state.
@@ -505,10 +497,8 @@ where
             .await;
     }
 
-    // Fetch current server info for broadcast (single query)
     let config = ctx.db.config.get_all().await;
 
-    // Broadcast ServerInfoUpdated to all connected users
     ctx.user_manager
         .broadcast_server_info_updated(ServerInfoValues {
             name: config.server_name,
@@ -531,7 +521,6 @@ where
         })
         .await;
 
-    // Log and send success response to requester
     info!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_SUCCESS);
     ctx.send_message(&ServerMessage::ServerInfoUpdateResponse {
         success: true,
@@ -570,7 +559,6 @@ mod tests {
         };
         let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
 
-        // Should fail with disconnect
         assert!(result.is_err(), "ServerInfoUpdate should require login");
     }
 
@@ -578,7 +566,6 @@ mod tests {
     async fn test_server_info_update_requires_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as non-admin user
         let session_id = login_user(&mut test_ctx, "testuser", "password", &[], false).await;
 
         let request = ServerInfoUpdateRequest {
@@ -619,7 +606,6 @@ mod tests {
     async fn test_server_info_update_no_fields_fails() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = ServerInfoUpdateRequest {
@@ -660,7 +646,6 @@ mod tests {
     async fn test_server_info_update_name_empty_fails() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = ServerInfoUpdateRequest {
@@ -701,7 +686,6 @@ mod tests {
     async fn test_server_info_update_name_too_long_fails() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let long_name = "a".repeat(validators::MAX_SERVER_NAME_LENGTH + 1);
@@ -744,7 +728,6 @@ mod tests {
     async fn test_server_info_update_description_too_long_fails() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let long_desc = "a".repeat(validators::MAX_SERVER_DESCRIPTION_LENGTH + 1);
@@ -787,10 +770,9 @@ mod tests {
     async fn test_server_info_update_max_connections_zero_means_unlimited() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // 0 means unlimited - should succeed
+        // 0 means unlimited.
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
@@ -821,7 +803,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify 0 was saved (means unlimited)
         let saved_max = test_ctx.db.config.get_max_connections_per_ip().await;
         assert_eq!(saved_max, 0);
     }
@@ -830,7 +811,6 @@ mod tests {
     async fn test_server_info_update_name_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = ServerInfoUpdateRequest {
@@ -863,7 +843,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify name was saved
         let saved_name = test_ctx.db.config.get_server_name().await;
         assert_eq!(saved_name, "My Custom Server");
     }
@@ -957,7 +936,6 @@ mod tests {
     async fn test_server_info_update_description_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = ServerInfoUpdateRequest {
@@ -990,7 +968,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify description was saved
         let saved_desc = test_ctx.db.config.get_server_description().await;
         assert_eq!(saved_desc, "Welcome to my server!");
     }
@@ -999,7 +976,6 @@ mod tests {
     async fn test_server_info_update_max_connections_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = ServerInfoUpdateRequest {
@@ -1032,7 +1008,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify max_connections was saved
         let saved_max = test_ctx.db.config.get_max_connections_per_ip().await;
         assert_eq!(saved_max, 10);
     }
@@ -1041,7 +1016,6 @@ mod tests {
     async fn test_server_info_update_all_fields_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = ServerInfoUpdateRequest {
@@ -1074,7 +1048,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify all fields were saved
         let saved_name = test_ctx.db.config.get_server_name().await;
         assert_eq!(saved_name, "Full Update Server");
 
@@ -1089,10 +1062,9 @@ mod tests {
     async fn test_server_info_update_empty_description_allowed() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // First set a description
+        // Set a description, then clear it with an empty string.
         test_ctx
             .db
             .config
@@ -1100,7 +1072,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Then clear it
         let request = ServerInfoUpdateRequest {
             name: None,
             description: Some("".to_string()),
@@ -1131,14 +1102,9 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify description was cleared
         let saved_desc = test_ctx.db.config.get_server_description().await;
         assert_eq!(saved_desc, "");
     }
-
-    // =========================================================================
-    // Public Address Tests
-    // =========================================================================
 
     #[tokio::test]
     async fn test_server_info_update_public_address_success() {
@@ -1378,18 +1344,13 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // Server Image Tests
-    // =========================================================================
-
     #[tokio::test]
     async fn test_server_info_update_image_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a test image (minimal valid PNG data URI)
+        // Minimal valid PNG data URI.
         let test_image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
 
         let request = ServerInfoUpdateRequest {
@@ -1422,7 +1383,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify image was saved
         let saved_image = test_ctx.db.config.get_server_image().await;
         assert_eq!(saved_image, test_image);
     }
@@ -1431,10 +1391,9 @@ mod tests {
     async fn test_server_info_update_image_empty_allowed() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // First set an image
+        // Set an image, then clear it with an empty string.
         test_ctx
             .db
             .config
@@ -1442,7 +1401,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Then clear it
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
@@ -1473,7 +1431,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify image was cleared
         let saved_image = test_ctx.db.config.get_server_image().await;
         assert_eq!(saved_image, "");
     }
@@ -1482,10 +1439,8 @@ mod tests {
     async fn test_server_info_update_image_too_large_fails() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create an image that exceeds the limit
         let prefix = "data:image/png;base64,";
         let padding = "A".repeat(validators::MAX_SERVER_IMAGE_DATA_URI_LENGTH);
         let large_image = format!("{}{}", prefix, padding);
@@ -1528,7 +1483,6 @@ mod tests {
     async fn test_server_info_update_image_invalid_format_fails() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Invalid format (not a data URI)
@@ -1572,7 +1526,6 @@ mod tests {
     async fn test_server_info_update_image_unsupported_type_fails() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Unsupported image type (GIF)
@@ -1612,15 +1565,10 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // File Reindex Interval Tests
-    // =========================================================================
-
     #[tokio::test]
     async fn test_server_info_update_file_reindex_interval_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = ServerInfoUpdateRequest {
@@ -1653,7 +1601,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify interval was saved
         let saved_interval = test_ctx.db.config.get_file_reindex_interval().await;
         assert_eq!(saved_interval, 10);
     }
@@ -1662,10 +1609,9 @@ mod tests {
     async fn test_server_info_update_file_reindex_interval_zero_disables() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // 0 means disabled - should succeed
+        // 0 disables reindexing.
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
@@ -1696,7 +1642,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify 0 was saved (means disabled)
         let saved_interval = test_ctx.db.config.get_file_reindex_interval().await;
         assert_eq!(saved_interval, 0);
     }
@@ -1705,7 +1650,6 @@ mod tests {
     async fn test_server_info_update_persistent_channels_valid() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = ServerInfoUpdateRequest {
@@ -1738,7 +1682,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify channels were saved
         let saved = test_ctx.db.config.get_persistent_channels().await;
         assert_eq!(saved, "#general #support");
     }
@@ -1747,10 +1690,9 @@ mod tests {
     async fn test_server_info_update_persistent_channels_missing_prefix() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // "general" is missing the # prefix
+        // "general" lacks the # prefix → the whole list is rejected.
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
@@ -1789,7 +1731,6 @@ mod tests {
     async fn test_server_info_update_auto_join_channels_valid() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = ServerInfoUpdateRequest {
@@ -1822,7 +1763,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify channels were saved
         let saved = test_ctx.db.config.get_auto_join_channels().await;
         assert_eq!(saved, "#nexus #welcome");
     }
@@ -1831,10 +1771,9 @@ mod tests {
     async fn test_server_info_update_auto_join_channels_invalid() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // "#" alone is too short (needs at least one character after #)
+        // "#" alone is too short (needs a char after #).
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
@@ -1873,7 +1812,6 @@ mod tests {
     async fn test_server_info_update_channels_with_spaces_invalid() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Channel names can't contain spaces - but the parse_channel_list splits on whitespace,
@@ -1917,10 +1855,9 @@ mod tests {
     async fn test_server_info_update_empty_channel_list_valid() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Empty string is valid - means no channels
+        // Empty string is valid — no channels.
         let request = ServerInfoUpdateRequest {
             name: None,
             description: None,
@@ -1951,7 +1888,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify empty was saved
         let saved_persistent = test_ctx.db.config.get_persistent_channels().await;
         let saved_auto_join = test_ctx.db.config.get_auto_join_channels().await;
         assert_eq!(saved_persistent, "");
@@ -1994,7 +1930,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify saved value
         let saved = test_ctx.db.config.get_min_password_strength().await;
         assert_eq!(saved, validators::PasswordStrength::Strong);
     }
@@ -2152,11 +2087,10 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify DB persistence
         let saved = test_ctx.db.config.get_chat_burst_limit().await;
         assert_eq!(saved, 10);
 
-        // Verify FloodConfig atomic was updated
+        // Runtime FloodConfig atomic is updated alongside the DB write.
         assert_eq!(test_ctx.flood_config.burst(), 10);
     }
 
@@ -2196,11 +2130,10 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify DB persistence
         let saved = test_ctx.db.config.get_chat_rate_limit().await;
         assert_eq!(saved, 60);
 
-        // Verify FloodConfig atomic was updated
+        // Runtime FloodConfig atomic is updated alongside the DB write.
         assert_eq!(test_ctx.flood_config.rate(), 60);
     }
 
@@ -2240,11 +2173,10 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        // Verify 0 was saved (means disabled)
         let saved = test_ctx.db.config.get_chat_rate_limit().await;
         assert_eq!(saved, 0);
 
-        // Verify FloodConfig atomic was updated
+        // Runtime FloodConfig atomic is updated alongside the DB write.
         assert_eq!(test_ctx.flood_config.rate(), 0);
     }
 
@@ -2292,7 +2224,6 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse"),
         }
 
-        // DB-side persistence.
         let stored = test_ctx.db.config.get_all().await.max_outbound_rate;
         assert_eq!(stored, 12_500_000);
     }

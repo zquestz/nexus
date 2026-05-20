@@ -1,15 +1,6 @@
-//! Shared utilities used by multiple tracker admin handlers.
-//!
-//! - [`compose_tracker_info`] — DB row + runtime status → wire struct,
-//!   used by `tracker_list` and `tracker_edit`.
-//! - `translate_tracker_error_kind` — internal helper that maps a
-//!   tracker task error kind to a localized admin-UI message in the
-//!   requesting admin's locale, so `TrackerInfo.last_error` is
-//!   pre-translated by the time it reaches the client.
-//! - [`validate_tracker_inputs`] — single-source-of-truth field
-//!   validator used by both `TrackerAdd` and `TrackerUpdate` so the
-//!   address/port/fingerprint/password/name rules can't drift between
-//!   the two handlers.
+//! Shared helpers for the tracker admin handlers. `validate_tracker_inputs`
+//! is the single field-validation source for `TrackerAdd`/`TrackerUpdate` so
+//! their rules can't drift; `compose_tracker_info` builds the wire struct.
 
 use nexus_common::fingerprint::is_canonical_fingerprint;
 use nexus_common::protocol::TrackerInfo;
@@ -39,14 +30,10 @@ use super::{
 use crate::db::TrackerRecord;
 use crate::tracker::TrackerStatus;
 
-/// Compose a `TrackerInfo` wire struct from a DB row + optional
-/// runtime status, translating the tracker task's `last_error_kind` into
-/// the requesting admin's locale.
-///
-/// When `status` is `None` (disabled tracker, or no task running yet),
-/// runtime fields default to "not connected" — `connected: false` and
-/// every other runtime field `None`. That accurately reflects the
-/// truth: no live tracker task, no connection state to report.
+/// Compose a `TrackerInfo` from a DB row + optional runtime status,
+/// translating `last_error_kind` into the requesting admin's locale.
+/// `status: None` (disabled, or no task yet) yields `connected: false`
+/// with all other runtime fields `None`.
 #[must_use]
 pub fn compose_tracker_info(
     record: TrackerRecord,
@@ -78,14 +65,9 @@ pub fn compose_tracker_info(
     }
 }
 
-/// Translate a tracker task error kind to a localized human-readable
-/// message using the requesting admin's locale.
-///
-/// The kind itself is a stable identifier (from
-/// `nexus_common::error_kind`). Known kinds map to a fixed i18n key;
-/// anything else falls back to the generic `err-tracker-unknown`
-/// (e.g. a future tracker version that returns an `error_kind` string
-/// we haven't taught the BBS to translate yet).
+/// Map a stable tracker error kind (from `nexus_common::error_kind`) to a
+/// localized message. Unknown kinds (e.g. from a newer tracker) fall back
+/// to the generic `err-tracker-unknown`.
 fn translate_tracker_error_kind(locale: &str, kind: &str) -> String {
     let i18n_key = match kind {
         ERROR_KIND_TRACKER_CONNECTION_FAILED => "err-tracker-connection-failed",
@@ -106,19 +88,10 @@ fn translate_tracker_error_kind(locale: &str, kind: &str) -> String {
     crate::i18n::t(locale, i18n_key)
 }
 
-/// Validate the field set common to `TrackerAdd` and
-/// `TrackerUpdate`. Returns `Ok(())` if all rules pass, otherwise
-/// `Err(localized_message)` with a translated error string the handler
-/// can drop straight into its typed response's `error` field.
-///
-/// Stops at the first failure (callers only need one message per
-/// rejected request), in this order:
-///
-/// 1. `address` — `validate_public_address` rules
-/// 2. `port` — must be non-zero
-/// 3. `fingerprint` (if set) — must be canonical 95-byte uppercase form
-/// 4. `password` (if set) — bounded by `MAX_PASSWORD_LENGTH`
-/// 5. `name` — `validate_tracker_name` rules
+/// Validate the field set shared by `TrackerAdd` and `TrackerUpdate`,
+/// returning a translated error on the first failure. Order: address
+/// (public-address rules), non-zero port, canonical fingerprint if set,
+/// password length if set, then name.
 pub fn validate_tracker_inputs(
     locale: &str,
     address: &str,
@@ -282,14 +255,10 @@ mod tests {
         assert_eq!(info.last_error_kind.as_deref(), Some("not_a_real_kind"));
     }
 
-    /// Every `ERROR_KIND_TRACKER_*` constant exposed by `nexus-common`
-    /// must have an explicit arm in `translate_tracker_error_kind` —
-    /// not just fall through to `err-tracker-unknown`. Without this
-    /// test, a future contributor who adds a new tracker kind to
-    /// `nexus-common::error_kind` but forgets the translation map
-    /// gets a silent runtime fallback instead of a build failure.
-    /// Adding a new constant requires updating both the translate map
-    /// and this list.
+    /// Every `ERROR_KIND_TRACKER_*` constant must have an explicit arm in
+    /// `translate_tracker_error_kind` rather than fall through to
+    /// `err-tracker-unknown`. Adding a new kind requires updating both the
+    /// translate map and this list.
     #[test]
     fn every_canonical_tracker_kind_has_a_translation_arm() {
         let unknown_en = crate::i18n::t("en", "err-tracker-unknown");
@@ -312,8 +281,6 @@ mod tests {
             );
         }
     }
-
-    // ---- validate_tracker_inputs ----
 
     const VALID_FINGERPRINT: &str = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
          AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
@@ -343,7 +310,7 @@ mod tests {
 
     #[test]
     fn validate_rejects_bad_address() {
-        // Address with embedded port — `validate_public_address` rejects it.
+        // Embedded port — rejected by validate_public_address.
         let err =
             validate_tracker_inputs("en", "tracker.example.com:7500", 7510, None, None, "Public")
                 .expect_err("should reject");
@@ -352,9 +319,8 @@ mod tests {
 
     #[test]
     fn validate_rejects_empty_address() {
-        // Empty string and whitespace-only — distinct from the bad-format
-        // path; tracker rows MUST have a real address (the BBS server's
-        // `public_address` accepts empty for "unset", but trackers don't).
+        // Tracker rows require a real address — unlike the BBS `public_address`,
+        // empty/whitespace isn't an "unset" sentinel here.
         let expected = crate::i18n::t("en", "err-tracker-address-empty");
         let err = validate_tracker_inputs("en", "", 7510, None, None, "Public")
             .expect_err("should reject empty");
@@ -403,8 +369,7 @@ mod tests {
 
     #[test]
     fn validate_returns_localized_error() {
-        // Same broken input in two locales should yield two different
-        // strings with the same root cause.
+        // Same bad input, two locales → two different strings.
         let en = validate_tracker_inputs("en", "tracker.example.com", 0, None, None, "Public")
             .expect_err("en error");
         let fr = validate_tracker_inputs("fr", "tracker.example.com", 0, None, None, "Public")

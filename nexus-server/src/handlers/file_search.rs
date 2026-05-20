@@ -22,7 +22,6 @@ use super::{
 use crate::db::Permission;
 use crate::files::resolve_user_area;
 
-/// Handle a file search request
 pub async fn handle_file_search<W>(
     query: String,
     root: bool,
@@ -39,7 +38,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
@@ -52,7 +50,6 @@ where
         }
     };
 
-    // Check file_search permission
     if !requesting_user.has_permission(Permission::FileSearch) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_SEARCH_PERMISSION_DENIED);
         let response = ServerMessage::FileSearchResponse {
@@ -63,7 +60,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check file_root permission if root flag is set
+    // Whole-area search requires FileRoot.
     if root && !requesting_user.has_permission(Permission::FileRoot) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_SEARCH_ROOT_DENIED);
         let response = ServerMessage::FileSearchResponse {
@@ -74,7 +71,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate search query
     if let Err(e) = validate_search_query(&query) {
         let error_msg = match e {
             SearchQueryError::Empty => err_search_query_empty(ctx.locale),
@@ -94,12 +90,10 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Determine search area prefix
+    // Root search has no prefix filter; otherwise scope to the user's area.
     let area_prefix = if root {
-        // Admin searching entire file area - no prefix filter
         None
     } else {
-        // User searching their own area
         let Some(file_root) = ctx.file_root else {
             let response = ServerMessage::FileSearchResponse {
                 success: true,
@@ -109,7 +103,7 @@ where
             return ctx.send_message(&response).await;
         };
 
-        // Get user's area relative path (e.g., "/shared" or "/users/alice")
+        // Relative area path, e.g. "/shared" or "/users/alice".
         let area_root = resolve_user_area(file_root, &requesting_user.username).await;
         let relative_area = area_root
             .strip_prefix(file_root)
@@ -150,12 +144,11 @@ where
         }
     };
 
-    // Strip area prefix from result paths so client sees virtual paths
-    // e.g., "/shared/Documents/file.txt" -> "/Documents/file.txt"
+    // Strip the area prefix so the client sees virtual paths, e.g.
+    // "/shared/Documents/file.txt" -> "/Documents/file.txt".
     if let Some(prefix) = &area_prefix {
         for result in &mut results {
             if let Some(stripped) = result.path.strip_prefix(prefix) {
-                // If stripping leaves empty or just removes trailing content, add leading slash
                 if stripped.is_empty() {
                     result.path = "/".to_string();
                 } else if stripped.starts_with('/') {
@@ -200,7 +193,6 @@ mod tests {
     async fn test_file_search_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user without FileSearch permission
         let session_id = login_user(&mut test_ctx, "user", "password", &[], false).await;
 
         let result = handle_file_search(
@@ -227,7 +219,6 @@ mod tests {
     async fn test_file_search_root_requires_file_root_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with FileSearch but not FileRoot permission
         let session_id = login_user(
             &mut test_ctx,
             "user",
@@ -315,7 +306,6 @@ mod tests {
     async fn test_file_search_with_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with FileSearch permission
         let session_id = login_user(
             &mut test_ctx,
             "user",

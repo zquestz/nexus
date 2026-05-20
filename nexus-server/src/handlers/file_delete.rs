@@ -1,4 +1,4 @@
-//! FileDelete message handler - Deletes a file or empty directory in the file area
+//! Deletes a file or empty directory in the file area.
 
 use std::io;
 
@@ -137,12 +137,10 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // See `files::path_lock`. Acquire before any metadata/resolve/type check
-    // so a concurrent locked rename/move/copy can't replace the target between
-    // inspection and removal. An upload still claiming this path reports as
-    // upload-in-progress — the file isn't fully on disk yet.
-    //
-    // Guards live only inside this block; all socket sends happen after it.
+    // Acquire before any metadata/resolve/type check so a concurrent locked
+    // rename/move/copy can't replace the target between inspection and removal;
+    // a path still held by an upload reports as busy. Guards live only inside
+    // this block; all socket sends happen after it.
     let response = 'locked: {
         let target_key = match lock_key(&candidate).await {
             Ok(k) => k,

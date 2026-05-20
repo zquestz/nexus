@@ -19,7 +19,6 @@ use crate::constants::{
     LOG_HANDSHAKE_MINOR_MISMATCH,
 };
 
-/// Handle a handshake request from the client
 pub async fn handle_handshake<W>(
     version: String,
     handshake_complete: &mut bool,
@@ -30,7 +29,8 @@ where
 {
     let server_version_str = nexus_common::PROTOCOL_VERSION;
 
-    // Check for duplicate handshake
+    // `fingerprint` is a required field on every HandshakeResponse, success or
+    // failure — the client verifies it before login.
     if *handshake_complete {
         warn!(ip = %ctx.peer_addr, "{}", LOG_HANDSHAKE_DUPLICATE);
         let response = ServerMessage::HandshakeResponse {
@@ -43,7 +43,6 @@ where
         return Err(io::Error::other("Duplicate handshake"));
     }
 
-    // Validate and parse version string
     let client_version = match validators::validate_version(&version) {
         Ok(v) => v,
         Err(e) => {
@@ -65,10 +64,8 @@ where
         }
     };
 
-    // Check semver compatibility using the already-parsed version
     match version::check_compatibility(&version::protocol_version(), &client_version) {
         CompatibilityResult::Compatible => {
-            // Version is compatible - complete handshake
             *handshake_complete = true;
             let response = ServerMessage::HandshakeResponse {
                 success: true,
@@ -146,7 +143,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let mut handshake_complete = false;
 
-        // Call handler with matching version
         let version = nexus_common::PROTOCOL_VERSION.to_string();
         let result = handle_handshake(
             version,
@@ -155,17 +151,14 @@ mod tests {
         )
         .await;
 
-        // Should succeed
         assert!(
             result.is_ok(),
             "Handshake should succeed with matching version"
         );
         assert!(handshake_complete, "Handshake flag should be set to true");
 
-        // Read response from client side using new framing format
         let response_msg = read_server_message(&mut test_ctx).await;
 
-        // Verify response
         match response_msg {
             ServerMessage::HandshakeResponse {
                 success,
@@ -375,7 +368,6 @@ mod tests {
         assert_eq!(err.kind(), io::ErrorKind::Other);
         assert!(err.to_string().contains("Major version mismatch"));
 
-        // Read and verify response using new framing format
         let response_msg = read_server_message(&mut test_ctx).await;
 
         match response_msg {
@@ -422,7 +414,6 @@ mod tests {
         );
         assert!(!handshake_complete, "Handshake flag should remain false");
 
-        // Read and verify response using new framing format
         let response_msg = read_server_message(&mut test_ctx).await;
 
         match response_msg {
@@ -467,7 +458,6 @@ mod tests {
         );
         assert!(!handshake_complete, "Handshake flag should remain false");
 
-        // Read and verify response using new framing format
         let response_msg = read_server_message(&mut test_ctx).await;
 
         match response_msg {

@@ -1,4 +1,4 @@
-//! GroupDelete message handler - Deletes an account group
+//! GroupDelete message handler
 
 use std::io;
 
@@ -17,7 +17,6 @@ use super::{
 };
 use crate::db::Permission;
 
-/// Handle a group delete request
 pub async fn handle_group_delete<W>(
     id: i64,
     session_id: Option<u32>,
@@ -33,7 +32,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -50,7 +48,6 @@ where
         }
     };
 
-    // Check permission
     if !requesting_user.has_permission(Permission::GroupDelete) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_GROUP_DELETE_PERMISSION_DENIED);
         let response = ServerMessage::GroupDeleteResponse {
@@ -62,7 +59,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Fetch group by id to get the name for the response
+    // Fetch the group to echo its name in the response.
     let group = match ctx.db.groups.get_group_by_id(id).await {
         Ok(Some(g)) => g,
         Ok(None) => {
@@ -86,7 +83,7 @@ where
         }
     };
 
-    // Check member count - cannot delete group with assigned users
+    // Reject deletion if the group still has members.
     match ctx.db.groups.get_member_count(id).await {
         Ok(count) if count > 0 => {
             let response = ServerMessage::GroupDeleteResponse {
@@ -110,12 +107,11 @@ where
         }
     }
 
-    // Delete group from database
     match ctx.db.groups.delete_group(id).await {
         Ok(true) => {}
         Ok(false) => {
-            // Race condition: group was deleted by another admin, or a member
-            // was assigned between our pre-check and the atomic delete
+            // Race: deleted by another admin, or a member assigned between the
+            // pre-check and the atomic delete.
             let response = ServerMessage::GroupDeleteResponse {
                 success: false,
                 error: Some(err_group_not_found(ctx.locale)),
@@ -136,7 +132,6 @@ where
         }
     };
 
-    // Log and send success response
     info!(user = %requesting_user.username, ip = %ctx.peer_addr, group = %group.name, "{}", LOG_GROUP_DELETE_SUCCESS);
     let response = ServerMessage::GroupDeleteResponse {
         success: true,
@@ -222,7 +217,6 @@ mod tests {
         )
         .await;
 
-        // Create a group to delete
         let group = test_ctx
             .db
             .groups
@@ -318,7 +312,6 @@ mod tests {
 
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group to delete
         let group = test_ctx
             .db
             .groups

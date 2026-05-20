@@ -1,4 +1,4 @@
-//! GroupCreate message handler - Creates a new account group
+//! GroupCreate message handler
 
 use std::io;
 use std::sync::atomic::Ordering;
@@ -27,7 +27,6 @@ use super::{
 };
 use crate::db::{Permission, Permissions};
 
-/// Handle a group creation request from the client
 pub async fn handle_group_create<W>(
     name: String,
     is_shared: bool,
@@ -143,7 +142,6 @@ where
             }
         }
 
-        // Parse and validate requested permissions
         let mut parsed_permissions = Permissions::new();
         for perm_str in &permissions {
             let perm = match Permission::parse(perm_str) {
@@ -248,7 +246,6 @@ mod tests {
     async fn test_group_create_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user without GroupCreate permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_group_create(
@@ -271,7 +268,6 @@ mod tests {
     async fn test_group_create_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with GroupCreate and some permissions to grant
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -318,7 +314,6 @@ mod tests {
     async fn test_group_create_duplicate_name() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create group first time
@@ -374,7 +369,6 @@ mod tests {
     async fn test_group_create_invalid_name() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to create group with empty name
@@ -404,7 +398,6 @@ mod tests {
     async fn test_group_create_shared_with_forbidden_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Try to create a shared group with a non-shared permission
@@ -447,7 +440,6 @@ mod tests {
     async fn test_group_create_admin_has_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin (no explicit permissions needed)
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_group_create(
@@ -483,7 +475,6 @@ mod tests {
     async fn test_group_create_non_admin_cannot_grant_unowned_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as non-admin with GroupCreate and ChatSend, but NOT UserKick
         let session_id = login_user(
             &mut test_ctx,
             "creator",

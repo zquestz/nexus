@@ -1,5 +1,3 @@
-//! Handler for UserKick command
-
 use std::io;
 
 use tokio::io::AsyncWrite;
@@ -21,7 +19,6 @@ use crate::constants::{
 };
 use crate::db::Permission;
 
-/// Handle UserKick command
 pub async fn handle_user_kick<W>(
     nickname: String,
     reason: Option<String>,
@@ -38,7 +35,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
@@ -48,7 +44,6 @@ where
         }
     };
 
-    // Check UserKick permission (uses cached permissions, admin bypass built-in)
     if !requesting_user_session.has_permission(Permission::UserKick) {
         warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_KICK_PERMISSION_DENIED);
         let response = ServerMessage::UserKickResponse {
@@ -59,7 +54,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate nickname format
     if let Err(e) = validators::validate_nickname(&nickname) {
         let error_msg = match e {
             NicknameError::Empty => err_nickname_empty(ctx.locale),
@@ -76,10 +70,8 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate optional reason. The reason gets formatted into the
-    // single-line "kicked by X with reason: …" message rendered to
-    // the kicked user, so we reject control characters (including
-    // newlines and tabs) and cap at MAX_KICK_REASON_LENGTH characters.
+    // Reason is formatted into a single-line kick message, so reject
+    // control characters (newlines/tabs) and cap at MAX_KICK_REASON_LENGTH.
     if let Some(ref r) = reason
         && let Err(e) = validators::validate_kick_reason(r)
     {
@@ -97,8 +89,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Prevent self-kick (cheap check before DB queries)
-    // Check against the requesting user's nickname (which is the display name)
+    // Prevent self-kick by nickname (display name), before DB queries.
     let target_lower = nickname.to_lowercase();
     let is_self_kick = requesting_user_session.nickname.to_lowercase() == target_lower;
     if is_self_kick {
@@ -110,11 +101,10 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Look up target by nickname (all users have a nickname - equals username for regular accounts)
+    // Target by nickname (equals username for regular accounts).
     let target_session = match ctx.user_manager.get_session_by_nickname(&nickname).await {
         Some(session) => session,
         None => {
-            // User not online
             let response = ServerMessage::UserKickResponse {
                 success: false,
                 error: Some(err_nickname_not_online(ctx.locale, &nickname)),
@@ -124,7 +114,7 @@ where
         }
     };
 
-    // Look up account in database to check admin status
+    // Look up account in DB to check admin status.
     let db_lookup_username = target_session.username.clone();
 
     let target_user_db = match ctx.db.users.get_user_by_username(&db_lookup_username).await {
@@ -140,7 +130,6 @@ where
         }
     };
 
-    // Prevent kicking admin users
     if let Some(ref target_db) = target_user_db
         && target_db.is_admin
     {
@@ -152,20 +141,18 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Get the preserved display name (nickname)
     let preserved_nickname = target_session.nickname.clone();
 
-    // Get all sessions to kick by nickname
-    // - Regular accounts: nickname == username, so all sessions are returned
-    // - Shared accounts: unique nickname, so only that session is returned
+    // Kick all sessions sharing this nickname. Regular accounts: nickname ==
+    // username so every session matches; shared accounts: unique per nickname.
     let sessions_to_kick = ctx
         .user_manager
         .get_sessions_by_nickname(&preserved_nickname)
         .await;
 
-    // Kick all target sessions
     for user in sessions_to_kick {
-        // Send kick message to the user in their locale before disconnecting
+        // Send the kick Error (command "UserKick") in the user's locale before
+        // disconnecting — the client maps it to UserKicked, not ConnectionLost.
         let kick_message = if let Some(ref r) = reason {
             err_kicked_by_with_reason(&user.locale, &requesting_user_session.username, r)
         } else {
@@ -177,7 +164,6 @@ where
         };
         let _ = user.tx.send((kick_msg, None));
 
-        // Remove from voice (if in voice) and UserManager, broadcast disconnection
         let target_session_id = user.session_id;
         remove_user_with_voice_cleanup(
             ctx.user_manager,
@@ -189,7 +175,6 @@ where
         .await;
     }
 
-    // Log and send success response to requester
     info!(user = %requesting_user_session.username, ip = %ctx.peer_addr, target = %preserved_nickname, "{}", LOG_USER_KICK_SUCCESS);
     let response = ServerMessage::UserKickResponse {
         success: true,
@@ -557,9 +542,7 @@ mod tests {
         }
     }
 
-    // ========================================================================
-    // Shared Account Tests
-    // ========================================================================
+    // Shared account tests.
 
     #[tokio::test]
     async fn test_userkick_shared_account_by_nickname() {

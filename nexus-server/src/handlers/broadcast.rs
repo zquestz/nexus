@@ -1,4 +1,4 @@
-//! Broadcast message handler
+//! Broadcasts a message to all connected users.
 
 use std::io;
 
@@ -17,10 +17,8 @@ use crate::constants::{
 };
 use crate::db::Permission;
 
-/// Handle a broadcast request from the client
-///
-/// Broadcasts a message to all connected users including the sender.
-/// Also sends a UserBroadcastResponse to the sender indicating success or failure.
+/// Broadcasts a message to all connected users (including the sender) and
+/// replies to the sender with a UserBroadcastResponse.
 pub async fn handle_user_broadcast<W>(
     message: String,
     session_id: Option<u32>,
@@ -36,7 +34,6 @@ where
             .await;
     };
 
-    // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
@@ -49,7 +46,6 @@ where
         }
     };
 
-    // Check permission (uses cached permissions, admin bypass built-in)
     if !user.has_permission(Permission::UserBroadcast) {
         warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_USER_BROADCAST_PERMISSION_DENIED);
         let response = ServerMessage::UserBroadcastResponse {
@@ -77,7 +73,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Send broadcast to all users
     ctx.user_manager
         .broadcast(ServerMessage::ServerBroadcast {
             session_id: id,
@@ -86,7 +81,6 @@ where
         })
         .await;
 
-    // Send success response to the sender
     ctx.send_message(&ServerMessage::UserBroadcastResponse {
         success: true,
         error: None,
@@ -103,9 +97,8 @@ mod tests {
     #[tokio::test]
     async fn test_broadcast_requires_login() {
         let mut test_ctx = create_test_context().await;
-        let session_id = None; // Not logged in
+        let session_id = None;
 
-        // Try to broadcast without login
         let result = handle_user_broadcast(
             "Hello everyone".to_string(),
             session_id,
@@ -113,7 +106,6 @@ mod tests {
         )
         .await;
 
-        // Should fail
         assert!(result.is_err(), "Broadcast should require login");
     }
 

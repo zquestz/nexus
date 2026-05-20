@@ -1,4 +1,4 @@
-//! FileInfo message handler - Returns detailed information about a file or directory
+//! FileInfo handler — detailed info about a file or directory.
 
 use std::io;
 use std::path::Path;
@@ -20,10 +20,7 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::files::{build_and_validate_candidate_path, resolve_path, resolve_user_area};
 
-/// Count items in a directory (non-recursive) - async version
-///
-/// Runs on a blocking thread pool to avoid blocking the async runtime
-/// for directories with many entries.
+/// Count items in a directory (non-recursive), off the async runtime.
 async fn count_directory_items_async(path: &Path) -> Option<u64> {
     let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || {
@@ -34,17 +31,12 @@ async fn count_directory_items_async(path: &Path) -> Option<u64> {
     .ok()?
 }
 
-/// Compute SHA-256 hash of a file - async version
-///
-/// Uses the centralized hash module from nexus-common which runs on a
-/// blocking thread pool to avoid blocking the async runtime for large files.
+/// SHA-256 of a file via nexus-common's hash module (off the async runtime).
 async fn compute_sha256_async(path: &Path) -> Option<String> {
     nexus_common::hash::compute_sha256(path).await.ok()
 }
 
-/// Detect MIME type from file content - async version
-///
-/// Runs on a blocking thread pool since it reads file content.
+/// Detect MIME type from file content, off the async runtime.
 async fn detect_mime_type_async(path: &Path) -> Option<String> {
     let path = path.to_path_buf();
     tokio::task::spawn_blocking(move || detect_mime_type_sync(&path))
@@ -52,14 +44,12 @@ async fn detect_mime_type_async(path: &Path) -> Option<String> {
         .ok()?
 }
 
-/// Synchronous MIME type detection (called from spawn_blocking)
+/// Synchronous MIME detection (called from spawn_blocking).
 fn detect_mime_type_sync(path: &Path) -> Option<String> {
-    // Try magic byte detection first
+    // Magic-byte detection first, then fall back to extension.
     if let Some(kind) = infer::get_from_path(path).ok().flatten() {
         return Some(kind.mime_type().to_string());
     }
-
-    // Fall back to extension-based detection
     detect_mime_from_extension(path)
 }
 
@@ -116,7 +106,6 @@ fn detect_mime_from_extension(path: &Path) -> Option<String> {
     Some(mime.to_string())
 }
 
-/// Handle a file info request
 pub async fn handle_file_info<W>(
     path: String,
     root: bool,
@@ -133,7 +122,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -141,7 +129,7 @@ where
     {
         Some(u) => u,
         None => {
-            // Session not found - likely a race condition, not a security event
+            // Session gone — a race, not a security event.
             let response = ServerMessage::FileInfoResponse {
                 success: false,
                 error: Some(err_not_logged_in(ctx.locale)),
@@ -151,7 +139,6 @@ where
         }
     };
 
-    // Check file root (cheap check, should always be set in production)
     let Some(file_root) = ctx.file_root else {
         let response = ServerMessage::FileInfoResponse {
             success: false,
@@ -161,7 +148,6 @@ where
         return ctx.send_message(&response).await;
     };
 
-    // Check FileInfo permission
     if !requesting_user.has_permission(Permission::FileInfo) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_INFO_PERMISSION_DENIED);
         let response = ServerMessage::FileInfoResponse {
@@ -172,7 +158,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check FileRoot permission if root browsing requested
+    // Root browsing additionally requires FileRoot.
     if root && !requesting_user.has_permission(Permission::FileRoot) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_INFO_ROOT_DENIED);
         let response = ServerMessage::FileInfoResponse {
@@ -183,7 +169,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate path
     if let Err(e) = validators::validate_file_path(&path) {
         let error_msg = match e {
             FilePathError::TooLong => {
@@ -201,7 +186,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Resolve area root - either file root (if root browsing) or user's area
+    // Area root: file_root in root mode, else the user's personal area.
     let area_root_path = if root {
         file_root.to_path_buf()
     } else {
@@ -227,7 +212,6 @@ where
         }
     };
 
-    // Build and validate candidate path
     let candidate = match build_and_validate_candidate_path(&area_root, &path).await {
         Ok(p) => p,
         Err(_) => {
@@ -240,14 +224,13 @@ where
         }
     };
 
-    // Check if the candidate path is a symlink BEFORE resolving
-    // (resolve_path follows symlinks, so we'd lose this info)
+    // Check symlink-ness before resolve_path follows it.
     let is_symlink = tokio::fs::symlink_metadata(&candidate)
         .await
         .map(|m| m.file_type().is_symlink())
         .unwrap_or(false);
 
-    // Resolve and validate the path (follows symlinks, checks it's within area)
+    // Resolve symlinks and confirm the result stays within the area.
     let resolved = match resolve_path(&area_root, &candidate).await {
         Ok(p) => p,
         Err(_) => {
@@ -260,7 +243,7 @@ where
         }
     };
 
-    // Get file metadata from resolved path (follows symlinks for size, timestamps, etc.)
+    // Metadata from the resolved path (symlink target's size, timestamps, …).
     let metadata = match tokio::fs::metadata(&resolved).await {
         Ok(m) => m,
         Err(_) => {
@@ -276,7 +259,6 @@ where
     let is_directory = metadata.is_dir();
     let size = if is_directory { 0 } else { metadata.len() };
 
-    // Get timestamps
     let modified = metadata
         .modified()
         .ok()
@@ -284,35 +266,32 @@ where
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
-    // Created time (not available on all filesystems)
+    // Not available on all filesystems.
     let created = metadata
         .created()
         .ok()
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_secs() as i64);
 
-    // Get file name from the candidate path (not resolved) to preserve symlink names
+    // Name from the candidate (not resolved) so symlink names are preserved.
     let name = candidate
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("")
         .to_string();
 
-    // MIME type (only for files) - async to avoid blocking on magic byte detection
     let mime_type = if is_directory {
         None
     } else {
         detect_mime_type_async(&resolved).await
     };
 
-    // Item count (only for directories) - async for large directories
     let item_count = if is_directory {
         count_directory_items_async(&resolved).await
     } else {
         None
     };
 
-    // SHA-256 hash (only for files) - async for large files
     let sha256 = if is_directory {
         None
     } else {
@@ -338,10 +317,6 @@ where
     };
     ctx.send_message(&response).await
 }
-
-// =============================================================================
-// Tests
-// =============================================================================
 
 #[cfg(test)]
 mod tests {

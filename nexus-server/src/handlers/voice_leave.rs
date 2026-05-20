@@ -1,4 +1,4 @@
-//! Handler for VoiceLeave command - leave current voice session
+//! Handler for VoiceLeave command
 
 use std::io;
 
@@ -12,10 +12,7 @@ use nexus_common::protocol::ServerMessage;
 use super::{HandlerContext, err_not_logged_in, err_voice_not_joined};
 use crate::voice::send_voice_leave_notifications;
 
-/// Handle VoiceLeave command - leave current voice session
-///
-/// Removes the user from their active voice session and broadcasts
-/// VoiceUserLeft to remaining participants.
+/// Remove the user from their voice session and broadcast VoiceUserLeft.
 pub async fn handle_voice_leave<W>(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -30,7 +27,7 @@ where
             .await;
     };
 
-    // Verify session still exists (user might have disconnected)
+    // Verify session still exists (user might have disconnected).
     if ctx
         .user_manager
         .get_user_by_session_id(session_id)
@@ -42,9 +39,7 @@ where
             .await;
     }
 
-    // Remove the voice session and get notification info
     let Some(info) = ctx.voice_registry.remove_by_session_id(session_id).await else {
-        // User was not in a voice session
         let response = ServerMessage::VoiceLeaveResponse {
             success: false,
             error: Some(err_voice_not_joined(ctx.locale)),
@@ -52,10 +47,9 @@ where
         return ctx.send_message(&response).await;
     };
 
-    // Broadcast VoiceUserLeft to remaining participants (not to self - this is explicit leave)
+    // Notify remaining participants (not self — this is an explicit leave).
     send_voice_leave_notifications(&info, None, ctx.user_manager, ctx.channel_manager).await;
 
-    // Send success response
     let response = ServerMessage::VoiceLeaveResponse {
         success: true,
         error: None,
@@ -87,7 +81,6 @@ mod tests {
     async fn test_voice_leave_not_in_voice() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_voice_leave(Some(session_id), &mut test_ctx.handler_context()).await;
@@ -108,7 +101,6 @@ mod tests {
     async fn test_voice_leave_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with voice_listen and chat permissions
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -217,7 +209,6 @@ mod tests {
     async fn test_voice_leave_twice_fails() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with voice_listen and chat permissions
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",

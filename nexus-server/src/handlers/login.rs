@@ -70,7 +70,6 @@ fn handle_login_snapshot_error(
     client_err
 }
 
-/// Handle a login request from the client
 pub async fn handle_login<W>(
     request: LoginRequest,
     session_id: &mut Option<u32>,
@@ -89,14 +88,13 @@ where
         handshake_complete,
     } = request;
 
-    // Normalize empty username to "guest" for guest login
+    // Empty username means guest login.
     let username = if raw_username.is_empty() {
         GUEST_USERNAME.to_string()
     } else {
         raw_username
     };
 
-    // Verify handshake completed
     if !handshake_complete {
         warn!(ip = %ctx.peer_addr, "{}", LOG_LOGIN_HANDSHAKE_REQUIRED);
         return ctx
@@ -104,7 +102,6 @@ where
             .await;
     }
 
-    // Check for duplicate login on same connection
     if session_id.is_some() {
         warn!(ip = %ctx.peer_addr, "{}", LOG_LOGIN_ALREADY_LOGGED_IN);
         return ctx
@@ -112,7 +109,6 @@ where
             .await;
     }
 
-    // Validate username
     if let Err(e) = validators::validate_username(&username) {
         let error_msg = match e {
             UsernameError::Empty => err_username_empty(&locale),
@@ -126,7 +122,7 @@ where
             .await;
     }
 
-    // Validate password input (empty is allowed for guest login)
+    // Empty password is allowed (guest login); only length is rejected here.
     if let Err(PasswordError::TooLong) = validators::validate_password_input(&password) {
         return ctx
             .send_error_and_disconnect(
@@ -136,7 +132,6 @@ where
             .await;
     }
 
-    // Validate locale
     if let Err(e) = validators::validate_locale(&locale) {
         let error_msg = match e {
             LocaleError::TooLong => err_locale_too_long(&locale, validators::MAX_LOCALE_LENGTH),
@@ -147,7 +142,6 @@ where
             .await;
     }
 
-    // Validate features
     if let Err(e) = validators::validate_features(&features) {
         let error_msg = match e {
             FeaturesError::TooMany => {
@@ -164,7 +158,6 @@ where
             .await;
     }
 
-    // Validate avatar (if provided)
     if let Some(ref avatar_data) = avatar
         && let Err(e) = validators::validate_avatar(avatar_data)
     {
@@ -180,7 +173,6 @@ where
             .await;
     }
 
-    // Look up user account in database
     let account = match ctx.db.users.get_user_by_username(&username).await {
         Ok(acc) => acc,
         Err(e) => {
@@ -191,15 +183,11 @@ where
         }
     };
 
-    // Authenticate user or create first admin
     let authenticated_account = if let Some(account) = account {
-        // User exists - verify password
-        // Special case: guest account has empty password hash - password must be empty
+        // Guest accounts have an empty hash, which requires an empty password.
         let password_valid = if account.hashed_password.is_empty() {
-            // Empty hash means password must be empty (guest account)
             password.is_empty()
         } else {
-            // Normal password verification
             match db::verify_password_async(password.clone(), account.hashed_password.clone()).await
             {
                 Ok(valid) => valid,
@@ -216,10 +204,8 @@ where
         };
 
         if password_valid {
-            // Password is correct - check if account is enabled
             if !account.enabled {
                 warn!(ip = %ctx.peer_addr, target = %username, "{}", LOG_LOGIN_ACCOUNT_DISABLED);
-                // Use user-friendly error for guest account
                 let error_msg = if username.to_lowercase() == GUEST_USERNAME {
                     err_guest_disabled(&locale)
                 } else {
@@ -237,7 +223,6 @@ where
                 .await;
         }
     } else {
-        // User doesn't exist - try to create as first user (atomic operation)
         let min_strength = ctx.db.config.get_min_password_strength().await;
         let hashed_password = match db::hash_password_async(password.clone(), min_strength, false)
             .await
@@ -254,7 +239,7 @@ where
             }
         };
 
-        // Try to create as first admin - the database method will handle atomicity
+        // First user becomes admin; the DB method enforces atomicity.
         match ctx
             .db
             .users
@@ -266,8 +251,8 @@ where
                 account
             }
             Ok(None) => {
-                // User doesn't exist and not first user - use same error as invalid password
-                // to avoid revealing whether username exists
+                // Reuse the invalid-credentials error so we don't reveal whether
+                // the username exists.
                 return ctx
                     .send_error_and_disconnect(
                         &err_invalid_credentials(&locale),
@@ -287,18 +272,14 @@ where
         }
     };
 
-    // Handle nickname for shared accounts
-    // For shared accounts: nickname is required and must be unique
-    // For regular accounts: nickname is silently ignored
+    // Shared accounts require a unique nickname; regular accounts ignore it.
     let validated_nickname = if authenticated_account.is_shared {
-        // Shared account - nickname is required
         let Some(nickname) = nickname else {
             return ctx
                 .send_error_and_disconnect(&err_nickname_required(&locale), Some(HANDLER_LOGIN))
                 .await;
         };
 
-        // Validate nickname format
         if let Err(e) = validators::validate_nickname(&nickname) {
             let error_msg = match e {
                 NicknameError::Empty => err_nickname_empty(&locale),
@@ -312,7 +293,7 @@ where
                 .await;
         }
 
-        // Check if nickname matches an existing username in database (case-insensitive)
+        // A nickname must not collide with any existing username (case-insensitive).
         match ctx.db.users.username_exists(&nickname).await {
             Ok(true) => {
                 return ctx
@@ -331,7 +312,7 @@ where
             }
         }
 
-        // Check if nickname is in use by an active session (case-insensitive)
+        // …nor with an active session's nickname (case-insensitive).
         if ctx.user_manager.is_nickname_in_use(&nickname).await {
             return ctx
                 .send_error_and_disconnect(&err_nickname_in_use(&locale), Some(HANDLER_LOGIN))
@@ -340,7 +321,6 @@ where
 
         Some(nickname)
     } else {
-        // Regular account - ignore any provided nickname
         None
     };
 
@@ -376,9 +356,8 @@ where
         }
     };
 
-    // Verify-window drift: rename or password reset during password
-    // verify means the credentials the user sent no longer describe
-    // this row.
+    // A rename or password reset during password verify means the sent
+    // credentials no longer describe this row — reject as stale.
     if username.to_lowercase() != pre_snapshot.account.username.to_lowercase() {
         warn!(
             user = %username,
@@ -425,12 +404,9 @@ where
         (false, None)
     };
 
-    // Create session in UserManager with cached permissions
-    // Note: Features are client preferences (what they want to subscribe to)
-    // Permissions are now cached in the User struct to avoid DB lookups during broadcasts
-    //
-    // For shared accounts, add_user performs an atomic nickname uniqueness check
-    // to prevent race conditions where two users could claim the same nickname.
+    // For shared accounts, add_user performs an atomic nickname uniqueness
+    // check so two users can't race to claim the same nickname. Permissions
+    // are cached on the session to avoid DB lookups during broadcasts.
     let id = match ctx
         .user_manager
         .add_user(NewSessionParams {
@@ -468,9 +444,9 @@ where
     };
     *session_id = Some(id);
 
-    // Post-add drift check: catches mutations that committed during
-    // add_user, including delete/disable races where cleanup ran
-    // before our session was registered.
+    // Re-snapshot to catch mutations that committed during add_user,
+    // including delete/disable races whose cleanup ran before our session
+    // was registered.
     let post_snapshot = match ctx
         .db
         .get_login_session_snapshot(authenticated_account.id)
@@ -578,25 +554,19 @@ where
         authenticated_account.is_admin || cached_permissions.contains(&Permission::VoiceListen);
     let can_auto_join = has_chat_feature && has_chat_join_permission;
 
-    // Fetch all server config values in a single query
     let config = ctx.db.config.get_all().await;
 
-    // Auto-join channels configured by admin
-    // We join the user and collect channel info to include in LoginResponse.
-    // We also broadcast ChatUserJoined to existing channel members so they see the new user.
-    // Auto-join channels are separate from persistent channels:
-    // - persistent_channels: survive restart, can't be deleted when empty
-    // - auto_join_channels: users automatically join these on login
-    // Note: can_auto_join was computed before add_user() to check before features was moved
+    // Admin-configured auto-join channels (distinct from persistent channels:
+    // these are joined on login, not restart-surviving). can_auto_join was
+    // computed before add_user(), since `features` is moved into it.
     let auto_join_channel_names = if can_auto_join {
         crate::db::ConfigDb::parse_channel_list(&config.auto_join_channels)
     } else {
         Vec::new()
     };
 
-    // Get user info for ChatUserJoined broadcasts
-    // We need this before the loop since user isn't in UserManager yet
-    // Use DB-canonical username (not client-provided) to ensure consistent casing
+    // Captured before the loop (user not yet in UserManager). Use the
+    // DB-canonical username for consistent casing.
     let joining_user_nickname = validated_nickname
         .clone()
         .unwrap_or_else(|| authenticated_account.username.clone());
@@ -626,8 +596,8 @@ where
             .get_unique_nicknames_for_sessions(&result.member_session_ids)
             .await;
 
-        // Broadcast ChatUserJoined only when this nickname becomes present in the channel
-        // (nickname-based membership; multiple sessions may map to the same nickname).
+        // Membership is nickname-based: only broadcast when this nickname
+        // first becomes present (multiple sessions may share a nickname).
         let nickname_present_elsewhere = ctx
             .user_manager
             .sessions_contain_nickname(&result.member_session_ids, &joining_user_nickname, Some(id))
@@ -649,7 +619,7 @@ where
             }
         }
 
-        // Get voiced nicknames if user has voice_listen permission
+        // Voiced nicknames are gated on voice_listen permission.
         let voiced = if has_voice_listen_permission {
             let participants = ctx.voice_registry.get_participants(&channel_name).await;
             if participants.is_empty() {
@@ -671,10 +641,9 @@ where
         });
     }
 
-    // Convert cached permissions to strings for LoginResponse
+    // Resolved effective permissions sent as a flat string set. Admins get an
+    // empty list; the client infers "all" from the is_admin flag.
     let user_permissions: Vec<String> = if authenticated_account.is_admin {
-        // Admins get all permissions automatically - return empty list
-        // Client checks is_admin flag to know they have all permissions
         vec![]
     } else {
         cached_permissions
@@ -712,15 +681,14 @@ where
 
     let server_info = Some(build_server_info(&server_info_values, &server_info_options));
 
-    // Build channels field for LoginResponse (only if user joined any channels)
     let channels = if joined_channels.is_empty() {
         None
     } else {
         Some(joined_channels)
     };
 
-    // nickname is already set correctly: username for regular, validated_nickname for shared
-    // Use DB-canonical username (not client-provided) to ensure consistent casing
+    // Server-confirmed nickname: validated nickname for shared accounts, the
+    // DB-canonical username (consistent casing) for regular accounts.
     let nickname = validated_nickname.unwrap_or_else(|| authenticated_account.username.clone());
 
     let response = ServerMessage::LoginResponse {
@@ -741,8 +709,7 @@ where
 
     debug!(user = %authenticated_account.username, ip = %ctx.peer_addr, "{}", LOG_LOGIN_SUCCESS);
 
-    // Notify other users about new connection
-    // Use DB-canonical username (not client-provided) to ensure consistent casing
+    // Announce the new connection to other users.
     let user_info = UserInfo {
         id: authenticated_account.id,
         username: authenticated_account.username.clone(),
@@ -781,9 +748,8 @@ mod tests {
     async fn test_login_requires_handshake() {
         let mut test_ctx = create_test_context().await;
         let mut session_id = None;
-        let handshake_complete = false; // Not completed
+        let handshake_complete = false;
 
-        // Try to login without handshake
         let request = LoginRequest {
             username: "alice".to_string(),
             password: "password".to_string(),
@@ -795,7 +761,6 @@ mod tests {
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
-        // Should fail
         assert!(result.is_err(), "Login should fail without handshake");
         assert!(session_id.is_none(), "Session ID should remain None");
     }
@@ -806,7 +771,6 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // First user login
         let request = LoginRequest {
             username: "alice".to_string(),
             password: "password123".to_string(),
@@ -818,14 +782,10 @@ mod tests {
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
-        // Should succeed
         assert!(result.is_ok(), "First login should succeed");
         assert!(session_id.is_some(), "Session ID should be set");
 
-        // Read LoginResponse (channels field will be None since auto_join_channels is empty in tests)
         let response_msg = read_login_response(&mut test_ctx).await;
-
-        // Verify successful login response with admin flag and empty permissions
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
@@ -850,7 +810,6 @@ mod tests {
             _ => panic!("Expected LoginResponse"),
         }
 
-        // Verify user was created as admin in database
         let user = test_ctx
             .db
             .users
@@ -865,8 +824,7 @@ mod tests {
     async fn test_login_existing_user_correct_password() {
         let mut test_ctx = create_test_context().await;
 
-        // Pre-create a user
-        // Create a user account with permissions
+        // Pre-create a user with permissions.
         let password = "mypassword";
         let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
@@ -897,7 +855,6 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // Login with correct password
         let request = LoginRequest {
             username: "bob".to_string(),
             password: password.to_string(),
@@ -909,15 +866,10 @@ mod tests {
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
-        // Should succeed
         assert!(result.is_ok(), "Login with correct password should succeed");
         assert!(session_id.is_some(), "Session ID should be set");
 
-        // Read response
-
         let response_msg = read_login_response(&mut test_ctx).await;
-
-        // Verify successful login response with is_admin and permissions
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
@@ -956,7 +908,6 @@ mod tests {
     async fn test_login_wrong_password() {
         let mut test_ctx = create_test_context().await;
 
-        // Pre-create a user
         let password = "correctpassword";
         let hashed = get_cached_password_hash(password);
         test_ctx
@@ -979,7 +930,6 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // Login with wrong password
         let request = LoginRequest {
             username: "bob".to_string(),
             password: "wrongpassword".to_string(),
@@ -991,7 +941,6 @@ mod tests {
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
-        // Should fail
         assert!(result.is_err(), "Login with wrong password should fail");
         assert!(session_id.is_none(), "Session ID should remain None");
     }
@@ -1000,7 +949,7 @@ mod tests {
     async fn test_login_nonexistent_user() {
         let mut test_ctx = create_test_context().await;
 
-        // Create a user first (so we're not the first user who would auto-register)
+        // Pre-create a user so we aren't the first user (who would auto-register as admin).
         let password = "password";
         let hashed = get_cached_password_hash(password);
         test_ctx
@@ -1023,7 +972,6 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // Try to login as non-existent user
         let request = LoginRequest {
             username: "nonexistent".to_string(),
             password: "password".to_string(),
@@ -1035,7 +983,6 @@ mod tests {
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
-        // Should fail
         assert!(
             result.is_err(),
             "Login as non-existent user should fail after first user"
@@ -1099,7 +1046,6 @@ mod tests {
         let handshake_complete = true;
         let mut session_id = None;
 
-        // Attempt login
         let request = LoginRequest {
             username: "alice".to_string(),
             password: password.to_string(),
@@ -1113,11 +1059,7 @@ mod tests {
 
         assert!(result.is_ok(), "Login should succeed");
 
-        // Read response
-
         let response_msg = read_login_response(&mut test_ctx).await;
-
-        // Verify response includes correct permissions
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
@@ -1166,7 +1108,6 @@ mod tests {
     async fn test_duplicate_login_same_connection() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user first
         let password = "password";
         let hashed = get_cached_password_hash(password);
         test_ctx
@@ -1189,7 +1130,6 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // First login
         let request1 = LoginRequest {
             username: "alice".to_string(),
             password: "password".to_string(),
@@ -1205,7 +1145,7 @@ mod tests {
         assert!(result1.is_ok(), "First login should succeed");
         assert!(session_id.is_some(), "Session ID should be set");
 
-        // Second login on same connection (should fail)
+        // Second login on the same connection must fail.
         let request2 = LoginRequest {
             username: "alice".to_string(),
             password: "password".to_string(),
@@ -1250,7 +1190,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Initialize persistent channel with topic
         test_ctx
             .channel_manager
             .initialize_persistent_channels(vec![crate::channels::Channel::with_settings(
@@ -1261,7 +1200,6 @@ mod tests {
             )])
             .await;
 
-        // Set auto_join_channels to include the default channel
         test_ctx
             .db
             .config
@@ -1285,11 +1223,7 @@ mod tests {
 
         assert!(result.is_ok(), "Login should succeed");
 
-        // Read response
-
         let response_msg = read_login_response(&mut test_ctx).await;
-
-        // Verify LoginResponse includes channels with topic
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
@@ -1342,7 +1276,6 @@ mod tests {
     async fn test_login_no_channels_when_no_auto_join_configured() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user
         let password = "password";
         let hashed = get_cached_password_hash(password);
         test_ctx
@@ -1362,7 +1295,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Clear auto-join channels (default is #nexus)
+        // Clear auto-join channels (default is #nexus).
         test_ctx.db.config.set_auto_join_channels("").await.unwrap();
 
         let mut session_id = None;
@@ -1381,11 +1314,7 @@ mod tests {
 
         assert!(result.is_ok(), "Login should succeed");
 
-        // Read response
-
         let response_msg = read_login_response(&mut test_ctx).await;
-
-        // Verify LoginResponse has no channels when none are auto-joined
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
@@ -1443,7 +1372,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Initialize persistent channel
         test_ctx
             .channel_manager
             .initialize_persistent_channels(vec![crate::channels::Channel::new(
@@ -1451,7 +1379,6 @@ mod tests {
             )])
             .await;
 
-        // Set auto_join_channels to include the default channel
         test_ctx
             .db
             .config
@@ -1462,7 +1389,7 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // Login WITH chat feature but WITHOUT ChatJoin permission
+        // Login WITH chat feature but WITHOUT ChatJoin permission.
         let request = LoginRequest {
             username: "alice".to_string(),
             password: password.to_string(),
@@ -1477,8 +1404,6 @@ mod tests {
         assert!(result.is_ok(), "Login should succeed");
 
         let response_msg = read_login_response(&mut test_ctx).await;
-
-        // Verify LoginResponse has no channels (auto-join was skipped due to missing permission)
         match response_msg {
             ServerMessage::LoginResponse {
                 success, channels, ..
@@ -1492,7 +1417,6 @@ mod tests {
             _ => panic!("Expected LoginResponse"),
         }
 
-        // Verify user is NOT in the channel
         let channel_members = test_ctx
             .channel_manager
             .get_members(nexus_common::validators::DEFAULT_CHANNEL)
@@ -1508,12 +1432,11 @@ mod tests {
     async fn test_login_skips_auto_join_channel_creation_without_chat_create_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH ChatJoin but WITHOUT ChatCreate permission
+        // User has ChatJoin but NOT ChatCreate.
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
         perms.add(db::Permission::ChatJoin);
-        // Note: NOT adding ChatCreate
         test_ctx
             .db
             .users
@@ -1531,10 +1454,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Do NOT initialize any persistent channels - the auto-join channel doesn't exist yet
-        // This means auto-join would need to CREATE the channel
-
-        // Set auto_join_channels to a channel that doesn't exist
+        // No persistent channels initialized: auto-joining #nonexistent would require creating it.
         test_ctx
             .db
             .config
@@ -1545,7 +1465,6 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // Login WITH chat feature and ChatJoin, but WITHOUT ChatCreate
         let request = LoginRequest {
             username: "alice".to_string(),
             password: password.to_string(),
@@ -1560,8 +1479,6 @@ mod tests {
         assert!(result.is_ok(), "Login should succeed");
 
         let response_msg = read_login_response(&mut test_ctx).await;
-
-        // Verify LoginResponse has no channels (channel creation was skipped)
         match response_msg {
             ServerMessage::LoginResponse {
                 success, channels, ..
@@ -1575,7 +1492,6 @@ mod tests {
             _ => panic!("Expected LoginResponse"),
         }
 
-        // Verify the channel was NOT created
         assert!(
             test_ctx
                 .channel_manager
@@ -1590,12 +1506,11 @@ mod tests {
     async fn test_login_auto_joins_existing_channel_without_chat_create_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITH ChatJoin but WITHOUT ChatCreate permission
+        // User has ChatJoin but NOT ChatCreate; the channel exists before login so no create is needed.
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let mut perms = db::Permissions::new();
         perms.add(db::Permission::ChatJoin);
-        // Note: NOT adding ChatCreate
         test_ctx
             .db
             .users
@@ -1613,7 +1528,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Initialize a persistent channel (so it exists before login)
         test_ctx
             .channel_manager
             .initialize_persistent_channels(vec![crate::channels::Channel::new(
@@ -1621,7 +1535,6 @@ mod tests {
             )])
             .await;
 
-        // Set auto_join_channels to the existing channel
         test_ctx
             .db
             .config
@@ -1632,7 +1545,6 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // Login WITH chat feature and ChatJoin (no ChatCreate needed for existing channel)
         let request = LoginRequest {
             username: "alice".to_string(),
             password: password.to_string(),
@@ -1647,8 +1559,6 @@ mod tests {
         assert!(result.is_ok(), "Login should succeed");
 
         let response_msg = read_login_response(&mut test_ctx).await;
-
-        // Verify LoginResponse includes the channel (user joined existing channel)
         match response_msg {
             ServerMessage::LoginResponse {
                 success, channels, ..
@@ -1664,7 +1574,6 @@ mod tests {
             _ => panic!("Expected LoginResponse"),
         }
 
-        // Verify user IS in the channel
         let channel_members = test_ctx
             .channel_manager
             .get_members(nexus_common::validators::DEFAULT_CHANNEL)
@@ -1680,7 +1589,6 @@ mod tests {
     async fn test_login_admin_receives_server_info_and_channels() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let password = "password";
         let hashed = get_cached_password_hash(password);
         test_ctx
@@ -1700,7 +1608,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Initialize persistent channel with topic
         test_ctx
             .channel_manager
             .initialize_persistent_channels(vec![crate::channels::Channel::with_settings(
@@ -1711,7 +1618,6 @@ mod tests {
             )])
             .await;
 
-        // Set auto_join_channels to include the default channel
         test_ctx
             .db
             .config
@@ -1735,11 +1641,7 @@ mod tests {
 
         assert!(result.is_ok(), "Login should succeed");
 
-        // Read response
-
         let response_msg = read_login_response(&mut test_ctx).await;
-
-        // Verify admin receives server_info and channels
         match response_msg {
             ServerMessage::LoginResponse {
                 success,
@@ -1777,7 +1679,7 @@ mod tests {
     async fn test_login_disabled_account() {
         let mut test_ctx = create_test_context().await;
 
-        // Create a user first (so we're not the first user)
+        // Pre-create a user so we aren't the first user (who would auto-register as admin).
         let password = "password";
         let hashed = get_cached_password_hash(password);
         test_ctx
@@ -1797,7 +1699,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a disabled user
         let bob_account = test_ctx
             .db
             .users
@@ -1820,7 +1721,6 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // Attempt login with disabled account
         let request = LoginRequest {
             username: "bob".to_string(),
             password: password.to_string(),
@@ -1832,11 +1732,9 @@ mod tests {
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
-        // Should fail with disconnect
         assert!(result.is_err(), "Login with disabled account should fail");
         assert!(session_id.is_none(), "Session ID should remain None");
 
-        // Verify error message was sent
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::Error { message, .. } => {
@@ -1856,7 +1754,7 @@ mod tests {
     async fn test_login_error_uses_requested_locale() {
         let mut test_ctx = create_test_context().await;
 
-        // Create a user first (so we're not the first user)
+        // Pre-create a user so we aren't the first user (who would auto-register as admin).
         let password = "password";
         let hashed = get_cached_password_hash(password);
         test_ctx
@@ -1879,27 +1777,24 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // Attempt login with wrong password using Spanish locale
         let request = LoginRequest {
             username: "alice".to_string(),
             password: "wrong_password".to_string(),
             features: vec![],
-            locale: "es".to_string(), // Request Spanish locale
+            locale: "es".to_string(),
             avatar: None,
             nickname: None,
             handshake_complete,
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
-        // Should fail with disconnect
         assert!(result.is_err(), "Login with wrong password should fail");
         assert!(session_id.is_none(), "Session ID should remain None");
 
-        // Verify error message was sent in Spanish
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::Error { message, .. } => {
-                // Spanish error message should contain "Usuario o contraseña" (not English "Invalid username or password")
+                // Error is in the requested locale (Spanish), not English.
                 assert!(
                     message.contains("Usuario") || message.contains("contraseña"),
                     "Error message should be in Spanish, got: {}",
@@ -1914,7 +1809,7 @@ mod tests {
     async fn test_login_error_defaults_to_english() {
         let mut test_ctx = create_test_context().await;
 
-        // Create a user first (so we're not the first user)
+        // Pre-create a user so we aren't the first user (who would auto-register as admin).
         let password = "password";
         let hashed = get_cached_password_hash(password);
         test_ctx
@@ -1937,27 +1832,24 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // Attempt login with wrong password using empty locale (should default to "en")
+        // Empty locale must fall back to English.
         let request = LoginRequest {
             username: "alice".to_string(),
             password: "wrong_password".to_string(),
             features: vec![],
-            locale: "".to_string(), // Empty locale should default to English
+            locale: "".to_string(),
             avatar: None,
             nickname: None,
             handshake_complete,
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
-        // Should fail with disconnect
         assert!(result.is_err(), "Login with wrong password should fail");
         assert!(session_id.is_none(), "Session ID should remain None");
 
-        // Verify error message was sent in English (default)
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::Error { message, .. } => {
-                // Should be English (contains "Invalid" or "username")
                 assert!(
                     message.contains("Invalid") || message.contains("username"),
                     "Error message should be in English (default), got: {}",
@@ -1968,17 +1860,12 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // Avatar validation tests
-    // =========================================================================
-
     #[tokio::test]
     async fn test_login_with_valid_avatar() {
         let mut test_ctx = create_test_context().await;
         let mut session_id = None;
         let handshake_complete = true;
 
-        // Valid PNG data URI (minimal)
         let valid_avatar = "data:image/png;base64,iVBORw0KGgo=".to_string();
 
         let request = LoginRequest {
@@ -2010,7 +1897,7 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // Create avatar that exceeds MAX_AVATAR_DATA_URI_LENGTH
+        // Build an avatar that exceeds MAX_AVATAR_DATA_URI_LENGTH.
         let prefix = "data:image/png;base64,";
         let padding = "A".repeat(validators::MAX_AVATAR_DATA_URI_LENGTH);
         let too_large_avatar = format!("{}{}", prefix, padding);
@@ -2026,7 +1913,6 @@ mod tests {
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
 
-        // Should fail with disconnect
         assert!(result.is_err(), "Login with oversized avatar should fail");
         assert!(session_id.is_none(), "Session ID should remain None");
 
@@ -2132,7 +2018,6 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        // No avatar (None)
         let request = LoginRequest {
             username: "alice".to_string(),
             password: "password123".to_string(),
@@ -2156,20 +2041,15 @@ mod tests {
         }
     }
 
-    // ========================================================================
-    // Shared Account Nickname Tests
-    // ========================================================================
-
     #[tokio::test]
     async fn test_login_shared_account_with_valid_nickname() {
         let mut test_ctx = create_test_context().await;
         let handshake_complete = true;
 
-        // Create a shared account in the database
         let password = "password123";
         let hashed = get_cached_password_hash(password);
 
-        // First create a regular admin so we can create the shared account
+        // A regular admin must exist first so the next account isn't auto-registered as the admin.
         test_ctx
             .db
             .users
@@ -2177,7 +2057,6 @@ mod tests {
             .await
             .expect("admin creation should succeed");
 
-        // Create shared account
         test_ctx
             .db
             .users
@@ -2195,7 +2074,6 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // Login with valid nickname
         let mut session_id = None;
         let request = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2219,7 +2097,6 @@ mod tests {
             _ => panic!("Expected LoginResponse"),
         }
 
-        // Verify session has nickname stored
         let session = test_ctx
             .user_manager
             .get_user_by_session_id(session_id.unwrap())
@@ -2234,7 +2111,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let handshake_complete = true;
 
-        // Create shared account
         let password = "password123";
         let hashed = get_cached_password_hash(password);
 
@@ -2262,7 +2138,7 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // Login without nickname (None)
+        // A shared account requires a nickname; logging in with None must fail.
         let mut session_id = None;
         let request = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2287,7 +2163,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let handshake_complete = true;
 
-        // First login creates admin (regular account)
+        // First login creates a regular (admin) account, so the supplied nickname is ignored.
         let mut session_id = None;
         let request = LoginRequest {
             username: "alice".to_string(),
@@ -2295,7 +2171,7 @@ mod tests {
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
-            nickname: Some("SomeNickname".to_string()), // Should be ignored
+            nickname: Some("SomeNickname".to_string()),
             handshake_complete,
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
@@ -2306,7 +2182,6 @@ mod tests {
         );
         assert!(session_id.is_some(), "Session ID should be set");
 
-        // Verify session has no nickname (ignored for regular accounts)
         let session = test_ctx
             .user_manager
             .get_user_by_session_id(session_id.unwrap())
@@ -2327,7 +2202,7 @@ mod tests {
         let password = "password123";
         let hashed = get_cached_password_hash(password);
 
-        // Create regular user "alice"
+        // Regular user "alice" is the collision target.
         test_ctx
             .db
             .users
@@ -2335,7 +2210,6 @@ mod tests {
             .await
             .expect("admin creation should succeed");
 
-        // Create shared account
         test_ctx
             .db
             .users
@@ -2353,7 +2227,6 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // Try to login with nickname that matches existing username
         let mut session_id = None;
         let request = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2361,7 +2234,7 @@ mod tests {
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
-            nickname: Some("alice".to_string()), // Collides with existing username
+            nickname: Some("alice".to_string()), // Collides with an existing username.
             handshake_complete,
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
@@ -2381,7 +2254,7 @@ mod tests {
         let password = "password123";
         let hashed = get_cached_password_hash(password);
 
-        // Create regular user "Alice"
+        // Regular user "Alice"; the nickname "ALICE" collides case-insensitively.
         test_ctx
             .db
             .users
@@ -2389,7 +2262,6 @@ mod tests {
             .await
             .expect("admin creation should succeed");
 
-        // Create shared account
         test_ctx
             .db
             .users
@@ -2407,7 +2279,6 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // Try to login with nickname that matches existing username (different case)
         let mut session_id = None;
         let request = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2415,7 +2286,7 @@ mod tests {
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
-            nickname: Some("ALICE".to_string()), // Collides case-insensitively
+            nickname: Some("ALICE".to_string()),
             handshake_complete,
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
@@ -2435,7 +2306,6 @@ mod tests {
         let password = "password123";
         let hashed = get_cached_password_hash(password);
 
-        // Create admin first
         test_ctx
             .db
             .users
@@ -2443,7 +2313,6 @@ mod tests {
             .await
             .expect("admin creation should succeed");
 
-        // Create shared account
         test_ctx
             .db
             .users
@@ -2461,7 +2330,7 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // First login with nickname "Bob"
+        // First session takes nickname "Bob".
         let mut session_id1 = None;
         let request1 = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2477,10 +2346,9 @@ mod tests {
         assert!(result1.is_ok(), "First login should succeed");
         assert!(session_id1.is_some());
 
-        // Read the login response
         let _response1 = read_login_response(&mut test_ctx).await;
 
-        // Second login attempt with same nickname "Bob"
+        // Second login with the same nickname as the active session must fail.
         let mut session_id2 = None;
         let request2 = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2488,7 +2356,7 @@ mod tests {
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
-            nickname: Some("Bob".to_string()), // Same nickname as active session
+            nickname: Some("Bob".to_string()),
             handshake_complete,
         };
         let result2 =
@@ -2512,7 +2380,6 @@ mod tests {
         let password = "password123";
         let hashed = get_cached_password_hash(password);
 
-        // Create admin first
         test_ctx
             .db
             .users
@@ -2520,7 +2387,6 @@ mod tests {
             .await
             .expect("admin creation should succeed");
 
-        // Create shared account
         test_ctx
             .db
             .users
@@ -2538,7 +2404,7 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // First login with nickname "Alice"
+        // First session takes "Alice"; a second with a distinct nickname is allowed.
         let mut session_id1 = None;
         let request1 = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2554,10 +2420,8 @@ mod tests {
         assert!(result1.is_ok(), "First login should succeed");
         assert!(session_id1.is_some());
 
-        // Read the login response
         let _response1 = read_login_response(&mut test_ctx).await;
 
-        // Second login with different nickname "Bob"
         let mut session_id2 = None;
         let request2 = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2565,7 +2429,7 @@ mod tests {
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
-            nickname: Some("Bob".to_string()), // Different nickname
+            nickname: Some("Bob".to_string()),
             handshake_complete,
         };
         let result2 =
@@ -2577,7 +2441,6 @@ mod tests {
         );
         assert!(session_id2.is_some(), "Session ID should be set");
 
-        // Verify both sessions exist with their nicknames
         let session1 = test_ctx
             .user_manager
             .get_user_by_session_id(session_id1.unwrap())
@@ -2625,7 +2488,6 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // Try to login with empty nickname
         let mut session_id = None;
         let request = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2633,7 +2495,7 @@ mod tests {
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
-            nickname: Some("".to_string()), // Empty nickname
+            nickname: Some("".to_string()),
             handshake_complete,
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
@@ -2674,7 +2536,6 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // Try to login with nickname that exceeds max length
         let mut session_id = None;
         let request = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2682,7 +2543,7 @@ mod tests {
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
-            nickname: Some("a".repeat(validators::MAX_NICKNAME_LENGTH + 1)), // Too long
+            nickname: Some("a".repeat(validators::MAX_NICKNAME_LENGTH + 1)),
             handshake_complete,
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
@@ -2723,7 +2584,6 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // Try to login with nickname containing invalid characters (spaces)
         let mut session_id = None;
         let request = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2731,7 +2591,7 @@ mod tests {
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
-            nickname: Some("Alice Smith".to_string()), // Space not allowed
+            nickname: Some("Alice Smith".to_string()), // Spaces are not allowed in nicknames.
             handshake_complete,
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
@@ -2751,7 +2611,7 @@ mod tests {
         let password = "password123";
         let hashed = get_cached_password_hash(password);
 
-        // Create regular user "alice" and login
+        // Regular user "alice" is created and logged in below.
         test_ctx
             .db
             .users
@@ -2777,10 +2637,8 @@ mod tests {
         .await;
         assert!(alice_result.is_ok(), "Alice login should succeed");
 
-        // Read alice's login response
         let _response = read_login_response(&mut test_ctx).await;
 
-        // Create shared account
         test_ctx
             .db
             .users
@@ -2798,8 +2656,7 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // Try to login to shared account with nickname "alice" - should fail
-        // because alice is logged in (nickname would conflict with her username)
+        // Nickname "alice" must be rejected: it conflicts with the username of a logged-in user.
         let mut session_id = None;
         let request = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2818,10 +2675,6 @@ mod tests {
         );
         assert!(session_id.is_none(), "Session ID should not be set");
     }
-
-    // ========================================================================
-    // Guest Account Tests
-    // ========================================================================
 
     #[tokio::test]
     async fn test_guest_login_with_empty_username() {
@@ -2851,11 +2704,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Login with empty username and empty password (guest login)
+        // Empty username + empty password is the guest-login signal.
         let mut session_id = None;
         let request = LoginRequest {
-            username: String::new(), // Empty username
-            password: String::new(), // Empty password
+            username: String::new(),
+            password: String::new(),
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
@@ -2911,11 +2764,10 @@ mod tests {
             .await
             .unwrap();
 
-        // Login with "guest" username and empty password
         let mut session_id = None;
         let request = LoginRequest {
             username: "guest".to_string(),
-            password: String::new(), // Empty password
+            password: String::new(),
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
@@ -2956,11 +2808,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Try to login as guest with a non-empty password
+        // A guest login with a non-empty password must be rejected.
         let mut session_id = None;
         let request = LoginRequest {
             username: "guest".to_string(),
-            password: "somepassword".to_string(), // Non-empty password
+            password: "somepassword".to_string(),
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
@@ -2978,12 +2830,10 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let handshake_complete = true;
 
-        // Guest account is disabled by default from migration
-
-        // Try to login as guest
+        // The guest account is disabled by default from the migration — no enable step here.
         let mut session_id = None;
         let request = LoginRequest {
-            username: String::new(), // Empty username = guest
+            username: String::new(),
             password: String::new(),
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
@@ -3025,7 +2875,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Try to login as guest without nickname
         let mut session_id = None;
         let request = LoginRequest {
             username: String::new(),
@@ -3033,7 +2882,7 @@ mod tests {
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
-            nickname: None, // No nickname
+            nickname: None,
             handshake_complete,
         };
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
@@ -3070,7 +2919,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Login with "GUEST" (uppercase)
+        // Uppercase "GUEST" must match the guest account case-insensitively.
         let mut session_id = None;
         let request = LoginRequest {
             username: "GUEST".to_string(),
@@ -3115,7 +2964,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as guest
         let mut session_id = None;
         let request = LoginRequest {
             username: String::new(),
@@ -3130,7 +2978,6 @@ mod tests {
 
         assert!(result.is_ok(), "Guest login should succeed");
 
-        // Verify the user is marked as shared in UserManager
         let user = test_ctx
             .user_manager
             .get_user_by_session_id(session_id.unwrap())
@@ -3144,8 +2991,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let handshake_complete = true;
 
-        // Guest account exists from migration but is disabled
-        // First non-guest user should become admin
+        // The disabled migration guest account doesn't count: the first non-guest user becomes admin.
         let mut session_id = None;
         let request = LoginRequest {
             username: "firstadmin".to_string(),
@@ -3185,7 +3031,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let handshake_complete = true;
 
-        // Create user in database
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let account = test_ctx
@@ -3205,8 +3050,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Manually add first session with is_away=true and status set
-        // (simulating an existing session that has set away status)
+        // Existing session is away with a status set; a new session should inherit both.
         let _session1 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -3234,7 +3078,6 @@ mod tests {
             .await
             .expect("Failed to add first session");
 
-        // Now login via handle_login (second session)
         let mut session_id = None;
         let request = LoginRequest {
             username: "alice".to_string(),
@@ -3250,10 +3093,8 @@ mod tests {
         assert!(result.is_ok(), "Second login should succeed");
         let new_session_id = session_id.expect("Session ID should be set");
 
-        // Read the LoginResponse
         let _response = read_login_response(&mut test_ctx).await;
 
-        // Verify the new session inherited is_away and status from existing session
         let new_session = test_ctx
             .user_manager
             .get_user_by_session_id(new_session_id)
@@ -3279,7 +3120,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let handshake_complete = true;
 
-        // Create shared account in database
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let account = test_ctx
@@ -3289,7 +3129,7 @@ mod tests {
                 username: "shared_acct",
                 hashed_password: &hashed,
                 is_admin: false,
-                is_shared: true, // is_shared = true
+                is_shared: true,
                 enabled: true,
                 permissions: &db::Permissions::new(),
                 group_id: None,
@@ -3299,7 +3139,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Manually add first session with is_away=true
+        // First shared session is away; a second session under a different nickname must NOT inherit it.
         let _session1 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -3327,7 +3167,6 @@ mod tests {
             .await
             .expect("Failed to add first session");
 
-        // Login as second user on the same shared account (different nickname)
         let mut session_id = None;
         let request = LoginRequest {
             username: "shared_acct".to_string(),
@@ -3343,10 +3182,8 @@ mod tests {
         assert!(result.is_ok(), "Second shared login should succeed");
         let new_session_id = session_id.expect("Session ID should be set");
 
-        // Read the LoginResponse
         let _response = read_login_response(&mut test_ctx).await;
 
-        // Verify the new session did NOT inherit is_away/status (shared accounts don't inherit)
         let new_session = test_ctx
             .user_manager
             .get_user_by_session_id(new_session_id)
@@ -3371,7 +3208,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let handshake_complete = true;
 
-        // Create user in database
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let account = test_ctx
@@ -3391,7 +3227,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Add first session (older) with one away status
+        // Older session with an away status.
         let _session1 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -3419,10 +3255,10 @@ mod tests {
             .await
             .expect("Failed to add first session");
 
-        // Wait to ensure different login timestamps
+        // Sleep so the two sessions get distinct login timestamps.
         tokio::time::sleep(tokio::time::Duration::from_millis(1100)).await;
 
-        // Add second session (newer) with different away status
+        // Newer session with a different away status — this is the one to inherit from.
         let _session2 = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -3450,7 +3286,6 @@ mod tests {
             .await
             .expect("Failed to add second session");
 
-        // Now login via handle_login (third session)
         let mut session_id = None;
         let request = LoginRequest {
             username: "alice".to_string(),
@@ -3466,10 +3301,8 @@ mod tests {
         assert!(result.is_ok(), "Third login should succeed");
         let new_session_id = session_id.expect("Session ID should be set");
 
-        // Read the LoginResponse
         let _response = read_login_response(&mut test_ctx).await;
 
-        // Verify the new session inherited from the LATEST session (session2)
         let new_session = test_ctx
             .user_manager
             .get_user_by_session_id(new_session_id)
@@ -3529,7 +3362,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Initialize persistent channel
         test_ctx
             .channel_manager
             .initialize_persistent_channels(vec![crate::channels::Channel::new(
@@ -3537,7 +3369,6 @@ mod tests {
             )])
             .await;
 
-        // Set auto_join_channels to include the default channel
         test_ctx
             .db
             .config
@@ -3545,7 +3376,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Alice logs in first and auto-joins the channel
+        // Alice logs in first and auto-joins the channel.
         let mut alice_session_id = None;
         let alice_request = LoginRequest {
             username: "alice".to_string(),
@@ -3564,10 +3395,8 @@ mod tests {
         .await;
         assert!(result.is_ok(), "Alice login should succeed");
 
-        // Read Alice's LoginResponse
         let _alice_response = read_login_response(&mut test_ctx).await;
 
-        // Verify Alice is in the channel
         let alice_sid = alice_session_id.expect("Alice should have session ID");
         assert!(
             test_ctx
@@ -3577,8 +3406,7 @@ mod tests {
             "Alice should be in the default channel"
         );
 
-        // Now Bob logs in and auto-joins the same channel
-        // Bob logs in and should auto-join, triggering ChatUserJoined to Alice
+        // Bob logs in and auto-joins, which should broadcast ChatUserJoined to Alice.
         let mut bob_session_id = None;
         let bob_request = LoginRequest {
             username: "bob".to_string(),
@@ -3597,10 +3425,8 @@ mod tests {
         .await;
         assert!(result.is_ok(), "Bob login should succeed");
 
-        // Read Bob's LoginResponse
         let _bob_response = read_login_response(&mut test_ctx).await;
 
-        // Verify Bob is in the channel
         let bob_sid = bob_session_id.expect("Bob should have session ID");
         assert!(
             test_ctx
@@ -3610,8 +3436,7 @@ mod tests {
             "Bob should be in the default channel"
         );
 
-        // Alice should have received ChatUserJoined for Bob
-        // In tests, all users share the same tx/rx channel, so we check the rx
+        // All test sessions share one tx/rx channel, so scan rx for Bob's ChatUserJoined.
         let mut found_chat_user_joined = false;
         while let Ok((msg, _)) = test_ctx.rx.try_recv() {
             if matches!(
@@ -3634,7 +3459,6 @@ mod tests {
     async fn test_login_group_permissions_resolved_end_to_end() {
         let mut test_ctx = create_test_context().await;
 
-        // Create an admin first
         let admin_password = "adminpass";
         let admin_hashed = get_cached_password_hash(admin_password);
         test_ctx
@@ -3654,7 +3478,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a group with chat_send + user_list
+        // Group "Staff" grants chat_send + user_list.
         let group = test_ctx
             .db
             .groups
@@ -3667,7 +3491,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a user assigned to the group with NO direct permissions
+        // Bob is assigned to the group with NO direct grants, so his perms come only from the group.
         let password = "password";
         let hashed = get_cached_password_hash(password);
         test_ctx
@@ -3687,7 +3511,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as bob
         let mut session_id = None;
         let request = LoginRequest {
             username: "bob".to_string(),
@@ -3701,7 +3524,6 @@ mod tests {
         let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
         assert!(result.is_ok(), "Login should succeed");
 
-        // Verify LoginResponse includes group info and resolved permissions
         let response = read_login_response(&mut test_ctx).await;
         match response {
             ServerMessage::LoginResponse {

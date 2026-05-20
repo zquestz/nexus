@@ -1,5 +1,3 @@
-//! Handler for UserMessage command
-
 use std::io;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -22,7 +20,6 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::flood::{FloodCheck, FloodTracker};
 
-/// Handle UserMessage command
 pub async fn handle_user_message<W>(
     to_nickname: String,
     message: String,
@@ -41,7 +38,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user_session = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
@@ -54,7 +50,6 @@ where
         }
     };
 
-    // Check UserMessage permission (uses cached permissions, admin bypass built-in)
     if !requesting_user_session.has_permission(Permission::UserMessage) {
         warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_MESSAGE_PERMISSION_DENIED);
         let response = ServerMessage::UserMessageResponse {
@@ -107,7 +102,6 @@ where
         }
     }
 
-    // Validate to_nickname format
     if let Err(e) = validators::validate_nickname(&to_nickname) {
         let error_msg = match e {
             NicknameError::Empty => err_nickname_empty(ctx.locale),
@@ -125,7 +119,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate message content
     if let Err(e) = validators::validate_message(&message) {
         let error_msg = match e {
             MessageError::Empty => err_message_empty(ctx.locale),
@@ -142,8 +135,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Prevent self-messaging (cheap check before DB queries)
-    // Check against the requesting user's nickname (which is the display name)
+    // Prevent self-messaging by nickname (display name), before DB queries.
     let to_nickname_lower = to_nickname.to_lowercase();
     let is_self_message = requesting_user_session.nickname.to_lowercase() == to_nickname_lower;
     if is_self_message {
@@ -156,11 +148,10 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Look up target by nickname (all users have a nickname - equals username for regular accounts)
+    // Target by nickname (equals username for regular accounts).
     let target_session = match ctx.user_manager.get_session_by_nickname(&to_nickname).await {
         Some(session) => session,
         None => {
-            // User not online
             let response = ServerMessage::UserMessageResponse {
                 success: false,
                 error: Some(err_nickname_not_online(ctx.locale, &to_nickname)),
@@ -171,7 +162,6 @@ where
         }
     };
 
-    // Build the message to broadcast
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -186,21 +176,17 @@ where
         timestamp,
     };
 
-    // Send to sender's session(s) by nickname
-    // - Regular accounts: nickname == username, so all sessions receive it
-    // - Shared accounts: unique nickname, so only that session receives it
+    // Broadcast to both parties by nickname. Regular accounts (nickname ==
+    // username) reach all sessions; shared accounts reach the one nickname.
     ctx.user_manager
         .broadcast_to_nickname(&requesting_user_session.nickname, &broadcast)
         .await;
-
-    // Send to receiver's session(s) by nickname
     ctx.user_manager
         .broadcast_to_nickname(&target_session.nickname, &broadcast)
         .await;
 
-    // Send success response to sender via channel AFTER message broadcasts
-    // Using the channel ensures proper ordering - the response will be queued
-    // after the UserMessage broadcast, so the away notice appears after the message
+    // Respond via the channel so it queues after the broadcasts — the away
+    // notice must appear after the message in the client's receive order.
     let response = ServerMessage::UserMessageResponse {
         success: true,
         error: None,
@@ -581,9 +567,7 @@ mod tests {
         }
     }
 
-    // ========================================================================
-    // Shared Account Tests
-    // ========================================================================
+    // Shared account tests.
 
     #[tokio::test]
     async fn test_usermessage_to_shared_account_by_nickname() {

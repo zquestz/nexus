@@ -1,4 +1,4 @@
-//! FileMove message handler - Moves a file or directory in the file area
+//! Moves a file or directory in the file area.
 
 use std::io;
 
@@ -211,9 +211,8 @@ where
             }
         };
 
-    // Pre-lock: derive lock keys from candidates only (pure path arithmetic),
-    // so source validation can happen AFTER acquisition using the
-    // authoritative state — closing the resolve-then-mutate race.
+    // Derive lock keys from candidates only (pure path arithmetic) so source
+    // validation can run AFTER acquisition, closing the resolve-then-mutate race.
     let source_basename = match source_candidate.file_name() {
         Some(name) => name.to_owned(),
         None => {

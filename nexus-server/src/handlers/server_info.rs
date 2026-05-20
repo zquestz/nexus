@@ -1,16 +1,12 @@
-//! Shared ServerInfo builder for consistent field visibility across handlers.
-//!
-//! This helper is used by `login.rs`, `user_update.rs`, and `broadcasts.rs` to ensure
-//! permission-based field filtering is consistent. All three call sites use this
-//! instead of constructing `ServerInfo` directly.
+//! Shared ServerInfo builder applying consistent permission-based field
+//! visibility. All call sites use this rather than constructing `ServerInfo`
+//! directly.
 
 use nexus_common::logging::current_log_level;
 use nexus_common::protocol::ServerInfo;
 
-/// Raw server info values before permission filtering.
-///
-/// Callers populate this from DB queries or broadcast params, then pass it
-/// to `build_server_info()` which applies permission-based field visibility.
+/// Raw server info values before permission filtering, passed to
+/// `build_server_info()`.
 pub struct ServerInfoValues {
     pub name: String,
     pub description: String,
@@ -31,29 +27,20 @@ pub struct ServerInfoValues {
     pub scheduler_chunk_size: u32,
 }
 
-/// Options controlling what's included in the built ServerInfo.
+/// Per-viewer gates controlling which fields the built ServerInfo includes.
 pub struct ServerInfoOptions {
-    /// Whether the user is an admin
     pub is_admin: bool,
-    /// Whether the user has the FileReindex permission
     pub has_file_reindex: bool,
-    /// Whether the user has chat join permission (for auto-join channels visibility)
     pub has_chat_join: bool,
-    /// Whether to include the server image (false for PermissionsUpdated)
+    /// Server image is omitted for PermissionsUpdated.
     pub include_image: bool,
 }
 
-/// Build a `ServerInfo` with permission-based field visibility.
-///
-/// Fields visible to all users: name, description, public_address, version,
-/// max_connections_per_ip, max_transfers_per_ip, transfer_port,
-/// transfer_websocket_port, min_password_strength, log_level,
-/// chat_burst_limit, chat_rate_limit.
-///
-/// Permission-gated fields:
-/// - `file_reindex_interval`: admin or FileReindex permission
+/// Build a `ServerInfo` with permission-based field visibility. Most fields
+/// are visible to all; gated fields:
+/// - `file_reindex_interval`: admin or FileReindex
 /// - `persistent_channels`: admin only
-/// - `auto_join_channels`: admin or ChatJoin permission
+/// - `auto_join_channels`: admin or ChatJoin
 /// - `scheduler_chunk_size`: admin only (internal tuning knob)
 pub fn build_server_info(values: &ServerInfoValues, options: &ServerInfoOptions) -> ServerInfo {
     let file_reindex_interval = if options.is_admin || options.has_file_reindex {
@@ -80,14 +67,13 @@ pub fn build_server_info(values: &ServerInfoValues, options: &ServerInfoOptions)
         None
     };
 
-    // Empty public_address is treated as unset — send None to keep the wire clean.
+    // Empty public_address is unset — send None to keep the wire clean.
     let public_address = if values.public_address.is_empty() {
         None
     } else {
         Some(values.public_address.clone())
     };
 
-    // scheduler_chunk_size is a pure internal tuning knob — admin-only.
     let scheduler_chunk_size = if options.is_admin {
         Some(values.scheduler_chunk_size)
     } else {
@@ -142,9 +128,7 @@ mod tests {
         }
     }
 
-    /// `scheduler_chunk_size` is an internal tuning knob and must never
-    /// reach non-admin clients. Pinned to catch a future refactor that
-    /// drops the gate.
+    /// `scheduler_chunk_size` must never reach non-admin clients.
     #[test]
     fn scheduler_chunk_size_hidden_from_non_admin() {
         let info = build_server_info(

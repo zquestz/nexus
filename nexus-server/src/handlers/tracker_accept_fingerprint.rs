@@ -1,7 +1,6 @@
-//! TrackerAcceptFingerprint message handler — promotes a tracker's
-//! `pending_fingerprint` (set after a Stage 1 TLS-cert mismatch) to its
-//! active `fingerprint`, then respawns the registration task with the
-//! new pin.
+//! TrackerAcceptFingerprint handler: promotes a tracker's
+//! `pending_fingerprint` (set on a Stage 1 cert mismatch) to its active
+//! `fingerprint` and respawns the registration task with the new pin.
 
 use std::io;
 
@@ -21,22 +20,16 @@ use crate::constants::{
 };
 use crate::db::Permission;
 
-/// Handle a `TrackerAcceptFingerprint { id }` request. Requires the
-/// `tracker_edit` permission.
+/// Requires `tracker_edit`. Persists the running task's in-memory
+/// `pending_fingerprint` (Stage 1 only — Stage 2 must NOT populate it; see
+/// `tracker/task.rs`) and respawns the task. Rejects with
+/// `err-tracker-no-pending-fingerprint` when nothing is pending (including a
+/// task that isn't running).
 ///
-/// Reads the running task's in-memory `pending_fingerprint` (set on
-/// Stage 1 mismatch — Stage 2 mismatches must NOT populate it; see
-/// `tracker/task.rs`), persists it as the new active `fingerprint`,
-/// then replaces the running task so the next refresh cycle uses the
-/// new pin. Rejects with `err-tracker-no-pending-fingerprint` if
-/// nothing is pending — including the case where the task isn't
-/// running at all.
-///
-/// Defense-in-depth: even if the upstream invariant breaks and a
-/// Stage 2 mismatch leaves `pending_fingerprint` set, the handler
-/// rejects when `last_error_kind == "tracker_fingerprint_intercepted"`.
-/// Accepting in that case would let an admin one-click pin an
-/// attacker's certificate, defeating the Stage 2 protection entirely.
+/// Defense-in-depth: even if a Stage 2 mismatch wrongly left
+/// `pending_fingerprint` set, reject when
+/// `last_error_kind == "tracker_fingerprint_intercepted"` — otherwise an
+/// admin could one-click pin an attacker's cert, defeating Stage 2.
 pub async fn handle_tracker_accept_fingerprint<W>(
     id: i64,
     session_id: Option<u32>,
@@ -78,25 +71,17 @@ where
             .await;
     }
 
-    // Hold the lifecycle lock across the status_for snapshot, the
-    // update_fingerprint write, the row re-fetch, and the manager
-    // replace. The pending fingerprint we read out of status_for is
-    // part of the decision being committed, so it must be in the same
-    // critical section as the DB write. Drop the guard before the
+    // Hold the lifecycle lock across the status snapshot, the
+    // update_fingerprint write, the row re-fetch, and the manager replace:
+    // the pending fingerprint read here is part of the committed decision, so
+    // it must share the critical section with the DB write. Drop before the
     // network write — see TrackerManager::lock_lifecycle.
     let response: ServerMessage = 'lifecycle: {
         let _guard = ctx.tracker_manager.lock_lifecycle().await;
 
-        // Pull the pending fingerprint out of the running task's status.
-        // No status (id unknown or task disabled) → reject as "no pending"
-        // since there's no observation to accept either way.
-        //
-        // Defense-in-depth: if `last_error_kind` indicates a Stage 2
-        // mismatch (`tracker_fingerprint_intercepted`), reject regardless
-        // of `pending_fingerprint`. The tracker task is supposed to leave
-        // `pending_fingerprint` unset on Stage 2, but a regression there
-        // would otherwise let an admin one-click pin an attacker's cert.
-        // This guard catches that class of bug at the handler boundary.
+        // No status (unknown/disabled id) → "no pending" (nothing to accept).
+        // Stage 2 defense-in-depth: reject when `last_error_kind` is the
+        // intercepted kind regardless of `pending_fingerprint` (see fn doc).
         let pending = match ctx.tracker_manager.status_for(id) {
             Some(status)
                 if status.last_error_kind.as_deref()
@@ -136,9 +121,7 @@ where
         match ctx.db.trackers.update_fingerprint(id, &pending).await {
             Ok(true) => {}
             Ok(false) => {
-                // Row vanished before we acquired the lifecycle lock
-                // (concurrent `TrackerRemove`). The UPDATE affected 0
-                // rows, so no state change to roll back.
+                // Row removed concurrently; UPDATE hit 0 rows, nothing to roll back.
                 break 'lifecycle reject_accept(err_tracker_not_found(ctx.locale));
             }
             Err(e) => {
@@ -153,11 +136,9 @@ where
             }
         }
 
-        // Re-fetch the row so we can hand a fresh `TrackerRecord` to the
-        // manager (it owns task lifecycle keyed by the full record).
-        // Under the lifecycle lock the row can't be deleted out from
-        // under us between the UPDATE and this read, but a DB-layer
-        // error (I/O) still has to be handled.
+        // Re-fetch for a fresh `TrackerRecord` to hand the manager. The
+        // lifecycle lock blocks deletion between UPDATE and this read, but a
+        // DB I/O error still has to be handled.
         let record = match ctx.db.trackers.get_by_id(id).await {
             Ok(Some(r)) => r,
             Ok(None) => break 'lifecycle reject_accept(err_tracker_not_found(ctx.locale)),
@@ -181,8 +162,7 @@ where
             "{}", LOG_TRACKER_ACCEPT_FINGERPRINT_SUCCESS
         );
 
-        // Abort the existing task and respawn with the new pin so the next
-        // refresh cycle uses the freshly-promoted fingerprint.
+        // Respawn so the next refresh uses the promoted fingerprint.
         ctx.tracker_manager.replace(record.clone());
 
         ServerMessage::TrackerAcceptFingerprintResponse {
@@ -213,13 +193,11 @@ mod tests {
         concurrent_handler_context, create_test_context, login_user, read_server_message,
     };
 
-    /// The fingerprint a tracker was originally pinned with — the
-    /// "old" cert before rotation.
+    /// The originally-pinned ("old") cert, before rotation.
     const OLD_FINGERPRINT: &str = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
          AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
 
-    /// The fingerprint observed after a Stage 1 mismatch — the "new"
-    /// cert the admin must accept to keep registering with the tracker.
+    /// The ("new") cert observed after a Stage 1 mismatch, awaiting accept.
     const NEW_FINGERPRINT: &str = "11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:\
          11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00";
 
@@ -249,10 +227,8 @@ mod tests {
         }
     }
 
-    /// Unknown id: no running task → rejected as "no pending fingerprint".
-    /// (We don't surface a separate "not found" here because the
-    /// observable state from the admin's perspective is identical:
-    /// nothing to accept either way.)
+    /// Unknown id → "no pending fingerprint" (no separate "not found": from
+    /// the admin's view there's nothing to accept either way).
     #[tokio::test]
     async fn unknown_id_returns_no_pending() {
         let mut test_ctx = create_test_context().await;
@@ -281,14 +257,10 @@ mod tests {
         }
     }
 
-    /// Defense-in-depth: even if `pending_fingerprint` is set, the
-    /// handler must reject when `last_error_kind` is the Stage 2
-    /// `tracker_fingerprint_intercepted` kind. Stage 2 is an
-    /// active-interception signal — accepting the TLS-observed cert
-    /// would let an admin pin the attacker's certificate. The tracker
-    /// task is supposed to leave `pending_fingerprint` unset on
-    /// Stage 2 (see `tracker/task.rs`); this test simulates a
-    /// regression where that invariant is broken upstream.
+    /// Defense-in-depth: with `pending_fingerprint` set, still reject when
+    /// `last_error_kind` is the Stage 2 `tracker_fingerprint_intercepted`
+    /// kind — accepting would pin the attacker's cert. Simulates a regression
+    /// where the task wrongly leaves `pending_fingerprint` set on Stage 2.
     #[tokio::test]
     async fn rejects_stage2_intercepted_even_with_pending_set() {
         let mut test_ctx = create_test_context().await;
@@ -315,8 +287,7 @@ mod tests {
             .await
             .expect("create");
         test_ctx.tracker_manager.spawn(created.clone());
-        // Simulate the regression: pending fingerprint set + Stage 2
-        // error kind. Defense-in-depth must catch this.
+        // Regression: pending set + Stage 2 kind; defense-in-depth must catch it.
         test_ctx
             .tracker_manager
             .set_pending_fingerprint_for_test(created.id, NEW_FINGERPRINT.to_string());
@@ -340,8 +311,7 @@ mod tests {
             other => panic!("Expected TrackerAcceptFingerprintResponse, got {other:?}"),
         }
 
-        // DB row's fingerprint must NOT have been changed — the OLD
-        // pin still stands, the attacker's cert was not promoted.
+        // OLD pin must still stand — the attacker's cert was not promoted.
         let row = test_ctx
             .db
             .trackers
@@ -379,9 +349,8 @@ mod tests {
             })
             .await
             .expect("create");
-        // Spawn a task so a status exists, but its pending_fingerprint
-        // starts as None — exercising the "task running but nothing to
-        // accept" branch.
+        // Status exists but pending_fingerprint is None: the "running but
+        // nothing to accept" branch.
         test_ctx.tracker_manager.spawn(created.clone());
 
         let result = handle_tracker_accept_fingerprint(
@@ -400,12 +369,9 @@ mod tests {
         }
     }
 
-    /// Success path — the cert-rotation scenario this flow is for:
-    /// tracker row was already pinned with `OLD_FINGERPRINT`, the
-    /// running task observed `NEW_FINGERPRINT` after a Stage 1 mismatch
-    /// and stashed it in `pending_fingerprint`, admin accepts. Handler
-    /// must replace the OLD pin with the NEW value (not just append),
-    /// respawn the task, and return success with the row's id + name.
+    /// Success / cert-rotation path: row pinned with OLD, task stashed NEW in
+    /// `pending_fingerprint` after a Stage 1 mismatch, admin accepts. Handler
+    /// must replace (not append) the pin, respawn, and return id + name.
     #[tokio::test]
     async fn happy_path_replaces_old_fingerprint_with_pending() {
         let mut test_ctx = create_test_context().await;
@@ -431,8 +397,7 @@ mod tests {
             })
             .await
             .expect("create");
-        // Sanity-check the starting state so a future regression that
-        // makes `create` ignore `fingerprint` would surface here.
+        // Guards against a regression where `create` ignores `fingerprint`.
         assert_eq!(created.fingerprint.as_deref(), Some(OLD_FINGERPRINT));
 
         test_ctx.tracker_manager.spawn(created.clone());
@@ -472,18 +437,13 @@ mod tests {
         assert_eq!(row.fingerprint.as_deref(), Some(NEW_FINGERPRINT));
         assert_ne!(row.fingerprint.as_deref(), Some(OLD_FINGERPRINT));
 
-        // Manager should still have a task for this id (the replace
-        // re-spawned with the new pin; pre-replace status is gone).
+        // Task still present (the replace respawned it).
         assert!(test_ctx.tracker_manager.status_for(created.id).is_some());
     }
 
-    /// Concurrent-lifecycle regression: TrackerAcceptFingerprint reads
-    /// a pending fingerprint from manager status, runs
-    /// `update_fingerprint`, re-fetches the row, then `replace()`s the
-    /// task — and at any of those await points a concurrent
-    /// TrackerRemove could delete the row and terminate the task.
-    /// `TrackerManager::lock_lifecycle` keeps these two ops sequential;
-    /// the invariant helper confirms it.
+    /// Concurrent-lifecycle regression: accept (read pending → update → refetch
+    /// → replace) races a TrackerRemove that could delete the row at any await.
+    /// `lock_lifecycle` serializes them; the invariant helper confirms it.
     #[tokio::test]
     async fn concurrent_accept_fingerprint_and_remove_preserve_invariant() {
         use nexus_common::framing::FrameWriter;
@@ -518,10 +478,8 @@ mod tests {
                 .await
                 .expect("create");
             test_ctx.tracker_manager.spawn(record.clone());
-            // Simulate a Stage 1 mismatch: the running task observed a
-            // new cert and stashed its fingerprint. Without the lock,
-            // TrackerAcceptFingerprint and TrackerRemove can interleave
-            // between the DB write and the manager replace.
+            // Stage 1 mismatch: task stashed a new cert. Without the lock,
+            // accept and remove interleave between the DB write and the replace.
             test_ctx
                 .tracker_manager
                 .set_pending_fingerprint_for_test(record.id, NEW_FINGERPRINT.to_string());

@@ -1,5 +1,3 @@
-//! Handler for TrustDelete command
-
 use std::io;
 
 use tokio::io::AsyncWrite;
@@ -16,12 +14,8 @@ use crate::constants::*;
 use crate::db::Permission;
 use crate::ip_rule_cache::canonicalize_target;
 
-/// Handle TrustDelete command
-///
-/// Removes trusted IP(s). The target can be:
-/// - A nickname annotation (removes all trusts with that annotation)
-/// - An IP address (removes that specific trust)
-/// - A CIDR range (removes the range AND any single IPs/smaller ranges within it)
+/// Removes trusted IP(s) by target: a nickname annotation (all trusts with it),
+/// a single IP, or a CIDR range (the range plus any IPs/smaller ranges inside it).
 pub async fn handle_trust_delete<W>(
     target: String,
     session_id: Option<u32>,
@@ -37,7 +31,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
@@ -50,7 +43,6 @@ where
         }
     };
 
-    // Check trust_delete permission
     if !requesting_user.has_permission(Permission::TrustDelete) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_TRUST_DELETE_PERMISSION_DENIED);
         let response = ServerMessage::TrustDeleteResponse {
@@ -62,7 +54,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate target length
     if let Err(e) = validators::validate_target(&target) {
         let error_msg = match e {
             TargetError::Empty => err_trust_not_found(ctx.locale, &target),
@@ -77,7 +68,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // First, try to untrust by nickname annotation
+    // Try untrust by nickname annotation first.
     if ctx
         .db
         .trusts
@@ -87,7 +78,6 @@ where
     {
         match ctx.db.trusts.delete_trusts_by_nickname(&target).await {
             Ok(deleted_ips) => {
-                // Update cache
                 {
                     let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
                     for ip in &deleted_ips {
@@ -119,13 +109,11 @@ where
         }
     }
 
-    // Canonicalize the IP/CIDR shape once and dispatch on `is_range`. Bare-IP
-    // and `/32` / `/128` inputs collapse to a single bare-IP form; CIDRs with
-    // host bits set zero them and uppercase-hex IPv6 folds to lowercase. The
-    // returned `net` and `is_range` are computed by `canonicalize_target` and
-    // used directly — no re-parse.
+    // Canonicalize once: /32 and /128 collapse to bare IP, CIDR host bits
+    // zero out, uppercase-hex IPv6 folds to lowercase. `net`/`is_range` come
+    // back from `canonicalize_target` so we dispatch without re-parsing.
     let Some((canonical, net, is_range)) = canonicalize_target(&target) else {
-        // Target is neither a nickname annotation, CIDR, nor valid IP
+        // Neither nickname annotation, CIDR, nor valid IP.
         let response = ServerMessage::TrustDeleteResponse {
             success: false,
             error: Some(err_trust_not_found(ctx.locale, &target)),
@@ -136,15 +124,13 @@ where
     };
 
     if is_range {
-        // For CIDR ranges, delete the range itself AND any contained entries
+        // Delete the CIDR row itself plus any entries contained within it.
         let mut all_deleted = Vec::new();
 
-        // First, try to delete the exact CIDR entry
         if let Ok(true) = ctx.db.trusts.delete_trust_by_ip(&canonical).await {
             all_deleted.push(canonical.clone());
         }
 
-        // Then, delete any entries contained within this range
         match ctx.db.trusts.delete_trusts_in_range(&net).await {
             Ok(deleted) => {
                 all_deleted.extend(deleted);
@@ -171,11 +157,9 @@ where
             return ctx.send_message(&response).await;
         }
 
-        // Update cache - remove the CIDR and all contained entries
         {
             let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
             cache.remove_trusts_contained_by(&canonical);
-            // Also remove the exact CIDR entry if it existed
             cache.remove_trust(&canonical);
         }
 
@@ -189,10 +173,9 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Single-IP branch (canonical is a bare IP)
+    // Single-IP branch (canonical is a bare IP).
     match ctx.db.trusts.delete_trust_by_ip(&canonical).await {
         Ok(true) => {
-            // Update cache
             {
                 let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
                 cache.remove_trust(&canonical);
@@ -208,7 +191,6 @@ where
             ctx.send_message(&response).await
         }
         Ok(false) => {
-            // No trust found for this IP
             let response = ServerMessage::TrustDeleteResponse {
                 success: false,
                 error: Some(err_trust_not_found(ctx.locale, &target)),

@@ -1,4 +1,4 @@
-//! NewsEdit message handler - Returns a news item for editing
+//! NewsEdit message handler — returns a news item for editing
 
 use std::io;
 
@@ -20,7 +20,6 @@ use super::{
 };
 use crate::db::Permission;
 
-/// Handle a news edit request (returns news item for editing)
 pub async fn handle_news_edit<W>(
     id: i64,
     session_id: Option<u32>,
@@ -36,7 +35,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -44,7 +42,7 @@ where
     {
         Some(u) => u,
         None => {
-            // Session not found - likely a race condition, not a security event
+            // Session not found — likely a race, not a security event.
             let response = ServerMessage::NewsEditResponse {
                 success: false,
                 error: Some(err_not_logged_in(ctx.locale)),
@@ -54,7 +52,7 @@ where
         }
     };
 
-    // Fetch news item from database first to check authorship
+    // Fetch first to check authorship.
     let news_record = match ctx.db.news.get_news_by_id(id).await {
         Ok(Some(record)) => record,
         Ok(None) => {
@@ -76,7 +74,7 @@ where
         }
     };
 
-    // Check permission: user must be author OR have NewsEdit permission
+    // Author may edit own; otherwise NewsEdit required.
     let is_author = news_record.author_id == requesting_user.user_id;
     let has_edit_permission = requesting_user.has_permission(Permission::NewsEdit);
 
@@ -90,7 +88,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check admin protection: non-admins cannot edit admin posts
+    // Non-admins cannot edit admin posts.
     if news_record.author_is_admin && !requesting_user.is_admin {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %id, "{}", LOG_NEWS_EDIT_ADMIN);
         let response = ServerMessage::NewsEditResponse {
@@ -101,7 +99,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Convert to protocol format
     let news = NewsItem {
         id: news_record.id,
         body: news_record.body,
@@ -140,7 +137,6 @@ mod tests {
     async fn test_news_edit_not_found() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin (has all permissions)
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result =
@@ -161,7 +157,6 @@ mod tests {
     async fn test_news_edit_author_can_edit_own() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user without NewsEdit permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -171,7 +166,6 @@ mod tests {
         )
         .await;
 
-        // Get the user's database ID
         let user = test_ctx
             .db
             .users
@@ -180,7 +174,6 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Create a news item as this user
         let created = test_ctx
             .db
             .news
@@ -217,7 +210,6 @@ mod tests {
     async fn test_news_edit_non_author_without_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create first user and their news
         let _author_session = login_user(
             &mut test_ctx,
             "author",
@@ -242,7 +234,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as another user without NewsEdit permission
         let other_session = login_user(&mut test_ctx, "other", "password", &[], false).await;
 
         let result = handle_news_edit(
@@ -267,7 +258,6 @@ mod tests {
     async fn test_news_edit_with_permission_can_edit_others() {
         let mut test_ctx = create_test_context().await;
 
-        // Create first user and their news
         let _author_session = login_user(
             &mut test_ctx,
             "author",
@@ -292,7 +282,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as user with NewsEdit permission
         let editor_session = login_user(
             &mut test_ctx,
             "editor",
@@ -330,7 +319,6 @@ mod tests {
     async fn test_news_edit_non_admin_cannot_edit_admin_post() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin and their news
         let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let admin = test_ctx
@@ -348,7 +336,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as non-admin with NewsEdit permission
         let editor_session = login_user(
             &mut test_ctx,
             "editor",
@@ -380,7 +367,6 @@ mod tests {
     async fn test_news_edit_admin_can_edit_admin_post() {
         let mut test_ctx = create_test_context().await;
 
-        // Create first admin and their news
         let _admin1_session = login_user(&mut test_ctx, "admin1", "password", &[], true).await;
 
         let admin1 = test_ctx
@@ -398,7 +384,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as another admin
         let admin2_session = login_user(&mut test_ctx, "admin2", "password", &[], true).await;
 
         let result = handle_news_edit(
@@ -430,7 +415,6 @@ mod tests {
     async fn test_news_edit_returns_full_content() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let admin = test_ctx
@@ -441,7 +425,6 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Create news with both body and image
         let created = test_ctx
             .db
             .news

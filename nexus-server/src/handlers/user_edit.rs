@@ -1,4 +1,4 @@
-//! UserEdit message handler - Returns user details for editing
+//! Returns user details for editing.
 
 use std::io;
 
@@ -19,7 +19,6 @@ use crate::constants::{
 };
 use crate::db::Permission;
 
-/// Handle a user edit request (returns user details for editing)
 pub async fn handle_user_edit<W>(
     id: i64,
     session_id: Option<u32>,
@@ -35,7 +34,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -58,7 +56,6 @@ where
             .await;
     }
 
-    // Check UserEdit permission (uses cached permissions, admin bypass built-in)
     if !requesting_user.has_permission(Permission::UserEdit) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_EDIT_PERMISSION_DENIED);
         return ctx
@@ -66,7 +63,6 @@ where
             .await;
     }
 
-    // Look up target user by ID
     let target_user = match ctx.db.users.get_user_by_id(id).await {
         Ok(Some(user)) => user,
         Ok(None) => {
@@ -93,7 +89,6 @@ where
             .await;
     }
 
-    // Fetch user permissions for response
     let user_permissions = match ctx.db.users.get_user_permissions(target_user.id).await {
         Ok(perms) => perms,
         Err(e) => {
@@ -104,14 +99,12 @@ where
         }
     };
 
-    // Convert permissions to protocol format
     let permissions: Vec<String> = user_permissions
         .to_vec()
         .iter()
         .map(|p| p.as_str().to_string())
         .collect();
 
-    // Fetch group info if user belongs to a group
     let (group_name, group_permissions_list) = if let Some(gid) = target_user.group_id {
         match ctx.db.groups.get_group_by_id(gid).await {
             Ok(Some(group)) => {
@@ -132,7 +125,6 @@ where
         (None, None)
     };
 
-    // Fetch revoke overrides for this user
     let revoked_permissions: Option<Vec<String>> = if target_user.group_id.is_some() {
         match ctx.db.users.get_revoke_permissions(target_user.id).await {
             Ok(revokes) if !revokes.is_empty() => {
@@ -144,7 +136,7 @@ where
         None
     };
 
-    // Fetch available groups for the dropdown (3 queries total, not 1 + 2N)
+    // 3 queries total, not 1 + 2N.
     let available_groups = match ctx.db.groups.get_all_groups_with_details().await {
         Ok(groups) => Some(groups),
         Err(e) => {
@@ -153,7 +145,6 @@ where
         }
     };
 
-    // Send user details for editing
     let response = ServerMessage::UserEditResponse {
         success: true,
         error: None,

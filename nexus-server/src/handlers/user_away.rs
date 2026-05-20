@@ -1,4 +1,4 @@
-//! Handler for UserAway command - set away status
+//! Handler for UserAway command
 
 use std::io;
 
@@ -15,7 +15,7 @@ use super::{
 use crate::constants::{HANDLER_USER_AWAY, LOG_USER_AWAY_NOT_LOGGED_IN};
 use crate::users::manager::UserManager;
 
-/// Handle UserAway command - set away status for all sessions of this user
+/// Set away status for this session.
 pub async fn handle_user_away<W>(
     message: Option<String>,
     session_id: Option<u32>,
@@ -31,7 +31,6 @@ where
             .await;
     };
 
-    // Validate status message if provided
     if let Some(ref msg) = message
         && let Err(e) = validators::validate_status(msg)
     {
@@ -47,7 +46,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Update away status for this session
     let status = message.clone();
     let Some(session) = ctx
         .user_manager
@@ -59,28 +57,23 @@ where
             .await;
     };
 
-    // Send success response
     let response = ServerMessage::UserAwayResponse {
         success: true,
         error: None,
     };
     ctx.send_message(&response).await?;
 
-    // Broadcast UserUpdated
-    // For regular accounts with multiple sessions, use aggregated data with split selection
-    // For shared accounts, each session is separate (use single session data)
+    // Broadcast UserUpdated. Shared accounts broadcast this session directly;
+    // regular accounts aggregate across all their sessions.
     let user_info = if session.is_shared {
-        // Shared account: use this session's data directly
         UserManager::build_user_info_from_session(&session)
     } else {
-        // Regular account: aggregate all sessions (latest login for avatar, most recently active for away/status)
         let all_sessions = ctx
             .user_manager
             .get_sessions_by_username(&session.username)
             .await;
-        // All sessions for this user were removed between set_status and
-        // aggregation (e.g. concurrent disconnect). UserDisconnected will
-        // follow; skip the stale UserUpdated.
+        // All sessions vanished between set_status and aggregation (concurrent
+        // disconnect). UserDisconnected will follow; skip the stale UserUpdated.
         let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) else {
             return Ok(());
         };

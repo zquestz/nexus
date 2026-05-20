@@ -1,27 +1,12 @@
 //! Shared test utilities for handler tests
 //!
-//! # Pitfall: DB-vs-session-cache permission grants
-//!
-//! `login_user` / `login_user_with_features` / `login_shared_user` create
-//! the user in the DB *and* register a session whose cached permissions
-//! match the DB. That symmetry matters: several handlers (notably
-//! `user_update`, `group_update`) re-resolve the target's effective
-//! permissions from the DB partway through and overwrite the session
-//! cache with the result. A test that bypasses these helpers and adds a
-//! session directly via `user_manager.add_user(NewSessionParams { ... })`
-//! with permissions present only in `NewSessionParams.permissions` —
-//! never written to the DB — will see those permissions silently wiped
-//! the moment the handler under test re-syncs. The session then fails
-//! permission checks downstream of the resync (e.g. broadcast filters
-//! gated on `UserList`), producing confusing "test expected N broadcasts,
-//! got fewer" failures.
-//!
-//! Rule of thumb: if a test grants a permission so that a session can
-//! *receive* something the handler emits, grant it in both places — the
-//! DB row via `CreateUserParams.permissions` *and* the session cache via
-//! `NewSessionParams.permissions`. If a test grants only to drive a
-//! handler check that runs before any resync, session-cache-only is
-//! fine, but verify by reading the handler.
+//! Pitfall: handlers like `user_update` / `group_update` re-resolve a
+//! target's effective permissions from the DB and overwrite the session
+//! cache. A permission granted only in `NewSessionParams.permissions`
+//! (never in the DB row) gets silently wiped on resync. To let a session
+//! *receive* a handler's broadcast, grant in both `CreateUserParams`
+//! (DB) and `NewSessionParams` (cache); the `login_*` helpers keep them
+//! in sync automatically.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -54,54 +39,20 @@ use crate::users::user::NewSessionParams;
 use crate::voice::VoiceRegistry;
 use nexus_common::address::normalize_socket_addr;
 
-/// Default locale for tests
 pub const DEFAULT_TEST_LOCALE: &str = "en";
 
-/// Fake server certificate fingerprint used in tests.
-///
-/// Real fingerprints are 32 hex pairs separated by colons (95 chars). Tests
-/// don't validate format, but using a realistic shape avoids surprises if a
-/// validator is added later. Reference this constant rather than the literal
-/// so it can be updated in one place.
+/// Fake server fingerprint (realistic 95-char shape; tests don't validate format).
 pub const TEST_FINGERPRINT: &str = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
 
-/// Type alias for the write half used in tests
 type TestWriteHalf = tokio::net::tcp::OwnedWriteHalf;
-/// Type alias for the read half used in tests
 type TestReadHalf = tokio::net::tcp::OwnedReadHalf;
 
-// ========================================================================
-// Cached Password Hashes for Test Performance
-// ========================================================================
-//
-// Argon2 password hashing is intentionally slow (~1 second per hash) for security.
-// However, this makes tests extremely slow since handler tests call login_user()
-// ~460 times. Pre-computing and caching hashes for common test passwords provides
-// a ~10x speedup for the test suite.
-//
-// The cache is populated lazily - the first test to use a password pays the
-// hashing cost, but all subsequent tests reuse the cached hash.
-
-/// Global cache for pre-computed password hashes.
-///
-/// This dramatically speeds up tests by avoiding repeated Argon2 computations.
-/// The cache is thread-safe and lazily populated.
+// Argon2 hashing is intentionally slow; handler tests log in hundreds of times.
+// Caching hashes per unique password (most tests reuse "password") avoids the cost.
 static PASSWORD_HASH_CACHE: LazyLock<RwLock<HashMap<String, String>>> =
     LazyLock::new(|| RwLock::new(HashMap::new()));
 
-/// Get a cached password hash, computing and caching it if not already present.
-///
-/// This function provides a ~1000x speedup for repeated password hashing in tests
-/// by caching the Argon2 hash for each unique password. Since most tests use the
-/// same password ("password"), this effectively eliminates password hashing
-/// overhead after the first test.
-///
-/// # Thread Safety
-///
-/// Uses a read-write lock for concurrent access. Multiple tests can read cached
-/// hashes simultaneously; writes only occur for new passwords.
 pub fn get_cached_password_hash(password: &str) -> String {
-    // Try to read from cache first (fast path)
     {
         let cache = PASSWORD_HASH_CACHE.read().unwrap();
         if let Some(hash) = cache.get(password) {
@@ -109,7 +60,6 @@ pub fn get_cached_password_hash(password: &str) -> String {
         }
     }
 
-    // Cache miss - compute hash and store it
     let hash = crate::db::hash_password(
         password,
         nexus_common::validators::PasswordStrength::Weak,
@@ -119,12 +69,11 @@ pub fn get_cached_password_hash(password: &str) -> String {
 
     {
         let mut cache = PASSWORD_HASH_CACHE.write().unwrap();
-        // Double-check in case another thread computed it while we were hashing
         cache.entry(password.to_string()).or_insert(hash).clone()
     }
 }
 
-/// Test context that owns all resources needed for handler testing
+/// Owns all resources needed for handler testing.
 pub struct TestContext {
     pub frame_reader: FrameReader<BufReader<TestReadHalf>>,
     pub frame_writer: FrameWriter<TestWriteHalf>,
@@ -150,7 +99,6 @@ pub struct TestContext {
 }
 
 impl TestContext {
-    /// Create a HandlerContext from this TestContext
     pub fn handler_context(&mut self) -> HandlerContext<'_, TestWriteHalf> {
         HandlerContext {
             writer: &mut self.frame_writer,
@@ -177,11 +125,8 @@ impl TestContext {
     }
 }
 
-/// Helper to create test context using real TCP sockets
-///
-/// Returns a TestContext that owns all resources and can create HandlerContext instances
+/// Build a `TestContext` over a real loopback TCP socket pair.
 pub async fn create_test_context() -> TestContext {
-    // Create in-memory database
     let pool = sqlx::SqlitePool::connect(":memory:")
         .await
         .expect("Failed to create test database");
@@ -192,29 +137,26 @@ pub async fn create_test_context() -> TestContext {
 
     let db = Database::new(pool);
 
-    // Set empty auto_join_channels to avoid channels in LoginResponse during login tests
+    // Empty auto_join_channels keeps channels out of LoginResponse during login tests.
     db.config
         .set_auto_join_channels("")
         .await
         .expect("Failed to clear auto_join_channels");
 
-    // Set min password strength to Weak so tests with simple passwords pass
+    // Weak strength so tests can use simple passwords.
     db.config
         .set_min_password_strength(nexus_common::validators::PasswordStrength::Weak)
         .await
         .expect("Failed to set min_password_strength");
     let user_manager = UserManager::new();
 
-    // Create TCP listener on localhost
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
 
-    // Connect client
     let client_handle = tokio::spawn(async move { TcpStream::connect(addr).await.unwrap() });
 
-    // Accept connection. Mirror the production accept loops: fold any
-    // IPv4-mapped IPv6 peer_addr at the boundary so session state in tests
-    // matches what production can produce.
+    // Fold IPv4-mapped IPv6 like the production accept loops, so test sessions
+    // land in states production can actually produce.
     let (server_stream, peer_addr) = listener.accept().await.unwrap();
     let peer_addr = normalize_socket_addr(peer_addr);
     let (_read_half, write_half) = server_stream.into_split();
@@ -225,35 +167,28 @@ pub async fn create_test_context() -> TestContext {
     let buf_reader = BufReader::new(client_read_half);
     let frame_reader = FrameReader::new(buf_reader);
 
-    // Create message channel (keep receiver alive to prevent channel closure)
+    // Keep rx alive to prevent channel closure.
     let (tx, rx) = mpsc::unbounded_channel();
 
-    // Create a default message ID for tests (must be valid hex characters)
     let message_id = MessageId::from_bytes(b"000000000000").expect("valid hex test message ID");
 
-    // Create connection tracker for tests (unlimited by default)
+    // Unlimited connections by default.
     let connection_tracker = Arc::new(ConnectionTracker::new(0, 0));
 
-    // Create empty IP rule cache for tests
     let ip_rule_cache = Arc::new(RwLock::new(IpRuleCache::new()));
 
-    // Create temp directory for file index
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let file_index = Arc::new(FileIndex::new(temp_dir.path(), temp_dir.path()));
     let file_mutation_locks = Arc::new(PathLockMap::new());
 
-    // Create channel manager for tests
     let channel_manager = ChannelManager::new(db.channels.clone(), user_manager.clone());
 
-    // Create transfer registry for tests
     let transfer_registry = Arc::new(TransferRegistry::new());
 
-    // Create voice registry for tests
     let voice_registry = VoiceRegistry::new();
 
-    // Create tracker manager for tests. The tracker tasks won't
-    // actually run anything because no rows are seeded; admin handler
-    // tests that exercise the manager populate it via spawn() / replace().
+    // No rows seeded, so tracker tasks don't run; manager-exercising tests
+    // populate it via spawn() / replace().
     let tracker_context = Arc::new(crate::tracker::TrackerContext {
         db: db.clone(),
         user_manager: user_manager.clone(),
@@ -288,7 +223,7 @@ pub async fn create_test_context() -> TestContext {
     }
 }
 
-/// Helper to create a user and add them to UserManager, returning their session_id
+/// Create a user + session, returning the session_id.
 pub async fn login_user(
     test_ctx: &mut TestContext,
     username: &str,
@@ -299,9 +234,7 @@ pub async fn login_user(
     login_user_with_features(test_ctx, username, password, permissions, is_admin, vec![]).await
 }
 
-/// Helper to create a user from a specific IP address, returning their session_id
-///
-/// This is useful for testing ban scenarios where users need to be on different IPs.
+/// `login_user` variant placing the session on a specific IP (ban-scenario tests).
 pub async fn login_user_from_ip(
     test_ctx: &mut TestContext,
     username: &str,
@@ -310,16 +243,13 @@ pub async fn login_user_from_ip(
     is_admin: bool,
     ip: &str,
 ) -> u32 {
-    // Get cached password hash (fast path for repeated passwords)
     let hashed = get_cached_password_hash(password);
 
-    // Build permissions
     let mut perms = Permissions::new();
     for perm in permissions {
         perms.permissions.insert(*perm);
     }
 
-    // Create user in database
     let user = test_ctx
         .db
         .users
@@ -337,13 +267,10 @@ pub async fn login_user_from_ip(
         .await
         .unwrap();
 
-    // Parse the IP into a SocketAddr, then fold IPv4-mapped IPv6 just like
-    // production's accept loops do. This keeps test sessions in states that
-    // production can actually produce.
+    // Fold IPv4-mapped IPv6 like production's accept loops.
     let addr: SocketAddr = format!("{}:12345", ip).parse().expect("valid IP address");
     let addr = normalize_socket_addr(addr);
 
-    // Add user to UserManager with custom address
     test_ctx
         .user_manager
         .add_user(NewSessionParams {
@@ -364,10 +291,8 @@ pub async fn login_user_from_ip(
             status: None,
             group_id: None,
             group_name: None,
-            // Mirror what production resolves to for a user with no override
-            // and no group: admins get the admin default, everyone else the
-            // system default. Routes through the shared resolver so future
-            // precedence changes can't leave fixtures out of sync.
+            // No override, no group: resolve via the shared resolver so
+            // fixtures stay in sync with production precedence.
             bandwidth_weight: resolve_bandwidth_weight(None, None, is_admin),
             bandwidth_weight_override: None,
             last_activity: std::time::Instant::now(),
@@ -376,7 +301,7 @@ pub async fn login_user_from_ip(
         .expect("Failed to add user to UserManager")
 }
 
-/// Helper to create a user with features and add them to UserManager, returning their session_id
+/// `login_user` variant that sets session feature flags.
 pub async fn login_user_with_features(
     test_ctx: &mut TestContext,
     username: &str,
@@ -385,16 +310,13 @@ pub async fn login_user_with_features(
     is_admin: bool,
     features: Vec<String>,
 ) -> u32 {
-    // Get cached password hash (fast path for repeated passwords)
     let hashed = get_cached_password_hash(password);
 
-    // Build permissions
     let mut perms = Permissions::new();
     for perm in permissions {
         perms.permissions.insert(*perm);
     }
 
-    // Create user in database
     let user = test_ctx
         .db
         .users
@@ -412,7 +334,6 @@ pub async fn login_user_with_features(
         .await
         .unwrap();
 
-    // Add user to UserManager
     test_ctx
         .user_manager
         .add_user(NewSessionParams {
@@ -442,16 +363,9 @@ pub async fn login_user_with_features(
         .expect("Failed to add user to UserManager")
 }
 
-/// Helper to create an "observer" user who watches for broadcasts on their own channel.
-///
-/// Unlike `login_user` / `login_user_with_features`, this does NOT clone
-/// `test_ctx.tx`; it allocates a fresh `mpsc::unbounded_channel()` for the
-/// new session. The returned `rx` lets the caller verify which broadcasts
-/// were delivered to this specific session, independently of the originator's.
-///
-/// Used to verify sender-exclusion in broadcasts (e.g. that the originator
-/// of a NewsCreate doesn't receive the resulting NewsUpdated, while a
-/// separate observer session does).
+/// Like `login_user`, but gives the session its own fresh channel (not the
+/// shared `test_ctx.tx`) and returns the `rx`. Lets a test assert what this
+/// specific session received — e.g. verifying sender-exclusion in broadcasts.
 pub async fn login_observer_user(
     test_ctx: &mut TestContext,
     username: &str,
@@ -508,7 +422,6 @@ pub async fn login_observer_user(
             status: None,
             group_id: None,
             group_name: None,
-            // Observer is always non-admin (hardcoded above).
             bandwidth_weight: resolve_bandwidth_weight(None, None, false),
             bandwidth_weight_override: None,
             last_activity: std::time::Instant::now(),
@@ -519,7 +432,7 @@ pub async fn login_observer_user(
     (session_id, rx)
 }
 
-/// Helper to create a shared account user with a nickname and add them to UserManager
+/// Create a shared account + session with a distinct `nickname`.
 pub async fn login_shared_user(
     test_ctx: &mut TestContext,
     account_username: &str,
@@ -527,16 +440,13 @@ pub async fn login_shared_user(
     nickname: &str,
     permissions: &[crate::db::Permission],
 ) -> u32 {
-    // Get cached password hash (fast path for repeated passwords)
     let hashed = get_cached_password_hash(password);
 
-    // Build permissions
     let mut perms = Permissions::new();
     for perm in permissions {
         perms.permissions.insert(*perm);
     }
 
-    // Create shared account in database (is_shared = true)
     let user = test_ctx
         .db
         .users
@@ -554,7 +464,6 @@ pub async fn login_shared_user(
         .await
         .unwrap();
 
-    // Add user to UserManager with nickname
     test_ctx
         .user_manager
         .add_user(NewSessionParams {
@@ -570,12 +479,11 @@ pub async fn login_shared_user(
             features: vec![],
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
-            nickname: nickname.to_string(), // Shared account: custom nickname
+            nickname: nickname.to_string(),
             is_away: false,
             status: None,
             group_id: None,
             group_name: None,
-            // Shared accounts can't be admin (XOR invariant).
             bandwidth_weight: resolve_bandwidth_weight(None, None, false),
             bandwidth_weight_override: None,
             last_activity: std::time::Instant::now(),
@@ -584,29 +492,13 @@ pub async fn login_shared_user(
         .expect("Failed to add shared user to UserManager")
 }
 
-// ========================================================================
-// Concurrent-handler test helpers
-// ========================================================================
-
-/// Default iteration count for concurrent-handler regression tests
-/// (see [`concurrent_handler_context`]). With the lifecycle lock in
-/// place the invariant holds on every iteration; the loop is defensive
-/// coverage so a future regression that removes a `lock_lifecycle()`
-/// call fails reliably even if a single iteration's scheduler
-/// interleaving happens to mask the race.
+/// Iteration count for concurrent-handler regression loops: defensive coverage
+/// so a removed `lock_lifecycle()` call fails reliably across interleavings.
 pub const CONCURRENT_LIFECYCLE_ITERATIONS: usize = 25;
 
-/// Build a [`HandlerContext`] sharing all immutable resources with the
-/// `TestContext` but using a caller-supplied (typically discard)
-/// writer. Lets multiple `HandlerContext`s coexist for tests that
-/// drive concurrent handlers (e.g. via `tokio::join!`) without
-/// contending over the single `test_ctx.frame_writer`.
-///
-/// The caller owns `writer` so multiple contexts with distinct writers
-/// can be alive at the same time. Each handler call writes its
-/// response into the supplied sink, where it's discarded — these tests
-/// assert on observable side effects (DB rows, manager handles) rather
-/// than the response payload.
+/// Like `handler_context`, but with a caller-owned writer (typically a `Sink`)
+/// so multiple `HandlerContext`s can coexist for concurrent-handler tests
+/// (`tokio::join!`). Responses are discarded; tests assert on side effects.
 pub fn concurrent_handler_context<'a>(
     test_ctx: &'a TestContext,
     writer: &'a mut nexus_common::framing::FrameWriter<Sink>,
@@ -635,10 +527,8 @@ pub fn concurrent_handler_context<'a>(
     }
 }
 
-/// Tracker-lifecycle invariant: every enabled DB row has a manager
-/// handle, and every manager handle corresponds to an enabled DB row.
-/// Disabled rows have no manager handle. This is the consistency
-/// property `TrackerManager::lock_lifecycle` exists to preserve.
+/// Assert the lifecycle invariant `TrackerManager::lock_lifecycle` preserves:
+/// enabled DB rows ⇔ manager handles (disabled rows have none).
 pub async fn assert_tracker_db_and_manager_consistent(test_ctx: &TestContext) {
     let rows = test_ctx
         .db
@@ -658,9 +548,7 @@ pub async fn assert_tracker_db_and_manager_consistent(test_ctx: &TestContext) {
     );
 }
 
-/// Helper to read a ServerMessage from the test context's frame reader.
-///
-/// This maintains state between reads, so buffered data isn't lost.
+/// Read one `ServerMessage` from the frame reader (keeps the reader's buffer).
 pub async fn read_server_message(test_ctx: &mut TestContext) -> ServerMessage {
     io_read_server_message(&mut test_ctx.frame_reader)
         .await
@@ -669,14 +557,7 @@ pub async fn read_server_message(test_ctx: &mut TestContext) -> ServerMessage {
         .message
 }
 
-/// Helper to read a LoginResponse from the client stream.
-///
-/// In test contexts, auto_join_channels is set to empty, so LoginResponse.channels
-/// will be None. This just reads until it finds a LoginResponse.
-///
-/// # Panics
-///
-/// Panics if no `LoginResponse` is found within 5 seconds (timeout).
+/// Read until the first `LoginResponse` (5s timeout panic).
 pub async fn read_login_response(test_ctx: &mut TestContext) -> ServerMessage {
     read_server_message_matching(test_ctx, |msg| {
         matches!(msg, ServerMessage::LoginResponse { .. })
@@ -684,14 +565,7 @@ pub async fn read_login_response(test_ctx: &mut TestContext) -> ServerMessage {
     .await
 }
 
-/// Helper to read ServerMessages from the client stream until one matches the predicate.
-///
-/// This is useful when the server may send multiple messages and tests need to find
-/// a specific message type. Non-matching messages are discarded.
-///
-/// # Panics
-///
-/// Panics if no matching message is found within 5 seconds (timeout).
+/// Read until `predicate` matches, discarding earlier messages (5s timeout panic).
 pub async fn read_server_message_matching<F>(
     test_ctx: &mut TestContext,
     predicate: F,
@@ -705,7 +579,6 @@ where
             if predicate(&msg) {
                 return msg;
             }
-            // Discard non-matching message and keep reading
         }
     })
     .await;
@@ -713,13 +586,10 @@ where
     result.expect("Timed out waiting for matching server message")
 }
 
-/// Helper to drain broadcast messages from the channel until a response is found
+/// Drain broadcasts from the shared `tx` until `is_response` matches.
 ///
-/// In tests, all users share the same `tx` channel, so broadcast messages (like
-/// `UserMessage`) arrive in the channel before the response (like `UserMessageResponse`).
-/// This helper drains all broadcast messages and returns the first response message.
-///
-/// The `is_response` predicate should return true for the response message type you expect.
+/// In tests every session shares one `tx`, so broadcasts (e.g. `UserMessage`)
+/// queue ahead of the response (e.g. `UserMessageResponse`).
 pub fn read_channel_response<F>(test_ctx: &mut TestContext, is_response: F) -> ServerMessage
 where
     F: Fn(&ServerMessage) -> bool,
@@ -733,31 +603,13 @@ where
         if is_response(&msg) {
             return msg;
         }
-        // Otherwise, it's a broadcast - skip it and keep looking
     }
 }
 
-// ========================================================================
-// File Area Setup Helpers
-// ========================================================================
-//
-// These functions create temporary file areas for testing file handlers.
-// They handle the `Box::leak` boilerplate and set `test_ctx.file_root`.
-//
-// Choose the appropriate helper based on what your test needs:
-// - `setup_file_area_basic`: Just shared/ and users/ directories
-// - `setup_file_area_with_uploads`: Basic + an upload folder
-// - `setup_file_area_full`: Uploads + dropbox + sample files
+// File-area helpers: handle the `Box::leak` boilerplate and set
+// `test_ctx.file_root`. basic ⊂ with_uploads ⊂ full.
 
-/// Setup a basic file area with shared/ and users/ directories.
-///
-/// This is the minimal setup for file handler tests. Use this when you
-/// only need the directory structure without special folder types.
-///
-/// # Returns
-///
-/// Returns the `TempDir` which must be kept alive for the duration of the test.
-/// The `test_ctx.file_root` is set automatically.
+/// `shared/` + `users/` only. Returns the `TempDir` to keep alive for the test.
 pub fn setup_file_area_basic(test_ctx: &mut TestContext) -> TempDir {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let file_root: &'static Path = Box::leak(temp_dir.path().to_path_buf().into_boxed_path());
@@ -769,14 +621,7 @@ pub fn setup_file_area_basic(test_ctx: &mut TestContext) -> TempDir {
     temp_dir
 }
 
-/// Setup a file area with an upload folder.
-///
-/// Creates:
-/// - shared/
-/// - shared/Uploads [NEXUS-UL]/
-/// - users/
-///
-/// Use this when testing upload-related functionality.
+/// Basic + `shared/Uploads [NEXUS-UL]/`.
 pub fn setup_file_area_with_uploads(test_ctx: &mut TestContext) -> TempDir {
     let temp_dir = setup_file_area_basic(test_ctx);
 
@@ -786,32 +631,18 @@ pub fn setup_file_area_with_uploads(test_ctx: &mut TestContext) -> TempDir {
     temp_dir
 }
 
-/// Setup a complete file area with uploads, dropbox, and sample files.
-///
-/// Creates:
-/// - shared/
-/// - shared/Documents/
-/// - shared/Documents/file.txt (with content "doc content")
-/// - shared/Uploads [NEXUS-UL]/
-/// - shared/Submissions [NEXUS-DB]/
-/// - shared/readme.txt (with content "test content")
-/// - users/
-///
-/// Use this for tests that need a realistic file structure.
+/// Uploads + a `[NEXUS-DB]` dropbox + sample files (`Documents/file.txt`, `readme.txt`).
 pub fn setup_file_area_full(test_ctx: &mut TestContext) -> TempDir {
     let temp_dir = setup_file_area_with_uploads(test_ctx);
     let root = temp_dir.path();
 
-    // Add dropbox
     fs::create_dir_all(root.join("shared/Submissions [NEXUS-DB]"))
         .expect("Failed to create dropbox");
 
-    // Add documents folder with file
     fs::create_dir_all(root.join("shared/Documents")).expect("Failed to create Documents");
     fs::write(root.join("shared/Documents/file.txt"), "doc content")
         .expect("Failed to create file");
 
-    // Add readme at root of shared
     fs::write(root.join("shared/readme.txt"), "test content").expect("Failed to create readme");
 
     temp_dir

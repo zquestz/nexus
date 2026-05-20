@@ -1,4 +1,4 @@
-//! Handler for UserBack command - clear away status
+//! Handler for UserBack command
 
 use std::io;
 
@@ -11,7 +11,7 @@ use super::{HandlerContext, err_not_logged_in};
 use crate::constants::{HANDLER_USER_BACK, LOG_USER_BACK_NOT_LOGGED_IN};
 use crate::users::manager::UserManager;
 
-/// Handle UserBack command - clear away status for all sessions of this user
+/// Clear away status for this session.
 pub async fn handle_user_back<W>(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -26,35 +26,29 @@ where
             .await;
     };
 
-    // Update away status for this session
     let Some(session) = ctx.user_manager.set_status(session_id, false, None).await else {
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_BACK))
             .await;
     };
 
-    // Send success response
     let response = ServerMessage::UserBackResponse {
         success: true,
         error: None,
     };
     ctx.send_message(&response).await?;
 
-    // Broadcast UserUpdated
-    // For regular accounts with multiple sessions, use aggregated data with split selection
-    // For shared accounts, each session is separate (use single session data)
+    // Broadcast UserUpdated. Shared accounts broadcast this session directly;
+    // regular accounts aggregate across all their sessions.
     let user_info = if session.is_shared {
-        // Shared account: use this session's data directly
         UserManager::build_user_info_from_session(&session)
     } else {
-        // Regular account: aggregate all sessions (latest login for avatar, most recently active for away/status)
         let all_sessions = ctx
             .user_manager
             .get_sessions_by_username(&session.username)
             .await;
-        // All sessions for this user were removed between set_status and
-        // aggregation (e.g. concurrent disconnect). UserDisconnected will
-        // follow; skip the stale UserUpdated.
+        // All sessions vanished between set_status and aggregation (concurrent
+        // disconnect). UserDisconnected will follow; skip the stale UserUpdated.
         let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) else {
             return Ok(());
         };

@@ -24,15 +24,11 @@ use crate::files::{
     parse_folder_type, resolve_path, resolve_user_area,
 };
 
-/// Read directory entries synchronously (called from spawn_blocking)
+/// Read directory entries (sorted dirs-first, then by name). None if unreadable.
 ///
-/// Returns None if the directory cannot be read, Some(entries) otherwise.
-/// Entries are sorted with directories first, then by name.
-///
-/// `can_upload` on each entry is a pure folder-type flag (`allows_upload`). The
-/// client composes it with the user's upload permissions to decide whether to
-/// show upload UI; this lets `file_upload_anywhere` grants take effect
-/// immediately on permission change without requiring a file-list refresh.
+/// `can_upload` is a pure folder-type flag; the client composes it with the
+/// user's upload permission so `file_upload_anywhere` grants take effect without
+/// a list refresh.
 fn read_directory_entries(
     resolved: &Path,
     area_root: &Path,
@@ -47,39 +43,33 @@ fn read_directory_entries(
             continue;
         };
 
-        // Use path().metadata() to follow symlinks (entry.metadata() doesn't follow them)
+        // path().metadata() follows symlinks; entry.metadata() does not.
         let Ok(metadata) = entry.path().metadata() else {
             continue;
         };
 
         let file_name = entry.file_name();
         let Some(name_str) = file_name.to_str() else {
-            continue; // Skip non-UTF8 filenames
+            continue;
         };
 
-        // Skip hidden files unless show_hidden is true
-        // Hidden: dotfiles (.), NAS metadata (@eaDir, @tmp), NAS recycle (#recycle)
         if !show_hidden && is_hidden_name(name_str) {
             continue;
         }
 
         let is_dir = metadata.is_dir();
 
-        // Parse folder type for directories
         let folder_type = if is_dir {
             Some(parse_folder_type(name_str))
         } else {
             None
         };
 
-        // Check if uploads are allowed at this path (pure folder-type flag).
         let entry_path = resolved.join(&file_name);
         let can_upload = is_dir && allows_upload(area_root, &entry_path);
 
-        // Get file size (0 for directories)
         let size = if is_dir { 0 } else { metadata.len() };
 
-        // Get modified time
         let modified = metadata
             .modified()
             .ok()
@@ -87,7 +77,6 @@ fn read_directory_entries(
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
 
-        // Convert folder type to string
         let dir_type = folder_type.map(|ft| match ft {
             FolderType::Default => "default".to_string(),
             FolderType::Upload => "upload".to_string(),
@@ -104,7 +93,6 @@ fn read_directory_entries(
         });
     }
 
-    // Sort entries: directories first, then by name
     entries.sort_by(|a, b| {
         let a_is_dir = a.dir_type.is_some();
         let b_is_dir = b.dir_type.is_some();
@@ -118,7 +106,6 @@ fn read_directory_entries(
     Some(entries)
 }
 
-/// Handle a file list request
 pub async fn handle_file_list<W>(
     path: String,
     root: bool,
@@ -136,7 +123,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -144,7 +130,7 @@ where
     {
         Some(u) => u,
         None => {
-            // Session not found - likely a race condition, not a security event
+            // Session not found — likely a race, not a security event.
             let response = ServerMessage::FileListResponse {
                 success: false,
                 error: Some(err_not_logged_in(ctx.locale)),
@@ -157,7 +143,6 @@ where
         }
     };
 
-    // Check file root (cheap check, should always be set in production)
     let Some(file_root) = ctx.file_root else {
         let response = ServerMessage::FileListResponse {
             success: false,
@@ -170,7 +155,6 @@ where
         return ctx.send_message(&response).await;
     };
 
-    // Check FileList permission
     if !requesting_user.has_permission(Permission::FileList) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_LIST_PERMISSION_DENIED);
         let response = ServerMessage::FileListResponse {
@@ -184,7 +168,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check FileRoot permission if root browsing requested
     if root && !requesting_user.has_permission(Permission::FileRoot) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_LIST_ROOT_DENIED);
         let response = ServerMessage::FileListResponse {
@@ -198,7 +181,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate path
     if let Err(e) = validators::validate_file_path(&path) {
         let error_msg = match e {
             FilePathError::TooLong => {
@@ -219,18 +201,16 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Resolve area root - either file root (if root browsing) or user's area
     let area_root_path = if root {
         file_root.to_path_buf()
     } else {
         resolve_user_area(file_root, &requesting_user.username).await
     };
 
-    // Canonicalize area_root (it might not exist yet for new users)
+    // area_root may not exist yet for new users → empty listing.
     let area_root = match tokio::fs::canonicalize(&area_root_path).await {
         Ok(p) => p,
         Err(_) => {
-            // User's area doesn't exist - return empty listing
             let response = ServerMessage::FileListResponse {
                 success: true,
                 error: None,
@@ -243,7 +223,7 @@ where
         }
     };
 
-    // Build candidate path (validates for traversal attacks) and resolve it
+    // Validates against traversal attacks, then resolves.
     let candidate = match build_and_validate_candidate_path(&area_root, &path).await {
         Ok(p) => p,
         Err(_) => {
@@ -284,7 +264,6 @@ where
         }
     };
 
-    // Verify it's a directory
     let resolved_is_dir = tokio::fs::metadata(&resolved)
         .await
         .map(|m| m.is_dir())
@@ -301,18 +280,13 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check if the current directory allows uploads (pure folder-type flag).
-    // The client composes this with the user's upload permissions (including the
-    // `file_upload_anywhere` bypass) when deciding whether to show upload UI.
+    // Pure folder-type flag; client composes it with the user's upload
+    // permission (incl. `file_upload_anywhere`) to gate upload UI.
     let current_dir_can_upload = allows_upload(&area_root, &resolved);
 
-    // Classify the listing's drop-box context once before reading entries.
-    // Both fields come from a single ancestor walk.
-    //
-    // We walk the *virtual* `candidate` path (not the canonical `resolved`)
-    // so a drop box implemented as a symlink is still recognized by its
-    // suffix. This keeps visibility classification consistent with the
-    // delete/rename owner bypass, which uses the same virtual path.
+    // Walk the *virtual* `candidate` (not canonical `resolved`) so a symlinked
+    // drop box is still recognized by its suffix — matching the delete/rename
+    // owner bypass, which walks the same virtual path.
     let is_admin = requesting_user.is_admin;
     let username = &requesting_user.username;
     let DropboxContext {
@@ -321,11 +295,9 @@ where
     } = dropbox_context(&candidate, &area_root, is_admin, username);
 
     if hide_contents {
-        // User is inside a dropbox they can't see - return empty listing.
-        // `dropbox_owner` is reported as a structural fact regardless of
-        // viewer; the owner is already encoded in the folder name (visible
-        // from the parent listing) and in the path the client navigated
-        // through to get here, so it's not private.
+        // Inside a drop box this user can't see → empty listing. `dropbox_owner`
+        // is still reported: it's already public via the folder name and the
+        // navigated path, so it's not private — the hide protects contents only.
         let response = ServerMessage::FileListResponse {
             success: true,
             error: None,
@@ -337,8 +309,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Read directory entries on a blocking thread to avoid blocking async runtime
-    // for directories with many entries (each entry requires metadata syscalls)
+    // Blocking thread: large dirs do one metadata syscall per entry.
     let resolved_clone = resolved.clone();
     let area_root_clone = area_root.clone();
     let entries = tokio::task::spawn_blocking(move || {
@@ -373,27 +344,20 @@ where
     ctx.send_message(&response).await
 }
 
-/// Result of walking the listed directory's ancestor chain to detect drop
-/// boxes. Computed once per listing.
+/// Drop-box classification from one ancestor walk per listing.
 struct DropboxContext {
-    /// True when the caller should return an empty listing — used for
-    /// generic drop boxes seen by non-admins, and for user drop boxes seen
-    /// by users who are neither the named owner nor an admin.
+    /// Return an empty listing: generic drop box seen by a non-admin, or a user
+    /// drop box seen by someone who is neither the named owner nor an admin.
     hide_contents: bool,
 
-    /// Owner of the innermost enclosing `[NEXUS-DB-username]` folder
-    /// (including the listed directory itself, if it is the drop box).
-    /// `None` when the listing is not inside any user drop box.
-    ///
-    /// Reported regardless of whether the requester is the owner — the
-    /// client composes this with its own nickname to decide whether the
-    /// file-delete bypass applies. Generic `[NEXUS-DB]` folders have no
-    /// owner so this stays `None` for those.
+    /// Owner of the innermost enclosing `[NEXUS-DB-username]` (or the listed
+    /// dir itself); `None` outside any user drop box or for generic `[NEXUS-DB]`.
+    /// Reported regardless of requester — the client's own-nickname check gates
+    /// the file-delete bypass.
     dropbox_owner: Option<String>,
 }
 
-/// Walk from `current_dir` up to `area_root`, classifying the listed
-/// directory's drop-box context.
+/// Walk `current_dir` up to `area_root`, classifying the drop-box context.
 fn dropbox_context(
     current_dir: &std::path::Path,
     area_root: &std::path::Path,
@@ -465,7 +429,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let _file_area = setup_file_area_full(&mut test_ctx);
 
-        // Login as user without FileList permission
+        // User without FileList permission.
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_file_list(
@@ -493,7 +457,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let _file_area = setup_file_area_full(&mut test_ctx);
 
-        // Login as admin (has all permissions implicitly)
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_file_list(
@@ -513,7 +476,7 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Should see Documents, Uploads, and readme.txt
+                // Documents, Uploads, readme.txt
                 assert!(entries.len() >= 2);
             }
             _ => panic!("Expected FileListResponse"),
@@ -525,7 +488,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let _file_area = setup_file_area_full(&mut test_ctx);
 
-        // Login as user with FileList permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -556,7 +518,6 @@ mod tests {
                 assert!(success);
                 assert_eq!(path, Some("/".to_string()));
                 let entries = entries.expect("Expected entries");
-                // Should have at least Documents and readme.txt
                 assert!(!entries.is_empty());
             }
             _ => panic!("Expected FileListResponse"),
@@ -567,10 +528,9 @@ mod tests {
     async fn test_file_list_path_validation() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Test path with null byte
+        // Null byte in path.
         let result = handle_file_list(
             "/path\0with/null".to_string(),
             false,
@@ -625,7 +585,7 @@ mod tests {
 
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to list a file instead of a directory
+        // List a file, not a directory.
         let result = handle_file_list(
             "/readme.txt".to_string(),
             false,
@@ -651,7 +611,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create additional files with specific names
         fs::write(file_area.path().join("shared/zebra.txt"), "z").unwrap();
         fs::write(file_area.path().join("shared/alpha.txt"), "a").unwrap();
         fs::create_dir(file_area.path().join("shared/Zebra")).unwrap();
@@ -677,11 +636,10 @@ mod tests {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
 
-                // Find where directories end and files begin
                 let first_file_idx = entries.iter().position(|e| e.dir_type.is_none());
 
                 if let Some(idx) = first_file_idx {
-                    // Verify all directories come before files
+                    // All directories must come before files.
                     for (i, entry) in entries.iter().enumerate() {
                         if i < idx {
                             assert!(
@@ -708,12 +666,10 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create a dropbox folder with content
         let dropbox = file_area.path().join("shared/Inbox [NEXUS-DB]");
         fs::create_dir(&dropbox).expect("Failed to create dropbox");
         fs::write(dropbox.join("secret.txt"), "hidden").expect("Failed to create file");
 
-        // Login as regular user with FileList permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -723,7 +679,6 @@ mod tests {
         )
         .await;
 
-        // List the dropbox contents - should be empty for non-admin
         let result = handle_file_list(
             "/Inbox [NEXUS-DB]".to_string(),
             false,
@@ -741,7 +696,6 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Non-admin should see empty listing inside dropbox
                 assert!(
                     entries.is_empty(),
                     "Non-admin should not see dropbox contents"
@@ -756,15 +710,12 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create a dropbox folder with content
         let dropbox = file_area.path().join("shared/Inbox [NEXUS-DB]");
         fs::create_dir(&dropbox).expect("Failed to create dropbox");
         fs::write(dropbox.join("secret.txt"), "hidden").expect("Failed to create file");
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // List the dropbox contents - admin should see the file
         let result = handle_file_list(
             "/Inbox [NEXUS-DB]".to_string(),
             false,
@@ -782,7 +733,6 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Admin should see the secret file
                 assert_eq!(entries.len(), 1);
                 assert_eq!(entries[0].name, "secret.txt");
             }
@@ -795,12 +745,11 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create a user dropbox folder with content
         let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
         fs::create_dir(&dropbox).expect("Failed to create user dropbox");
         fs::write(dropbox.join("private.txt"), "for alice").expect("Failed to create file");
 
-        // Login as alice (the owner)
+        // Alice is the owner.
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -810,7 +759,6 @@ mod tests {
         )
         .await;
 
-        // List the user dropbox contents - alice should see her files
         let result = handle_file_list(
             "/For Alice [NEXUS-DB-alice]".to_string(),
             false,
@@ -828,7 +776,6 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Alice should see her private file
                 assert_eq!(entries.len(), 1);
                 assert_eq!(entries[0].name, "private.txt");
             }
@@ -841,12 +788,11 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create a user dropbox folder for alice with content
         let dropbox = file_area.path().join("shared/For Alice [NEXUS-DB-alice]");
         fs::create_dir(&dropbox).expect("Failed to create user dropbox");
         fs::write(dropbox.join("private.txt"), "for alice").expect("Failed to create file");
 
-        // Login as bob (not the owner)
+        // Bob is not the owner.
         let session_id = login_user(
             &mut test_ctx,
             "bob",
@@ -856,7 +802,6 @@ mod tests {
         )
         .await;
 
-        // List alice's dropbox contents - bob should see empty
         let result = handle_file_list(
             "/For Alice [NEXUS-DB-alice]".to_string(),
             false,
@@ -874,7 +819,6 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Bob should not see alice's files
                 assert!(
                     entries.is_empty(),
                     "Other users should not see user dropbox contents"
@@ -889,11 +833,9 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create a dropbox folder
         let dropbox = file_area.path().join("shared/Inbox [NEXUS-DB]");
         fs::create_dir(&dropbox).expect("Failed to create dropbox");
 
-        // Login as regular user with FileList permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -903,7 +845,7 @@ mod tests {
         )
         .await;
 
-        // List root - the dropbox folder entry should be visible
+        // The drop-box folder entry must be visible from its parent.
         let result = handle_file_list(
             "/".to_string(),
             false,
@@ -921,7 +863,6 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Should see the dropbox folder entry (with suffix - client strips for display)
                 let inbox = entries.iter().find(|e| e.name == "Inbox [NEXUS-DB]");
                 assert!(
                     inbox.is_some(),
@@ -939,7 +880,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create two folders with same base name - one with suffix, one without
+        // Same base name, one with a folder-type suffix, one without.
         fs::create_dir(file_area.path().join("shared/Downloads"))
             .expect("Failed to create Downloads");
         fs::create_dir(file_area.path().join("shared/Downloads [NEXUS-UL]"))
@@ -965,7 +906,6 @@ mod tests {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
 
-                // Should find both folders with their actual names
                 let downloads_plain = entries.iter().find(|e| e.name == "Downloads");
                 let downloads_upload = entries.iter().find(|e| e.name == "Downloads [NEXUS-UL]");
 
@@ -975,14 +915,13 @@ mod tests {
                     "Should find Downloads [NEXUS-UL] folder"
                 );
 
-                // Verify their types are different
                 let plain = downloads_plain.unwrap();
                 let upload = downloads_upload.unwrap();
 
                 assert_eq!(plain.dir_type, Some("default".to_string()));
                 assert_eq!(upload.dir_type, Some("upload".to_string()));
 
-                // Only the upload folder should allow uploads
+                // Only the upload folder allows uploads.
                 assert!(!plain.can_upload);
                 assert!(upload.can_upload);
             }
@@ -996,7 +935,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Add a file inside the upload folder
         fs::write(
             file_area.path().join("shared/Uploads [NEXUS-UL]/test.txt"),
             "upload content",
@@ -1005,7 +943,7 @@ mod tests {
 
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Request using stripped path "Uploads" (without the [NEXUS-UL] suffix)
+        // Stripped path "Uploads" must resolve to "Uploads [NEXUS-UL]".
         let result = handle_file_list(
             "Uploads".to_string(),
             false,
@@ -1026,11 +964,9 @@ mod tests {
                 ..
             } => {
                 assert!(success, "FileList should succeed with stripped path");
-                // Path in response should echo what client sent
+                // Response echoes the client-sent path.
                 assert_eq!(path, Some("Uploads".to_string()));
-                // Should be able to upload in this folder
                 assert!(can_upload);
-                // Should see the file we created
                 let entries = entries.expect("Expected entries");
                 assert!(
                     entries.iter().any(|e| e.name == "test.txt"),
@@ -1043,11 +979,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_file_list_suffix_matching_nested_path() {
-        // Test that nested paths work with suffix matching
+        // Nested paths resolve through suffix matching.
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create nested structure: "Uploads [NEXUS-UL]/subdir/file.txt"
         fs::create_dir(file_area.path().join("shared/Uploads [NEXUS-UL]/subdir"))
             .expect("Failed to create subdir");
         fs::write(
@@ -1060,7 +995,6 @@ mod tests {
 
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Request using stripped path "Uploads/subdir"
         let result = handle_file_list(
             "Uploads/subdir".to_string(),
             false,
@@ -1099,20 +1033,18 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create an external directory with a distinctive path we can check for
+        // External dir with a distinctive path we assert never leaks.
         let external = tempfile::TempDir::new().expect("Failed to create external dir");
         let external_path = external.path().to_str().unwrap().to_string();
         fs::create_dir(external.path().join("subdir")).expect("Failed to create subdir");
         fs::write(external.path().join("file.txt"), "data").expect("Failed to create file");
 
-        // Create symlink from shared area to external directory
         let shared = file_area.path().join("shared");
         let link_path = shared.join("Linked");
         symlink(external.path(), &link_path).expect("Failed to create symlink");
 
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Navigate into the symlinked directory
         let result = handle_file_list(
             "/Linked".to_string(),
             false,
@@ -1134,7 +1066,7 @@ mod tests {
             } => {
                 assert!(success);
 
-                // The path must be the client's virtual path, not the real filesystem path
+                // Response carries the client's virtual path, never the real one.
                 let path_str = path.unwrap();
                 assert_eq!(path_str, "/Linked");
                 assert!(
@@ -1143,10 +1075,9 @@ mod tests {
                     external_path
                 );
 
-                // Error should be None
                 assert!(error.is_none());
 
-                // Entry names must be simple filenames, not full paths
+                // Entry names must be bare filenames, not paths.
                 let entries = entries.expect("Expected entries");
                 for entry in &entries {
                     assert!(
@@ -1190,14 +1121,12 @@ mod tests {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
 
-                // Find the Uploads folder (with suffix - client strips for display)
                 let uploads = entries.iter().find(|e| e.name == "Uploads [NEXUS-UL]");
                 assert!(uploads.is_some(), "Should find Uploads folder");
                 let uploads = uploads.unwrap();
                 assert!(uploads.can_upload, "Uploads folder should allow uploads");
                 assert_eq!(uploads.dir_type, Some("upload".to_string()));
 
-                // Regular Documents folder should not allow uploads
                 let docs = entries.iter().find(|e| e.name == "Documents");
                 assert!(docs.is_some(), "Should find Documents folder");
                 let docs = docs.unwrap();
@@ -1215,7 +1144,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let _file_area = setup_file_area_full(&mut test_ctx);
 
-        // Login as user with only FileList permission (not FileRoot)
+        // FileList but not FileRoot.
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -1225,7 +1154,6 @@ mod tests {
         )
         .await;
 
-        // Try to browse from root - should fail without FileRoot permission
         let result = handle_file_list(
             "/".to_string(),
             true, // root = true
@@ -1251,7 +1179,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let _file_area = setup_file_area_full(&mut test_ctx);
 
-        // Login as user with both FileList and FileRoot permissions
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -1261,7 +1188,6 @@ mod tests {
         )
         .await;
 
-        // Browse from root - should see shared/ and users/ directories
         let result = handle_file_list(
             "/".to_string(),
             true, // root = true
@@ -1279,7 +1205,6 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Should see shared and users directories
                 let shared = entries.iter().find(|e| e.name == "shared");
                 let users = entries.iter().find(|e| e.name == "users");
                 assert!(shared.is_some(), "Should see shared directory");
@@ -1294,10 +1219,8 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let _file_area = setup_file_area_full(&mut test_ctx);
 
-        // Login as admin (has all permissions implicitly)
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Admin should be able to browse from root
         let result = handle_file_list(
             "/".to_string(),
             true, // root = true
@@ -1315,7 +1238,6 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Should see shared and users directories
                 let shared = entries.iter().find(|e| e.name == "shared");
                 let users = entries.iter().find(|e| e.name == "users");
                 assert!(shared.is_some(), "Should see shared directory");
@@ -1330,15 +1252,12 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create a user area with content
         let alice_area = file_area.path().join("users/alice");
         fs::create_dir_all(&alice_area).expect("Failed to create user area");
         fs::write(alice_area.join("private.txt"), "alice's file").expect("Failed to create file");
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Browse into alice's user area from root
         let result = handle_file_list(
             "/users/alice".to_string(),
             true, // root = true
@@ -1356,7 +1275,6 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Should see alice's private file
                 let private = entries.iter().find(|e| e.name == "private.txt");
                 assert!(private.is_some(), "Should see alice's private file");
             }
@@ -1369,7 +1287,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create hidden entries in shared/
+        // Dotfile, NAS metadata, NAS recycle, and one visible file.
         fs::write(file_area.path().join("shared/.hidden"), "secret")
             .expect("Failed to create dotfile");
         fs::create_dir(file_area.path().join("shared/@eaDir")).expect("Failed to create @eaDir");
@@ -1387,7 +1305,6 @@ mod tests {
         )
         .await;
 
-        // List without show_hidden (default)
         let result = handle_file_list(
             "/".to_string(),
             false,
@@ -1405,7 +1322,6 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Should see visible.txt but not hidden entries
                 assert!(
                     entries.iter().any(|e| e.name == "visible.txt"),
                     "Should see visible.txt"
@@ -1432,7 +1348,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create hidden entries in shared/
         fs::write(file_area.path().join("shared/.hidden"), "secret")
             .expect("Failed to create dotfile");
         fs::create_dir(file_area.path().join("shared/@eaDir")).expect("Failed to create @eaDir");
@@ -1450,7 +1365,6 @@ mod tests {
         )
         .await;
 
-        // List with show_hidden = true
         let result = handle_file_list(
             "/".to_string(),
             false,
@@ -1468,7 +1382,6 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Should see both visible.txt and .hidden
                 assert!(
                     entries.iter().any(|e| e.name == "visible.txt"),
                     "Should see visible.txt"
@@ -1495,7 +1408,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_full(&mut test_ctx);
 
-        // Create a hidden directory in shared/
         fs::create_dir(file_area.path().join("shared/.hidden_dir"))
             .expect("Failed to create dotdir");
         fs::create_dir(file_area.path().join("shared/visible_dir")).expect("Failed to create dir");
@@ -1509,7 +1421,6 @@ mod tests {
         )
         .await;
 
-        // List without show_hidden (default)
         let result = handle_file_list(
             "/".to_string(),
             false,
@@ -1527,7 +1438,6 @@ mod tests {
             } => {
                 assert!(success);
                 let entries = entries.expect("Expected entries");
-                // Should see visible_dir but not .hidden_dir
                 assert!(
                     entries.iter().any(|e| e.name == "visible_dir"),
                     "Should see visible_dir"
@@ -1621,9 +1531,8 @@ mod tests {
         }
     }
 
-    /// When an admin browses someone else's user drop box, `dropbox_owner`
-    /// reports the actual owner — it's a structural fact, not a request
-    /// for the bypass. The client's identity check decides bypass.
+    /// Admin browsing another user's drop box: `dropbox_owner` reports the
+    /// actual owner; the client's identity check decides the bypass.
     #[tokio::test]
     async fn test_file_list_dropbox_owner_reports_actual_owner_for_admin() {
         let mut test_ctx = create_test_context().await;
@@ -1692,13 +1601,9 @@ mod tests {
         }
     }
 
-    /// Non-owner non-admin attempting to list someone else's user drop
-    /// box gets an empty (hidden) listing — but `dropbox_owner` is still
-    /// reported as a structural fact. The owner is already encoded in the
-    /// folder name (visible from the parent listing) and in the path the
-    /// client just navigated through, so reporting it here adds nothing
-    /// new. The hide protects *contents*, not metadata that's already
-    /// public via the path itself.
+    /// Non-owner non-admin gets an empty listing, but `dropbox_owner` is
+    /// still reported: it's already public via the folder name and the
+    /// navigated path. The hide protects contents, not that metadata.
     #[tokio::test]
     async fn test_file_list_dropbox_owner_reported_even_when_contents_hidden() {
         let mut test_ctx = create_test_context().await;
@@ -1748,10 +1653,8 @@ mod tests {
         }
     }
 
-    /// A user drop box implemented as a symlink (admin-created) is still
-    /// recognized by its suffix in the virtual path. The listing reports
-    /// `dropbox_owner` correctly so the client can enable the cleanup
-    /// bypass.
+    /// A symlinked user drop box (admin-created) is still recognized by its
+    /// virtual-path suffix, so `dropbox_owner` is reported correctly.
     #[tokio::test]
     #[cfg(unix)]
     async fn test_file_list_dropbox_owner_recognized_through_symlink() {
@@ -1760,11 +1663,10 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
 
-        // Real directory with the dropbox content lives outside the area.
+        // Real content lives outside the area; admin symlinks it in.
         let external = tempfile::TempDir::new().expect("Failed to create external dir");
         fs::write(external.path().join("for-alice.txt"), "data").expect("Failed to create file");
 
-        // Admin links it into shared/ as a user-dropbox-named symlink.
         symlink(
             external.path(),
             file_area.path().join("shared/For Alice [NEXUS-DB-alice]"),

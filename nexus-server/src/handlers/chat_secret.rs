@@ -1,4 +1,4 @@
-//! Handler for ChatSecret command - toggle secret mode on a channel
+//! Toggles secret mode on a channel.
 
 use std::io;
 
@@ -18,7 +18,6 @@ use crate::constants::{
 };
 use crate::db::Permission;
 
-/// Handle ChatSecret command - toggle secret mode on a channel
 pub async fn handle_chat_secret<W>(
     channel: String,
     secret: bool,
@@ -35,7 +34,6 @@ where
             .await;
     };
 
-    // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(u) => u,
         None => {
@@ -48,7 +46,6 @@ where
         }
     };
 
-    // Check chat feature
     if !user.has_feature(FEATURE_CHAT) {
         let response = ServerMessage::ChatSecretResponse {
             success: false,
@@ -57,7 +54,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check ChatSecret permission
     if !user.has_permission(Permission::ChatSecret) {
         warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_SECRET_PERMISSION_DENIED);
         let response = ServerMessage::ChatSecretResponse {
@@ -67,7 +63,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate channel name
     if let Err(e) = validators::validate_channel(&channel) {
         let response = ServerMessage::ChatSecretResponse {
             success: false,
@@ -76,9 +71,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Verify user is a member of the channel and set secret mode
-    // For security, always return "not found" to non-members to avoid leaking
-    // existence of secret channels
+    // Non-members get "not found" so secret-channel existence isn't leaked.
     if !ctx.channel_manager.is_member(&channel, session_id).await {
         let response = ServerMessage::ChatSecretResponse {
             success: false,
@@ -87,11 +80,11 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Set the secret mode (ChannelManager handles persistence for persistent channels)
+    // ChannelManager handles persistence for persistent channels.
     match ctx.channel_manager.set_secret(&channel, secret).await {
-        Ok(true) => {} // Success, channel exists
+        Ok(true) => {}
         Ok(false) => {
-            // Channel doesn't exist (race condition - was deleted after membership check)
+            // Channel deleted between the membership check and here.
             let response = ServerMessage::ChatSecretResponse {
                 success: false,
                 error: Some(err_channel_not_found(ctx.locale, &channel)),
@@ -108,14 +101,12 @@ where
         }
     }
 
-    // Send success response to the requester
     let response = ServerMessage::ChatSecretResponse {
         success: true,
         error: None,
     };
     ctx.send_message(&response).await?;
 
-    // Broadcast ChatUpdated to all channel members
     let members = ctx
         .channel_manager
         .get_members(&channel)
@@ -135,13 +126,11 @@ where
             .user_manager
             .get_user_by_session_id(member_session_id)
             .await
+            && member.has_feature(FEATURE_CHAT)
         {
-            // Only send to members with chat feature
-            if member.has_feature(FEATURE_CHAT) {
-                ctx.user_manager
-                    .send_to_session(member_session_id, update_message.clone())
-                    .await;
-            }
+            ctx.user_manager
+                .send_to_session(member_session_id, update_message.clone())
+                .await;
         }
     }
 
@@ -429,8 +418,7 @@ mod tests {
             .initialize_persistent_channels(vec![Channel::new(DEFAULT_CHANNEL.to_string())])
             .await;
 
-        // Login user with ChatSecret permission and chat feature
-        // Login user with ChatJoin, ChatCreate, and ChatSecret permissions
+        // Login with ChatJoin, ChatCreate, and ChatSecret permissions.
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",

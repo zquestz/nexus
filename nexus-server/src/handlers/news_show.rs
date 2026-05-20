@@ -1,4 +1,4 @@
-//! NewsShow message handler - Returns a single news item by ID
+//! NewsShow message handler
 
 use std::io;
 
@@ -19,7 +19,6 @@ use super::{
 };
 use crate::db::Permission;
 
-/// Handle a news show request
 pub async fn handle_news_show<W>(
     id: i64,
     session_id: Option<u32>,
@@ -35,7 +34,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -43,7 +41,7 @@ where
     {
         Some(u) => u,
         None => {
-            // Session not found - likely a race condition, not a security event
+            // Session not found — likely a race, not a security event.
             let response = ServerMessage::NewsShowResponse {
                 success: false,
                 error: Some(err_not_logged_in(ctx.locale)),
@@ -53,7 +51,7 @@ where
         }
     };
 
-    // Check NewsList permission (required to view news)
+    // Viewing news requires NewsList.
     if !requesting_user.has_permission(Permission::NewsList) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_NEWS_SHOW_PERMISSION_DENIED);
         let response = ServerMessage::NewsShowResponse {
@@ -64,7 +62,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Fetch news item from database
     let news_record = match ctx.db.news.get_news_by_id(id).await {
         Ok(Some(record)) => record,
         Ok(None) => {
@@ -86,7 +83,6 @@ where
         }
     };
 
-    // Convert to protocol format
     let news = NewsItem {
         id: news_record.id,
         body: news_record.body,
@@ -125,7 +121,6 @@ mod tests {
     async fn test_news_show_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user without NewsList permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_news_show(1, Some(session_id), &mut test_ctx.handler_context()).await;
@@ -145,7 +140,6 @@ mod tests {
     async fn test_news_show_not_found() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsList permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -173,7 +167,6 @@ mod tests {
     async fn test_news_show_returns_item() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsList permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -183,7 +176,6 @@ mod tests {
         )
         .await;
 
-        // Get the user's database ID
         let user = test_ctx
             .db
             .users
@@ -192,7 +184,6 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Create a news item
         let created = test_ctx
             .db
             .news
@@ -237,10 +228,8 @@ mod tests {
     async fn test_news_show_admin_has_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin (no explicit permissions needed)
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Get the admin's database ID
         let admin = test_ctx
             .db
             .users
@@ -249,7 +238,6 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Create a news item
         let created = test_ctx
             .db
             .news
@@ -281,7 +269,6 @@ mod tests {
     async fn test_news_show_includes_updated_at() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsList permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -291,7 +278,6 @@ mod tests {
         )
         .await;
 
-        // Get the user's database ID
         let user = test_ctx
             .db
             .users
@@ -300,7 +286,6 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Create a news item
         let created = test_ctx
             .db
             .news

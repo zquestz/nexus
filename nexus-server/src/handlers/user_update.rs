@@ -50,7 +50,6 @@ use crate::db::{
 };
 use crate::voice::send_voice_leave_notifications;
 
-/// User update request parameters
 pub struct UserUpdateRequest {
     pub id: i64,
     pub current_password: Option<String>,
@@ -67,7 +66,6 @@ pub struct UserUpdateRequest {
     pub session_id: Option<u32>,
 }
 
-/// Handle a user update request from the client
 pub async fn handle_user_update<W>(
     request: UserUpdateRequest,
     ctx: &mut HandlerContext<'_, W>,
@@ -96,7 +94,6 @@ where
             }
         };
 
-        // Look up target user by ID
         let target_account = match ctx.db.users.get_user_by_id(request.id).await {
             Ok(Some(account)) => account,
             Ok(None) => {
@@ -119,7 +116,6 @@ where
         };
         let target_username = target_account.username.clone();
 
-        // Validate target username format
         if let Err(e) = validators::validate_username(&target_username) {
             let error_msg = match e {
                 UsernameError::Empty => err_username_empty(ctx.locale),
@@ -136,16 +132,13 @@ where
             }));
         }
 
-        // Self-edit gate: a non-admin can edit only their own account, and the
-        // set of fields they may change is more restrictive than for an admin
-        // editing someone else. Drives the password / shared-account / forbidden-
-        // field branches below.
+        // Self-edit allows a more restrictive field set than editing others;
+        // drives the password / shared-account / forbidden-field branches below.
         let is_self_edit =
             target_username.to_lowercase() == requesting_user.username.to_lowercase();
 
         if is_self_edit {
-            // Shared accounts cannot self-edit (no password to change, no other
-            // fields admissible).
+            // Shared accounts have no password and no admissible self-edit fields.
             if requesting_user.is_shared {
                 break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                     success: false,
@@ -171,10 +164,8 @@ where
                 }));
             }
 
-            // Admin self-edit: group_id is rejected by the admin XOR group
-            // invariant (admins cannot be members of a group). Non-admin self
-            // edits also can't set group_id, but that's caught by the
-            // non-admin-restriction block below with a different error.
+            // Admin self-edit: group_id violates admin XOR group. Non-admin
+            // group_id is caught below with a different error.
             if requesting_user.is_admin && request.group_id.is_some() {
                 break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                     success: false,
@@ -184,10 +175,8 @@ where
                 }));
             }
 
-            // Non-admin self-edits are restricted to password change. Admin
-            // self-edits additionally permit username and the bandwidth-weight
-            // fields. (group_id rejected above for admins; admins can't have
-            // groups.)
+            // Non-admin self-edit allows only password; admins additionally
+            // allow username and bandwidth-weight fields.
             if !requesting_user.is_admin
                 && (request.username.is_some()
                     || request.group_id.is_some()
@@ -202,8 +191,7 @@ where
                 }));
             }
 
-            // Password change (admin or non-admin) requires current_password
-            // verification. Skipped entirely when no password change requested.
+            // Password change requires current_password verification.
             if let Some(ref new_password) = request.password
                 && !new_password.trim().is_empty()
             {
@@ -263,7 +251,6 @@ where
                 }
             }
         } else {
-            // Editing another user: check UserEdit permission
             if !requesting_user.has_permission(Permission::UserEdit) {
                 warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
                 break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
@@ -274,8 +261,7 @@ where
                 }));
             }
 
-            // Prevent non-admins from editing admin users
-            // Look up target user to check their admin status
+            // Non-admins cannot edit admin users.
             if !requesting_user.is_admin {
                 match ctx.db.users.get_user_by_username(&target_username).await {
                     Ok(Some(target_user)) if target_user.is_admin => {
@@ -309,7 +295,6 @@ where
             }
         }
 
-        // Validate new username format if it's being changed
         if let Some(ref new_username) = request.username
             && let Err(e) = validators::validate_username(new_username)
         {
@@ -328,7 +313,7 @@ where
             }));
         }
 
-        // Prevent renaming the guest account
+        // The guest account cannot be renamed.
         if let Some(ref new_username) = request.username
             && target_username.to_lowercase() == GUEST_USERNAME
             && new_username.to_lowercase() != GUEST_USERNAME
@@ -341,7 +326,7 @@ where
             }));
         }
 
-        // Prevent changing the guest account password
+        // The guest account password cannot be changed.
         if let Some(ref new_password) = request.password
             && !new_password.trim().is_empty()
             && target_username.to_lowercase() == GUEST_USERNAME
@@ -354,11 +339,9 @@ where
             }));
         }
 
-        // Note: Last admin protection is now handled atomically at the database level
-        // in update_user() SQL query to prevent race conditions
+        // Last-admin protection is enforced atomically in update_user()'s SQL.
 
-        // Verify admin flag modification privilege (use is_admin from UserManager)
-        // Skip for self-edit since we already rejected admin changes above
+        // Only admins may change a user's admin flag (self-edit already rejected).
         if !is_self_edit && request.is_admin.is_some() && !requesting_user.is_admin {
             break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                 success: false,
@@ -368,7 +351,7 @@ where
             }));
         }
 
-        // Fetch target user to check if they're a shared account (needed for permission validation)
+        // Needed for shared-account permission validation below.
         let target_user_account = match ctx.db.users.get_user_by_username(&target_username).await {
             Ok(Some(account)) => Some(account),
             Ok(None) => {
@@ -390,10 +373,8 @@ where
             }
         };
 
-        // Admin XOR group invariant. Reject requests that would leave the target
-        // as admin AND set a group_id. Promotion from non-admin to admin is fine
-        // (DB layer auto-clears group_id); the rejection only fires when
-        // group_id assignment coincides with the target ending up admin.
+        // Admin XOR group: reject ending up admin AND setting group_id. Plain
+        // promotion is fine (DB auto-clears group_id); only the coincidence rejects.
         let target_final_is_admin = request
             .is_admin
             .unwrap_or_else(|| target_user_account.as_ref().is_some_and(|a| a.is_admin));
@@ -406,17 +387,11 @@ where
             }));
         }
 
-        // Admin XOR shared invariant. `is_shared` is set at create-time and
-        // never modified by UserUpdate, so the only path into the bad
-        // combination is promoting an existing shared account to admin.
-        //
-        // Note the asymmetry with admin XOR group: that invariant auto-cleans
-        // in `db/users.rs::update_user` (nulls group_id + wipes permission
-        // rows on promotion) because clearing a group is benign — admins
-        // resolve to all permissions regardless. Admin XOR shared instead
-        // rejects here because demoting `is_shared` orphans the per-session
-        // nicknames a shared account carries; we make the admin explicitly
-        // delete and recreate rather than silently destroy that identity.
+        // Admin XOR shared: `is_shared` is create-time only, so the sole bad path
+        // is promoting a shared account to admin. Unlike admin XOR group (which
+        // auto-cleans, since clearing a group is benign for an admin), we reject
+        // here — clearing `is_shared` would orphan per-session nicknames, so the
+        // admin must explicitly delete and recreate rather than lose that identity.
         if request.is_admin == Some(true)
             && target_user_account.as_ref().is_some_and(|a| a.is_shared)
         {
@@ -428,25 +403,15 @@ where
             }));
         }
 
-        // Bandwidth weight delegation: non-admins can change a user's effective
-        // bandwidth only to a value at or below their own resolved weight.
-        // - `bandwidth_weight: Some(N)` → reject when `N > requester`.
-        // - `inherit_bandwidth_weight: Some(true)` → reject when the target's
-        //   inherited weight (admin-default → group → 1) > requester. Clearing
-        //   the override would let the user fall back to a higher tier.
-        // Admins bypass both checks.
-        //
-        // When `inherit_bandwidth_weight: Some(true)`, the `bandwidth_weight`
-        // value is discarded by the DB layer (inherit wins). Skip the value
-        // check in that case so a defensive client sending both fields isn't
-        // rejected on a moot value.
+        // Bandwidth delegation (admins bypass): a non-admin can only set a user's
+        // effective weight at or below their own. `Some(N)` rejects when N > requester;
+        // `inherit: Some(true)` rejects when the target's inherited weight > requester
+        // (clearing the override would let them fall back to a higher tier).
+        // Inherit wins over `bandwidth_weight` in the DB, so skip the value check when
+        // inherit is set (a defensive client sending both isn't rejected on a moot value).
         if !requesting_user.is_admin {
             let requester_weight = requesting_user.bandwidth_weight.load(Ordering::Relaxed);
-            // Track the rejection reason as an already-translated error string —
-            // the two paths use distinct i18n keys (see `errors.rs` for the
-            // contract). The set path fires on `bandwidth_weight: Some(w > req)`;
-            // the inherit path fires when clearing the override would land the
-            // target on an inherited tier above the requester.
+            // The set and inherit paths use distinct i18n keys.
             let mut delegation_error: Option<String> = None;
             if request.inherit_bandwidth_weight != Some(true)
                 && let Some(w) = request.bandwidth_weight
@@ -455,12 +420,8 @@ where
                 delegation_error = Some(err_bandwidth_weight_delegation(ctx.locale));
             }
             if delegation_error.is_none() && request.inherit_bandwidth_weight == Some(true) {
-                // The inherited weight to compare against must reflect the
-                // POST-update group: if the same request also changes group_id
-                // or sets remove_group, the OLD group's weight is irrelevant.
-                // Otherwise (group unchanged), pass the target's current
-                // group_id so the resolver joins on the same row it would
-                // post-update.
+                // Resolve against the POST-update group: a concurrent group_id /
+                // remove_group change makes the old group's weight irrelevant.
                 let proposed_group_id: Option<i64> = if request.remove_group == Some(true) {
                     None
                 } else if let Some(new_gid) = request.group_id {
@@ -511,9 +472,8 @@ where
             }));
         }
 
-        // Validate and parse requested permissions
         let parsed_permissions = if let Some(ref perm_strings) = request.permissions {
-            // For shared accounts, validate that only allowed permissions are requested
+            // Shared accounts accept only shared-allowed permissions.
             if let Some(ref account) = target_user_account
                 && account.is_shared
             {
@@ -536,7 +496,6 @@ where
                 }
             }
 
-            // Validate permissions format first
             if let Err(e) = validators::validate_permissions(perm_strings) {
                 let error_msg = match e {
                     PermissionsError::TooMany => {
@@ -578,7 +537,7 @@ where
                     }
                 };
 
-                // Check permission delegation authority (uses cached permissions, admin bypass built-in)
+                // Delegation: requester can only grant permissions they hold.
                 if !requesting_user.has_permission(perm) {
                     warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_UPDATE_UNOWNED_PERMISSION);
                     break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
@@ -592,28 +551,22 @@ where
                 perms.permissions.insert(perm);
             }
 
-            // No pre-tx merge for non-admins: the surgical
-            // `OwnedSubset` write path inside `update_user` only touches
-            // rows for permissions in the requester's owned set, so
-            // unowned rows (including any an admin just granted) are
-            // preserved automatically. The old snapshot-merge-then-replace
-            // approach raced against concurrent admin writes; this passes
-            // the requester's literal request straight through.
-
+            // No pre-tx merge: `update_user`'s `OwnedSubset` path only touches rows
+            // for the requester's owned permissions, so unowned rows (incl. ones an
+            // admin just granted) survive. A snapshot-merge would race admin writes.
             Some(perms)
         } else {
             None
         };
 
-        // Validate group assignment/removal. DB writes happen atomically inside
-        // update_user's transaction via remove_group + group_id.
+        // DB writes happen atomically inside update_user's transaction.
         let (validated_remove_group, validated_group_id): (bool, Option<i64>) = if !is_self_edit {
             if request.remove_group == Some(true) {
-                // Remove from group — takes precedence over group_id
+                // remove_group takes precedence over group_id.
                 if let Some(ref account) = target_user_account {
                     if let Some(current_group_id) = account.group_id {
-                        // Non-admin delegation: requester must have all current group
-                        // permissions (removal changes effective perms the editor can't grant back)
+                        // Delegation: requester must hold all current group permissions
+                        // (removal changes effective perms the editor can't grant back).
                         if !requesting_user.is_admin {
                             let group_perms = match ctx
                                 .db
@@ -656,12 +609,11 @@ where
                 }
             } else if let Some(new_group_id) = request.group_id {
                 if let Some(ref account) = target_user_account {
-                    // Skip if already in this group
                     if account.group_id == Some(new_group_id) {
-                        (false, None)
+                        (false, None) // Already in this group
                     } else {
-                        // Non-admin delegation: requester must have all current group
-                        // permissions (moving away removes them, same check as remove_group)
+                        // Delegation: requester must hold all current group permissions
+                        // (moving away removes them, same check as remove_group).
                         if !requesting_user.is_admin
                             && let Some(current_group_id) = account.group_id
                         {
@@ -698,7 +650,6 @@ where
                             }
                         }
 
-                        // Fetch the group
                         let group = match ctx.db.groups.get_group_by_id(new_group_id).await {
                             Ok(Some(g)) => g,
                             Ok(None) => {
@@ -746,11 +697,9 @@ where
                             ));
                         }
 
-                        // Non-admin delegation: cannot promote a user to a group
-                        // whose bandwidth weight exceeds the requester's own
-                        // resolved weight. Closes the escalation where a moderator
-                        // could move themselves (or others) into a higher-weight
-                        // group whose permissions they happen to fully possess.
+                        // Delegation: can't promote into a group whose weight exceeds
+                        // the requester's — blocks self/other escalation into a
+                        // higher-weight group whose permissions they happen to hold.
                         if !requesting_user.is_admin
                             && group.bandwidth_weight
                                 > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
@@ -812,14 +761,12 @@ where
             (false, None)
         };
 
-        // Handle revoke override changes
-        // Parse and validate revoke permissions here; DB write happens atomically
-        // inside update_user's transaction via the revokes parameter.
+        // Parsed here; DB write happens atomically in update_user's transaction.
         let parsed_revokes: Option<Vec<Permission>> = if !is_self_edit
             && let Some(ref revoke_strings) = request.revokes
             && let Some(ref account) = target_user_account
         {
-            // Determine effective group_id after any group change
+            // Effective group_id after any group change in this request.
             let effective_group_id = if request.remove_group == Some(true) {
                 None
             } else if let Some(gid) = request.group_id {
@@ -829,12 +776,11 @@ where
             };
 
             if effective_group_id.is_some() {
-                // Parse revoke permissions
                 let mut parsed_revokes = Vec::new();
                 for perm_str in revoke_strings {
                     match Permission::parse(perm_str) {
                         Some(perm) => {
-                            // Non-admins can only set revokes for permissions they have
+                            // Delegation: non-admins can only revoke permissions they hold.
                             if !requesting_user.is_admin && !requesting_user.has_permission(perm) {
                                 warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_UPDATE_UNOWNED_REVOKE);
                                 break 'locked Outcome::Send(Box::new(
@@ -861,15 +807,8 @@ where
                     }
                 }
 
-                // No pre-tx merge for non-admins — same reasoning as the
-                // grant-merge removal above. The `OwnedSubset` write path
-                // inside `update_user` only touches revoke rows for
-                // permissions in the requester's owned set, so unowned
-                // revoke rows survive untouched. (The old merge also
-                // silently swallowed DB read errors via `if let Ok(...)`,
-                // which dropped all unowned-revoke preservation on any
-                // transient read failure; that path is gone.)
-
+                // No pre-tx merge — same as grants above: `OwnedSubset` only touches
+                // revoke rows for owned permissions, so unowned revokes survive.
                 Some(parsed_revokes)
             } else {
                 None
@@ -878,13 +817,11 @@ where
             None
         };
 
-        // Process password change request
         let requested_password_hash = if let Some(ref password) = request.password {
-            // Empty/whitespace password = no change
+            // Empty/whitespace password = no change.
             if password.trim().is_empty() {
                 None
             } else {
-                // Validate password format
                 let min_strength = ctx.db.config.get_min_password_strength().await;
                 if let Err(e) =
                     validators::validate_password(password, min_strength, &[&target_username])
@@ -923,12 +860,9 @@ where
             None
         };
 
-        // Note: Username validation is already done earlier, so no need to check for empty here
-
-        // Old state captured BEFORE the update so the post-update diff drives
-        // PermissionsUpdated / UserUpdated correctly. A DB read failure here
-        // can't fall back to empty permissions — that would silently skip the
-        // permission cascade and any required voice cleanup.
+        // Capture old state BEFORE the update so the post-update diff drives the
+        // PermissionsUpdated / UserUpdated cascade. A DB read failure must NOT fall
+        // back to empty perms — that would skip the cascade and any voice cleanup.
         let (old_username, old_is_admin, old_enabled, old_permissions) = {
             if let Some(ref account) = target_user_account {
                 let perms = match ctx.db.users.get_user_permissions(account.id).await {
@@ -955,9 +889,8 @@ where
             }
         };
 
-        // The `(user_id, permission)` PK allows only one row per permission;
-        // a request that names the same permission as both grant and revoke
-        // would otherwise be resolved by write order. Fail upfront instead.
+        // The `(user_id, permission)` PK allows one row per permission, so naming
+        // the same permission as grant and revoke is ambiguous — fail upfront.
         if let (Some(grants), Some(revokes)) =
             (parsed_permissions.as_ref(), parsed_revokes.as_ref())
         {
@@ -992,7 +925,7 @@ where
             Some(requesting_user.bandwidth_weight.load(Ordering::Relaxed))
         };
 
-        // Attempt to update the user (with atomic last-admin protection in SQL)
+        // Update (atomic last-admin protection lives in the SQL).
         match ctx
             .db
             .users
@@ -1026,9 +959,8 @@ where
                     is_admin = updated_account.is_admin,
                     "{}", LOG_USER_UPDATE_SUCCESS
                 );
-                // Response is sent in the tail dispatch after the labelled
-                // block exits — a slow admin socket must not stall the
-                // security-relevant cascades performed below.
+                // Sent in the tail dispatch after the block exits, so a slow admin
+                // socket can't stall the security-relevant cascades below.
                 let response = ServerMessage::UserUpdateResponse {
                     success: true,
                     error: None,
@@ -1041,9 +973,8 @@ where
                 let permissions_changed =
                     old_permissions.permissions != final_permissions.permissions;
 
-                // Atomic flip: `UserSession::has_permission` short-circuits
-                // on `is_admin`, so a split write would widen the
-                // demoted-admin window across every await between the two.
+                // Update is_admin + perms together: `has_permission` short-circuits
+                // on is_admin, so a split write widens the demoted-admin window.
                 if admin_status_changed || permissions_changed {
                     ctx.user_manager
                         .update_auth_state(
@@ -1064,9 +995,8 @@ where
                         (None, None)
                     };
 
-                // Rename the cache identity before any username-keyed
-                // cascade below — otherwise PermissionsUpdated / voice
-                // cleanup / disable disconnect would miss every session.
+                // Rename the cache identity before any username-keyed cascade below,
+                // or PermissionsUpdated / voice cleanup / disconnect miss every session.
                 let username_changed =
                     old_username.to_lowercase() != updated_account.username.to_lowercase();
 
@@ -1075,9 +1005,8 @@ where
                         .update_username(updated_account.id, updated_account.username.clone())
                         .await;
 
-                    // Shared accounts keep per-session nicknames (chosen at
-                    // login) — same invariant `UserManager::update_username`
-                    // honors for `user.nickname`.
+                    // Shared accounts keep their login-chosen per-session nicknames
+                    // (same invariant `UserManager::update_username` honors).
                     if !updated_account.is_shared {
                         let sessions = ctx
                             .user_manager
@@ -1156,14 +1085,12 @@ where
                             group_name: updated_group_name.clone(),
                         };
 
-                        // Send to all sessions belonging to the updated user
                         ctx.user_manager
                             .broadcast_to_user_id(updated_account.id, &permissions_update)
                             .await;
 
-                        // Admin-aware: admins hold `VoiceListen` implicitly
-                        // via the `has_permission` bypass, so a demoted admin
-                        // without an explicit grant still loses it.
+                        // Admin-aware: admins hold VoiceListen via the bypass, so a
+                        // demoted admin without an explicit grant still loses it.
                         let had_voice_listen = old_is_admin
                             || old_permissions
                                 .permissions
@@ -1197,12 +1124,9 @@ where
                     }
                 }
 
-                // Send a disabled-by-admin Error then drop the tx. The
-                // connection loop's `rx.recv()` returns None once all
-                // senders are dropped and the TCP connection closes.
-                // `connection.rs` cleanup won't re-broadcast
-                // UserDisconnected because the user is already gone from
-                // the manager.
+                // Send a disabled-by-admin Error, then drop the tx so the connection
+                // loop's rx.recv() returns None and the TCP connection closes.
+                // connection.rs won't re-broadcast UserDisconnected — already removed.
                 if let Some(false) = request.enabled {
                     for user in ctx
                         .user_manager
@@ -1226,9 +1150,8 @@ where
                     }
                 }
 
-                // Promotion auto-clears group_id in the DB, so admin status
-                // change must refresh the cached group too even when the
-                // request didn't touch group_id directly.
+                // Promotion auto-clears group_id in the DB, so an admin-status change
+                // must refresh the cached group even when group_id wasn't touched.
                 if group_changed || admin_status_changed {
                     ctx.user_manager
                         .update_group(
@@ -1239,10 +1162,8 @@ where
                         .await;
                 }
 
-                // Inherit wins over an explicit weight (matches the DB
-                // layer's precedence) — check it first so a request that
-                // also carries the pre-update value still registers as a
-                // change.
+                // Inherit wins over explicit weight (matches the DB) — check it first
+                // so a request also carrying the pre-update value still counts as a change.
                 let bandwidth_weight_request_change =
                     if request.inherit_bandwidth_weight == Some(true) {
                         target_account.bandwidth_weight.is_some()
@@ -1271,9 +1192,8 @@ where
                     Vec::new()
                 };
 
-                // All sessions of one user agree on the cached weight
-                // (`update_bandwidth_state` fan-out invariant); first
-                // session is authoritative. `None` means offline.
+                // All of a user's sessions share the cached weight (update_bandwidth_state
+                // fan-out invariant); first session is authoritative, `None` = offline.
                 let old_resolved: Option<u16> = sessions
                     .first()
                     .map(|s| s.bandwidth_weight.load(Ordering::Relaxed));
@@ -1288,10 +1208,8 @@ where
                         .await;
                 }
 
-                // Suppress a bandwidth-only broadcast when the effective
-                // weight didn't move for an online user. Offline users
-                // (`None`) always broadcast — `None != Some(_)` — so
-                // observers converge once the user logs in.
+                // Suppress a bandwidth-only broadcast when the effective weight didn't
+                // move for an online user. Offline (`None`) always broadcasts.
                 let suppress_for_bw_only =
                     bw_only_trigger && old_resolved == Some(resolved_bandwidth_weight);
 
@@ -1324,8 +1242,7 @@ where
                     let user_info = UserInfo {
                         id: updated_account.id,
                         username: updated_account.username.clone(),
-                        // For account-level updates, nickname == username
-                        // (we're broadcasting about the account, not a specific session)
+                        // Account-level broadcast: nickname == username.
                         nickname: updated_account.username.clone(),
                         login_time,
                         is_admin: updated_account.is_admin,
@@ -1337,9 +1254,7 @@ where
                         status,
                         group_id: updated_group_id,
                         group_name: updated_group_name,
-                        // Resolved in-transaction by `update_user`, so
-                        // it's always Some — no admin-aware fallback
-                        // layer needed.
+                        // Resolved in-tx by `update_user`, so always Some.
                         bandwidth_weight: Some(resolved_bandwidth_weight),
                     };
 
@@ -1355,9 +1270,8 @@ where
                 Outcome::Send(Box::new(response))
             }
             Ok(crate::db::UpdateUserResult::BlockedForGroupAuth) => {
-                // In-tx group-auth race — admin altered the target group
-                // between the handler's pre-check and the tx. Conservative
-                // message: we don't know which of the four conditions raced.
+                // In-tx group-auth race: target group changed between pre-check and tx.
+                // Conservative message — we don't know which condition raced.
                 warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
                 let response = ServerMessage::UserUpdateResponse {
                     success: false,
@@ -1368,11 +1282,9 @@ where
                 Outcome::Send(Box::new(response))
             }
             Ok(crate::db::UpdateUserResult::Blocked) => {
-                // Update was blocked (user not found, last admin, duplicate
-                // username, or non-admin requester racing a concurrent
-                // promotion of the target). Disambiguate with explicit DB
-                // reads — silent `.ok().flatten()` would let a DB error
-                // masquerade as "user not found" or "username exists".
+                // Blocked (not found / last admin / duplicate username / raced
+                // promotion). Disambiguate with explicit DB reads — a silent
+                // `.ok().flatten()` would let a DB error look like "not found".
                 let target_after = match ctx.db.users.get_user_by_username(&target_username).await {
                     Ok(t) => t,
                     Err(e) => {
@@ -1395,7 +1307,6 @@ where
                     warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_ADMIN);
                     err_cannot_edit_admin(ctx.locale)
                 } else if let Some(ref new_username) = request.username {
-                    // Check if the new username already exists (and it's not the same user).
                     let duplicate = if new_username != &target_username {
                         match ctx.db.users.get_user_by_username(new_username).await {
                             Ok(t) => t.is_some(),
@@ -1417,7 +1328,7 @@ where
                     if duplicate {
                         err_username_exists(ctx.locale, new_username)
                     } else {
-                        // Username change was blocked but not due to duplicate - must be admin protection
+                        // Not a duplicate, so the block must be last-admin protection.
                         err_cannot_demote_last_admin(ctx.locale)
                     }
                 } else if request.is_admin == Some(false) {
@@ -1467,8 +1378,7 @@ mod tests {
     async fn test_userupdate_requires_login() {
         let mut test_ctx = create_test_context().await;
 
-        // Look up a user id to use (doesn't matter which since not logged in)
-        // Use a non-existent id since the test checks login requirement before user lookup
+        // Non-existent id: the login check fires before user lookup.
         let request = UserUpdateRequest {
             id: 99999,
             current_password: None,
@@ -1493,10 +1403,8 @@ mod tests {
     async fn test_userupdate_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user without UserEdit permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
-        // Create another user to edit
         let bob = test_ctx
             .db
             .users
@@ -1704,7 +1612,6 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // First, set a per-user override
         test_ctx
             .db
             .users
@@ -1812,10 +1719,8 @@ mod tests {
     async fn test_userupdate_cannot_edit_self_admin_status() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to change own admin status (even with current_password, this should be rejected)
         let admin_user = test_ctx
             .db
             .users
@@ -1855,10 +1760,8 @@ mod tests {
     async fn test_userupdate_cannot_edit_self_enabled_status() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to change own enabled status
         let admin_user = test_ctx
             .db
             .users
@@ -1898,10 +1801,8 @@ mod tests {
     async fn test_userupdate_cannot_edit_self_permissions() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as regular user (non-admin)
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
-        // Try to change own permissions
         let alice_user = test_ctx
             .db
             .users
@@ -2085,7 +1986,6 @@ mod tests {
 
         let admin_a_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a second admin via DB (no group, satisfies CHECK).
         let admin_b = test_ctx
             .db
             .users
@@ -2150,10 +2050,8 @@ mod tests {
     async fn test_userupdate_self_password_change_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as alice (login_user creates the user with the given password)
         let session_id = login_user(&mut test_ctx, "alice", "oldpassword", &[], false).await;
 
-        // Change own password with correct current password
         let alice_user = test_ctx
             .db
             .users
@@ -2200,10 +2098,8 @@ mod tests {
     async fn test_userupdate_self_password_change_wrong_current_password() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as alice (login_user creates the user with the given password)
         let session_id = login_user(&mut test_ctx, "alice", "correctpassword", &[], false).await;
 
-        // Try to change password with wrong current password
         let alice_user = test_ctx
             .db
             .users
@@ -2246,10 +2142,8 @@ mod tests {
     async fn test_userupdate_self_password_change_missing_current_password() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to change own password without providing current password
         let admin_user = test_ctx
             .db
             .users
@@ -2292,10 +2186,8 @@ mod tests {
     async fn test_userupdate_admin_can_edit() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create another user to edit
         let bob = test_ctx
             .db
             .users
@@ -2347,7 +2239,6 @@ mod tests {
             _ => panic!("Expected UserUpdateResponse"),
         }
 
-        // Verify username was changed
         let user = test_ctx
             .db
             .users
@@ -2363,7 +2254,6 @@ mod tests {
     async fn test_userupdate_user_not_found() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let request = UserUpdateRequest {
@@ -2401,7 +2291,6 @@ mod tests {
     async fn test_userupdate_cannot_demote_last_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Create two admins
         let admin1_session = login_user(&mut test_ctx, "admin1", "password", &[], true).await;
         let admin2_session = login_user(&mut test_ctx, "admin2", "password", &[], true).await;
 
@@ -2495,7 +2384,6 @@ mod tests {
     async fn test_userupdate_with_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with UserEdit permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -2505,7 +2393,6 @@ mod tests {
         )
         .await;
 
-        // Create another user to edit
         let bob = test_ctx
             .db
             .users
@@ -2562,7 +2449,6 @@ mod tests {
     async fn test_userupdate_non_admin_cannot_change_admin_status() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with UserEdit permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -2572,7 +2458,6 @@ mod tests {
         )
         .await;
 
-        // Create another user to edit
         let bob = test_ctx
             .db
             .users
@@ -2631,7 +2516,6 @@ mod tests {
     async fn test_userupdate_duplicate_username() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create two users
@@ -2701,10 +2585,8 @@ mod tests {
     async fn test_userupdate_change_password() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a user
         let alice = test_ctx
             .db
             .users
@@ -2722,7 +2604,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Change alice's password
         let request = UserUpdateRequest {
             id: alice.id,
             current_password: None,
@@ -2772,10 +2653,8 @@ mod tests {
     async fn test_userupdate_change_permissions() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a user with no permissions
         let bob = test_ctx
             .db
             .users
@@ -2793,7 +2672,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Give bob some permissions
         let request = UserUpdateRequest {
             id: bob.id,
             current_password: None,
@@ -2828,7 +2706,6 @@ mod tests {
             _ => panic!("Expected UserUpdateResponse"),
         }
 
-        // Verify permissions were changed
         assert!(
             test_ctx
                 .db
@@ -2851,10 +2728,8 @@ mod tests {
     async fn test_userupdate_empty_password_means_no_change() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a user with a specific password hash
         let original_hash = "original_hash_12345";
         let alice = test_ctx
             .db
@@ -2908,8 +2783,6 @@ mod tests {
             _ => panic!("Expected UserUpdateResponse"),
         }
 
-        // Verify password was NOT changed (hash should be same)
-        // Verify password was NOT changed
         let user = test_ctx
             .db
             .users
@@ -2951,7 +2824,6 @@ mod tests {
         )
         .await;
 
-        // Get Alice's user ID for verification later
         let alice = test_ctx
             .db
             .users
@@ -2960,8 +2832,8 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Bob tries to update Alice, removing user_info and chat_send (permissions Bob doesn't have)
-        // Bob tries to set Alice's permissions to just user_list (which Bob has)
+        // Bob (no user_info/chat_send) sets Alice's perms to just user_list. The
+        // perms he doesn't own must survive — only his owned set is touched.
         let request = UserUpdateRequest {
             id: alice.id,
             current_password: None,
@@ -2996,11 +2868,7 @@ mod tests {
             _ => panic!("Expected UserUpdateResponse"),
         }
 
-        // Verify target has both their original permission AND the editor's granted permission
-        // Verify Alice's permissions were merged correctly:
-        // - user_list: Bob set this (and has it), Alice should have it
-        // - user_info: Bob can't modify this (he doesn't have it), Alice should keep it
-        // - chat_send: Bob can't modify this (he doesn't have it), Alice should keep it
+        // user_list set by Bob; user_info + chat_send preserved (Bob can't touch them).
         assert!(
             test_ctx
                 .db
@@ -3034,7 +2902,6 @@ mod tests {
     async fn test_userupdate_unknown_revoke_permission_returns_error() {
         let mut test_ctx = create_test_context().await;
 
-        // Create target user with a group
         let group = test_ctx
             .db
             .groups
@@ -3049,7 +2916,6 @@ mod tests {
 
         let admin_session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create bob and assign to group
         test_ctx
             .db
             .users
@@ -3067,7 +2933,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Try to set an unknown revoke permission
         let bob_user = test_ctx
             .db
             .users
@@ -3112,7 +2977,6 @@ mod tests {
     async fn test_userupdate_revokes_survive_when_permissions_also_provided() {
         let mut test_ctx = create_test_context().await;
 
-        // Create a group with chat_send and user_kick
         let group = test_ctx
             .db
             .groups
@@ -3127,7 +2991,6 @@ mod tests {
 
         let admin_session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create bob in the group
         let bob = test_ctx
             .db
             .users
@@ -3145,10 +3008,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Send UserUpdate with BOTH permissions (grant override) and
-        // revokes (revoke override). Before the fix, set_permissions_in_tx
-        // would DELETE all user_permissions rows (including revokes just written),
-        // then re-insert only grants — silently losing the revokes.
+        // Send both grants and revokes. Pre-fix, set_permissions_in_tx deleted all
+        // rows (incl. revokes just written) then re-inserted only grants, losing revokes.
         let request = UserUpdateRequest {
             id: bob.id,
             current_password: None,
@@ -3216,7 +3077,6 @@ mod tests {
 
         let admin_session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create bob
         let bob = test_ctx
             .db
             .users
@@ -3234,7 +3094,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Try to set an unknown grant permission
         let request = UserUpdateRequest {
             id: bob.id,
             current_password: None,
@@ -3275,10 +3134,8 @@ mod tests {
     async fn test_userupdate_cannot_disable_self() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to disable self (will be caught by self-edit check)
         let admin_user = test_ctx
             .db
             .users
@@ -3318,7 +3175,6 @@ mod tests {
     async fn test_userupdate_cannot_disable_last_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Create two admins
         let admin1_session = login_user(&mut test_ctx, "admin1", "password", &[], true).await;
         let _admin2_session = login_user(&mut test_ctx, "admin2", "password", &[], true).await;
 
@@ -3356,15 +3212,8 @@ mod tests {
             _ => panic!("Expected UserUpdateResponse"),
         }
 
-        // Now admin1 is the only admin. Create another admin to try to disable admin1.
         let _admin3_session = login_user(&mut test_ctx, "admin3", "password", &[], true).await;
 
-        // Admin3 tries to disable admin1 (should fail - last admin protection)
-        // But wait, admin3 is also an admin now, so there are two admins again.
-        // The test needs to be that admin3 tries to disable themselves when they're the last.
-        // Actually, let's test the database layer directly for last admin protection.
-
-        // Re-enable admin2 first
         let admin2_user = test_ctx
             .db
             .users
@@ -3390,7 +3239,7 @@ mod tests {
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
         let _ = read_server_message(&mut test_ctx).await;
 
-        // Demote admin2 and admin3 so admin1 is the only admin
+        // Demote admin2 and admin3 so admin1 is the only admin.
         let admin2_user = test_ctx
             .db
             .users
@@ -3441,8 +3290,8 @@ mod tests {
         let _ = handle_user_update(request, &mut test_ctx.handler_context()).await;
         let _ = read_server_message(&mut test_ctx).await;
 
-        // Now admin1 is the only admin. Admin1 tries to disable themselves (should fail - self-edit)
-        // But self-edit is blocked. So we test the database protection directly.
+        // admin1 is now the only admin; self-edit is blocked, so test the DB
+        // last-admin protection directly.
         let admin1 = test_ctx
             .db
             .users
@@ -3451,7 +3300,6 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Try to disable the last admin via database
         let result = test_ctx
             .db
             .users
@@ -3478,7 +3326,6 @@ mod tests {
             "Should not be able to disable the last admin"
         );
 
-        // Verify admin1 is still enabled
         let admin1_after = test_ctx
             .db
             .users
@@ -3493,10 +3340,8 @@ mod tests {
     async fn test_userupdate_non_admin_cannot_edit_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a non-admin user with user_edit permission
         let mut perms = Permissions::new();
         perms.permissions.insert(Permission::UserEdit);
         let editor = test_ctx
@@ -3516,7 +3361,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add editor to UserManager
         let editor_session = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -3589,10 +3433,8 @@ mod tests {
     async fn test_userupdate_change_enabled_status() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a regular user
         let bob = test_ctx
             .db
             .users
@@ -3610,10 +3452,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify bob is enabled
         assert!(bob.enabled, "Bob should be enabled initially");
 
-        // Disable bob
         let request = UserUpdateRequest {
             id: bob.id,
             current_password: None,
@@ -3648,8 +3488,6 @@ mod tests {
             _ => panic!("Expected UserUpdateResponse"),
         }
 
-        // Verify user is now disabled
-        // Verify bob is now disabled in database
         let bob_after = test_ctx
             .db
             .users
@@ -3659,7 +3497,6 @@ mod tests {
             .unwrap();
         assert!(!bob_after.enabled, "Bob should be disabled");
 
-        // Re-enable bob
         let request = UserUpdateRequest {
             id: bob.id,
             current_password: None,
@@ -3694,8 +3531,6 @@ mod tests {
             _ => panic!("Expected UserUpdateResponse"),
         }
 
-        // Verify user is now enabled
-        // Verify bob is enabled again
         let bob_final = test_ctx
             .db
             .users
@@ -3710,13 +3545,10 @@ mod tests {
     async fn test_userupdate_disconnects_when_disabling() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Login as bob (the user we'll disable)
         let bob_session = login_user(&mut test_ctx, "bob", "password", &[], false).await;
 
-        // Verify bob is in the user manager
         assert!(
             test_ctx
                 .user_manager
@@ -3726,7 +3558,6 @@ mod tests {
             "Bob should be in user manager"
         );
 
-        // Admin disables bob
         let bob_user = test_ctx
             .db
             .users
@@ -3753,7 +3584,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Bob should be removed from user manager
         assert!(
             test_ctx
                 .user_manager
@@ -3764,20 +3594,10 @@ mod tests {
         );
     }
 
-    /// A request that names the same permission in both `permissions`
-    /// (grants) and `revokes` is rejected upfront with a clear error.
-    /// The `(user_id, permission)` primary key only allows one row per
-    /// permission, so the write path would otherwise have to pick a
-    /// winner by ordering — the new pre-tx check makes the intent
-    /// explicit and fails the request with
-    /// `err_permission_grant_revoke_conflict` rather than letting the
-    /// DB resolve it implicitly.
-    ///
-    /// Note: revokes only parse to `Some(...)` when the target has (or
-    /// is being assigned to) a group — handler logic drops revokes for
-    /// ungrouped users since there's nothing for them to revoke. This
-    /// test puts the target in a group so both lists reach the overlap
-    /// check.
+    /// Naming the same permission as both grant and revoke is rejected upfront
+    /// with `err_permission_grant_revoke_conflict` (the `(user_id, permission)`
+    /// PK can't hold both). The target is grouped so revokes parse to `Some` —
+    /// the handler drops revokes for ungrouped users.
     #[tokio::test]
     async fn test_userupdate_rejects_overlapping_grant_and_revoke() {
         let mut test_ctx = create_test_context().await;
@@ -3848,9 +3668,7 @@ mod tests {
             other => panic!("expected UserUpdateResponse, got {:?}", other),
         }
 
-        // Bob's DB rows must be unchanged — no partial write. Bob still
-        // has zero override rows (group provides ChatSend; no grant or
-        // revoke overrides were stored).
+        // No partial write: Bob still has zero override rows (group provides ChatSend).
         let perms_after = test_ctx
             .db
             .users
@@ -3866,12 +3684,9 @@ mod tests {
         assert!(perms_after.permissions.contains(&Permission::ChatSend));
     }
 
-    /// Regression: a single `UserUpdate` that both renames AND disables a
-    /// user must still disconnect the active session. Pre-fix, the cache
-    /// rename ran after the disable-disconnect lookup, so the lookup
-    /// found nothing under the new username while the cache still
-    /// carried the old one — the renamed user stayed online despite
-    /// being disabled.
+    /// Regression: a `UserUpdate` that renames AND disables must still disconnect.
+    /// Pre-fix the cache rename ran after the disable lookup, so the lookup missed
+    /// the session under the new name and the disabled user stayed online.
     #[tokio::test]
     async fn test_userupdate_rename_and_disable_disconnects_session() {
         let mut test_ctx = create_test_context().await;
@@ -3935,25 +3750,20 @@ mod tests {
         assert!(!bob_after.enabled, "bob2 should be disabled in DB");
     }
 
-    /// Regression: demoting an admin who is currently in voice must
-    /// kick them from voice, even if they had no explicit
-    /// `VoiceListen` grant. Admins implicitly hold every permission via
-    /// `UserSession::has_permission`'s bypass; the previous check
-    /// looked only at the stored grants and so saw `had_voice_listen
-    /// = false` for any admin without an explicit grant, skipping the
-    /// cleanup and leaving the demoted admin receiving relayed audio.
+    /// Regression: demoting an in-voice admin must kick them from voice even with
+    /// no explicit `VoiceListen` grant. Admins hold it via the has_permission
+    /// bypass; the old check read only stored grants, saw `had_voice_listen =
+    /// false`, and left the demoted admin receiving relayed audio.
     #[tokio::test]
     async fn test_userupdate_demoted_admin_loses_voice() {
         use std::collections::HashSet;
 
         let mut test_ctx = create_test_context().await;
 
-        // First admin (the requester) — stays admin so the second
-        // demotion isn't blocked by last-admin protection.
+        // Requester stays admin so the demotion isn't blocked by last-admin protection.
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Second admin (the demotion target). No explicit VoiceListen
-        // grant — they rely on the admin bypass.
+        // Demotion target: no explicit VoiceListen grant, relies on the admin bypass.
         test_ctx
             .db
             .users
@@ -3979,9 +3789,8 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Add the admin's session to UserManager with `is_admin: true`
-        // and an empty permission set (matches how admins are seeded
-        // at login — bypass lives in `has_permission`, not in the set).
+        // Seed as admins are at login: is_admin true, empty perm set (bypass lives
+        // in has_permission, not the set).
         let voiceadmin_session = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -4029,10 +3838,8 @@ mod tests {
             "voiceadmin must start out in the voice registry"
         );
 
-        // Admin demotes voiceadmin to non-admin. No explicit permissions
-        // are granted, so `final_permissions` resolves to empty —
-        // matching the exact scenario the admin-bypass-aware check is
-        // there to catch.
+        // Demote with no granted permissions, so `final_permissions` resolves to
+        // empty — the exact scenario the admin-bypass-aware check must catch.
         let request = UserUpdateRequest {
             id: voiceadmin_db.id,
             current_password: None,
@@ -4051,9 +3858,8 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
-        // Voice cleanup must have fired — pre-fix this assertion failed
-        // because `had_voice_listen` looked at the empty stored grant
-        // set and saw `false`, so the cleanup branch never ran.
+        // Voice cleanup must have fired (pre-fix `had_voice_listen` saw the empty
+        // stored grants as false and skipped it).
         assert!(
             !test_ctx
                 .voice_registry
@@ -4062,9 +3868,7 @@ mod tests {
             "demoted admin must be kicked from voice (admin bypass meant they were effectively voiced)"
         );
 
-        // Cache flip is also visible: the demoted session is no longer
-        // `is_admin` in UserManager either, so future privileged
-        // requests would fail at the cached check.
+        // Cache flip is visible too: the demoted session is no longer is_admin.
         let session_after = test_ctx
             .user_manager
             .get_user_by_session_id(voiceadmin_session)
@@ -4076,14 +3880,10 @@ mod tests {
         );
     }
 
-    /// Regression: renaming a SHARED account must not rewrite the
-    /// voice-registry nickname of that account's in-voice sessions.
-    /// Shared accounts keep per-session nicknames chosen at login —
-    /// `UserManager::update_username` honors that by skipping
-    /// `user.nickname` for shared sessions. The handler's
-    /// voice-registry update used to lack the same gate, so a renamed
-    /// shared account's voice nickname would silently flip from the
-    /// participant-chosen handle to the account username.
+    /// Regression: renaming a SHARED account must not rewrite the voice-registry
+    /// nickname of its in-voice sessions. Shared accounts keep per-session
+    /// login-chosen nicknames; the handler's voice-registry update lacked the gate
+    /// `update_username` has, so the voice nickname flipped to the account name.
     #[tokio::test]
     async fn test_userupdate_rename_shared_preserves_voice_nickname() {
         use std::collections::HashSet;
@@ -4120,8 +3920,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        // Shared session with a nickname DIFFERENT from the account name —
-        // this is the participant's chosen handle and must survive a rename.
+        // Nickname differs from the account name: the chosen handle must survive rename.
         let session_perms: HashSet<Permission> =
             [Permission::VoiceListen].iter().copied().collect();
         let lounge_session = test_ctx
@@ -4183,8 +3982,7 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
 
-        // Voice nickname must be unchanged — the participant chose "vibes",
-        // a rename of the *account* shouldn't move it.
+        // Voice nickname unchanged: renaming the account shouldn't move "vibes".
         let voice_after = test_ctx
             .voice_registry
             .get_by_session_id(lounge_session)
@@ -4195,8 +3993,7 @@ mod tests {
             "shared-account rename must not rewrite the per-session voice nickname"
         );
 
-        // Sanity: the UserManager session's nickname is also unchanged
-        // (this part was already correct in `update_username`).
+        // Sanity: the UserManager session's nickname is also unchanged.
         let session_after = test_ctx
             .user_manager
             .get_user_by_session_id(lounge_session)
@@ -4210,7 +4007,6 @@ mod tests {
     async fn test_userupdate_atomic_admin_demotion_protection() {
         let mut test_ctx = create_test_context().await;
 
-        // Create two admin users
         let admin1 = test_ctx
             .db
             .users
@@ -4244,7 +4040,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login both admins
         let admin1_session = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -4337,7 +4132,6 @@ mod tests {
             _ => panic!("Expected UserUpdateResponse"),
         }
 
-        // Verify admin2 is now non-admin in database
         let admin2_account = test_ctx
             .db
             .users
@@ -4350,8 +4144,7 @@ mod tests {
             "Admin2 should be demoted to non-admin"
         );
 
-        // Now admin2 (now a non-admin with user_edit permission) tries to demote admin1
-        // First, give admin2 the user_edit permission
+        // Give admin2 user_edit, then have them try to demote admin1.
         let mut perms = Permissions::new();
         perms.permissions.insert(Permission::UserEdit);
         test_ctx
@@ -4376,9 +4169,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Admin2 tries to demote admin1 (last admin) - should fail at DB level atomically
-        // Note: This bypasses the "non-admin cannot change admin status" check by using
-        // the database directly to test the atomic SQL protection
+        // Goes straight to the DB (bypassing the handler's admin-status check) to
+        // exercise the atomic last-admin SQL protection in isolation.
         let result = test_ctx
             .db
             .users
@@ -4400,14 +4192,12 @@ mod tests {
             })
             .await;
 
-        // Should return Ok(UpdateUserResult::Blocked) - update blocked by atomic SQL protection
         assert!(result.is_ok());
         assert!(
             matches!(result.unwrap(), db::UpdateUserResult::Blocked),
             "Database should block demoting last admin atomically"
         );
 
-        // Verify admin1 is still admin
         let admin1_account = test_ctx
             .db
             .users
@@ -4421,18 +4211,12 @@ mod tests {
         );
     }
 
-    // ========================================================================
-    // Shared Account Tests
-    // ========================================================================
-
     #[tokio::test]
     async fn test_userupdate_shared_user_cannot_self_edit() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin first
         let _admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create shared account
         test_ctx
             .db
             .users
@@ -4450,7 +4234,6 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // Login as shared account with nickname
         let mut shared_session_id = None;
         let login_request = crate::handlers::login::LoginRequest {
             username: "shared_acct".to_string(),
@@ -4469,7 +4252,6 @@ mod tests {
         .await;
         assert!(login_result.is_ok(), "Shared account login should succeed");
 
-        // Read login response
         let _login_response = read_login_response(&mut test_ctx).await;
 
         // Shared accounts are blocked from any self-edit, regardless of field.
@@ -4517,10 +4299,8 @@ mod tests {
     async fn test_userupdate_shared_account_forbidden_permissions() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create shared account
         test_ctx
             .db
             .users
@@ -4538,7 +4318,6 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // Try to update shared account with forbidden permissions
         let shared_user = test_ctx
             .db
             .users
@@ -4589,10 +4368,8 @@ mod tests {
     async fn test_userupdate_shared_account_allowed_permissions() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create shared account
         test_ctx
             .db
             .users
@@ -4610,7 +4387,6 @@ mod tests {
             .await
             .expect("shared account creation should succeed");
 
-        // Update shared account with only allowed permissions
         let shared_user = test_ctx
             .db
             .users
@@ -4661,7 +4437,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let password = "password";
         let hashed = hash_password(
             password,
@@ -4686,7 +4461,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as admin
         let admin_id = test_ctx
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
@@ -4714,7 +4488,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Try to rename guest account
         let guest_user = test_ctx
             .db
             .users
@@ -4762,7 +4535,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let password = "password";
         let hashed = hash_password(
             password,
@@ -4787,7 +4559,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as admin
         let admin_id = test_ctx
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
@@ -4815,8 +4586,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Update guest account permissions
-        // Enable the guest account (should be allowed)
         let guest_user = test_ctx
             .db
             .users
@@ -4859,7 +4628,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let password = "password";
         let hashed = hash_password(
             password,
@@ -4884,7 +4652,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as admin
         let admin_id = test_ctx
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
@@ -4912,7 +4679,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Update guest account permissions (should succeed with allowed permissions)
         let guest_user = test_ctx
             .db
             .users
@@ -4959,7 +4725,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let password = "password";
         let hashed = hash_password(
             password,
@@ -4984,7 +4749,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as admin
         let admin_id = test_ctx
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
@@ -5012,7 +4776,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Try to change guest account password
         let guest_user = test_ctx
             .db
             .users
@@ -5053,10 +4816,8 @@ mod tests {
     async fn test_userupdate_no_permissions_updated_when_unchanged() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create bob with some permissions
         let mut bob_perms = Permissions::new();
         bob_perms.permissions.insert(Permission::UserList);
         bob_perms.permissions.insert(Permission::ChatSend);
@@ -5077,7 +4838,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add bob to UserManager so he can receive messages
         let bob_session = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -5125,7 +4885,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read the UserUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, .. } => {
@@ -5142,7 +4901,6 @@ mod tests {
             result
         );
 
-        // Clean up
         let _ = bob_session;
     }
 
@@ -5150,10 +4908,8 @@ mod tests {
     async fn test_userupdate_permissions_updated_sent_when_changed() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create bob with some permissions
         let mut bob_perms = Permissions::new();
         bob_perms.permissions.insert(Permission::UserList);
         let bob = test_ctx
@@ -5173,7 +4929,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add bob to UserManager so he can receive messages
         let bob_session = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -5221,7 +4976,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read the UserUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, .. } => {
@@ -5249,7 +5003,6 @@ mod tests {
             _ => panic!("Expected PermissionsUpdated, got {:?}", msg),
         }
 
-        // Clean up
         let _ = bob_session;
     }
 
@@ -5257,10 +5010,8 @@ mod tests {
     async fn test_userupdate_no_permissions_updated_for_password_only_change() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create bob with some permissions
         let mut bob_perms = Permissions::new();
         bob_perms.permissions.insert(Permission::UserList);
         let bob = test_ctx
@@ -5280,7 +5031,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add bob to UserManager
         let bob_session = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -5328,7 +5078,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read the UserUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, .. } => {
@@ -5344,7 +5093,6 @@ mod tests {
             "Should NOT receive PermissionsUpdated for password-only change"
         );
 
-        // Clean up
         let _ = bob_session;
     }
 
@@ -5352,10 +5100,8 @@ mod tests {
     async fn test_userupdate_permissions_updated_sent_when_admin_status_changes() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create bob as non-admin
         let bob = test_ctx
             .db
             .users
@@ -5373,7 +5119,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add bob to UserManager so he can receive messages
         let bob_session = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -5421,7 +5166,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read the UserUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, .. } => {
@@ -5449,7 +5193,6 @@ mod tests {
             _ => panic!("Expected PermissionsUpdated, got {:?}", msg),
         }
 
-        // Clean up
         let _ = bob_session;
     }
 
@@ -5457,10 +5200,8 @@ mod tests {
     async fn test_userupdate_permissions_updated_sent_when_enabled_status_changes() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create bob as enabled
         let bob = test_ctx
             .db
             .users
@@ -5478,7 +5219,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add bob to UserManager so he can receive messages
         let bob_session = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -5526,7 +5266,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read the UserUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, .. } => {
@@ -5535,12 +5274,8 @@ mod tests {
             _ => panic!("Expected UserUpdateResponse, got {:?}", response),
         }
 
-        // When user is disabled, they get disconnected with an Error message first,
-        // then PermissionsUpdated is sent (but they may not receive it since they're being disconnected)
-        // The key is that the PermissionsUpdated IS generated for enabled status change
-        //
-        // Actually, looking at the code flow: PermissionsUpdated is broadcast first,
-        // then the disconnect happens. So we should receive PermissionsUpdated.
+        // PermissionsUpdated is broadcast for the enabled-status change before the
+        // disconnect Error, so we should receive it.
         let (msg, _) = test_ctx
             .rx
             .recv()
@@ -5557,7 +5292,6 @@ mod tests {
             _ => panic!("Expected PermissionsUpdated or Error, got {:?}", msg),
         }
 
-        // Clean up
         let _ = bob_session;
     }
 
@@ -5565,10 +5299,8 @@ mod tests {
     async fn test_userupdate_no_permissions_updated_when_admin_status_unchanged() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create bob as non-admin
         let bob = test_ctx
             .db
             .users
@@ -5586,7 +5318,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add bob to UserManager so he can receive messages
         let bob_session = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -5634,7 +5365,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read the UserUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, .. } => {
@@ -5650,7 +5380,6 @@ mod tests {
             "Should NOT receive PermissionsUpdated when admin status unchanged"
         );
 
-        // Clean up
         let _ = bob_session;
     }
 
@@ -5660,7 +5389,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create a user with voice_listen permission
         let mut voice_perms = Permissions::new();
         voice_perms.permissions.insert(Permission::VoiceListen);
         test_ctx
@@ -5680,10 +5408,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Login as voiceuser
         let perms: HashSet<Permission> = [Permission::VoiceListen].iter().copied().collect();
         let voice_user_session = test_ctx
             .user_manager
@@ -5712,14 +5438,11 @@ mod tests {
             .await
             .expect("Failed to add voice user session");
 
-        // Have the voice user join voice in a channel
-        // First, join a channel
         let _ = test_ctx
             .channel_manager
             .join("#general", voice_user_session, JoinPolicy::CreateIfMissing)
             .await;
 
-        // Create a voice session for the user
         let voice_session = crate::voice::VoiceSession::new(
             "voiceuser".to_string(),
             vec!["#general".to_string()],
@@ -5732,7 +5455,6 @@ mod tests {
             .await
             .expect("test setup: session_id is unique");
 
-        // Verify user is in voice
         assert!(
             test_ctx
                 .voice_registry
@@ -5767,7 +5489,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read the UserUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, .. } => {
@@ -5792,7 +5513,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create a user with voice_listen and voice_talk permissions
         let mut voice_perms = Permissions::new();
         voice_perms.permissions.insert(Permission::VoiceListen);
         voice_perms.permissions.insert(Permission::VoiceTalk);
@@ -5813,10 +5533,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Login as voiceuser
         let perms: HashSet<Permission> = [Permission::VoiceListen, Permission::VoiceTalk]
             .iter()
             .copied()
@@ -5848,13 +5566,11 @@ mod tests {
             .await
             .expect("Failed to add voice user session");
 
-        // Have the voice user join voice in a channel
         let _ = test_ctx
             .channel_manager
             .join("#general", voice_user_session, JoinPolicy::CreateIfMissing)
             .await;
 
-        // Create a voice session for the user
         let voice_session = crate::voice::VoiceSession::new(
             "voiceuser".to_string(),
             vec!["#general".to_string()],
@@ -5867,7 +5583,6 @@ mod tests {
             .await
             .expect("test setup: session_id is unique");
 
-        // Verify user is in voice
         assert!(
             test_ctx
                 .voice_registry
@@ -5902,7 +5617,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Read the UserUpdateResponse
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserUpdateResponse { success, .. } => {
@@ -5925,10 +5639,8 @@ mod tests {
     async fn test_user_update_assign_group() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group
         let group = test_ctx
             .db
             .groups
@@ -5941,7 +5653,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a user without a group
         test_ctx
             .db
             .users
@@ -5959,7 +5670,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify user has no group initially
         let bob = test_ctx
             .db
             .users
@@ -5969,7 +5679,6 @@ mod tests {
             .unwrap();
         assert_eq!(bob.group_id, None);
 
-        // Update user to assign group
         let request = UserUpdateRequest {
             id: bob.id,
             current_password: None,
@@ -6004,7 +5713,6 @@ mod tests {
             _ => panic!("Expected UserUpdateResponse"),
         }
 
-        // Verify user is now in the group
         let bob = test_ctx
             .db
             .users
@@ -6019,10 +5727,8 @@ mod tests {
     async fn test_user_update_remove_group() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group
         let group = test_ctx
             .db
             .groups
@@ -6035,7 +5741,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a user assigned to the group
         test_ctx
             .db
             .users
@@ -6053,7 +5758,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Verify user is in the group initially
         let bob = test_ctx
             .db
             .users
@@ -6063,7 +5767,6 @@ mod tests {
             .unwrap();
         assert_eq!(bob.group_id, Some(group.id));
 
-        // Update user to remove group
         let request = UserUpdateRequest {
             id: bob.id,
             current_password: None,
@@ -6098,7 +5801,6 @@ mod tests {
             _ => panic!("Expected UserUpdateResponse"),
         }
 
-        // Verify user no longer has a group
         let bob = test_ctx
             .db
             .users
@@ -6136,7 +5838,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a user assigned to that group
         let bob = test_ctx
             .db
             .users
@@ -6196,7 +5897,6 @@ mod tests {
             other => panic!("Expected UserUpdateResponse (permission denied), got: {other:?}"),
         }
 
-        // Verify bob is still in the group
         let bob = test_ctx
             .db
             .users
@@ -6238,7 +5938,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a user without a group
         let bob = test_ctx
             .db
             .users
@@ -6298,7 +5997,6 @@ mod tests {
             other => panic!("Expected UserUpdateResponse (permission denied), got: {other:?}"),
         }
 
-        // Verify bob still has no group
         let bob = test_ctx
             .db
             .users
@@ -6363,8 +6061,7 @@ mod tests {
         assert!(result.is_ok());
         let _ = read_server_message(&mut test_ctx).await;
 
-        // High-weight group with the same permission set so the permission
-        // delegation rule alone would pass.
+        // High-weight group, same permission set, so only the weight rule should reject.
         let high_group = test_ctx
             .db
             .groups
@@ -6377,7 +6074,6 @@ mod tests {
             .await
             .unwrap();
 
-        // A target user the editor wants to promote.
         let bob = test_ctx
             .db
             .users
@@ -6633,7 +6329,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a user assigned to the high-privilege group
         let bob = test_ctx
             .db
             .users
@@ -6686,7 +6381,6 @@ mod tests {
             other => panic!("Expected UserUpdateResponse, got: {other:?}"),
         }
 
-        // Verify bob was renamed and still in the group
         let bob = test_ctx
             .db
             .users
@@ -6711,7 +6405,6 @@ mod tests {
         )
         .await;
 
-        // Create a group with ChatSend + UserKick
         let group = test_ctx
             .db
             .groups
@@ -6724,7 +6417,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a user assigned to the group
         let bob = test_ctx
             .db
             .users
@@ -6784,7 +6476,6 @@ mod tests {
             other => panic!("Expected UserUpdateResponse (permission denied), got: {other:?}"),
         }
 
-        // Verify bob has no revokes
         let revokes = test_ctx
             .db
             .users
@@ -6843,7 +6534,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create bob in the high-privilege group
         let bob = test_ctx
             .db
             .users
@@ -6893,7 +6583,6 @@ mod tests {
             other => panic!("Expected UserUpdateResponse, got: {other:?}"),
         }
 
-        // Verify bob is still in the high-privilege group
         let bob = test_ctx
             .db
             .users
@@ -7010,10 +6699,9 @@ mod tests {
         );
     }
 
-    /// Helper for the delegation tests below: log a non-admin user in and
-    /// move them into a group at `requester_weight`, so their cached session
-    /// weight reflects that value. Returns the (admin_session, editor_session,
-    /// editor_id, editor_group_id) tuple.
+    /// Log a non-admin in and move them into a group at `requester_weight` so
+    /// their cached session weight matches. Returns (admin_session,
+    /// editor_session, editor_id, editor_group_id).
     async fn setup_editor_with_weight(
         test_ctx: &mut crate::handlers::testing::TestContext,
         requester_weight: u16,
@@ -7257,23 +6945,19 @@ mod tests {
         assert_eq!(bob.bandwidth_weight, Some(10));
     }
 
-    /// Regression: the inherit-delegation check must resolve the inherited
-    /// weight against the POST-update group, not the pre-update one. If a
-    /// non-admin requests `{remove_group: true, inherit: true}` on a user
-    /// who's currently in a high-weight group, the OLD group's weight is
-    /// irrelevant — the user will inherit `DEFAULT_BANDWIDTH_WEIGHT` after
-    /// the group is removed. Rejecting based on the old group is a false
-    /// rejection on a request that would actually *lower* the user.
+    /// Regression: inherit-delegation must resolve against the POST-update group.
+    /// `{remove_group: true, inherit: true}` on a user in a high-weight group will
+    /// inherit DEFAULT after removal, so judging by the old group falsely rejects a
+    /// request that actually lowers the user.
     #[tokio::test]
     async fn test_userupdate_inherit_delegation_uses_post_update_group_on_remove() {
         let mut test_ctx = create_test_context().await;
         let (_admin_session, editor_session, _editor_id, _editor_group_id) =
             setup_editor_with_weight(&mut test_ctx, 25).await;
 
-        // Bob currently in a HIGH-weight group (100) with override(75).
-        // Editor (weight 25) sends `{remove_group: true, inherit: true}`.
-        // POST-update: no group, no override → effective = DEFAULT (1).
-        // Pre-fix this rejected because the resolver used the OLD group (100).
+        // Bob in a weight-100 group with override 75; editor (25) sends
+        // {remove_group, inherit}. Post-update effective = DEFAULT (1). Pre-fix
+        // rejected because the resolver used the old group (100).
         let high_group = test_ctx
             .db
             .groups
@@ -7339,25 +7023,20 @@ mod tests {
         assert_eq!(bob_after.bandwidth_weight, None);
     }
 
-    /// Regression companion: same `inherit: true` request, but the proposed
-    /// NEW group also exceeds the requester's weight. The delegation check
-    /// must reject based on the new group's weight, not the old. (Without
-    /// the post-update fix, this might still reject for the WRONG reason —
-    /// based on the old group's weight, which happens to also exceed.
-    /// Picking values where old < requester < new exercises the bug
-    /// cleanly: the new check rejects, the old check would have allowed.)
+    /// Regression companion: same `inherit: true`, but the proposed NEW group also
+    /// exceeds the requester's weight, so the check must reject on the new group's
+    /// weight, not the old. Values old < requester < new exercise it cleanly: the
+    /// new check rejects where the old check would have allowed.
     #[tokio::test]
     async fn test_userupdate_inherit_delegation_uses_post_update_group_on_assign() {
         let mut test_ctx = create_test_context().await;
         let (_admin_session, editor_session, _editor_id, _editor_group_id) =
             setup_editor_with_weight(&mut test_ctx, 25).await;
 
-        // Bob currently in a LOW-weight group (5) — below the editor (25).
-        // Editor sends `{group_id: Some(high), inherit: true}` where the
-        // NEW group has weight 100 (> 25). Pre-fix the resolver used the
-        // OLD group (5) and would have passed the delegation check; the
-        // separate new-group check at lines 765-776 would catch it, but
-        // the inherit check should reject too — defense-in-depth standalone.
+        // Bob in a weight-5 group (below editor's 25); editor sends
+        // {group_id: high(100), inherit: true}. Pre-fix the resolver used the old
+        // group (5) and passed; the separate new-group check would catch it, but the
+        // inherit check should reject too — standalone defense-in-depth.
         let low_group = test_ctx
             .db
             .groups
@@ -7480,16 +7159,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_userupdate_admin_promotion_refreshes_cached_weight() {
-        // Promoting a non-admin to admin should refresh the cached
-        // bandwidth_weight (admins skip group lookup and resolve to
-        // DEFAULT_ADMIN_BANDWIDTH_WEIGHT). Without the refresh, the
-        // scheduler would read the stale pre-promotion value.
+        // Promotion must refresh the cached bandwidth_weight (admins resolve to
+        // DEFAULT_ADMIN_BANDWIDTH_WEIGHT); otherwise the scheduler reads the stale value.
         use std::sync::atomic::Ordering;
 
         let mut test_ctx = create_test_context().await;
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Bob logs in as a non-admin → cached weight starts at default 1.
+        // Non-admin login: cached weight starts at default 1.
         let bob_session = login_user(&mut test_ctx, "bob", "password", &[], false).await;
         let bob = test_ctx
             .db
@@ -7546,10 +7223,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_userupdate_admin_promotion_clears_cached_group() {
-        // Promoting an in-group non-admin to admin auto-clears their
-        // group_id in the DB. The session cache must follow — otherwise
-        // get_sessions_by_group_id keeps returning this admin and UserList
-        // reports them as still in the old group until re-login.
+        // Promotion auto-clears group_id in the DB; the session cache must follow,
+        // or get_sessions_by_group_id keeps returning this admin until re-login.
         let mut test_ctx = create_test_context().await;
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
@@ -7565,8 +7240,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Bob logs in as a non-admin, then gets assigned to Staff via DB
-        // + session cache update.
+        // Bob logs in non-admin, then is assigned to Staff (DB + session cache).
         let bob_session = login_user(&mut test_ctx, "bob", "password", &[], false).await;
         let bob = test_ctx
             .db
@@ -7610,7 +7284,6 @@ mod tests {
         assert_eq!(pre.group_id, Some(group.id), "pre-promotion group_id");
         assert_eq!(pre.group_name.as_deref(), Some("Staff"));
 
-        // Promote bob to admin.
         let request = UserUpdateRequest {
             id: bob.id,
             current_password: None,
@@ -7647,25 +7320,19 @@ mod tests {
         );
     }
 
-    /// Invariant: a single `UserUpdate` call that touches multiple
-    /// UserInfo-visible fields must produce exactly one `UserUpdated`
-    /// broadcast per receiver — not one per changed field. Mirrors the
-    /// same invariant pinned for `group_update.rs`. If a future refactor
-    /// splits the broadcast back into per-field emits, this test fails
-    /// before the multi-broadcast hits the wire.
+    /// Invariant: a `UserUpdate` touching multiple UserInfo-visible fields produces
+    /// exactly one `UserUpdated` per receiver, not one per field (mirrors
+    /// group_update.rs). Catches a future refactor that splits into per-field emits.
     #[tokio::test]
     async fn test_userupdate_one_broadcast_per_receiver_for_combined_field_change() {
         let mut test_ctx = create_test_context().await;
 
         let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Bob: created in DB, registered as an online session that holds
-        // user_list so his tx is a legitimate broadcast target. Admin and bob
-        // share `test_ctx.tx`, so one broadcast call lands twice in the queue.
-        // UserList must be granted in the DB (not just the session cache) —
-        // user_update re-syncs cached permissions from the DB partway through,
-        // so a test-only session-cache grant would be wiped before the
-        // broadcast iterates eligible recipients.
+        // Bob is an online session holding user_list (a valid broadcast target);
+        // admin and bob share test_ctx.tx, so one broadcast lands twice. UserList
+        // must be granted in the DB — user_update re-syncs cached perms from the DB
+        // mid-handler, so a session-cache-only grant would be wiped first.
         let mut bob_db_perms = db::Permissions::new();
         bob_db_perms.permissions.insert(db::Permission::UserList);
         let bob = test_ctx
@@ -7714,11 +7381,9 @@ mod tests {
             .await
             .unwrap();
 
-        // Combined change: username + bandwidth_weight in one call. Both fields
-        // trigger the broadcast condition; the consolidated emit should still
-        // fire once. (Avoiding is_admin / group / permissions changes here
-        // keeps the queue clean of PermissionsUpdated noise — those are a
-        // different message type and have their own broadcast.)
+        // username + bandwidth_weight in one call: both trigger the broadcast, which
+        // must still fire once. Avoiding is_admin/group/perms keeps PermissionsUpdated
+        // (a separate message) out of the queue.
         let admin_session = test_ctx
             .user_manager
             .get_sessions_by_username("admin")
@@ -7744,8 +7409,8 @@ mod tests {
             .await
             .unwrap();
 
-        // First message is the UserUpdateResponse delivered to admin (the
-        // request caller). Drain the rest and count UserUpdated for "robert".
+        // First message is the UserUpdateResponse to admin; drain the rest and
+        // count UserUpdated for "robert".
         let _response = read_server_message(&mut test_ctx).await;
 
         let mut user_updated_count = 0;
@@ -7767,21 +7432,17 @@ mod tests {
         );
     }
 
-    /// Regression: when a request carries both `bandwidth_weight: Some(N)`
-    /// and `inherit_bandwidth_weight: Some(true)`, the DB layer's write
-    /// precedence makes inherit win — the stored override is cleared to
-    /// NULL regardless of `N`. The handler's broadcast detector must mirror
-    /// that precedence; otherwise a request where `N` happens to equal the
-    /// pre-update stored value would suppress the broadcast even though
-    /// the effective weight just changed (override → inherited baseline).
+    /// Regression: with both `bandwidth_weight: Some(N)` and `inherit: Some(true)`,
+    /// inherit wins in the DB (override cleared to NULL regardless of N). The
+    /// broadcast detector must mirror that, or an N equal to the stored value would
+    /// suppress a broadcast even though the effective weight changed.
     #[tokio::test]
     async fn test_userupdate_broadcasts_when_inherit_wins_over_matching_explicit() {
         let mut test_ctx = create_test_context().await;
 
         let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Bob has a per-user override of 50. UserList in DB so the broadcast
-        // reaches him (the cached perms get re-synced by the handler).
+        // Bob has a per-user override of 50; UserList in DB so the broadcast reaches him.
         let mut bob_db_perms = db::Permissions::new();
         bob_db_perms.permissions.insert(db::Permission::UserList);
         let bob = test_ctx
@@ -7830,9 +7491,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Hostile/defensive client: both fields present, with bandwidth_weight
-        // matching bob's current stored value. Inherit wins → override cleared
-        // → effective weight drops to baseline 1.
+        // Both fields present, bandwidth_weight matching bob's stored value. Inherit
+        // wins → override cleared → effective weight drops to baseline 1.
         let admin_session = test_ctx
             .user_manager
             .get_sessions_by_username("admin")
@@ -7860,8 +7520,7 @@ mod tests {
 
         let _response = read_server_message(&mut test_ctx).await;
 
-        // Must see at least one UserUpdated for bob with the new effective
-        // weight (DEFAULT_BANDWIDTH_WEIGHT = 1, the inherited baseline).
+        // Expect a UserUpdated for bob at the new effective weight (DEFAULT = 1).
         let mut saw_broadcast = false;
         while let Ok((msg, _)) = test_ctx.rx.try_recv() {
             if let ServerMessage::UserUpdated { user, .. } = msg
@@ -7895,14 +7554,9 @@ mod tests {
         );
     }
 
-    // =========================================================================
-    // Admin XOR shared invariant: handler-layer enforcement
-    // =========================================================================
-
-    /// Handler enforcement of admin XOR shared: promoting a shared account
-    /// to admin must be rejected before any DB write. The schema CHECK is
-    /// the storage-layer safety net; this test pins the clean translated
-    /// error path on top of it.
+    /// Handler enforcement of admin XOR shared: promoting a shared account to
+    /// admin is rejected before any DB write (the schema CHECK is the safety net;
+    /// this pins the translated error path on top).
     #[tokio::test]
     async fn test_userupdate_rejects_promoting_shared_to_admin() {
         let mut test_ctx = create_test_context().await;
@@ -7967,29 +7621,21 @@ mod tests {
         assert!(after.is_shared, "shared status must be preserved");
     }
 
-    // =========================================================================
-    // Self-edit gate matrix
-    //
-    // The gate sits at the top of `handle_user_update` and has five sequential
-    // checkpoints; each test below pins one outcome class. A shared helper
-    // (`assert_self_edit_outcome`) sets up the requesting user, runs the
-    // handler with a caller-supplied request builder, and asserts the
-    // expected outcome.
-    // =========================================================================
+    // Self-edit gate matrix: the gate's five sequential checkpoints, one outcome
+    // class per test. `assert_self_edit_outcome` sets up the user, runs the
+    // handler with a per-case request builder, and asserts the result.
 
     enum SelfEditOutcome {
         Success,
         Error(String),
     }
 
-    /// Per-case request builder used by the gate-matrix tests. Type-aliased
-    /// to avoid `type_complexity` clippy warnings on each `Vec<(_, ...)>`.
+    /// Per-case request builder for the gate-matrix tests; aliased to dodge
+    /// `type_complexity`.
     type SelfEditRequestBuilder = fn(i64, Option<u32>) -> UserUpdateRequest;
 
-    /// Run a self-edit through the handler and assert the outcome. `build_request`
-    /// receives the requesting user's database id and session_id (so each call
-    /// site only specifies the field(s) under test) and returns a fully-formed
-    /// `UserUpdateRequest` targeting self.
+    /// Run a self-edit and assert the outcome. `build_request` gets the user's id
+    /// and session_id and returns a `UserUpdateRequest` targeting self.
     async fn assert_self_edit_outcome<F>(
         requesting_is_admin: bool,
         requesting_is_shared: bool,
@@ -8046,8 +7692,7 @@ mod tests {
         }
     }
 
-    /// Build a UserUpdateRequest with every field defaulted to None, ready
-    /// for tests to fill in one field per case.
+    /// A UserUpdateRequest with all fields None, for tests to fill one per case.
     fn empty_self_edit_request(user_id: i64, session_id: Option<u32>) -> UserUpdateRequest {
         UserUpdateRequest {
             id: user_id,
@@ -8066,9 +7711,8 @@ mod tests {
         }
     }
 
-    /// Gate checkpoint 1: shared accounts are blocked from self-edit at the
-    /// top of the gate, before any field-specific checks. One representative
-    /// case is enough; the short-circuit fires before the field matters.
+    /// Gate checkpoint 1: shared accounts are blocked from self-edit before any
+    /// field check, so one case suffices.
     #[tokio::test]
     async fn test_self_edit_shared_account_rejected_for_any_field() {
         // Probe with `password` — even the most innocuous field is rejected.
@@ -8085,9 +7729,7 @@ mod tests {
         .await;
     }
 
-    /// Gate checkpoint 2: the "forbidden on self" field set is blocked for
-    /// admins. These fields are never allowed in a self-edit request,
-    /// regardless of whether the caller is admin or not.
+    /// Gate checkpoint 2: the "forbidden on self" field set is blocked even for admins.
     #[tokio::test]
     async fn test_self_edit_forbidden_fields_rejected_for_admin() {
         let cases: Vec<(&str, SelfEditRequestBuilder)> = vec![
@@ -8125,8 +7767,8 @@ mod tests {
         }
     }
 
-    /// Gate checkpoint 2 mirror: same forbidden fields are also rejected for
-    /// a non-admin caller. The check doesn't depend on `requesting_is_admin`.
+    /// Gate checkpoint 2 mirror: forbidden fields are also rejected for non-admins
+    /// (the check ignores `requesting_is_admin`).
     #[tokio::test]
     async fn test_self_edit_forbidden_fields_rejected_for_non_admin() {
         let cases: Vec<(&str, SelfEditRequestBuilder)> = vec![
@@ -8285,31 +7927,21 @@ mod tests {
         .await;
     }
 
-    // ========================================================================
-    // No-op broadcast suppression: a bandwidth-only update should not
-    // emit `UserUpdated` when the user's *effective* weight didn't
-    // actually move. The check compares the pre-update cached resolved
-    // value (as `Option<u16>`) against the post-update resolved value
-    // returned by `update_user`. Offline users (`None`) always broadcast
-    // because `None != Some(_)` — matching how the handler treats
-    // offline users for every other trigger. Cross-trigger updates
-    // (bw + username, bw + group, etc.) bypass suppression because the
-    // non-bandwidth field carries visible info on its own.
-    // ========================================================================
+    // No-op broadcast suppression: a bandwidth-only update skips `UserUpdated` when
+    // the effective weight didn't move (pre vs post resolved value). Offline users
+    // (`None`) always broadcast; cross-trigger updates bypass suppression since the
+    // other field is visible on its own.
 
-    /// Bandwidth-only update to an OFFLINE user → broadcast still fires.
-    /// `old_resolved` is `None` for an offline target, which fails
-    /// equality against any `Some(_)` resolved value, ensuring an
-    /// offline user who logs in concurrently (or a UserList holder that
-    /// tracks offline users) converges on the post-update value.
-    /// Consistent with how non-bandwidth triggers treat offline users.
+    /// Bandwidth-only update to an OFFLINE user → broadcast still fires:
+    /// `old_resolved` is `None`, which never equals `Some(_)`, so observers
+    /// converge on the post-update value.
     #[tokio::test]
     async fn test_userupdate_bandwidth_only_offline_broadcasts() {
         let mut test_ctx = create_test_context().await;
 
         let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Bob exists in the DB but has NO active session — offline.
+        // Bob in DB with no active session — offline.
         let bob = test_ctx
             .db
             .users
@@ -8375,14 +8007,10 @@ mod tests {
         );
     }
 
-    /// Bandwidth-only update where the resolved value doesn't move →
-    /// no broadcast. Constructed using a non-admin user with no group
-    /// (resolved = DEFAULT_BANDWIDTH_WEIGHT) and writing an override
-    /// equal to that default. The DB row changes (NULL → Some(default)),
-    /// so `bandwidth_weight_request_change` is true, but resolved stays
-    /// at DEFAULT_BANDWIDTH_WEIGHT (override wins per the resolver but
-    /// the override value IS the default). The cached session value
-    /// matches the new resolved → suppression fires.
+    /// Bandwidth-only update where the resolved value doesn't move → no broadcast.
+    /// Non-admin, no group, override written equal to DEFAULT: the DB row changes
+    /// (so the dirty bit fires) but resolved stays at DEFAULT, matching the cached
+    /// value → suppression fires.
     #[tokio::test]
     async fn test_userupdate_bandwidth_only_same_resolved_suppresses_broadcast() {
         let mut test_ctx = create_test_context().await;
@@ -8438,10 +8066,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Write an override equal to the existing resolved value. DB row
-        // changes (NULL → Some(DEFAULT)) so the dirty bit fires, but
-        // resolved stays at DEFAULT_BANDWIDTH_WEIGHT — exactly the value
-        // already in bob's session cache. Suppression must fire.
+        // Override equal to the resolved value: DB row changes (dirty bit fires) but
+        // resolved stays at DEFAULT — bob's cached value. Suppression must fire.
         let admin_session = test_ctx
             .user_manager
             .get_sessions_by_username("admin")
@@ -8487,12 +8113,9 @@ mod tests {
         );
     }
 
-    /// Suppression must NOT fire when a non-bandwidth field also
-    /// changed. Same "bw side is a no-op" setup as the same-resolved
-    /// suppression test (non-admin, override=DEFAULT, resolved
-    /// unchanged), but combined with a username rename. Username is a
-    /// UserInfo-visible change, so the broadcast must fire regardless
-    /// of whether the bandwidth side suppressed on its own.
+    /// Suppression must NOT fire when a non-bandwidth field also changed: same
+    /// no-op bandwidth setup as above, but combined with a username rename — a
+    /// visible change, so the broadcast fires regardless.
     #[tokio::test]
     async fn test_userupdate_combined_change_bypasses_l2_suppression() {
         let mut test_ctx = create_test_context().await;
@@ -8547,9 +8170,8 @@ mod tests {
             .await
             .unwrap();
 
-        // Combined: rename + bandwidth override that resolves to the
-        // same value. Without the username change suppression would
-        // fire; with it, the broadcast must still fire.
+        // rename + bandwidth override resolving to the same value: the rename keeps
+        // the broadcast firing despite the no-op bandwidth side.
         let admin_session = test_ctx
             .user_manager
             .get_sessions_by_username("admin")

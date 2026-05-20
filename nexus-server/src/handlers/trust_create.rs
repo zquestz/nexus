@@ -1,4 +1,4 @@
-//! Handler for TrustCreate command
+//! Creates or updates a trusted IP entry.
 
 use std::io;
 
@@ -19,12 +19,8 @@ use crate::db::Permission;
 use crate::ip_rule_cache::canonicalize_target;
 use crate::users::UserManager;
 
-/// Handle TrustCreate command
-///
-/// Creates or updates a trusted IP entry. The target can be:
-/// - A nickname of an online user (trusts their specific IP(s))
-/// - An IP address (trusts directly)
-/// - A CIDR range (trusts the entire range, e.g., "192.168.1.0/24")
+/// Creates or updates a trusted IP entry. The target is an online user's
+/// nickname (trusts their IPs), an IP address, or a CIDR range.
 pub async fn handle_trust_create<W>(
     target: String,
     duration: Option<String>,
@@ -42,7 +38,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
@@ -55,7 +50,6 @@ where
         }
     };
 
-    // Check trust_create permission
     if !requesting_user.has_permission(Permission::TrustCreate) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_TRUST_CREATE_PERMISSION_DENIED);
         let response = ServerMessage::TrustCreateResponse {
@@ -67,7 +61,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate target length
     if let Err(e) = validators::validate_target(&target) {
         let error_msg = match e {
             TargetError::Empty => err_trust_invalid_target(ctx.locale),
@@ -82,7 +75,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate duration length if provided
     if let Some(ref d) = duration
         && let Err(DurationError::TooLong) = validators::validate_duration(d)
     {
@@ -95,7 +87,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate reason if provided
     if let Some(ref r) = reason
         && let Err(e) = validators::validate_trust_reason(r)
     {
@@ -114,7 +105,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Parse duration
     let expires_at = match parse_duration(&duration) {
         Ok(expires) => expires,
         Err(_) => {
@@ -128,9 +118,8 @@ where
         }
     };
 
-    // Resolve target to IP address(es) or CIDR range. The third tuple field is
-    // is_range, which the trust path doesn't branch on (unlike ban_create), so
-    // it's discarded.
+    // Third tuple field (is_range) is discarded — the trust path doesn't branch
+    // on it the way ban_create does.
     let (targets_to_trust, nickname_annotation, _) =
         match resolve_target(&target, ctx.user_manager).await {
             Ok(result) => result,
@@ -145,7 +134,6 @@ where
             }
         };
 
-    // Create the trusts in database
     let mut trusted_targets = Vec::new();
     for target_str in &targets_to_trust {
         match ctx
@@ -176,7 +164,6 @@ where
         }
     }
 
-    // Update the IP rule cache
     {
         let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
         for target_str in &trusted_targets {
@@ -184,7 +171,6 @@ where
         }
     }
 
-    // Log and send success response
     info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_TRUST_CREATE_SUCCESS);
     let response = ServerMessage::TrustCreateResponse {
         success: true,
@@ -195,31 +181,25 @@ where
     ctx.send_message(&response).await
 }
 
-/// Error type for target resolution
 enum TargetResolutionError {
     InvalidTarget,
 }
 
-/// Resolve a target string to IP addresses
-///
 /// Returns (IPs to trust, optional nickname annotation, is_range).
-/// IP / CIDR targets are returned in their canonical lowercase form so that
-/// `2001:DB8::1` and `2001:db8::1` cannot create separate rows pointing at
-/// the same host. For online-nickname targets, the annotation is the
-/// session's canonical nickname (not the admin-typed form), matching
-/// `ban_create::resolve_target` so admin response display stays consistent.
+/// IP/CIDR targets are returned canonical-lowercase so `2001:DB8::1` and
+/// `2001:db8::1` can't create separate rows for the same host. Nickname
+/// targets annotate with the session's canonical nickname (not the
+/// admin-typed form), matching `ban_create::resolve_target`.
 async fn resolve_target(
     target: &str,
     user_manager: &UserManager,
 ) -> Result<(Vec<String>, Option<String>, bool), TargetResolutionError> {
-    // First, check if target is an online user's nickname
     if let Some(session) = user_manager.get_session_by_nickname(target).await {
         let ips = user_manager.get_ips_for_nickname(target).await;
         return Ok((ips, Some(session.nickname.clone()), false));
     }
 
-    // Then try IP or CIDR. `canonicalize_target` returns the precomputed
-    // `is_range` flag so we don't redo the prefix-length match here.
+    // `canonicalize_target` returns the precomputed is_range flag.
     if let Some((canonical, _net, is_range)) = canonicalize_target(target) {
         return Ok((vec![canonical], None, is_range));
     }
@@ -253,7 +233,7 @@ mod tests {
     async fn test_trustcreate_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create non-admin user without trust_create permission
+        // Non-admin user without trust_create permission.
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_trust_create(
@@ -280,7 +260,6 @@ mod tests {
     async fn test_trustcreate_admin_can_trust() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_trust_create(
@@ -329,7 +308,6 @@ mod tests {
     async fn test_trustcreate_invalid_target() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_trust_create(
@@ -356,7 +334,6 @@ mod tests {
     async fn test_trustcreate_cidr_range() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_trust_create(
@@ -397,7 +374,6 @@ mod tests {
     async fn test_trustcreate_with_duration() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_trust_create(
@@ -435,7 +411,6 @@ mod tests {
     async fn test_trustcreate_target_too_long() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a target that's too long
@@ -465,7 +440,6 @@ mod tests {
     async fn test_trustcreate_target_empty() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_trust_create(
@@ -492,7 +466,6 @@ mod tests {
     async fn test_trustcreate_duration_too_long() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a duration that's too long

@@ -1,4 +1,4 @@
-//! NewsDelete message handler - Deletes a news item
+//! NewsDelete message handler
 
 use std::io;
 
@@ -22,7 +22,6 @@ use super::{
 use crate::constants::FEATURE_NEWS;
 use crate::db::Permission;
 
-/// Handle a news delete request
 pub async fn handle_news_delete<W>(
     id: i64,
     session_id: Option<u32>,
@@ -38,7 +37,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -46,7 +44,7 @@ where
     {
         Some(u) => u,
         None => {
-            // Session not found - likely a race condition, not a security event
+            // Session not found — likely a race, not a security event.
             let response = ServerMessage::NewsDeleteResponse {
                 success: false,
                 error: Some(err_not_logged_in(ctx.locale)),
@@ -56,7 +54,7 @@ where
         }
     };
 
-    // Fetch existing news item to check authorship and admin status
+    // Fetch existing item to check authorship and admin status.
     let existing_news = match ctx.db.news.get_news_by_id(id).await {
         Ok(Some(record)) => record,
         Ok(None) => {
@@ -78,7 +76,7 @@ where
         }
     };
 
-    // Check permission: user must be author OR have NewsDelete permission
+    // Author may delete own; otherwise NewsDelete required.
     let is_author = existing_news.author_id == requesting_user.user_id;
     let has_delete_permission = requesting_user.has_permission(Permission::NewsDelete);
 
@@ -92,7 +90,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check admin protection: non-admins cannot delete admin posts
+    // Non-admins cannot delete admin posts.
     if existing_news.author_is_admin && !requesting_user.is_admin {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %id, "{}", LOG_NEWS_DELETE_ADMIN);
         let response = ServerMessage::NewsDeleteResponse {
@@ -103,11 +101,10 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Delete news from database
     match ctx.db.news.delete_news(id).await {
         Ok(true) => {}
         Ok(false) => {
-            // Race condition - news was already deleted
+            // Race: already deleted.
             let response = ServerMessage::NewsDeleteResponse {
                 success: false,
                 error: Some(err_news_not_found(ctx.locale, id)),
@@ -126,7 +123,6 @@ where
         }
     };
 
-    // Log and send success response
     info!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %id, "{}", LOG_NEWS_DELETE_SUCCESS);
     let response = ServerMessage::NewsDeleteResponse {
         success: true,
@@ -135,7 +131,7 @@ where
     };
     ctx.send_message(&response).await?;
 
-    // Broadcast NewsUpdated to users with news feature and NewsList permission
+    // Broadcast to users with the news feature and NewsList permission.
     let broadcast = ServerMessage::NewsUpdated {
         action: NewsAction::Deleted,
         id,
@@ -175,7 +171,6 @@ mod tests {
     async fn test_news_delete_not_found() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result =
@@ -196,7 +191,6 @@ mod tests {
     async fn test_news_delete_author_can_delete_own() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user without NewsDelete permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -248,7 +242,6 @@ mod tests {
     async fn test_news_delete_non_author_without_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create author and their news
         let _author_session = login_user(
             &mut test_ctx,
             "author",
@@ -273,7 +266,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as another user without NewsDelete permission
         let other_session = login_user(&mut test_ctx, "other", "password", &[], false).await;
 
         let result = handle_news_delete(
@@ -302,7 +294,6 @@ mod tests {
     async fn test_news_delete_with_permission_can_delete_others() {
         let mut test_ctx = create_test_context().await;
 
-        // Create author and their news
         let _author_session = login_user(
             &mut test_ctx,
             "author",
@@ -327,7 +318,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as moderator with NewsDelete permission
         let mod_session = login_user(
             &mut test_ctx,
             "moderator",
@@ -360,7 +350,6 @@ mod tests {
     async fn test_news_delete_non_admin_cannot_delete_admin_post() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin and their news
         let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let admin = test_ctx
@@ -378,7 +367,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as non-admin with NewsDelete permission
         let mod_session = login_user(
             &mut test_ctx,
             "moderator",
@@ -417,7 +405,6 @@ mod tests {
     async fn test_news_delete_admin_can_delete_admin_post() {
         let mut test_ctx = create_test_context().await;
 
-        // Create first admin and their news
         let _admin1_session = login_user(&mut test_ctx, "admin1", "password", &[], true).await;
 
         let admin1 = test_ctx
@@ -435,7 +422,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as another admin
         let admin2_session = login_user(&mut test_ctx, "admin2", "password", &[], true).await;
 
         let result = handle_news_delete(
@@ -461,7 +447,6 @@ mod tests {
     async fn test_news_delete_admin_can_delete_any() {
         let mut test_ctx = create_test_context().await;
 
-        // Create regular user and their news
         let _user_session = login_user(
             &mut test_ctx,
             "user",
@@ -486,7 +471,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as admin
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_news_delete(

@@ -12,9 +12,7 @@ use nexus_common::protocol::{BanInfo, ServerMessage};
 use super::{HandlerContext, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
 
-/// Handle BanList command
-///
-/// Returns a list of all active (non-expired) bans.
+/// Returns all active (non-expired) bans.
 pub async fn handle_ban_list<W>(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -29,7 +27,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
@@ -39,7 +36,6 @@ where
         }
     };
 
-    // Check ban_list permission
     if !requesting_user.has_permission(Permission::BanList) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_BAN_LIST_PERMISSION_DENIED);
         let response = ServerMessage::BanListResponse {
@@ -50,7 +46,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Get all active bans from database
     match ctx.db.bans.list_active_bans().await {
         Ok(ban_records) => {
             let bans: Vec<BanInfo> = ban_records
@@ -103,7 +98,6 @@ mod tests {
     async fn test_banlist_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create non-admin user without ban_list permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_ban_list(Some(session_id), &mut test_ctx.handler_context()).await;
@@ -123,10 +117,8 @@ mod tests {
     async fn test_banlist_admin_can_list() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create some bans
         test_ctx
             .db
             .bans
@@ -170,7 +162,6 @@ mod tests {
     async fn test_banlist_empty() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_ban_list(Some(session_id), &mut test_ctx.handler_context()).await;
@@ -196,7 +187,6 @@ mod tests {
     async fn test_banlist_excludes_expired() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create an active ban

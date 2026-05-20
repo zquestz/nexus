@@ -154,7 +154,7 @@ use crate::users::UserManager;
 use crate::users::user::UserSession;
 use crate::voice::{VoiceRegistry, send_voice_leave_notifications};
 
-/// Context passed to all handlers with shared resources
+/// Shared resources passed to every handler.
 pub struct HandlerContext<'a, W> {
     pub writer: &'a mut FrameWriter<W>,
     pub peer_addr: SocketAddr,
@@ -162,47 +162,39 @@ pub struct HandlerContext<'a, W> {
     pub db: &'a Database,
     pub tx: &'a mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
     pub locale: &'a str,
-    /// Message ID from the incoming request (for response correlation)
+    /// Echoed back on responses for request correlation.
     pub message_id: MessageId,
-    /// File area root path (None if file area is not configured)
+    /// File area root, or None if the file area isn't configured.
     pub file_root: Option<&'static Path>,
-    /// Port for file transfers (typically 7501)
     pub transfer_port: u16,
-    /// Port for WebSocket file transfers (typically 7503), None if WebSocket disabled
+    /// WebSocket transfer port; None when WebSocket is disabled.
     pub transfer_websocket_port: Option<u16>,
-    /// Connection tracker for both main and transfer connections
     pub connection_tracker: Arc<ConnectionTracker>,
-    /// In-memory IP rule cache for fast lookups and cache updates (bans and trusts)
+    /// In-memory ban/trust lookup cache.
     pub ip_rule_cache: Arc<RwLock<IpRuleCache>>,
-    /// File index for searching files
     pub file_index: Arc<FileIndex>,
     /// See `files::path_lock`.
     pub file_mutation_locks: Arc<PathLockMap>,
-    /// Channel manager for multi-channel chat
     pub channel_manager: &'a ChannelManager,
-    /// Transfer registry for disconnecting active transfers on ban
+    /// Used to disconnect active transfers on ban.
     pub transfer_registry: Arc<TransferRegistry>,
-    /// Voice registry for managing active voice sessions
     pub voice_registry: &'a VoiceRegistry,
-    /// Tracker manager (per-tracker registration tasks)
+    /// Per-tracker registration tasks.
     pub tracker_manager: &'a TrackerManager,
-    /// Server certificate fingerprint (SHA-256, colon-separated)
+    /// Server certificate fingerprint (SHA-256, colon-separated).
     pub fingerprint: &'static str,
-    /// Shared flood protection config (burst and rate limits)
     pub flood_config: Arc<FloodConfig>,
 }
 
 impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {
-    /// Send a message to the client, echoing the request's message ID
+    /// Send to the client, echoing the request's message ID.
     pub async fn send_message(&mut self, message: &ServerMessage) -> io::Result<()> {
         send_server_message_with_id(self.writer, message, self.message_id).await
     }
 
-    /// Send a message via the channel instead of directly to the socket.
-    ///
-    /// This ensures the message is queued after any broadcast messages sent through
-    /// the same channel, maintaining proper ordering. Used when a response must
-    /// appear after broadcast messages in the client's receive order.
+    /// Send via the channel rather than the socket, so the message queues after
+    /// any broadcasts on the same channel. Use when a response must arrive after
+    /// broadcasts in the client's receive order.
     pub fn send_message_via_channel(&self, message: &ServerMessage) -> io::Result<()> {
         self.tx
             .send((message.clone(), Some(self.message_id)))
@@ -255,7 +247,7 @@ where
     }
 }
 
-/// Get current Unix timestamp in seconds
+/// Current Unix timestamp in seconds.
 pub fn current_timestamp() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -263,13 +255,10 @@ pub fn current_timestamp() -> i64 {
         .as_secs() as i64
 }
 
-/// Remove a user from voice (if in voice) and then from UserManager, broadcasting appropriate messages.
-///
-/// This helper ensures voice cleanup happens before user removal, which is needed when
-/// disconnecting users via handlers (kick, delete, disable) that don't go through the
-/// normal connection cleanup path in `connection.rs`.
-///
-/// Returns the removed UserSession if the user was found.
+/// Remove a user from voice (if any), then from UserManager, broadcasting the
+/// disconnect. Voice cleanup must precede removal; used by handlers (kick,
+/// delete, disable) that bypass the normal `connection.rs` cleanup path.
+/// Returns the removed session if found.
 pub async fn remove_user_with_voice_cleanup(
     user_manager: &UserManager,
     voice_registry: &VoiceRegistry,
@@ -277,22 +266,14 @@ pub async fn remove_user_with_voice_cleanup(
     session_id: u32,
     user: &UserSession,
 ) -> Option<UserSession> {
-    // Remove from voice session and notify remaining participants
     if let Some(info) = voice_registry.remove_by_session_id(session_id).await {
-        // Notify the leaving user and broadcast to remaining participants
         send_voice_leave_notifications(&info, Some(&user.tx), user_manager, channel_manager).await;
     }
-
-    // Now remove from UserManager and broadcast UserDisconnected
     user_manager.remove_user_and_broadcast(session_id).await
 }
 
-/// Clean up voice sessions for all users matching a specific IP address.
-///
-/// This should be called before disconnecting users via ban to ensure they are
-/// properly removed from voice and other participants are notified.
-///
-/// The `skip_ip` predicate can skip certain IPs (e.g., trusted IPs that won't be banned).
+/// Clean up voice sessions for all users at a specific IP, before a ban
+/// disconnects them. `skip_ip` exempts certain IPs (e.g. trusted ones).
 pub async fn cleanup_voice_for_ip<S>(
     user_manager: &UserManager,
     voice_registry: &VoiceRegistry,
@@ -302,14 +283,12 @@ pub async fn cleanup_voice_for_ip<S>(
 ) where
     S: Fn(&IpAddr) -> bool,
 {
-    // Check if this IP should be skipped (e.g., trusted)
     if let Ok(parsed_ip) = ip.parse::<IpAddr>()
         && skip_ip(&parsed_ip)
     {
         return;
     }
 
-    // Get all sessions from this IP
     let sessions: Vec<UserSession> = user_manager
         .get_all_users()
         .await
@@ -317,18 +296,13 @@ pub async fn cleanup_voice_for_ip<S>(
         .filter(|u| u.address.ip().to_string() == ip)
         .collect();
 
-    // Clean up voice for each session
     for user in sessions {
         cleanup_voice_for_session(user_manager, voice_registry, channel_manager, &user).await;
     }
 }
 
-/// Clean up voice sessions for all users whose IP falls within a CIDR range.
-///
-/// This should be called before disconnecting users via ban to ensure they are
-/// properly removed from voice and other participants are notified.
-///
-/// The `skip_ip` predicate can skip certain IPs (e.g., trusted IPs that won't be banned).
+/// Like `cleanup_voice_for_ip`, but for all users whose IP falls within a
+/// CIDR range. `skip_ip` exempts certain IPs (e.g. trusted ones).
 pub async fn cleanup_voice_for_range<S>(
     user_manager: &UserManager,
     voice_registry: &VoiceRegistry,
@@ -338,7 +312,6 @@ pub async fn cleanup_voice_for_range<S>(
 ) where
     S: Fn(&IpAddr) -> bool,
 {
-    // Get all sessions in the range (excluding skipped IPs)
     let sessions: Vec<UserSession> = user_manager
         .get_all_users()
         .await
@@ -349,13 +322,12 @@ pub async fn cleanup_voice_for_range<S>(
         })
         .collect();
 
-    // Clean up voice for each session
     for user in sessions {
         cleanup_voice_for_session(user_manager, voice_registry, channel_manager, &user).await;
     }
 }
 
-/// Clean up voice for a single user session (helper for the above functions).
+/// Clean up voice for a single session (helper for the two functions above).
 async fn cleanup_voice_for_session(
     user_manager: &UserManager,
     voice_registry: &VoiceRegistry,
@@ -363,7 +335,6 @@ async fn cleanup_voice_for_session(
     user: &UserSession,
 ) {
     if let Some(info) = voice_registry.remove_by_session_id(user.session_id).await {
-        // Notify the leaving user and broadcast to remaining participants
         send_voice_leave_notifications(&info, Some(&user.tx), user_manager, channel_manager).await;
     }
 }

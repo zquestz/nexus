@@ -1,4 +1,4 @@
-//! NewsCreate message handler - Creates a new news item
+//! NewsCreate message handler
 
 use std::io;
 
@@ -21,7 +21,6 @@ use crate::constants::{
 };
 use crate::db::Permission;
 
-/// Handle a news create request
 pub async fn handle_news_create<W>(
     body: Option<String>,
     image: Option<String>,
@@ -38,7 +37,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -46,7 +44,7 @@ where
     {
         Some(u) => u,
         None => {
-            // Session not found - likely a race condition, not a security event
+            // Session not found — likely a race, not a security event.
             let response = ServerMessage::NewsCreateResponse {
                 success: false,
                 error: Some(err_not_logged_in(ctx.locale)),
@@ -56,7 +54,6 @@ where
         }
     };
 
-    // Check NewsCreate permission
     if !requesting_user.has_permission(Permission::NewsCreate) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_NEWS_CREATE_PERMISSION_DENIED);
         let response = ServerMessage::NewsCreateResponse {
@@ -67,11 +64,10 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Normalize empty strings to None
     let body = body.filter(|s| !s.trim().is_empty());
     let image = image.filter(|s| !s.is_empty());
 
-    // Validate that at least one of body or image is provided
+    // At least one of body or image must be present.
     if body.is_none() && image.is_none() {
         let response = ServerMessage::NewsCreateResponse {
             success: false,
@@ -81,7 +77,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate body if provided
     if let Some(ref body_text) = body
         && let Err(e) = validators::validate_news_body(body_text)
     {
@@ -99,7 +94,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate image if provided
     if let Some(ref image_data) = image
         && let Err(e) = validators::validate_news_image(image_data)
     {
@@ -116,7 +110,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Create news in database
     let news_record = match ctx
         .db
         .news
@@ -135,7 +128,6 @@ where
         }
     };
 
-    // Convert to protocol format
     let news = NewsItem {
         id: news_record.id,
         body: news_record.body,
@@ -146,7 +138,6 @@ where
         updated_at: news_record.updated_at,
     };
 
-    // Log and send success response
     info!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %news.id, "{}", LOG_NEWS_CREATE_SUCCESS);
     let response = ServerMessage::NewsCreateResponse {
         success: true,
@@ -155,7 +146,7 @@ where
     };
     ctx.send_message(&response).await?;
 
-    // Broadcast NewsUpdated to users with news feature and NewsList permission
+    // Broadcast to users with the news feature and NewsList permission.
     let broadcast = ServerMessage::NewsUpdated {
         action: NewsAction::Created,
         id: news.id,
@@ -200,7 +191,6 @@ mod tests {
     async fn test_news_create_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user without NewsCreate permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_news_create(
@@ -226,7 +216,6 @@ mod tests {
     async fn test_news_create_empty_content() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsCreate permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -259,7 +248,6 @@ mod tests {
     async fn test_news_create_empty_strings_treated_as_none() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsCreate permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -293,7 +281,6 @@ mod tests {
     async fn test_news_create_with_body() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsCreate permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -336,7 +323,6 @@ mod tests {
     async fn test_news_create_with_image() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsCreate permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -379,7 +365,6 @@ mod tests {
     async fn test_news_create_with_both() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsCreate permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -422,7 +407,6 @@ mod tests {
     async fn test_news_create_body_too_long() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsCreate permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -462,7 +446,6 @@ mod tests {
     async fn test_news_create_invalid_image_format() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsCreate permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -498,7 +481,6 @@ mod tests {
     async fn test_news_create_unsupported_image_type() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user with NewsCreate permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -534,7 +516,6 @@ mod tests {
     async fn test_news_create_admin_has_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin (no explicit permissions needed)
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_news_create(

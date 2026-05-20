@@ -1,53 +1,23 @@
-//! Duration parsing and formatting utilities for handlers
-//!
-//! Shared utilities for parsing duration strings and formatting remaining time
-//! in ban/trust handlers and transfer termination.
+//! Duration parsing and formatting for ban/trust handlers and transfer termination.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
 use nexus_common::time::{SECONDS_PER_DAY, SECONDS_PER_HOUR, SECONDS_PER_MINUTE};
 
-/// Parse duration string into expiry timestamp
-///
-/// Format: `<number><unit>` where unit is `m` (minutes), `h` (hours), `d` (days)
-/// Returns None for permanent (no expiry), or Some(timestamp) for timed rules.
-///
-/// # Arguments
-/// * `duration` - Optional duration string (e.g., "10m", "4h", "7d", "0")
-///
-/// # Returns
-/// * `Ok(None)` - Permanent (no expiry)
-/// * `Ok(Some(timestamp))` - Expires at the given Unix timestamp
-/// * `Err(())` - Invalid duration format
-///
-/// # Examples
-/// ```ignore
-/// // Permanent (no duration)
-/// assert_eq!(parse_duration(&None), Ok(None));
-/// assert_eq!(parse_duration(&Some("".to_string())), Ok(None));
-/// assert_eq!(parse_duration(&Some("0".to_string())), Ok(None));
-///
-/// // Valid durations return Some(timestamp)
-/// assert!(parse_duration(&Some("10m".to_string())).unwrap().is_some());
-/// assert!(parse_duration(&Some("1h".to_string())).unwrap().is_some());
-/// assert!(parse_duration(&Some("7d".to_string())).unwrap().is_some());
-///
-/// // Invalid durations
-/// assert!(parse_duration(&Some("invalid".to_string())).is_err());
-/// assert!(parse_duration(&Some("10x".to_string())).is_err());
-/// ```
+/// Parse a `<number><unit>` duration (unit: `m`/`h`/`d`) into an expiry timestamp.
+/// `Ok(None)` is permanent (None / empty / `"0"` / zero-of-any-unit);
+/// `Ok(Some(ts))` is the Unix expiry; `Err(())` is an invalid format.
 pub fn parse_duration(duration: &Option<String>) -> Result<Option<i64>, ()> {
     let Some(duration_str) = duration else {
-        return Ok(None); // No duration = permanent
+        return Ok(None);
     };
 
     let duration_str = duration_str.trim();
     if duration_str.is_empty() || duration_str == "0" {
-        return Ok(None); // Empty or "0" = permanent
+        return Ok(None);
     }
 
-    // Parse number and unit
     let len = duration_str.len();
     if len < 2 {
         return Err(());
@@ -58,7 +28,7 @@ pub fn parse_duration(duration: &Option<String>) -> Result<Option<i64>, ()> {
 
     let number: u64 = number_str.parse().map_err(|_| ())?;
     if number == 0 {
-        return Ok(None); // 0 of anything = permanent
+        return Ok(None);
     }
 
     let seconds = match unit {
@@ -76,16 +46,8 @@ pub fn parse_duration(duration: &Option<String>) -> Result<Option<i64>, ()> {
     Ok(Some((now + seconds) as i64))
 }
 
-/// Format remaining duration for display (e.g., "2h 30m")
-///
-/// Takes a Unix timestamp for when a ban expires and returns a human-readable
-/// string showing how much time remains.
-///
-/// # Arguments
-/// * `expires_at` - Unix timestamp when the ban expires
-///
-/// # Returns
-/// A string like "2d 5h", "3h 45m", or "15m" (minimum 1m)
+/// Format the time remaining until `expires_at` (Unix timestamp) as a string
+/// like "2d 5h", "3h 45m", or "15m" (clamped to a minimum of "1m").
 pub fn format_duration_remaining(expires_at: i64) -> String {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -213,10 +175,6 @@ mod tests {
         assert_eq!(parse_duration(&Some("  ".to_string())), Ok(None));
         assert_eq!(parse_duration(&Some(" 0 ".to_string())), Ok(None));
     }
-
-    // =========================================================================
-    // Tests for format_duration_remaining
-    // =========================================================================
 
     #[test]
     fn test_format_duration_remaining_days() {

@@ -18,9 +18,7 @@ use crate::constants::{
 };
 use crate::db::{Permission, TrackerDbError, UpdateTrackerParams};
 
-/// Fields for `handle_tracker_update`, mirroring the
-/// `ClientMessage::TrackerUpdate` variant. Bundled into a struct so
-/// the handler signature stays under the workspace-wide
+/// Bundled into a struct to keep the handler signature under the
 /// too-many-arguments limit.
 pub struct TrackerUpdateRequest {
     pub id: i64,
@@ -32,10 +30,8 @@ pub struct TrackerUpdateRequest {
     pub enabled: bool,
 }
 
-/// Handle a `TrackerUpdate { ... }` request. Requires the
-/// `tracker_edit` permission. Validates inputs, replaces the row, and
-/// asks the manager to abort the existing task and spawn a fresh one
-/// (or just abort, if the row was disabled).
+/// Requires `tracker_edit`. Replaces the row, then asks the manager to
+/// respawn the task (or just abort, if the row was disabled).
 pub async fn handle_tracker_update<W>(
     request: TrackerUpdateRequest,
     session_id: Option<u32>,
@@ -84,9 +80,7 @@ where
             .await;
     }
 
-    // Normalize empty-string password / fingerprint to None at the
-    // protocol boundary. An empty fingerprint means "clear the pin /
-    // use TOFU on next connect" — same as omitted.
+    // Empty fingerprint means "clear the pin / use TOFU on next connect" — same as omitted.
     let password = password.filter(|s| !s.is_empty());
     let fingerprint = fingerprint.filter(|s| !s.is_empty());
 
@@ -101,11 +95,9 @@ where
         return ctx.send_message(&reject_update(error)).await;
     }
 
-    // Hold the lifecycle lock across the DB update and the manager
-    // replace so a concurrent TrackerRemove can't delete the row
-    // between the two halves and leave us spawning an orphan task.
-    // Drop the guard before the network write — see
-    // TrackerManager::lock_lifecycle.
+    // Lifecycle lock spans the DB update + manager replace so a concurrent
+    // TrackerRemove can't delete the row between them (orphan task). Guard
+    // drops before the network write.
     let response: ServerMessage = 'lifecycle: {
         let _guard = ctx.tracker_manager.lock_lifecycle().await;
 
@@ -135,10 +127,8 @@ where
                 break 'lifecycle reject_update(err_tracker_name_duplicate(ctx.locale));
             }
             Err(TrackerDbError::TooMany) => {
-                // `update()` doesn't enforce the row cap — only `create()`
-                // does. This arm is unreachable in practice; route it
-                // through the generic DB-error path so an unexpected
-                // future regression doesn't silently fall through.
+                // `update()` doesn't enforce the row cap; unreachable in practice.
+                // Routed through the generic DB-error path as a safety net.
                 error!(
                     user = %requesting_user.username,
                     ip = %ctx.peer_addr,
@@ -168,8 +158,6 @@ where
             "{}", LOG_TRACKER_UPDATE_SUCCESS
         );
 
-        // Abort the old task and spawn a fresh one (or just abort, if the
-        // record is now disabled). The manager handles both cases.
         ctx.tracker_manager.replace(record.clone());
 
         ServerMessage::TrackerUpdateResponse {
@@ -480,12 +468,9 @@ mod tests {
         }
     }
 
-    /// Concurrent-lifecycle regression: TrackerUpdate's DB write and
-    /// manager `replace()` can interleave with a concurrent
-    /// TrackerRemove. Without `TrackerManager::lock_lifecycle` the
-    /// stale update can respawn a task for a row that was just deleted
-    /// (orphan task) or skip the respawn that should have happened
-    /// (missing task). The invariant helper catches either case.
+    /// Concurrent TrackerUpdate + TrackerRemove must not leave an orphan
+    /// task (respawned for a deleted row) or a missing task. The lifecycle
+    /// lock prevents both; the invariant helper catches either failure.
     #[tokio::test]
     async fn concurrent_update_and_remove_preserve_invariant() {
         use nexus_common::framing::FrameWriter;
@@ -546,8 +531,7 @@ mod tests {
 
             assert_tracker_db_and_manager_consistent(&test_ctx).await;
 
-            // Best-effort cleanup so the next iteration starts clean
-            // regardless of which interleaving the join produced.
+            // Best-effort cleanup so the next iteration starts clean.
             let _ = test_ctx.db.trackers.delete(id).await;
             test_ctx.tracker_manager.terminate(id);
         }

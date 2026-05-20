@@ -1,4 +1,4 @@
-//! Handler for ChatJoin command - join or create a channel
+//! Joins or creates a channel.
 
 use std::io;
 
@@ -37,7 +37,6 @@ fn error_response(error_msg: String) -> ServerMessage {
     }
 }
 
-/// Handle ChatJoin command - join or create a channel
 pub async fn handle_chat_join<W>(
     channel: String,
     session_id: Option<u32>,
@@ -116,14 +115,13 @@ where
         }
     };
 
-    // Build member list as unique nicknames (member counts are nicknames, not sessions).
+    // Membership is by nickname, not session — multiple sessions can share one.
     let member_nicknames = ctx
         .user_manager
         .get_unique_nicknames_for_sessions(&result.member_session_ids)
         .await;
 
-    // Broadcast ChatUserJoined only when this nickname becomes present in the channel
-    // (nickname-based membership; multiple sessions may map to the same nickname).
+    // Broadcast ChatUserJoined only when this nickname first becomes present.
     let nickname_present_elsewhere = ctx
         .user_manager
         .sessions_contain_nickname(&result.member_session_ids, &user.nickname, Some(session_id))

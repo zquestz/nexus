@@ -13,9 +13,7 @@ use crate::constants::{
 };
 use crate::db::Permission;
 
-/// Handle ConnectionMonitor command
-///
-/// Returns a list of all active connections with their session info.
+/// Returns all active connections and active transfers.
 pub async fn handle_connection_monitor<W>(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -33,7 +31,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
@@ -46,7 +43,6 @@ where
         }
     };
 
-    // Check connection_monitor permission
     if !requesting_user.has_permission(Permission::ConnectionMonitor) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_CONN_MONITOR_PERMISSION_DENIED);
         let response = ServerMessage::ConnectionMonitorResponse {
@@ -58,7 +54,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Get all active sessions from user manager
     let sessions = ctx.user_manager.get_all_users().await;
 
     let mut connections: Vec<ConnectionInfo> = sessions
@@ -74,18 +69,15 @@ where
         })
         .collect();
 
-    // Sort alphabetically by nickname
     connections.sort_by_key(|c| c.nickname.to_lowercase());
 
-    // Get active transfers from registry
+    // Active transfers from the registry, sorted by nickname.
     let mut transfers: Vec<_> = ctx
         .transfer_registry
         .snapshot()
         .iter()
         .map(|t| t.to_transfer_info())
         .collect();
-
-    // Sort transfers by nickname
     transfers.sort_by_key(|t| t.nickname.to_lowercase());
 
     let response = ServerMessage::ConnectionMonitorResponse {
@@ -116,7 +108,6 @@ mod tests {
     async fn test_connection_monitor_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create non-admin user without connection_monitor permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result =
@@ -137,7 +128,6 @@ mod tests {
     async fn test_connection_monitor_admin_can_view() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "adminpass", &[], true).await;
 
         let result =
@@ -174,7 +164,6 @@ mod tests {
     async fn test_connection_monitor_with_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with only connection_monitor permission
         let session_id = login_user(
             &mut test_ctx,
             "moderator",
@@ -201,7 +190,6 @@ mod tests {
     async fn test_connection_monitor_shows_multiple_sessions() {
         let mut test_ctx = create_test_context().await;
 
-        // Login multiple users
         login_user(&mut test_ctx, "alice", "password", &[], false).await;
         login_user(&mut test_ctx, "bob", "password", &[], false).await;
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
@@ -236,7 +224,6 @@ mod tests {
     async fn test_connection_monitor_sorted_alphabetically() {
         let mut test_ctx = create_test_context().await;
 
-        // Login users in non-alphabetical order
         login_user(&mut test_ctx, "zach", "password", &[], false).await;
         login_user(&mut test_ctx, "alice", "password", &[], false).await;
         login_user(&mut test_ctx, "mike", "password", &[], false).await;

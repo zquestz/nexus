@@ -12,9 +12,7 @@ use nexus_common::protocol::{ServerMessage, TrustInfo};
 use super::{HandlerContext, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
 
-/// Handle TrustList command
-///
-/// Returns a list of all active (non-expired) trusted IPs.
+/// Returns all active (non-expired) trusted IPs.
 pub async fn handle_trust_list<W>(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -29,7 +27,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
@@ -39,7 +36,6 @@ where
         }
     };
 
-    // Check trust_list permission
     if !requesting_user.has_permission(Permission::TrustList) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_TRUST_LIST_PERMISSION_DENIED);
         let response = ServerMessage::TrustListResponse {
@@ -50,7 +46,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Get all active trusts from database
     match ctx.db.trusts.list_active_trusts().await {
         Ok(trusts) => {
             let trust_infos: Vec<TrustInfo> = trusts
@@ -103,7 +98,6 @@ mod tests {
     async fn test_trustlist_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create non-admin user without trust_list permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_trust_list(Some(session_id), &mut test_ctx.handler_context()).await;
@@ -123,10 +117,8 @@ mod tests {
     async fn test_trustlist_admin_can_list() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create some trusts
         test_ctx
             .db
             .trusts
@@ -185,7 +177,6 @@ mod tests {
     async fn test_trustlist_empty() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_trust_list(Some(session_id), &mut test_ctx.handler_context()).await;
@@ -209,7 +200,6 @@ mod tests {
     async fn test_trustlist_excludes_expired() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a permanent trust
@@ -256,7 +246,6 @@ mod tests {
     async fn test_trustlist_with_trust_list_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with only trust_list permission
         let session_id = login_user(
             &mut test_ctx,
             "moderator",
@@ -282,7 +271,6 @@ mod tests {
     async fn test_trustlist_handles_many_entries() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create 100 trust entries (mix of IPs and CIDR ranges)

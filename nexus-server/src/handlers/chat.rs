@@ -1,4 +1,3 @@
-//! Chat message handler
 //! Handler for ChatSend command
 
 use std::io;
@@ -22,7 +21,6 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::flood::{FloodCheck, FloodTracker};
 
-/// Handle a chat send request from the client
 pub async fn handle_chat_send<W>(
     message: String,
     action: ChatAction,
@@ -41,7 +39,6 @@ where
             .await;
     };
 
-    // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
         None => {
@@ -61,7 +58,6 @@ where
             .await;
     }
 
-    // Check permission (uses cached permissions, admin bypass built-in)
     if !user.has_permission(Permission::ChatSend) {
         warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_SEND_PERMISSION_DENIED);
         return ctx
@@ -116,7 +112,6 @@ where
         return ctx.send_error(&error_msg, Some(HANDLER_CHAT_SEND)).await;
     }
 
-    // Validate channel name
     if let Err(e) = validators::validate_channel(&channel) {
         return ctx
             .send_error(
@@ -126,9 +121,7 @@ where
             .await;
     }
 
-    // Check if user is a member of the channel
-    // For security, always return "not found" to non-members to avoid leaking
-    // existence of secret channels
+    // Non-members get "not found" so secret channels' existence isn't leaked.
     if !ctx.channel_manager.is_member(&channel, id).await {
         return ctx
             .send_error(
@@ -138,14 +131,12 @@ where
             .await;
     }
 
-    // Get channel members for routing
     let members = ctx
         .channel_manager
         .get_members(&channel)
         .await
         .unwrap_or_default();
 
-    // Build the chat message
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -161,19 +152,18 @@ where
         timestamp,
     };
 
-    // Send message to all channel members who have the chat feature and ChatReceive permission
+    // Route only to members with the chat feature and ChatReceive permission.
     for member_session_id in members {
         if let Some(member) = ctx
             .user_manager
             .get_user_by_session_id(member_session_id)
             .await
+            && member.has_feature(FEATURE_CHAT)
+            && member.has_permission(Permission::ChatReceive)
         {
-            // Check if member has chat feature and receive permission
-            if member.has_feature(FEATURE_CHAT) && member.has_permission(Permission::ChatReceive) {
-                ctx.user_manager
-                    .send_to_session(member_session_id, chat_message.clone())
-                    .await;
-            }
+            ctx.user_manager
+                .send_to_session(member_session_id, chat_message.clone())
+                .await;
         }
     }
 
@@ -195,7 +185,6 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let session_id = None; // Not logged in
 
-        // Try to send chat without login
         let result = handle_chat_send(
             "Hello".to_string(),
             ChatAction::Normal,
@@ -206,7 +195,6 @@ mod tests {
         )
         .await;
 
-        // Should fail
         assert!(result.is_err(), "Chat should require login");
     }
 
@@ -215,10 +203,8 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let session_id = Some(1); // Fake session (length check happens first)
 
-        // Create message over MAX_MESSAGE_LENGTH characters
         let long_message = "a".repeat(validators::MAX_MESSAGE_LENGTH + 1);
 
-        // Try to send too-long message
         let result = handle_chat_send(
             long_message,
             ChatAction::Normal,
@@ -229,7 +215,6 @@ mod tests {
         )
         .await;
 
-        // Should fail
         assert!(
             result.is_err(),
             "Message over MAX_MESSAGE_LENGTH should be rejected"
@@ -240,7 +225,6 @@ mod tests {
     async fn test_chat_message_at_limit() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with chat permission and feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -251,17 +235,14 @@ mod tests {
         )
         .await;
 
-        // Join a channel
         test_ctx
             .channel_manager
             .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
-        // Create message at exactly MAX_MESSAGE_LENGTH characters
         let max_message = "a".repeat(validators::MAX_MESSAGE_LENGTH);
 
-        // Should succeed
         let result = handle_chat_send(
             max_message,
             ChatAction::Normal,
@@ -281,7 +262,6 @@ mod tests {
     async fn test_chat_empty_message() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with chat permission and feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -292,7 +272,6 @@ mod tests {
         )
         .await;
 
-        // Try to send empty message
         let result = handle_chat_send(
             "".to_string(),
             ChatAction::Normal,
@@ -303,7 +282,6 @@ mod tests {
         )
         .await;
 
-        // Should send a non-disconnect error response
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
             ServerMessage::Error { command, .. } => {
@@ -312,7 +290,6 @@ mod tests {
             other => panic!("Expected Error for empty message, got {other:?}"),
         }
 
-        // Try to send whitespace-only message
         let result = handle_chat_send(
             "   ".to_string(),
             ChatAction::Normal,
@@ -323,7 +300,6 @@ mod tests {
         )
         .await;
 
-        // Should send a non-disconnect error response
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
             ServerMessage::Error { command, .. } => {
@@ -337,7 +313,6 @@ mod tests {
     async fn test_chat_message_with_newlines() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with chat permission and feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -348,7 +323,6 @@ mod tests {
         )
         .await;
 
-        // Try to send message with \n
         let result = handle_chat_send(
             "Hello\nWorld".to_string(),
             ChatAction::Normal,
@@ -359,7 +333,6 @@ mod tests {
         )
         .await;
 
-        // Should send a non-disconnect error response
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
             ServerMessage::Error { command, .. } => {
@@ -368,7 +341,6 @@ mod tests {
             other => panic!("Expected Error for newline message, got {other:?}"),
         }
 
-        // Try to send message with \r
         let result = handle_chat_send(
             "Hello\rWorld".to_string(),
             ChatAction::Normal,
@@ -379,7 +351,6 @@ mod tests {
         )
         .await;
 
-        // Should send a non-disconnect error response
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
             ServerMessage::Error { command, .. } => {
@@ -388,7 +359,6 @@ mod tests {
             other => panic!("Expected Error for carriage-return message, got {other:?}"),
         }
 
-        // Try to send message with \r\n
         let result = handle_chat_send(
             "Hello\r\nWorld".to_string(),
             ChatAction::Normal,
@@ -399,7 +369,6 @@ mod tests {
         )
         .await;
 
-        // Should send a non-disconnect error response
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
             ServerMessage::Error { command, .. } => {
@@ -424,14 +393,12 @@ mod tests {
         )
         .await;
 
-        // Join a channel
         test_ctx
             .channel_manager
             .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
-        // Try to send chat without permission
         let result = handle_chat_send(
             "Hello".to_string(),
             ChatAction::Normal,
@@ -442,7 +409,6 @@ mod tests {
         )
         .await;
 
-        // Should succeed (send error but not disconnect)
         assert!(
             result.is_ok(),
             "Should send error message but not disconnect"
@@ -464,7 +430,6 @@ mod tests {
         )
         .await;
 
-        // Try to send chat without chat feature
         let result = handle_chat_send(
             "Hello".to_string(),
             ChatAction::Normal,
@@ -475,8 +440,7 @@ mod tests {
         )
         .await;
 
-        // Should send a non-disconnect error response (feature is admin-toggleable,
-        // not a protocol violation — keep the session alive)
+        // Feature is admin-toggleable, not a protocol violation — error, not disconnect.
         assert!(result.is_ok());
         match read_server_message(&mut test_ctx).await {
             ServerMessage::Error { command, .. } => {
@@ -490,7 +454,6 @@ mod tests {
     async fn test_chat_successful() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with chat permission and feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -501,14 +464,12 @@ mod tests {
         )
         .await;
 
-        // Join a channel
         test_ctx
             .channel_manager
             .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
-        // Send valid chat message
         let result = handle_chat_send(
             "Hello, world!".to_string(),
             ChatAction::Normal,
@@ -519,7 +480,6 @@ mod tests {
         )
         .await;
 
-        // Should succeed
         assert!(result.is_ok(), "Valid chat message should succeed");
     }
 
@@ -527,10 +487,8 @@ mod tests {
     async fn test_chat_invalid_session() {
         let mut test_ctx = create_test_context().await;
 
-        // Use a session ID that doesn't exist in UserManager
         let invalid_session_id = Some(999);
 
-        // Try to send chat with invalid session
         let result = handle_chat_send(
             "Hello".to_string(),
             ChatAction::Normal,
@@ -541,7 +499,6 @@ mod tests {
         )
         .await;
 
-        // Should fail (ERR_AUTHENTICATION)
         assert!(
             result.is_err(),
             "Chat with invalid session should be rejected"
@@ -564,14 +521,12 @@ mod tests {
         )
         .await;
 
-        // Join a channel
         test_ctx
             .channel_manager
             .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
-        // Admin should be able to send chat
         let result = handle_chat_send(
             "Admin message!".to_string(),
             ChatAction::Normal,
@@ -582,7 +537,6 @@ mod tests {
         )
         .await;
 
-        // Should succeed
         assert!(
             result.is_ok(),
             "Admin should be able to chat without explicit permission"
@@ -593,7 +547,6 @@ mod tests {
     async fn test_chat_to_channel_not_member() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with chat permission and feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -604,14 +557,13 @@ mod tests {
         )
         .await;
 
-        // Create channel but don't join it
+        // Another session creates the channel; alice never joins.
         test_ctx
             .channel_manager
             .join("#general", 999, JoinPolicy::CreateIfMissing)
             .await
-            .unwrap(); // Someone else creates it
+            .unwrap();
 
-        // Try to send to channel user is not a member of
         let result = handle_chat_send(
             "Hello".to_string(),
             ChatAction::Normal,
@@ -622,7 +574,6 @@ mod tests {
         )
         .await;
 
-        // Should succeed but send error
         assert!(result.is_ok());
     }
 
@@ -630,7 +581,6 @@ mod tests {
     async fn test_chat_to_nonexistent_channel() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with chat permission and feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -641,7 +591,6 @@ mod tests {
         )
         .await;
 
-        // Try to send to nonexistent channel
         let result = handle_chat_send(
             "Hello".to_string(),
             ChatAction::Normal,
@@ -652,7 +601,6 @@ mod tests {
         )
         .await;
 
-        // Should succeed but send error
         assert!(result.is_ok());
     }
 
@@ -660,7 +608,6 @@ mod tests {
     async fn test_chat_to_specific_channel() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with chat permission and feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -671,14 +618,12 @@ mod tests {
         )
         .await;
 
-        // Join #general channel
         test_ctx
             .channel_manager
             .join("#general", session_id, JoinPolicy::CreateIfMissing)
             .await
             .unwrap();
 
-        // Send to #general channel
         let result = handle_chat_send(
             "Hello channel!".to_string(),
             ChatAction::Normal,
@@ -689,7 +634,6 @@ mod tests {
         )
         .await;
 
-        // Should succeed
         assert!(result.is_ok(), "Chat to joined channel should succeed");
     }
 
@@ -697,7 +641,6 @@ mod tests {
     async fn test_chat_requires_channel() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with chat permission and feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -708,7 +651,6 @@ mod tests {
         )
         .await;
 
-        // Try to send with empty channel name
         let result = handle_chat_send(
             "Hello".to_string(),
             ChatAction::Normal,
@@ -719,13 +661,12 @@ mod tests {
         )
         .await;
 
-        // Should succeed (handler returns Ok) but send error response
         assert!(result.is_ok());
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::Error { message, command } => {
-                assert!(message.to_lowercase().contains("channel")); // Error about channel
+                assert!(message.to_lowercase().contains("channel"));
                 assert_eq!(command, Some("ChatSend".to_string()));
             }
             _ => panic!("Expected Error message, got {:?}", response),
@@ -844,7 +785,6 @@ mod tests {
             )
             .await;
             assert!(result.is_ok(), "Limited should not disconnect");
-            // Drain the error message from the channel
             let _ = read_server_message(&mut test_ctx).await;
         }
 
@@ -889,7 +829,6 @@ mod tests {
 
         let mut tracker = FloodTracker::new();
 
-        // Should be able to send many messages without being rate limited
         for i in 0..10 {
             let result = handle_chat_send(
                 format!("Message {}", i),
@@ -932,7 +871,6 @@ mod tests {
 
         let mut tracker = FloodTracker::new();
 
-        // Should be able to send many messages without being rate limited
         for i in 0..10 {
             let result = handle_chat_send(
                 format!("Message {}", i),

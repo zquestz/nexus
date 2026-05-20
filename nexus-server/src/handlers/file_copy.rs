@@ -1,4 +1,4 @@
-//! FileCopy message handler - Copies a file or directory in the file area
+//! Copies a file or directory in the file area.
 
 use std::io;
 
@@ -212,10 +212,9 @@ where
         };
 
     // Derive lock keys from candidates (pure path math) so source validation
-    // runs AFTER acquisition under the lock — closes the resolve-then-mutate
-    // race. Source is locked alongside target so a concurrent rename / delete
-    // / overwrite can't race the recursive walk; per-child subtree races
-    // remain out of scope.
+    // runs AFTER acquisition, closing the resolve-then-mutate race. Locking
+    // source alongside target stops a concurrent rename/delete/overwrite from
+    // racing the recursive walk; per-child subtree races remain out of scope.
     let source_basename = match source_candidate.file_name() {
         Some(name) => name.to_owned(),
         None => {

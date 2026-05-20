@@ -1,4 +1,4 @@
-//! Handler for ChatLeave command - leave a channel
+//! Handler for ChatLeave command
 
 use std::io;
 
@@ -18,7 +18,6 @@ use crate::voice::send_voice_leave_notifications;
 
 use crate::constants::FEATURE_CHAT;
 
-/// Handle ChatLeave command - leave a channel
 pub async fn handle_chat_leave<W>(
     channel: String,
     session_id: Option<u32>,
@@ -34,7 +33,6 @@ where
             .await;
     };
 
-    // Validate channel name
     if let Err(e) = validators::validate_channel(&channel) {
         let response = ServerMessage::ChatLeaveResponse {
             success: false,
@@ -44,7 +42,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(u) => u,
         None => {
@@ -54,7 +51,6 @@ where
         }
     };
 
-    // Check chat feature
     if !user.has_feature(FEATURE_CHAT) {
         let response = ServerMessage::ChatLeaveResponse {
             success: false,
@@ -64,29 +60,24 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check if user is in voice for this channel - if so, remove them from voice first
-    // This must happen before leaving the channel to maintain consistency
+    // Pull the user out of this channel's voice before leaving the channel, so
+    // membership and voice state stay consistent.
     if let Some(voice_session) = ctx.voice_registry.get_by_session_id(session_id).await
         && voice_session.is_channel()
         && voice_session.target_matches_channel(&channel)
+        && let Some(info) = ctx.voice_registry.remove_by_session_id(session_id).await
     {
-        // Remove from voice and notify using the consolidated helper
-        if let Some(info) = ctx.voice_registry.remove_by_session_id(session_id).await {
-            send_voice_leave_notifications(
-                &info,
-                Some(&user.tx),
-                ctx.user_manager,
-                ctx.channel_manager,
-            )
-            .await;
-        }
+        send_voice_leave_notifications(
+            &info,
+            Some(&user.tx),
+            ctx.user_manager,
+            ctx.channel_manager,
+        )
+        .await;
     }
 
-    // Leave the channel
-    // For security/consistency, return "not found" if not a member to avoid
-    // leaking existence of secret channels
+    // Non-members get "not found" so secret channels' existence isn't leaked.
     let Some(result) = ctx.channel_manager.leave(&channel, session_id).await else {
-        // User wasn't a member or channel doesn't exist
         let response = ServerMessage::ChatLeaveResponse {
             success: false,
             error: Some(err_channel_not_found(ctx.locale, &channel)),
@@ -115,7 +106,6 @@ where
         }
     }
 
-    // Send success response
     let response = ServerMessage::ChatLeaveResponse {
         success: true,
         error: None,
@@ -152,7 +142,6 @@ mod tests {
     async fn test_chat_leave_validates_channel_name() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -163,7 +152,7 @@ mod tests {
         )
         .await;
 
-        // Test missing # prefix
+        // Channel name missing the # prefix → validation error.
         let result = handle_chat_leave(
             "general".to_string(),
             Some(session_id),
@@ -187,7 +176,6 @@ mod tests {
     async fn test_chat_leave_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with ChatJoin permission and chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -198,16 +186,14 @@ mod tests {
         )
         .await;
 
-        // First join the channel
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(session_id),
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse (includes channel data)
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Now leave the channel
         let result = handle_chat_leave(
             "#general".to_string(),
             Some(session_id),
@@ -231,7 +217,7 @@ mod tests {
             _ => panic!("Expected ChatLeaveResponse, got {:?}", response),
         }
 
-        // Verify channel was deleted (empty)
+        // Empty ephemeral channel is deleted on last leave.
         assert!(
             test_ctx
                 .channel_manager
@@ -245,7 +231,6 @@ mod tests {
     async fn test_chat_leave_not_member() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user with chat feature
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -256,7 +241,7 @@ mod tests {
         )
         .await;
 
-        // Try to leave a channel we never joined
+        // Leaving a never-joined channel → not-found error.
         let result = handle_chat_leave(
             "#general".to_string(),
             Some(session_id),
@@ -276,11 +261,7 @@ mod tests {
         }
     }
 
-    // =========================================================================
-    // Multi-session leave tests
-    // =========================================================================
-
-    /// Helper to add a second session for the same user to UserManager
+    /// Add a second session for the same user (same nickname) to UserManager.
     async fn add_second_session(
         test_ctx: &mut TestContext,
         username: &str,
@@ -321,7 +302,7 @@ mod tests {
             .expect("Failed to add second session")
     }
 
-    /// Helper to add a shared account session with custom nickname
+    /// Add a shared-account session with a custom nickname to UserManager.
     async fn add_shared_session(
         test_ctx: &mut TestContext,
         account_username: &str,
@@ -378,7 +359,7 @@ mod tests {
         )
         .await;
 
-        // Alice joins #general (creates it)
+        // Alice creates #general; bob joins as the observer.
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(alice_session),
@@ -387,7 +368,6 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Login bob with chat permissions (only ChatJoin needed to join existing channel)
         let bob_session = login_user_with_features(
             &mut test_ctx,
             "bob",
@@ -398,7 +378,6 @@ mod tests {
         )
         .await;
 
-        // Bob joins #general (already exists)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(bob_session),
@@ -407,10 +386,9 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Drain the ChatUserJoined message from bob joining
-        let _ = test_ctx.rx.recv().await;
+        let _ = test_ctx.rx.recv().await; // drain bob's ChatUserJoined
 
-        // Alice leaves #general - bob should receive ChatUserLeft
+        // Alice (last session with her nickname) leaves → bob gets ChatUserLeft.
         let _ = handle_chat_leave(
             "#general".to_string(),
             Some(alice_session),
@@ -419,7 +397,6 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
-        // Verify bob received ChatUserLeft for alice
         let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
         match msg {
             ServerMessage::ChatUserLeft { channel, nickname } => {
@@ -434,7 +411,7 @@ mod tests {
     async fn test_chat_leave_no_broadcast_when_nickname_still_present() {
         let mut test_ctx = create_test_context().await;
 
-        // Login alice session 1 with chat permissions (including ChatCreate to create the channel)
+        // Alice has two sessions in #general; bob observes.
         let alice_session1 = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -445,7 +422,6 @@ mod tests {
         )
         .await;
 
-        // Alice session 1 joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(alice_session1),
@@ -454,7 +430,6 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Add alice session 2 and join #general
         let alice_session2 = add_second_session(
             &mut test_ctx,
             "alice",
@@ -471,7 +446,6 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Login bob to observe
         let bob_session = login_user_with_features(
             &mut test_ctx,
             "bob",
@@ -490,11 +464,9 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Drain any pending messages (ChatUserJoined for bob)
-        while test_ctx.rx.try_recv().is_ok() {}
+        while test_ctx.rx.try_recv().is_ok() {} // drain pending
 
-        // Alice session 1 leaves - should NOT broadcast ChatUserLeft
-        // because alice session 2 is still in the channel
+        // Session 1 leaves but session 2 keeps the nickname present → no ChatUserLeft.
         let _ = handle_chat_leave(
             "#general".to_string(),
             Some(alice_session1),
@@ -503,7 +475,6 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
-        // Verify no ChatUserLeft was sent
         let result = test_ctx.rx.try_recv();
         assert!(
             result.is_err(),
@@ -526,7 +497,6 @@ mod tests {
         )
         .await;
 
-        // Bob joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(bob_session),
@@ -535,7 +505,7 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Login alice session 1 (only ChatJoin needed to join existing channel)
+        // Alice has two sessions sharing one nickname.
         let alice_session1 = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -546,7 +516,6 @@ mod tests {
         )
         .await;
 
-        // Add alice session 2
         let alice_session2 = add_second_session(
             &mut test_ctx,
             "alice",
@@ -555,7 +524,6 @@ mod tests {
         )
         .await;
 
-        // Both alice sessions join #general (already exists)
         let _ = test_ctx
             .channel_manager
             .join("#general", alice_session1, JoinPolicy::CreateIfMissing)
@@ -565,10 +533,9 @@ mod tests {
             .join("#general", alice_session2, JoinPolicy::CreateIfMissing)
             .await;
 
-        // Drain any pending messages
-        while test_ctx.rx.try_recv().is_ok() {}
+        while test_ctx.rx.try_recv().is_ok() {} // drain pending
 
-        // Alice session 1 leaves - no broadcast (session 2 still there)
+        // First session out: nickname still present via session 2 → no broadcast.
         let _ = handle_chat_leave(
             "#general".to_string(),
             Some(alice_session1),
@@ -577,13 +544,12 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
-        // Verify no ChatUserLeft yet
         assert!(
             test_ctx.rx.try_recv().is_err(),
             "Should NOT broadcast when first session leaves"
         );
 
-        // Alice session 2 leaves - NOW should broadcast ChatUserLeft
+        // Last session out → ChatUserLeft fires.
         let _ = handle_chat_leave(
             "#general".to_string(),
             Some(alice_session2),
@@ -592,7 +558,6 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
-        // Verify ChatUserLeft was sent
         let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
         match msg {
             ServerMessage::ChatUserLeft { channel, nickname } => {
@@ -607,7 +572,7 @@ mod tests {
     async fn test_chat_leave_shared_account_different_nicknames() {
         let mut test_ctx = create_test_context().await;
 
-        // Login bob first (he'll be the observer, needs ChatCreate to create the channel)
+        // Bob is the observer.
         let bob_session = login_user_with_features(
             &mut test_ctx,
             "bob",
@@ -618,7 +583,6 @@ mod tests {
         )
         .await;
 
-        // Bob joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(bob_session),
@@ -627,7 +591,7 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Add first shared account session with nickname "Guest1"
+        // Two shared-account sessions with distinct nicknames.
         let guest1_session = add_shared_session(
             &mut test_ctx,
             "guest",
@@ -637,7 +601,6 @@ mod tests {
         )
         .await;
 
-        // Add second shared account session with nickname "Guest2"
         let guest2_session = add_shared_session(
             &mut test_ctx,
             "guest",
@@ -647,7 +610,6 @@ mod tests {
         )
         .await;
 
-        // Both guests join #general (already exists)
         let _ = test_ctx
             .channel_manager
             .join("#general", guest1_session, JoinPolicy::CreateIfMissing)
@@ -657,11 +619,9 @@ mod tests {
             .join("#general", guest2_session, JoinPolicy::CreateIfMissing)
             .await;
 
-        // Drain any pending messages
-        while test_ctx.rx.try_recv().is_ok() {}
+        while test_ctx.rx.try_recv().is_ok() {} // drain pending
 
-        // Guest1 leaves - should broadcast ChatUserLeft for "Guest1"
-        // because Guest2 has a different nickname
+        // Guest1 leaves: distinct nickname from Guest2, so ChatUserLeft fires.
         let _ = handle_chat_leave(
             "#general".to_string(),
             Some(guest1_session),
@@ -670,9 +630,7 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
-        // Verify ChatUserLeft was sent for Guest1
-        // Note: Messages go to both remaining members (Guest2 and bob) via same tx channel
-        // so we may receive multiple copies - just check we got the right nickname
+        // Same message reaches both remaining members via one tx, so recv once then drain.
         let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
         match msg {
             ServerMessage::ChatUserLeft { channel, nickname } => {
@@ -682,10 +640,8 @@ mod tests {
             _ => panic!("Expected ChatUserLeft for Guest1, got {:?}", msg),
         }
 
-        // Drain any duplicate messages (same message sent to multiple members)
-        while test_ctx.rx.try_recv().is_ok() {}
+        while test_ctx.rx.try_recv().is_ok() {} // drain duplicates
 
-        // Guest2 leaves - should also broadcast ChatUserLeft for "Guest2"
         let _ = handle_chat_leave(
             "#general".to_string(),
             Some(guest2_session),
@@ -694,7 +650,6 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
-        // Verify ChatUserLeft was sent for Guest2
         let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
         match msg {
             ServerMessage::ChatUserLeft { channel, nickname } => {
@@ -709,7 +664,7 @@ mod tests {
     async fn test_chat_leave_regular_user_multiple_sessions_no_broadcast_until_last() {
         let mut test_ctx = create_test_context().await;
 
-        // Login bob first (he'll be the observer, needs ChatCreate to create the channel)
+        // Bob is the observer.
         let bob_session = login_user_with_features(
             &mut test_ctx,
             "bob",
@@ -720,7 +675,6 @@ mod tests {
         )
         .await;
 
-        // Bob joins #general (creates it)
         let _ = handle_chat_join(
             "#general".to_string(),
             Some(bob_session),
@@ -729,8 +683,7 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
-        // Regular user with two sessions (same nickname)
-        // This tests that no broadcast happens until the last session leaves
+        // Regular user, two sessions sharing one nickname: no broadcast until the last leaves.
         let alice_session1 = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -749,7 +702,6 @@ mod tests {
         )
         .await;
 
-        // Both alice sessions join #general (already exists)
         let _ = test_ctx
             .channel_manager
             .join("#general", alice_session1, JoinPolicy::CreateIfMissing)
@@ -759,11 +711,9 @@ mod tests {
             .join("#general", alice_session2, JoinPolicy::CreateIfMissing)
             .await;
 
-        // Drain any pending messages
-        while test_ctx.rx.try_recv().is_ok() {}
+        while test_ctx.rx.try_recv().is_ok() {} // drain pending
 
-        // Alice session 1 leaves - should NOT broadcast
-        // because Alice session 2 has the same nickname
+        // First session out: nickname still held by session 2 → no broadcast.
         let _ = handle_chat_leave(
             "#general".to_string(),
             Some(alice_session1),
@@ -772,13 +722,12 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
-        // Verify no ChatUserLeft was sent
         assert!(
             test_ctx.rx.try_recv().is_err(),
             "Should NOT broadcast when another session has same nickname"
         );
 
-        // Alice session 2 leaves - NOW should broadcast
+        // Last session out → ChatUserLeft fires.
         let _ = handle_chat_leave(
             "#general".to_string(),
             Some(alice_session2),
@@ -787,7 +736,6 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
-        // Verify ChatUserLeft was sent
         let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
         match msg {
             ServerMessage::ChatUserLeft { channel, nickname } => {

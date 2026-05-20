@@ -1,5 +1,4 @@
-//! TrackerRemove message handler — removes a tracker from the
-//! server's tracker list and aborts its task.
+//! TrackerRemove message handler — removes a tracker row and aborts its task.
 
 use std::io;
 
@@ -16,10 +15,8 @@ use crate::constants::{
 };
 use crate::db::Permission;
 
-/// Handle a `TrackerRemove { id }` request. Requires the
-/// `tracker_remove` permission. Removes the row, aborts the tracker
-/// task, and reports the removed name back to the client for the
-/// confirmation toast.
+/// Requires `tracker_remove`. Removes the row, aborts the task, and reports
+/// the removed name back for the client's confirmation toast.
 pub async fn handle_tracker_remove<W>(
     id: i64,
     session_id: Option<u32>,
@@ -58,17 +55,14 @@ where
             .await;
     }
 
-    // Hold the lifecycle lock across the DB read, the DB delete, and the
-    // manager terminate call so a concurrent TrackerUpdate /
-    // TrackerAcceptFingerprint can't slip a `replace()` in after we've
-    // already deleted the row (which would leave an orphan task running
-    // against a missing row). Drop the guard before the network write —
-    // see TrackerManager::lock_lifecycle.
+    // Lifecycle lock spans the DB read + delete + manager terminate so a
+    // concurrent TrackerUpdate / TrackerAcceptFingerprint can't slip a
+    // `replace()` in after the delete (orphan task). Guard drops before the
+    // network write.
     let response: ServerMessage = 'lifecycle: {
         let _guard = ctx.tracker_manager.lock_lifecycle().await;
 
-        // Fetch the existing row first so we can echo its name back for
-        // the confirmation toast. Returns "not found" if the id is unknown.
+        // Fetch first so we can echo the name back for the toast.
         let existing = match ctx.db.trackers.get_by_id(id).await {
             Ok(Some(r)) => r,
             Ok(None) => break 'lifecycle reject_remove(err_tracker_not_found(ctx.locale)),
@@ -87,9 +81,7 @@ where
         match ctx.db.trackers.delete(id).await {
             Ok(true) => {}
             Ok(false) => {
-                // Race: row vanished between the get and the delete. Treat
-                // as not-found rather than success (nothing was actually
-                // deleted on this call).
+                // Race: row vanished between get and delete — treat as not-found.
                 break 'lifecycle reject_remove(err_tracker_not_found(ctx.locale));
             }
             Err(e) => {
@@ -113,7 +105,7 @@ where
             "{}", LOG_TRACKER_REMOVE_SUCCESS
         );
 
-        // Abort the tracker task (idempotent; no-op if disabled or never spawned).
+        // Idempotent; no-op if disabled or never spawned.
         ctx.tracker_manager.terminate(id);
 
         ServerMessage::TrackerRemoveResponse {

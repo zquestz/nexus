@@ -1,5 +1,5 @@
-//! TrackerAdd message handler — adds a new tracker to the
-//! server's tracker list.
+//! TrackerAdd handler. "Add" (not "Create") because a tracker row points at
+//! an external resource rather than being one the server owns.
 
 use std::io;
 
@@ -19,10 +19,8 @@ use crate::constants::{
 };
 use crate::db::{CreateTrackerParams, Permission, TrackerDbError};
 
-/// Fields for `handle_tracker_add`, mirroring the
-/// `ClientMessage::TrackerAdd` variant. Bundled into a struct so
-/// the handler signature stays under the workspace-wide
-/// too-many-arguments limit.
+/// Fields for `handle_tracker_add`, bundled to keep the handler signature
+/// under the too-many-arguments limit.
 pub struct TrackerAddRequest {
     pub address: String,
     pub port: u16,
@@ -32,9 +30,8 @@ pub struct TrackerAddRequest {
     pub enabled: bool,
 }
 
-/// Handle a `TrackerAdd { ... }` request. Requires the
-/// `tracker_add` permission. Validates inputs, inserts the row,
-/// and spawns a tracker task for it (or skips spawn if disabled).
+/// Requires `tracker_add`. Validates inputs, inserts the row, and spawns a
+/// tracker task (skipped if the row is disabled).
 pub async fn handle_tracker_add<W>(
     request: TrackerAddRequest,
     session_id: Option<u32>,
@@ -82,13 +79,11 @@ where
             .await;
     }
 
-    // Normalize empty-string password / fingerprint to None at the
-    // protocol boundary. An empty fingerprint means "clear the pin /
-    // use TOFU on next connect" — same as omitted.
+    // Empty password/fingerprint normalize to None at the boundary; an empty
+    // fingerprint means "clear the pin / TOFU on next connect", same as omitted.
     let password = password.filter(|s| !s.is_empty());
     let fingerprint = fingerprint.filter(|s| !s.is_empty());
 
-    // Validate inputs. First failure produces a typed response.
     if let Err(error) = validate_tracker_inputs(
         ctx.locale,
         &address,
@@ -100,14 +95,11 @@ where
         return ctx.send_message(&reject_add(error)).await;
     }
 
-    // Hold the lifecycle lock across the DB insert and the manager
-    // spawn so a concurrent TrackerRemove targeting the newly-assigned
-    // id can't terminate the slot before we've populated it (which
-    // would leave the row in the DB with no task in the manager).
-    // Drop the guard before the network write — see
-    // TrackerManager::lock_lifecycle. The `MAX_TRACKERS_PER_SERVER`
-    // cap is enforced atomically inside the insert (see
-    // `SQL_INSERT_TRACKER`); the lock doesn't replace that.
+    // Hold the lifecycle lock across insert + spawn so a concurrent
+    // TrackerRemove on the newly-assigned id can't terminate the slot before
+    // we populate it (orphaning the row). Guard drops before the network write.
+    // The MAX_TRACKERS_PER_SERVER cap is enforced atomically in the insert
+    // (SQL_INSERT_TRACKER), not by this lock.
     let response: ServerMessage = 'lifecycle: {
         let _guard = ctx.tracker_manager.lock_lifecycle().await;
 
@@ -163,7 +155,7 @@ where
             "{}", LOG_TRACKER_ADD_SUCCESS
         );
 
-        // Spawn a tracker task for the new row. No-op if disabled.
+        // No-op if the row is disabled.
         ctx.tracker_manager.spawn(record.clone());
 
         ServerMessage::TrackerAddResponse {
@@ -278,7 +270,7 @@ mod tests {
         )
         .await;
 
-        // Address with embedded port — rejected by validate_public_address.
+        // Embedded port — rejected by validate_public_address.
         let result = handle_tracker_add(
             TrackerAddRequest {
                 address: "tracker.example.com:7500".to_string(),
@@ -478,8 +470,7 @@ mod tests {
         )
         .await;
 
-        // Bulk-seed up to the cap directly via the DB to keep the test
-        // fast (the handler path would also work but is per-call slower).
+        // Seed up to the cap directly via the DB (faster than the handler path).
         for i in 0..MAX_TRACKERS_PER_SERVER {
             test_ctx
                 .db
@@ -516,11 +507,9 @@ mod tests {
         }
     }
 
-    /// Walk a full tracker admin lifecycle through the protocol layer:
-    /// add → list → update (rename) → list → remove → list. Catches
-    /// regressions in the handler-to-manager wiring (e.g. a future
-    /// refactor that forgets to call `manager.spawn`/`replace`/`terminate`)
-    /// that the per-handler unit tests would miss.
+    /// Full lifecycle through the protocol layer: add → list → update → list
+    /// → remove → list. Catches handler-to-manager wiring regressions (a
+    /// forgotten spawn/replace/terminate) the unit tests would miss.
     #[tokio::test]
     async fn lifecycle_add_list_update_remove() {
         let mut test_ctx = create_test_context().await;
@@ -650,20 +639,10 @@ mod tests {
         }
     }
 
-    /// Concurrent-lifecycle regression: TrackerAdd inserts a new row
-    /// and then `spawn()`s its task; a concurrent TrackerRemove
-    /// targeting the just-assigned id can delete the row and call
-    /// `terminate()` (a no-op while the slot is still empty), letting
-    /// TrackerAdd's later `spawn()` land against a missing row.
-    ///
-    /// Setup is intentionally contrived to make the race targetable:
-    /// SQLite `INTEGER PRIMARY KEY` advances by 1 per successful
-    /// INSERT, so we can predict the id `TrackerAdd` will assign and
-    /// pre-target it from the concurrent TrackerRemove. This simulates
-    /// a client that guessed or observed the id immediately after
-    /// creation (rather than racing two independent admin requests
-    /// "naturally"). It's lower-stakes than the update / accept races
-    /// but worth covering since the handler shape is identical.
+    /// Concurrent-lifecycle regression: a TrackerRemove on the id TrackerAdd
+    /// is about to assign can delete the row and terminate() the still-empty
+    /// slot, letting Add's later spawn() orphan a missing row. The id is
+    /// predictable because SQLite rowid advances by 1 per successful INSERT.
     #[tokio::test]
     async fn concurrent_add_and_remove_preserve_invariant() {
         use nexus_common::framing::FrameWriter;
@@ -679,10 +658,8 @@ mod tests {
         )
         .await;
 
-        // SQLite rowid starts at 1 on a fresh DB and advances on every
-        // successful INSERT. `TrackerAdd` is the only inserter in this
-        // test, and its name/address values are unique per iteration so
-        // every INSERT succeeds — iteration `i` predicts id `i + 1`.
+        // Unique name/address per iteration → every INSERT succeeds, so
+        // iteration `i` predicts id `i + 1`.
         for i in 0..CONCURRENT_LIFECYCLE_ITERATIONS {
             let predicted_id = (i as i64) + 1;
             let add_request = TrackerAddRequest {

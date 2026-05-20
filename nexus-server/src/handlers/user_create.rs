@@ -35,7 +35,6 @@ use super::{
 };
 use crate::db::{CreateUserParams, Permission, Permissions, hash_password_async};
 
-/// User creation request parameters
 pub struct UserCreateRequest {
     pub username: String,
     pub password: String,
@@ -49,7 +48,6 @@ pub struct UserCreateRequest {
     pub inherit_bandwidth_weight: Option<bool>,
 }
 
-/// Handle a user creation request from the client
 pub async fn handle_user_create<W>(
     request: UserCreateRequest,
     session_id: Option<u32>,
@@ -90,7 +88,6 @@ where
             None => break 'locked Outcome::Disconnect,
         };
 
-        // Check UserCreate permission (uses cached permissions, admin bypass built-in)
         if !requesting_user.has_permission(Permission::UserCreate) {
             warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_CREATE_PERMISSION_DENIED);
             break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
@@ -101,7 +98,6 @@ where
             }));
         }
 
-        // Validate username format
         if let Err(e) = validators::validate_username(&username) {
             let error_msg = match e {
                 UsernameError::Empty => err_username_empty(ctx.locale),
@@ -118,10 +114,8 @@ where
             }));
         }
 
-        // Verify admin creation privilege (use is_admin from UserManager).
-        // Matches `user_update.rs`'s analogous gate: typed response, not
-        // disconnect — privilege escalation by a non-admin client should
-        // be rejected cleanly, not by terminating the session.
+        // Reject non-admin privilege escalation cleanly (typed response, not
+        // disconnect), matching user_update.rs's gate.
         if is_admin && !requesting_user.is_admin {
             break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                 success: false,
@@ -131,7 +125,7 @@ where
             }));
         }
 
-        // Shared accounts cannot be admins
+        // Shared accounts cannot be admins.
         if is_shared && is_admin {
             break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                 success: false,
@@ -141,10 +135,8 @@ where
             }));
         }
 
-        // Admin XOR group invariant: admins cannot be members of a group.
-        // Schema CHECK is the safety net; the handler check gives a clean
-        // translated error instead of a generic DB-constraint failure.
-        // Reject before the expensive password hashing further below.
+        // Admins cannot be group members (schema CHECK is the safety net).
+        // Reject here for a clean error, before the expensive password hash.
         if is_admin && group_id.is_some() {
             break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                 success: false,
@@ -154,7 +146,6 @@ where
             }));
         }
 
-        // Validate password (zxcvbn-scored — non-trivial)
         let min_strength = ctx.db.config.get_min_password_strength().await;
         if let Err(e) = validators::validate_password(&password, min_strength, &[&username]) {
             let error_msg = match e {
@@ -174,7 +165,6 @@ where
             }));
         }
 
-        // Validate permissions format
         if let Err(e) = validators::validate_permissions(&permissions) {
             let error_msg = match e {
                 PermissionsError::TooMany => {
@@ -198,7 +188,7 @@ where
             }));
         }
 
-        // For shared accounts, validate that only allowed permissions are requested
+        // Shared accounts may only hold the shared-account permission set.
         if is_shared {
             let forbidden: Vec<&str> = permissions
                 .iter()
@@ -219,9 +209,7 @@ where
             }
         }
 
-        // Validate group assignment if provided
         let validated_group_id = if let Some(gid) = group_id {
-            // Fetch the group to verify it exists and check shared compatibility
             let group = match ctx.db.groups.get_group_by_id(gid).await {
                 Ok(Some(g)) => g,
                 Ok(None) => {
@@ -243,7 +231,7 @@ where
                 }
             };
 
-            // Shared account / shared group compatibility
+            // Shared accounts ↔ shared groups only (both directions rejected).
             if is_shared && !group.is_shared {
                 break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                     success: false,
@@ -261,10 +249,9 @@ where
                 }));
             }
 
-            // Non-admin delegation: cannot assign a group whose bandwidth weight
-            // exceeds the requester's own resolved weight. Closes the escalation
-            // where a moderator could create users in a higher-weight group whose
-            // permissions they happen to fully possess.
+            // Non-admins can't assign a group whose bandwidth weight exceeds
+            // their own resolved weight — closes escalation via a higher-weight
+            // group whose permissions the requester happens to fully possess.
             if !requesting_user.is_admin
                 && group.bandwidth_weight > requesting_user.bandwidth_weight.load(Ordering::Relaxed)
             {
@@ -276,7 +263,7 @@ where
                 }));
             }
 
-            // Non-admin group assignment check: requester must have all group permissions
+            // Non-admins must hold every permission the group grants.
             if !requesting_user.is_admin {
                 let group_perms = match ctx.db.groups.get_group_permissions(gid).await {
                     Ok(p) => p,
@@ -313,16 +300,10 @@ where
             None
         };
 
-        // Bandwidth weight delegation: non-admins can set a per-user override
-        // only if the requested value does not exceed their own resolved
-        // bandwidth weight. Admins bypass the check. Skipped entirely when
-        // `inherit_bandwidth_weight: Some(true)` is set — that flag wins and
-        // the override value would be discarded, so checking it would reject
-        // moot values from a defensive client.
-        //
-        // Checked here — before password hashing — so a malicious non-admin
-        // can't burn server CPU on Argon2id by submitting an over-cap weight
-        // and forcing a rejection mid-flight.
+        // Non-admins may set a per-user weight override only up to their own
+        // resolved weight (admins bypass). Skipped when `inherit` wins, since
+        // the value would be discarded. Checked before the password hash so a
+        // non-admin can't force Argon2id CPU burn with an over-cap weight.
         if inherit_bandwidth_weight != Some(true) {
             if !requesting_user.is_admin
                 && let Some(w) = bandwidth_weight
@@ -347,23 +328,20 @@ where
             }
         }
 
-        // Parse and validate revoke permissions (only meaningful with a group).
-        // The early-revoke parsing checks owe a `break 'locked` from inside a
-        // `let X = if ... { ... }` expression; collect into a Result-like
-        // intermediate so the break flows cleanly out of the block expression.
+        // Revokes only matter with a group; the inner label lets a denial
+        // `break 'locked` out of this block expression cleanly.
         let parsed_revokes: Vec<Permission> = 'revokes: {
             let Some(ref revoke_strings) = revokes else {
                 break 'revokes Vec::new();
             };
             if validated_group_id.is_none() {
-                // Revokes without a group are ignored
                 break 'revokes Vec::new();
             }
             let mut parsed = Vec::new();
             for perm_str in revoke_strings {
                 match Permission::parse(perm_str) {
                     Some(perm) => {
-                        // Non-admins can only revoke permissions they themselves have
+                        // Non-admins can only revoke permissions they hold.
                         if !requesting_user.has_permission(perm) {
                             warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_CREATE_UNOWNED_REVOKE);
                             break 'locked Outcome::Send(Box::new(
@@ -390,13 +368,11 @@ where
             parsed
         };
 
-        // Parse and validate requested permissions
         let mut perms = Permissions::new();
         for perm_str in &permissions {
             let perm = match Permission::parse(perm_str) {
                 Some(p) => p,
                 None => {
-                    // Unknown permission - return error to client
                     break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                         success: false,
                         error: Some(err_unknown_permission(ctx.locale, perm_str)),
@@ -406,8 +382,7 @@ where
                 }
             };
 
-            // Non-admins can only grant permissions they have
-            // Check permission delegation authority (uses cached permissions, admin bypass built-in)
+            // Non-admins can only grant permissions they hold.
             if !requesting_user.has_permission(perm) {
                 warn!(user = %requesting_user.username, ip = %ctx.peer_addr, perm = %perm_str, "{}", LOG_USER_CREATE_UNOWNED_PERMISSION);
                 break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
@@ -421,10 +396,8 @@ where
             perms.permissions.insert(perm);
         }
 
-        // Check for duplicate username
         match ctx.db.users.get_user_by_username(&username).await {
             Ok(Some(_)) => {
-                // Username already exists
                 break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                     success: false,
                     error: Some(err_username_exists(ctx.locale, &username)),
@@ -432,9 +405,7 @@ where
                     username: None,
                 }));
             }
-            Ok(None) => {
-                // Username doesn't exist, proceed with creation
-            }
+            Ok(None) => {}
             Err(e) => {
                 error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
                 break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
@@ -466,7 +437,6 @@ where
             bandwidth_weight
         };
 
-        // Create user in database
         match ctx
             .db
             .users
@@ -484,7 +454,7 @@ where
             .await
         {
             Ok(user) => {
-                // Success (group override cleanup is handled atomically inside create_user)
+                // Group override cleanup happens atomically inside create_user.
                 info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %username, "{}", LOG_USER_CREATE_SUCCESS);
                 Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
                     success: true,
@@ -521,7 +491,6 @@ mod tests {
     async fn test_usercreate_requires_login() {
         let mut test_ctx = create_test_context().await;
 
-        // Try to create user without being logged in
         let result = handle_user_create(
             UserCreateRequest {
                 username: "newuser".to_string(),
@@ -540,7 +509,6 @@ mod tests {
         )
         .await;
 
-        // Should fail with disconnect
         assert!(result.is_err(), "UserCreate should require login");
     }
 
@@ -548,10 +516,9 @@ mod tests {
     async fn test_usercreate_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITHOUT UserCreate permission (non-admin)
+        // No UserCreate permission.
         let user_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
-        // Try to create user without permission
         let result = handle_user_create(
             UserCreateRequest {
                 username: "newuser".to_string(),
@@ -570,8 +537,6 @@ mod tests {
         )
         .await;
 
-        // Should fail with disconnect
-        // Should succeed (send error but not disconnect)
         assert!(
             result.is_ok(),
             "Should send error message but not disconnect"
@@ -582,10 +547,8 @@ mod tests {
     async fn test_usercreate_admin_can_create() {
         let mut test_ctx = create_test_context().await;
 
-        // Create an admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a new user
         let result = handle_user_create(
             UserCreateRequest {
                 username: "newuser".to_string(),
@@ -604,12 +567,8 @@ mod tests {
         )
         .await;
 
-        // Should succeed
         assert!(result.is_ok(), "Admin should be able to create users");
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserCreateResponse {
@@ -626,7 +585,6 @@ mod tests {
             _ => panic!("Expected UserCreateResponse"),
         }
 
-        // Verify user exists in database
         let created_user = test_ctx
             .db
             .users
@@ -643,7 +601,6 @@ mod tests {
     async fn test_usercreate_duplicate_username() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let admin = test_ctx
@@ -663,7 +620,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Create existing user
+        // Pre-existing user the create will collide with.
         let _existing = test_ctx
             .db
             .users
@@ -681,7 +638,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add admin to UserManager
         let admin_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -709,7 +665,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Try to create user with duplicate username
         let result = handle_user_create(
             UserCreateRequest {
                 username: "existing".to_string(),
@@ -728,15 +683,11 @@ mod tests {
         )
         .await;
 
-        // Should succeed (sends error response, doesn't disconnect)
         assert!(
             result.is_ok(),
             "Should send error response for duplicate username"
         );
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserCreateResponse { success, error, .. } => {
@@ -757,10 +708,8 @@ mod tests {
     async fn test_usercreate_can_create_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Create an admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a new admin user
         let result = handle_user_create(
             UserCreateRequest {
                 username: "newadmin".to_string(),
@@ -779,12 +728,8 @@ mod tests {
         )
         .await;
 
-        // Should succeed
         assert!(result.is_ok(), "Admin should be able to create admin users");
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserCreateResponse {
@@ -801,7 +746,6 @@ mod tests {
             _ => panic!("Expected UserCreateResponse"),
         }
 
-        // Verify user exists and is admin
         let created_user = test_ctx
             .db
             .users
@@ -847,15 +791,11 @@ mod tests {
         )
         .await;
 
-        // Should succeed
         assert!(
             result.is_ok(),
             "User with UserCreate permission should be able to create users"
         );
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserCreateResponse {
@@ -872,7 +812,6 @@ mod tests {
             _ => panic!("Expected UserCreateResponse"),
         }
 
-        // Verify user exists
         let created_user = test_ctx
             .db
             .users
@@ -881,7 +820,6 @@ mod tests {
             .unwrap();
         assert!(created_user.is_some(), "User should exist in database");
 
-        // Verify permissions were granted
         let user = created_user.unwrap();
         let has_user_list = test_ctx
             .db
@@ -896,10 +834,8 @@ mod tests {
     async fn test_usercreate_grants_specified_permissions() {
         let mut test_ctx = create_test_context().await;
 
-        // Create an admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a new user with specific permissions
         let result = handle_user_create(
             UserCreateRequest {
                 username: "newuser".to_string(),
@@ -922,15 +858,11 @@ mod tests {
         )
         .await;
 
-        // Should succeed
         assert!(
             result.is_ok(),
             "Admin should be able to create users with permissions"
         );
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserCreateResponse {
@@ -947,7 +879,6 @@ mod tests {
             _ => panic!("Expected UserCreateResponse"),
         }
 
-        // Verify user exists and has the specified permissions
         let created_user = test_ctx
             .db
             .users
@@ -957,7 +888,6 @@ mod tests {
         assert!(created_user.is_some(), "User should exist in database");
         let user = created_user.unwrap();
 
-        // Check granted permissions
         let has_user_list = test_ctx
             .db
             .users
@@ -981,7 +911,7 @@ mod tests {
         assert!(has_user_info, "User should have UserInfo permission");
         assert!(has_chat_send, "User should have ChatSend permission");
 
-        // Check permissions NOT granted
+        // These were not requested.
         let has_chat_receive = test_ctx
             .db
             .users
@@ -1009,7 +939,6 @@ mod tests {
     async fn test_usercreate_non_admin_cannot_create_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Create first admin
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let _admin = test_ctx
@@ -1029,7 +958,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Create non-admin WITH UserCreate permission
+        // Non-admin creator with UserCreate.
         let mut perms = db::Permissions::new();
         use std::collections::HashSet;
         perms.permissions = {
@@ -1054,7 +983,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add creator to UserManager
         let creator_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -1101,8 +1029,7 @@ mod tests {
         )
         .await;
 
-        // Typed rejection (no disconnect) — mirrors UserUpdate's analogous
-        // gate at `handlers/user_update.rs`.
+        // Typed rejection, not disconnect — mirrors user_update.rs's gate.
         assert!(
             result.is_ok(),
             "Should send typed rejection, not disconnect"
@@ -1131,7 +1058,6 @@ mod tests {
     async fn test_usercreate_cannot_grant_permissions_user_doesnt_have() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let password = "password";
         let hashed = get_cached_password_hash(password);
         let _admin = test_ctx
@@ -1151,7 +1077,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Create user WITH UserCreate permission, but NOT UserDelete permission
+        // Creator has UserCreate + ChatSend, but not UserDelete.
         let mut perms = db::Permissions::new();
         use std::collections::HashSet;
         perms.permissions = {
@@ -1177,7 +1103,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Add creator to UserManager
         let creator_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -1205,7 +1130,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Try to create a user with UserDelete permission (which creator doesn't have)
         let result = handle_user_create(
             UserCreateRequest {
                 username: "newuser".to_string(),
@@ -1214,8 +1138,8 @@ mod tests {
                 is_shared: false,
                 enabled: true,
                 permissions: vec![
-                    "chat_send".to_string(),   // creator has this - OK
-                    "user_delete".to_string(), // creator doesn't have this - FAIL
+                    "chat_send".to_string(),   // owned — OK
+                    "user_delete".to_string(), // not owned — FAIL
                 ],
                 group_id: None,
                 revokes: None,
@@ -1227,8 +1151,6 @@ mod tests {
         )
         .await;
 
-        // Should fail with disconnect
-        // Should succeed (send error but not disconnect)
         assert!(
             result.is_ok(),
             "Should send error message but not disconnect"
@@ -1239,10 +1161,8 @@ mod tests {
     async fn test_usercreate_empty_username() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to create user with empty username
         let result = handle_user_create(
             UserCreateRequest {
                 username: "".to_string(),
@@ -1268,10 +1188,8 @@ mod tests {
     async fn test_usercreate_empty_password() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to create user with empty password
         let result = handle_user_create(
             UserCreateRequest {
                 username: "newuser".to_string(),
@@ -1297,7 +1215,6 @@ mod tests {
     async fn test_usercreate_admin_can_grant_any_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Admin can grant ALL permissions even if not explicitly listed
@@ -1336,9 +1253,6 @@ mod tests {
             "Admin should be able to grant any permissions"
         );
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserCreateResponse {
@@ -1355,7 +1269,6 @@ mod tests {
             _ => panic!("Expected UserCreateResponse"),
         }
 
-        // Verify user has all permissions
         let created_user = test_ctx
             .db
             .users
@@ -1365,7 +1278,6 @@ mod tests {
         assert!(created_user.is_some(), "User should exist in database");
         let user = created_user.unwrap();
 
-        // Check all permissions were granted
         let all_perms = vec![
             db::Permission::UserList,
             db::Permission::UserInfo,
@@ -1390,7 +1302,6 @@ mod tests {
     async fn test_usercreate_with_enabled_false() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a disabled user
@@ -1414,7 +1325,6 @@ mod tests {
 
         assert!(result.is_ok(), "Should successfully create disabled user");
 
-        // Verify user exists in database and is disabled
         let created_user = test_ctx
             .db
             .users
@@ -1435,10 +1345,8 @@ mod tests {
     async fn test_usercreate_shared_account_cannot_be_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to create a shared account with is_admin=true
         let result = handle_user_create(
             UserCreateRequest {
                 username: "shared_acct".to_string(),
@@ -1483,10 +1391,8 @@ mod tests {
     async fn test_usercreate_shared_account_with_forbidden_permissions() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to create a shared account with forbidden permissions
         let result = handle_user_create(
             UserCreateRequest {
                 username: "shared_acct".to_string(),
@@ -1538,10 +1444,8 @@ mod tests {
     async fn test_usercreate_shared_account_with_allowed_permissions() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a shared account with only allowed permissions
         let result = handle_user_create(
             UserCreateRequest {
                 username: "shared_acct".to_string(),
@@ -1583,7 +1487,6 @@ mod tests {
             _ => panic!("Expected UserCreateResponse"),
         }
 
-        // Verify user exists and is marked as shared
         let created_user = test_ctx
             .db
             .users
@@ -1600,10 +1503,9 @@ mod tests {
     async fn test_usercreate_shared_account_no_permissions() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a shared account with no permissions (allowed)
+        // No permissions is allowed for a shared account.
         let result = handle_user_create(
             UserCreateRequest {
                 username: "shared_acct".to_string(),
@@ -1640,10 +1542,8 @@ mod tests {
     async fn test_usercreate_with_group() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group
         let group = test_ctx
             .db
             .groups
@@ -1656,7 +1556,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a user assigned to the group
         let result = handle_user_create(
             UserCreateRequest {
                 username: "bob".to_string(),
@@ -1693,7 +1592,6 @@ mod tests {
             _ => panic!("Expected UserCreateResponse"),
         }
 
-        // Verify user is in the group
         let created_user = test_ctx
             .db
             .users
@@ -1708,10 +1606,8 @@ mod tests {
     async fn test_usercreate_shared_group_mismatch() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a non-shared group
         let regular_group = test_ctx
             .db
             .groups
@@ -1724,7 +1620,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Create a shared group
         let shared_group = test_ctx
             .db
             .groups
@@ -1837,7 +1732,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Non-admin tries to create a user assigned to the group
         let result = handle_user_create(
             UserCreateRequest {
                 username: "bob".to_string(),
@@ -1858,7 +1752,7 @@ mod tests {
 
         assert!(result.is_ok(), "Should send error, not disconnect");
 
-        // Should be rejected — editor doesn't have UserKick
+        // Rejected: editor lacks UserKick, which the group grants.
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserCreateResponse {
@@ -1880,7 +1774,6 @@ mod tests {
             other => panic!("Expected UserCreateResponse (permission denied), got: {other:?}"),
         }
 
-        // Verify bob was NOT created
         let bob = test_ctx.db.users.get_user_by_username("bob").await.unwrap();
         assert!(bob.is_none(), "User should not have been created");
     }

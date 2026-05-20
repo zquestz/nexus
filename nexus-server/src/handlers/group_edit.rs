@@ -1,4 +1,4 @@
-//! GroupEdit message handler - Returns group details for editing
+//! GroupEdit message handler — returns group details for editing
 
 use std::io;
 
@@ -16,7 +16,6 @@ use super::{
 };
 use crate::db::Permission;
 
-/// Handle a group edit request (returns group details for editing)
 pub async fn handle_group_edit<W>(
     id: i64,
     session_id: Option<u32>,
@@ -32,7 +31,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -46,7 +44,6 @@ where
         }
     };
 
-    // Check GroupEdit permission (uses cached permissions, admin bypass built-in)
     if !requesting_user.has_permission(Permission::GroupEdit) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_GROUP_EDIT_PERMISSION_DENIED);
         let response = ServerMessage::GroupEditResponse {
@@ -62,7 +59,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Fetch group by ID
     let group = match ctx.db.groups.get_group_by_id(id).await {
         Ok(Some(g)) => g,
         Ok(None) => {
@@ -94,7 +90,6 @@ where
         }
     };
 
-    // Fetch group permissions
     let permissions: Vec<String> = match ctx.db.groups.get_group_permissions(id).await {
         Ok(perms) => perms.into_iter().map(|p| p.as_str().to_string()).collect(),
         Err(e) => {
@@ -113,7 +108,6 @@ where
         }
     };
 
-    // Fetch member count
     let member_count = match ctx.db.groups.get_member_count(id).await {
         Ok(count) => count,
         Err(e) => {
@@ -132,7 +126,6 @@ where
         }
     };
 
-    // Send group details for editing
     let response = ServerMessage::GroupEditResponse {
         success: true,
         error: None,
@@ -171,7 +164,6 @@ mod tests {
     async fn test_group_edit_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user without GroupEdit permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_group_edit(1, Some(session_id), &mut test_ctx.handler_context()).await;
@@ -191,7 +183,6 @@ mod tests {
     async fn test_group_edit_not_found() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result =
@@ -212,10 +203,8 @@ mod tests {
     async fn test_group_edit_success() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a group with permissions
         let group = test_ctx
             .db
             .groups
@@ -263,10 +252,8 @@ mod tests {
     async fn test_group_edit_admin_has_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin (admins bypass permission checks)
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a shared group
         let group = test_ctx
             .db
             .groups

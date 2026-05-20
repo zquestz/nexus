@@ -1,4 +1,4 @@
-//! Handler for ChatList command - list available channels
+//! Handler for ChatList command
 
 use std::io;
 
@@ -17,7 +17,6 @@ use super::{
 use crate::constants::FEATURE_CHAT;
 use crate::db::Permission;
 
-/// Handle ChatList command - list available channels
 pub async fn handle_chat_list<W>(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -32,7 +31,6 @@ where
             .await;
     };
 
-    // Get user from session
     let user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(u) => u,
         None => {
@@ -42,7 +40,6 @@ where
         }
     };
 
-    // Check chat feature
     if !user.has_feature(FEATURE_CHAT) {
         let response = ServerMessage::ChatListResponse {
             success: false,
@@ -52,7 +49,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check ChatList permission
     if !user.has_permission(Permission::ChatList) {
         warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_LIST_PERMISSION_DENIED);
         let response = ServerMessage::ChatListResponse {
@@ -63,10 +59,8 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Get list of visible channels
     let channel_list = ctx.channel_manager.list(session_id, user.is_admin).await;
 
-    // Convert to protocol ChannelInfo
     let channels: Vec<ChannelInfo> = channel_list
         .into_iter()
         .map(|info| ChannelInfo {
@@ -106,7 +100,6 @@ mod tests {
     async fn test_chat_list_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user WITH chat feature but WITHOUT ChatList permission
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -135,7 +128,6 @@ mod tests {
     async fn test_chat_list_requires_feature() {
         let mut test_ctx = create_test_context().await;
 
-        // Login user WITHOUT chat feature but WITH permission
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -173,7 +165,6 @@ mod tests {
             .initialize_persistent_channels(vec![Channel::new(DEFAULT_CHANNEL.to_string())])
             .await;
 
-        // Login user WITH chat feature and permission
         let session_id = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -213,7 +204,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Login user 1 with ChatJoin, ChatSecret, and ChatList permissions
         let session_id1 = login_user_with_features(
             &mut test_ctx,
             "alice",
@@ -244,7 +234,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login user 2
         let session_id2 = login_user_with_features(
             &mut test_ctx,
             "bob",

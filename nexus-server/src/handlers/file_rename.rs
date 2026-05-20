@@ -1,4 +1,4 @@
-//! FileRename message handler - Renames a file or directory in the file area
+//! Renames a file or directory in the file area.
 
 use std::io;
 
@@ -160,9 +160,8 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // See `files::path_lock`. Derive lock keys from `candidate` + `new_name`
-    // (pure path arithmetic) so source validation can run AFTER acquisition
-    // under the lock — closing the resolve-then-mutate race.
+    // Derive lock keys from `candidate` + `new_name` (pure path arithmetic) so
+    // source validation can run AFTER acquisition, closing the resolve-then-mutate race.
     let candidate_parent = match candidate.parent() {
         Some(p) => p,
         None => {

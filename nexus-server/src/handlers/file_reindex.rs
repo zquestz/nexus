@@ -15,7 +15,6 @@ use nexus_common::protocol::ServerMessage;
 use super::{HandlerContext, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
 
-/// Handle a file reindex request
 pub async fn handle_file_reindex<W>(
     session_id: Option<u32>,
     ctx: &mut HandlerContext<'_, W>,
@@ -30,7 +29,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
@@ -43,7 +41,6 @@ where
         }
     };
 
-    // Check file_reindex permission
     if !requesting_user.has_permission(Permission::FileReindex) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_REINDEX_PERMISSION_DENIED);
         let response = ServerMessage::FileReindexResponse {
@@ -62,7 +59,7 @@ where
         debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_REINDEX_IN_PROGRESS);
     }
 
-    // Always return success - if already reindexing, that's fine
+    // Always succeed — an in-progress reindex is fine.
     let response = ServerMessage::FileReindexResponse {
         success: true,
         error: None,
@@ -89,7 +86,6 @@ mod tests {
     async fn test_file_reindex_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user without FileReindex permission
         let session_id = login_user(&mut test_ctx, "user", "password", &[], false).await;
 
         let result = handle_file_reindex(Some(session_id), &mut test_ctx.handler_context()).await;
@@ -131,7 +127,6 @@ mod tests {
     async fn test_file_reindex_with_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user with FileReindex permission
         let session_id = login_user(
             &mut test_ctx,
             "user",

@@ -1,4 +1,4 @@
-//! NewsUpdate message handler - Updates an existing news item
+//! NewsUpdate message handler
 
 use std::io;
 
@@ -25,7 +25,6 @@ use super::{
 use crate::constants::FEATURE_NEWS;
 use crate::db::Permission;
 
-/// Handle a news update request
 pub async fn handle_news_update<W>(
     id: i64,
     body: Option<String>,
@@ -43,7 +42,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx
         .user_manager
         .get_user_by_session_id(requesting_session_id)
@@ -51,7 +49,7 @@ where
     {
         Some(u) => u,
         None => {
-            // Session not found - likely a race condition, not a security event
+            // Session not found — likely a race, not a security event.
             let response = ServerMessage::NewsUpdateResponse {
                 success: false,
                 error: Some(err_not_logged_in(ctx.locale)),
@@ -61,7 +59,7 @@ where
         }
     };
 
-    // Fetch existing news item to check authorship and admin status
+    // Fetch existing item to check authorship and admin status.
     let existing_news = match ctx.db.news.get_news_by_id(id).await {
         Ok(Some(record)) => record,
         Ok(None) => {
@@ -83,7 +81,7 @@ where
         }
     };
 
-    // Check permission: user must be author OR have NewsEdit permission
+    // Author may edit own; otherwise NewsEdit required.
     let is_author = existing_news.author_id == requesting_user.user_id;
     let has_edit_permission = requesting_user.has_permission(Permission::NewsEdit);
 
@@ -97,7 +95,7 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Check admin protection: non-admins cannot edit admin posts
+    // Non-admins cannot edit admin posts.
     if existing_news.author_is_admin && !requesting_user.is_admin {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %id, "{}", LOG_NEWS_UPDATE_ADMIN);
         let response = ServerMessage::NewsUpdateResponse {
@@ -108,11 +106,10 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Normalize empty strings to None
     let body = body.filter(|s| !s.trim().is_empty());
     let image = image.filter(|s| !s.is_empty());
 
-    // Validate that at least one of body or image is provided
+    // At least one of body or image must be present.
     if body.is_none() && image.is_none() {
         let response = ServerMessage::NewsUpdateResponse {
             success: false,
@@ -122,7 +119,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate body if provided
     if let Some(ref body_text) = body
         && let Err(e) = validators::validate_news_body(body_text)
     {
@@ -140,7 +136,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate image if provided
     if let Some(ref image_data) = image
         && let Err(e) = validators::validate_news_image(image_data)
     {
@@ -157,7 +152,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Update news in database
     let news_record = match ctx
         .db
         .news
@@ -166,7 +160,7 @@ where
     {
         Ok(Some(record)) => record,
         Ok(None) => {
-            // Race condition - news was deleted between our check and update
+            // Race: deleted between our check and the update.
             let response = ServerMessage::NewsUpdateResponse {
                 success: false,
                 error: Some(err_news_not_found(ctx.locale, id)),
@@ -185,7 +179,6 @@ where
         }
     };
 
-    // Convert to protocol format
     let news = NewsItem {
         id: news_record.id,
         body: news_record.body,
@@ -196,7 +189,6 @@ where
         updated_at: news_record.updated_at,
     };
 
-    // Log and send success response
     info!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %id, "{}", LOG_NEWS_UPDATE_SUCCESS);
     let response = ServerMessage::NewsUpdateResponse {
         success: true,
@@ -205,7 +197,7 @@ where
     };
     ctx.send_message(&response).await?;
 
-    // Broadcast NewsUpdated to users with news feature and NewsList permission
+    // Broadcast to users with the news feature and NewsList permission.
     let broadcast = ServerMessage::NewsUpdated {
         action: NewsAction::Updated,
         id: news.id,
@@ -252,7 +244,6 @@ mod tests {
     async fn test_news_update_not_found() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_news_update(
@@ -279,7 +270,6 @@ mod tests {
     async fn test_news_update_empty_content() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let admin = test_ctx
@@ -321,7 +311,6 @@ mod tests {
     async fn test_news_update_author_can_update_own() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as user without NewsEdit permission
         let session_id = login_user(
             &mut test_ctx,
             "alice",
@@ -377,7 +366,6 @@ mod tests {
     async fn test_news_update_non_author_without_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create author and their news
         let _author_session = login_user(
             &mut test_ctx,
             "author",
@@ -402,7 +390,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as another user without NewsEdit permission
         let other_session = login_user(&mut test_ctx, "other", "password", &[], false).await;
 
         let result = handle_news_update(
@@ -429,7 +416,6 @@ mod tests {
     async fn test_news_update_with_permission_can_update_others() {
         let mut test_ctx = create_test_context().await;
 
-        // Create author and their news
         let _author_session = login_user(
             &mut test_ctx,
             "author",
@@ -454,7 +440,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as editor with NewsEdit permission
         let editor_session = login_user(
             &mut test_ctx,
             "editor",
@@ -496,7 +481,6 @@ mod tests {
     async fn test_news_update_non_admin_cannot_edit_admin_post() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin and their news
         let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let admin = test_ctx
@@ -514,7 +498,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as non-admin with NewsEdit permission
         let editor_session = login_user(
             &mut test_ctx,
             "editor",
@@ -548,7 +531,6 @@ mod tests {
     async fn test_news_update_admin_can_edit_admin_post() {
         let mut test_ctx = create_test_context().await;
 
-        // Create first admin and their news
         let _admin1_session = login_user(&mut test_ctx, "admin1", "password", &[], true).await;
 
         let admin1 = test_ctx
@@ -566,7 +548,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Login as another admin
         let admin2_session = login_user(&mut test_ctx, "admin2", "password", &[], true).await;
 
         let result = handle_news_update(
@@ -599,7 +580,6 @@ mod tests {
     async fn test_news_update_body_too_long() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let admin = test_ctx
@@ -648,7 +628,6 @@ mod tests {
     async fn test_news_update_invalid_image() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let admin = test_ctx
@@ -693,7 +672,6 @@ mod tests {
     async fn test_news_update_with_image() {
         let mut test_ctx = create_test_context().await;
 
-        // Login as admin
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let admin = test_ctx

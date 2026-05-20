@@ -21,12 +21,8 @@ use crate::ip_rule_cache::{canonicalize_target, parse_ip_or_cidr};
 use crate::users::UserManager;
 use crate::users::manager::DisconnectedSession;
 
-/// Handle BanCreate command
-///
-/// Creates or updates an IP ban. The target can be:
-/// - A nickname of an online user (bans their specific IP(s))
-/// - An IP address (bans directly)
-/// - A CIDR range (bans the entire range, e.g., "192.168.1.0/24")
+/// Creates or updates an IP ban. Target is an online nickname (bans its
+/// IP(s)), a bare IP, or a CIDR range.
 pub async fn handle_ban_create<W>(
     target: String,
     duration: Option<String>,
@@ -44,7 +40,6 @@ where
             .await;
     };
 
-    // Get requesting user from session
     let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
         Some(user) => user,
         None => {
@@ -54,7 +49,6 @@ where
         }
     };
 
-    // Check ban_create permission
     if !requesting_user.has_permission(Permission::BanCreate) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_BAN_CREATE_PERMISSION_DENIED);
         let response = ServerMessage::BanCreateResponse {
@@ -66,7 +60,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate target length
     if let Err(e) = validators::validate_target(&target) {
         let error_msg = match e {
             TargetError::Empty => err_ban_invalid_target(ctx.locale),
@@ -81,7 +74,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate duration length if provided
     if let Some(ref d) = duration
         && let Err(DurationError::TooLong) = validators::validate_duration(d)
     {
@@ -94,7 +86,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Validate reason if provided
     if let Some(ref r) = reason
         && let Err(e) = validators::validate_ban_reason(r)
     {
@@ -113,7 +104,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Parse duration
     let expires_at = match parse_duration(&duration) {
         Ok(expires) => expires,
         Err(_) => {
@@ -127,7 +117,6 @@ where
         }
     };
 
-    // Resolve target to IP address(es) or CIDR range
     let (targets_to_ban, nickname_annotation, is_range) = match resolve_target(
         &target,
         &requesting_user.username,
@@ -166,10 +155,8 @@ where
         }
     };
 
-    // Check if any of the IPs/ranges have an admin connected
-    // (this applies to all bans - by nickname, IP, or CIDR)
+    // Refuse any ban (by nickname, IP, or CIDR) that would cover a connected admin.
     if is_range {
-        // For CIDR ranges, check if any admin's IP falls within the range
         if let Some(net) = parse_ip_or_cidr(&targets_to_ban[0])
             && ctx.user_manager.is_admin_connected_in_range(&net).await
         {
@@ -183,7 +170,6 @@ where
             return ctx.send_message(&response).await;
         }
     } else {
-        // For single IPs, check each one
         for target_ip in &targets_to_ban {
             if ctx.user_manager.is_admin_connected_from_ip(target_ip).await {
                 warn!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target_ip, "{}", LOG_BAN_CREATE_ADMIN_IP);
@@ -198,16 +184,13 @@ where
         }
     }
 
-    // Check if we'd be banning our own IP (always check, even when banning by nickname,
-    // because the target user might share our IP)
+    // Always check (even banning by nickname): the target may share our IP.
     let our_ip = ctx.peer_addr.ip();
     let would_ban_self = if is_range {
-        // For CIDR, check if our IP falls within the range
         parse_ip_or_cidr(&targets_to_ban[0])
             .map(|net| net.contains(&our_ip))
             .unwrap_or(false)
     } else {
-        // For single IPs, check direct match
         targets_to_ban.contains(&our_ip.to_string())
     };
 
@@ -221,7 +204,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Create the bans in database
     let mut banned_targets = Vec::new();
     for target_str in &targets_to_ban {
         match ctx
@@ -252,7 +234,6 @@ where
         }
     }
 
-    // Update the IP rule cache
     {
         let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
         for target_str in &banned_targets {
@@ -260,9 +241,7 @@ where
         }
     }
 
-    // Clean up voice sessions before disconnecting users
-    // This ensures users are properly removed from voice and other participants are notified.
-    // Note: Trusted IPs are skipped - they won't be disconnected.
+    // Tear down voice (notifying other participants) before disconnecting; trusted IPs skipped.
     if is_range {
         if let Some(net) = parse_ip_or_cidr(&banned_targets[0]) {
             cleanup_voice_for_range(
@@ -297,11 +276,9 @@ where
         }
     }
 
-    // Disconnect affected sessions and broadcast UserDisconnected to other clients
-    // Note: Trusted IPs are skipped - they should remain connected even if banned
-    // because trust bypasses ban checks on reconnection.
+    // Disconnect banned sessions + transfers and broadcast UserDisconnected. Trusted IPs are
+    // left connected: trust bypasses ban checks, so disconnecting them would just churn.
     if is_range {
-        // For CIDR ranges, disconnect all sessions whose IP falls within the range
         if let Some(net) = parse_ip_or_cidr(&banned_targets[0]) {
             let disconnected = ctx
                 .user_manager
@@ -309,7 +286,6 @@ where
                     &net,
                     |user_locale| build_ban_disconnect_message(user_locale, expires_at),
                     |ip| {
-                        // Skip trusted IPs - they should stay connected
                         ctx.ip_rule_cache
                             .read()
                             .expect(ERR_IP_CACHE_POISONED)
@@ -320,9 +296,7 @@ where
 
             broadcast_disconnections(ctx.user_manager, disconnected).await;
 
-            // Also disconnect active file transfers from IPs in the CIDR range
             ctx.transfer_registry.disconnect_matching(|ip| {
-                // Disconnect if IP is in range AND not trusted
                 net.contains(&ip)
                     && !ctx
                         .ip_rule_cache
@@ -332,7 +306,6 @@ where
             });
         }
     } else {
-        // For single IPs, disconnect sessions from those specific IPs
         for ip in &banned_targets {
             let disconnected = ctx
                 .user_manager
@@ -340,7 +313,6 @@ where
                     ip,
                     |user_locale| build_ban_disconnect_message(user_locale, expires_at),
                     |ip| {
-                        // Skip trusted IPs - they should stay connected
                         ctx.ip_rule_cache
                             .read()
                             .expect(ERR_IP_CACHE_POISONED)
@@ -352,9 +324,7 @@ where
             broadcast_disconnections(ctx.user_manager, disconnected).await;
         }
 
-        // Also disconnect active file transfers from the banned IPs
         ctx.transfer_registry.disconnect_matching(|ip| {
-            // Disconnect if IP matches any banned target AND not trusted
             let ip_str = ip.to_string();
             banned_targets.contains(&ip_str)
                 && !ctx
@@ -365,7 +335,6 @@ where
         });
     }
 
-    // Log and send success response
     info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_BAN_CREATE_SUCCESS);
     let response = ServerMessage::BanCreateResponse {
         success: true,
@@ -376,7 +345,6 @@ where
     ctx.send_message(&response).await
 }
 
-/// Broadcast UserDisconnected for each removed session
 async fn broadcast_disconnections(
     user_manager: &UserManager,
     disconnected: Vec<DisconnectedSession>,
@@ -394,23 +362,15 @@ async fn broadcast_disconnections(
     }
 }
 
-/// Error types for target resolution
 enum TargetResolutionError {
     InvalidTarget,
     IsAdmin,
     IsSelf,
 }
 
-/// Resolve a target string to IP address(es) or CIDR range
-///
-/// IP / CIDR targets are returned in their canonical lowercase form via
-/// `canonicalize_target` so the stored / cached / response strings match
-/// regardless of admin-typed casing or host-bits-set CIDRs.
-///
-/// Returns (list of targets, optional nickname annotation, is_range)
-/// - For nicknames: returns list of IPs (each canonical from `peer_addr.ip().to_string()`), session nickname, false
-/// - For single IP: returns canonical bare-IP form, None, false
-/// - For CIDR: returns canonical CIDR (`network/prefix`), None, true
+/// Resolve a target to (IPs, nickname annotation, is_range). IP/CIDR targets are
+/// canonicalized (lowercase, host-bits zeroed) so stored/cached/response strings
+/// match regardless of admin-typed casing.
 async fn resolve_target<W>(
     target: &str,
     requesting_username: &str,
@@ -419,35 +379,29 @@ async fn resolve_target<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // First, check if target is an online nickname
     if let Some(session) = ctx.user_manager.get_session_by_nickname(target).await {
-        // Check if target is admin
         if session.is_admin {
             return Err(TargetResolutionError::IsAdmin);
         }
 
-        // Check if target is self (compare usernames, case-insensitive)
         if session.username.to_lowercase() == requesting_username.to_lowercase() {
             return Err(TargetResolutionError::IsSelf);
         }
 
-        // Get all IPs for this nickname (may have multiple sessions)
+        // A nickname may have multiple sessions, hence multiple IPs.
         let ips = ctx.user_manager.get_ips_for_nickname(target).await;
 
         return Ok((ips, Some(session.nickname.clone()), false));
     }
 
-    // Try parsing as IP or CIDR. `canonicalize_target` returns the precomputed
-    // `is_range` flag so we don't redo the prefix-length match here.
+    // `canonicalize_target` hands back the precomputed `is_range` flag.
     if let Some((canonical, _net, is_range)) = canonicalize_target(target) {
         return Ok((vec![canonical], None, is_range));
     }
 
-    // Target is neither online nickname, CIDR, nor valid IP
     Err(TargetResolutionError::InvalidTarget)
 }
 
-/// Build disconnect message for banned user
 fn build_ban_disconnect_message(locale: &str, expires_at: Option<i64>) -> ServerMessage {
     use super::err_banned_permanent;
     use super::err_banned_with_expiry;
@@ -485,7 +439,6 @@ mod tests {
         )
         .await;
 
-        // Should fail with disconnect
         assert!(result.is_err(), "BanCreate should require login");
     }
 
@@ -493,7 +446,6 @@ mod tests {
     async fn test_bancreate_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create non-admin user without ban_create permission
         let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_ban_create(
@@ -520,7 +472,6 @@ mod tests {
     async fn test_bancreate_admin_can_ban_ip() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_ban_create(
@@ -551,7 +502,6 @@ mod tests {
             panic!("Expected BanCreateResponse, got: {:?}", response);
         }
 
-        // Verify ban exists in database
         assert!(
             test_ctx
                 .db
@@ -566,7 +516,6 @@ mod tests {
     async fn test_bancreate_with_duration() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_ban_create(
@@ -587,7 +536,6 @@ mod tests {
             panic!("Expected BanCreateResponse, got: {:?}", response);
         }
 
-        // Verify ban exists with expiry
         let ban = test_ctx
             .db
             .bans
@@ -602,7 +550,6 @@ mod tests {
     async fn test_bancreate_invalid_duration() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_ban_create(
@@ -624,7 +571,6 @@ mod tests {
             panic!("Expected BanCreateResponse, got: {:?}", response);
         }
 
-        // Verify no ban was created
         assert!(
             !test_ctx
                 .db
@@ -639,10 +585,8 @@ mod tests {
     async fn test_bancreate_invalid_target() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to ban a non-existent nickname (not an IP, not online)
         let result = handle_ban_create(
             "nonexistent_user".to_string(),
             None,
@@ -667,10 +611,9 @@ mod tests {
     async fn test_bancreate_cannot_ban_self_by_ip() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // The test context peer_addr is 127.0.0.1, try to ban that
+        // 127.0.0.1 is the test context peer_addr — banning it is self-ban.
         let result = handle_ban_create(
             "127.0.0.1".to_string(),
             None,
@@ -698,10 +641,8 @@ mod tests {
     async fn test_bancreate_reason_too_long() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a reason that's too long
         let long_reason = "x".repeat(validators::MAX_BAN_REASON_LENGTH + 1);
 
         let result = handle_ban_create(
@@ -723,7 +664,6 @@ mod tests {
             panic!("Expected BanCreateResponse, got: {:?}", response);
         }
 
-        // Verify no ban was created
         assert!(
             !test_ctx
                 .db
@@ -738,10 +678,8 @@ mod tests {
     async fn test_bancreate_reason_invalid_characters() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a reason with control characters
         let invalid_reason = "reason\x00with null".to_string();
 
         let result = handle_ban_create(
@@ -768,10 +706,8 @@ mod tests {
     async fn test_bancreate_upsert_existing_ban() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create initial ban
         test_ctx
             .db
             .bans
@@ -785,7 +721,7 @@ mod tests {
             .await
             .unwrap();
 
-        // Update the same IP with new info
+        // Re-ban the same IP: should upsert, not insert a second row.
         let result = handle_ban_create(
             "192.168.1.100".to_string(),
             Some("1h".to_string()),
@@ -804,7 +740,6 @@ mod tests {
             panic!("Expected BanCreateResponse, got: {:?}", response);
         }
 
-        // Verify ban was updated
         let ban = test_ctx
             .db
             .bans
@@ -821,7 +756,7 @@ mod tests {
     async fn test_bancreate_with_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create non-admin user WITH ban_create permission
+        // Non-admin with ban_create permission.
         let session_id = login_user(
             &mut test_ctx,
             "moderator",
@@ -854,7 +789,6 @@ mod tests {
     async fn test_bancreate_ipv6_address() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_ban_create(
@@ -878,7 +812,6 @@ mod tests {
             panic!("Expected BanCreateResponse, got: {:?}", response);
         }
 
-        // Verify ban exists
         assert!(test_ctx.db.bans.is_ip_banned("2001:db8::1").await.unwrap());
     }
 
@@ -886,7 +819,6 @@ mod tests {
     async fn test_bancreate_ipv6_cidr() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_ban_create(
@@ -910,10 +842,9 @@ mod tests {
             panic!("Expected BanCreateResponse, got: {:?}", response);
         }
 
-        // Verify ban exists in DB
         assert!(test_ctx.db.bans.ban_exists("2001:db8::/32").await.unwrap());
 
-        // Verify ban is in cache and blocks IPs in range
+        // Cache must block every IP in the banned range, but nothing outside it.
         {
             let mut cache = test_ctx.ip_rule_cache.write().unwrap();
             assert!(cache.is_banned("2001:db8::1".parse().unwrap()));
@@ -928,7 +859,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a user from an IP that will be trusted
@@ -965,7 +895,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Ban the entire /24 range
         let result = handle_ban_create(
             "192.168.1.0/24".to_string(),
             None,
@@ -997,12 +926,11 @@ mod tests {
             "Bob should have been disconnected (not trusted)"
         );
 
-        // Verify ban exists in cache
+        // Both IPs are banned in cache, but the trusted one is still allowed through.
         {
             let mut cache = test_ctx.ip_rule_cache.write().unwrap();
             assert!(cache.is_banned("192.168.1.100".parse().unwrap()));
             assert!(cache.is_banned("192.168.1.200".parse().unwrap()));
-            // But trusted IP should be allowed despite ban
             assert!(cache.is_trusted("192.168.1.100".parse().unwrap()));
             assert!(cache.should_allow("192.168.1.100".parse().unwrap()));
             assert!(!cache.should_allow("192.168.1.200".parse().unwrap()));
@@ -1015,7 +943,6 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a user from an IP that will be trusted
@@ -1034,7 +961,6 @@ mod tests {
             .await
             .unwrap();
 
-        // Ban alice's specific IP
         let result = handle_ban_create(
             "10.0.0.50".to_string(),
             None,
@@ -1057,20 +983,15 @@ mod tests {
         );
     }
 
-    // =========================================================================
-    // Ban by nickname tests (require users on different IPs)
-    // =========================================================================
-
     #[tokio::test]
     async fn test_bancreate_by_nickname() {
         use crate::handlers::testing::login_user_from_ip;
 
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user (on 127.0.0.1, the test context peer_addr)
+        // Admin on 127.0.0.1 (test peer_addr); target on a distinct IP so it isn't self.
         let admin_session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create target user on a different IP
         let _target_session_id = login_user_from_ip(
             &mut test_ctx,
             "target",
@@ -1081,7 +1002,6 @@ mod tests {
         )
         .await;
 
-        // Ban by nickname
         let result = handle_ban_create(
             "target".to_string(),
             None,
@@ -1110,7 +1030,6 @@ mod tests {
             panic!("Expected BanCreateResponse, got: {:?}", response);
         }
 
-        // Verify ban exists in database with nickname annotation
         let ban = test_ctx
             .db
             .bans
@@ -1128,7 +1047,7 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create moderator user with ban_create permission (on 127.0.0.1)
+        // Moderator on 127.0.0.1; admin on a distinct IP so the ban targets the admin, not self.
         let mod_session_id = login_user(
             &mut test_ctx,
             "moderator",
@@ -1138,7 +1057,6 @@ mod tests {
         )
         .await;
 
-        // Create admin user on a different IP
         let _admin_session_id = login_user_from_ip(
             &mut test_ctx,
             "admin",
@@ -1149,7 +1067,6 @@ mod tests {
         )
         .await;
 
-        // Try to ban admin by nickname - should fail
         let result = handle_ban_create(
             "admin".to_string(),
             None,
@@ -1169,7 +1086,6 @@ mod tests {
             panic!("Expected BanCreateResponse, got: {:?}", response);
         }
 
-        // Verify no ban was created
         assert!(
             !test_ctx
                 .db
@@ -1186,7 +1102,7 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Create moderator user with ban_create permission (on 127.0.0.1)
+        // Moderator on 127.0.0.1; admin connected from 192.168.1.100.
         let mod_session_id = login_user(
             &mut test_ctx,
             "moderator",
@@ -1196,7 +1112,6 @@ mod tests {
         )
         .await;
 
-        // Create admin user on 192.168.1.100
         let _admin_session_id = login_user_from_ip(
             &mut test_ctx,
             "admin",
@@ -1207,7 +1122,7 @@ mod tests {
         )
         .await;
 
-        // Try to ban that IP directly - should fail because an admin is connected
+        // Banning that IP must fail because an admin is connected from it.
         let result = handle_ban_create(
             "192.168.1.100".to_string(),
             None,
@@ -1227,7 +1142,6 @@ mod tests {
             panic!("Expected BanCreateResponse, got: {:?}", response);
         }
 
-        // Verify no ban was created
         assert!(
             !test_ctx
                 .db
@@ -1242,10 +1156,9 @@ mod tests {
     async fn test_bancreate_cannot_ban_self_by_nickname() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user (they will try to ban themselves)
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to ban self by nickname - should fail
+        // Admin bans own nickname — must be rejected as self-ban.
         let result = handle_ban_create(
             "admin".to_string(),
             None,
@@ -1273,10 +1186,9 @@ mod tests {
     async fn test_bancreate_user_not_online() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to ban a nickname that's not online and isn't a valid IP
+        // Nickname that's neither online nor a valid IP → invalid target.
         let result = handle_ban_create(
             "offline_user".to_string(),
             None,
@@ -1291,7 +1203,7 @@ mod tests {
         let response = read_server_message(&mut test_ctx).await;
         if let ServerMessage::BanCreateResponse { success, error, .. } = response {
             assert!(!success);
-            assert!(error.is_some()); // Should get "invalid target" error
+            assert!(error.is_some());
         } else {
             panic!("Expected BanCreateResponse, got: {:?}", response);
         }
@@ -1301,10 +1213,8 @@ mod tests {
     async fn test_bancreate_target_too_long() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a target that's too long
         let long_target = "x".repeat(validators::MAX_TARGET_LENGTH + 1);
 
         let result = handle_ban_create(
@@ -1331,7 +1241,6 @@ mod tests {
     async fn test_bancreate_target_empty() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let result = handle_ban_create(
@@ -1358,10 +1267,8 @@ mod tests {
     async fn test_bancreate_duration_too_long() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create a duration that's too long
         let long_duration = "x".repeat(validators::MAX_DURATION_LENGTH + 1);
 
         let result = handle_ban_create(
@@ -1383,7 +1290,6 @@ mod tests {
             panic!("Expected BanCreateResponse, got: {:?}", response);
         }
 
-        // Verify no ban was created
         assert!(
             !test_ctx
                 .db
@@ -1401,7 +1307,7 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Register a fake active transfer from an IP we'll ban
+        // Active transfer on the IP we'll ban.
         let banned_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
         let banned_addr = SocketAddr::new(banned_ip, 12345);
         let (info, mut ban_rx) = test_ctx.transfer_registry.register(TransferRegistration {
@@ -1415,7 +1321,7 @@ mod tests {
             total_size: 0,
         });
 
-        // Register another transfer from a different IP (should not be affected)
+        // Transfer on a different IP — must be untouched.
         let safe_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 200));
         let safe_addr = SocketAddr::new(safe_ip, 12346);
         let (_safe_info, mut safe_rx) = test_ctx.transfer_registry.register(TransferRegistration {
@@ -1429,10 +1335,8 @@ mod tests {
             total_size: 0,
         });
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Ban the IP with the active transfer
         let result = handle_ban_create(
             "192.168.1.100".to_string(),
             Some("1h".to_string()),
@@ -1444,20 +1348,17 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Verify the banned transfer received the ban signal
         assert!(
             ban_rx.try_recv().is_ok(),
             "Banned transfer should receive ban signal"
         );
 
-        // Verify the safe transfer did NOT receive a ban signal
         let safe_result = safe_rx.try_recv();
         assert!(
             safe_result.is_err(),
             "Safe transfer should not receive ban signal"
         );
 
-        // Clean up - unregister the transfers
         test_ctx.transfer_registry.unregister(info.id);
     }
 
@@ -1468,7 +1369,7 @@ mod tests {
 
         let mut test_ctx = create_test_context().await;
 
-        // Register transfers from IPs in the CIDR range we'll ban (10.0.1.0/24)
+        // Two transfers inside the /24 we'll ban, one outside it.
         let ip_in_range_1 = IpAddr::V4(Ipv4Addr::new(10, 0, 1, 50));
         let ip_in_range_2 = IpAddr::V4(Ipv4Addr::new(10, 0, 1, 200));
         let ip_outside_range = IpAddr::V4(Ipv4Addr::new(10, 0, 2, 50));
@@ -1504,10 +1405,8 @@ mod tests {
             total_size: 0,
         });
 
-        // Create admin user
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Ban the CIDR range
         let result = handle_ban_create(
             "10.0.1.0/24".to_string(),
             None,
@@ -1519,7 +1418,6 @@ mod tests {
 
         assert!(result.is_ok());
 
-        // Verify transfers in range received ban signals
         assert!(
             rx1.try_recv().is_ok(),
             "Transfer in range should receive ban signal"
@@ -1529,7 +1427,6 @@ mod tests {
             "Transfer in range should receive ban signal"
         );
 
-        // Verify transfer outside range did NOT receive ban signal
         assert!(
             rx3.try_recv().is_err(),
             "Transfer outside range should not receive ban signal"

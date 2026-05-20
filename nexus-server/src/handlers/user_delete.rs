@@ -22,7 +22,6 @@ use super::{
 use crate::db::Permission;
 use crate::db::sql::GUEST_USERNAME;
 
-/// Handle UserDelete command
 pub async fn handle_user_delete<W>(
     id: i64,
     session_id: Option<u32>,
@@ -197,10 +196,8 @@ mod tests {
     async fn test_userdelete_requires_login() {
         let mut test_ctx = create_test_context().await;
 
-        // Try to delete user without being logged in
         let result = handle_user_delete(999, None, &mut test_ctx.handler_context()).await;
 
-        // Should fail with disconnect
         assert!(result.is_err(), "UserDelete should require login");
     }
 
@@ -208,10 +205,9 @@ mod tests {
     async fn test_userdelete_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create user WITHOUT UserDelete permission (non-admin)
+        // Non-admin without UserDelete permission.
         let user_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
 
-        // Create target user
         let target = test_ctx
             .db
             .users
@@ -229,16 +225,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Try to delete user without permission
         let result =
             handle_user_delete(target.id, Some(user_id), &mut test_ctx.handler_context()).await;
 
-        // Should succeed (no disconnect), but user should still exist
         assert!(result.is_ok(), "Should send error response, not disconnect");
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error, .. } => {
@@ -253,7 +244,6 @@ mod tests {
             _ => panic!("Expected UserDeleteResponse"),
         }
 
-        // Verify target user still exists
         let still_exists = test_ctx.db.users.get_user_by_id(target.id).await.unwrap();
         assert!(
             still_exists.is_some(),
@@ -265,21 +255,15 @@ mod tests {
     async fn test_userdelete_nonexistent_user() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to delete non-existent user
         let result = handle_user_delete(999, Some(admin_id), &mut test_ctx.handler_context()).await;
 
-        // Should succeed (sends error response, doesn't disconnect)
         assert!(
             result.is_ok(),
             "Should send error response for non-existent user"
         );
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error, .. } => {
@@ -299,10 +283,8 @@ mod tests {
     async fn test_userdelete_cannot_delete_self() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Try to delete self
         let admin_db_user = test_ctx
             .db
             .users
@@ -317,15 +299,11 @@ mod tests {
         )
         .await;
 
-        // Should succeed (sends error response, doesn't disconnect)
         assert!(
             result.is_ok(),
             "Should send error response when trying to delete self"
         );
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserDeleteResponse { success, error, .. } => {
@@ -341,7 +319,6 @@ mod tests {
             _ => panic!("Expected UserDeleteResponse"),
         }
 
-        // Verify admin still exists
         let still_exists = test_ctx
             .db
             .users
@@ -392,13 +369,13 @@ mod tests {
             _ => panic!("Expected UserDeleteResponse"),
         }
 
-        // Create a new test context for the last admin test
+        // Last-admin protection lives in the DB layer; exercise it directly via
+        // delete_user (the handler blocks self-delete earlier, so we can't reach
+        // the guard through the handler with a single admin).
         let mut test_ctx2 = create_test_context().await;
 
-        // Create single admin (the only admin)
         let _only_admin_id = login_user(&mut test_ctx2, "only_admin", "password", &[], true).await;
 
-        // Create a target non-admin user
         test_ctx2
             .db
             .users
@@ -416,22 +393,8 @@ mod tests {
             .await
             .unwrap();
 
-        // First verify admin can delete non-admin (to confirm permissions work)
-        // But we want to test the last admin protection, so we need another admin to try to delete the only admin
-
-        // Create another admin to attempt deletion
         let _admin2_id = login_user(&mut test_ctx2, "admin2", "password", &[], true).await;
 
-        // Admin2 tries to delete only_admin (should fail - last admin protection)
-        // But wait, now there are two admins... Let's restructure this test
-
-        // Actually, the last admin protection is in the database layer.
-        // Let's test it properly: have the only admin try to delete themselves
-        // But self-delete is blocked earlier. So we need admin2 to delete admin1,
-        // then admin1 (now the only admin) tries to get deleted by someone.
-
-        // Simpler approach: just verify the database protection directly
-        // The delete_user function returns false if it would delete the last admin
         let only_admin = test_ctx2
             .db
             .users
@@ -465,7 +428,6 @@ mod tests {
             .unwrap();
         assert!(!deleted, "Should not be able to delete the last admin");
 
-        // Verify only_admin still exists
         let remaining = test_ctx2
             .db
             .users
@@ -479,10 +441,9 @@ mod tests {
     async fn test_userdelete_non_admin_cannot_delete_admin() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let _admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Create non-admin user with UserDelete permission
+        // Non-admin with UserDelete permission must still be unable to delete an admin.
         let deleter_id = login_user(
             &mut test_ctx,
             "deleter",
@@ -492,7 +453,6 @@ mod tests {
         )
         .await;
 
-        // Non-admin tries to delete admin (should fail)
         let admin_db = test_ctx
             .db
             .users
@@ -523,7 +483,6 @@ mod tests {
             _ => panic!("Expected UserDeleteResponse"),
         }
 
-        // Verify admin still exists
         let admin = test_ctx
             .db
             .users
@@ -537,7 +496,6 @@ mod tests {
     async fn test_userdelete_handles_online_and_offline_users() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create offline user to delete
@@ -605,7 +563,6 @@ mod tests {
             .await
             .expect("Failed to add user");
 
-        // Verify online user is connected
         let online_before = test_ctx
             .user_manager
             .get_user_by_session_id(online_session_id)
@@ -615,7 +572,6 @@ mod tests {
             "Online user should be connected before deletion"
         );
 
-        // Delete offline user
         let result1 = handle_user_delete(
             offline_user.id,
             Some(admin_id),
@@ -634,7 +590,6 @@ mod tests {
             "Offline user should be deleted from database"
         );
 
-        // Delete online user
         let result2 = handle_user_delete(
             online_user.id,
             Some(admin_id),
@@ -653,7 +608,6 @@ mod tests {
             "Online user should be deleted from database"
         );
 
-        // Verify online user was disconnected from UserManager
         let online_after = test_ctx
             .user_manager
             .get_user_by_session_id(online_session_id)
@@ -668,7 +622,7 @@ mod tests {
     async fn test_userdelete_with_permission() {
         let mut test_ctx = create_test_context().await;
 
-        // Create non-admin user with UserDelete permission
+        // Non-admin with UserDelete permission.
         let deleter_id = login_user(
             &mut test_ctx,
             "deleter",
@@ -678,7 +632,6 @@ mod tests {
         )
         .await;
 
-        // Create target user
         let target = test_ctx
             .db
             .users
@@ -696,19 +649,14 @@ mod tests {
             .await
             .unwrap();
 
-        // Delete target user
         let result =
             handle_user_delete(target.id, Some(deleter_id), &mut test_ctx.handler_context()).await;
 
-        // Should succeed
         assert!(
             result.is_ok(),
             "User with UserDelete permission should be able to delete users"
         );
 
-        // Close writer and read response
-
-        // Parse and verify response
         let response_msg = read_server_message(&mut test_ctx).await;
         match response_msg {
             ServerMessage::UserDeleteResponse {
@@ -732,10 +680,8 @@ mod tests {
     async fn test_userdelete_cannot_delete_guest() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Look up the guest account (created by migration)
         let guest = test_ctx
             .db
             .users
@@ -744,13 +690,11 @@ mod tests {
             .unwrap()
             .expect("Guest account should exist from migration");
 
-        // Try to delete the guest account
         let result =
             handle_user_delete(guest.id, Some(admin_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
-        // Should receive error response
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserDeleteResponse {
@@ -774,11 +718,9 @@ mod tests {
     async fn test_userdelete_cannot_delete_guest_case_insensitive() {
         let mut test_ctx = create_test_context().await;
 
-        // Create admin user
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Look up the guest account (created by migration as "guest" lowercase)
-        // The handler uses to_lowercase() comparison, so this tests that path
+        // Guest is seeded lowercase; the handler's to_lowercase() compare must still block it.
         let guest = test_ctx
             .db
             .users
@@ -787,13 +729,11 @@ mod tests {
             .unwrap()
             .expect("Guest account should exist from migration");
 
-        // Try to delete the guest account (handler checks case-insensitively)
         let result =
             handle_user_delete(guest.id, Some(admin_id), &mut test_ctx.handler_context()).await;
 
         assert!(result.is_ok());
 
-        // Should receive error response
         let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::UserDeleteResponse {
@@ -809,11 +749,9 @@ mod tests {
         }
     }
 
-    /// Broader contract: any blocked delete path must leave the
-    /// target's session intact. This case exercises the pre-tx admin
-    /// block (non-admin requester targeting an admin); the SQL guard
-    /// itself is covered by db::users tests. Pre-fix the kick fired
-    /// before the DB delete attempt regardless of which path blocked.
+    /// Any blocked delete must leave the target's session intact. Exercises the
+    /// pre-tx admin block (non-admin targeting an admin); the SQL guard is covered
+    /// by db::users tests. Regression: the kick once fired before the DB delete.
     #[tokio::test]
     async fn test_userdelete_blocked_delete_does_not_disconnect_session() {
         let mut test_ctx = create_test_context().await;
