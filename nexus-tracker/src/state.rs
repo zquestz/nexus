@@ -1,12 +1,5 @@
-//! Shared daemon state passed to per-connection tasks and handlers.
-//!
-//! This is the small bundle of "things every handler needs": the
-//! [`Registry`] (behind a `Mutex` for cross-task access), the optional
-//! password hashes for the gated flows (behind `RwLock` so SIGHUP can
-//! swap them), the operator-configured refresh interval, and the
-//! per-IP rate limiters. The state is constructed once at startup in
-//! `main.rs` and shared as `Arc<TrackerState>` to every spawned
-//! connection task.
+//! Shared daemon state (`Arc<TrackerState>`), built once at startup and
+//! handed to every spawned connection task.
 
 use std::path::Path;
 use std::sync::{Mutex, RwLock};
@@ -24,74 +17,45 @@ use crate::rate_limiter::RateLimiter;
 use crate::registry::Registry;
 use crate::resolver::{Resolver, TokioResolver};
 
-/// Daemon-level state shared across connection tasks.
-///
-/// Cross-task mutation goes through the `Mutex<Registry>` and the
-/// `RwLock`s on the password hashes; `refresh_interval` and
-/// `refresh_floor` are immutable for the lifetime of the process. The
-/// rate limiters carry their own internal mutexes.
-///
-/// The password hashes are wrapped in `RwLock` because `SIGHUP`
-/// re-reads both files and may swap their contents at runtime. Handlers
-/// take a brief read lock to clone the current hash out, then release
-/// the lock before running Argon2 verification (so a slow verify
-/// doesn't block a SIGHUP reload).
+/// Daemon-level state shared across connection tasks. The password
+/// hashes are `RwLock` because SIGHUP may swap them at runtime; handlers
+/// snapshot under a brief read lock, then verify (slow Argon2) outside
+/// it so a verify can't block a reload.
 pub struct TrackerState {
-    /// In-memory entry store. Locked for register / refresh / list /
-    /// evict_stale operations.
     pub registry: Mutex<Registry>,
 
-    /// Argon2id PHC hash of the registration password, or `None` if
-    /// registration is open. Loaded at startup from
-    /// `<data-dir>/registration.hash` via [`crate::auth::load_password_hash`];
-    /// reloaded by [`TrackerState::reload_passwords`] on SIGHUP (Unix).
+    /// Argon2id PHC of the registration password, `None` if open.
+    /// Reloaded by [`reload_passwords`](Self::reload_passwords) on SIGHUP.
     pub registration_password_hash: RwLock<Option<String>>,
 
-    /// Argon2id PHC hash of the listing password, or `None` if listing
-    /// is open. Loaded at startup from `<data-dir>/listing.hash`;
-    /// reloaded by [`TrackerState::reload_passwords`] on SIGHUP (Unix).
+    /// Argon2id PHC of the listing password, `None` if open.
+    /// Reloaded by [`reload_passwords`](Self::reload_passwords) on SIGHUP.
     pub listing_password_hash: RwLock<Option<String>>,
 
-    /// `refresh_interval` value advertised in `TrackerServerRegisterResponse`.
-    /// Servers wait this many seconds between refreshes.
+    /// Seconds between refreshes, advertised in the register response.
     pub refresh_interval: u32,
 
-    /// Per-IP connection-rate limiter. Decremented at TCP accept time;
-    /// over-limit peers get their connection dropped silently.
+    /// Debited per TCP accept; over-limit peers are dropped silently.
     pub connection_rate_limiter: RateLimiter,
 
-    /// Per-IP failed-auth limiter. Successful auths don't debit; only
-    /// failed password verifications do. Once empty, further attempts
-    /// from the offending IP are rejected as `rate_limited`.
+    /// Debited only on failed password verify; over-limit attempts get
+    /// `rate_limited`.
     pub auth_failure_rate_limiter: RateLimiter,
 
-    /// Per-entry minimum elapsed time between accepted refreshes.
-    /// Production initializes this from
-    /// [`crate::constants::REFRESH_FLOOR_INTERVAL`]; tests may pass
-    /// `Duration::ZERO` to disable the floor and exercise the refresh
-    /// path without waiting out the window.
+    /// Per-entry minimum between accepted refreshes
+    /// (`Duration::ZERO` disables it; tests use this).
     pub refresh_floor: Duration,
 
-    /// DNS resolver used by the address-validation step in
-    /// `TrackerServerRegister`. Defaults to [`TokioResolver`] in
-    /// [`Self::new`]; tests substitute a mock via
-    /// [`Self::with_resolver`].
-    ///
-    /// `Send + Sync` is required transitively via [`Resolver`]'s trait
-    /// bound — without it `TrackerState` itself wouldn't be `Send +
-    /// Sync` and couldn't be shared across the accept loop via
-    /// `Arc<TrackerState>`.
+    /// DNS resolver for register-time address validation. `Send + Sync`
+    /// (via [`Resolver`]) is required so `TrackerState` can be shared as
+    /// `Arc`. Tests swap a mock via [`with_resolver`](Self::with_resolver).
     pub resolver: Box<dyn Resolver>,
 }
 
 impl TrackerState {
-    /// Build a new state. Take the `Mutex` ownership of `registry` so
-    /// no other path can hand the registry to a different mutex.
-    ///
-    /// `connection_rate` and `auth_failure_rate` are events per minute
-    /// per source IP (0 = unlimited). `refresh_floor` is the minimum
-    /// elapsed time between accepted refreshes per entry
-    /// (`Duration::ZERO` disables the floor).
+    /// Build a new state. `connection_rate` / `auth_failure_rate` are
+    /// per-IP events/minute (0 = unlimited); `refresh_floor` is the
+    /// per-entry minimum between refreshes (`Duration::ZERO` disables).
     #[must_use]
     pub fn new(
         registry: Registry,
@@ -114,18 +78,13 @@ impl TrackerState {
         }
     }
 
-    /// Replace the DNS resolver used by address validation. Intended
-    /// for tests that need deterministic DNS responses (NXDOMAIN /
-    /// resolved-but-no-match / transient failure). Production code
-    /// should rely on the [`TokioResolver`] default installed by
-    /// [`Self::new`].
+    /// Replace the DNS resolver (tests, for deterministic responses).
     #[must_use]
     pub fn with_resolver(mut self, resolver: Box<dyn Resolver>) -> Self {
         self.resolver = resolver;
         self
     }
 
-    /// Whether registration requires a password (true when a hash is loaded).
     #[must_use]
     pub fn registration_gated(&self) -> bool {
         self.registration_password_hash
@@ -134,7 +93,6 @@ impl TrackerState {
             .is_some()
     }
 
-    /// Whether listing requires a password (true when a hash is loaded).
     #[must_use]
     pub fn listing_gated(&self) -> bool {
         self.listing_password_hash
@@ -143,9 +101,8 @@ impl TrackerState {
             .is_some()
     }
 
-    /// Snapshot of the current registration hash. Handlers call this
-    /// and then verify outside the lock so Argon2 doesn't block a
-    /// concurrent SIGHUP reload.
+    /// Clone the current registration hash so the caller can verify
+    /// outside the lock (keeps slow Argon2 off the SIGHUP path).
     #[must_use]
     pub fn registration_password_snapshot(&self) -> Option<String> {
         self.registration_password_hash
@@ -154,7 +111,7 @@ impl TrackerState {
             .clone()
     }
 
-    /// Snapshot of the current listing hash. See
+    /// Clone the current listing hash. See
     /// [`registration_password_snapshot`](Self::registration_password_snapshot).
     #[must_use]
     pub fn listing_password_snapshot(&self) -> Option<String> {
@@ -164,15 +121,9 @@ impl TrackerState {
             .clone()
     }
 
-    /// Re-read both password hash files from disk and update the
-    /// in-memory state. Each flow is loaded independently: a parse
-    /// error or read error on one file preserves *that flow's*
-    /// previous state and logs loudly; the other flow's update may
-    /// still succeed. A successfully-loaded `None` (file removed)
-    /// transitions the flow to open.
-    ///
-    /// Existing connections continue uninterrupted; the new hash takes
-    /// effect on the next refresh / new connection.
+    /// Re-read both hash files. Each flow loads independently: a read /
+    /// parse error preserves that flow's prior state (and logs); a clean
+    /// `None` (file removed) opens the flow. Takes effect on next refresh.
     pub fn reload_passwords(&self, data_dir: &Path) {
         self.reload_one(data_dir, PasswordKind::Registration);
         self.reload_one(data_dir, PasswordKind::Listing);
@@ -222,7 +173,7 @@ mod tests {
         let state = fresh_state();
         assert!(!state.registration_gated());
 
-        // Write a fresh registration hash. After reload, the flow is gated.
+        // After reload of a fresh hash, the flow is gated.
         let hash = hash_secret();
         fs::write(
             auth::hash_path(tmp.path(), PasswordKind::Registration),

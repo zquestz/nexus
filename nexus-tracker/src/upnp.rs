@@ -1,11 +1,6 @@
-//! UPnP/IGD port forwarding for the tracker daemon
-//!
-//! Thin wrapper over [`nexus_common::upnp`] that builds the tracker's
-//! port list (TCP main + optional TCP WebSocket) and delegates
-//! discovery, lease renewal, and shutdown cleanup to the common adapter.
-//!
-//! The tracker has no UDP traffic (no voice), so unlike the BBS server
-//! every mapping here is TCP.
+//! UPnP/IGD port forwarding: a thin wrapper over [`nexus_common::upnp`] that builds the tracker's
+//! port list and delegates discovery / renewal / cleanup. The tracker has no UDP (no voice), so
+//! every mapping is TCP.
 
 use std::net::IpAddr;
 
@@ -17,17 +12,12 @@ pub use nexus_common::upnp::{UpnpGateway as Gateway, spawn_lease_renewal_task};
 /// typically surface this in their admin UI.
 const PROTOCOL_DESCRIPTION: &str = "Nexus Tracker";
 
-/// Discover the LAN gateway and request port forwarding for the
-/// tracker's port set.
-///
-/// `main_port` is forwarded as TCP. When `websocket_port` is `Some`,
-/// it is also forwarded as TCP.
+/// Discover the LAN gateway and forward `main_port` (and `websocket_port` if `Some`) as TCP.
 ///
 /// # Errors
 ///
-/// Returns operator-facing English error strings on UPnP failure (no
-/// gateway found, IPv6 bind, etc.). All UPnP errors are recoverable —
-/// the tracker continues without port forwarding.
+/// Operator-facing strings on failure (no gateway, IPv6 bind, etc.); all recoverable — the
+/// tracker continues without forwarding.
 pub async fn setup(
     bind_addr: IpAddr,
     main_port: u16,

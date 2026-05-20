@@ -1,23 +1,11 @@
-//! Per-connection task
+//! Per-connection task: TLS handshake, BBS-shaped protocol handshake, then dispatch.
 //!
-//! Drives a single accepted TCP connection through:
-//!
-//! 1. TLS handshake.
-//! 2. Protocol handshake (BBS-shaped `Handshake` / `HandshakeResponse`).
-//! 3. Post-handshake dispatch on the first `TrackerClientMessage`:
-//!    - `TrackerServerRegister` → server connection. Enters the refresh loop;
-//!      subsequent `TrackerServerRegister` messages on the same connection
-//!      are refreshes. A `TrackerServerList` arrival on a server connection
-//!      is a role violation: surface `Error`, close.
-//!    - `TrackerServerList` → client connection. The handler sends one
-//!      response and we close.
-//! 4. Cleanup. Server connections are unregistered from the [`Registry`]
-//!    via a drop guard so cancellation, panics, and timeouts all clean
-//!    up.
-//!
-//! Errors from this function bubble out to the spawning task in
-//! `main.rs`, which routes them through `log_connection_error` for
-//! consistent filter / severity handling across all listener sites.
+//! The first post-handshake `TrackerClientMessage` locks the connection's role:
+//! `TrackerServerRegister` → server connection (enters the refresh loop; later Registers are
+//! refreshes, a List is a role violation → `Error` + close); `TrackerServerList` → client
+//! connection (one response, then close). Server entries are unregistered via a drop guard so
+//! every exit path (cancel, panic, timeout) cleans up. Errors bubble to `main.rs`'s
+//! `log_connection_error`.
 
 use std::io;
 use std::net::SocketAddr;
@@ -60,23 +48,11 @@ use crate::rate_limiter::RateCheck;
 use crate::registry::ConnectionId;
 use crate::state::TrackerState;
 
-/// Drive a single accepted connection through TLS, handshake, and the
-/// post-handshake protocol flow.
+/// Drive a single accepted connection through TLS, handshake, and the post-handshake flow.
 ///
-/// On peer-protocol violations a typed `Error` (or typed-response
-/// failure for Register/List) is sent and `Ok(())` is returned — the
-/// violation is part of the normal protocol surface, not an I/O failure.
-///
-/// On real I/O errors (TLS handshake failure, frame errors, write
-/// failures), a best-effort error is sent before the underlying error
-/// bubbles via `?`. The TLS handshake failure is wrapped with
-/// [`TLS_HANDSHAKE_FAILED_PREFIX`] so the shared logger can downgrade
-/// it to debug.
-///
-/// # Errors
-///
-/// Returns `io::Error` for TLS handshake failures, frame errors, and
-/// write failures. The caller logs via `log_connection_error`.
+/// Peer-protocol violations send a typed `Error` and return `Ok(())` (normal protocol surface).
+/// Real I/O errors (TLS / frame / write) send a best-effort error, then bubble via `?` for the
+/// caller's `log_connection_error`; the TLS failure is prefixed so the logger downgrades it.
 pub async fn handle_connection(
     stream: TcpStream,
     peer_addr: SocketAddr,
@@ -84,11 +60,8 @@ pub async fn handle_connection(
     fingerprint: String,
     state: Arc<TrackerState>,
 ) -> io::Result<()> {
-    // Per-IP connection-rate gate. We check pre-TLS so over-limit peers
-    // don't pay (or make us pay) the cost of a TLS handshake. The
-    // `stream` is dropped here, closing the TCP connection silently —
-    // per protocol spec §Rate Limiting we may "drop connections at the
-    // framing layer" without sending any response.
+    // Per-IP rate gate, pre-TLS so over-limit peers don't cost a handshake. Dropping `stream`
+    // closes the TCP connection silently — spec §Rate Limiting permits a framing-layer drop.
     if state.connection_rate_limiter.try_consume(peer_addr.ip()) == RateCheck::Limited {
         debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_RATE_LIMITED);
         return Ok(());
@@ -99,10 +72,8 @@ pub async fn handle_connection(
     handle_connection_inner(tls_stream, peer_addr, fingerprint, state).await
 }
 
-/// Inner connection handler that works with any `AsyncRead + AsyncWrite`
-/// stream. Used directly by both the TCP path (after the TLS handshake)
-/// and the WebSocket path (after TLS *and* WS upgrade, with the stream
-/// wrapped in `WebSocketAdapter`).
+/// Stream-generic connection handler shared by the TCP path (post-TLS) and the WS path
+/// (post-TLS-and-upgrade, wrapped in `WebSocketAdapter`).
 pub async fn handle_connection_inner<S>(
     socket: S,
     peer_addr: SocketAddr,
@@ -113,26 +84,19 @@ where
     S: AsyncRead + AsyncWrite + Unpin + Send + 'static,
 {
     let (read_half, write_half) = tokio::io::split(socket);
-    // Wrap with `BufReader` so frame-header reads (magic byte, type
-    // length, etc.) coalesce into one syscall per buffer fill instead
-    // of one syscall per byte. Same posture as `nexus-server`.
+    // `BufReader` coalesces frame-header reads into one syscall per fill. Same as `nexus-server`.
     let mut reader = FrameReader::new(BufReader::new(read_half));
     let mut writer = FrameWriter::new(write_half);
 
     if !run_handshake_phase(&mut reader, &mut writer, &fingerprint, peer_addr).await? {
-        // Handshake failed (version mismatch, invalid version string, or
-        // peer sent the wrong message first). Response already on the
-        // wire; just close.
+        // Handshake failed; response already on the wire, just close.
         return Ok(());
     }
 
     dispatch_post_handshake(&mut reader, &mut writer, &state, peer_addr).await
 }
 
-/// Read the first frame, expect a `Handshake`, and run the handshake
-/// handler. Returns `Ok(true)` only when the handshake completed
-/// successfully and the connection should continue into the
-/// post-handshake phase.
+/// Read the first frame, expect a `Handshake`, run the handler. `Ok(true)` only on success.
 async fn run_handshake_phase<R, W>(
     reader: &mut FrameReader<R>,
     writer: &mut FrameWriter<W>,
@@ -156,8 +120,7 @@ where
     let version = match received.message {
         ClientMessage::Handshake { version } => version,
         other => {
-            // Match nexus-server's convention: surface the offending
-            // message type as the `command` field.
+            // Surface the offending message type as `command`, matching nexus-server.
             let cmd = client_message_type(&other);
             warn!(ip = %peer_addr.ip(), command = %cmd, "{}", LOG_HANDSHAKE_REQUIRED);
             send_handshake_error(
@@ -173,10 +136,9 @@ where
     handlers::handshake::handle_handshake(&version, DEFAULT_LOCALE, fingerprint, writer).await
 }
 
-/// Read the first post-handshake message and dispatch it to the
-/// matching handler. The connection's role is locked here:
-/// `TrackerServerRegister` → server connection (entering the refresh loop);
-/// `TrackerServerList` → client connection (handler runs and we close).
+/// Read the first post-handshake message; this locks the connection's role.
+/// `TrackerServerRegister` → server connection (refresh loop); `TrackerServerList` → client
+/// connection (one response, then close).
 async fn dispatch_post_handshake<R, W>(
     reader: &mut FrameReader<R>,
     writer: &mut FrameWriter<W>,
@@ -197,11 +159,8 @@ where
         Ok(Some(msg)) => msg,
         Ok(None) => return Ok(()), // clean disconnect; nothing to clean up yet
         Err(e) => {
-            // The registrant's `locale` lives inside the message we
-            // just failed to parse, so we can't honor it. Per spec
-            // §Localization (docs/protocol/18-trackers.md), `Error`
-            // sent before the request's `locale` is known is rendered
-            // in the implementation's default locale.
+            // The unparsed message carried the `locale`, so per spec §Localization we render
+            // this pre-locale `Error` in the default locale.
             send_tracker_error(writer, None, frame_error_message(&e, DEFAULT_LOCALE)).await;
             return Err(e.into());
         }
@@ -255,9 +214,7 @@ where
             let outcome = handle_initial_register(params, state, writer, peer_addr).await?;
             match outcome {
                 InitialRegisterOutcome::Registered(id) => {
-                    // The drop guard ensures the registry slot is
-                    // freed when the refresh loop exits — clean
-                    // disconnect, role violation, timeout, panic.
+                    // Guard frees the registry slot on every refresh-loop exit path.
                     let _guard = RegistrationGuard {
                         state: Arc::clone(state),
                         id,
@@ -297,9 +254,7 @@ where
         .await
         {
             Ok(Some(msg)) => msg,
-            // Clean TCP close (Ok(None)) and idle-timeout (stale entry)
-            // are both silent disconnects per spec; drop guard handles
-            // unregister and logs the reason.
+            // Clean close and idle-timeout are both silent disconnects per spec; guard unregisters.
             Ok(None) => {
                 info!(
                     ip = %peer_addr.ip(),
@@ -320,9 +275,7 @@ where
                 );
                 return Ok(());
             }
-            // Other frame errors (malformed JSON, payload too large,
-            // bad framing): match `dispatch_post_handshake`'s
-            // best-effort `Error` send before closing.
+            // Other frame errors: best-effort `Error` send before closing, as in dispatch.
             Err(e) => {
                 warn!(
                     ip = %peer_addr.ip(),
@@ -380,11 +333,8 @@ where
                 }
             }
             TrackerClientMessage::TrackerServerList { locale, .. } => {
-                // Role violation: surface and close. Match the locale-length
-                // contract enforced by the real handlers (`tracker_server_register`
-                // and `tracker_server_list`); fall back to DEFAULT_LOCALE if the
-                // locale is empty or oversized rather than threading an
-                // untrusted string into `LanguageIdentifier::parse`.
+                // Role violation: surface and close. Fall back to DEFAULT_LOCALE on empty/oversized
+                // locale rather than threading an untrusted string into `LanguageIdentifier::parse`.
                 warn!(ip = %peer_addr.ip(), command = "TrackerServerList", "{}", LOG_ROLE_VIOLATION);
                 let translation_locale = if locale.is_empty() || locale.len() > MAX_LOCALE_LENGTH {
                     DEFAULT_LOCALE
@@ -410,22 +360,10 @@ where
     }
 }
 
-/// Drop guard that unregisters a server connection's entry when the
-/// per-connection task exits.
-///
-/// **Why a Drop guard rather than explicit cleanup** (which is what
-/// `nexus-server` does for sessions): tracker connections have many
-/// exit paths — clean TCP close, idle timeout, role violation, frame
-/// error, register-rejection, panic — and the registry must release
-/// its slot in *every* case. A guard catches them all uniformly,
-/// including async cancellation. `unregister` is idempotent so a
-/// future explicit unregister wouldn't be wrong, but the guard is the
-/// load-bearing mechanism today.
-///
-/// `run_refresh_loop` logs the disconnect reason before returning, so
-/// the guard's `Drop` performs only the registry mutation (no log
-/// here, to avoid double-logging on normal exit paths). On a panic
-/// the registry is still cleaned up, just without an attribution log.
+/// Unregisters a server connection's registry entry on task exit. A Drop guard (vs explicit
+/// cleanup) catches every exit path uniformly — clean close, timeout, role violation, frame error,
+/// rejection, panic, async cancellation. `run_refresh_loop` logs the reason, so `Drop` only mutates
+/// the registry (no log → no double-logging; a panic still cleans up, just without attribution).
 struct RegistrationGuard {
     state: Arc<TrackerState>,
     id: ConnectionId,
@@ -441,8 +379,7 @@ impl Drop for RegistrationGuard {
     }
 }
 
-/// Best-effort `ServerMessage::Error` send during the BBS-shaped
-/// handshake phase. Failures silent — connection is closing.
+/// Best-effort `ServerMessage::Error` during the handshake phase. Failures silent.
 async fn send_handshake_error<W>(
     writer: &mut FrameWriter<W>,
     command: Option<String>,
@@ -454,8 +391,7 @@ async fn send_handshake_error<W>(
     let _ = send_server_message(writer, &response).await;
 }
 
-/// Best-effort `TrackerServerMessage::Error` send for post-handshake
-/// protocol violations (frame error, role violation). Failures silent.
+/// Best-effort `TrackerServerMessage::Error` for post-handshake violations. Failures silent.
 async fn send_tracker_error<W>(
     writer: &mut FrameWriter<W>,
     command: Option<String>,
@@ -467,13 +403,9 @@ async fn send_tracker_error<W>(
     let _ = send_tracker_server_message(writer, &response).await;
 }
 
-/// Map a [`FrameError`] to the operator-facing translated message used
-/// in the handshake / dispatch / refresh failure paths. Differentiates
-/// the three cases the spec calls out separately
-/// (`InvalidJson` → malformed JSON, `UnknownMessageType` → wrong-port
-/// peer, `PayloadLengthExceedsTypeMax` → oversize) from generic frame
-/// structural violations, so registrants see an actionable diagnostic
-/// instead of a catch-all "Frame format violation".
+/// Map a [`FrameError`] to a translated diagnostic. Differentiates the three spec-called-out cases
+/// (malformed JSON, wrong-port peer, oversize) from generic frame violations so registrants get an
+/// actionable message instead of a catch-all.
 fn frame_error_message(err: &FrameError, locale: &str) -> String {
     match err {
         FrameError::InvalidJson(_) => err_tracker_malformed_message(locale),

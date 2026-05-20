@@ -1,15 +1,10 @@
-//! End-to-end TCP + TLS + protocol tests for `nexus-tracker`.
+//! End-to-end TCP/WS + TLS + protocol tests for `nexus-tracker`: drives real
+//! TLS + framed-JSON exchanges against the daemon's connection task and asserts
+//! on the responses (handshake, register/refresh, list, role-lock, rate limits,
+//! compat filtering, field validation).
 //!
-//! Spins up the daemon's connection task on a TCP listener, drives
-//! real TLS + framed-JSON exchanges against it, and asserts on the
-//! responses. Covers:
-//!
-//! - Handshake (success, version mismatch, non-Handshake first message)
-//! - `TrackerServerRegister` + `TrackerServerList` roundtrip and disconnect-cleanup
-//!
-//! The client uses a permissive cert verifier (accepts anything) since
-//! the tracker's cert is self-signed and the test doesn't yet need to
-//! exercise TOFU semantics.
+//! The client uses a permissive cert verifier (self-signed cert; TOFU not
+//! exercised here).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -85,9 +80,8 @@ impl ServerCertVerifier for AcceptAnyCert {
     }
 }
 
-/// Install the rustls crypto provider once. Safe to call from multiple
-/// tests in the same process — second and subsequent calls return Err
-/// (already installed) which we ignore.
+/// Install the rustls crypto provider once; later calls return Err
+/// (already installed), which we ignore.
 fn ensure_crypto_provider() {
     let _ = tokio_rustls::rustls::crypto::ring::default_provider().install_default();
 }
@@ -101,9 +95,8 @@ fn build_test_client() -> TlsConnector {
     TlsConnector::from(Arc::new(config))
 }
 
-/// Drive one accepted connection through the tracker's connection task
-/// in a background tokio task. Returns the cert fingerprint for the
-/// caller to compare against the wire response.
+/// Drive one accepted connection through the tracker's connection task.
+/// Returns the cert fingerprint for comparison against the wire response.
 async fn spawn_one_shot_tracker(data_dir: &std::path::Path) -> (std::net::SocketAddr, String) {
     let tls_config = nexus_common::tls::TlsCertConfig {
         cert_filename: nexus_tracker::constants::CERT_FILENAME,
@@ -130,8 +123,7 @@ async fn spawn_one_shot_tracker(data_dir: &std::path::Path) -> (std::net::Socket
     let fp_clone = fingerprint.clone();
     tokio::spawn(async move {
         let (stream, peer) = listener.accept().await.expect("accept");
-        // The handler now returns Result; tests don't care about the
-        // error path here (the test harness asserts on the wire response).
+        // Handler returns Result; the harness asserts on the wire response, not this.
         let _ =
             nexus_tracker::connection::handle_connection(stream, peer, acceptor, fp_clone, state)
                 .await;
@@ -147,7 +139,6 @@ async fn test_handshake_roundtrip_compatible_version() {
 
     let (server_addr, expected_fingerprint) = spawn_one_shot_tracker(tmp.path()).await;
 
-    // Client side
     let connector = build_test_client();
     let stream = TcpStream::connect(server_addr).await.expect("connect");
     let server_name =
@@ -246,7 +237,7 @@ async fn test_handshake_roundtrip_incompatible_major_version() {
                 err.contains("Incompatible tracker protocol version"),
                 "expected mismatch message, got: {err}"
             );
-            // Fingerprint must still be sent on failure (per spec).
+            // Fingerprint is sent even on failure (per spec).
             assert_eq!(fingerprint, expected_fingerprint);
         }
         other => panic!("expected HandshakeResponse, got {other:?}"),
@@ -273,8 +264,7 @@ async fn test_non_handshake_first_message_yields_error() {
     let mut reader = FrameReader::new(read);
     let mut writer = FrameWriter::new(write);
 
-    // Send a Login message before completing the handshake — protocol
-    // violation, expecting Error in response.
+    // First message must be a Handshake; a Login here is a protocol violation.
     send_client_message(
         &mut writer,
         &ClientMessage::Login {
@@ -300,8 +290,7 @@ async fn test_non_handshake_first_message_yields_error() {
                 message.contains("Handshake required"),
                 "expected handshake-required message, got: {message}"
             );
-            // Server-style: `command` carries the offending message
-            // type (the one the peer sent that triggered the rejection).
+            // `command` names the offending message type that triggered rejection.
             assert_eq!(
                 command.as_deref(),
                 Some("Login"),
@@ -312,16 +301,11 @@ async fn test_non_handshake_first_message_yields_error() {
     }
 }
 
-// =============================================================================
-// TrackerServerRegister + TrackerServerList roundtrip
-// =============================================================================
-
 type ClientReader = FrameReader<ReadHalf<TlsStream<TcpStream>>>;
 type ClientWriter = FrameWriter<WriteHalf<TlsStream<TcpStream>>>;
 
-/// Drive a long-running tracker that accepts multiple connections.
-/// Returns the bound address, the cert fingerprint, and the shared
-/// state so tests can inspect the registry directly.
+/// Drive a long-running tracker accepting multiple connections; tests
+/// hold the shared `state` to inspect the registry directly.
 async fn spawn_multi_tracker(
     data_dir: &std::path::Path,
     state: Arc<TrackerState>,
@@ -358,8 +342,8 @@ async fn spawn_multi_tracker(
     (local_addr, fingerprint)
 }
 
-/// Connect, do TLS, send a `Handshake`, verify success, and return the
-/// post-handshake reader/writer ready for tracker-protocol messages.
+/// Connect + TLS + successful `Handshake`, returning the post-handshake
+/// reader/writer ready for tracker-protocol messages.
 async fn connect_and_handshake(server_addr: std::net::SocketAddr) -> (ClientReader, ClientWriter) {
     let connector = build_test_client();
     let stream = TcpStream::connect(server_addr).await.expect("connect");
@@ -414,8 +398,7 @@ fn make_register(name: &str, user_count: u32) -> TrackerClientMessage {
     }
 }
 
-/// Send a tracker client message via the underlying frame writer. This
-/// mirrors `send_client_message` but for tracker-protocol payloads.
+/// `send_client_message` for tracker-protocol payloads.
 async fn send_tracker_client<W>(writer: &mut FrameWriter<W>, msg: &TrackerClientMessage)
 where
     W: tokio::io::AsyncWrite + Unpin,
@@ -429,16 +412,9 @@ where
         .expect("write tracker frame");
 }
 
-/// Spin (poll) until the registry length reaches `target`, with a
-/// bounded timeout. Used to assert post-disconnect cleanup completed.
-///
-/// The 5-second deadline accommodates the stale-eviction test, where
-/// eviction lands ~2 s after registration (idle timeout fires once
-/// `refresh_interval * 2` elapses). On slower CI runners — Windows in
-/// particular — the eviction can land at T≈2.1–2.3 s, and a tighter
-/// deadline produced flaky failures. Fast post-disconnect cleanup
-/// paths return almost immediately, so the longer deadline only
-/// matters when the test is genuinely broken.
+/// Poll until the registry length reaches `target`, asserting cleanup completed.
+/// The 5s deadline accommodates the stale-eviction test (eviction lands ~2s in,
+/// later on slow CI runners); fast cleanup paths return almost immediately.
 async fn wait_for_registry_len(state: &Arc<TrackerState>, target: usize) {
     let deadline = std::time::Instant::now() + Duration::from_secs(5);
     loop {
@@ -470,7 +446,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
     ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
-    // Phase 1: open a server connection and register.
+    // Phase 1: server connection registers.
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut s_writer, &make_register("Integration BBS", 7)).await;
     match read_tracker_server(&mut s_reader).await {
@@ -485,8 +461,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
         other => panic!("expected TrackerServerRegisterResponse, got {other:?}"),
     }
 
-    // Tracker is mutex-coordinated; once we've received the success
-    // response the entry is in the registry.
+    // Success response implies the entry is in the registry (mutex-coordinated).
     {
         let registry = state.registry.lock().expect("registry mutex");
         let listing = registry.list();
@@ -495,7 +470,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
         assert_eq!(listing[0].user_count, 7);
     }
 
-    // Phase 2: open a client connection and TrackerServerList.
+    // Phase 2: client connection lists; sees the registered entry.
     let (mut c_reader, mut c_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(
         &mut c_writer,
@@ -522,16 +497,16 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
         }
         other => panic!("expected TrackerServerListResponse, got {other:?}"),
     }
-    // Client connection closes after List (no further messages).
+    // Tracker closes the client connection after List.
     drop(c_reader);
     drop(c_writer);
 
-    // Phase 3: drop the server connection and wait for cleanup.
+    // Phase 3: dropping the server connection delists it (disconnect = delist).
     drop(s_reader);
     drop(s_writer);
     wait_for_registry_len(&state, 0).await;
 
-    // Phase 4: a fresh client connection sees an empty list.
+    // Phase 4: a fresh client now sees an empty list.
     let (mut c2_reader, mut c2_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(
         &mut c2_writer,
@@ -560,11 +535,9 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
 
 #[tokio::test]
 async fn test_register_omitted_address_substitutes_peer_ip() {
-    // When `address` is None (or empty), the tracker substitutes the
-    // peer's source IP — kernel-truthful, no validation needed. This
-    // test pins the substitution behavior so a future change that,
-    // e.g., applied `classify_invalid` to the substituted IP and
-    // started rejecting loopback peers shows up immediately.
+    // Pins: when `address` is None/empty the tracker substitutes the peer's
+    // source IP (kernel-truthful, no validation), so a future change that
+    // started rejecting the substituted loopback IP would surface here.
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");
 
@@ -580,7 +553,6 @@ async fn test_register_omitted_address_substitutes_peer_ip() {
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
-    // Build a register with `address: None`.
     let mut msg = make_register("Implicit Address BBS", 1);
     if let TrackerClientMessage::TrackerServerRegister {
         address: ref mut a, ..
@@ -599,23 +571,15 @@ async fn test_register_omitted_address_substitutes_peer_ip() {
     let registry = state.registry.lock().expect("registry mutex");
     let listing = registry.list();
     assert_eq!(listing.len(), 1);
-    // Integration tests connect over TCP to 127.0.0.1, so the peer IP
-    // the tracker sees is the IPv4 loopback. The substituted address
-    // is the stringified peer IP.
+    // Tests connect over TCP to loopback, so the substituted peer IP is 127.0.0.1.
     assert_eq!(listing[0].address, "127.0.0.1");
 }
 
 #[tokio::test]
 async fn test_register_unicode_idn_address_stored_as_typed() {
-    // The IDN policy stores the address as-typed (Unicode preserved);
-    // Punycode is only used for the DNS lookup. This test pins the
-    // contract so a future refactor that, e.g., reuses the ASCII form
-    // as the entry's stored address would surface as a failure.
-    //
-    // The integration harness uses a loopback peer, so the LAN-peer
-    // bypass keeps the resolver out of this path entirely — the test
-    // is purely about what gets stored. That's the right scope: the
-    // resolver-vs-storage interaction is exercised by the unit test
+    // Pins the IDN policy: addresses are stored as-typed (Unicode preserved),
+    // Punycode only for DNS lookup. Loopback peer bypasses the resolver, so this
+    // is purely about storage; resolver interaction is in the unit test
     // `unicode_idn_hostname_resolves_via_punycode`.
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");
@@ -672,15 +636,15 @@ async fn test_register_refresh_updates_user_count() {
     ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
-    // Server connection: register, then refresh with new user_count.
+    // A re-register with the same dedup key (everything but user_count) is a
+    // refresh, not a new entry: still one row, user_count updated to the latest.
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut s_writer, &make_register("Refresh Test BBS", 1)).await;
-    let _ = read_tracker_server(&mut s_reader).await; // consume register response
+    let _ = read_tracker_server(&mut s_reader).await;
 
     send_tracker_client(&mut s_writer, &make_register("Refresh Test BBS", 42)).await;
-    let _ = read_tracker_server(&mut s_reader).await; // consume refresh response
+    let _ = read_tracker_server(&mut s_reader).await;
 
-    // Registry should reflect the refresh's new user_count.
     let registry = state.registry.lock().expect("registry mutex");
     let listing = registry.list();
     assert_eq!(listing.len(), 1, "still one entry after refresh");
@@ -706,12 +670,12 @@ async fn test_role_violation_on_server_connection_disconnects() {
     ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
-    // Establish a server connection first.
+    // First message (register) locks the connection to the server role.
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut s_writer, &make_register("Role Test BBS", 0)).await;
     let _ = read_tracker_server(&mut s_reader).await;
 
-    // Send a TrackerServerList on the server connection — role violation.
+    // A TrackerServerList on the server-role connection violates the role lock.
     send_tracker_client(
         &mut s_writer,
         &TrackerClientMessage::TrackerServerList {
@@ -724,14 +688,12 @@ async fn test_role_violation_on_server_connection_disconnects() {
     let response = read_tracker_server(&mut s_reader).await;
     match response {
         TrackerServerMessage::Error { command, .. } => {
-            // The server-side dispatcher logs the offending command as
-            // `TrackerServerList` on the Error.
             assert_eq!(command.as_deref(), Some("TrackerServerList"));
         }
         other => panic!("expected Error, got {other:?}"),
     }
 
-    // After the role violation the connection closes; cleanup runs.
+    // The role violation closes the connection, which delists the entry.
     drop(s_reader);
     drop(s_writer);
     wait_for_registry_len(&state, 0).await;
@@ -742,7 +704,7 @@ async fn test_unauthorized_register_when_password_required() {
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    // Set a registration hash directly (any valid PHC string for "secret").
+    // Gate registration behind a password hash (PHC string for "secret").
     let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default()
         .hash_password(b"secret", &salt)
@@ -760,7 +722,7 @@ async fn test_unauthorized_register_when_password_required() {
     ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
-    // Connect and try to register without a password.
+    // Register without a password against a gated tracker → unauthorized.
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut s_writer, &make_register("Should Fail", 0)).await;
 
@@ -778,9 +740,8 @@ async fn test_unauthorized_register_when_password_required() {
     }
 }
 
-/// Read a `TrackerServerMessage` from the wire, parsing the frame
-/// payload directly. (`nexus-common`'s `read_server_message` decodes
-/// BBS `ServerMessage`; we need the tracker-protocol parallel here.)
+/// Read a `TrackerServerMessage` off the wire — the tracker-protocol parallel
+/// to `nexus-common`'s `read_server_message` (which decodes BBS `ServerMessage`).
 async fn read_tracker_server<R>(reader: &mut FrameReader<R>) -> TrackerServerMessage
 where
     R: tokio::io::AsyncRead + Unpin,
@@ -803,10 +764,8 @@ async fn test_stale_entry_evicted_when_server_stops_refreshing() {
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    // refresh_interval=1 ⇒ stale window = 2 × 1 = 2 seconds. The
-    // refresh loop's idle timeout uses this same window, so a server
-    // that registers and then never refreshes will get evicted on
-    // idle-timeout from the refresh loop.
+    // refresh_interval=1 ⇒ stale window = 2× = 2s. A server that registers but
+    // never refreshes is evicted on the refresh loop's idle timeout.
     let state = Arc::new(TrackerState::new(
         Registry::new(0, 0),
         None,
@@ -825,13 +784,11 @@ async fn test_stale_entry_evicted_when_server_stops_refreshing() {
         other => panic!("expected successful register, got {other:?}"),
     }
 
-    // Hold the connection open but send no refresh. Within the stale
-    // window the refresh loop's read times out, the loop exits, and
-    // the drop guard removes the entry.
+    // Hold the connection open but send no refresh: the refresh loop's read
+    // times out inside the stale window and the drop guard removes the entry.
     wait_for_registry_len(&state, 0).await;
 
-    // Sanity: the connection is still ours; we just never had to do
-    // anything with it. Drop it now to keep clippy happy.
+    // Drop the still-open connection (otherwise clippy flags the unused binding).
     drop(s_reader);
     drop(s_writer);
 }
@@ -853,7 +810,6 @@ async fn test_register_rejected_when_global_capacity_reached() {
     ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
-    // First register: succeeds.
     let (mut a_reader, mut a_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut a_writer, &make_register("First BBS", 0)).await;
     match read_tracker_server(&mut a_reader).await {
@@ -861,7 +817,7 @@ async fn test_register_rejected_when_global_capacity_reached() {
         other => panic!("expected first register to succeed, got {other:?}"),
     }
 
-    // Second register from a different connection: tracker is full.
+    // Second register (different connection): tracker is at capacity.
     let (mut b_reader, mut b_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut b_writer, &make_register("Second BBS", 0)).await;
     match read_tracker_server(&mut b_reader).await {
@@ -877,7 +833,6 @@ async fn test_register_rejected_when_global_capacity_reached() {
     drop(b_reader);
     drop(b_writer);
 
-    // First connection's entry is unaffected by the rejection.
     {
         let registry = state.registry.lock().expect("registry mutex");
         assert_eq!(
@@ -896,8 +851,7 @@ async fn test_register_rejected_when_per_ip_cap_reached() {
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    // max_entries unlimited but max_per_ip=1. Both connections come
-    // from 127.0.0.1 (the test fixture binds to loopback), so the
+    // Unlimited entries but max_per_ip=1; both connections are loopback, so the
     // second register from the same source IP must fail.
     let state = Arc::new(TrackerState::new(
         Registry::new(0, 1),
@@ -925,8 +879,8 @@ async fn test_register_rejected_when_per_ip_cap_reached() {
             error_kind,
             ..
         } => {
-            // Per the design doc, per-IP rejection reuses `capacity` —
-            // distinguished only by the human-readable `error` message.
+            // Per-IP rejection reuses `capacity`, distinguished only by the
+            // human-readable `error` message.
             assert_eq!(error_kind.as_deref(), Some("capacity"));
         }
         other => panic!("expected capacity rejection, got {other:?}"),
@@ -937,12 +891,7 @@ async fn test_register_rejected_when_per_ip_cap_reached() {
     drop(b_writer);
 }
 
-// =============================================================================
-// WebSocket roundtrip
-// =============================================================================
-
-/// Spawn a tracker that accepts WebSocket connections (TLS + WS upgrade
-/// + protocol). Returns the bound address and cert fingerprint.
+/// Spawn a tracker accepting WebSocket connections (TLS + WS upgrade + protocol).
 async fn spawn_ws_only_tracker(
     data_dir: &std::path::Path,
     state: Arc<TrackerState>,
@@ -997,11 +946,8 @@ async fn test_websocket_handshake_register_list_roundtrip() {
     let (server_addr, _expected_fingerprint) =
         spawn_ws_only_tracker(tmp.path(), Arc::clone(&state)).await;
 
-    // Client side: TCP → TLS → WebSocket upgrade. The same
-    // `WebSocketAdapter` from nexus-common works on both sides — it's
-    // a generic Stream+Sink adapter — so once we have the WS stream
-    // wrapped, the rest of the protocol code is identical to the TCP
-    // path's.
+    // TCP → TLS → WebSocket upgrade. Once wrapped in nexus-common's generic
+    // `WebSocketAdapter`, the rest of the protocol code is identical to the TCP path.
     let connector = build_test_client();
     let tcp = TcpStream::connect(server_addr).await.expect("connect");
     let server_name =
@@ -1019,7 +965,6 @@ async fn test_websocket_handshake_register_list_roundtrip() {
     let mut reader = FrameReader::new(read);
     let mut writer = FrameWriter::new(write);
 
-    // Drive the protocol exactly like the TCP tests.
     send_client_message(
         &mut writer,
         &ClientMessage::Handshake {
@@ -1038,7 +983,6 @@ async fn test_websocket_handshake_register_list_roundtrip() {
         other => panic!("expected successful HandshakeResponse, got {other:?}"),
     }
 
-    // Register over WS.
     send_tracker_client(&mut writer, &make_register("WS BBS", 9)).await;
     match read_tracker_server(&mut reader).await {
         TrackerServerMessage::TrackerServerRegisterResponse {
@@ -1051,8 +995,8 @@ async fn test_websocket_handshake_register_list_roundtrip() {
         other => panic!("expected successful register, got {other:?}"),
     }
 
-    // Verify the entry is in the registry — proving the server-side
-    // adapter delivered our bytes intact through the WS layer.
+    // Entry in the registry proves the server-side adapter delivered our bytes
+    // intact through the WS layer.
     {
         let registry = state.registry.lock().expect("registry mutex");
         let listing = registry.list();
@@ -1062,12 +1006,7 @@ async fn test_websocket_handshake_register_list_roundtrip() {
     }
 }
 
-// =============================================================================
-// Rate limiting
-// =============================================================================
-
-/// Argon2id PHC hash of "secret", suitable for use as a tracker password
-/// hash in tests that need a gated tracker.
+/// Argon2id PHC hash of "secret" for tests needing a gated tracker.
 fn hash_secret() -> String {
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
@@ -1076,8 +1015,7 @@ fn hash_secret() -> String {
         .to_string()
 }
 
-/// Build a `TrackerServerRegister` with an explicit password (overriding
-/// `make_register`'s `password: None`).
+/// `make_register` with an explicit password (default is `None`).
 fn make_register_with_password(name: &str, password: Option<&str>) -> TrackerClientMessage {
     let mut msg = make_register(name, 0);
     if let TrackerClientMessage::TrackerServerRegister {
@@ -1095,9 +1033,8 @@ async fn test_register_auth_failure_rate_limit_rejects_after_burst() {
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    // Gated tracker, auth-failure capacity 2. Two wrong-password attempts
-    // burn the bucket; the third (and any further attempts, even with the
-    // CORRECT password) get rate_limited until refill.
+    // Gated tracker, auth-failure capacity 2: two wrong passwords burn the
+    // bucket; the third (even with the correct password) is rate_limited.
     let state = Arc::new(TrackerState::new(
         Registry::new(0, 0),
         Some(hash_secret()),
@@ -1109,7 +1046,6 @@ async fn test_register_auth_failure_rate_limit_rejects_after_burst() {
     ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
-    // Three wrong-password attempts in succession.
     for attempt in 1..=3 {
         let (mut r, mut w) = connect_and_handshake(server_addr).await;
         send_tracker_client(&mut w, &make_register_with_password("Brute", Some("wrong"))).await;
@@ -1135,8 +1071,8 @@ async fn test_register_auth_failure_rate_limit_rejects_after_burst() {
         }
     }
 
-    // Even the CORRECT password is rate-limited until the bucket refills:
-    // an attacker who triggered the limit can't sneak through with a guess.
+    // The correct password is also rate-limited until refill: an attacker who
+    // triggered the limit can't sneak a guess through.
     let (mut r, mut w) = connect_and_handshake(server_addr).await;
     send_tracker_client(
         &mut w,
@@ -1162,9 +1098,8 @@ async fn test_correct_password_does_not_burn_auth_failure_tokens() {
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    // Gated tracker, auth-failure capacity 1. Successful auths must NOT
-    // debit the bucket — otherwise the second correct attempt below
-    // would already see an empty bucket and be rate-limited.
+    // Gated tracker, auth-failure capacity 1: successful auths must NOT debit
+    // the bucket, or the second correct attempt would already be rate-limited.
     let state = Arc::new(TrackerState::new(
         Registry::new(0, 0), // unlimited entries
         Some(hash_secret()),
@@ -1176,10 +1111,8 @@ async fn test_correct_password_does_not_burn_auth_failure_tokens() {
     ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
-    // Three successful registrations across three fresh connections.
-    // None should consume the auth-failure bucket. Use distinct names
-    // so the per-IP cap (which we left at default 0 = unlimited via
-    // Registry::new(0, 0)) isn't a confound either.
+    // Three successful registrations on fresh connections, none consuming the
+    // auth-failure bucket. Distinct names avoid the per-IP cap as a confound.
     for i in 1..=3 {
         let (mut r, mut w) = connect_and_handshake(server_addr).await;
         send_tracker_client(
@@ -1191,14 +1124,12 @@ async fn test_correct_password_does_not_burn_auth_failure_tokens() {
             TrackerServerMessage::TrackerServerRegisterResponse { success: true, .. } => {}
             other => panic!("attempt {i}: expected success, got {other:?}"),
         }
-        // Drop the connection so the next iteration is a fresh registration.
         drop(r);
         drop(w);
     }
 
-    // The bucket still has its single token: the next WRONG password
-    // gets unauthorized (consumes the token). If any prior success had
-    // burned a token, this would already be rate_limited.
+    // The bucket still has its single token, so the next wrong password gets
+    // unauthorized (not rate_limited, which would mean a success had burned it).
     let (mut r, mut w) = connect_and_handshake(server_addr).await;
     send_tracker_client(
         &mut w,
@@ -1224,9 +1155,8 @@ async fn test_connection_rate_limit_drops_excess_connections() {
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    // Connection rate capacity 1: the first TCP connect succeeds (and
-    // its TLS handshake completes), the second is dropped pre-TLS by
-    // the accept loop.
+    // Connection rate capacity 1: the first TCP connect completes TLS; the
+    // second is dropped pre-TLS by the accept loop.
     let state = Arc::new(TrackerState::new(
         Registry::new(0, 0),
         None,
@@ -1238,13 +1168,11 @@ async fn test_connection_rate_limit_drops_excess_connections() {
     ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
-    // First connection: succeeds and we can do a normal handshake.
+    // First connection: normal handshake succeeds.
     let (mut _r, mut _w) = connect_and_handshake(server_addr).await;
 
-    // Second connection: TCP accepts, but the server drops the stream
-    // before TLS, so the client's TLS handshake fails. The exact error
-    // varies by platform (EOF / unexpected close); we only assert that
-    // the TLS handshake doesn't *succeed*.
+    // Second connection: TCP accepts but the server drops the stream pre-TLS, so
+    // the client's TLS handshake fails (exact error is platform-dependent).
     let connector = build_test_client();
     let stream = TcpStream::connect(server_addr).await.expect("tcp connect");
     let server_name =
@@ -1261,9 +1189,8 @@ async fn test_refresh_too_soon_rejected_and_disconnected() {
     ensure_crypto_provider();
     let tmp = tempfile::tempdir().expect("tempdir");
 
-    // Open tracker (no auth gates) so the only thing in our way is
-    // the per-entry refresh floor — set to the production default here
-    // (other tests pass `Duration::ZERO` to disable it).
+    // Open tracker so the only gate is the per-entry refresh floor, set to the
+    // production default here (other tests pass `Duration::ZERO` to disable it).
     let state = Arc::new(TrackerState::new(
         Registry::new(0, 0),
         None,
@@ -1275,7 +1202,7 @@ async fn test_refresh_too_soon_rejected_and_disconnected() {
     ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
-    // Phase 1: open a long-lived connection and register.
+    // Phase 1: register on a long-lived connection.
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(&mut s_writer, &make_register("Throttled BBS", 5)).await;
     match read_tracker_server(&mut s_reader).await {
@@ -1283,10 +1210,9 @@ async fn test_refresh_too_soon_rejected_and_disconnected() {
         other => panic!("expected initial register to succeed, got {other:?}"),
     }
 
-    // Phase 2: immediate refresh on the same connection. Floor is 60s;
-    // we're well under that. The tracker must reject with
-    // `error_kind: rate_limited` AND close the connection — a client
-    // refreshing > 2× the proper rate is broken or malicious.
+    // Phase 2: an immediate refresh is well under the floor, so the tracker
+    // rejects with `rate_limited` AND closes the connection (such a client is
+    // broken or malicious).
     send_tracker_client(&mut s_writer, &make_register("Throttled BBS", 6)).await;
     match read_tracker_server(&mut s_reader).await {
         TrackerServerMessage::TrackerServerRegisterResponse {
@@ -1301,21 +1227,14 @@ async fn test_refresh_too_soon_rejected_and_disconnected() {
         other => panic!("expected rate_limited rejection, got {other:?}"),
     }
 
-    // The connection must be closed and the entry unregistered (drop
-    // guard runs as the connection task exits). `wait_for_registry_len`
-    // polls until the registry shows 0 entries.
+    // The closed connection delists the entry via the drop guard.
     drop(s_reader);
     drop(s_writer);
     wait_for_registry_len(&state, 0).await;
 }
 
-// =============================================================================
-// Compatibility filter (TrackerServerList)
-// =============================================================================
-
-/// Build a `TrackerServerRegister` with an explicit `version` (overriding
-/// `make_register`'s `"0.8.4"` default). Used by the compat-filter tests
-/// to plant entries at varying versions.
+/// `make_register` with an explicit `version` (default `"0.8.4"`); plants
+/// entries at varying versions for the compat-filter tests.
 fn make_register_with_version(name: &str, version: &str) -> TrackerClientMessage {
     let mut msg = make_register(name, 0);
     if let TrackerClientMessage::TrackerServerRegister {
@@ -1344,9 +1263,8 @@ async fn test_register_rejects_malformed_version() {
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
-    // "garbage" is under MAX_VERSION_LENGTH but isn't valid semver.
-    // The pre-tightening handler accepted this because it only checked
-    // length; the post-tightening handler rejects with `error_kind: invalid`.
+    // "garbage" is under MAX_VERSION_LENGTH but not valid semver; the handler
+    // validates semver shape end-to-end and rejects with `error_kind: invalid`.
     send_tracker_client(
         &mut s_writer,
         &make_register_with_version("Garbage Version BBS", "garbage"),
@@ -1426,10 +1344,8 @@ async fn test_list_filters_incompatible_versions() {
     ));
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
-    // Plant three BBSes at three different versions: 0.7.x (older
-    // minor), 0.8.x (matches the test client), and 0.9.x (newer
-    // minor). Pre-1.0, only same-minor is compatible per
-    // `check_compatibility`.
+    // Plant three BBSes at 0.7.x / 0.8.x (client's minor) / 0.9.x. Pre-1.0,
+    // only same-minor is compatible per `check_compatibility`.
     let registers = [
         make_register_with_version("Old BBS", "0.7.5"),
         make_register_with_version("Match BBS", "0.8.4"),
@@ -1448,10 +1364,9 @@ async fn test_list_filters_incompatible_versions() {
         server_conns.push((s_reader, s_writer));
     }
 
-    // Wait for all three entries to be registered.
     wait_for_registry_len(&state, 3).await;
 
-    // Query as a 0.8.x client. Only "Match BBS" should come back.
+    // Query as a 0.8.x client; only the same-minor "Match BBS" should return.
     let (mut c_reader, mut c_writer) = connect_and_handshake(server_addr).await;
     send_tracker_client(
         &mut c_writer,
@@ -1476,12 +1391,7 @@ async fn test_list_filters_incompatible_versions() {
     }
 }
 
-// =============================================================================
-// Field validation (TrackerServerRegister)
-// =============================================================================
-
-/// Build a `TrackerServerRegister` with a custom `name` (overriding
-/// `make_register`'s default). Used by field-validation tests.
+/// `make_register` with a custom `name`.
 fn make_register_with_name(name: &str) -> TrackerClientMessage {
     let mut msg = make_register("placeholder", 0);
     if let TrackerClientMessage::TrackerServerRegister {
@@ -1493,7 +1403,7 @@ fn make_register_with_name(name: &str) -> TrackerClientMessage {
     msg
 }
 
-/// Build a `TrackerServerRegister` with a custom `description`.
+/// `make_register` with a custom `description`.
 fn make_register_with_description(description: Option<&str>) -> TrackerClientMessage {
     let mut msg = make_register("Description Test BBS", 0);
     if let TrackerClientMessage::TrackerServerRegister {
@@ -1506,7 +1416,7 @@ fn make_register_with_description(description: Option<&str>) -> TrackerClientMes
     msg
 }
 
-/// Build a `TrackerServerRegister` with a custom `port`.
+/// `make_register` with a custom `port`.
 fn make_register_with_port(port: u16) -> TrackerClientMessage {
     let mut msg = make_register("Port Test BBS", 0);
     if let TrackerClientMessage::TrackerServerRegister {
@@ -1518,7 +1428,7 @@ fn make_register_with_port(port: u16) -> TrackerClientMessage {
     msg
 }
 
-/// Build a `TrackerServerRegister` with an explicit `websocket_port`.
+/// `make_register` with an explicit `websocket_port`.
 fn make_register_with_websocket_port(websocket_port: Option<u16>) -> TrackerClientMessage {
     let mut msg = make_register("WS Port Test BBS", 0);
     if let TrackerClientMessage::TrackerServerRegister {
@@ -1531,7 +1441,7 @@ fn make_register_with_websocket_port(websocket_port: Option<u16>) -> TrackerClie
     msg
 }
 
-/// Build a `TrackerServerRegister` with an explicit `locale` field.
+/// `make_register` with an explicit `locale`.
 fn make_register_with_locale(locale: &str) -> TrackerClientMessage {
     let mut msg = make_register("Locale Test BBS", 0);
     if let TrackerClientMessage::TrackerServerRegister {
@@ -1560,8 +1470,8 @@ async fn test_register_rejects_empty_name() {
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
-    // Whitespace-only name passes the previous length-only check but is
-    // rejected by `validate_server_name` (Empty after trim).
+    // Whitespace-only name passes length but `validate_server_name` rejects it
+    // (Empty after trim).
     send_tracker_client(&mut s_writer, &make_register_with_name("   ")).await;
     match read_tracker_server(&mut s_reader).await {
         TrackerServerMessage::TrackerServerRegisterResponse {
@@ -1594,8 +1504,8 @@ async fn test_register_rejects_newline_in_description() {
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
-    // Embedded newline passes length but is rejected by
-    // `validate_server_description::ContainsNewlines`.
+    // Embedded newline passes length but `validate_server_description` rejects it
+    // (ContainsNewlines).
     send_tracker_client(
         &mut s_writer,
         &make_register_with_description(Some("Line one\nLine two")),
@@ -1694,8 +1604,8 @@ async fn test_register_rejects_locale_with_control_char() {
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     let (mut s_reader, mut s_writer) = connect_and_handshake(server_addr).await;
-    // Embedded null byte passes length but is rejected by validate_locale
-    // (LocaleError::InvalidCharacters).
+    // Embedded null byte passes length but `validate_locale` rejects it
+    // (InvalidCharacters).
     send_tracker_client(&mut s_writer, &make_register_with_locale("en\0US")).await;
     match read_tracker_server(&mut s_reader).await {
         TrackerServerMessage::TrackerServerRegisterResponse {
@@ -1727,9 +1637,8 @@ async fn test_list_rejects_empty_client_version() {
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     let (mut c_reader, mut c_writer) = connect_and_handshake(server_addr).await;
-    // Empty version is rejected as a typed `TrackerServerListResponse`
-    // failure (separate from a missing `version` field, which would be
-    // a frame-level deserialization error).
+    // Empty version → typed `TrackerServerListResponse` failure, distinct from a
+    // missing `version` field (a frame-level deserialization error).
     send_tracker_client(
         &mut c_writer,
         &TrackerClientMessage::TrackerServerList {
@@ -1773,12 +1682,9 @@ async fn test_list_rejects_over_cap_client_version() {
     let (server_addr, _) = spawn_multi_tracker(tmp.path(), Arc::clone(&state)).await;
 
     let (mut c_reader, mut c_writer) = connect_and_handshake(server_addr).await;
-    // A version string longer than `MAX_VERSION_LENGTH` (32 bytes) but
-    // still under the per-message frame cap. Validator should reject as
-    // `VersionError::TooLong` and the handler should produce a typed
-    // `TrackerServerListResponse` with `error_kind: "invalid"` —
-    // separate path from the "missing field" frame-level error and the
-    // "unparseable semver" path covered by other tests.
+    // Over `MAX_VERSION_LENGTH` but under the frame cap → `VersionError::TooLong`
+    // → typed list failure with `error_kind: invalid`. Distinct from the missing-
+    // field and unparseable-semver paths covered by other tests.
     let over_cap_version = "0.8.4".to_string() + &"a".repeat(64);
     send_tracker_client(
         &mut c_writer,

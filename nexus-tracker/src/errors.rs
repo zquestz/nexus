@@ -1,31 +1,13 @@
-//! Translated error helpers for tracker handlers
-//!
-//! Each helper returns a localized string for a single `err-tracker-*`
-//! key. Keep these helpers thin so call sites read uniformly:
-//!
-//! ```ignore
-//! return Err(err_tracker_unauthorized(locale));
-//! ```
-//!
-//! A few helpers cover protocol-level error_kinds the connection task
-//! doesn't differentiate yet; those carry an `#[allow(dead_code)]`
-//! attribute and a comment naming the future call site.
+//! Thin translated-string helpers, one per `err-tracker-*` key.
 
 use crate::i18n::{t, t_args};
 
-// =============================================================================
-// Authentication
-// =============================================================================
-
-/// "Wrong or missing password" — sent when registration or listing is
-/// gated and the peer's password is missing or doesn't verify.
+/// Sent when a gated flow's password is missing or doesn't verify.
 pub fn err_tracker_unauthorized(locale: &str) -> String {
     t(locale, "err-tracker-unauthorized")
 }
 
-// =============================================================================
-// Field validation (error_kind: invalid)
-// =============================================================================
+// Field-validation errors below all map to `error_kind: invalid`.
 
 /// Cert fingerprint did not match the canonical 95-byte uppercase form.
 pub fn err_tracker_fingerprint_invalid(locale: &str) -> String {
@@ -107,10 +89,8 @@ pub fn err_tracker_version_too_long(locale: &str, max_length: usize) -> String {
     )
 }
 
-/// `version` was empty, malformed, or did not parse as semver.
-/// Used by both `TrackerServerRegister` (validates the registering
-/// server's version) and `TrackerServerList` (validates the
-/// requesting client's version, used for compat filtering).
+/// `version` empty/malformed/non-semver. Used by both register (the
+/// server's version) and list (the client's, for compat filtering).
 pub fn err_tracker_version_invalid(locale: &str) -> String {
     t(locale, "err-tracker-version-invalid")
 }
@@ -141,35 +121,23 @@ pub fn err_tracker_websocket_port_zero(locale: &str) -> String {
     t(locale, "err-tracker-websocket-port-zero")
 }
 
-// =============================================================================
-// Rate / capacity
-// =============================================================================
-
 /// Per-IP rate limit hit (token bucket exhausted).
 pub fn err_tracker_rate_limited(locale: &str) -> String {
     t(locale, "err-tracker-rate-limited")
 }
 
-/// Tracker is at `--max-entries`; new registrations are refused until
-/// existing entries expire or disconnect.
+/// Tracker is at `--max-entries`.
 pub fn err_tracker_capacity(locale: &str) -> String {
     t(locale, "err-tracker-capacity")
 }
 
-/// Source IP has reached `--max-entries-per-ip` and cannot register
-/// another entry until one of its existing entries unregisters or
-/// stale-evicts.
+/// Source IP is at `--max-entries-per-ip`.
 pub fn err_tracker_per_ip_capacity(locale: &str) -> String {
     t(locale, "err-tracker-per-ip-capacity")
 }
 
-// =============================================================================
-// Protocol-level
-// =============================================================================
-
-/// JSON parse failed for an otherwise-known message envelope.
-/// Differentiated from `err_tracker_frame_error` (structural / framing
-/// violation) so registrants see an actionable diagnostic.
+/// JSON parse failed for an otherwise-known message envelope (distinct
+/// from `err_tracker_frame_error` so registrants get an actionable hint).
 pub fn err_tracker_malformed_message(locale: &str) -> String {
     t(locale, "err-tracker-malformed-message")
 }
@@ -200,17 +168,11 @@ pub fn err_tracker_protocol_version_mismatch(locale: &str, server: &str, client:
     )
 }
 
-/// Peer sent a message whose `type` field isn't recognized.
-/// Differentiated from `err_tracker_frame_error` so a peer connecting
-/// to the wrong port (e.g. BBS `Login` on the tracker port) sees the
-/// real cause.
+/// Unrecognized message `type` (distinct from `err_tracker_frame_error`
+/// so a wrong-port peer, e.g. BBS `Login`, sees the real cause).
 pub fn err_tracker_unknown_message_type(locale: &str) -> String {
     t(locale, "err-tracker-unknown-message-type")
 }
-
-// =============================================================================
-// Frame / transport
-// =============================================================================
 
 /// Magic bytes / framing structure violated.
 pub fn err_tracker_frame_error(locale: &str) -> String {
@@ -226,9 +188,8 @@ pub fn err_tracker_payload_too_large(locale: &str) -> String {
 mod tests {
     use super::*;
 
-    /// Smoke test: every English key bound to an `err_tracker_*` helper
-    /// resolves to a non-empty string. This catches typos that would
-    /// otherwise only surface at handler runtime as a missing-key panic.
+    /// Every `err_tracker_*` helper resolves to non-empty EN text,
+    /// catching key typos that would otherwise panic at runtime.
     #[test]
     fn test_all_helpers_resolve_in_english() {
         let cases: Vec<String> = vec![

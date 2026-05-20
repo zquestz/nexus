@@ -1,21 +1,10 @@
-//! DNS resolver abstraction for the address-validation step.
+//! DNS resolver abstraction for the address-validation step. `Resolver::lookup` resolves a
+//! registrant hostname for comparison against the peer's source IP. Production uses
+//! [`TokioResolver`]; tests inject a mock via `TrackerState::with_resolver`.
 //!
-//! `validate_and_authenticate` calls `Resolver::lookup` to resolve a
-//! registrant-supplied hostname to a set of `IpAddr`s for comparison
-//! against the peer's source IP. Production wires in [`TokioResolver`],
-//! which delegates to `tokio::net::lookup_host`. Tests substitute a
-//! mock implementation via [`crate::state::TrackerState::with_resolver`]
-//! so DNS-failure paths and resolved-address mismatches can be exercised
-//! deterministically without depending on the host's resolver state.
-//!
-//! Errors are surfaced as `io::Error`. The handler differentiates
-//! `io::ErrorKind::NotFound` (and an empty-result `Ok`) — both treated
-//! as definitive NXDOMAIN-style rejections — from any other error or a
-//! lookup timeout, which the handler treats as a transient resolver
-//! failure. Transient outcomes are mode-asymmetric: initial register
-//! hard-rejects (so an unverified entry can't slip in during a DNS
-//! blip), refresh soft-passes (so an established entry isn't evicted
-//! by the same blip).
+//! The handler treats NotFound / empty as definitive rejection and any other error / timeout as
+//! transient. Transient is mode-asymmetric: initial register hard-rejects (no unverified entry
+//! during a DNS blip), refresh soft-passes (don't evict an established entry over the same blip).
 
 use std::io;
 use std::net::IpAddr;
@@ -31,11 +20,8 @@ pub trait Resolver: Send + Sync {
     async fn lookup(&self, host: &str) -> io::Result<Vec<IpAddr>>;
 }
 
-/// Production resolver backed by `tokio::net::lookup_host`.
-///
-/// `lookup_host` requires a port to satisfy its `(host, port)` parsing,
-/// so we pass a sentinel `0` and discard the port from the resulting
-/// `SocketAddr`s — only the IP portion is meaningful for our match.
+/// Production resolver over `tokio::net::lookup_host`. Passes a sentinel port `0` (required by
+/// its `(host, port)` parsing) and discards it — only the IP matters here.
 pub struct TokioResolver;
 
 #[async_trait]

@@ -1,30 +1,13 @@
 //! In-memory registry of currently-registered Nexus servers.
 //!
-//! Each open tracker connection corresponds to exactly one entry, keyed
-//! by a monotonically-increasing [`ConnectionId`]. The registry enforces
-//! both a global capacity limit (`--max-entries`) and a per-source-IP
-//! cap (`--max-entries-per-ip`); for each, `0` is reserved for
-//! "unlimited".
+//! One entry per open tracker connection, keyed by [`ConnectionId`].
+//! Enforces a global cap (`--max-entries`) and per-source-IP cap
+//! (`--max-entries-per-ip`); `0` means unlimited for either.
 //!
-//! The registry is a dumb store. It accepts what the handler hands it
-//! and sorts listings alphabetically by `name` (case-insensitive,
-//! Unicode-aware). Address resolution (substituting the peer's IP when
-//! `entry.address` is empty) and password validation live in the
-//! handler — not here.
-//!
-//! ## Caller responsibilities
-//!
-//! - **Cross-task sharing:** [`Registry`] mutates through `&mut self`
-//!   and holds no internal lock. The use site wraps it in
-//!   `Arc<Mutex<Registry>>` so connection tasks can register / refresh /
-//!   unregister and the listing handler can take a snapshot.
-//! - **Stale eviction:** the registry does not track staleness; that's
-//!   the connection task's job. Each connection in `connection.rs`
-//!   reads frames with a `2 × refresh_interval` idle timeout, and on
-//!   expiry the task drops, the drop guard fires, and the entry is
-//!   unregistered. By construction, every entry is backed by a live
-//!   connection, so a centralized stale-eviction worker would have
-//!   nothing to do.
+//! Holds no lock; the use site wraps it in `Arc<Mutex<Registry>>`.
+//! Staleness is not tracked here: each connection reads frames with a
+//! `2 × refresh_interval` idle timeout and unregisters via drop guard on
+//! expiry, so every entry is backed by a live connection.
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -35,10 +18,8 @@ use nexus_common::tracker_protocol::ServerEntry;
 /// Identifier for a registered entry, assigned at register time.
 pub type ConnectionId = u64;
 
-/// A registered server entry plus the metadata the registry needs to
-/// manage its lifecycle: `peer_ip` for cap accounting and logging, and
-/// `last_refresh` for the per-entry refresh-floor check (rejects
-/// refreshes that arrive faster than half the protocol minimum).
+/// A registered entry plus lifecycle metadata: `peer_ip` for cap
+/// accounting, `last_refresh` for the per-entry refresh-floor check.
 #[derive(Clone, Debug)]
 pub struct RegisteredEntry {
     pub entry: ServerEntry,
@@ -46,11 +27,8 @@ pub struct RegisteredEntry {
     pub last_refresh: Instant,
 }
 
-/// Capacity-rejection variants from [`Registry::register`]. The handler
-/// maps these to the protocol-level `error_kind` and a translated
-/// human-readable message. Notably absent: `NotFound`, which `register`
-/// can never produce; the unknown-id case for [`Registry::refresh`] is
-/// reported via its `bool` return rather than as an error variant.
+/// Capacity-rejection variants from [`Registry::register`]; the handler
+/// maps each to a protocol `error_kind` plus translated message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RegisterError {
     /// Total tracker capacity (`--max-entries`) reached.
@@ -69,8 +47,7 @@ pub struct Registry {
 }
 
 impl Registry {
-    /// Construct a new registry with the given caps. Pass `0` for either
-    /// cap to disable the corresponding limit.
+    /// Construct a registry with the given caps (`0` disables a cap).
     #[must_use]
     pub fn new(max_entries: u32, max_per_ip: u32) -> Self {
         Self {
@@ -82,13 +59,8 @@ impl Registry {
         }
     }
 
-    /// Register a fresh entry, returning the new `ConnectionId`.
-    ///
-    /// # Errors
-    ///
-    /// - [`RegisterError::Capacity`] if the global cap is reached.
-    /// - [`RegisterError::PerIpCapacity`] if `peer_ip` is already at its
-    ///   per-IP cap.
+    /// Register a fresh entry, returning the new `ConnectionId`. Errors
+    /// when the global or per-IP cap is reached.
     pub fn register(
         &mut self,
         entry: ServerEntry,
@@ -106,9 +78,7 @@ impl Registry {
         }
 
         let id = self.next_id;
-        // 2^64 ids is ~584 billion years at 1 register/sec; wrap is
-        // theoretical. If it ever did happen the next id would silently
-        // collide with whatever still holds id 0 in the entries map.
+        // 2^64 ids ~= 584 billion years at 1/sec; wrap is theoretical.
         self.next_id = self.next_id.wrapping_add(1);
 
         self.entries.insert(
@@ -125,13 +95,8 @@ impl Registry {
     }
 
     /// Replace an existing entry's data and reset its `last_refresh`.
-    ///
-    /// Returns `true` if the entry was updated, `false` if `id` is not
-    /// present (the entry was unregistered or stale-evicted out of
-    /// band). Callers typically hold a drop guard that keeps the id
-    /// alive for the connection's lifetime, so the `false` path is
-    /// rarely reached — but the registry doesn't enforce that
-    /// convention, so we report rather than panic.
+    /// Returns `false` (rather than panicking) if `id` is gone — it may
+    /// have been unregistered out of band.
     pub fn refresh(&mut self, id: ConnectionId, entry: ServerEntry, now: Instant) -> bool {
         if let Some(registered) = self.entries.get_mut(&id) {
             registered.entry = entry;
@@ -142,9 +107,8 @@ impl Registry {
         }
     }
 
-    /// Read-only peek at an entry's `last_refresh`. Returns `None` if
-    /// `id` is not registered. Used by the refresh handler to enforce
-    /// the per-entry floor before paying for password verification.
+    /// An entry's `last_refresh`, or `None` if unregistered. The refresh
+    /// handler checks this floor before paying for password verification.
     #[must_use]
     pub fn last_refresh(&self, id: ConnectionId) -> Option<Instant> {
         self.entries.get(&id).map(|r| r.last_refresh)
@@ -157,9 +121,8 @@ impl Registry {
         }
     }
 
-    /// Snapshot of all entries, sorted alphabetically by `name`
-    /// (case-insensitive ascending). Order among entries with equal
-    /// names is unspecified.
+    /// Snapshot of all entries, sorted by `name` (case-insensitive
+    /// ascending). Order among equal names is unspecified.
     #[must_use]
     pub fn list(&self) -> Vec<ServerEntry> {
         let mut out: Vec<ServerEntry> = self.entries.values().map(|r| r.entry.clone()).collect();
@@ -167,20 +130,18 @@ impl Registry {
         out
     }
 
-    /// Number of registered entries.
     #[must_use]
     pub fn len(&self) -> usize {
         self.entries.len()
     }
 
-    /// `true` when no entries are registered.
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
-    /// `true` when the global cap has been reached. Always `false` when
-    /// `max_entries == 0` (unlimited).
+    /// `true` when the global cap is reached; always `false` when
+    /// unlimited (`max_entries == 0`).
     #[must_use]
     pub fn is_full(&self) -> bool {
         self.max_entries != 0 && self.entries.len() as u64 >= u64::from(self.max_entries)
@@ -202,9 +163,7 @@ mod tests {
     use std::net::Ipv4Addr;
     use std::time::Duration;
 
-    /// Build a `ServerEntry` for tests with sensible defaults; the only
-    /// field tests typically vary is `name` (for sort tests) or
-    /// `user_count` (for refresh tests).
+    /// Build a `ServerEntry` for tests; vary `name` or `user_count`.
     fn make_entry(name: &str) -> ServerEntry {
         ServerEntry {
             name: name.to_string(),
@@ -316,10 +275,9 @@ mod tests {
             t1,
         );
 
-        // last_refresh was reset to t1 (used by the refresh-floor check).
         assert_eq!(r.last_refresh(id), Some(t1));
 
-        // And the user_count update is reflected in the listing.
+        // user_count update is reflected in the listing.
         let list = r.list();
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].user_count, 12);
@@ -346,18 +304,14 @@ mod tests {
 
     #[test]
     fn test_failed_register_does_not_increment_per_ip_count() {
-        // Regression guard: a `register` rejected for `PerIpCapacity`
-        // must not have bumped the IP's count. If the increment moves
-        // ahead of the cap check in a future refactor, this test fails
-        // because after `unregister(id1)` the slot wouldn't be free.
+        // Regression guard: a register rejected for PerIpCapacity must
+        // not bump the IP count, else the slot wouldn't free after
+        // unregister(id1).
         let mut r = Registry::new(0, 1);
         let now = Instant::now();
         let id1 = r.register(make_entry("First"), ip(1), now).unwrap();
-        // Attempt a second register that must be rejected.
         let err = r.register(make_entry("Second"), ip(1), now).unwrap_err();
         assert_eq!(err, RegisterError::PerIpCapacity);
-        // After unregistering the first, the slot must be free —
-        // i.e., the rejected register did NOT leak a +1 into the count.
         r.unregister(id1);
         r.register(make_entry("Replacement"), ip(1), now)
             .expect("rejected register must not have bumped per-IP count");
@@ -396,15 +350,13 @@ mod tests {
     fn test_list_handles_unicode_names() {
         let mut r = Registry::new(0, 0);
         let now = Instant::now();
-        // Mix scripts; the Unicode-aware lowercase compare orders them
-        // by codepoint after lowercasing.
         r.register(make_entry("Æther"), ip(1), now).unwrap();
         r.register(make_entry("álpha"), ip(2), now).unwrap();
         r.register(make_entry("zeta"), ip(3), now).unwrap();
 
         let list = r.list();
-        // Just confirm we got all three without panicking — the exact
-        // collation order for cross-script Unicode isn't worth pinning.
+        // Confirm all three without panicking; cross-script collation
+        // order isn't worth pinning.
         assert_eq!(list.len(), 3);
     }
 

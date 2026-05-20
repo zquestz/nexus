@@ -1,122 +1,61 @@
 //! Tracker constants
 
-/// Subdirectory name within the platform data directory
-/// (e.g. `~/.local/share/nexus-trackerd/` on Linux).
 pub const DATA_DIR_NAME: &str = "nexus-trackerd";
 
-/// Log file prefix (used by daily rotation, e.g. `nexus-trackerd.2025-04-28`).
-/// Daemon-specific; passed in to `nexus_common::logging::init` and
-/// `purge_old_logs` so the shared logging stack picks the right files.
+/// Daemon-specific prefix passed to the shared logging stack for daily
+/// rotation (e.g. `nexus-trackerd.2025-04-28`).
 pub const LOG_FILE_PREFIX: &str = "nexus-trackerd";
 
-// =============================================================================
-// Startup banner
-// =============================================================================
-
-/// Tracker banner prefix (shown at startup; followed by the package version).
 pub const MSG_BANNER: &str = "Nexus Tracker v";
-
-/// Log level display
 pub const MSG_LOG_LEVEL: &str = "Log level: ";
-
-/// Log directory display
 pub const MSG_LOG_DIR: &str = "Log directory: ";
 
-/// Platform does not provide a data directory (extremely rare — Windows
-/// without `%APPDATA%`, Linux without `HOME`, etc.)
 pub const ERR_NO_DATA_DIR: &str = "Platform does not provide a data directory";
-
-/// `--data-dir` rejected because the supplied path is relative
 pub const ERR_DATA_DIR_NOT_ABSOLUTE: &str = "--data-dir must be an absolute path: ";
 
-/// Tracing subscriber initialization failed; daemon falls back to
-/// stderr-only output.
+/// Tracing subscriber init failed; daemon falls back to stderr-only output.
 pub const LOG_LOGGING_INIT_FAILED: &str = "Logging init failed";
 
-/// Data directory creation error
 pub const ERR_CREATE_DATA_DIR: &str = "Failed to create data directory: ";
 
-/// Data directory permissions error
 #[cfg(unix)]
 pub const ERR_SET_DATA_DIR_PERMS: &str = "Failed to set data directory permissions: ";
 
-// =============================================================================
-// Authentication (password hash files)
-// =============================================================================
-
-/// Filename for the registration password hash within the data directory.
 /// Presence of this file gates `TrackerServerRegister`; absence means open registration.
 pub const REGISTRATION_HASH_FILENAME: &str = "registration.hash";
 
-/// Filename for the listing password hash within the data directory.
 /// Presence of this file gates `TrackerServerList`; absence means open listing.
 pub const LISTING_HASH_FILENAME: &str = "listing.hash";
 
-/// Argon2 hashing failed (caller appends underlying error).
 pub const ERR_HASH_PASSWORD: &str = "Failed to hash password: ";
-
-/// Password hash file write failed (caller appends path and underlying error).
 pub const ERR_WRITE_PASSWORD_FILE: &str = "Failed to write password file: ";
-
-/// Password hash file read failed (caller appends path and underlying error).
 pub const ERR_READ_PASSWORD_FILE: &str = "Failed to read password file: ";
-
-/// Password hash file deletion failed (caller appends path and underlying error).
 pub const ERR_DELETE_PASSWORD_FILE: &str = "Failed to delete password file: ";
-
-/// Password prompt failed (caller appends underlying error).
 pub const ERR_PROMPT_PASSWORD: &str = "Failed to prompt for password: ";
-
-/// Reading a piped password from stdin failed (caller appends underlying error).
 pub const ERR_READ_STDIN: &str = "Failed to read password from stdin: ";
 
-/// Empty password rejected at set time (use `clear-password` to disable gating).
 pub const ERR_PASSWORD_EMPTY: &str =
     "Password cannot be empty (use `clear-password` to disable gating)";
 
-/// Password exceeds the maximum byte length (caller appends the limit).
 pub const ERR_PASSWORD_TOO_LONG: &str = "Password exceeds maximum length of ";
-
-/// Password confirmation did not match.
 pub const ERR_PASSWORD_MISMATCH: &str = "Passwords do not match";
-
-/// Stored password hash failed to parse as PHC (caller appends underlying error).
 pub const ERR_PARSE_PASSWORD_HASH: &str = "Failed to parse stored password hash: ";
 
-/// Log message: about to prompt for a new password (paired with `kind = %kind`).
 pub const LOG_PASSWORD_SETTING: &str = "Setting password";
-
-/// Log message: password successfully set (paired with `kind = %kind`).
 pub const LOG_PASSWORD_SET: &str = "Password set";
-
-/// Log message: password file successfully cleared (paired with `kind = %kind`).
 pub const LOG_PASSWORD_CLEARED: &str = "Password cleared";
-
-/// Log message: clear-password called but no file was present
-/// (paired with `kind = %kind`).
 pub const LOG_PASSWORD_NOT_PRESENT: &str = "No password configured";
 
-/// Log message: SIGHUP received and we're about to reload password hashes
-/// from disk.
 #[cfg(unix)]
 pub const LOG_SIGHUP_RECEIVED: &str = "SIGHUP received; reloading passwords";
 
-/// Log message: a single password kind was successfully reloaded
-/// (paired with `kind = %kind, gated = %bool`). Logged for both
-/// transitions (open → gated, gated → open) and for "still
-/// gated, hash possibly changed" reloads.
 pub const LOG_PASSWORD_RELOADED: &str = "Password reloaded";
 
-/// Log message: reload of one password kind failed (paired with
-/// `kind = %kind, err = %err`). Previous in-memory state is
+/// Reload of one password kind failed; previous in-memory state is
 /// preserved — the daemon does not crash on a typo in a hash file.
 pub const LOG_PASSWORD_RELOAD_FAILED: &str = "Password reload failed; previous state preserved";
 
-/// Auth-flow label: registration. Composed with a status label for the
-/// startup status line, e.g. `format!("{LABEL_REGISTRATION}: {STATUS_OPEN}")`.
 pub const LABEL_REGISTRATION: &str = "Registration";
-
-/// Auth-flow label: listing.
 pub const LABEL_LISTING: &str = "Listing";
 
 /// Auth-flow status: open (no hash file present, password not required).
@@ -125,39 +64,18 @@ pub const STATUS_OPEN: &str = "open";
 /// Auth-flow status: gated (hash file present, password required).
 pub const STATUS_GATED: &str = "gated";
 
-/// Prompt shown when setting a password (kind already announced via the
-/// preceding `Setting password` log line). Used only when stdin is a TTY.
 pub const PROMPT_NEW_PASSWORD: &str = "New password: ";
-
-/// Prompt shown to confirm the password just entered. TTY-only.
 pub const PROMPT_CONFIRM_PASSWORD: &str = "Confirm password: ";
 
-// =============================================================================
-// TLS certificate
-// =============================================================================
-
-/// TLS certificate filename within the data directory.
 pub const CERT_FILENAME: &str = "tracker.crt";
-
-/// TLS private key filename within the data directory.
 pub const KEY_FILENAME: &str = "tracker.key";
-
-/// Common Name embedded in the auto-generated self-signed certificate.
 pub const TLS_CERT_COMMON_NAME: &str = "Nexus Tracker";
-
-/// Status: certificate directory display (caller appends path; matches server style).
 pub const MSG_CERTIFICATES: &str = "Certificates: ";
 
-/// Rustls crypto provider installation failed (panics — required for any
-/// TLS operation). Should never fire in practice.
+/// Panics — rustls crypto provider is required for any TLS operation.
 pub const ERR_RUSTLS_PROVIDER: &str = "failed to install rustls crypto provider";
 
-// =============================================================================
-// Internationalization
-// =============================================================================
-
-/// Default locale (English) — re-exported from `nexus-common` so the
-/// value is defined once for the workspace.
+/// Re-exported from `nexus-common` so the value is defined once for the workspace.
 pub use nexus_common::DEFAULT_LOCALE;
 
 // Supported locale codes. Generic codes (`pt`, `zh`) normalize to a
@@ -177,436 +95,243 @@ pub const LOCALE_KOREAN: &str = "ko";
 pub const LOCALE_ITALIAN: &str = "it";
 pub const LOCALE_DUTCH: &str = "nl";
 
-/// FluentResource construction failed (panics — indicates a malformed
-/// `errors.ftl` baked into the binary, not an operator-actionable failure).
+/// Panics — a malformed `errors.ftl` baked into the binary is a build error,
+/// not operator-actionable.
 pub const ERR_I18N_PARSE_FTL: &str = "Failed to parse FTL file";
-
-/// FluentBundle resource registration failed (panics — same character
-/// as `ERR_I18N_PARSE_FTL`).
 pub const ERR_I18N_ADD_RESOURCE: &str = "Failed to add resource to bundle";
 
-/// Translation key missing in English (panics — programming error, the
-/// key was added to a call site without a corresponding `errors.ftl` entry).
+/// Panics — programming error: a call site referenced a key with no `errors.ftl` entry.
 pub const ERR_I18N_MISSING_KEY_ENGLISH: &str = "Missing translation key in English";
 
-/// Panic message: `DEFAULT_LOCALE` failed to parse as a `LanguageIdentifier`.
-/// Programmer-error: the constant is `"en"` and is hand-edited to be valid.
+/// Panics — `DEFAULT_LOCALE` (`"en"`) failed to parse; hand-edited to be valid.
 pub const ERR_DEFAULT_LOCALE_INVALID: &str = "DEFAULT_LOCALE is a valid locale";
 
-/// Log message: Fluent reported recoverable formatting errors while
-/// resolving a translation. Paired with `key = %key, errors = ?errors`.
 pub const LOG_TRANSLATION_ERRORS: &str = "Translation errors";
-
-/// Log message: a translation key was missing in the requested locale
-/// (falls back to English). Paired with `key = %key, locale = %locale`.
 pub const LOG_MISSING_TRANSLATION_KEY: &str = "Missing translation key";
 
-// =============================================================================
-// Listener / connection lifecycle
-// =============================================================================
-
-/// Tracker port listening display (caller appends bound `SocketAddr`).
 pub const MSG_LISTENING: &str = "Tracker port: ";
 
-/// WebSocket tracker port listening display (caller appends bound `SocketAddr`).
 /// Only emitted when `--websocket` is enabled.
 pub const MSG_WS_LISTENING: &str = "WebSocket tracker port: ";
 
-/// Operator-facing message printed on graceful shutdown.
 pub const MSG_SHUTDOWN_RECEIVED: &str = "Shutdown signal received";
-
-/// Listener bind failure prefix (caller appends `addr` and underlying error).
 pub const ERR_BIND_FAILED: &str = "Failed to bind to ";
 
-/// Maximum time the tracker waits for a `Handshake` after TLS completes.
-/// Spec §Timeouts: "TLS accepted, awaiting Handshake — 30 seconds."
+/// Spec §Timeouts: TLS accepted, awaiting Handshake — 30 seconds.
 pub const HANDSHAKE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Maximum time the tracker waits for the first role-establishing
-/// message (`TrackerServerRegister` or `TrackerServerList`) after a successful
-/// handshake. Spec §Timeouts: "Awaiting first role-establishing
-/// message after handshake — 30 seconds."
+/// Max wait for the first role-establishing message (`TrackerServerRegister`
+/// or `TrackerServerList`) after handshake. Spec §Timeouts: 30 seconds.
 pub const ROLE_ESTABLISH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// Log: TCP `accept()` returned an error (paired with `err = %e`).
 pub const LOG_ACCEPT_ERROR: &str = "Accept error";
 
-/// Log: connection error after TLS (frame, JSON, or unexpected disconnect).
+/// Connection error after TLS (frame, JSON, or unexpected disconnect).
 pub const LOG_CONNECTION_ERROR: &str = "Connection error";
 
-/// Log: TLS handshake itself failed (paired with `ip = %addr, err = %e`).
 pub const LOG_CONNECTION_ERROR_TLS: &str = "Connection error (TLS handshake)";
-
-/// Log: WebSocket upgrade itself failed (paired with `ip = %addr, err = %e`).
 pub const LOG_CONNECTION_ERROR_WS: &str = "Connection error (WebSocket handshake)";
 
-/// Log: peer sent a non-Handshake message before completing the handshake.
+/// Peer sent a non-Handshake message before completing the handshake.
 pub const LOG_HANDSHAKE_REQUIRED: &str = "Handshake: required";
 
-/// Log: handshake major version mismatch (paired with version fields).
 pub const LOG_HANDSHAKE_MAJOR_MISMATCH: &str = "Handshake: major version mismatch";
-
-/// Log: handshake minor version mismatch (paired with version fields).
 pub const LOG_HANDSHAKE_MINOR_MISMATCH: &str = "Handshake: minor version mismatch";
-
-/// Log: client minor version newer than server's (paired with version fields).
 pub const LOG_HANDSHAKE_CLIENT_TOO_NEW: &str = "Handshake: client too new";
 
-// Post-handshake dispatch / role-locking
-/// Log: a server connection successfully registered a fresh entry.
-/// Paired with `ip = %peer_addr.ip(), id = %connection_id, name = %name`.
 pub const LOG_REGISTER_NEW: &str = "TrackerServerRegister: new entry";
 
-/// Log: a server connection refreshed an existing entry.
-/// Paired with `id = %connection_id, user_count = %user_count`.
-///
-/// Intentionally logged at **debug** level (paired
-/// [`LOG_REGISTER_NEW`] is at info): refreshes fire every
-/// `refresh_interval` seconds per entry and would dominate operator
-/// log volume if elevated. Level should not be "fixed" without
-/// considering log-volume impact at fleet scale.
+/// Logged at **debug** (vs info for `LOG_REGISTER_NEW`): refreshes fire every
+/// `refresh_interval` per entry and would dominate operator logs at fleet
+/// scale if elevated.
 pub const LOG_REGISTER_REFRESH: &str = "TrackerServerRegister: refresh";
 
-/// Log: TrackerServerRegister rejected for an operator-actionable reason
-/// (validation failure, capacity, unauthorized). Paired with
-/// `ip = %peer_addr.ip(), reason = %short_str`.
 pub const LOG_REGISTER_REJECTED: &str = "TrackerServerRegister: rejected";
 
-// Address-validation rejection reasons (passed as `reason` to `LOG_REGISTER_REJECTED`).
-//
-// All address-related rejections share the single operator-facing
-// `err_tracker_address_invalid` i18n string; the per-reason granularity
-// is for tracker-operator log analysis (which check failed) rather than
-// for the registrant.
+// Address-validation rejection reasons (the `reason` field on
+// `LOG_REGISTER_REJECTED`). All share the single operator-facing
+// `err_tracker_address_invalid` i18n string; this per-reason granularity is
+// for operator log analysis (which check failed), not for the registrant.
 
-/// `address` failed `validate_public_address` (malformed hostname /
-/// embedded port / scheme / etc).
 pub const REASON_ADDRESS_INVALID: &str = "address_invalid";
-
-/// `address` parsed as an IP literal in the loopback range.
 pub const REASON_ADDRESS_LOOPBACK: &str = "address_loopback";
 
-/// `address` parsed as the unspecified IP (`0.0.0.0` / `::`) or
-/// anywhere in the broader `0.0.0.0/8` "this network" range
-/// (RFC 1122 §3.2.1.3) — both route to this telemetry bucket.
+/// Unspecified IP (`0.0.0.0` / `::`) or the broader `0.0.0.0/8` range
+/// (RFC 1122 §3.2.1.3) — both bucket here.
 pub const REASON_ADDRESS_UNSPECIFIED: &str = "address_unspecified";
 
-/// `address` parsed as an IP literal in the link-local range.
 pub const REASON_ADDRESS_LINK_LOCAL: &str = "address_link_local";
-
-/// `address` parsed as an IP literal in a multicast range.
 pub const REASON_ADDRESS_MULTICAST: &str = "address_multicast";
-
-/// `address` parsed as an IP literal in a documentation range.
 pub const REASON_ADDRESS_DOCUMENTATION: &str = "address_documentation";
-
-/// `address` parsed as the IPv4 limited broadcast (`255.255.255.255`).
 pub const REASON_ADDRESS_BROADCAST: &str = "address_broadcast";
 
-/// `address` parsed as an IP literal that didn't match the peer IP and
-/// the peer was not on a private network (so the LAN bypass didn't apply).
+/// IP literal that didn't match the peer IP, and peer wasn't on a private
+/// network (LAN bypass didn't apply).
 pub const REASON_ADDRESS_IP_LITERAL_MISMATCH: &str = "address_ip_literal_mismatch";
 
-/// Hostname `address` resolved to zero IPs (NXDOMAIN-equivalent).
+/// Hostname resolved to zero IPs (NXDOMAIN-equivalent).
 pub const REASON_ADDRESS_HOSTNAME_NOT_FOUND: &str = "address_hostname_not_found";
 
-/// Hostname `address` resolved successfully but none of the returned
-/// IPs matched the peer source IP.
+/// Hostname resolved but none of the IPs matched the peer source IP.
 pub const REASON_ADDRESS_HOSTNAME_NO_MATCH: &str = "address_hostname_no_match";
 
-/// Hostname `address` couldn't be resolved due to a transient
-/// resolver failure (timeout, network error). Distinguished from
-/// `REASON_ADDRESS_HOSTNAME_NOT_FOUND` (NXDOMAIN) so operators can
-/// tell intermittent DNS issues apart from "the host doesn't exist."
-/// Only emitted on initial register; refresh soft-passes transient
-/// errors so an established entry isn't evicted by a brief DNS blip.
+/// Transient resolver failure (timeout, network). Distinct from NXDOMAIN so
+/// operators can tell DNS blips from "host doesn't exist." Only emitted on
+/// initial register; refresh soft-passes so an established entry survives a blip.
 pub const REASON_ADDRESS_HOSTNAME_DNS_FAILED: &str = "address_hostname_dns_failed";
 
-// =============================================================================
-// Rejection reasons (non-address)
-// =============================================================================
-//
-// Operator-facing structured-log values for rejection causes that aren't
-// address-validation specific. Paired with the same `reason = %const`
-// field on `LOG_REGISTER_REJECTED` / `LOG_LIST_REJECTED`. Values may
-// equal an `ERROR_KIND_*` string but are tracked as separate constants
-// so the log-side namespace is distinct from the wire-side one.
+// Non-address rejection reasons — the `reason` field on
+// `LOG_REGISTER_REJECTED` / `LOG_LIST_REJECTED`. Values may equal an
+// `ERROR_KIND_*` string but are separate constants so the log-side namespace
+// stays distinct from the wire-side one.
 
-/// Registry was at its global capacity ceiling.
 pub const REASON_CAPACITY: &str = "capacity";
-
-/// Registry was at the per-source-IP cap (peer already has the maximum
-/// number of registered entries from its IP).
 pub const REASON_PER_IP_CAPACITY: &str = "per_ip_capacity";
 
-/// Refresh arrived before the per-entry refresh floor elapsed
-/// (server-side defense against compromised trackers asking for floods).
+/// Refresh arrived before the per-entry refresh floor elapsed (defense against
+/// a compromised tracker asking for floods).
 pub const REASON_REFRESH_TOO_SOON: &str = "refresh_too_soon";
 
-/// `locale` field exceeded `MAX_LOCALE_LENGTH`.
 pub const REASON_LOCALE_TOO_LONG: &str = "locale_too_long";
-
-/// `locale` field contained control characters. Distinct from
-/// `REASON_LOCALE_TOO_LONG` so operator logs separate length failures
-/// from format failures.
 pub const REASON_LOCALE_INVALID: &str = "locale_invalid";
-
-/// `password` field exceeded `MAX_PASSWORD_LENGTH`.
 pub const REASON_PASSWORD_TOO_LONG: &str = "password_too_long";
-
-/// `name` field exceeded `MAX_SERVER_NAME_LENGTH`.
 pub const REASON_NAME_TOO_LONG: &str = "name_too_long";
-
-/// `name` field was empty or whitespace-only.
 pub const REASON_NAME_EMPTY: &str = "name_empty";
-
-/// `name` field contained newline characters.
 pub const REASON_NAME_CONTAINS_NEWLINES: &str = "name_contains_newlines";
-
-/// `name` field contained non-newline control characters.
 pub const REASON_NAME_INVALID_CHARACTERS: &str = "name_invalid_characters";
-
-/// `description` field exceeded `MAX_SERVER_DESCRIPTION_LENGTH`.
 pub const REASON_DESCRIPTION_TOO_LONG: &str = "description_too_long";
-
-/// `description` field contained newline characters.
 pub const REASON_DESCRIPTION_CONTAINS_NEWLINES: &str = "description_contains_newlines";
-
-/// `description` field contained non-newline control characters.
 pub const REASON_DESCRIPTION_INVALID_CHARACTERS: &str = "description_invalid_characters";
-
-/// `address` field exceeded `MAX_PUBLIC_ADDRESS_LENGTH`.
 pub const REASON_ADDRESS_TOO_LONG: &str = "address_too_long";
-
-/// `version` field exceeded `MAX_VERSION_LENGTH`.
 pub const REASON_VERSION_TOO_LONG: &str = "version_too_long";
 
-/// `version` field was empty or did not parse as semver. Distinct
-/// from `REASON_VERSION_TOO_LONG` so operator logs separate length
-/// failures from format failures.
+/// `version` empty or not semver. Distinct from `REASON_VERSION_TOO_LONG` so
+/// logs separate length from format failures.
 pub const REASON_VERSION_INVALID: &str = "version_invalid";
 
-/// `port` field was zero. Port 0 is reserved and not valid for an
-/// outbound BBS service; rejecting at the tracker boundary keeps
-/// listings free of unreachable advertisements.
+/// `port` was zero. Port 0 is reserved / unreachable; rejecting at the boundary
+/// keeps listings free of dead advertisements.
 pub const REASON_PORT_ZERO: &str = "port_zero";
 
-/// `websocket_port` field was set to zero. Same rationale as
-/// `REASON_PORT_ZERO` — distinct constant so operator logs identify
-/// which port failed.
+/// `websocket_port` was zero — same rationale as `REASON_PORT_ZERO`, distinct
+/// constant so logs identify which port failed.
 pub const REASON_WEBSOCKET_PORT_ZERO: &str = "websocket_port_zero";
 
-/// `fingerprint` field failed `is_canonical_fingerprint`.
 pub const REASON_FINGERPRINT_INVALID: &str = "fingerprint_invalid";
-
-/// Auth-failure rate limiter denied the request.
 pub const REASON_RATE_LIMITED: &str = "rate_limited";
 
 /// Password (registration or listing) didn't verify against the stored hash.
 pub const REASON_UNAUTHORIZED: &str = "unauthorized";
 
-// =============================================================================
-// Disconnect-cause categorization
-// =============================================================================
-//
-// Operator-facing structured-log values for the `LOG_REGISTER_DISCONNECTED`
-// event, identifying *why* an established server connection disconnected.
-// Distinct from rejection reasons (which fire instead of registration); a
-// disconnect happens after a successful registration.
+// Disconnect-cause values for `LOG_REGISTER_DISCONNECTED` — why an established
+// server connection dropped (after a successful registration), distinct from
+// rejection reasons (which fire instead of registration).
 
-/// Peer closed the connection cleanly (TCP FIN). Normal shutdown.
 pub const REASON_DISCONNECT_CLEAN_CLOSE: &str = "clean_close";
 
 /// Stale-timeout fired (no refresh within 2× refresh_interval).
 pub const REASON_DISCONNECT_STALE_TIMEOUT: &str = "stale_timeout";
 
-/// Frame parser hit an error mid-stream.
 pub const REASON_DISCONNECT_FRAME_ERROR: &str = "frame_error";
-
-/// Refresh was rejected (e.g. validation failed mid-session); the
-/// per-connection task exits.
 pub const REASON_DISCONNECT_REJECTED: &str = "rejected";
 
 /// Peer sent the wrong message type for its locked role (e.g.
 /// `TrackerServerList` on an established server connection).
 pub const REASON_DISCONNECT_ROLE_VIOLATION: &str = "role_violation";
 
-/// Log: hostname address validation hit a transient resolver failure
-/// (timeout, network error). Always emitted at warn level when the
-/// transient is encountered. The downstream outcome is mode-dependent:
-/// refresh soft-passes (the entry stays registered), initial register
-/// hard-rejects (so a brand-new entry can't slip in unverified during
-/// a DNS blip) — so initial-register transients additionally fire
-/// `LOG_REGISTER_REJECTED` with `REASON_ADDRESS_HOSTNAME_DNS_FAILED`.
-/// Paired with `ip = %peer_addr.ip(), host = %ascii_host, err = %resolver_err`.
+/// Transient resolver failure during address validation; always warn-level.
+/// Outcome is mode-dependent: refresh soft-passes (entry stays), initial
+/// register hard-rejects (so a new entry can't slip in unverified during a
+/// DNS blip) and additionally fires `LOG_REGISTER_REJECTED`.
 pub const LOG_ADDRESS_DNS_TRANSIENT: &str =
     "TrackerServerRegister: address DNS lookup transient failure";
 
-/// Log: TrackerServerList received and a snapshot returned.
-/// Paired with `ip = %peer_addr.ip(), count = %returned_count`.
 pub const LOG_LIST_RESPONSE: &str = "TrackerServerList: response sent";
-
-/// Log: TrackerServerList rejected for an operator-actionable reason.
-/// Paired with `ip = %peer_addr.ip(), reason = %short_str`.
 pub const LOG_LIST_REJECTED: &str = "TrackerServerList: rejected";
 
-/// Log: a stored entry's `version` field could not be parsed as
-/// semver during the compatibility filter pass and was silently
-/// dropped from the response. The registration-side `validate_version`
-/// gate makes this unreachable in normal operation; this log fires
-/// only if a buggy registrant slipped past that gate.
-/// Paired with `ip = %peer_addr.ip(), name = %entry.name, version = %entry.version`.
+/// Stored entry's `version` failed to parse during the compat-filter pass and
+/// was dropped. The registration-side `validate_version` gate makes this
+/// unreachable in normal operation — fires only if a buggy registrant slipped past.
 pub const LOG_LIST_DROP_UNPARSEABLE_VERSION: &str =
     "TrackerServerList: dropping entry with unparseable version";
 
-/// Log: peer sent the wrong message type for its locked role
-/// (TrackerServerList on a server connection, or TrackerServerRegister on a
-/// client connection — but the latter is impossible since List
-/// connections close immediately). Paired with `ip = %peer_addr.ip()`.
+/// Peer sent the wrong message type for its locked role. (List connections
+/// close immediately, so register-on-client is impossible.)
 pub const LOG_ROLE_VIOLATION: &str = "Role violation";
 
-/// Log: a registered server connection closed; its entry has been
-/// removed from the registry. Paired with `ip = %peer_addr.ip(), id = %id`.
+/// A registered server connection closed; its entry was removed from the registry.
 pub const LOG_REGISTER_DISCONNECTED: &str =
     "TrackerServerRegister: connection closed; entry unregistered";
 
-/// Substring of the rustls "close_notify" warning we treat as benign
-/// (clients disconnecting without proper TLS shutdown).
+/// Benign rustls warning substring (client disconnected without TLS shutdown).
 pub const TLS_CLOSE_NOTIFY_MSG: &str = "peer closed connection without sending TLS close_notify";
 
-// =============================================================================
-// Signal handling
-// =============================================================================
-
-/// SIGTERM handler setup error (panics — required for graceful shutdown).
+/// Panics — handler required for graceful shutdown.
 #[cfg(unix)]
 pub const ERR_SIGNAL_SIGTERM: &str = "Failed to setup SIGTERM handler";
 
-/// SIGINT handler setup error (panics — required for graceful shutdown).
 #[cfg(unix)]
 pub const ERR_SIGNAL_SIGINT: &str = "Failed to setup SIGINT handler";
 
-/// Ctrl+C handler setup error on Windows (panics — required for graceful shutdown).
 #[cfg(not(unix))]
 pub const ERR_SIGNAL_CTRLC: &str = "Failed to setup Ctrl+C handler";
 
-/// SIGHUP handler installation error on Unix (panics — required for
-/// password reload). Should never fire in practice; if it does the
-/// platform's signal subsystem itself is broken.
+/// Panics — handler required for password reload.
 #[cfg(unix)]
 pub const ERR_SIGNAL_SIGHUP: &str = "SIGHUP handler installation failed";
 
-// =============================================================================
-// Mutex poisoning panic messages (programmer-error invariants)
-// =============================================================================
+// Mutex/lock poisoning panic messages. A poisoned lock means a prior holder
+// panicked mid-mutation, leaving the in-memory state unknown-shape and
+// unrecoverable.
 
-/// Panic message: the `Mutex<Registry>` on `TrackerState` is poisoned.
-/// A poisoned mutex means a previous holder panicked while mutating
-/// the registry; the in-memory state is unknown-shape and unrecoverable.
 pub const ERR_REGISTRY_MUTEX_POISONED: &str = "registry mutex poisoned";
-
-/// Panic message: the per-IP rate-limiter bucket map's `Mutex` is
-/// poisoned. A poisoned mutex means a previous holder panicked while
-/// updating the rate-limit state; the bucket counts are unknown-shape.
 pub const ERR_RATE_LIMITER_MUTEX_POISONED: &str = "rate limiter mutex poisoned";
-
-/// Panic message: the registration password hash `RwLock` is poisoned.
-/// A poisoned lock means a prior holder panicked while reading or
-/// swapping the hash, leaving the in-memory state unknown.
 pub const ERR_REGISTRATION_HASH_LOCK_POISONED: &str = "registration password hash lock poisoned";
-
-/// Panic message: the listing password hash `RwLock` is poisoned.
-/// Same reasoning as [`ERR_REGISTRATION_HASH_LOCK_POISONED`].
 pub const ERR_LISTING_HASH_LOCK_POISONED: &str = "listing password hash lock poisoned";
 
-/// Panic message used by `TrackerState::reload_one`, where the lock
-/// is selected dynamically (registration or listing). Distinct from
-/// the flow-specific constants above so the panic still tells the
-/// operator *which kind* failed via the `kind = %kind` log field that
-/// surrounds the panic site.
+/// Used by `TrackerState::reload_one` where the lock is selected dynamically;
+/// the surrounding `kind = %kind` log field identifies which kind failed.
 pub const ERR_PASSWORD_HASH_LOCK_POISONED: &str = "password hash lock poisoned";
 
-// =============================================================================
-// Rate limiting
-// =============================================================================
-
-/// How often the background task sweeps idle entries from the per-IP
-/// rate-limit maps. 60s is a tradeoff: short enough that long-lived
-/// daemons under disposable-IP attack don't accumulate too many stale
-/// entries between sweeps, long enough that the sweep itself is cheap.
-///
-/// Must be `< RATE_LIMITER_IDLE_TTL` — if the GC interval ever exceeds
-/// the idle TTL, eviction lags arbitrarily and idle buckets pile up
-/// past their nominal expiry.
+/// Sweep interval for idle per-IP rate-limit buckets. Must be
+/// `< RATE_LIMITER_IDLE_TTL`, else eviction lags and idle buckets pile up past
+/// expiry. 60s balances cheap sweeps against stale-entry accumulation.
 pub const RATE_LIMITER_GC_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// Bucket idle TTL — how long an IP's bucket sticks around after its
-/// last touch. Set well above the 60s refill window so we don't thrash
-/// (evict + re-create) under bursty but legitimate traffic, but not so
-/// long that disposable-IP spam wastes memory.
+/// Bucket idle TTL. Set well above the 60s refill window so legit bursty
+/// traffic doesn't thrash evict+recreate, but short enough that disposable-IP
+/// spam doesn't waste memory.
 pub const RATE_LIMITER_IDLE_TTL: std::time::Duration = std::time::Duration::from_secs(300);
 
-/// Log: a TCP connection was dropped pre-TLS because the source IP's
-/// connection-rate bucket is empty. Paired with `ip = %peer_addr.ip()`.
-/// Debug-level — this is expected, normal-operation noise.
+/// Debug-level — expected normal-operation noise.
 pub const LOG_CONNECTION_RATE_LIMITED: &str = "Connection rate-limited; dropping";
 
-/// Log: an auth attempt was rejected because the source IP's
-/// auth-failure-rate bucket is empty. Paired with `ip = %peer_addr.ip()`.
 pub const LOG_AUTH_RATE_LIMITED: &str = "Auth rate-limited";
 
-/// Minimum elapsed time between successive `TrackerServerRegister`
-/// refreshes on a single connection. Half the protocol-level minimum
-/// `refresh_interval` (120s) — anything faster than this is misbehavior
-/// by definition. Bounds Argon2 / mutex-contention abuse from a
-/// long-lived connection that's already past the connection-rate gate.
-/// Hardcoded (not operator-tunable) because it's a protocol-derived
-/// value, not a policy knob.
+/// Min interval between refreshes on one connection: half the protocol minimum
+/// `refresh_interval` (120s) — anything faster is misbehavior. Bounds
+/// Argon2/mutex-contention abuse. Hardcoded (protocol-derived, not a policy knob).
 pub const REFRESH_FLOOR_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
-/// Bound on the time spent resolving a registrant-supplied hostname
-/// during address validation. Lookups past this point are treated as
-/// transient — handler outcome is mode-asymmetric (initial register
-/// rejects, refresh soft-passes). 5 seconds: generous enough that
-/// healthy resolvers comfortably finish in milliseconds, short enough
-/// that a stuck resolver can't pin a connection task.
+/// Bound on hostname resolution during address validation. Past this is treated
+/// as transient (initial register rejects, refresh soft-passes). 5s: healthy
+/// resolvers finish in ms, a stuck one can't pin the connection task.
 pub const ADDRESS_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
-/// Stale-timeout multiplier applied to a server's `refresh_interval`.
-/// Per the tracker protocol spec (`docs/protocol/18-trackers.md`,
-/// "Stale timeout"), an entry is evicted after twice its refresh
-/// interval has passed without a refresh — this gives one missed
-/// refresh worth of slack for transient network blips before
-/// declaring the server gone. Hardcoded (protocol-derived, not a
-/// policy knob).
+/// Per spec (`docs/protocol/18-trackers.md`, "Stale timeout"), an entry is
+/// evicted after 2× its refresh_interval — one missed refresh of slack for
+/// network blips. Hardcoded (protocol-derived, not a policy knob).
 pub const STALE_TIMEOUT_REFRESH_MULTIPLIER: u32 = 2;
 
-/// Log: a `TrackerServerRegister` refresh arrived too soon after the
-/// previous accepted refresh on the same entry. Paired with
-/// `ip = %peer_addr.ip(), id = %connection_id`.
 pub const LOG_REFRESH_TOO_SOON: &str = "TrackerServerRegister: refresh too soon";
 
-/// Log: a refresh targeted an `id` no longer present in the registry.
-/// In normal operation this can't happen — the connection task's drop
-/// guard keeps the id alive — so seeing this means an out-of-band
-/// eviction (or a future stale-eviction worker) cleaned the slot
-/// while the connection was still active. Paired with
-/// `ip = %peer_addr.ip(), id = %connection_id`.
+/// Refresh targeted an `id` no longer in the registry. Can't happen normally
+/// (the task's drop guard keeps the id alive); seeing it means an out-of-band
+/// eviction cleaned the slot while the connection was still active.
 pub const LOG_REFRESH_GHOST_ID: &str = "TrackerServerRegister: refresh on unregistered id";
 
-// =============================================================================
-// UPnP (operator-facing)
-// =============================================================================
-
-/// UPnP setup failure log message (paired with structured `err = %e` field).
 pub const LOG_UPNP_SETUP_FAILED: &str = "UPnP setup failed";
-
-/// UPnP disabled continuation message printed alongside setup failure.
 pub const MSG_UPNP_CONTINUE: &str = "Tracker will continue without UPnP port forwarding.";
-
-/// UPnP manual configuration suggestion printed alongside setup failure.
 pub const MSG_UPNP_MANUAL: &str =
     "You may need to manually configure port forwarding on your router.";
-
-/// UPnP mapping removal failure log message (paired with `err = %e`).
 pub const LOG_UPNP_REMOVE_FAILED: &str = "Failed to remove UPnP port mapping";

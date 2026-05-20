@@ -1,12 +1,7 @@
-//! Internationalization support using Fluent
-//!
-//! Tracker errors localize via Fluent. 13 locales ship in
-//! `nexus-tracker/locales/`; unsupported locales fall back to English.
-//! Generic codes (`pt`, `zh`) normalize to a regional variant before
-//! lookup. A key missing in English panics — the assumption is that
-//! the call site can't reference a key that doesn't exist in the
-//! bundled FTL, so a missing-key panic flags a programming error, not
-//! an operator-actionable failure.
+//! Fluent i18n for tracker errors. 13 locales ship in
+//! `nexus-tracker/locales/`; unsupported locales (and generic `pt`/`zh`)
+//! fall back to a regional variant or English. A key missing in English
+//! panics — that's a programming error, not an operator-actionable one.
 
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource, FluentValue};
 use tracing::warn;
@@ -20,9 +15,8 @@ use crate::constants::{
     LOCALE_SPANISH, LOG_MISSING_TRANSLATION_KEY, LOG_TRANSLATION_ERRORS,
 };
 
-/// Resolve a translation key in the given locale. Falls back to English
-/// when the key is missing in the requested locale. Panics if the key
-/// is missing in English (programming error).
+/// Resolve `key` in `locale`, falling back to English. Panics if the
+/// key is missing in English.
 #[must_use]
 pub fn t(locale: &str, key: &str) -> String {
     let bundle = get_bundle(locale);
@@ -45,12 +39,9 @@ pub fn t(locale: &str, key: &str) -> String {
     panic!("{} '{}'", ERR_I18N_MISSING_KEY_ENGLISH, key);
 }
 
-/// Resolve a translation key with parameter substitution. Behaves like
-/// [`t`] for fallback semantics; arguments are matched against `$name`
-/// placeholders in the FTL pattern.
-///
-/// Integer-shaped values are passed as `FluentValue::Number` so Fluent
-/// numeric selectors (e.g., plural forms) match correctly.
+/// Like [`t`], with `$name` argument substitution. Integer-shaped
+/// values pass as `FluentValue::Number` so numeric selectors (plurals)
+/// match.
 #[must_use]
 pub fn t_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String {
     let bundle = get_bundle(locale);
@@ -82,10 +73,9 @@ pub fn t_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String {
     panic!("{} '{}'", ERR_I18N_MISSING_KEY_ENGLISH, key);
 }
 
-/// Build a Fluent bundle for the requested locale. Unsupported locales
-/// fall back to English. Each call constructs a fresh bundle —
-/// `FluentBundle` contains non-`Send` types, and the tracker's
-/// translation rate is low enough that caching isn't worth the complexity.
+/// Build a fresh Fluent bundle for `locale` (English fallback).
+/// Uncached: `FluentBundle` is non-`Send` and the translation rate is
+/// too low to justify the complexity.
 fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
     let lang: LanguageIdentifier = locale
         .parse()
@@ -93,15 +83,13 @@ fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
 
     let mut bundle = FluentBundle::new(vec![lang]);
 
-    // Normalize locale to actual file location.
     // Generic locales (`pt`, `zh`) map to their default regional variants.
     let normalized_locale = match locale {
-        LOCALE_PORTUGUESE => LOCALE_PORTUGUESE_BR, // "pt" -> "pt-BR"
-        LOCALE_CHINESE => LOCALE_CHINESE_CN,       // "zh" -> "zh-CN"
+        LOCALE_PORTUGUESE => LOCALE_PORTUGUESE_BR,
+        LOCALE_CHINESE => LOCALE_CHINESE_CN,
         other => other,
     };
 
-    // Load errors.ftl for this locale (fallback to English).
     let ftl_string = match normalized_locale {
         LOCALE_SPANISH => include_str!("../locales/es/errors.ftl"),
         LOCALE_JAPANESE => include_str!("../locales/ja/errors.ftl"),
@@ -156,8 +144,7 @@ mod tests {
 
     #[test]
     fn test_unknown_locale_falls_back_to_english() {
-        // An unsupported locale (anything not in the `match` in `get_bundle`)
-        // resolves via the `_` arm to the English bundle.
+        // Unsupported locale resolves via the `_` arm to the EN bundle.
         assert_eq!(
             t("xx", "err-tracker-unauthorized"),
             "Wrong or missing password"
@@ -170,8 +157,7 @@ mod tests {
         let _ = t("en", "err-tracker-this-key-does-not-exist");
     }
 
-    // Per-locale resolution: ensures each bundled `.ftl` is wired up in
-    // `get_bundle` and parses cleanly. Spot-checks one key per locale.
+    // Spot-check one key per locale: each `.ftl` is wired in and parses.
 
     #[test]
     fn test_translation_spanish() {
@@ -280,9 +266,7 @@ mod tests {
 
     #[test]
     fn test_t_args_substitutes_in_non_english_locale() {
-        // Sanity-check that argument substitution works in a non-English
-        // bundle and that the fallback path doesn't get triggered for a
-        // known-good key/locale pair.
+        // Argument substitution works in a non-EN bundle (no fallback).
         let result = t_args("es", "err-tracker-name-too-long", &[("max_length", "64")]);
         assert!(
             result.contains("nombre del servidor"),
@@ -294,16 +278,10 @@ mod tests {
         );
     }
 
-    // =========================================================================
-    // Catches the "added a key in EN but forgot to translate" mistake at test
-    // time, and the "renamed an EN key but the other locales still carry the
-    // old name" mistake too.
-    // =========================================================================
+    // The two key-coverage tests below catch untranslated-new-key and
+    // stale-renamed-key mistakes at test time.
 
-    /// Read a Fluent `.ftl` file and return the set of top-level message
-    /// keys defined in it. Uses the real `fluent_syntax::parser` so any
-    /// Fluent feature (multi-line values, message attributes, term refs,
-    /// etc.) is handled correctly.
+    /// Top-level message keys in a Fluent `.ftl`, via the real parser.
     fn collect_keys_in_ftl(path: &std::path::Path) -> std::collections::HashSet<String> {
         use fluent_syntax::ast::Entry;
         let content = std::fs::read_to_string(path)
@@ -319,8 +297,7 @@ mod tests {
             .collect()
     }
 
-    /// All non-EN locale codes the tracker supports. Mirrors the file
-    /// names under `nexus-tracker/locales/` (excluding `en`).
+    /// Non-EN locale codes, mirroring dirs under `locales/`.
     const NON_EN_LOCALES: &[&str] = &[
         "es", "fr", "de", "it", "nl", "pt-BR", "pt-PT", "ru", "ja", "zh-CN", "zh-TW", "ko",
     ];

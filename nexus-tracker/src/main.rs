@@ -21,9 +21,7 @@ use nexus_tracker::{
 
 #[tokio::main]
 async fn main() {
-    // Install rustls crypto provider before any TLS operation. Required
-    // because both tokio-rustls and our own TLS-using paths talk to
-    // rustls 0.23 which needs an explicit provider selection.
+    // rustls 0.23 needs an explicit crypto provider installed before any TLS op.
     tokio_rustls::rustls::crypto::ring::default_provider()
         .install_default()
         .expect(constants::ERR_RUSTLS_PROVIDER);
@@ -39,8 +37,7 @@ async fn main() {
         no_timestamps: cli.no_log_timestamps,
         log_file_prefix: constants::LOG_FILE_PREFIX,
     }) {
-        // `init` installs a stderr-only fallback subscriber before
-        // returning Err, so this warning still reaches the user.
+        // `init` installs a stderr-only fallback subscriber on Err, so this still reaches the user.
         warn!(err = %e, "{}", constants::LOG_LOGGING_INIT_FAILED);
     }
 
@@ -80,14 +77,7 @@ async fn main() {
     }
 }
 
-/// Prompt for (or read piped) and store a new password under the data
-/// directory.
-///
-/// When stdin is a TTY: prompts twice with `rpassword` (entry +
-/// confirmation, no echo). When stdin is piped: reads a single line of
-/// stdin verbatim (no confirmation — the operator is scripted). Hashes
-/// with Argon2id and writes the resulting PHC string to
-/// `<data-dir>/<kind>.hash` atomically with mode `0o600` on Unix.
+/// Prompt for (TTY) or read piped (scripted) a new password, hash it, and store it.
 fn run_set_password(data_dir: &Path, kind: PasswordKind) -> Result<(), String> {
     info!(kind = %kind, "{}", constants::LOG_PASSWORD_SETTING);
     let plain = read_new_password_input()?;
@@ -96,10 +86,7 @@ fn run_set_password(data_dir: &Path, kind: PasswordKind) -> Result<(), String> {
     Ok(())
 }
 
-/// Read a fresh password either from a TTY (with confirmation) or from
-/// piped stdin (single line). The TTY path is the operator-friendly
-/// interactive form; the pipe path lets ops scripts do
-/// `printf %s "$pw" | nexus-trackerd set-password registration`.
+/// Read a fresh password from a TTY (prompt twice, no echo) or piped stdin (single line, scripted).
 fn read_new_password_input() -> Result<String, String> {
     if std::io::stdin().is_terminal() {
         let plain = rpassword::prompt_password(constants::PROMPT_NEW_PASSWORD)
@@ -115,12 +102,11 @@ fn read_new_password_input() -> Result<String, String> {
         std::io::stdin()
             .read_line(&mut line)
             .map_err(|e| format!("{}{}", constants::ERR_READ_STDIN, e))?;
-        // Strip a single trailing CR / LF / CRLF added by `echo`/`printf`.
+        // Strip a single trailing CR / LF / CRLF.
         Ok(line.trim_end_matches(['\r', '\n']).to_string())
     }
 }
 
-/// Remove the stored password hash file for `kind`, if any.
 fn run_clear_password(data_dir: &Path, kind: PasswordKind) -> Result<(), String> {
     if auth::clear_password(data_dir, kind)? {
         info!(kind = %kind, "{}", constants::LOG_PASSWORD_CLEARED);
@@ -130,12 +116,8 @@ fn run_clear_password(data_dir: &Path, kind: PasswordKind) -> Result<(), String>
     Ok(())
 }
 
-/// Daemon-mode startup: ensure TLS material is on disk, build the TLS
-/// acceptor, load auth state, bind the listener, and run the accept
-/// loop until shutdown.
+/// Daemon-mode startup: TLS material, auth state, listeners, then the accept loop.
 async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), String> {
-    // Ensure cert + key exist. `ensure_cert` logs the fingerprint and
-    // generation messages internally.
     let tls_config = tls::TlsCertConfig {
         cert_filename: constants::CERT_FILENAME,
         key_filename: constants::KEY_FILENAME,
@@ -145,10 +127,7 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     let tls_acceptor = tls::build_acceptor(data_dir, tls_config)?;
     info!("{}{}", constants::MSG_CERTIFICATES, data_dir.display());
 
-    // Load password hashes at startup. The daemon refuses to start if a
-    // hash file exists but is unparseable. After startup, SIGHUP (Unix)
-    // reloads both files via `TrackerState::reload_passwords`; on
-    // Windows, password changes require a daemon restart.
+    // Refuse to start if a hash file exists but is unparseable. SIGHUP reloads them (Unix only).
     let registration_password_hash =
         auth::load_password_hash(data_dir, PasswordKind::Registration)?;
     let listing_password_hash = auth::load_password_hash(data_dir, PasswordKind::Listing)?;
@@ -176,10 +155,7 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     let local_addr = listener.local_addr().unwrap_or(bind_addr);
     info!("{}{}", constants::MSG_LISTENING, local_addr);
 
-    // Optional second listener for WebSocket clients. The same TLS
-    // acceptor + state are shared with the TCP listener; the WS
-    // entry point upgrades to WebSocket after TLS and then delegates
-    // to the same connection task.
+    // Optional WebSocket listener; shares the TLS acceptor + state with the TCP listener.
     let ws_listener = if cli.websocket {
         let ws_bind_addr = SocketAddr::new(cli.bind, cli.websocket_port);
         let listener = TcpListener::bind(ws_bind_addr)
@@ -192,7 +168,6 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
         None
     };
 
-    // Setup UPnP port forwarding if requested (forwards WS port only if enabled).
     let upnp = setup_upnp(
         cli.upnp,
         cli.bind,
@@ -209,8 +184,7 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     // No-op when both limiters are disabled (capacity 0). Aborted on shutdown.
     let rate_limiter_gc = spawn_rate_limiter_gc(Arc::clone(&state));
 
-    // Daily log-retention purge task. Returns `None` (no task) when file
-    // logging is disabled — purge is a no-op in that case.
+    // Daily log-retention purge; `None` when file logging is disabled.
     let log_purge = logging::spawn_purge_task(
         data_dir.to_path_buf(),
         cli.log_level,
@@ -218,10 +192,7 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
         constants::LOG_FILE_PREFIX.to_string(),
     );
 
-    // SIGHUP password-reload task (Unix only). On Windows, password
-    // changes require a daemon restart. Signal stream is installed
-    // synchronously here so a setup failure surfaces as a startup
-    // error to the operator instead of a runtime panic.
+    // SIGHUP password-reload (Unix only); installed synchronously so setup failure surfaces at startup.
     #[cfg(unix)]
     let sighup = spawn_sighup_handler(Arc::clone(&state), data_dir.to_path_buf())?;
 
@@ -245,12 +216,8 @@ async fn run_daemon_startup(data_dir: &Path, cli: &args::Cli) -> Result<(), Stri
     Ok(())
 }
 
-/// Install the SIGHUP listener synchronously, then spawn a long-lived
-/// task that recv()s on it and re-reads the password hash files on
-/// each receipt. Returns a `JoinHandle` so graceful shutdown can
-/// abort it. Returns an `Err` (with the operator-facing message) if
-/// the signal stream itself can't be installed — failure surfaces at
-/// startup rather than as a runtime panic on first SIGHUP.
+/// Install the SIGHUP listener synchronously (Err surfaces at startup), then spawn a task
+/// that re-reads the password hash files on each receipt.
 #[cfg(unix)]
 fn spawn_sighup_handler(
     state: Arc<TrackerState>,
@@ -263,15 +230,12 @@ fn spawn_sighup_handler(
         loop {
             sighup.recv().await;
             info!("{}", constants::LOG_SIGHUP_RECEIVED);
-            // `reload_passwords` does its own per-flow logging
-            // (success / failure with previous-state-preserved
-            // semantics).
+            // `reload_passwords` does its own per-flow logging.
             state.reload_passwords(&data_dir);
         }
     }))
 }
 
-/// Spawn the background rate-limiter GC task.
 fn spawn_rate_limiter_gc(state: Arc<TrackerState>) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(constants::RATE_LIMITER_GC_INTERVAL);
@@ -289,9 +253,8 @@ fn spawn_rate_limiter_gc(state: Arc<TrackerState>) -> tokio::task::JoinHandle<()
     })
 }
 
-/// Set up UPnP port forwarding for the tracker if `enabled`. On failure
-/// the daemon continues without forwarding (the operator log carries
-/// the diagnostic), mirroring the BBS server's non-fatal posture.
+/// Set up UPnP port forwarding if `enabled`. Non-fatal: on failure the daemon continues
+/// without forwarding (diagnostic logged), mirroring the BBS server.
 async fn setup_upnp(
     enabled: bool,
     bind: std::net::IpAddr,
@@ -317,29 +280,21 @@ async fn setup_upnp(
     }
 }
 
-/// Background tasks and resources owned by the daemon for the lifetime
-/// of `accept_loop`. Bundled so `accept_loop`'s signature stays narrow
-/// and its shutdown branch has a single `handles.shutdown().await`
-/// call instead of inlined teardown for each task.
+/// Background tasks and resources owned by the daemon for the lifetime of `accept_loop`,
+/// bundled so shutdown is a single `handles.shutdown().await`.
 struct DaemonHandles {
-    /// Periodic rate-limiter bucket sweep.
     rate_limiter_gc: tokio::task::JoinHandle<()>,
-    /// Daily log-retention purge task. `None` when file logging is
-    /// disabled (level == None or retention == 0).
+    /// `None` when file logging is disabled (level == None or retention == 0).
     log_purge: Option<tokio::task::JoinHandle<()>>,
-    /// SIGHUP password-reload listener. Unix only.
     #[cfg(unix)]
     sighup: tokio::task::JoinHandle<()>,
-    /// UPnP gateway plus its lease-renewal task. `None` when `--upnp`
-    /// is not set or setup failed. Listed last because shutdown's
-    /// only async / fallible step is the port-mapping removal here.
+    /// `None` when `--upnp` is unset or setup failed. Listed last: shutdown's only
+    /// async / fallible step is the port-mapping removal here.
     upnp: Option<(Arc<upnp::Gateway>, tokio::task::JoinHandle<()>)>,
 }
 
 impl DaemonHandles {
-    /// Stop every background task and release every external resource
-    /// (UPnP port mapping). Failures during teardown are best-effort —
-    /// the daemon is going down anyway.
+    /// Stop every background task and release the UPnP mapping. Best-effort — going down anyway.
     async fn shutdown(self) {
         self.rate_limiter_gc.abort();
         if let Some(handle) = self.log_purge {
@@ -356,9 +311,7 @@ impl DaemonHandles {
     }
 }
 
-/// Accept loop, terminated by SIGINT / SIGTERM (or Ctrl+C on Windows).
-/// Runs the TCP accept loop and (when `--websocket`) the WS accept
-/// loop concurrently; either exiting on shutdown drains both.
+/// Run the TCP and (when `--websocket`) WS accept loops concurrently until SIGINT / SIGTERM.
 async fn accept_loop(
     listener: TcpListener,
     ws_listener: Option<TcpListener>,
@@ -385,9 +338,8 @@ async fn accept_loop(
     }
 }
 
-/// Run the TCP accept loop. Each accepted connection is spawned as its
-/// own task; an `accept()` failure logs and brief-sleeps to avoid a
-/// busy loop on persistent errors (e.g., file-descriptor exhaustion).
+/// Run the TCP accept loop, one task per connection. `accept()` failures back off to
+/// avoid a busy loop on persistent errors (e.g., fd exhaustion).
 async fn run_tcp_accepts(
     listener: &TcpListener,
     tls_acceptor: TlsAcceptor,
@@ -397,9 +349,7 @@ async fn run_tcp_accepts(
     loop {
         match listener.accept().await {
             Ok((stream, peer_addr)) => {
-                // Fold IPv4-mapped IPv6 at the boundary so rate limiters and
-                // the registry key uniformly on the IPv4 form for dual-stack
-                // peers.
+                // Fold IPv4-mapped IPv6 so rate limiters and the registry key on one form.
                 let peer_addr = normalize_socket_addr(peer_addr);
                 let acceptor = tls_acceptor.clone();
                 let fingerprint = fingerprint.clone();
@@ -426,9 +376,8 @@ async fn run_tcp_accepts(
     }
 }
 
-/// Run the WebSocket accept loop when `--websocket` is enabled. When
-/// the listener is `None` (flag not set) this future never resolves —
-/// it sits in the `tokio::select!` and lets the TCP loop run.
+/// Run the WS accept loop. When the listener is `None` (flag unset) this future never
+/// resolves, letting the `tokio::select!` run the TCP loop alone.
 async fn run_optional_ws_accepts(
     listener: Option<TcpListener>,
     tls_acceptor: TlsAcceptor,
@@ -468,16 +417,9 @@ async fn run_optional_ws_accepts(
     }
 }
 
-/// Categorize and log a connection error from `handle_connection`.
-///
-/// - `close_notify` warnings (clients disconnecting abruptly) → silent.
-/// - `TLS handshake failed:` prefix (scanners, incompatible clients) → debug.
-/// - `WebSocket handshake failed:` prefix (HTTP-only crawlers, slow upgrades,
-///   timeout-elapsed peers) → debug.
-/// - everything else (frame errors, write failures, etc.) → error.
-///
-/// Mirrors `nexus-server`'s shared logger so the two daemons categorize
-/// connection noise the same way.
+/// Categorize a connection error: close_notify → silent; TLS / WS handshake-failed prefixes
+/// (scanners, crawlers, incompatible peers) → debug; everything else → error.
+/// Mirrors `nexus-server`'s shared logger.
 fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
     let msg = error.to_string();
     if msg.contains(constants::TLS_CLOSE_NOTIFY_MSG) {
@@ -494,7 +436,7 @@ fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
     error!(ip = %peer_addr, err = %error, "{}", constants::LOG_CONNECTION_ERROR);
 }
 
-/// Resolve when SIGINT/SIGTERM (Ctrl+C on Windows) is received.
+/// Resolve when SIGINT / SIGTERM (Ctrl+C on Windows) is received.
 async fn setup_shutdown_signal() {
     #[cfg(unix)]
     {
@@ -514,8 +456,7 @@ async fn setup_shutdown_signal() {
     }
 }
 
-/// Log whether the given auth flow is open (no hash file) or gated
-/// (hash file present).
+/// Log whether the given auth flow is open (no hash file) or gated.
 fn log_auth_status_value(kind: PasswordKind, gated: bool) {
     let label = match kind {
         PasswordKind::Registration => constants::LABEL_REGISTRATION,
@@ -529,13 +470,9 @@ fn log_auth_status_value(kind: PasswordKind, gated: bool) {
     info!("{}: {}", label, status);
 }
 
-/// Resolve the tracker data directory, preferring the CLI override when
-/// set and otherwise falling back to the platform default.
-///
-/// Panics only if the platform itself cannot supply a data directory
-/// (`dirs::data_dir()` returns `None` — e.g., Windows without `%APPDATA%`,
-/// Linux without `HOME`). This is platform-broken territory, not an
-/// operator-actionable error.
+/// Resolve the data directory: CLI override, else the platform default.
+/// Panics only if the platform can't supply one (no `%APPDATA%` / `HOME`) — platform-broken,
+/// not an operator-actionable error.
 fn resolve_data_dir(override_path: Option<PathBuf>) -> PathBuf {
     if let Some(p) = override_path {
         return p;
@@ -545,15 +482,9 @@ fn resolve_data_dir(override_path: Option<PathBuf>) -> PathBuf {
         .expect(constants::ERR_NO_DATA_DIR)
 }
 
-/// Create the data directory if it doesn't already exist and lock it to
-/// owner-only permissions (`DATA_DIR_MODE`) on Unix. The directory hosts
-/// the TLS private key, password hashes, and (by default) log files, so a
-/// permissive parent directory undercuts the per-file protections inside.
-///
-/// On Unix, the mode is set atomically at creation via `DirBuilder::mode`
-/// — there is no window where a fresh data directory is world-readable.
-/// `set_permissions` is then applied to handle the case where the
-/// directory pre-existed with the wrong mode.
+/// Create the data directory (holds TLS key, password hashes, logs) and lock it owner-only on Unix.
+/// Mode is set atomically at creation (no world-readable window); `set_permissions` then corrects
+/// a pre-existing dir with the wrong mode.
 fn ensure_data_dir(data_dir: &Path) -> Result<(), String> {
     let create_result = {
         #[cfg(unix)]
@@ -619,8 +550,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("create tempdir");
         let data_dir = tmp.path().join("data");
 
-        // Pre-create with world-readable perms to simulate a wrongly-
-        // permissioned data directory left over from a previous run.
+        // Pre-create world-readable to simulate a wrongly-permissioned dir from a prior run.
         std::fs::create_dir(&data_dir).expect("pre-create dir");
         std::fs::set_permissions(&data_dir, std::fs::Permissions::from_mode(0o755))
             .expect("set initial perms");

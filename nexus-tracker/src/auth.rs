@@ -1,15 +1,7 @@
-//! Tracker authentication (password hash storage)
+//! Tracker authentication: on-disk hashes for the optional `registration` and `listing` passwords.
 //!
-//! On-disk hashes for the optional `registration` and `listing` passwords.
-//! Each password lives in its own file under the data directory:
-//!
-//! - `<data-dir>/registration.hash`
-//! - `<data-dir>/listing.hash`
-//!
-//! Each file holds a single PHC-encoded Argon2id hash. The file's *presence*
-//! is the gating signal — absent file means that password is not required.
-//! Files are written atomically (temp file + rename) with mode `0o600` on
-//! Unix.
+//! Each is a single PHC-encoded Argon2id hash in its own `<data-dir>/<kind>.hash` file, written
+//! atomically with mode `0o600` on Unix. File *presence* is the gating signal — absent = not required.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,7 +18,7 @@ use crate::constants::{
     REGISTRATION_HASH_FILENAME,
 };
 
-/// Path to the password hash file for the given kind under `data_dir`.
+/// Path to the hash file for `kind` under `data_dir`.
 #[must_use]
 pub fn hash_path(data_dir: &Path, kind: PasswordKind) -> PathBuf {
     let filename = match kind {
@@ -36,14 +28,11 @@ pub fn hash_path(data_dir: &Path, kind: PasswordKind) -> PathBuf {
     data_dir.join(filename)
 }
 
-/// Hash `plain` with Argon2id and atomically write the PHC-encoded result
-/// to the hash file (writes to `<file>.tmp` then renames).
+/// Hash `plain` with Argon2id and atomically write the PHC result to the hash file.
 ///
 /// # Errors
 ///
-/// Returns an error string (already prefixed with the relevant operator-
-/// facing constant) if `plain` is empty, exceeds `MAX_PASSWORD_LENGTH`,
-/// hashing fails, or the file cannot be written.
+/// Errors if `plain` is empty, over `MAX_PASSWORD_LENGTH`, hashing fails, or the write fails.
 pub fn set_password(data_dir: &Path, kind: PasswordKind, plain: &str) -> Result<(), String> {
     if plain.is_empty() {
         return Err(ERR_PASSWORD_EMPTY.to_string());
@@ -62,12 +51,11 @@ pub fn set_password(data_dir: &Path, kind: PasswordKind, plain: &str) -> Result<
     write_hash_file(data_dir, kind, &hash)
 }
 
-/// Delete the hash file for `kind`. Returns `Ok(true)` if a file was
-/// actually removed and `Ok(false)` if no file was present (already cleared).
+/// Delete the hash file for `kind`. `Ok(true)` if removed, `Ok(false)` if already absent.
 ///
 /// # Errors
 ///
-/// Returns an error string if the file exists but cannot be deleted.
+/// Errors if the file exists but cannot be deleted.
 pub fn clear_password(data_dir: &Path, kind: PasswordKind) -> Result<bool, String> {
     let path = hash_path(data_dir, kind);
     match fs::remove_file(&path) {
@@ -82,16 +70,13 @@ pub fn clear_password(data_dir: &Path, kind: PasswordKind) -> Result<bool, Strin
     }
 }
 
-/// Load the stored PHC hash for `kind`, returning `None` if no file is
-/// present (which means the corresponding password is not required).
+/// Load the stored PHC hash for `kind`, `None` if no file (password not required).
 ///
 /// # Errors
 ///
-/// Returns an error string if the file exists but cannot be read, or if
-/// its contents don't parse as a valid PHC string. Validation here means
-/// startup refuses to proceed with a corrupt hash file, and the SIGHUP
-/// reload path can preserve the previous in-memory state on parse error
-/// rather than silently breaking every auth attempt.
+/// Errors if the file exists but can't be read or doesn't parse as PHC. Parsing at load lets
+/// startup refuse a corrupt file and the SIGHUP reload keep prior state, rather than silently
+/// failing every auth attempt.
 pub fn load_password_hash(data_dir: &Path, kind: PasswordKind) -> Result<Option<String>, String> {
     let path = hash_path(data_dir, kind);
     let raw = match fs::read_to_string(&path) {
@@ -106,21 +91,17 @@ pub fn load_password_hash(data_dir: &Path, kind: PasswordKind) -> Result<Option<
             ));
         }
     };
-    // Parse-check: reject the file at load time rather than at first
-    // auth attempt. `verify_password` would otherwise return Err and
-    // `check_password` would swallow it as `false`, silently failing
-    // every authentication.
+    // Reject a bad hash at load: otherwise `check_password` swallows the verify Err as `false`,
+    // silently failing every auth.
     PasswordHash::new(&raw).map_err(|e| format!("{}{}", ERR_PARSE_PASSWORD_HASH, e))?;
     Ok(Some(raw))
 }
 
-/// Verify `plain` against a previously-stored PHC hash. Returns `Ok(true)`
-/// for a match, `Ok(false)` for a mismatch, and an error if the stored
-/// hash is malformed.
+/// Verify `plain` against a stored PHC hash: `Ok(true)` match, `Ok(false)` mismatch.
 ///
 /// # Errors
 ///
-/// Returns an error string if `phc_hash` cannot be parsed as a PHC string.
+/// Errors if `phc_hash` can't be parsed as a PHC string.
 pub fn verify_password(plain: &str, phc_hash: &str) -> Result<bool, String> {
     let parsed =
         PasswordHash::new(phc_hash).map_err(|e| format!("{}{}", ERR_PARSE_PASSWORD_HASH, e))?;
@@ -129,20 +110,13 @@ pub fn verify_password(plain: &str, phc_hash: &str) -> Result<bool, String> {
         .is_ok())
 }
 
-/// Open / gated password check used by the `TrackerServerRegister` and
-/// `TrackerServerList` handlers.
+/// Open / gated password check for the Register / List handlers. Spec semantics:
+/// - `stored_hash = None` → open; any (or no) password passes.
+/// - `Some(_)`, `provided = None` → fail (gated, missing).
+/// - `Some(_)`, `Some(p)` → pass iff `p` verifies. A malformed stored hash also fails — never
+///   accept unauthenticated requests.
 ///
-/// Spec semantics:
-/// - `stored_hash = None` → flow is open; any password (or none) passes.
-/// - `stored_hash = Some(_)`, `provided = None` → fail (gated, missing).
-/// - `stored_hash = Some(_)`, `provided = Some(p)` → pass iff `p` verifies
-///   against `stored_hash`. A parse error in the stored PHC string also
-///   counts as a failure — the operator should be notified, but never by
-///   accepting unauthenticated requests.
-///
-/// Argon2id verification (~50–500ms with default params) runs on the
-/// blocking pool so a flood of gated requests can't pin every tokio
-/// worker thread.
+/// Argon2id verification (~50–500ms) runs on the blocking pool so a flood can't pin tokio workers.
 #[must_use]
 pub async fn check_password(provided: Option<&str>, stored_hash: Option<&str>) -> bool {
     match (provided, stored_hash) {
@@ -158,9 +132,7 @@ pub async fn check_password(provided: Option<&str>, stored_hash: Option<&str>) -
     }
 }
 
-/// Hash files contain a single line: the PHC string followed by `\n`.
-/// The trailing newline keeps the file "POSIX text" so cat / grep / etc.
-/// work as operators expect.
+/// Write the PHC string plus a trailing `\n` (keeps the file POSIX text for cat / grep).
 fn write_hash_file(data_dir: &Path, kind: PasswordKind, hash: &str) -> Result<(), String> {
     let path = hash_path(data_dir, kind);
     let mut contents = Vec::with_capacity(hash.len() + 1);
@@ -228,8 +200,7 @@ mod tests {
         assert!(verify_password("second", &second).expect("verify"));
         assert!(!verify_password("first", &second).expect("verify"));
 
-        // Confirm the file was *truncated* and rewritten, not appended:
-        // a single PHC string means a single `$argon2id$` prefix.
+        // A single `$argon2id$` prefix confirms truncate-and-rewrite, not append.
         let raw = fs::read_to_string(hash_path(tmp.path(), PasswordKind::Registration))
             .expect("read raw");
         assert_eq!(
@@ -266,8 +237,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         set_password(tmp.path(), PasswordKind::Registration, "hunter2").expect("set");
 
-        // Simulate a hand-pasted or non-Unix-line-ending file by stripping
-        // the trailing newline `set_password` writes.
+        // Strip the trailing newline to simulate a hand-pasted file.
         let path = hash_path(tmp.path(), PasswordKind::Registration);
         let raw = fs::read_to_string(&path).expect("read");
         let trimmed = raw.trim_end_matches('\n');
@@ -394,9 +364,7 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         set_password(tmp.path(), PasswordKind::Registration, "first").expect("set first");
 
-        // Loosen the existing file's perms to simulate tampering or a
-        // botched manual setup, then re-set and confirm the atomic
-        // rename naturally restores 0o600 (rename swaps the inode).
+        // Loosen perms, then confirm the atomic rename (new inode) restores 0o600 on re-set.
         let path = hash_path(tmp.path(), PasswordKind::Registration);
         fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).expect("loosen");
 

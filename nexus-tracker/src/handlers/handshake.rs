@@ -1,15 +1,8 @@
-//! Handshake handler
+//! Handshake handler.
 //!
-//! Validates a client's `Handshake` message, runs the protocol-version
-//! compatibility check against `TRACKER_PROTOCOL_VERSION`, and writes
-//! the corresponding `HandshakeResponse`. Returns whether the handshake
-//! succeeded so the caller can decide what to do next (currently: close;
-//! later: read the role-establishing message).
-//!
-//! Compatibility uses the workspace-shared
-//! [`nexus_common::version::check_compatibility`] with the tracker's own
-//! version constant — the tracker protocol is versioned independently
-//! from the BBS protocol.
+//! Compatibility uses `check_compatibility` against
+//! `TRACKER_PROTOCOL_VERSION` — the tracker protocol is versioned
+//! independently from the BBS protocol.
 
 use std::io;
 
@@ -28,17 +21,9 @@ use crate::constants::{
 };
 use crate::errors::{err_tracker_handshake_version_invalid, err_tracker_protocol_version_mismatch};
 
-/// Handle a `Handshake` request. Sends `HandshakeResponse` and returns
-/// whether the handshake succeeded.
-///
-/// The caller owns the connection lifecycle; this function only writes
-/// the response. On any path (success, version invalid, version
-/// mismatch), the response is sent before this function returns.
-///
-/// # Errors
-///
-/// Returns an `io::Error` if the response could not be written to the
-/// stream.
+/// Handle a `Handshake` request: send `HandshakeResponse` on every path
+/// (success, version invalid, version mismatch) and return whether the
+/// handshake succeeded.
 pub async fn handle_handshake<W>(
     version: &str,
     locale: &str,
@@ -158,7 +143,6 @@ mod tests {
         let (server_read, server_write) = tokio::io::split(server);
         let (client_read, _client_write) = tokio::io::split(client);
 
-        // Drive the handler on the server side.
         let server_handle = tokio::spawn({
             let version = version.to_string();
             async move {
@@ -166,7 +150,7 @@ mod tests {
                 let result =
                     handle_handshake(&version, "en", "FAKE-FINGERPRINT", &mut writer).await;
                 drop(writer);
-                drop(server_read); // close read side
+                drop(server_read);
                 result
             }
         });

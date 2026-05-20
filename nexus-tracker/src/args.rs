@@ -1,5 +1,3 @@
-//! Command-line argument parsing
-
 use std::net::IpAddr;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -22,7 +20,6 @@ fn absolute_data_dir(s: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-/// Get default data directory help text for the current platform.
 fn default_data_dir_help() -> &'static str {
     #[cfg(target_os = "linux")]
     return "Data directory (default: ~/.local/share/nexus-trackerd/)";

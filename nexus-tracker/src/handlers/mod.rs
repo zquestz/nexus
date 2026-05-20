@@ -1,10 +1,6 @@
-//! Tracker request handlers
-//!
-//! Each submodule handles one message type. Handlers are pure functions
-//! over their inputs (decoded message + connection context) and write a
-//! response via the supplied [`FrameWriter`].
-//!
-//! [`FrameWriter`]: nexus_common::framing::FrameWriter
+//! Tracker request handlers — one submodule per message type. Handlers
+//! are pure functions over (decoded message + connection context) that
+//! write a response via the supplied `FrameWriter`.
 
 pub mod handshake;
 pub mod tracker_server_list;
@@ -15,16 +11,10 @@ use nexus_common::validators::{self, LocaleError, MAX_LOCALE_LENGTH};
 use crate::constants::{DEFAULT_LOCALE, REASON_LOCALE_INVALID, REASON_LOCALE_TOO_LONG};
 use crate::errors::{err_tracker_locale_invalid, err_tracker_locale_too_long};
 
-/// Validate the request `locale` field shared by every tracker
-/// handler. Returns `None` on success; `Some((reason, message))` on
-/// failure where `reason` is the operator-log `REASON_*` value and
-/// `message` is a translated human-readable error rendered in
-/// `DEFAULT_LOCALE` — we can't trust the request locale for
-/// translation when the locale field itself is the suspect input.
-///
-/// Each handler wraps the result into its own failure shape (typed
-/// response for the list flow, `reject` helper for the register flow)
-/// since the delivery semantics differ between flows.
+/// Validate the request `locale` field shared by every tracker handler.
+/// `None` on success; `Some((REASON_* log value, message))` on failure.
+/// Errors render in `DEFAULT_LOCALE` — the request locale can't be
+/// trusted for translation when it's the suspect input.
 pub(crate) fn validate_locale(locale: &str) -> Option<(&'static str, String)> {
     match validators::validate_locale(locale) {
         Ok(()) => None,

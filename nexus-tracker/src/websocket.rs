@@ -1,11 +1,6 @@
-//! WebSocket entry point for `nexus-tracker`.
-//!
-//! Performs TLS + WebSocket handshake, wraps the result in
-//! [`WebSocketAdapter`], and delegates to
-//! [`crate::connection::handle_connection_inner`]. The connection task
-//! itself is shared with the TCP path — only the wire framing differs.
-//!
-//! [`WebSocketAdapter`]: nexus_common::websocket::WebSocketAdapter
+//! WebSocket entry point: TLS + WS handshake, wrap in `WebSocketAdapter`, then delegate to
+//! [`crate::connection::handle_connection_inner`]. The connection task is shared with the TCP
+//! path — only the wire framing differs.
 
 use std::io;
 use std::net::SocketAddr;
@@ -23,16 +18,12 @@ use crate::constants::LOG_CONNECTION_RATE_LIMITED;
 use crate::rate_limiter::RateCheck;
 use crate::state::TrackerState;
 
-/// Drive a single WebSocket connection. Mirrors `handle_connection`
-/// from `connection.rs` but adds the WS upgrade between TLS and the
-/// protocol layer.
+/// Drive a single WS connection: like `handle_connection`, plus the WS upgrade between TLS and
+/// the protocol layer.
 ///
 /// # Errors
 ///
-/// Returns `io::Error` for TLS handshake failures (wrapped with
-/// [`TLS_HANDSHAKE_FAILED_PREFIX`]), WebSocket handshake failures,
-/// frame errors, and write failures. The caller logs via
-/// `log_connection_error`.
+/// `io::Error` for TLS / WS handshake, frame, and write failures (TLS prefixed for the logger).
 pub async fn handle_tracker_websocket_connection(
     socket: TcpStream,
     peer_addr: SocketAddr,
@@ -40,24 +31,15 @@ pub async fn handle_tracker_websocket_connection(
     fingerprint: String,
     state: Arc<TrackerState>,
 ) -> io::Result<()> {
-    // Per-IP connection-rate gate, identical to the TCP path. Drop
-    // pre-TLS / pre-WS so over-limit peers don't pay for the upgrade
-    // dance.
+    // Per-IP rate gate, pre-TLS / pre-WS, as in the TCP path.
     if state.connection_rate_limiter.try_consume(peer_addr.ip()) == RateCheck::Limited {
         debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_RATE_LIMITED);
         return Ok(());
     }
 
-    // TLS first, same as the TCP path. The shared helper wraps the
-    // accept in `TLS_HANDSHAKE_TIMEOUT` (slowloris defense) and prefixes
-    // failures with `TLS_HANDSHAKE_FAILED_PREFIX` so `log_connection_error`
-    // downgrades scanner / incompatible-client noise to debug.
+    // TLS first (slowloris-bounded, failures prefixed for the logger), then the WS upgrade over it
+    // (also timeout-bounded; failures are usually benign non-WS peers).
     let tls_stream = accept_tls_with_timeout(&tls_acceptor, socket).await?;
-
-    // WebSocket upgrade over TLS. The shared helper wraps the upgrade
-    // in `WS_HANDSHAKE_TIMEOUT`. Failures here are typically benign
-    // (peer not actually speaking WebSocket); the prefix is recognized
-    // by `log_connection_error`.
     let ws_stream = accept_ws_with_timeout(tls_stream).await?;
 
     let adapter = WebSocketAdapter::new(ws_stream);

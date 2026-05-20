@@ -1,9 +1,6 @@
-//! Library entry point for `nexus-tracker`.
-//!
-//! The crate ships as a binary (`nexus-trackerd`); this library face
-//! exists so integration tests under `tests/` can drive the daemon's
-//! components (TLS, connection task, handlers) directly. Apart from
-//! re-exposing modules, the library has no behavior of its own.
+//! Library face for the `nexus-trackerd` binary, exposing modules so
+//! integration tests under `tests/` can drive the daemon's components
+//! directly. No behavior of its own beyond re-exports.
 
 pub mod args;
 pub mod auth;

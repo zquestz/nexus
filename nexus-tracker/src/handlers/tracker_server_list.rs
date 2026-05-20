@@ -1,20 +1,10 @@
 //! `TrackerServerList` handler.
 //!
-//! A client connection sends one `TrackerServerList` request and the tracker
-//! replies with `TrackerServerListResponse` (success or typed failure) and
-//! closes the connection. There is no follow-up: client connections
-//! are short-lived by design.
-//!
-//! Responsibilities of this handler:
-//!
-//! 1. Validate the `password`, `locale`, and `version` fields.
-//! 2. If listing is gated, verify the password.
-//! 3. Take a snapshot from the registry, filter to entries semver-compatible
-//!    with the requesting client, and send it.
-//!
-//! Disconnect-on-failure is the connection task's responsibility — this
-//! handler returns once the response (success or failure) has been
-//! written to the wire.
+//! A client connection sends one `TrackerServerList`; the tracker replies
+//! once (success or typed failure) and closes — client connections are
+//! short-lived by design. After field validation and (if gated) password
+//! verification, the registry snapshot is filtered to entries
+//! semver-compatible with the requesting client.
 
 use std::io;
 use std::net::SocketAddr;
@@ -81,10 +71,8 @@ where
         version,
     } = params;
 
-    // Length and format validation. Use the request's locale for
-    // translation when it's within bounds; fall back to DEFAULT_LOCALE
-    // when the locale field itself is what's suspect (we can't trust it
-    // for translation in that case).
+    // Use the request's locale to translate when it's within bounds;
+    // fall back to DEFAULT_LOCALE when the locale field itself is suspect.
     if let Some((reason, message)) = super::validate_locale(&locale) {
         warn!(ip = %peer_addr.ip(), reason = reason, "{}", LOG_LIST_REJECTED);
         return send_failure(writer, ERROR_KIND_INVALID, message).await;
@@ -101,11 +89,9 @@ where
         .await;
     }
 
-    // Client version validation. Required: empty / over-cap / unparseable
-    // all reject with a typed failure response. The parsed `Version` is
-    // reused below to filter the entry list to compat matches. A missing
-    // `version` field in the request JSON is rejected at the framing layer
-    // (generic `Error`, connection closes) — same as any required field.
+    // `version` is required (empty / over-cap / unparseable all reject);
+    // a missing field rejects at the framing layer. The parsed `Version`
+    // is reused below to filter entries to compat matches.
     let client_version: Version = match validate_version(&version) {
         Ok(v) => v,
         Err(e) => {
@@ -123,10 +109,9 @@ where
         }
     };
 
-    // Password verification (when listing is gated). Two-phase rate
-    // limiting (see TrackerServerRegister handler for the rationale).
-    // Snapshot the hash once so a SIGHUP-driven swap mid-handler can't
-    // make the gated/open and verify decisions disagree.
+    // Password verification when gated. Two-phase rate limiting (see
+    // TrackerServerRegister handler). Snapshot the hash once so a
+    // SIGHUP-driven swap mid-handler can't make decisions disagree.
     let stored_hash = state.listing_password_snapshot();
     let gated = stored_hash.is_some();
     if gated && state.auth_failure_rate_limiter.check_only(peer_addr.ip()) == RateCheck::Limited {
@@ -154,7 +139,7 @@ where
         .await;
     }
 
-    // Snapshot. The mutex is only held for the duration of the clone.
+    // Snapshot; the mutex is held only for the clone.
     let mut servers = state
         .registry
         .lock()
@@ -162,13 +147,10 @@ where
         .list();
     let total = servers.len();
 
-    // Compat filter: keep entries whose registered `version` parses as
-    // semver and is `Compatible` with the client per
-    // `version::check_compatibility`. Registration's `validate_version`
-    // gate guarantees parseability for new entries; the defensive
-    // `warn!`-and-drop here exists so a buggy registrant slipping past
-    // that gate can't crash the listing or surface garbage to clients.
-    // `retain` filters in place — no second `Vec` allocation.
+    // Tracker-side compat filter: keep entries whose registered `version`
+    // is `Compatible` with the client per `check_compatibility`.
+    // Registration guarantees parseability; the defensive warn-and-drop
+    // guards against a buggy registrant that slipped past that gate.
     servers.retain(|entry| match Version::parse(&entry.version) {
         Ok(server_version) => {
             version::check_compatibility(&server_version, &client_version).is_compatible()

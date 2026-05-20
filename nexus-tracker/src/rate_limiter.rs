@@ -1,44 +1,21 @@
-//! Per-IP token-bucket rate limiter
+//! Per-IP token-bucket rate limiter.
 //!
-//! Bounds two classes of abuse independently:
+//! Buckets refill at `capacity / 60` tokens/sec: sustained rate
+//! `capacity`/minute, burst `capacity`. `capacity == 0` disables the
+//! limiter (always allows, never inserts buckets).
 //!
-//! - **Connection rate** — every fresh TCP accept costs one token from
-//!   the connecting peer's bucket. When the bucket is empty the daemon
-//!   drops the connection at the framing layer (no response sent), per
-//!   the protocol spec's recommendation.
-//! - **Failed-auth rate** — only *failed* password verifications cost a
-//!   token. Successful authentications never debit. Once the bucket is
-//!   empty further attempts (correct or not) are rejected with a
-//!   typed `error_kind: "rate_limited"` response, so an attacker who
-//!   triggers the limit can't sneak through with a guess.
+//! Two usage modes:
+//! - **Connection rate** — one-shot [`try_consume`](RateLimiter::try_consume)
+//!   per TCP accept; over-limit connections are dropped at the framing
+//!   layer with no response, per the protocol spec.
+//! - **Failed-auth rate** — two-phase: [`check_only`](RateLimiter::check_only)
+//!   before verifying (reject if `Limited`), then
+//!   [`record_failure`](RateLimiter::record_failure) only on a *failed*
+//!   verify. Successes never debit, so an attacker can't guess past the
+//!   limit.
 //!
-//! Each limiter keeps its own per-IP `HashMap<IpAddr, Bucket>`. Buckets
-//! refill at `capacity / 60` tokens per second so the sustained rate
-//! is `capacity` events per minute and the burst is `capacity`.
-//!
-//! `capacity == 0` disables the limiter (always allows; never inserts
-//! buckets) so operators can opt out by setting the corresponding
-//! `--rate-*` flag to 0.
-//!
-//! ## Two-phase auth check
-//!
-//! For the auth-failure flow, callers use:
-//!
-//! 1. [`RateLimiter::check_only`] before verifying the password — if
-//!    `Limited`, reject the request as rate-limited.
-//! 2. If `Allowed`, verify the password.
-//! 3. If verification *failed*, call [`RateLimiter::record_failure`] to
-//!    debit one token. Successes don't debit.
-//!
-//! For the connection-rate flow there is just one phase:
-//! [`RateLimiter::try_consume`] refills, checks, and debits in one shot.
-//!
-//! ## Memory bound
-//!
-//! Without cleanup the bucket map would grow without bound under a
-//! disposable-IP attack. [`RateLimiter::gc`] sweeps idle entries whose
-//! buckets have refilled to capacity and which haven't been touched in
-//! `idle_ttl`. Call it from a periodic background task.
+//! [`gc`](RateLimiter::gc) bounds the bucket map under a disposable-IP
+//! attack; call it from a periodic background task.
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -50,23 +27,19 @@ use crate::constants::ERR_RATE_LIMITER_MUTEX_POISONED;
 /// Outcome of a rate-limit check.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RateCheck {
-    /// The bucket had capacity; the action is allowed.
     Allowed,
-    /// The bucket is empty; the action should be rate-limited.
     Limited,
 }
 
-/// Per-IP bucket state. `last_refill` is updated on every access (whether
-/// or not a token was consumed) so `gc` can identify idle entries.
+/// Per-IP bucket. `last_refill` is bumped on every access (consumed or
+/// not) so `gc` can identify idle entries.
 struct Bucket {
     tokens: f64,
     last_refill: Instant,
 }
 
-/// Per-IP token-bucket rate limiter.
-///
-/// Construct via [`RateLimiter::per_minute`]. `capacity == 0` makes
-/// every check return [`RateCheck::Allowed`] without touching the map.
+/// Per-IP token-bucket rate limiter. Construct via
+/// [`per_minute`](RateLimiter::per_minute).
 pub struct RateLimiter {
     buckets: Mutex<HashMap<IpAddr, Bucket>>,
     capacity: f64,
@@ -74,9 +47,8 @@ pub struct RateLimiter {
 }
 
 impl RateLimiter {
-    /// Build a limiter with `capacity` tokens of burst, refilling at
-    /// `capacity` tokens per minute (`capacity / 60` per second).
-    /// `capacity == 0` disables the limiter.
+    /// Limiter with `capacity` burst, refilling `capacity / 60` tokens
+    /// per second (`capacity`/minute). `capacity == 0` disables it.
     #[must_use]
     pub fn per_minute(capacity: u32) -> Self {
         let cap = f64::from(capacity);
@@ -87,16 +59,13 @@ impl RateLimiter {
         }
     }
 
-    /// `true` when this limiter is disabled (capacity == 0).
     #[inline]
     fn disabled(&self) -> bool {
         self.capacity == 0.0
     }
 
-    /// Refill the bucket and atomically consume one token.
-    ///
-    /// Returns `Allowed` if a token was consumed, `Limited` if the
-    /// bucket was empty.
+    /// Refill, then consume one token: `Allowed` if a token was taken,
+    /// `Limited` if the bucket was empty.
     pub fn try_consume(&self, ip: IpAddr) -> RateCheck {
         if self.disabled() {
             return RateCheck::Allowed;
@@ -116,11 +85,8 @@ impl RateLimiter {
         }
     }
 
-    /// Refill the bucket and check capacity *without* consuming.
-    ///
-    /// Pair with [`record_failure`](Self::record_failure) for two-phase
-    /// flows where only failures should debit (e.g., auth attempts —
-    /// successes don't burn tokens, failures do).
+    /// Refill, then check capacity *without* consuming. Pair with
+    /// [`record_failure`](Self::record_failure) for failure-only debits.
     pub fn check_only(&self, ip: IpAddr) -> RateCheck {
         if self.disabled() {
             return RateCheck::Allowed;
@@ -139,11 +105,8 @@ impl RateLimiter {
         }
     }
 
-    /// Debit one token to record a failure event.
-    ///
-    /// Use after [`check_only`](Self::check_only) returned `Allowed`
-    /// and the underlying check (e.g., password verification) actually
-    /// failed. Saturates at zero.
+    /// Debit one token (saturating at zero) after a failed check, e.g.
+    /// a `check_only`-allowed password verify that didn't verify.
     pub fn record_failure(&self, ip: IpAddr) {
         if self.disabled() {
             return;
@@ -168,14 +131,12 @@ impl RateLimiter {
         let mut buckets = self.buckets.lock().expect(ERR_RATE_LIMITER_MUTEX_POISONED);
         buckets.retain(|_ip, b| {
             let idle = now.saturating_duration_since(b.last_refill) >= idle_ttl;
-            // Keep when not at full capacity (still draining) OR when
-            // recently active (within `idle_ttl`).
+            // Drop only full-and-idle; keep still-draining or recently active.
             !(b.tokens >= self.capacity && idle)
         });
     }
 
-    /// Apply elapsed-time refill to a single bucket. Caller already
-    /// holds the map lock.
+    /// Apply elapsed-time refill to one bucket (caller holds the lock).
     fn refill(bucket: &mut Bucket, now: Instant, capacity: f64, refill_per_sec: f64) {
         let elapsed = now
             .saturating_duration_since(bucket.last_refill)
@@ -277,19 +238,12 @@ mod tests {
     #[test]
     fn gc_removes_idle_full_buckets() {
         let rl = RateLimiter::per_minute(1);
-        // Touch ip(1) but don't drain (bucket stays at capacity-1 then refills).
-        // Easier: drain it then let it refill.
         assert_eq!(rl.try_consume(ip(1)), RateCheck::Allowed);
-        // Full refill at 1/min would take 60s; rather than sleep, force-set the
-        // bucket to "full but very stale" by calling gc with zero TTL — the
-        // bucket isn't full yet so it's preserved.
+        // At 0 tokens (not full) → gc keeps it even with zero TTL.
         rl.gc(Duration::ZERO);
-        // After consume the bucket is at 0 tokens, so it's NOT at capacity →
-        // gc should keep it (still draining/refilling).
         assert_eq!(rl.bucket_count(), 1);
 
-        // Manually mark the bucket full and stale (simulates a long quiet
-        // period after refill).
+        // Force the bucket full and stale (simulates a long quiet period).
         {
             let mut buckets = rl.buckets.lock().expect("mutex");
             let bucket = buckets.get_mut(&ip(1)).expect("present");

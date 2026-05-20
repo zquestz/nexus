@@ -1,26 +1,11 @@
 //! `TrackerServerRegister` handler.
 //!
-//! A server connection sends `TrackerServerRegister` to register itself or to
-//! refresh an existing entry. The first register on a connection inserts
-//! a new entry and locks the connection's role to "server"; subsequent
-//! `TrackerServerRegister` messages on the same connection are refreshes,
-//! replacing the stored entry idempotently and resetting the entry's
-//! `last_refresh`.
-//!
-//! The two paths are exposed as separate entry points so callers don't
-//! need to handle impossible variants:
-//!
-//! - [`handle_initial_register`] returns [`InitialRegisterOutcome`]
-//!   (`Registered(id)` or `Rejected`).
-//! - [`handle_refresh`] returns [`RefreshOutcome`] (`Refreshed` or
-//!   `Rejected`).
-//!
-//! Field-length validation, fingerprint format checks, the auth-failure
-//! rate-limit gate, password verification, and (when `address` is
-//! provided) the address-validation phase — structural checks, the
-//! hard-reject classifier, the LAN-peer bypass, and DNS-vs-peer
-//! matching for hostnames — are shared via the private
-//! [`validate_and_authenticate`] helper.
+//! The first register on a connection inserts an entry and locks the
+//! connection's role to "server"; subsequent messages are refreshes that
+//! replace the entry idempotently and reset `last_refresh`. The two paths
+//! are separate entry points ([`handle_initial_register`],
+//! [`handle_refresh`]) so callers don't handle impossible variants.
+//! Shared validation/auth lives in [`validate_and_authenticate`].
 
 use std::io;
 use std::net::{IpAddr, SocketAddr};
@@ -89,13 +74,9 @@ pub struct RegisterParams {
     pub allows_guest: bool,
 }
 
-// Manual `Debug` impl that redacts `password`, matching the convention
-// used by `TrackerClientMessage` and `protocol::ClientMessage`. Defense
-// in depth: deriving `Debug` on this struct would silently leak the
-// plaintext registration password to anything that `{:?}`-prints it
-// (panic backtraces, future debug logging). The `Some("<REDACTED>")` /
-// `None` distinction is preserved so a reader can still tell whether a
-// password was supplied.
+// Manual `Debug` redacts `password` (deriving would leak the plaintext
+// to anything that `{:?}`-prints it). The `Some`/`None` distinction is
+// preserved so a reader can still tell whether a password was supplied.
 impl std::fmt::Debug for RegisterParams {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RegisterParams")
@@ -114,43 +95,31 @@ impl std::fmt::Debug for RegisterParams {
     }
 }
 
-/// Whether a `TrackerServerRegister` message is the first one on a
-/// fresh connection (`Initial`) or a refresh on an already-registered
-/// connection (`Refresh`). Threaded through validation so the address
-/// step can apply asymmetric DNS-failure semantics: initial register
-/// hard-rejects on transient resolver failures (so a brand-new entry
-/// can't slip in unverified during a DNS blip), while refresh
-/// soft-passes them (so an established entry isn't evicted by the
-/// same blip). Both modes still hard-reject NXDOMAIN-equivalents and
-/// hostname-vs-peer no-match — those aren't transient signals.
+/// First register on a connection (`Initial`) vs a refresh (`Refresh`).
+/// Threaded into validation for asymmetric DNS-failure handling: only
+/// transient resolver failures differ (see [`transient_outcome`]); both
+/// modes still hard-reject NXDOMAIN-equivalents and hostname no-match.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RegisterMode {
     Initial,
     Refresh,
 }
 
-/// Outcome of [`handle_initial_register`]. The caller (connection task)
-/// uses this to decide whether to enter the refresh loop or close the
-/// connection.
+/// Outcome of [`handle_initial_register`]; the caller decides whether to
+/// enter the refresh loop or close.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InitialRegisterOutcome {
-    /// Accepted as a fresh registration. The id is the new connection's
-    /// registry slot — caller stores it for refresh / cleanup.
+    /// Accepted; the id is the registry slot to store for refresh/cleanup.
     Registered(ConnectionId),
-    /// Rejected with a typed failure response. Connection should close.
     Rejected,
 }
 
 /// Outcome of [`handle_refresh`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefreshOutcome {
-    /// Accepted as a refresh on the supplied id. Entry data is replaced
-    /// and `last_refresh` reset.
     Refreshed,
-    /// Rejected with a typed failure response. Connection should close.
-    /// Refresh-floor violations land here too — a client refreshing
-    /// faster than half the protocol minimum is broken or malicious,
-    /// so we kick rather than tolerate.
+    /// Rejected (connection should close). Refresh-floor violations land
+    /// here too — a too-fast refresh is broken/malicious, so we kick.
     Rejected,
 }
 
@@ -219,15 +188,11 @@ where
     }
 }
 
-/// Drive the refresh flow on an established server connection. The
-/// `id` is the registry slot the connection registered itself in via
-/// [`handle_initial_register`]; the drop guard on the connection task
-/// keeps it alive until disconnect, so the [`Registry::refresh`]
-/// `false` (id-not-found) path is normally unreachable. The handler
-/// still treats it defensively — see [`LOG_REFRESH_GHOST_ID`] — so a
-/// future stale-eviction worker can't crash a live connection.
-///
-/// Always sends exactly one `TrackerServerRegisterResponse` to the wire.
+/// Drive the refresh flow on an established server connection. The drop
+/// guard keeps `id` alive until disconnect, so a `refresh` returning
+/// `false` (id-not-found) is normally unreachable; handled defensively
+/// (see [`LOG_REFRESH_GHOST_ID`]) for a future stale-eviction worker.
+/// Always sends exactly one `TrackerServerRegisterResponse`.
 pub async fn handle_refresh<W>(
     params: RegisterParams,
     id: ConnectionId,
@@ -240,15 +205,11 @@ where
 {
     let now = Instant::now();
 
-    // Per-entry refresh floor. Checking *before* validation /
-    // password verification means a misbehaving server hammering
-    // refreshes can't pin CPU on Argon2 hashing. We don't update
-    // `last_refresh` on rejection — preserves the slide-protection
-    // property (rapid rejected refreshes can't keep an entry alive).
-    //
-    // The lock is released before any `.await` (held only across the
-    // `last_refresh` peek) so the future stays `Send`. A zero
-    // `refresh_floor` (set by tests) skips the check entirely.
+    // Per-entry refresh floor, checked *before* validation/password so a
+    // server hammering refreshes can't pin CPU on Argon2. `last_refresh`
+    // isn't updated on rejection, so rapid rejected refreshes can't keep
+    // an entry alive. Lock released before any `.await` (Send). Zero
+    // floor (tests) skips the check.
     if !state.refresh_floor.is_zero() {
         let last_refresh = state
             .registry
@@ -286,13 +247,9 @@ where
         .expect(ERR_REGISTRY_MUTEX_POISONED)
         .refresh(id, entry, now);
     if !updated {
-        // Drop-guard convention says this entry should still be live —
-        // the handler holds a guard that only unregisters on
-        // connection close. If it's gone anyway, something
-        // out-of-band evicted it (future stale-eviction worker, or a
-        // bug). Close the connection gracefully rather than
-        // panicking; the drop guard's own unregister call is
-        // idempotent.
+        // The drop guard should keep this entry live until close; if it's
+        // gone, something out-of-band evicted it. Close gracefully rather
+        // than panic — the guard's own unregister is idempotent.
         warn!(ip = %peer_addr.ip(), id = id, "{}", LOG_REFRESH_GHOST_ID);
         return Ok(RefreshOutcome::Rejected);
     }
@@ -301,29 +258,24 @@ where
     Ok(RefreshOutcome::Refreshed)
 }
 
-/// Successful output of the shared validation+authentication phase:
-/// the validated `ServerEntry` plus the request's `locale` (which
-/// downstream rejection paths in the call sites still need for
-/// translated error messages — capacity rejections after registry
-/// access).
+/// Output of the shared validation+auth phase: the validated
+/// `ServerEntry` plus `locale` (needed by post-registry capacity
+/// rejections at the call sites).
 struct Validated {
     entry: ServerEntry,
     locale: String,
 }
 
-/// Result of the shared validation+authentication phase. On rejection,
-/// the failure response has already been written and logged; the
-/// caller need only return its own rejection outcome.
+/// Result of the shared validation+auth phase. On rejection the failure
+/// response is already written and logged; the caller just returns.
 enum ValidationOutcome {
     Valid(Validated),
     Rejected,
 }
 
-/// Run the shared length / fingerprint / password checks, send a typed
-/// failure response on any rejection, and return the validated
-/// [`ServerEntry`] (with `locale`) on success. Consumes `params` so
-/// the field strings move into the resulting `ServerEntry` instead of
-/// being cloned.
+/// Run the shared length / fingerprint / password checks, sending a
+/// typed failure response on any rejection. Consumes `params` so the
+/// field strings move into the resulting `ServerEntry` rather than clone.
 async fn validate_and_authenticate<W>(
     params: RegisterParams,
     state: &TrackerState,
@@ -334,10 +286,7 @@ async fn validate_and_authenticate<W>(
 where
     W: AsyncWrite + Unpin,
 {
-    // Destructure upfront so individual fields move out without
-    // cloning. Length/format validators reference `&locale`,
-    // `&password`, etc.; the success path moves the strings into
-    // `ServerEntry`.
+    // Destructure upfront so fields move into `ServerEntry` without cloning.
     let RegisterParams {
         password,
         locale,
@@ -352,13 +301,9 @@ where
         allows_guest,
     } = params;
 
-    // Length and format validation. Use the request's locale for
-    // translation when it's within bounds; fall back to DEFAULT_LOCALE
-    // when the locale field itself is suspect.
-    //
-    // Each field uses the full validator from `nexus_common::validators`
-    // (matching `nexus-server` server-info handling) — length-only
-    // checks would let empty / newline / control-char input through.
+    // Translate with the request's locale when in bounds, else fall back
+    // to DEFAULT_LOCALE. Each field uses the full `nexus_common`
+    // validator — length-only checks would pass empty/newline/control input.
     if let Some((reason, message)) = super::validate_locale(&locale) {
         reject(writer, peer_addr, reason, ERROR_KIND_INVALID, message).await?;
         return Ok(ValidationOutcome::Rejected);
@@ -428,12 +373,9 @@ where
         .await?;
         return Ok(ValidationOutcome::Rejected);
     }
-    // Full semver-shape validation: empty / over-cap / unparseable all
-    // reject. Distinct REASON_* and i18n keys for length vs format so
-    // operator logs can tell them apart and the registrant gets an
-    // actionable diagnostic. Keeps the by-construction guarantee that
-    // every entry the tracker stores has a parseable `version` — the
-    // listing-side compat filter relies on this.
+    // Full semver-shape validation (distinct length-vs-format reasons).
+    // Guarantees every stored entry has a parseable `version`, which the
+    // listing-side compat filter relies on.
     if let Err(e) = validate_version(&version) {
         let (reason, message) = match e {
             VersionError::TooLong => (
@@ -458,10 +400,8 @@ where
         .await?;
         return Ok(ValidationOutcome::Rejected);
     }
-    // Port 0 is reserved and not valid for an outbound BBS service.
-    // Rejecting at the tracker boundary keeps listings free of
-    // unreachable advertisements that clients would only discover
-    // by trying to connect.
+    // Port 0 is unreachable; reject at the boundary to keep listings free
+    // of advertisements clients could only fail to connect to.
     if port == 0 {
         reject(
             writer,
@@ -473,8 +413,7 @@ where
         .await?;
         return Ok(ValidationOutcome::Rejected);
     }
-    // `websocket_port` is optional, but when present it must be
-    // non-zero for the same reason as `port`.
+    // Optional, but when present must be non-zero like `port`.
     if let Some(ws) = websocket_port
         && ws == 0
     {
@@ -489,15 +428,10 @@ where
         return Ok(ValidationOutcome::Rejected);
     }
 
-    // Password check (gated registration). Two-phase rate limiting:
-    // peek the auth-failure bucket BEFORE verification so an attacker
-    // with too many recent failures can't sneak through with a guess;
-    // record the failure only on actual mismatch so legitimate
-    // operators with the correct password don't burn tokens.
-    //
-    // Snapshot the hash once and use it for every decision below so
-    // that a SIGHUP-driven hash swap mid-handler doesn't make the
-    // gated/open and verify decisions disagree.
+    // Password check when gated. Two-phase rate limiting: peek the
+    // auth-failure bucket BEFORE verification, record a failure only on
+    // actual mismatch (so correct operators don't burn tokens). Snapshot
+    // the hash once so a SIGHUP swap mid-handler can't split decisions.
     let stored_hash = state.registration_password_snapshot();
     let gated = stored_hash.is_some();
     if gated && state.auth_failure_rate_limiter.check_only(peer_addr.ip()) == RateCheck::Limited {
@@ -529,19 +463,11 @@ where
         return Ok(ValidationOutcome::Rejected);
     }
 
-    // Resolve `address` — substitute the peer's IP when the field is
-    // omitted or empty (kernel-supplied, no validation needed).
-    // Otherwise run the address-validation phase: structural checks
-    // (hard-reject categories), peer-IP match for IP literals, and
-    // DNS-vs-peer-IP match for hostnames. The validated string is
-    // stored as-typed to preserve IDN Unicode form for display.
-    //
-    // IPv6 substitution: `peer_addr.ip().to_string()` produces the
-    // bare canonical form for IPv6 (e.g. `"2001:db8::1"`, no
-    // brackets). The substituted form matches the contract of the
-    // `address` field — registrant inputs are bracket-rejected by the
-    // structural validator — so downstream URI assembly is the layer
-    // responsible for wrapping IPv6 literals in `[…]`.
+    // Substitute the peer's IP for an omitted/empty `address` (no
+    // validation needed); otherwise run `validate_address`. The validated
+    // string is stored as-typed to preserve IDN Unicode for display.
+    // The substituted IPv6 form is bracket-less (matching the field's
+    // bracket-rejecting contract); downstream URI assembly adds `[…]`.
     let resolved_address = match address {
         Some(a) if !a.is_empty() => {
             if let Err(reason) =
@@ -579,65 +505,41 @@ where
 }
 
 /// Validate an operator-supplied `address` against the peer's source IP.
-///
-/// On success, returns `Ok(())` and the caller stores the address
-/// as-typed (preserving any IDN Unicode form). On failure, returns
-/// `Err(reason)` where `reason` is a stable telemetry string suitable
-/// for the `LOG_REGISTER_REJECTED` `reason` field.
-///
-/// The order is:
+/// On failure returns `Err(reason)`, a stable telemetry string for the
+/// `LOG_REGISTER_REJECTED` `reason` field. Order:
 ///
 /// 1. **Structural + classify** — `validate_and_classify_public_address`
-///    rejects scheme/path/port/zone-id/whitespace, verifies IDNA
-///    well-formedness, and returns a typed [`NormalizedAddress`]: a
-///    parsed `IpAddr` for IP literals, the Punycode ASCII form for
-///    hostnames. The Punycode form is what we hand to the resolver in
-///    step 5; we don't run `idna::domain_to_ascii_strict` separately,
-///    and we don't reparse the canonical IP-literal string.
-/// 2. **Hard-reject classification** — when the address is an IP
-///    literal, the `classify_invalid` set rejects loopback / unspecified
-///    / link-local / multicast / documentation / broadcast regardless
-///    of context. These categories are never valid public unicast
-///    endpoints.
-/// 3. **LAN-peer bypass** — a peer on a private network (RFC 1918 /
-///    ULA / loopback) bypasses the address-vs-peer match check. Local
-///    DNS may not resolve advertised hostnames; an operator on a LAN
-///    can't make a public address match their RFC 1918 source IP. The
-///    address is accepted as-is once it's passed the hard-reject
-///    classification.
-/// 4. **IP literal match** — a public peer requires the IP literal to
-///    equal the peer source IP.
-/// 5. **Hostname resolution** — resolve the normalized Punycode form
-///    with a 5s ceiling. Resolved-and-includes-peer accepts;
-///    resolved-without-peer rejects as a no-match; NXDOMAIN-equivalents
-///    always reject. Transient resolver failures (timeout, network
-///    error) are mode-asymmetric: `Initial` rejects (so a brand-new
-///    entry can't slip in unverified during a DNS blip), `Refresh`
-///    soft-passes (so an established entry isn't evicted by the same
-///    blip).
+///    rejects scheme/path/port/zone-id/whitespace and returns a typed
+///    [`NormalizedAddress`] (parsed `IpAddr`, or Punycode ASCII for
+///    hostnames — the form handed to the resolver in step 5).
+/// 2. **Hard-reject** — IP literals in the `classify_invalid` set
+///    (loopback / unspecified / link-local / multicast / documentation /
+///    broadcast) are never valid public endpoints, regardless of context.
+/// 3. **LAN-peer bypass** — a private-network peer (RFC 1918 / ULA /
+///    loopback) can't make a public address match its source IP, so the
+///    address-vs-peer check is skipped (after hard-reject).
+/// 4. **IP literal match** — a public peer requires the literal to equal
+///    the peer source IP.
+/// 5. **Hostname resolution** — resolve the Punycode form (5s ceiling).
+///    Includes-peer accepts; without-peer / NXDOMAIN reject. Transient
+///    failures are mode-asymmetric (see [`transient_outcome`]).
 async fn validate_address(
     address: &str,
     peer_ip: IpAddr,
     resolver: &dyn Resolver,
     mode: RegisterMode,
 ) -> Result<(), &'static str> {
-    // Validate + classify in one pass. The typed enum preserves the
-    // kind (IP literal vs hostname) and the parsed `IpAddr`, so we
-    // don't reparse the canonical string later.
     let classified =
         validate_and_classify_public_address(address).map_err(|_| REASON_ADDRESS_INVALID)?;
 
     match classified {
         NormalizedAddress::Empty => {
-            // The caller substitutes the peer IP for empty `address`
-            // before entering this function, so this arm isn't expected
-            // to fire here. Treat as a structural rejection rather than
-            // panicking — a future caller skipping the empty-substitute
-            // guard shouldn't crash the daemon.
+            // The caller substitutes the peer IP for empty `address`, so
+            // this arm isn't expected to fire. Reject rather than panic.
             Err(REASON_ADDRESS_INVALID)
         }
         NormalizedAddress::Ip(ip) => {
-            // Hard-reject invalid IP categories regardless of peer / bypass.
+            // Hard-reject invalid categories regardless of peer / bypass.
             if let Some(kind) = common_address::classify_invalid(ip) {
                 return Err(invalid_kind_to_reason(kind));
             }
@@ -645,7 +547,7 @@ async fn validate_address(
             if common_address::is_private_network(peer_ip) {
                 return Ok(());
             }
-            // Public peer with an IP literal: require match.
+            // Public peer: require the literal to match the source IP.
             if ip == peer_ip {
                 Ok(())
             } else {
@@ -653,15 +555,12 @@ async fn validate_address(
             }
         }
         NormalizedAddress::Hostname(host) => {
-            // LAN-peer bypass: same as the IP-literal path. A LAN-coresident
-            // operator can't generally make a public hostname resolve to
-            // their RFC 1918 source IP, so we accept the hostname as-is.
+            // LAN-peer bypass (same rationale as the IP-literal path).
             if common_address::is_private_network(peer_ip) {
                 return Ok(());
             }
-            // Public peer with a hostname: resolve and look for peer in
-            // the result set. `host` is the Punycode ASCII form per the
-            // validator's contract.
+            // Public peer: resolve `host` (Punycode form) and require the
+            // peer in the result set.
             match tokio::time::timeout(ADDRESS_LOOKUP_TIMEOUT, resolver.lookup(&host)).await {
                 Err(_elapsed) => {
                     warn!(ip = %peer_ip, host = %host, "{}", LOG_ADDRESS_DNS_TRANSIENT);
@@ -682,18 +581,12 @@ async fn validate_address(
     }
 }
 
-/// Mode-aware outcome for transient resolver failures. Initial register
-/// hard-rejects to keep unverified entries out; refresh soft-passes so
-/// an already-validated entry survives a brief DNS blip.
-///
-/// Security note: the asymmetry is deliberate. A registrant whose DNS
-/// "transiently fails" on the initial registration could be trying to
-/// bypass the hostname-vs-peer-IP check — we have no prior signal that
-/// this hostname legitimately maps to this peer, so the failure is
-/// fatal. On refresh, the entry has already passed validation at least
-/// once, so a transient failure of the *resolver* (which we don't
-/// control) shouldn't evict a legit entry. A persistent resolver
-/// outage will still be caught by the stale-entry sweep.
+/// Mode-aware outcome for transient resolver failures. The asymmetry is a
+/// deliberate security choice: `Initial` hard-rejects because a "transient"
+/// DNS failure on first registration could be an attempt to bypass the
+/// hostname-vs-peer check (no prior signal the host maps to this peer).
+/// `Refresh` soft-passes — the entry already passed once, and a persistent
+/// resolver outage is still caught by the stale-entry sweep.
 fn transient_outcome(mode: RegisterMode) -> Result<(), &'static str> {
     match mode {
         RegisterMode::Initial => Err(REASON_ADDRESS_HOSTNAME_DNS_FAILED),
@@ -701,7 +594,6 @@ fn transient_outcome(mode: RegisterMode) -> Result<(), &'static str> {
     }
 }
 
-/// Map an `InvalidAddressKind` to its telemetry-reason string.
 fn invalid_kind_to_reason(kind: common_address::InvalidAddressKind) -> &'static str {
     match kind {
         common_address::InvalidAddressKind::Loopback => REASON_ADDRESS_LOOPBACK,
@@ -713,7 +605,6 @@ fn invalid_kind_to_reason(kind: common_address::InvalidAddressKind) -> &'static 
     }
 }
 
-/// Send a successful `TrackerServerRegisterResponse`.
 async fn send_success<W>(writer: &mut FrameWriter<W>, refresh_interval: u32) -> io::Result<()>
 where
     W: AsyncWrite + Unpin,
@@ -728,8 +619,7 @@ where
     Ok(())
 }
 
-/// Helper used by all rejection paths: log the rejection (with
-/// structured `reason`) and send the typed failure
+/// Log the rejection (structured `reason`) and send the typed failure
 /// `TrackerServerRegisterResponse`.
 async fn reject<W>(
     writer: &mut FrameWriter<W>,
@@ -754,26 +644,19 @@ where
 
 #[cfg(test)]
 mod tests {
-    //! Unit tests for `validate_address`.
-    //!
-    //! These exercise the parts of the address-validation phase that
-    //! the integration harness can't reach: a public peer IP requires
-    //! a synthetic `SocketAddr`, since the harness only supports
-    //! TLS-over-loopback (where the LAN bypass swallows everything).
-    //! Hostname tests use `MockResolver` so DNS outcomes (NXDOMAIN,
-    //! peer-in-set, peer-not-in-set, transient failure) are
-    //! deterministic.
+    //! Unit tests for `validate_address`. These reach what the
+    //! integration harness can't: a public peer IP needs a synthetic
+    //! `SocketAddr` (the harness is TLS-over-loopback, where the LAN
+    //! bypass swallows everything), and `MockResolver` makes DNS
+    //! outcomes deterministic.
 
     use super::*;
     use async_trait::async_trait;
     use std::collections::HashMap;
     use std::sync::Mutex;
 
-    /// In-memory resolver. Construct with a map of `host → result` and
-    /// pass to `validate_address`. Hosts not in the map default to
-    /// `io::ErrorKind::NotFound` (NXDOMAIN-equivalent), which lets
-    /// tests assert on the "host wasn't even registered" path without
-    /// special-casing it.
+    /// In-memory resolver keyed by `host → result`. Hosts not in the map
+    /// default to `NotFound` (NXDOMAIN-equivalent).
     struct MockResolver {
         responses: Mutex<HashMap<String, io::Result<Vec<IpAddr>>>>,
     }
@@ -805,8 +688,6 @@ mod tests {
     #[async_trait]
     impl Resolver for MockResolver {
         async fn lookup(&self, host: &str) -> io::Result<Vec<IpAddr>> {
-            // Clone out of the map under lock, then return. The trait
-            // is `&self` so we can't move; cloning IPs is cheap.
             let map = self.responses.lock().expect("mock resolver mutex");
             match map.get(host) {
                 Some(Ok(ips)) => Ok(ips.clone()),
@@ -824,17 +705,14 @@ mod tests {
         MockResolver::new()
     }
 
-    /// A "public" peer address (8.8.8.8) used everywhere we need to
-    /// avoid the LAN-peer bypass.
+    /// A "public" peer (8.8.8.8) — avoids the LAN-peer bypass.
     fn public_peer() -> IpAddr {
         ip("8.8.8.8")
     }
 
-    /// Default-mode wrapper around `validate_address`. Mode only
-    /// affects the transient-resolver-failure branch; tests that
-    /// don't exercise that branch use this to keep the call sites
-    /// terse. Tests that *do* care about mode call `validate_address`
-    /// directly with an explicit `RegisterMode`.
+    /// `Initial`-mode wrapper around `validate_address`. Mode only
+    /// affects the transient-failure branch; tests that care about mode
+    /// call `validate_address` directly.
     async fn validate(
         address: &str,
         peer_ip: IpAddr,
@@ -842,8 +720,6 @@ mod tests {
     ) -> Result<(), &'static str> {
         validate_address(address, peer_ip, resolver, RegisterMode::Initial).await
     }
-
-    // ---- Structural rejection ----
 
     #[tokio::test]
     async fn rejects_malformed_address() {
@@ -859,8 +735,6 @@ mod tests {
             Err(REASON_ADDRESS_INVALID)
         );
     }
-
-    // ---- Hard-reject categories (regardless of peer / bypass) ----
 
     #[tokio::test]
     async fn rejects_loopback_literal_from_lan_peer() {
@@ -928,9 +802,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_this_network_literal() {
         // 0.0.0.0/8 ("this network", RFC 1122) maps to the
-        // `Unspecified` reason — the same telemetry bucket as the
-        // exact-`0.0.0.0` case, since they're morphologically the
-        // same family.
+        // `Unspecified` bucket, same as exact-`0.0.0.0`.
         let r = empty_resolver();
         assert_eq!(
             validate("0.1.2.3", public_peer(), &r).await,
@@ -959,8 +831,6 @@ mod tests {
         );
     }
 
-    // ---- LAN-peer bypass ----
-
     #[tokio::test]
     async fn lan_peer_bypass_accepts_arbitrary_public_ip() {
         // Peer is on a private network, address is a public IP that
@@ -986,8 +856,6 @@ mod tests {
         );
     }
 
-    // ---- Public peer IP literal match ----
-
     #[tokio::test]
     async fn public_peer_ip_literal_match_accepts() {
         let r = empty_resolver();
@@ -1011,16 +879,10 @@ mod tests {
     #[tokio::test]
     async fn public_peer_dual_stack_literal_mismatch_rejects() {
         // Known limitation: a dual-stack operator who connects via one
-        // address family but advertises the other (e.g., the kernel
-        // routed the tracker connection over IPv6, but the operator
-        // wants to advertise their IPv4 address for IPv4-only clients)
-        // is rejected as a literal mismatch. The supported workaround
-        // is hostname-based registration with both A and AAAA records
-        // — the multi-A path matches whichever address family the
-        // kernel routed. This test asserts the current rejecting
-        // behavior so a future change that quietly relaxes the rule
-        // shows up as a test failure rather than a silent semantics
-        // drift.
+        // family but advertises the other is rejected as a literal
+        // mismatch. Workaround is hostname registration with A+AAAA (the
+        // multi-A path matches whichever family the kernel routed). Pins
+        // the current behavior so a quiet relaxation fails the test.
         let r = empty_resolver();
         assert_eq!(
             validate("8.8.8.8", ip("2606:4700::1111"), &r).await,
@@ -1028,19 +890,12 @@ mod tests {
         );
     }
 
-    // ---- Yggdrasil peer (treated as public) ----
-
     #[tokio::test]
     async fn yggdrasil_peer_treated_as_public_no_bypass() {
-        // Yggdrasil mesh addresses (0200::/7) are "public-within-the-
-        // mesh" by design — they're stable, globally unique, and
-        // routable, so they don't get the LAN-peer bypass that
-        // RFC 1918 / ULA / loopback peers do. A Yggdrasil-only
-        // operator must register either their own Yggdrasil IP
-        // literal (peer match) or a hostname that resolves to it
-        // (mesh-aware resolver required). This test pins the rule so
-        // a future change to `is_private_network` that quietly
-        // includes Yggdrasil shows up as a failure.
+        // Yggdrasil (0200::/7) is "public-within-the-mesh": stable,
+        // globally unique, routable, so it gets no LAN-peer bypass. Pins
+        // the rule so an `is_private_network` change that includes
+        // Yggdrasil fails the test.
         let r = empty_resolver();
         let yggdrasil_peer = ip("0210:abcd:1234::5");
         // No-bypass: arbitrary public IP must mismatch.
@@ -1055,8 +910,6 @@ mod tests {
                 .is_ok()
         );
     }
-
-    // ---- Public peer hostname resolution ----
 
     #[tokio::test]
     async fn public_peer_hostname_resolves_to_peer_accepts() {
@@ -1135,9 +988,8 @@ mod tests {
         );
     }
 
-    /// A resolver that hangs forever — the timeout branch is the
-    /// thing we're testing. Implements `Resolver` directly rather than
-    /// extending `MockResolver`, since the latter returns synchronously.
+    /// A resolver that hangs forever, exercising the timeout branch.
+    /// Direct `Resolver` impl since `MockResolver` returns synchronously.
     struct HangingResolver;
     #[async_trait]
     impl Resolver for HangingResolver {
@@ -1146,10 +998,9 @@ mod tests {
         }
     }
 
-    /// Wait for `validate_address` against `HangingResolver` to elapse
-    /// under paused virtual time. Returns the validation result. The
-    /// `tokio::select!` outer guard exists to fail loudly if the
-    /// 5s timeout doesn't fire (would otherwise hang the test forever).
+    /// Run `validate_address` against `HangingResolver` under paused
+    /// virtual time. The `select!` guard fails loudly if the 5s timeout
+    /// doesn't fire (otherwise the test would hang forever).
     async fn validate_with_hanging_resolver(mode: RegisterMode) -> Result<(), &'static str> {
         let r = HangingResolver;
         tokio::select! {
@@ -1178,8 +1029,6 @@ mod tests {
             "timeout on refresh should soft-pass"
         );
     }
-
-    // ---- IDN-encoded hostname ----
 
     #[tokio::test]
     async fn unicode_idn_hostname_resolves_via_punycode() {
