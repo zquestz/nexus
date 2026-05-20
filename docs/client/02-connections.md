@@ -183,7 +183,7 @@ Some addresses automatically bypass the proxy:
 
 This ensures local connections, LAN servers, and Yggdrasil mesh traffic are not routed through the proxy.
 
-**Limitation:** Voice chat requires a direct UDP connection and cannot be routed through a SOCKS5 proxy. If you connect via proxy, voice chat will be unavailable on that connection.
+**Limitation:** Voice chat requires a direct UDP connection and cannot be routed through a SOCKS5 proxy, so it's blocked by default on proxied connections. You can opt in with **Settings > Network > Allow Voice Bypass**, which connects voice directly and exposes your real IP to the server.
 
 ### Using with Tor
 

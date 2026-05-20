@@ -35,7 +35,7 @@ Configure audio devices in **Settings > Audio** before joining voice.
 
 ### Network
 
-- **Direct connection required** — Voice uses UDP, which cannot be routed through a SOCKS5 proxy. If your connection uses a proxy, voice chat is unavailable.
+- **Proxy** — Voice uses UDP, which can't be routed through a SOCKS5 proxy. When a proxy is active, voice is blocked by default. You can opt in via **Settings > Network > Allow Voice Bypass**, which sends voice directly to the server — **this exposes your real IP**, bypassing the proxy for voice traffic. See [Settings](11-settings.md).
 - **Firewall** — UDP traffic on the server's BBS port (default 7500) must not be blocked.
 
 ## Joining Voice
@@ -308,10 +308,10 @@ The same VU meter style is used in both the settings mic test and the voice bar 
 
 - Join the channel before trying to join voice
 
-**"Voice chat is not available when using a proxy"**
+**"Voice is blocked while using a proxy"**
 
-- Voice uses UDP, which cannot be routed through SOCKS5 proxies
-- Disable the proxy in **Settings > Network** or connect directly to use voice
+- Voice uses UDP, which cannot be routed through SOCKS5 proxies, so it's blocked by default when a proxy is active
+- Either disable the proxy in **Settings > Network**, or enable **Allow Voice Bypass** there to connect voice directly — note this exposes your real IP to the server
 
 ### No Audio Output
 

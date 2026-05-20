@@ -914,6 +914,9 @@ impl NexusApp {
             Message::ProxyPortChanged(port) => self.handle_proxy_port_changed(port),
             Message::ProxyUsernameChanged(username) => self.handle_proxy_username_changed(username),
             Message::ProxyPasswordChanged(password) => self.handle_proxy_password_changed(password),
+            Message::ProxyAllowVoiceBypassToggled(allow) => {
+                self.handle_proxy_allow_voice_bypass_toggled(allow)
+            }
             Message::SettingsTabPressed => self.handle_settings_tab_pressed(),
             Message::SettingsTabResolved(id) => self.handle_settings_tab_resolved(id),
             Message::BrowseDownloadPathPressed => self.handle_browse_download_path_pressed(),

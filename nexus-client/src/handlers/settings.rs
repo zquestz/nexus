@@ -317,6 +317,12 @@ impl NexusApp {
         Task::none()
     }
 
+    /// Handle Allow Voice Bypass toggle
+    pub fn handle_proxy_allow_voice_bypass_toggled(&mut self, allow: bool) -> Task<Message> {
+        self.config.settings.proxy.allow_voice_bypass = allow;
+        Task::none()
+    }
+
     /// Handle proxy address field change
     pub fn handle_proxy_address_changed(&mut self, address: String) -> Task<Message> {
         self.config.settings.proxy.address = address;

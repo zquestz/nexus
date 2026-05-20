@@ -190,16 +190,16 @@ Audio packets use DTLS-encrypted UDP for low-latency transmission.
 
 ### Security
 
-- **IP validation** — Server only accepts UDP from IPs with active voice sessions
-- **Token validation** — Every packet includes the session token
+- **Token authorization** — Every packet carries the session token (issued over the authenticated TCP connection) and the server validates it on every packet. The token _is_ the authorization, so voice works regardless of the UDP source IP — clients behind NAT or a proxy are not rejected for an IP mismatch.
+- **Per-IP connection cap** — Concurrent voice connections per source IP are bounded (sharing the per-IP connection-limit value, counted separately) to limit resource exhaustion.
 - **Permission check** — `voice_talk` required to transmit audio
 - **DTLS encryption** — All UDP traffic is encrypted
 
 Access control order:
 
-1. IP ban check
-2. Voice session exists for this IP
-3. Token validation
+1. IP ban check (trust bypasses bans)
+2. Per-IP voice connection cap
+3. Token validation (every packet)
 4. `voice_talk` permission (for audio packets)
 
 ### Voice Packet Format

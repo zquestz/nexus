@@ -847,6 +847,8 @@ pub enum Message {
     ProxyUsernameChanged(String),
     /// Settings panel: Proxy password field changed
     ProxyPasswordChanged(String),
+    /// Settings panel: Allow Voice Bypass checkbox toggled
+    ProxyAllowVoiceBypassToggled(bool),
 
     // ==================== Transfers ====================
     /// Transfer: Progress event from executor

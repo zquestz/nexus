@@ -45,6 +45,11 @@ pub struct ProxySettings {
     /// Optional password for authentication
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
+
+    /// Allow voice to bypass the proxy (direct UDP). Off by default —
+    /// when on, voice exposes the user's real IP to the server.
+    #[serde(default)]
+    pub allow_voice_bypass: bool,
 }
 
 impl std::fmt::Debug for ProxySettings {
@@ -55,6 +60,7 @@ impl std::fmt::Debug for ProxySettings {
             .field("port", &self.port)
             .field("username", &self.username)
             .field("password", &self.password.as_ref().map(|_| "[REDACTED]"))
+            .field("allow_voice_bypass", &self.allow_voice_bypass)
             .finish()
     }
 }
@@ -67,6 +73,7 @@ impl Default for ProxySettings {
             port: DEFAULT_PROXY_PORT,
             username: None,
             password: None,
+            allow_voice_bypass: false,
         }
     }
 }

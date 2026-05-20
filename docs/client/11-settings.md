@@ -249,6 +249,7 @@ Route connections through a SOCKS5 proxy (e.g., Tor).
 | **Port**             | Proxy server port (default: 9050 for Tor) |
 | **Username**         | Optional authentication username          |
 | **Password**         | Optional authentication password          |
+| **Allow Voice Bypass** | Let voice connect directly when a proxy is active. Off by default; voice can't traverse SOCKS5, so enabling this **exposes your real IP** to the server. |
 
 **Automatic Bypass:** The proxy is automatically bypassed for:
 

@@ -94,6 +94,20 @@ pub(super) fn network_tab_content(proxy: &ProxySettings) -> Element<'_, Message>
     };
     items.push(proxy_password_input.into());
 
+    // Allow voice bypass (non-interactive when proxy is disabled). Voice uses
+    // direct UDP, so enabling this exposes the user's real IP to the server.
+    let allow_voice_bypass_checkbox = if proxy.enabled {
+        checkbox(proxy.allow_voice_bypass)
+            .label(t("label-allow-voice-bypass"))
+            .on_toggle(Message::ProxyAllowVoiceBypassToggled)
+            .text_size(TEXT_SIZE)
+    } else {
+        checkbox(proxy.allow_voice_bypass)
+            .label(t("label-allow-voice-bypass"))
+            .text_size(TEXT_SIZE)
+    };
+    items.push(allow_voice_bypass_checkbox.into());
+
     Column::with_children(items)
         .spacing(ELEMENT_SPACING)
         .width(Fill)

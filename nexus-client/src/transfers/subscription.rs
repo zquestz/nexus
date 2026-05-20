@@ -412,6 +412,7 @@ mod tests {
             port: 9050,
             username: None,
             password: None,
+            allow_voice_bypass: false,
         };
         assert!(ProxyConfig::from_settings(&disabled_settings).is_none());
 
@@ -421,6 +422,7 @@ mod tests {
             port: 1080,
             username: Some("user".to_string()),
             password: Some("pass".to_string()),
+            allow_voice_bypass: false,
         };
         let config = ProxyConfig::from_settings(&enabled_settings);
         assert!(config.is_some());

@@ -17,11 +17,19 @@ use iced::Task;
 use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
+use crate::config::settings::ProxySettings;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, ChatTab, Message, VoiceState};
 use crate::views::constants::{PERMISSION_VOICE_LISTEN, PERMISSION_VOICE_TALK};
 use crate::voice::manager::VoiceEvent;
 use crate::voice::ptt::PttState;
+
+/// Voice uses direct UDP that can't traverse SOCKS5, so a join must be blocked
+/// when a non-bypassed proxy is active — unless the user opted into the bypass
+/// (which exposes their real IP). Isolated as the privacy boundary for testing.
+fn voice_join_blocked_by_proxy(proxy: &ProxySettings, address: &str) -> bool {
+    proxy.enabled && !proxy.allow_voice_bypass && !should_bypass_proxy(address)
+}
 
 impl NexusApp {
     /// Handle voice join button pressed
@@ -48,10 +56,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Check if connection is using a proxy (voice requires direct UDP connection)
-        // Proxy is used if: proxy enabled in settings AND address is not bypassed
-        if self.config.settings.proxy.enabled && !should_bypass_proxy(&conn.connection_info.address)
-        {
+        if voice_join_blocked_by_proxy(&self.config.settings.proxy, &conn.connection_info.address) {
             return self.add_active_tab_message(
                 connection_id,
                 ChatMessage::error(t("err-voice-proxy-not-supported")),
@@ -487,5 +492,54 @@ impl NexusApp {
         }
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn proxy(enabled: bool, allow_voice_bypass: bool) -> ProxySettings {
+        ProxySettings {
+            enabled,
+            address: "proxy.example.com".to_string(),
+            port: 9050,
+            username: None,
+            password: None,
+            allow_voice_bypass,
+        }
+    }
+
+    #[test]
+    fn not_blocked_when_proxy_disabled() {
+        assert!(!voice_join_blocked_by_proxy(
+            &proxy(false, false),
+            "bbs.example.com"
+        ));
+    }
+
+    #[test]
+    fn blocked_when_proxy_active_and_not_opted_in() {
+        assert!(voice_join_blocked_by_proxy(
+            &proxy(true, false),
+            "bbs.example.com"
+        ));
+    }
+
+    #[test]
+    fn not_blocked_when_voice_bypass_opted_in() {
+        assert!(!voice_join_blocked_by_proxy(
+            &proxy(true, true),
+            "bbs.example.com"
+        ));
+    }
+
+    #[test]
+    fn not_blocked_for_proxy_bypassed_address() {
+        // Loopback is auto-bypassed, so the proxy never applies — voice is fine.
+        assert!(!voice_join_blocked_by_proxy(
+            &proxy(true, false),
+            "127.0.0.1"
+        ));
     }
 }
