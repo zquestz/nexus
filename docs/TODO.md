@@ -105,13 +105,17 @@ Per-user weighted fair share of server outbound bandwidth, enforced via a single
 - Reference C implementation: <https://github.com/zquestz/throttled/blob/master/src/wf2q%2B.h>.
 - Defer to those for the virtual-time update rule and eligibility check — they're more precise than any in-spec prose.
 
-**Architecture: single central scheduler ("Architecture A1")**
+**Architecture: single central scheduler with per-connection writer tasks**
 
 - One scheduler instance for the entire server, running as a dedicated tokio task that wakes when a flow has data and rate budget is available.
-- Scheduler owns the `WriteHalf` of every WAN client connection. All WAN server-to-client bytes are dispatched by the scheduler. LAN connections write directly (see "Scope of cap" below).
+- **The scheduler task does zero I/O.** It is a pure dispatch engine: it maintains WF2Q+ state, rate-limits, and dispatches packets to per-connection bounded channels. It never calls `write_all` on a socket.
+- **Per-connection writer tasks.** Each WAN connection gets a dedicated writer task (`tokio::spawn`) that owns the `WriteHalf` and drains its bounded channel. Writer tasks write to their own socket independently — a slow client's socket blocking its writer task cannot stall any other connection or the scheduler itself. This eliminates head-of-line blocking.
+- The scheduler uses `try_send()` when dispatching to a connection's channel. If the channel is full (slow client), the packet stays in the WF2Q+ queue and the **entire flow is marked blocked** — the scheduler moves on to the next eligible flow. No blocking, no waiting. Skipping the whole flow (not just the one connection) is intentional: a multi-session user's allocation is one flow, and a slow connection within it is the user's problem. This keeps the algorithm simple (flow-level blocking, not connection-level) and consistent with per-user fairness.
+- **Drain notifications (wakeup path).** When a writer task drains a packet and the channel transitions from full to available, it sends a lightweight `Drained(ConnectionId)` notification to the scheduler (via a dedicated mpsc). Notifications are only sent on the full→available edge, not after every write, to minimize noise. The scheduler's main loop `select!`s over: rate budget timer, new submissions, and drain notifications. On `Drained`, the scheduler unblocks the affected flow and resumes dispatch. This avoids both busy-spinning (polling full channels repeatedly) and oversleeping (missing that a channel has capacity).
+- LAN connections bypass the scheduler entirely and write directly (see "Scope of cap" below).
 - **Outbound only.** Inbound shaping is wasteful (TCP + kernel handle it).
 - **`TCP_NODELAY` set on every accepted TCP socket.** Without it, Nagle's algorithm coalesces small writes downstream of the application — defeating WF2Q+'s latency bounds for WAN connections and hurting chat latency on LAN too. Set at accept time regardless of LAN/WAN classification. WebSocket sockets inherit from the underlying TCP socket. UDP voice is unaffected (different protocol).
-- **WebSocket adapter integration.** The WebSocket adapter (`nexus-server/src/websocket.rs`) exposes `AsyncRead + AsyncWrite` over a WS message stream. The scheduler holds its `WriteHalf` and writes raw bytes; the adapter wraps each scheduler write in a binary WS frame. Scheduler-level chunking continues to work; WS frame boundaries are an internal layer transparent to the scheduler.
+- **WebSocket adapter integration.** The WebSocket adapter (`nexus-server/src/websocket.rs`) exposes `AsyncRead + AsyncWrite` over a WS message stream. The writer task holds its `WriteHalf` and writes raw bytes; the adapter wraps each write in a binary WS frame. Scheduler-level chunking continues to work; WS frame boundaries are an internal layer transparent to the scheduler.
 
 **Scope of cap**
 
@@ -142,25 +146,43 @@ bandwidth_weight =
         .unwrap_or(DEFAULT_BANDWIDTH_WEIGHT)                  // → 1 (system default)
 ```
 
-Cached on `UserSession.bandwidth_weight` at login as an `AtomicU16` so the scheduler's per-dispatch read is lock-free (`Ordering::Relaxed` is sufficient — the value is advisory for fairness, not a correctness invariant). Cache invalidation (live edits, group changes) does `store(new_weight, Ordering::Relaxed)` on the same atomic. No "VIP / uncap" mechanism — for an effectively-uncapped user, set their weight very high (e.g., `1000`) so they dominate.
+Cached on `UserSession.bandwidth_weight` at login as an `AtomicU16`. The handler layer reads this for delegation checks (non-admin can't set weight above their own). No "VIP / uncap" mechanism — for an effectively-uncapped user, set their weight very high (e.g., `1000`) so they dominate.
 
 **Bounds:** weight is `INTEGER` with allowed range `1..=65535`. Validate at the protocol boundary; reject out-of-range with the standard validation error path. The scheduler holds it as `u16` internally.
 
+**Scheduler-owned flow weights.** The scheduler maintains flow weights as plain `u16` values (not by reading `UserSession.bandwidth_weight` directly — `AtomicU16` clones snapshot, so the scheduler cannot hold a live reference). Weight updates arrive as explicit commands through the `SchedulerHandle`:
+
+- `update_flow_weight(FlowId, u16)` — updates a single specific flow's weight. Useful for narrow/targeted updates where the caller already knows the exact flow.
+- `update_account_flow_weights(user_id, weight)` — fans out to **all** nickname flows whose `user_id` metadata matches, setting each flow's weight independently. This is the primary API for user/group weight changes. It covers transfer-only connections (not in `UserManager`'s session map) and shared accounts (multiple nickname flows, same `user_id`). Each flow remains a separate scheduling identity — this updates weights, not merges queues.
+- `rename_flow(old_nickname_lower, new_nickname_lower)` — called from the `UserUpdate` handler when a **regular** account's username changes (where nickname == username). Atomically renames the flow key; all connections in the old flow move to the new flow. The handler has both old and new names. **Not used for shared accounts** — shared account username changes don't affect active session nicknames (each session keeps its login-chosen nickname).
+- `transition_to_nickname(conn_id, nickname_lower, user_id, weight)` — carries the initial weight and user identity at login. The `user_id` is stored as metadata on the flow (see below).
+
+Each `FlowState` carries a `user_id: Option<i64>` set by `transition_to_nickname`. Anonymous flows have `None`. The flow key is always `FlowId::Nickname(nickname_lower)` — `user_id` is metadata only, never a scheduling identity. This metadata enables `update_account_flow_weights` to find all flows for a given account without requiring the handler to enumerate nicknames from `TransferRegistry`. For regular accounts all sessions share one nickname (and thus one flow). For shared accounts each session has a unique nickname but the same `user_id`, so `update_account_flow_weights` catches all of them while keeping their queues separate.
+
 **Cache invalidation.** Two updates fire when a user's effective weight changes:
 
-- **Server-side**: refresh `UserSession.bandwidth_weight` (the `AtomicU16`) for every active session of the affected user. For `UserUpdate` changing `bandwidth_weight` or `group_id`, that's the target user's sessions. For `GroupUpdate` changing the group's weight, fan out via `get_sessions_by_group_id` to every member's session (same pattern as group permission cascades). The scheduler reads this atomic on every dispatch, so live edits take effect immediately.
+- **Server-side (session cache)**: refresh `UserSession.bandwidth_weight` (the `AtomicU16`) for every active session of the affected user via `UserManager::update_bandwidth_state`. For `UserUpdate` changing `bandwidth_weight` or `group_id`, that's the target user's sessions. For `GroupUpdate` changing the group's weight, fan out via `get_sessions_by_group_id` to every member's session (same pattern as group permission cascades).
+- **Server-side (scheduler)**: the same handler code that refreshes the session cache also calls `scheduler.update_account_flow_weights(user_id, resolved_weight)`. This fans out to all nickname flows for the account (including transfer-only flows). For group cascades, call it once per affected `user_id`. For regular-account username renames, call `scheduler.rename_flow(old, new)` first (the weight is preserved across the rename, so a separate weight update is only needed if the weight also changed).
 - **Client-visible**: the resolved weight is in `UserInfo`, so it naturally rides on existing `UserUpdated` broadcasts (which fire for renames, group changes, etc.). Weight-only changes do not require a new broadcast trigger — the value is "best-effort current at last broadcast" the same way `group_name` is today. Clients render the latest broadcast value; brief staleness on weight-only edits is acceptable since the client UI doesn't render weight for non-admins anyway.
 
 **Intra-user priority (two sub-queues per user)**
 
 When a user has both BBS-port (protocol) and transfer-port (bulk) connections sending data, the user's flow uses strict priority internally:
 
-- `Protocol` queue (BBS port + WS-BBS) — drained first.
-- `Bulk` queue (transfer port + WS-transfer) — drained when protocol is empty.
+- `Protocol` queue (BBS port + WS-BBS) — drained first. **Starves Bulk until empty.**
+- `Bulk` queue (transfer port + WS-transfer) — drained only when protocol queue is empty.
 
 Connection class is set at accept time based on which listener accepted the connection. Worst-case chat delay during a sustained transfer = one chunk transmission time (`chunk_size / cap_rate`).
 
 WF2Q+ virtual-time accounting is unaffected — a packet is a packet regardless of sub-queue. Per-user fairness vs other users is preserved.
+
+**Why Protocol starves Bulk — user behavior on slow connections.** Consider a user on a 0.5 Mbps link downloading a large file. They click a directory: the `FileListResponse` must arrive fast because they're actively interacting. If Protocol competes with Bulk for the same pipe, a 1 MB file listing takes ~32 seconds instead of ~16. With starvation, Protocol gets the full pipe — the listing arrives as fast as physically possible, the transfer pauses, and then resumes once the user stops clicking. The same logic applies to news listings, chat messages, user lists — anything interactive. Most Protocol messages are small and go out so fast that the starvation is invisible. When they're large (e.g., a huge directory listing), starvation is even more valuable because the user would notice the delay.
+
+**Backpressure model.**
+
+- **Protocol `send_frame`: blocks only on its own backlog, never on Bulk.** Each flow has a **`PER_FLOW_PROTOCOL_CAP` (4 MB)** — the blocking rule is: if pending Protocol bytes are **already ≥ cap**, `send_frame` blocks until drain brings them below; if pending bytes are **below cap**, the enqueue always succeeds (even if the message itself pushes the total over). This means exactly one message can overshoot the cap, but the next caller blocks until the queue drains. A single 5 MB `FileListResponse` gets through (we were under cap when it arrived), but the next `send_frame` blocks — no unbounded bypass. The 4 MB cap is extremely generous: a flow is one user (regular accounts) or one session (shared accounts), so Protocol traffic comes from at most one active BBS connection plus broadcasts. Most sessions are idle and only receive broadcasts; the active one generates responses. A user would need to fall 4 MB behind on their own Protocol output to trigger blocking — realistically only a frozen client. When blocking does trigger, it pauses exactly the right thing: the connection task's `select!` rx arm (for broadcasts) or the handler (for direct responses). The broadcaster (`UserManager.broadcast()`) is never blocked — it fire-and-forgets via the unbounded per-session `tx`, so backpressure stays local to the slow connection's task.
+- **Bulk `send_bytes`: blocks when per-user pending bulk bytes exceed `PER_USER_BULK_BUFFER_CAP` (1 MB).** Backpressure propagates naturally to callers: a transfer task pumping 64 KB chunks blocks when the user's bulk queue is full, the file read pauses. Per-user (not per-connection) so a user opening many transfer connections doesn't get a larger memory budget than a single-connection user, consistent with the per-user fairness model.
+- **Bulk can never block Protocol.** The two caps are independent. A saturating transfer cannot prevent a chat message or file listing from being enqueued and dispatched. Protocol always starves Bulk at dispatch time, and the Protocol cap is separate from the Bulk cap.
 
 **Chunking (scheduler-internal, protocol-transparent)**
 
@@ -187,20 +209,35 @@ Callers (protocol handlers, transfer code) don't talk to the scheduler directly.
 use bytes::Bytes;
 
 /// Per-connection egress handle. Routes to scheduler for WAN, direct write for LAN.
+/// The `Direct` variant uses type erasure (`Box<dyn AsyncWrite>`) which eliminates
+/// the `<W>` generic parameter from `HandlerContext`, `Transfer`, and all handler
+/// functions — a major simplification of the server codebase.
 pub enum ConnectionWriter {
     Scheduled { handle: SchedulerHandle, conn_id: ConnectionId },
-    Direct { writer: OwnedWriteHalf },
+    Direct { writer: Box<dyn AsyncWrite + Unpin + Send> },
 }
 
 impl ConnectionWriter {
     /// Send a BBS-protocol frame. Serializes the message to bytes internally
-    /// (one allocation, same as today's FrameWriter).
-    pub async fn send_frame(&mut self, msg: ServerMessage) -> Result<(), SendError>;
+    /// (one allocation, same as today's FrameWriter). Blocks only when
+    /// the flow's Protocol backlog exceeds PER_FLOW_PROTOCOL_CAP (4 MB);
+    /// never blocked by Bulk backpressure.
+    pub async fn send_frame(&mut self, msg: ServerMessage, msg_id: MessageId) -> Result<(), SendError>;
 
     /// Send raw bytes (transfer-port path). Takes ownership via `Bytes` so the
     /// scheduled path can enqueue without copying; the direct path forwards
-    /// `bytes.as_ref()` to `write_all`.
+    /// `bytes.as_ref()` to `write_all`. Blocks when per-user bulk buffer cap
+    /// is exceeded (Scheduled path only; Direct writes block on kernel backpressure).
     pub async fn send_bytes(&mut self, bytes: Bytes) -> Result<(), SendError>;
+
+    /// Flush pending writes. No-op for Scheduled (scheduler handles dispatch
+    /// timing). For Direct, calls the underlying writer's flush.
+    pub async fn flush(&mut self) -> Result<(), SendError>;
+
+    /// Shut down the writer. For Scheduled, unregisters from the scheduler
+    /// (which flushes remaining packets before closing). For Direct, calls
+    /// the underlying writer's shutdown.
+    pub async fn shutdown(&mut self) -> Result<(), SendError>;
 }
 
 pub enum SendError {
@@ -222,32 +259,34 @@ Routing is a single enum branch — no heap allocation per send, no byte-level c
 
 Same total memory traffic as today. The scheduler adds bookkeeping (pointer/length, refcount) but no copies. `bytes` is already a transitive dependency in `Cargo.lock`; add it as a direct dependency on `nexus-server`.
 
-Per-user backpressure and the scheduler-registry semantics described next apply to scheduled (WAN) connections only. LAN connections use the kernel's natural `write_all` backpressure and surface socket errors directly to the connection task — they have no scheduler queue and no per-user cap because they don't share the rate budget.
+Per-user backpressure and the scheduler-registry semantics described next apply to scheduled (WAN) connections only. LAN connections use the kernel's natural `write_all` backpressure and surface socket errors directly to the connection task — they have no scheduler queue and no per-user cap because they don't share the rate budget. See the "Backpressure model" section above for the full Protocol-never-blocked / Bulk-capped design.
 
-Both `send_*` are async — they `.await` when the user's total pending output across all their connections exceeds the per-user cap (1 MB hardcoded; see `PER_USER_BUFFER_CAP` in the scheduler module). Backpressure propagates naturally to callers: a transfer task pumping 64KB chunks blocks when the user's queue is full, the file read pauses. Per-user (not per-connection) so a user opening many connections doesn't get a larger memory budget than a single-connection user, consistent with the per-user fairness model.
-
-**Writer errors:** when a registered `WriteHalf.write_all().await` fails, the scheduler drops the connection from its registry; future `send_*` for that conn_id return `Err(ConnectionGone)`. Caller treats that as "client disconnected" and cleans up the session.
+**Writer errors and death detection.** Each WAN connection's writer task owns its `WriteHalf` and drains a bounded channel from the scheduler. When a writer task's `write_all` fails (socket error, peer disconnect), it exits, dropping its channel receiver. The connection task detects writer death via the writer task's `JoinHandle` in its `select!` loop — when the handle completes, the connection task breaks its read loop and cleans up the session. Future `send_*` calls on the `ConnectionWriter` after the writer has exited return `Err(ConnectionGone)`. The scheduler detects the dead channel on its next `try_send()` and removes the connection from its registry.
 
 **Lifecycle**
 
 The scheduler maintains two internal registries:
 
-- `connections: HashMap<ConnectionId, ConnectionEntry>` — per-connection state. `ConnectionEntry` holds `WriteHalf`, `ConnectionClass`, and the current `FlowId` (an enum: `FlowId::Anon(IpAddr)` or `FlowId::Nickname(String)`). The current flow is how `send_*(conn_id, …)` resolves which flow's queue to enqueue into.
+- `connections: HashMap<ConnectionId, ConnectionEntry>` — per-connection state. `ConnectionEntry` holds the bounded channel sender (to the writer task), `ConnectionClass`, and the current `FlowId` (an enum: `FlowId::Anon(IpAddr)` or `FlowId::Nickname(String)`). The `WriteHalf` itself is owned by the per-connection writer task, not stored here. The current flow is how `send_*(conn_id, …)` resolves which flow's queue to enqueue into.
 - `flows: HashMap<FlowId, FlowState>` — per-flow state (queue, virtual time, weight ref). Plus a separate `anon_refcount: HashMap<IpAddr, usize>` for anon-flow GC.
 
-- **Connection register**: at accept (post `normalize_socket_addr`), check `is_private_network`. LAN connections keep their `WriteHalf` on the connection task and bypass the scheduler entirely. WAN connections hand their `WriteHalf` to the scheduler along with the `ConnectionClass` (Protocol for BBS/WS-BBS ports, Bulk for transfer/WS-transfer ports — determined by which listener accepted); the scheduler stores the entry with `FlowId::Anon(peer_ip)` and returns a `ConnectionId` the connection task holds.
+- **Connection register**: registration happens **after** TLS handshake (and optional WebSocket handshake) and `tokio::io::split()` — not at raw TCP accept. Pre-handshake error messages (TLS/WS failures) are exempt from scheduling (tiny, rare, pre-split). At registration time, check `is_private_network(peer_ip)`. LAN connections keep their `WriteHalf` on the connection task wrapped in `ConnectionWriter::Direct` and bypass the scheduler entirely. WAN connections hand their `WriteHalf` to the scheduler along with the `ConnectionClass` (Protocol for BBS/WS-BBS ports, Bulk for transfer/WS-transfer ports — determined by which listener accepted). The scheduler creates a bounded dispatch channel, stores the channel sender in a `ConnectionEntry` with `FlowId::Anon(peer_ip)`, and returns a `ConnectionId` plus the channel receiver. The connection task spawns a **writer task** (`tokio::spawn`) with the `WriteHalf` and channel receiver; the writer task owns the socket and drains the channel. The connection task holds the `ConnectionId` in a `ConnectionWriter::Scheduled`.
 - **Pre-login (WAN only)**: traffic flows into the anon flow at `FlowId::Anon(peer_ip)`, weight = 1. Anon-flow refcount incremented. LAN connections bypass the scheduler from accept onward and never enter the anon flow; `ConnectionClass` is meaningful only for scheduled (WAN) connections.
-- **Login transition**: after auth succeeds but **before sending `LoginResponse`**, the login handler calls `scheduler.transition_to_nickname(conn_id, nickname_lower)`. The scheduler atomically:
+- **Login transition (BBS port)**: after auth succeeds but **before sending `LoginResponse`**, the login handler calls `scheduler.transition_to_nickname(conn_id, nickname_lower, user_id, weight)`. The scheduler atomically:
   - Swaps the conn's `FlowId` to `FlowId::Nickname(nickname_lower)`.
   - Decrements the anon-flow refcount (reaping the anon flow if it hits zero).
-  - If this is the first session for that nickname, creates the nickname flow **with the user's resolved `bandwidth_weight`** (initialized from the `UserSession.bandwidth_weight` atomic). If the nickname flow already exists (multi-session login), the new connection joins it and inherits its current weight — sessions of the same user always resolve to the same weight, so this is consistent by construction.
+  - If this is the first session for that nickname, creates the nickname flow with the provided `weight`. If the nickname flow already exists (multi-session login), the new connection joins it and inherits its current weight — sessions of the same user always resolve to the same weight, so this is consistent by construction.
   - Initializes the new flow's WF2Q+ virtual-time state at the current system V(t).
 
   The `LoginResponse` itself is then sent through the new nickname flow — so the response message is the first thing the user's flow dispatches at their proper weight. Protocol semantics guarantee the client sends nothing between `Login` and receiving `LoginResponse`, so this window is the safe transition point.
 
-- **Connection disconnect**: scheduler removes the conn_id from `connections`. Any packets still pending in the flow's queue tagged with this conn_id are dropped (`Bytes` `Arc` is dropped, memory freed). The flow stays alive if other conn_ids still reference it.
+- **Login transition (transfer port)**: `transfers/auth.rs` resolves the bandwidth weight (via `get_resolved_bandwidth_weight`) and carries it alongside `AuthenticatedUser`. After transfer auth succeeds, the transfer handler calls `scheduler.transition_to_nickname(conn_id, nickname_lower, user_id, weight)` — same as the BBS path. The transfer connection joins the same nickname flow as the user's BBS connections (if any), sharing the WF2Q+ allocation.
+- **Nickname rename**: when a `UserUpdate` changes a username (and for regular accounts, nickname == username), the handler calls `scheduler.rename_flow(old_nickname_lower, new_nickname_lower)`. The scheduler atomically renames the flow key; all connections (BBS and transfer) in the old flow move to the new flow. The handler has both old and new names from the update path. The `user_id` metadata on the flow is preserved across the rename.
+- **Graceful unregister**: when unregistering a connection (disconnect, kick, ban), the scheduler flushes only the **Protocol sub-queue** for that connection into its bounded channel (via `try_send`; packets that don't fit are dropped). All pending **Bulk data is dropped** — there's no value in sending megabytes of stale transfer data before a disconnect, and attempting to do so could block shutdown if the channel is full or the writer is dead. After the Protocol flush (or if the channel is already dead), the scheduler drops the channel sender. The writer task drains remaining items, flushes the socket, and exits. This ensures `send_error_and_disconnect` messages are delivered (they're Protocol class and typically tiny) while not delaying shutdown for expendable Bulk backlog.
+- **Connection disconnect**: after flush-on-unregister completes and the writer task exits, the scheduler removes the conn_id from `connections`. The flow stays alive if other conn_ids still reference it.
 - **Last session disconnects**: when the last conn_id referencing a nickname flow disconnects, the nickname flow is reaped.
 - **Anon flow refcount**: incremented on each pre-login WAN connection from an IP, decremented on either successful login (graduation) or disconnect. Reaped when it hits zero.
+- **Writer task lifecycle**: the writer task runs a simple loop: `recv() → write_all() → (continue)`. On channel close (unregister path), it drains remaining items, flushes, and shuts down the socket. On write error, it exits immediately. The connection task detects writer death via the `JoinHandle` completing in its `select!` loop, breaks its read loop, and proceeds to session cleanup.
 
 **Logging**
 
