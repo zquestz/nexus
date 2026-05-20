@@ -11,16 +11,11 @@ use nexus_server::constants::FEATURE_NEWS;
 use nexus_server::db::{self, CreateUserParams, Permission, Permissions};
 use nexus_server::users::UserManager;
 
-// ============================================================================
-// Multi-Session Tests
-// ============================================================================
-
 #[tokio::test]
 async fn test_multi_session_partial_disconnect() {
     let db = create_test_db().await;
     let user_manager = UserManager::new();
 
-    // Create a user in database with user_list permission
     let hashed_password = db::hash_password(
         "password",
         nexus_common::validators::PasswordStrength::Weak,
@@ -45,7 +40,7 @@ async fn test_multi_session_partial_disconnect() {
         .await
         .unwrap();
 
-    // Alice logs in from 3 devices (3 sessions) - pass cached permissions
+    // Alice logs in from 3 devices (3 sessions).
     let cached_perms: HashSet<Permission> = [Permission::UserList].into_iter().collect();
     let (session_id1, mut rx1) = add_test_user(
         &user_manager,
@@ -66,7 +61,6 @@ async fn test_multi_session_partial_disconnect() {
     let (session_id3, mut rx3) =
         add_test_user(&user_manager, alice.id, "alice", false, cached_perms).await;
 
-    // Verify all 3 sessions exist
     let all_users = user_manager.get_all_users().await;
     let alice_sessions: Vec<u32> = all_users
         .iter()
@@ -78,11 +72,10 @@ async fn test_multi_session_partial_disconnect() {
     assert!(alice_sessions.contains(&session_id2));
     assert!(alice_sessions.contains(&session_id3));
 
-    // Disconnect session 2 (middle device)
+    // Disconnect session 2 (middle device) and broadcast to the rest.
     let removed = user_manager.remove_user(session_id2).await;
     assert!(removed.is_some(), "Session 2 should be removed");
 
-    // Broadcast disconnect to remaining users
     user_manager
         .broadcast_user_event(
             ServerMessage::UserDisconnected {
@@ -93,7 +86,6 @@ async fn test_multi_session_partial_disconnect() {
         )
         .await;
 
-    // Sessions 1 and 3 should still exist
     let remaining = user_manager.get_all_users().await;
     let remaining_sessions: Vec<u32> = remaining
         .iter()
@@ -109,7 +101,7 @@ async fn test_multi_session_partial_disconnect() {
     assert!(remaining_sessions.contains(&session_id3));
     assert!(!remaining_sessions.contains(&session_id2));
 
-    // Sessions 1 and 3 should receive UserDisconnected message
+    // Sessions 1 and 3 receive UserDisconnected; session 2's channel is closed.
     let msg1 = rx1.try_recv();
     assert!(msg1.is_ok(), "Session 1 should receive disconnect message");
     match msg1.unwrap().0 {
@@ -126,18 +118,15 @@ async fn test_multi_session_partial_disconnect() {
     let msg3 = rx3.try_recv();
     assert!(msg3.is_ok(), "Session 3 should receive disconnect message");
 
-    // Session 2's channel should be closed (already removed)
     let msg2 = rx2.try_recv();
     assert!(
         msg2.is_err(),
         "Session 20 should not receive message (already disconnected)"
     );
 
-    // Disconnect remaining sessions
     user_manager.remove_user(session_id1).await;
     user_manager.remove_user(session_id3).await;
 
-    // No sessions should remain for alice
     let final_users = user_manager.get_all_users().await;
     let final_alice: Vec<_> = final_users
         .iter()
@@ -146,16 +135,11 @@ async fn test_multi_session_partial_disconnect() {
     assert_eq!(final_alice.len(), 0, "Alice should have no sessions");
 }
 
-// ============================================================================
-// Permission-Based Broadcasting Tests
-// ============================================================================
-
 #[tokio::test]
 async fn test_broadcast_respects_user_list_permission() {
     let db = create_test_db().await;
     let user_manager = UserManager::new();
 
-    // Create admin (has all permissions)
     let hashed = db::hash_password(
         "password",
         nexus_common::validators::PasswordStrength::Weak,
@@ -178,7 +162,7 @@ async fn test_broadcast_respects_user_list_permission() {
         .await
         .unwrap();
 
-    // Create user WITH user_list permission
+    // User WITH user_list permission.
     let mut perms_with = Permissions::new();
     perms_with.add(Permission::UserList);
     let user_with = db
@@ -197,7 +181,7 @@ async fn test_broadcast_respects_user_list_permission() {
         .await
         .unwrap();
 
-    // Create user WITHOUT user_list permission
+    // User WITHOUT user_list permission.
     let user_without = db
         .users
         .create_user(CreateUserParams {
@@ -214,7 +198,6 @@ async fn test_broadcast_respects_user_list_permission() {
         .await
         .unwrap();
 
-    // Add all to UserManager with cached permissions
     let (_sid_admin, mut rx_admin) =
         add_test_user(&user_manager, admin.id, "admin", true, HashSet::new()).await;
     let cached_user_list: HashSet<Permission> = [Permission::UserList].into_iter().collect();
@@ -235,7 +218,6 @@ async fn test_broadcast_respects_user_list_permission() {
     )
     .await;
 
-    // Broadcast UserConnected event
     user_manager
         .broadcast_user_event(
             ServerMessage::UserConnected {
@@ -260,7 +242,6 @@ async fn test_broadcast_respects_user_list_permission() {
         )
         .await;
 
-    // Admin should receive (has all permissions)
     let msg_admin = rx_admin.try_recv();
     assert!(
         msg_admin.is_ok(),
@@ -271,7 +252,6 @@ async fn test_broadcast_respects_user_list_permission() {
         ServerMessage::UserConnected { .. }
     ));
 
-    // User with permission should receive
     let msg_with = rx_with.try_recv();
     assert!(
         msg_with.is_ok(),
@@ -282,7 +262,6 @@ async fn test_broadcast_respects_user_list_permission() {
         ServerMessage::UserConnected { .. }
     ));
 
-    // User without permission should NOT receive
     let msg_without = rx_without.try_recv();
     assert!(
         msg_without.is_err(),
@@ -295,7 +274,6 @@ async fn test_broadcast_excludes_specified_session() {
     let db = create_test_db().await;
     let user_manager = UserManager::new();
 
-    // Create users with user_list permission
     let hashed = db::hash_password(
         "password",
         nexus_common::validators::PasswordStrength::Weak,
@@ -336,7 +314,6 @@ async fn test_broadcast_excludes_specified_session() {
         .await
         .unwrap();
 
-    // Add users with cached permissions
     let cached_perms: HashSet<Permission> = [Permission::UserList].into_iter().collect();
     let (session_id1, mut rx1) = add_test_user(
         &user_manager,
@@ -349,7 +326,7 @@ async fn test_broadcast_excludes_specified_session() {
     let (_session_id2, mut rx2) =
         add_test_user(&user_manager, user2.id, "user2", false, cached_perms).await;
 
-    // Broadcast with exclusion of session 1
+    // Broadcast excluding session 1.
     user_manager
         .broadcast_user_event(
             ServerMessage::UserConnected {
@@ -374,14 +351,12 @@ async fn test_broadcast_excludes_specified_session() {
         )
         .await;
 
-    // Session 1 should NOT receive (excluded)
     let msg1 = rx1.try_recv();
     assert!(
         msg1.is_err(),
         "Session 1 should not receive message (excluded)"
     );
 
-    // Session 2 should receive
     let msg2 = rx2.try_recv();
     assert!(msg2.is_ok(), "Session 2 should receive message");
     match msg2.unwrap().0 {
@@ -392,14 +367,12 @@ async fn test_broadcast_excludes_specified_session() {
 
 #[tokio::test]
 async fn test_broadcast_to_feature_excludes_specified_session() {
-    // Mirrors the call shape used by news_create / news_update / news_delete:
-    // each handler broadcasts NewsUpdated to the "news" feature gated by
-    // NewsList, excluding the requesting session so the originator doesn't
-    // receive a redundant refresh on top of their typed *Response.
+    // Mirrors news_create/update/delete: broadcast NewsUpdated to the "news"
+    // feature gated by NewsList, excluding the originator so they don't get a
+    // redundant refresh on top of their typed *Response.
     let db = create_test_db().await;
     let user_manager = UserManager::new();
 
-    // Create two users with NewsList permission
     let hashed = db::hash_password(
         "password",
         nexus_common::validators::PasswordStrength::Weak,
@@ -440,7 +413,7 @@ async fn test_broadcast_to_feature_excludes_specified_session() {
         .await
         .unwrap();
 
-    // Add users with cached permissions (add_test_user grants the "news" feature by default)
+    // add_test_user grants the "news" feature by default.
     let cached_perms: HashSet<Permission> = [Permission::NewsList].into_iter().collect();
     let (session_id1, mut rx1) = add_test_user(
         &user_manager,
@@ -453,7 +426,6 @@ async fn test_broadcast_to_feature_excludes_specified_session() {
     let (_session_id2, mut rx2) =
         add_test_user(&user_manager, user2.id, "user2", false, cached_perms).await;
 
-    // Broadcast NewsUpdated, excluding the originator (session 1)
     let post_id: i64 = 42;
     user_manager
         .broadcast_to_feature(
@@ -467,13 +439,11 @@ async fn test_broadcast_to_feature_excludes_specified_session() {
         )
         .await;
 
-    // Originator should NOT receive (excluded)
     assert!(
         rx1.try_recv().is_err(),
         "Originator should not receive NewsUpdated for their own action"
     );
 
-    // Observer should receive
     let msg2 = rx2.try_recv();
     assert!(msg2.is_ok(), "Observer should receive NewsUpdated");
     match msg2.unwrap().0 {
@@ -485,16 +455,11 @@ async fn test_broadcast_to_feature_excludes_specified_session() {
     }
 }
 
-// ============================================================================
-// Disconnect Detection Tests
-// ============================================================================
-
 #[tokio::test]
 async fn test_broadcast_detects_closed_channels() {
     let db = create_test_db().await;
     let user_manager = UserManager::new();
 
-    // Create users with permission
     let hashed = db::hash_password(
         "password",
         nexus_common::validators::PasswordStrength::Weak,
@@ -535,7 +500,6 @@ async fn test_broadcast_detects_closed_channels() {
         .await
         .unwrap();
 
-    // Add users to manager with cached permissions
     let cached_perms: HashSet<Permission> = [Permission::ChatReceive].into_iter().collect();
     let (session_id1, rx1) = add_test_user(
         &user_manager,
@@ -548,10 +512,9 @@ async fn test_broadcast_detects_closed_channels() {
     let (session_id2, rx2) =
         add_test_user(&user_manager, user2.id, "user2", false, cached_perms).await;
 
-    // Drop rx1 to close the channel (simulates dead connection)
+    // Drop rx1 to simulate a dead connection (closed channel).
     drop(rx1);
 
-    // Verify both users exist before broadcast
     assert!(
         user_manager
             .get_user_by_session_id(session_id1)
@@ -565,7 +528,7 @@ async fn test_broadcast_detects_closed_channels() {
             .is_some()
     );
 
-    // Broadcast a message (should detect closed channel)
+    // Broadcast should detect and prune the closed channel.
     user_manager
         .broadcast_to_feature(
             "chat",
@@ -584,7 +547,6 @@ async fn test_broadcast_detects_closed_channels() {
         )
         .await;
 
-    // User 1 should be removed (channel was closed)
     assert!(
         user_manager
             .get_user_by_session_id(session_id1)
@@ -593,7 +555,6 @@ async fn test_broadcast_detects_closed_channels() {
         "User 1 should be removed after broadcast detected closed channel"
     );
 
-    // User 2 should still exist
     assert!(
         user_manager
             .get_user_by_session_id(session_id2)
@@ -602,6 +563,5 @@ async fn test_broadcast_detects_closed_channels() {
         "User 2 should still exist"
     );
 
-    // Clean up
     drop(rx2);
 }

@@ -22,7 +22,6 @@ fn absolute_data_dir(s: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-/// Get default data directory help text for the current platform.
 fn default_data_dir_help() -> &'static str {
     #[cfg(target_os = "linux")]
     return "Data directory (default: ~/.local/share/nexusd/)";
@@ -37,7 +36,6 @@ fn default_data_dir_help() -> &'static str {
     return "Data directory (overrides platform default)";
 }
 
-/// Get default file root help text for the current platform.
 fn default_file_root_help() -> &'static str {
     #[cfg(target_os = "linux")]
     return "File area root directory (default: ~/.local/share/nexusd/files/)";

@@ -6,14 +6,8 @@ use unic_langid::LanguageIdentifier;
 
 use crate::constants::*;
 
-/// Get a translated message
-///
-/// # Arguments
-/// * `locale` - The locale code (e.g., "en", "es")
-/// * `key` - The translation key from the .ftl file
-///
-/// # Returns
-/// The translated string, or falls back to English if locale not supported
+/// Translate `key` for `locale`, falling back to English if the locale is
+/// unsupported or the key is missing there.
 pub fn t(locale: &str, key: &str) -> String {
     let bundle = get_bundle(locale);
 
@@ -37,15 +31,8 @@ pub fn t(locale: &str, key: &str) -> String {
     panic!("{} '{}'", ERR_I18N_MISSING_KEY_ENGLISH, key);
 }
 
-/// Get a translated message with arguments
-///
-/// # Arguments
-/// * `locale` - The locale code (e.g., "en", "es")
-/// * `key` - The translation key from the .ftl file
-/// * `args` - Slice of (key, value) tuples for parameter substitution
-///
-/// # Returns
-/// The translated string with parameters substituted
+/// Translate `key` for `locale` with `(name, value)` parameter substitution,
+/// falling back to English if the locale is unsupported or the key is missing.
 pub fn t_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String {
     let bundle = get_bundle(locale);
 
@@ -79,14 +66,11 @@ pub fn t_args(locale: &str, key: &str, args: &[(&str, &str)]) -> String {
     panic!("{} '{}'", ERR_I18N_MISSING_KEY_ENGLISH, key);
 }
 
-/// Get a Fluent bundle for the specified locale
+/// Build a Fluent bundle for `locale` (English for unsupported locales).
 ///
-/// Loads the appropriate .ftl file and creates a bundle.
-/// Falls back to English for unsupported locales.
-///
-/// Note: Currently creates a new bundle on each call. FluentBundle contains
-/// non-Send types (RefCell, TypeMap) which prevent safe caching across threads.
-/// For a BBS server with infrequent errors, this performance trade-off is acceptable.
+/// Builds a fresh bundle per call: `FluentBundle` holds non-Send types
+/// (RefCell, TypeMap) that can't be cached across threads, and errors are
+/// infrequent enough on a BBS server that the cost is acceptable.
 fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
     let lang: LanguageIdentifier = locale
         .parse()
@@ -94,15 +78,14 @@ fn get_bundle(locale: &str) -> FluentBundle<FluentResource> {
 
     let mut bundle = FluentBundle::new(vec![lang]);
 
-    // Normalize locale to actual file location
-    // Generic locales (pt, zh) map to their default variants
+    // Generic locales (pt, zh) map to their default regional variants.
     let normalized_locale = match locale {
         LOCALE_PORTUGUESE => LOCALE_PORTUGUESE_BR, // "pt" -> "pt-BR"
         LOCALE_CHINESE => LOCALE_CHINESE_CN,       // "zh" -> "zh-CN"
         other => other,
     };
 
-    // Load errors.ftl for this locale (fallback to English)
+    // errors.ftl for this locale; the wildcard arm falls back to English.
     let ftl_string = match normalized_locale {
         LOCALE_SPANISH => include_str!("../locales/es/errors.ftl"),
         LOCALE_JAPANESE => include_str!("../locales/ja/errors.ftl"),
@@ -255,11 +238,9 @@ mod tests {
         assert_eq!(result, "Не выполнен вход");
     }
 
-    /// Exercise Russian's three-form plural selector on `err-flood-warning`.
-    /// All three branches produce visibly distinct words ("секунду / секунды /
-    /// секунд"), so this proves Fluent's numeric selector is actually firing —
-    /// if `t_args` passed the value as a string, the selector would fall
-    /// through to `*[other]` for every input.
+    /// Russian's three plural forms ("секунду / секунды / секунд") are visibly
+    /// distinct, proving `t_args` passes the count as a number — a string would
+    /// fall through to `*[other]` for every input.
     #[test]
     fn test_russian_plural_three_forms_via_flood_warning() {
         let one = t_args(
@@ -299,17 +280,10 @@ mod tests {
         );
     }
 
-    /// Russian plural rendering on the bandwidth chunk size selectors.
-    /// Russian uses three numeric-noun forms after a numeral:
-    /// - `[one]` (n ≡ 1 mod 10, n ≢ 11 mod 100) → nominative singular "байт"
-    ///   ("1 байт", "21 байт")
-    /// - `[few]` (n ≡ 2..4 mod 10, n ≢ 12..14 mod 100) → genitive singular
-    ///   "байта" ("2 байта", "1024 байта")
-    /// - `*[other]` (5..20, 25..30, etc.) → genitive plural "байт"
-    ///   ("5 байт", "65536 байт")
-    ///
-    /// `min = 1024` lands in `[few]`, which is the real-world configured
-    /// minimum — operators trying smaller chunks see this exact error.
+    /// Russian numeric-noun forms after a numeral: `[one]` (n≡1 mod 10, ≢11
+    /// mod 100) → "байт"; `[few]` (n≡2..4 mod 10, ≢12..14 mod 100) → "байта";
+    /// `*[other]` → "байт". `min = 1024` lands in `[few]`, the real configured
+    /// minimum operators see when trying smaller chunks.
     #[test]
     fn test_russian_plural_bandwidth_chunk_size() {
         let one = t_args("ru", "err-bandwidth-chunk-size-too-small", &[("min", "1")]);
@@ -392,20 +366,16 @@ mod tests {
         "es", "fr", "de", "it", "nl", "pt-BR", "pt-PT", "ru", "ja", "zh-CN", "zh-TW", "ko",
     ];
 
-    /// Read a Fluent `.ftl` file and return the set of top-level message
-    /// keys defined in it. Uses the real `fluent_syntax::parser` so any
-    /// Fluent feature (multi-line values, message attributes, term refs,
-    /// etc.) is handled correctly.
+    /// Top-level message keys in a `.ftl` file, via the real
+    /// `fluent_syntax::parser` so every Fluent feature is handled correctly.
     fn collect_keys_in_ftl(path: &std::path::Path) -> std::collections::HashSet<String> {
         use fluent_syntax::ast::Entry;
-        // Surface the I/O error directly: a missing/unreadable locale file
-        // is a real bug, and panicking with the path + OS error is far
-        // more diagnostic than absorbing the read failure and letting the
-        // "every key is missing" diff message obscure the actual cause.
+        // Panic with path + OS error: a missing locale file is a real bug, and
+        // this is more diagnostic than an "every key is missing" diff.
         let content = std::fs::read_to_string(path)
             .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
-        // `parse` returns `Err((Resource, Vec<Error>))` on partial parse —
-        // we still want what parsed successfully, so accept either arm.
+        // `parse` returns `Err((Resource, Vec<Error>))` on partial parse — keep
+        // what parsed by accepting either arm.
         let resource = fluent_syntax::parser::parse(content.as_str()).unwrap_or_else(|(r, _)| r);
         resource
             .body

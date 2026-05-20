@@ -114,35 +114,28 @@ where
     let mut frame_reader = FrameReader::new(buf_reader);
     let mut frame_writer = FrameWriter::new(writer);
 
-    // Create channel for receiving server messages to send to this client
+    // Channel for server messages destined to this client.
     let (tx, mut rx) = mpsc::unbounded_channel::<(ServerMessage, Option<MessageId>)>();
 
-    // Connection state
     let mut conn_state = ConnectionState::new();
 
-    // Main loop - handle both incoming messages and outgoing events
-    // Uses tokio::select! to handle both reading from client and sending to client concurrently
+    // tokio::select! over incoming reads and outgoing events. Read timeout
+    // depends on auth state: pre-login uses a 30s idle + 60s frame timeout
+    // (resource-exhaustion defense); authenticated users may idle freely.
     loop {
-        // Choose read function based on authentication state:
-        // - Before login: use full timeout (30s idle + 60s frame) to prevent resource exhaustion
-        // - After login: allow idle connections (only 60s frame timeout once data arrives)
         let is_authenticated = conn_state.session_id.is_some();
 
         tokio::select! {
-            // Handle incoming client messages
             result = async {
                 if is_authenticated {
-                    // Authenticated users can idle indefinitely
                     read_client_message_with_timeout(&mut frame_reader).await
                 } else {
-                    // Unauthenticated connections must send data within 30 seconds
                     read_client_message_with_full_timeout(&mut frame_reader, None, None).await
                 }
             } => {
                 match result {
                     Ok(Some(received)) => {
-                        // Handle the message
-                        // Clone locale to avoid borrow checker conflict
+                        // Clone locale to avoid borrow checker conflict with conn_state.
                         let locale = conn_state.locale.clone();
 
                         let mut ctx = HandlerContext {
@@ -182,8 +175,8 @@ where
                         break;
                     }
                     Err(e) => {
-                        // Invalid magic and timeouts are common (scanners, dropped connections)
-                        // Only log in debug mode to reduce noise
+                        // Invalid magic / timeouts are common (scanners, dropped
+                        // connections); log those at debug to reduce noise.
                         let is_common_error = matches!(
                             e,
                             FrameError::InvalidMagic | FrameError::FrameTimeout | FrameError::IdleTimeout
@@ -195,7 +188,7 @@ where
                             warn!(ip = %peer_addr, err = %e, "{}", LOG_PARSE_MESSAGE_ERROR);
                         }
 
-                        // Try to send error before disconnecting
+                        // Try to send error before disconnecting.
                         let error_msg = ServerMessage::Error {
                             message: err_invalid_message_format(&conn_state.locale),
                             command: None,
@@ -210,18 +203,17 @@ where
                 }
             }
 
-            // Handle outgoing server messages/events
+            // Outgoing server messages/events.
             msg = rx.recv() => {
                 match msg {
                     Some((msg, msg_id)) => {
-                        // Use provided message ID or generate a new one
                         let id = msg_id.unwrap_or_else(MessageId::new);
                         if send_server_message_with_id(&mut frame_writer, &msg, id).await.is_err() {
                             break;
                         }
                     }
                     None => {
-                        // Channel closed (user was removed from manager) - disconnect
+                        // Channel closed (user removed from manager) — disconnect.
                         break;
                     }
                 }
@@ -229,17 +221,15 @@ where
         }
     }
 
-    // Shutdown the writer gracefully
     let _ = frame_writer.get_mut().shutdown().await;
 
-    // Remove user on disconnect and broadcast to other clients
+    // Remove user on disconnect and broadcast to other clients.
     if let Some(id) = conn_state.session_id {
         // Remove from all channels, then notify remaining channel members if needed.
         if let Some(user) = user_manager.get_user_by_session_id(id).await {
             let channel_names = channel_manager.remove_from_all(id).await;
 
             for channel_name in channel_names {
-                // Get remaining members (if channel still exists)
                 if let Some(remaining_members) = channel_manager.get_members(&channel_name).await {
                     let nickname_present_elsewhere = user_manager
                         .sessions_contain_nickname(&remaining_members, &user.nickname, None)
@@ -260,14 +250,13 @@ where
                 }
             }
 
-            // Remove from voice session and notify remaining participants
+            // Remove from voice session and notify remaining participants.
             if let Some(info) = voice_registry.remove_by_session_id(id).await {
-                // Note: we don't notify the leaving user here since they're disconnecting
+                // No notification to the leaving user — they're disconnecting.
                 send_voice_leave_notifications(&info, None, &user_manager, &channel_manager).await;
             }
         }
 
-        // Now remove from UserManager and broadcast UserDisconnected
         if let Some(user) = user_manager.remove_user_and_broadcast(id).await {
             debug!(user = %user.username, ip = %peer_addr, "{}", LOG_DISCONNECTED);
         }
@@ -285,7 +274,7 @@ async fn handle_client_message<W>(
 where
     W: tokio::io::AsyncWrite + Unpin,
 {
-    // Update last_activity for non-passive messages (used for idle tracking)
+    // Non-passive messages count as activity for idle tracking.
     if let Some(session_id) = conn_state.session_id
         && !is_passive_message(&msg)
     {
@@ -716,11 +705,8 @@ where
     Ok(())
 }
 
-/// Check if a client message is passive (should not reset idle tracking).
-///
-/// Passive messages don't count as user activity for idle time calculation:
-/// - `Ping`: keepalive, not user-initiated
-/// - `UserAway`: setting away status shouldn't reset idle timer
+/// Passive messages don't count as user activity for idle tracking:
+/// `Ping` (keepalive) and `UserAway` (setting away mustn't reset the timer).
 fn is_passive_message(msg: &ClientMessage) -> bool {
     matches!(msg, ClientMessage::Ping | ClientMessage::UserAway { .. })
 }

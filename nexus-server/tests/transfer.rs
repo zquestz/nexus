@@ -1,7 +1,5 @@
-//! Integration tests for file transfer protocol (port 7501)
-//!
-//! These tests verify the transfer handler's behavior for file downloads,
-//! including authentication, permission checks, and file streaming.
+//! Integration tests for the file transfer protocol (port 7501): downloads,
+//! uploads, auth, permission checks, streaming, and resume logic.
 
 mod common;
 
@@ -15,16 +13,12 @@ use tempfile::TempDir;
 use tokio::fs;
 use tokio::io::BufReader;
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Create a test file area with some test files
+/// Build a temp file area populated with shared dirs (default, upload,
+/// generic/user dropbox), per-user dirs, and a few test files.
 async fn create_test_file_area() -> TempDir {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let root = temp_dir.path();
 
-    // Create shared directory structure
     fs::create_dir_all(root.join("shared/Documents"))
         .await
         .unwrap();
@@ -40,7 +34,6 @@ async fn create_test_file_area() -> TempDir {
     fs::create_dir_all(root.join("users/alice")).await.unwrap();
     fs::create_dir_all(root.join("users/bob")).await.unwrap();
 
-    // Create test files
     fs::write(root.join("shared/Documents/readme.txt"), b"Hello, World!")
         .await
         .unwrap();
@@ -69,48 +62,36 @@ async fn create_test_file_area() -> TempDir {
     temp_dir
 }
 
-// ============================================================================
-// Dropbox Access Tests (Unit-level, no network)
-// ============================================================================
-
 #[test]
 fn test_dropbox_path_parsing() {
     use nexus_server::files::folder_type::{FolderType, parse_folder_type};
 
-    // Default folder
     assert!(matches!(
         parse_folder_type("Documents"),
         FolderType::Default
     ));
 
-    // Upload folder
     assert!(matches!(
         parse_folder_type("Uploads [NEXUS-UL]"),
         FolderType::Upload
     ));
 
-    // Generic dropbox
     assert!(matches!(
         parse_folder_type("Submissions [NEXUS-DB]"),
         FolderType::DropBox
     ));
 
-    // User dropbox
     match parse_folder_type("For Alice [NEXUS-DB-alice]") {
         FolderType::UserDropBox(owner) => assert_eq!(owner.to_lowercase(), "alice"),
         _ => panic!("Expected UserDropBox"),
     }
 
-    // Case insensitivity
+    // Suffix matching is case-insensitive.
     assert!(matches!(
         parse_folder_type("uploads [nexus-ul]"),
         FolderType::Upload
     ));
 }
-
-// ============================================================================
-// Path Resolution Tests
-// ============================================================================
 
 #[tokio::test]
 async fn test_resolve_user_area_with_personal_folder() {
@@ -119,11 +100,10 @@ async fn test_resolve_user_area_with_personal_folder() {
     let temp_dir = create_test_file_area().await;
     let root = temp_dir.path();
 
-    // Alice has a personal folder
+    // Alice has a personal folder; charlie falls back to shared.
     let alice_area = resolve_user_area(root, "alice").await;
     assert!(alice_area.ends_with("users/alice"));
 
-    // Charlie doesn't have a personal folder, gets shared
     let charlie_area = resolve_user_area(root, "charlie").await;
     assert!(charlie_area.ends_with("shared"));
 }
@@ -135,23 +115,17 @@ async fn test_path_validation_rejects_traversal() {
     let temp_dir = create_test_file_area().await;
     let area_root = temp_dir.path().join("shared");
 
-    // Normal path should work
     let result = build_and_validate_candidate_path(&area_root, "/Documents/readme.txt").await;
     assert!(result.is_ok());
 
-    // Path traversal should fail
     let result = build_and_validate_candidate_path(&area_root, "/../../../etc/passwd").await;
     assert!(result.is_err());
 
-    // Embedded traversal should fail
+    // Embedded traversal should fail too.
     let result =
         build_and_validate_candidate_path(&area_root, "/Documents/../../../etc/passwd").await;
     assert!(result.is_err());
 }
-
-// ============================================================================
-// File Scanning Tests
-// ============================================================================
 
 #[tokio::test]
 async fn test_scan_single_file() {
@@ -179,10 +153,6 @@ async fn test_scan_directory_structure() {
     assert_eq!(file_names, vec!["data.bin", "readme.txt"]);
 }
 
-// ============================================================================
-// Hash Computation Tests
-// ============================================================================
-
 #[tokio::test]
 async fn test_sha256_known_value() {
     use sha2::{Digest, Sha256};
@@ -198,15 +168,10 @@ async fn test_sha256_known_value() {
     );
 }
 
-// ============================================================================
-// Permission Tests (Database-level)
-// ============================================================================
-
 #[tokio::test]
 async fn test_file_download_permission_in_db() {
     let db = create_test_db().await;
 
-    // Create user with file_download permission
     let hashed = db::hash_password(
         "password",
         nexus_common::validators::PasswordStrength::Weak,
@@ -233,7 +198,6 @@ async fn test_file_download_permission_in_db() {
         .await
         .unwrap();
 
-    // Verify permissions are stored by fetching them back
     let stored_perms = db.users.get_user_permissions(user.id).await.unwrap();
     let perm_vec = stored_perms.to_vec();
     assert!(perm_vec.contains(&Permission::FileDownload));
@@ -245,7 +209,7 @@ async fn test_file_download_permission_in_db() {
 async fn test_admin_has_implicit_permissions() {
     let db = create_test_db().await;
 
-    // Create admin with no explicit permissions
+    // Admin with no explicit permissions.
     let hashed = db::hash_password(
         "password",
         nexus_common::validators::PasswordStrength::Weak,
@@ -268,10 +232,8 @@ async fn test_admin_has_implicit_permissions() {
         .await
         .unwrap();
 
-    // Admin should be marked as admin
     assert!(admin.is_admin);
 
-    // Verify admin flag via lookup
     let fetched = db
         .users
         .get_user_by_username("admin")
@@ -280,10 +242,6 @@ async fn test_admin_has_implicit_permissions() {
         .unwrap();
     assert!(fetched.is_admin);
 }
-
-// ============================================================================
-// Message Serialization Tests
-// ============================================================================
 
 #[test]
 fn test_file_download_message_serialization() {
@@ -296,7 +254,6 @@ fn test_file_download_message_serialization() {
     assert!(json.contains("\"type\":\"FileDownload\""));
     assert!(json.contains("\"path\":\"/Documents/readme.txt\""));
 
-    // Deserialize back
     let parsed: ClientMessage = serde_json::from_str(&json).unwrap();
     match parsed {
         ClientMessage::FileDownload { path, root } => {
@@ -459,10 +416,6 @@ fn test_file_hash_deserialization() {
     }
 }
 
-// ============================================================================
-// Frame Protocol Tests
-// ============================================================================
-
 #[tokio::test]
 async fn test_frame_roundtrip_file_download() {
     let msg = ClientMessage::FileDownload {
@@ -472,7 +425,6 @@ async fn test_frame_roundtrip_file_download() {
     let payload = serde_json::to_vec(&msg).unwrap();
     let id = MessageId::new();
 
-    // Write frame
     let mut buffer = Vec::new();
     {
         let cursor = Cursor::new(&mut buffer);
@@ -481,7 +433,6 @@ async fn test_frame_roundtrip_file_download() {
         writer.write_frame(&frame).await.unwrap();
     }
 
-    // Read frame back
     let cursor = Cursor::new(buffer);
     let buf_reader = BufReader::new(cursor);
     let mut reader = FrameReader::new(buf_reader);
@@ -490,7 +441,6 @@ async fn test_frame_roundtrip_file_download() {
     assert_eq!(frame.message_id, id);
     assert_eq!(frame.message_type, "FileDownload");
 
-    // Verify payload
     let parsed: ClientMessage = serde_json::from_slice(&frame.payload).unwrap();
     match parsed {
         ClientMessage::FileDownload { path, root } => {
@@ -501,13 +451,8 @@ async fn test_frame_roundtrip_file_download() {
     }
 }
 
-// ============================================================================
-// Transfer ID Tests
-// ============================================================================
-
 #[test]
 fn test_transfer_id_in_response() {
-    // Verify transfer_id is properly included in FileDownloadResponse
     let response = ServerMessage::FileDownloadResponse {
         success: true,
         error: None,
@@ -521,13 +466,9 @@ fn test_transfer_id_in_response() {
     assert!(json.contains("\"transfer_id\":\"deadbeef\""));
 }
 
-// ============================================================================
-// Error Kind Tests
-// ============================================================================
-
 #[test]
 fn test_error_kinds() {
-    // Test various error_kind values that client should handle
+    // error_kind values the client must handle.
     let error_kinds = vec![
         ("not_found", "Path doesn't exist"),
         ("permission", "Permission denied"),
@@ -551,17 +492,12 @@ fn test_error_kinds() {
     }
 }
 
-// ============================================================================
-// Empty Directory / Zero-byte File Tests
-// ============================================================================
-
 #[tokio::test]
 async fn test_empty_directory_handling() {
     let temp_dir = TempDir::new().unwrap();
     let empty_dir = temp_dir.path().join("empty");
     fs::create_dir(&empty_dir).await.unwrap();
 
-    // Verify directory is empty
     let mut entries = fs::read_dir(&empty_dir).await.unwrap();
     assert!(entries.next_entry().await.unwrap().is_none());
 }
@@ -576,10 +512,6 @@ async fn test_zero_byte_file() {
     assert_eq!(metadata.len(), 0);
 }
 
-// ============================================================================
-// Symlink Tests (Unix only)
-// ============================================================================
-
 #[cfg(unix)]
 #[tokio::test]
 async fn test_symlink_in_file_area() {
@@ -588,26 +520,19 @@ async fn test_symlink_in_file_area() {
     let temp_dir = TempDir::new().unwrap();
     let root = temp_dir.path();
 
-    // Create a real file
     let real_file = root.join("real.txt");
     fs::write(&real_file, b"Real content").await.unwrap();
 
-    // Create a symlink to it
     let link_path = root.join("link.txt");
     symlink(&real_file, &link_path).unwrap();
 
-    // Verify symlink exists and points to correct target
     let metadata = fs::symlink_metadata(&link_path).await.unwrap();
     assert!(metadata.file_type().is_symlink());
 
-    // Reading through symlink should work
+    // Reading through the symlink resolves to the target's content.
     let content = fs::read_to_string(&link_path).await.unwrap();
     assert_eq!(content, "Real content");
 }
-
-// ============================================================================
-// Resume Logic Tests
-// ============================================================================
 
 #[test]
 fn test_resume_response_new_download() {
@@ -660,20 +585,16 @@ fn test_resume_response_complete_file() {
     }
 }
 
-// ============================================================================
-// Dropbox Security Tests
-// ============================================================================
-
 #[tokio::test]
 async fn test_directory_scan_filters_dropbox_contents() {
-    // Security test: When downloading a parent directory, dropbox contents
-    // should be filtered out for users who don't have access.
+    // scan_directory_recursive checks can_access_for_download per entry, so a
+    // parent-dir download filters out dropbox contents the user can't access.
+    // This test only verifies the fixtures exist.
     use nexus_server::files::folder_type::{FolderType, parse_folder_type};
 
     let temp_dir = create_test_file_area().await;
     let root = temp_dir.path();
 
-    // Verify the dropbox folders exist with expected types
     assert!(matches!(
         parse_folder_type("Submissions [NEXUS-DB]"),
         FolderType::DropBox
@@ -683,35 +604,29 @@ async fn test_directory_scan_filters_dropbox_contents() {
         FolderType::UserDropBox(_)
     ));
 
-    // Verify the files exist in the dropbox folders
     let dropbox_file = root.join("shared/Submissions [NEXUS-DB]/secret.txt");
     assert!(dropbox_file.exists());
 
     let alice_dropbox_file = root.join("shared/For Alice [NEXUS-DB-alice]/alice_file.txt");
     assert!(alice_dropbox_file.exists());
 
-    // Regular documents should be accessible
     let regular_file = root.join("shared/Documents/readme.txt");
     assert!(regular_file.exists());
-
-    // The scan_directory_recursive function now checks can_access_for_download
-    // for each file/directory, so dropbox contents are filtered out for
-    // users who don't have access. This test verifies the test fixtures exist.
 }
 
 #[test]
 fn test_dropbox_access_rules() {
     use nexus_server::files::folder_type::{FolderType, parse_folder_type};
 
-    // Test the access control rules that scan_directory_recursive uses:
+    // Access rules scan_directory_recursive enforces per folder type:
 
-    // Generic dropbox - only admins can access
+    // Generic dropbox: admins only.
     assert!(matches!(
         parse_folder_type("Submissions [NEXUS-DB]"),
         FolderType::DropBox
     ));
 
-    // User dropbox - only named user and admins can access
+    // User dropbox: named user and admins only.
     match parse_folder_type("For Alice [NEXUS-DB-alice]") {
         FolderType::UserDropBox(owner) => {
             assert_eq!(owner.to_lowercase(), "alice");
@@ -719,22 +634,17 @@ fn test_dropbox_access_rules() {
         _ => panic!("Expected UserDropBox"),
     }
 
-    // Upload folder - everyone can download
+    // Upload and default folders: everyone can download.
     assert!(matches!(
         parse_folder_type("Uploads [NEXUS-UL]"),
         FolderType::Upload
     ));
 
-    // Default folder - everyone can download
     assert!(matches!(
         parse_folder_type("Documents"),
         FolderType::Default
     ));
 }
-
-// ============================================================================
-// Upload Message Serialization Tests
-// ============================================================================
 
 #[test]
 fn test_file_upload_message_serialization() {
@@ -863,10 +773,6 @@ fn test_server_file_start_response_no_existing() {
     // sha256 should be null or absent
 }
 
-// ============================================================================
-// Upload Frame Protocol Tests
-// ============================================================================
-
 #[tokio::test]
 async fn test_frame_roundtrip_file_upload() {
     let msg = ClientMessage::FileUpload {
@@ -878,7 +784,6 @@ async fn test_frame_roundtrip_file_upload() {
     let payload = serde_json::to_vec(&msg).unwrap();
     let id = MessageId::new();
 
-    // Write frame
     let mut buffer = Vec::new();
     {
         let cursor = Cursor::new(&mut buffer);
@@ -887,7 +792,6 @@ async fn test_frame_roundtrip_file_upload() {
         writer.write_frame(&frame).await.unwrap();
     }
 
-    // Read frame back
     let cursor = Cursor::new(buffer);
     let buf_reader = BufReader::new(cursor);
     let mut reader = FrameReader::new(buf_reader);
@@ -896,7 +800,6 @@ async fn test_frame_roundtrip_file_upload() {
     assert_eq!(frame.message_id, id);
     assert_eq!(frame.message_type, "FileUpload");
 
-    // Verify payload
     let parsed: ClientMessage = serde_json::from_slice(&frame.payload).unwrap();
     match parsed {
         ClientMessage::FileUpload {
@@ -923,7 +826,6 @@ async fn test_frame_roundtrip_client_file_start() {
     let payload = serde_json::to_vec(&msg).unwrap();
     let id = MessageId::new();
 
-    // Write frame
     let mut buffer = Vec::new();
     {
         let cursor = Cursor::new(&mut buffer);
@@ -932,7 +834,6 @@ async fn test_frame_roundtrip_client_file_start() {
         writer.write_frame(&frame).await.unwrap();
     }
 
-    // Read frame back
     let cursor = Cursor::new(buffer);
     let buf_reader = BufReader::new(cursor);
     let mut reader = FrameReader::new(buf_reader);
@@ -952,14 +853,13 @@ async fn test_frame_roundtrip_client_file_start() {
 
 #[tokio::test]
 async fn test_frame_roundtrip_file_hash() {
-    // Test both server and client FileHash variants survive a frame roundtrip
+    // Both server and client FileHash variants must survive a frame roundtrip.
     let server_msg = ServerMessage::FileHash {
         sha256: "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f".to_string(),
     };
     let payload = serde_json::to_vec(&server_msg).unwrap();
     let id = MessageId::new();
 
-    // Write frame
     let mut buffer = Vec::new();
     {
         let cursor = Cursor::new(&mut buffer);
@@ -968,7 +868,6 @@ async fn test_frame_roundtrip_file_hash() {
         writer.write_frame(&frame).await.unwrap();
     }
 
-    // Read frame back
     let cursor = Cursor::new(buffer);
     let buf_reader = BufReader::new(cursor);
     let mut reader = FrameReader::new(buf_reader);
@@ -987,7 +886,7 @@ async fn test_frame_roundtrip_file_hash() {
         _ => panic!("Wrong message type"),
     }
 
-    // Also verify client variant deserializes from the same payload
+    // The client variant deserializes from the same payload.
     let client_parsed: ClientMessage = serde_json::from_slice(&frame.payload).unwrap();
     match client_parsed {
         ClientMessage::FileHash { sha256 } => {
@@ -1000,15 +899,10 @@ async fn test_frame_roundtrip_file_hash() {
     }
 }
 
-// ============================================================================
-// Upload Permission Tests
-// ============================================================================
-
 #[tokio::test]
 async fn test_file_upload_permission_in_db() {
     let db = create_test_db().await;
 
-    // Create user with file_upload permission
     let hashed = db::hash_password(
         "pass123",
         nexus_common::validators::PasswordStrength::Weak,
@@ -1035,7 +929,6 @@ async fn test_file_upload_permission_in_db() {
         .await
         .unwrap();
 
-    // Verify permissions are stored by fetching them back
     let stored_perms = db.users.get_user_permissions(user.id).await.unwrap();
     let perm_vec = stored_perms.to_vec();
     assert!(perm_vec.contains(&Permission::FileUpload));
@@ -1047,7 +940,6 @@ async fn test_file_upload_permission_in_db() {
 async fn test_admin_has_implicit_upload_permission() {
     let db = create_test_db().await;
 
-    // Create admin user (no explicit permissions needed)
     let hashed = db::hash_password(
         "adminpass",
         nexus_common::validators::PasswordStrength::Weak,
@@ -1070,10 +962,8 @@ async fn test_admin_has_implicit_upload_permission() {
         .await
         .unwrap();
 
-    // Admin should be marked as admin
     assert!(admin.is_admin);
 
-    // Verify admin flag via lookup
     let fetched = db
         .users
         .get_user_by_username("admin_user")
@@ -1082,13 +972,8 @@ async fn test_admin_has_implicit_upload_permission() {
         .unwrap();
     assert!(fetched.is_admin);
 
-    // The actual admin check happens in the handler via user.is_admin
-    // Admin permissions are implicit, not stored in DB
+    // Admin permissions are implicit (handler checks user.is_admin), not in DB.
 }
-
-// ============================================================================
-// Upload Destination Validation Tests
-// ============================================================================
 
 #[tokio::test]
 async fn test_upload_folder_allows_upload() {
@@ -1098,19 +983,17 @@ async fn test_upload_folder_allows_upload() {
     let root = temp_dir.path();
     let area_root = root.join("shared");
 
-    // Upload folder should allow uploads
+    // Upload, generic dropbox, and user dropbox folders allow uploads.
     let upload_path = root.join("shared/Uploads [NEXUS-UL]");
     assert!(allows_upload(&area_root, &upload_path));
 
-    // Dropbox folder should allow uploads
     let dropbox_path = root.join("shared/Submissions [NEXUS-DB]");
     assert!(allows_upload(&area_root, &dropbox_path));
 
-    // User dropbox should allow uploads
     let user_dropbox_path = root.join("shared/For Alice [NEXUS-DB-alice]");
     assert!(allows_upload(&area_root, &user_dropbox_path));
 
-    // Regular folder should NOT allow uploads
+    // A regular folder does not.
     let regular_path = root.join("shared/Documents");
     assert!(!allows_upload(&area_root, &regular_path));
 }
@@ -1123,31 +1006,23 @@ async fn test_upload_subfolder_inherits_permission() {
     let root = temp_dir.path();
     let area_root = root.join("shared");
 
-    // Create a subfolder inside upload folder
+    // A subfolder inherits the parent upload folder's upload permission.
     let subfolder = root.join("shared/Uploads [NEXUS-UL]/SubProject");
     fs::create_dir_all(&subfolder).await.unwrap();
 
-    // Subfolder should inherit upload permission
     assert!(allows_upload(&area_root, &subfolder));
 }
 
-// ============================================================================
-// Directory Upload Destination Tests
-// ============================================================================
-
 #[tokio::test]
 async fn test_directory_upload_creates_destination() {
-    // When uploading a directory, the server should create the destination
-    // directory if it doesn't exist (as long as the parent allows uploads)
+    // The server creates a missing destination dir when the parent allows
+    // uploads (simulated here by create_dir_all).
     let temp_dir = create_test_file_area().await;
     let root = temp_dir.path();
 
-    // The destination "MyFolder" doesn't exist yet
     let new_folder = root.join("shared/Uploads [NEXUS-UL]/MyFolder");
     assert!(!new_folder.exists());
 
-    // After the upload destination validation (simulated by create_dir_all),
-    // the folder should be created
     fs::create_dir_all(&new_folder).await.unwrap();
     assert!(new_folder.exists());
     assert!(new_folder.is_dir());
@@ -1155,57 +1030,46 @@ async fn test_directory_upload_creates_destination() {
 
 #[tokio::test]
 async fn test_nested_upload_paths_created_during_streaming() {
-    // When uploading files with nested paths like "subdir/nested/file.txt",
-    // the streaming code should create intermediate directories
+    // Uploading a nested path ("subdir/nested/file.txt") creates intermediate
+    // directories during streaming.
     let temp_dir = create_test_file_area().await;
     let root = temp_dir.path();
 
-    // Simulate what happens during upload streaming:
-    // The destination exists, but nested paths inside don't
     let upload_folder = root.join("shared/Uploads [NEXUS-UL]");
     assert!(upload_folder.exists());
 
-    // File path: destination + relative_path
+    // File path = destination + relative path; intermediate dirs don't exist yet.
     let nested_file = upload_folder.join("project/src/main.rs");
     assert!(!nested_file.exists());
 
-    // create_dir_all on parent creates all intermediate directories
     if let Some(parent) = nested_file.parent() {
         fs::create_dir_all(parent).await.unwrap();
     }
 
-    // Now the nested directory structure exists
     assert!(upload_folder.join("project/src").exists());
 
-    // Write the file
     fs::write(&nested_file, b"fn main() {}").await.unwrap();
     assert!(nested_file.exists());
 }
 
 #[tokio::test]
 async fn test_deeply_nested_upload_destination() {
-    // Test that upload destination can be multiple levels deep if parent allows uploads
+    // A multi-level destination inherits upload permission from its parent.
     use nexus_server::files::path::allows_upload;
 
     let temp_dir = create_test_file_area().await;
     let root = temp_dir.path();
     let area_root = root.join("shared");
 
-    // Create deeply nested destination under upload folder
     let deep_dest = root.join("shared/Uploads [NEXUS-UL]/A/B/C/D");
     fs::create_dir_all(&deep_dest).await.unwrap();
 
-    // The deep destination should inherit upload permission from parent
     assert!(allows_upload(&area_root, &deep_dest));
 }
 
-// ============================================================================
-// Upload Error Kind Tests
-// ============================================================================
-
 #[test]
 fn test_upload_error_kinds() {
-    // Verify all upload-specific error kinds are valid strings
+    // All upload-specific error kinds must be valid strings.
     let error_kinds = vec![
         "exists",        // File already exists
         "conflict",      // Another upload in progress (.part exists)
@@ -1228,13 +1092,9 @@ fn test_upload_error_kinds() {
     }
 }
 
-// ============================================================================
-// Upload Path Security Tests
-// ============================================================================
-
 #[test]
 fn test_upload_path_traversal_detection() {
-    // These paths should be rejected by the upload handler
+    // The upload handler must reject these paths.
     let malicious_paths = vec![
         "../etc/passwd",
         "foo/../../../etc/passwd",
@@ -1245,7 +1105,6 @@ fn test_upload_path_traversal_detection() {
     ];
 
     for path in malicious_paths {
-        // Check for path traversal components
         let has_traversal = path.split(['/', '\\']).any(|c| c == "..");
         let is_absolute = path.starts_with('/') || path.starts_with('\\');
 
@@ -1259,7 +1118,7 @@ fn test_upload_path_traversal_detection() {
 
 #[test]
 fn test_upload_path_valid_relative() {
-    // These paths should be accepted
+    // The upload handler must accept these paths.
     let valid_paths = vec![
         "file.txt",
         "subdir/file.txt",
@@ -1282,13 +1141,9 @@ fn test_upload_path_valid_relative() {
     }
 }
 
-// ============================================================================
-// Upload Resume Logic Tests
-// ============================================================================
-
 #[test]
 fn test_upload_resume_response_no_existing() {
-    // Server has no .part file - client should send full file
+    // No .part file on server: client sends the full file.
     let response = ServerMessage::FileStartResponse {
         size: 0,
         sha256: None,
@@ -1298,7 +1153,6 @@ fn test_upload_resume_response_no_existing() {
         ServerMessage::FileStartResponse { size, sha256 } => {
             assert_eq!(size, 0);
             assert!(sha256.is_none());
-            // Client should send from offset 0 (full file)
         }
         _ => panic!("Wrong message type"),
     }
@@ -1306,7 +1160,8 @@ fn test_upload_resume_response_no_existing() {
 
 #[test]
 fn test_upload_resume_response_partial_exists() {
-    // Server has partial .part file
+    // Partial .part file on server: client compares the hash of the first
+    // `size` bytes, then resumes from `size` on match or restarts on mismatch.
     let response = ServerMessage::FileStartResponse {
         size: 50000,
         sha256: Some("abc123".to_string()),
@@ -1316,9 +1171,6 @@ fn test_upload_resume_response_partial_exists() {
         ServerMessage::FileStartResponse { size, sha256 } => {
             assert_eq!(size, 50000);
             assert_eq!(sha256, Some("abc123".to_string()));
-            // Client compares hash of first 50000 bytes
-            // If match: send from offset 50000
-            // If no match: send from offset 0
         }
         _ => panic!("Wrong message type"),
     }
@@ -1326,13 +1178,12 @@ fn test_upload_resume_response_partial_exists() {
 
 #[test]
 fn test_upload_resume_offset_calculation() {
-    // Simulate client-side offset calculation
+    // Client-side offset calc: matching partial hash resumes from server_size.
     let file_size: u64 = 100000;
     let server_size: u64 = 50000;
     let server_hash = "abc123";
     let client_partial_hash = "abc123"; // Hash of first 50000 bytes
 
-    // If hashes match, resume from server_size
     let offset = if client_partial_hash == server_hash {
         server_size
     } else {
@@ -1341,18 +1192,17 @@ fn test_upload_resume_offset_calculation() {
 
     assert_eq!(offset, 50000);
 
-    // Payload size = total - offset
     let payload_size = file_size - offset;
     assert_eq!(payload_size, 50000);
 }
 
 #[test]
 fn test_upload_resume_hash_mismatch() {
-    // Client's partial hash doesn't match server's - start fresh
+    // Mismatched partial hash restarts from offset 0 (full file).
     let file_size: u64 = 100000;
     let server_size: u64 = 50000;
     let server_hash = "abc123";
-    let client_partial_hash = "different_hash"; // Different content
+    let client_partial_hash = "different_hash";
 
     let offset = if client_partial_hash == server_hash {
         server_size
@@ -1362,18 +1212,13 @@ fn test_upload_resume_hash_mismatch() {
 
     assert_eq!(offset, 0);
 
-    // Payload size = full file
     let payload_size = file_size - offset;
     assert_eq!(payload_size, 100000);
 }
 
-// ============================================================================
-// Upload Zero-Byte File Tests
-// ============================================================================
-
 #[test]
 fn test_upload_zero_byte_file_start() {
-    // Zero-byte files should work - no FileData frame sent
+    // Zero-byte files send no FileData frame.
     let msg = ClientMessage::FileStart {
         path: "empty.txt".to_string(),
         size: 0,
@@ -1386,10 +1231,6 @@ fn test_upload_zero_byte_file_start() {
         _ => panic!("Wrong message type"),
     }
 }
-
-// ============================================================================
-// Upload Transfer Complete Tests
-// ============================================================================
 
 #[test]
 fn test_upload_transfer_complete_success() {

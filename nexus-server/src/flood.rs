@@ -92,10 +92,9 @@ impl FloodTracker {
 
     /// Run the token bucket check, consuming one token if available.
     ///
-    /// Callers pass the current time; production callers use `Instant::now()`.
-    /// Threading `now` through lets tests drive time forward without ever
-    /// subtracting from `Instant::now()`, which underflows on Windows when
-    /// the process hasn't been running long enough.
+    /// `now` is threaded in (rather than read internally) so tests can drive
+    /// time forward without subtracting from `Instant::now()`, which
+    /// underflows on Windows early in process life.
     pub fn check(&mut self, burst: u32, rate: u32, now: Instant) -> FloodCheck {
         let elapsed_secs = now.duration_since(self.last_check).as_secs_f64();
 
@@ -169,11 +168,9 @@ mod tests {
     fn test_limited_after_burst() {
         let mut tracker = FloodTracker::new();
         let now = Instant::now();
-        // Consume all 5 burst tokens.
         for _ in 0..5 {
             assert!(matches!(tracker.check(5, 20, now), FloodCheck::Allowed));
         }
-        // 6th message should be limited.
         assert!(matches!(
             tracker.check(5, 20, now),
             FloodCheck::Limited { .. }
@@ -184,19 +181,16 @@ mod tests {
     fn test_refill_over_time() {
         let mut tracker = FloodTracker::new();
         let base = Instant::now();
-        // Consume all 5 burst tokens.
         for _ in 0..5 {
             assert!(matches!(tracker.check(5, 20, base), FloodCheck::Allowed));
         }
-        // Should be limited now.
         assert!(matches!(
             tracker.check(5, 20, base),
             FloodCheck::Limited { .. }
         ));
 
-        // Simulate 10 seconds passing (rate=20/min => ~3.33 tokens refilled).
+        // 10s at rate=20/min refills ~3.33 tokens, enough for one more.
         let later = base + Duration::from_secs(10);
-        // Should be allowed again after refill.
         assert!(matches!(tracker.check(5, 20, later), FloodCheck::Allowed));
     }
 
@@ -204,10 +198,9 @@ mod tests {
     fn test_disconnect_after_max_violations() {
         let mut tracker = FloodTracker::new();
         let now = Instant::now();
-        // Consume the single burst token (burst=1 effectively via capacity).
         assert!(matches!(tracker.check(1, 20, now), FloodCheck::Allowed));
 
-        // Next 2 should be Limited (violations 1 and 2).
+        // Violations 1 and 2 are Limited; the 3rd hits MAX → Disconnect.
         assert!(matches!(
             tracker.check(1, 20, now),
             FloodCheck::Limited { .. }
@@ -217,7 +210,6 @@ mod tests {
             FloodCheck::Limited { .. }
         ));
 
-        // 3rd violation should be Disconnect.
         assert!(matches!(tracker.check(1, 20, now), FloodCheck::Disconnect));
     }
 
@@ -225,10 +217,9 @@ mod tests {
     fn test_violations_reset_on_allowed() {
         let mut tracker = FloodTracker::new();
         let base = Instant::now();
-        // Use burst=1 so we hit limits quickly.
+        // burst=1 to hit limits quickly.
         assert!(matches!(tracker.check(1, 60, base), FloodCheck::Allowed));
 
-        // Get 2 violations.
         assert!(matches!(
             tracker.check(1, 60, base),
             FloodCheck::Limited { .. }
@@ -239,12 +230,12 @@ mod tests {
         ));
         assert_eq!(tracker.consecutive_violations, 2);
 
-        // Wait for refill (10 seconds at 60/min = 10 tokens).
+        // 10s at 60/min refills 10 tokens; an Allowed message resets the counter.
         let later = base + Duration::from_secs(10);
         assert!(matches!(tracker.check(1, 60, later), FloodCheck::Allowed));
         assert_eq!(tracker.consecutive_violations, 0);
 
-        // Get 2 more violations — should NOT disconnect because counter was reset.
+        // 2 more violations must NOT disconnect — counter was reset.
         assert!(matches!(
             tracker.check(1, 60, later),
             FloodCheck::Limited { .. }
@@ -255,7 +246,6 @@ mod tests {
         ));
         assert_eq!(tracker.consecutive_violations, 2);
 
-        // 3rd consecutive violation after reset → Disconnect
         assert!(matches!(
             tracker.check(1, 60, later),
             FloodCheck::Disconnect
@@ -278,9 +268,8 @@ mod tests {
     fn test_wait_seconds_minimum_one() {
         let mut tracker = FloodTracker::new();
         let now = Instant::now();
-        // Exhaust tokens.
         assert!(matches!(tracker.check(1, 120, now), FloodCheck::Allowed));
-        // With high rate, wait would be very short, but should be >= 1.
+        // High rate → sub-second wait, but the result is floored at 1.
         match tracker.check(1, 120, now) {
             FloodCheck::Limited { wait_seconds, .. } => {
                 assert!(wait_seconds >= 1, "wait_seconds was {wait_seconds}");
@@ -300,22 +289,17 @@ mod tests {
     fn test_tokens_capped_to_burst() {
         let mut tracker = FloodTracker::new();
         let base = Instant::now();
-        // First check caps tokens from f64::MAX to burst capacity (5).
+        // First check caps tokens from f64::MAX to burst (5), then consumes 1 → 4.
         assert!(matches!(tracker.check(5, 20, base), FloodCheck::Allowed));
-        // After first check: tokens = 5.0 - 1.0 = 4.0.
 
-        // Wait a very long time.
+        // After an hour, refill is still capped at burst (5), not unbounded.
         let later = base + Duration::from_secs(3600);
-
-        // Tokens should refill but cap at 5 (burst).
         assert!(matches!(tracker.check(5, 20, later), FloodCheck::Allowed));
-        // After: tokens capped to 5.0, then -1.0 = 4.0.
 
-        // We should get exactly 4 more allowed (total 5 from burst).
+        // Exactly 4 more (5 total) before the bucket empties.
         for _ in 0..4 {
             assert!(matches!(tracker.check(5, 20, later), FloodCheck::Allowed));
         }
-        // 6th consecutive (without time passing) should be limited.
         assert!(matches!(
             tracker.check(5, 20, later),
             FloodCheck::Limited { .. }
@@ -344,18 +328,15 @@ mod tests {
         let now = Instant::now();
         assert!(!tracker.has_violations());
 
-        // Consume burst token.
         assert!(matches!(tracker.check(1, 20, now), FloodCheck::Allowed));
         assert!(!tracker.has_violations());
 
-        // Trigger a violation.
         assert!(matches!(
             tracker.check(1, 20, now),
             FloodCheck::Limited { .. }
         ));
         assert!(tracker.has_violations());
 
-        // Reset and verify.
         tracker.reset_violations();
         assert!(!tracker.has_violations());
     }

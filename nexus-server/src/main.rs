@@ -46,19 +46,16 @@ use voice::{VoiceRegistry, VoiceUdpServer, create_voice_listener};
 
 #[tokio::main]
 async fn main() {
-    // Install rustls crypto provider before any TLS/DTLS operations
-    // This is required because both tokio-rustls and dtls use rustls 0.23
-    // which needs an explicit crypto provider selection
+    // Must install before any TLS/DTLS op: tokio-rustls and dtls share
+    // rustls 0.23, which needs an explicit crypto provider selection.
     tokio_rustls::rustls::crypto::ring::default_provider()
         .install_default()
         .expect(ERR_RUSTLS_PROVIDER);
 
     let mut cli = Cli::parse();
 
-    // Resolve data directory (CLI override or platform default).
     let data_dir = resolve_data_dir(cli.data_dir.take());
 
-    // Initialize logging (global log level + tracing subscriber).
     if let Err(e) = logging::init(LogInitParams {
         data_dir: &data_dir,
         level: cli.log_level,
@@ -66,37 +63,31 @@ async fn main() {
         no_timestamps: cli.no_log_timestamps,
         log_file_prefix: LOG_FILE_PREFIX,
     }) {
-        // `init` installs a stderr-only fallback subscriber before
-        // returning Err, so this warning still reaches the user.
+        // `init` installs a stderr-only fallback before returning Err,
+        // so this warning still reaches the user.
         warn!(err = %e, "{}", LOG_LOGGING_INIT_FAILED);
     }
 
-    // Create the data directory if needed and lock it to owner-only on Unix.
     if let Err(e) = ensure_data_dir(&data_dir) {
         error!("{}", e);
         std::process::exit(1);
     }
 
-    // Resolve the log directory path once and reuse for purge, startup
-    // info, and the daily timer task below.
     let log_dir = logging::log_dir(&data_dir);
 
-    // Purge old log files on startup. `purge_old_logs` no-ops when retention
-    // is zero, so no outer gate needed.
+    // `purge_old_logs` no-ops when retention is zero, so no outer gate needed.
     logging::purge_old_logs(&log_dir, cli.log_retention, LOG_FILE_PREFIX);
 
-    // Startup info
     info!("{}{}", MSG_BANNER, env!("CARGO_PKG_VERSION"));
     info!("{}{}", MSG_LOG_LEVEL, cli.log_level);
     if cli.log_level != LogLevel::None && cli.log_retention > std::time::Duration::ZERO {
         info!("{}{}", MSG_LOG_DIR, log_dir.display());
     }
 
-    // Setup database
     let db_path = db::database_path(&data_dir);
     let (database, user_manager) = setup_db(&db_path).await;
 
-    // Setup IP rule cache - cleanup expired entries, then load active ones
+    // IP rule cache: cleanup expired entries, then load active ones.
     let expired_bans = database
         .bans
         .cleanup_expired_bans()
@@ -149,10 +140,8 @@ async fn main() {
         LOG_LOADED_CACHE
     );
 
-    // Setup file area
     let file_root = setup_file_area(cli.file_root, &data_dir);
 
-    // Setup network (TCP listeners + TLS, optionally WebSocket listeners)
     let websocket_enabled = cli.websocket;
     let (
         listener,
@@ -178,8 +167,7 @@ async fn main() {
     )
     .await;
 
-    // Setup voice DTLS listener (same port as TCP, OS routes by protocol).
-    // Certificates live directly in the data directory.
+    // Voice DTLS shares the TCP port (OS routes by protocol).
     let voice_addr = SocketAddr::new(cli.bind, cli.port);
     let cert_path = data_dir.join(CERT_FILENAME);
     let key_path = data_dir.join(KEY_FILENAME);
@@ -195,7 +183,6 @@ async fn main() {
         }
     };
 
-    // Store transfer ports for ServerInfo
     let transfer_port = cli.transfer_port;
     let transfer_websocket_port = if websocket_enabled {
         Some(cli.transfer_websocket_port)
@@ -203,7 +190,6 @@ async fn main() {
         None
     };
 
-    // Setup UPnP port forwarding if requested (forwards WS ports only if enabled)
     let upnp_handle = setup_upnp(
         cli.upnp,
         cli.bind,
@@ -218,15 +204,13 @@ async fn main() {
     )
     .await;
 
-    // Setup flood protection config (load limits from database)
     let chat_burst_limit = database.config.get_chat_burst_limit().await;
     let chat_rate_limit = database.config.get_chat_rate_limit().await;
     let flood_config = Arc::new(FloodConfig::new(chat_burst_limit, chat_rate_limit));
 
-    // Leak fingerprint to get a 'static reference - it lives for the program lifetime anyway
+    // Leak to a 'static reference — lives for the program lifetime anyway.
     let fingerprint: &'static str = Box::leak(fingerprint.into_boxed_str());
 
-    // Setup connection tracking for DoS protection (load limits from database)
     let max_connections_per_ip = database.config.get_max_connections_per_ip().await;
     let max_transfers_per_ip = database.config.get_max_transfers_per_ip().await;
     let connection_tracker = Arc::new(ConnectionTracker::new(
@@ -234,31 +218,22 @@ async fn main() {
         max_transfers_per_ip,
     ));
 
-    // Setup graceful shutdown handling
     let shutdown_signal = setup_shutdown_signal();
 
-    // Leak the PathBuf to get a 'static reference - it lives for the program lifetime anyway
+    // Leak to a 'static reference — lives for the program lifetime anyway.
     let file_root: &'static Path = Box::leak(file_root.into_boxed_path());
 
-    // Setup file index for searching
     let file_index = Arc::new(FileIndex::new(&data_dir, file_root));
-
-    // Trigger initial index build in background
     file_index.trigger_reindex();
 
     // Shared between BBS handlers and transfer-port upload finalization.
     let file_mutation_locks = Arc::new(PathLockMap::new());
 
-    // Create transfer registry for tracking active transfers (enables ban disconnection)
     let transfer_registry = Arc::new(TransferRegistry::new());
-
-    // Create voice registry for tracking active voice sessions (ephemeral, in-memory only)
     let voice_registry = VoiceRegistry::new();
 
-    // Create the tracker registration manager. The bootstrap call below
-    // loads enabled tracker rows from the DB and spawns one tracker
-    // task per row. Connection failures inside tasks just transition
-    // them to backoff/retry — they don't fail startup.
+    // `bootstrap()` loads enabled tracker rows and spawns one task per row;
+    // task-level connection failures back off and retry, never fail startup.
     let tracker_context = Arc::new(tracker::TrackerContext {
         db: database.clone(),
         user_manager: user_manager.clone(),
@@ -276,10 +251,9 @@ async fn main() {
         std::process::exit(1);
     }
 
-    // Create channel manager for multi-channel chat (needed by voice server for broadcasts)
+    // Needed by the voice server for broadcasts.
     let channel_manager = ChannelManager::new(database.channels.clone(), user_manager.clone());
 
-    // Create voice UDP server if listener was created successfully
     let voice_server = voice_listener.map(|listener| {
         Arc::new(VoiceUdpServer::new(
             listener,
@@ -291,13 +265,11 @@ async fn main() {
         ))
     });
 
-    // Initialize persistent channels from config and database
     let persistent_channels_config = database.config.get_persistent_channels().await;
     let channel_names = db::ConfigDb::parse_channel_list(&persistent_channels_config);
     if !channel_names.is_empty() {
         let mut channels_to_init = Vec::new();
         for name in &channel_names {
-            // Load settings from DB if they exist, otherwise create defaults
             match database.channels.get_channel_settings(name).await {
                 Ok(Some(settings)) => {
                     let (topic, topic_set_by) = if settings.topic.is_empty() {
@@ -313,7 +285,7 @@ async fn main() {
                     ));
                 }
                 Ok(None) => {
-                    // Channel in config but not in DB - create default settings
+                    // In config but not in DB — create default settings.
                     if let Err(e) = database
                         .channels
                         .upsert_channel_settings(&db::channels::ChannelSettings {
@@ -335,7 +307,7 @@ async fn main() {
             }
         }
 
-        // Prune channels from DB that are no longer in config
+        // Prune DB rows for channels no longer in config.
         if let Ok(all_settings) = database.channels.get_all_channel_settings().await {
             for settings in all_settings {
                 let name_lower = settings.name.to_lowercase();
@@ -359,12 +331,10 @@ async fn main() {
         debug!(count = channel_names.len(), "{}", LOG_CHANNELS_INITIALIZED);
     }
 
-    // Clone for the timer task
     let file_index_for_timer = file_index.clone();
     let database_for_timer = database.clone();
 
-    // Spawn the daily log-retention purge task. Returns `None` (no task)
-    // when file logging is disabled — purge is a no-op in that case.
+    // Daily log-retention purge. `None` (no task) when file logging is disabled.
     let log_purge_task = logging::spawn_purge_task(
         data_dir.clone(),
         cli.log_level,
@@ -372,40 +342,33 @@ async fn main() {
         LOG_FILE_PREFIX.to_string(),
     );
 
-    // Bundle every background task that needs explicit teardown into
-    // `DaemonHandles`. Adding a new background task means adding one
-    // field plus one line in `shutdown()` — no inlined if-let block in
-    // the `tokio::select!` shutdown arm. Accept loops, the voice
-    // server, and the file-reindex timer live inside the `select!` and
-    // are auto-dropped when the select! returns, so they aren't
-    // bundled here.
+    // Background tasks needing explicit teardown. The `select!` arms
+    // (accept loops, voice server, reindex timer) auto-drop on return,
+    // so they aren't bundled here.
     let handles = DaemonHandles {
         log_purge: log_purge_task,
         tracker: tracker_manager.clone(),
         upnp: upnp_handle,
     };
 
-    // Main server loops - accept incoming connections on both ports
     tokio::select! {
         _ = shutdown_signal => {
             info!("{}", MSG_SHUTDOWN_RECEIVED);
             handles.shutdown().await;
         }
-        // Main BBS port accept loop
+        // Main BBS port accept loop.
         _ = async {
             loop {
                 match listener.accept().await {
                     Ok((socket, peer_addr)) => {
-                        // Fold IPv4-mapped IPv6 to IPv4 once at the boundary so
-                        // everything downstream (session storage, peer_addr
-                        // comparisons, connection tracker, cache) sees one form.
+                        // Fold IPv4-mapped IPv6 to IPv4 at the boundary so all
+                        // downstream consumers (sessions, tracker, cache) see one form.
                         let peer_addr = normalize_socket_addr(peer_addr);
-                        // Check connection limit before accepting
                         let connection_guard = match connection_tracker.try_acquire(peer_addr.ip()) {
                             Some(guard) => guard,
                             None => {
                                 debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_LIMIT);
-                                // Just drop the socket - client will see connection reset
+                                // Drop the socket — client sees a connection reset.
                                 continue;
                             }
                         };
@@ -429,26 +392,20 @@ async fn main() {
                             flood_config: flood_config.clone(),
                         };
                         let tls_acceptor = tls_acceptor.clone();
-
-                        // Clone IP rule cache for pre-TLS check
                         let ip_rule_cache_for_check = ip_rule_cache.clone();
 
-                        // Spawn a new task to handle this connection
                         tokio::spawn(async move {
-                            // Hold guard until connection ends to track active connections
+                            // Hold guard until connection ends.
                             let _guard = connection_guard;
 
-                            // Check IP rules BEFORE TLS handshake (saves resources)
-                            // Trust list bypasses ban list
-                            //
-                            // Optimization: Use read lock for the check, only upgrade to
-                            // write lock if expired entries need to be cleaned up.
+                            // Check IP rules before the TLS handshake (trust bypasses
+                            // ban). Read lock for the check; upgrade to write only to
+                            // clean up expired entries.
                             let should_allow = {
                                 let cache = ip_rule_cache_for_check
                                     .read()
                                     .expect(ERR_IP_CACHE_POISONED);
                                 if cache.needs_rebuild() {
-                                    // Drop read lock before acquiring write lock
                                     drop(cache);
                                     ip_rule_cache_for_check
                                         .write()
@@ -460,8 +417,6 @@ async fn main() {
                             };
 
                             if !should_allow {
-                                // IP is banned (and not trusted) - silently close connection
-                                // No TLS, no error message, no resources wasted
                                 debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP);
                                 return;
                             }
@@ -480,18 +435,17 @@ async fn main() {
                 }
             }
         } => {}
-        // Transfer port accept loop
+        // Transfer port accept loop.
         _ = async {
             loop {
                 match transfer_listener.accept().await {
                     Ok((socket, peer_addr)) => {
                         let peer_addr = normalize_socket_addr(peer_addr);
-                        // Check transfer connection limit before accepting
                         let transfer_guard = match connection_tracker.try_acquire_transfer(peer_addr.ip()) {
                             Some(guard) => guard,
                             None => {
                                 debug!(ip = %peer_addr.ip(), "{}", LOG_CONNECTION_LIMIT);
-                                // Just drop the socket - client will see connection reset
+                                // Drop the socket — client sees a connection reset.
                                 continue;
                             }
                         };
@@ -506,24 +460,19 @@ async fn main() {
                             fingerprint,
                         };
                         let tls_acceptor = tls_acceptor.clone();
-
-                        // Clone IP rule cache for pre-TLS check
                         let ip_rule_cache_for_check = ip_rule_cache.clone();
 
                         tokio::spawn(async move {
                             let _guard = transfer_guard;
 
-                            // Check IP rules BEFORE TLS handshake (saves resources)
-                            // Trust list bypasses ban list
-                            //
-                            // Optimization: Use read lock for the check, only upgrade to
-                            // write lock if expired entries need to be cleaned up.
+                            // Check IP rules before the TLS handshake (trust bypasses
+                            // ban). Read lock for the check; upgrade to write only to
+                            // clean up expired entries.
                             let should_allow = {
                                 let cache = ip_rule_cache_for_check
                                     .read()
                                     .expect(ERR_IP_CACHE_POISONED);
                                 if cache.needs_rebuild() {
-                                    // Drop read lock before acquiring write lock
                                     drop(cache);
                                     ip_rule_cache_for_check
                                         .write()
@@ -535,7 +484,6 @@ async fn main() {
                             };
 
                             if !should_allow {
-                                // IP is banned (and not trusted) - silently close connection
                                 debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP_TRANSFER);
                                 return;
                             }
@@ -555,10 +503,10 @@ async fn main() {
                 }
             }
         } => {}
-        // WebSocket BBS port accept loop (only if enabled)
+        // WebSocket BBS port accept loop (only if enabled).
         _ = async {
             let Some(ref ws_listener) = ws_listener else {
-                // WebSocket disabled, just wait forever
+                // Disabled: park forever so this select! arm never fires.
                 std::future::pending::<()>().await;
                 return;
             };
@@ -566,7 +514,7 @@ async fn main() {
                 match ws_listener.accept().await {
                     Ok((socket, peer_addr)) => {
                         let peer_addr = normalize_socket_addr(peer_addr);
-                        // Check connection limit before accepting (same limit as TCP)
+                        // Same per-IP limit as TCP.
                         let connection_guard = match connection_tracker.try_acquire(peer_addr.ip()) {
                             Some(guard) => guard,
                             None => {
@@ -599,7 +547,7 @@ async fn main() {
                         tokio::spawn(async move {
                             let _guard = connection_guard;
 
-                            // Check IP rules BEFORE TLS handshake (same as TCP)
+                            // Check IP rules before the TLS handshake (same as TCP).
                             let should_allow = {
                                 let cache = ip_rule_cache_for_check
                                     .read()
@@ -635,10 +583,10 @@ async fn main() {
                 }
             }
         } => {}
-        // WebSocket transfer port accept loop (only if enabled)
+        // WebSocket transfer port accept loop (only if enabled).
         _ = async {
             let Some(ref ws_transfer_listener) = ws_transfer_listener else {
-                // WebSocket disabled, just wait forever
+                // Disabled: park forever so this select! arm never fires.
                 std::future::pending::<()>().await;
                 return;
             };
@@ -646,7 +594,7 @@ async fn main() {
                 match ws_transfer_listener.accept().await {
                     Ok((socket, peer_addr)) => {
                         let peer_addr = normalize_socket_addr(peer_addr);
-                        // Check transfer connection limit before accepting (same limit as TCP)
+                        // Same per-IP limit as TCP.
                         let transfer_guard = match connection_tracker.try_acquire_transfer(peer_addr.ip()) {
                             Some(guard) => guard,
                             None => {
@@ -670,7 +618,7 @@ async fn main() {
                         tokio::spawn(async move {
                             let _guard = transfer_guard;
 
-                            // Check IP rules BEFORE TLS handshake (same as TCP)
+                            // Check IP rules before the TLS handshake (same as TCP).
                             let should_allow = {
                                 let cache = ip_rule_cache_for_check
                                     .read()
@@ -710,31 +658,30 @@ async fn main() {
                 }
             }
         } => {}
-        // Voice UDP server (DTLS)
+        // Voice UDP server (DTLS).
         _ = async {
             let Some(server) = voice_server else {
-                // Voice listener failed to create, just wait forever
+                // Listener failed to create: park forever so this arm never fires.
                 std::future::pending::<()>().await;
                 return;
             };
             server.run().await;
         } => {}
-        // File reindex timer task - checks config each minute
+        // File reindex timer task.
         _ = async {
             loop {
-                // Re-read interval from DB each cycle (allows runtime changes)
+                // Re-read interval each cycle so runtime config changes apply.
                 let interval_minutes = database_for_timer.config.get_file_reindex_interval().await;
 
                 if interval_minutes == 0 {
-                    // Disabled - sleep for 1 minute then check again
+                    // Disabled: re-check in a minute.
                     tokio::time::sleep(Duration::from_secs(60)).await;
                     continue;
                 }
 
-                // Sleep for the configured interval
                 tokio::time::sleep(Duration::from_secs(u64::from(interval_minutes) * 60)).await;
 
-                // Check if dirty (or stale from external changes) and not already reindexing
+                // Reindex if dirty or stale from external changes.
                 if !file_index_for_timer.is_reindexing() {
                     if file_index_for_timer.is_dirty() {
                         debug!("{}", LOG_FILE_INDEX_DIRTY);
@@ -749,13 +696,10 @@ async fn main() {
     }
 }
 
-/// Resolve the server data directory, preferring the CLI override when set
-/// and otherwise falling back to the platform default.
+/// Resolve the server data directory: CLI override, else platform default.
 ///
-/// Panics only if the platform itself cannot supply a data directory
-/// (`dirs::data_dir()` returns `None` — e.g., Windows without `%APPDATA%`,
-/// Linux without `HOME`). This is platform-broken territory, not an
-/// operator-actionable error.
+/// Panics only when the platform can't supply a data directory
+/// (`dirs::data_dir()` is `None`) — platform-broken, not operator-actionable.
 fn resolve_data_dir(override_path: Option<std::path::PathBuf>) -> std::path::PathBuf {
     if let Some(p) = override_path {
         return p;
@@ -765,15 +709,11 @@ fn resolve_data_dir(override_path: Option<std::path::PathBuf>) -> std::path::Pat
         .expect(ERR_NO_DATA_DIR)
 }
 
-/// Create the data directory if it doesn't already exist and lock it to
-/// owner-only permissions (`nexus_common::DATA_DIR_MODE`) on Unix. The directory hosts
-/// the database, TLS private key, and (by default) log files, so a
-/// permissive parent directory undercuts the per-file protections inside.
+/// Create the data directory and lock it owner-only on Unix — it hosts the
+/// database, TLS key, and logs, so a loose parent undercuts per-file modes.
 ///
-/// On Unix, the mode is set atomically at creation via `DirBuilder::mode`
-/// — there is no window where a fresh data directory is world-readable.
-/// `set_permissions` is then applied to handle the case where the
-/// directory pre-existed with the wrong mode.
+/// `DirBuilder::mode` sets the mode atomically at creation (no world-readable
+/// window); the later `set_permissions` corrects a pre-existing wrong mode.
 fn ensure_data_dir(data_dir: &Path) -> Result<(), String> {
     let create_result = {
         #[cfg(unix)]
@@ -802,9 +742,7 @@ fn ensure_data_dir(data_dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Setup database connection and initialize user manager
 async fn setup_db(db_path: &Path) -> (db::Database, UserManager) {
-    // Initialize database connection pool and run migrations
     let pool = match db::init_db(db_path).await {
         Ok(pool) => pool,
         Err(e) => {
@@ -814,10 +752,8 @@ async fn setup_db(db_path: &Path) -> (db::Database, UserManager) {
     };
     info!("{}{}", MSG_DATABASE, db_path.display());
 
-    // Set secure permissions on the database file. SQLx creates it
-    // through `init_db` above, but with the process's umask (typically
-    // `0o644`); chmod down to owner-only here. Unix only — Windows
-    // uses NTFS ACLs.
+    // SQLx creates the file with the process umask; chmod down to owner-only.
+    // Unix only — Windows uses NTFS ACLs.
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -830,41 +766,30 @@ async fn setup_db(db_path: &Path) -> (db::Database, UserManager) {
         }
     }
 
-    // Create database and user manager instances
-    // Note: SqlitePool uses Arc internally, so clone() is cheap
     let database = db::Database::new(pool);
     let user_manager = UserManager::new();
 
     (database, user_manager)
 }
 
-/// Background tasks and resources owned by the daemon for the lifetime
-/// of the main `tokio::select!`. Bundled so the shutdown branch has a
-/// single `handles.shutdown().await` call instead of inlined teardown
-/// for each task.
-///
-/// Only standalone-spawned tasks live here. Accept loops, the voice
-/// server, and the file-reindex timer run as `_ = async { … } => {}`
-/// arms inside the `select!` and are auto-dropped when the `select!`
-/// returns, so they don't need a handle.
+/// Standalone-spawned background tasks bundled so shutdown is one
+/// `handles.shutdown().await` call. The `select!` arms (accept loops, voice
+/// server, reindex timer) auto-drop on return and need no handle.
 struct DaemonHandles {
-    /// Daily log-retention purge task. `None` when file logging is
-    /// disabled (level == None or retention == 0).
+    /// `None` when file logging is disabled (level == None or retention == 0).
     log_purge: Option<tokio::task::JoinHandle<()>>,
-    /// Tracker task supervisor. Shared with every accepted
-    /// connection (handlers call into it). On shutdown, aborts every
-    /// per-tracker task and awaits the joins.
+    /// Shared with every connection (handlers call in); shutdown aborts and
+    /// joins every per-tracker task.
     tracker: Arc<tracker::TrackerManager>,
-    /// UPnP gateway plus its lease-renewal task. `None` when `--upnp`
-    /// is not set or setup failed. Listed last because shutdown's
-    /// only async / fallible step is the port-mapping removal here.
+    /// Gateway + lease-renewal task. `None` without `--upnp` or on setup
+    /// failure. Last because port-mapping removal is shutdown's only
+    /// async/fallible step.
     upnp: Option<(Arc<upnp::Gateway>, tokio::task::JoinHandle<()>)>,
 }
 
 impl DaemonHandles {
-    /// Stop every background task and release every external resource
-    /// (UPnP port mapping). Failures during teardown are best-effort —
-    /// the daemon is going down anyway.
+    /// Stop every task and release external resources (UPnP mapping).
+    /// Teardown is best-effort — the daemon is going down anyway.
     async fn shutdown(self) {
         if let Some(handle) = self.log_purge {
             handle.abort();
@@ -879,7 +804,6 @@ impl DaemonHandles {
     }
 }
 
-/// Setup UPnP port forwarding if enabled
 async fn setup_upnp(
     enabled: bool,
     bind: std::net::IpAddr,
@@ -902,7 +826,6 @@ async fn setup_upnp(
     .await
     {
         Ok(gateway) => {
-            // Spawn background task to renew UPnP lease periodically
             let gateway_arc = Arc::new(gateway);
             let renewal_task = upnp::spawn_lease_renewal_task(gateway_arc.clone());
             Some((gateway_arc, renewal_task))
@@ -916,7 +839,6 @@ async fn setup_upnp(
     }
 }
 
-/// Setup network: TCP listeners (main + transfer + optionally WebSocket) and TLS acceptor
 async fn setup_network(
     bind: std::net::IpAddr,
     port: u16,
@@ -931,9 +853,8 @@ async fn setup_network(
     Option<TcpListener>,
     (TlsAcceptor, String),
 ) {
-    // Ensure cert + key exist (generates a fresh self-signed pair on
-    // first run) and compute the SHA-256 fingerprint for handshake
-    // reporting. Cert + key live directly in the data directory.
+    // Generate a self-signed cert/key on first run and compute the SHA-256
+    // fingerprint reported in the handshake.
     let tls_config = nexus_common::tls::TlsCertConfig {
         cert_filename: CERT_FILENAME,
         key_filename: KEY_FILENAME,
@@ -955,7 +876,6 @@ async fn setup_network(
     };
     info!("{}{}", MSG_CERTIFICATES, data_dir.display());
 
-    // Create main BBS listener
     let addr = SocketAddr::new(bind, port);
     let listener = match TcpListener::bind(addr).await {
         Ok(listener) => listener,
@@ -966,7 +886,6 @@ async fn setup_network(
     };
     info!("{}{}", MSG_LISTENING, addr);
 
-    // Create transfer port listener
     let transfer_addr = SocketAddr::new(bind, transfer_port);
     let transfer_listener = match TcpListener::bind(transfer_addr).await {
         Ok(listener) => listener,
@@ -977,11 +896,9 @@ async fn setup_network(
     };
     info!("{}{}", MSG_TRANSFER_LISTENING, transfer_addr);
 
-    // Create WebSocket listeners if enabled
     let (ws_listener, ws_transfer_listener) = if let (Some(ws_port), Some(ws_transfer_port)) =
         (websocket_port, transfer_websocket_port)
     {
-        // Create WebSocket BBS listener
         let ws_addr = SocketAddr::new(bind, ws_port);
         let ws_listener = match TcpListener::bind(ws_addr).await {
             Ok(listener) => listener,
@@ -992,7 +909,6 @@ async fn setup_network(
         };
         info!("{}{}", MSG_WS_LISTENING, ws_addr);
 
-        // Create WebSocket transfer listener
         let ws_transfer_addr = SocketAddr::new(bind, ws_transfer_port);
         let ws_transfer_listener = match TcpListener::bind(ws_transfer_addr).await {
             Ok(listener) => listener,
@@ -1017,22 +933,18 @@ async fn setup_network(
     )
 }
 
-/// Setup file area directories
-///
-/// Returns the canonicalized path to the file area root, ready for use
-/// with `resolve_path()` and other security-sensitive operations.
+/// Returns the canonicalized file area root, ready for `resolve_path()` and
+/// other security-sensitive operations.
 fn setup_file_area(file_root: Option<std::path::PathBuf>, data_dir: &Path) -> std::path::PathBuf {
-    // Determine file root path (use provided path or default under data dir)
     let root = file_root.unwrap_or_else(|| files::default_file_root(data_dir));
 
-    // Initialize file area directories (creates them if needed)
     if let Err(e) = files::init_file_area(&root) {
         error!("{}{}", ERR_INIT_FILE_AREA, e);
         std::process::exit(1);
     }
 
-    // Canonicalize the path for security - this resolves symlinks and
-    // ensures we have an absolute path for starts_with() checks in resolve_path()
+    // Canonicalize for security: resolves symlinks to an absolute path for
+    // the `starts_with()` checks in `resolve_path()`.
     let canonical_root = match root.canonicalize() {
         Ok(path) => path,
         Err(e) => {
@@ -1046,30 +958,21 @@ fn setup_file_area(file_root: Option<std::path::PathBuf>, data_dir: &Path) -> st
     canonical_root
 }
 
-/// Log connection errors, filtering out benign TLS warnings
-///
-/// Filters out:
-/// - TLS close_notify warnings (clients disconnecting abruptly)
-/// - TLS handshake failures (only logged at debug level)
-/// - WebSocket handshake failures (HTTP-only crawlers, slow upgrades,
-///   timeout-elapsed peers — debug level)
+/// Log connection errors, dropping benign noise (abrupt close_notify) and
+/// demoting TLS/WebSocket handshake failures (scanners, probes) to debug.
 fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
     let error_msg = error.to_string();
 
-    // Filter out benign TLS close_notify warnings (clients disconnecting abruptly)
+    // Benign: client disconnected abruptly.
     if error_msg.contains(TLS_CLOSE_NOTIFY_MSG) {
         return;
     }
 
-    // TLS handshake failures are debug-only (scanners, incompatible clients)
     if error_msg.contains(nexus_common::TLS_HANDSHAKE_FAILED_PREFIX) {
         debug!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR_TLS);
         return;
     }
 
-    // WebSocket upgrade failures are debug-only (same noise profile as
-    // TLS scanner traffic — HTTP-only probes, half-spoken upgrades,
-    // slowloris timeouts).
     if error_msg.contains(nexus_common::WS_HANDSHAKE_FAILED_PREFIX) {
         debug!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR_WS);
         return;
@@ -1078,7 +981,7 @@ fn log_connection_error(error: &io::Error, peer_addr: SocketAddr) {
     error!(ip = %peer_addr, err = %error, "{}", LOG_CONNECTION_ERROR);
 }
 
-/// Setup graceful shutdown signal handling (Ctrl+C)
+/// Wait for a graceful shutdown signal (SIGTERM/SIGINT on Unix, Ctrl+C elsewhere).
 async fn setup_shutdown_signal() {
     #[cfg(unix)]
     {

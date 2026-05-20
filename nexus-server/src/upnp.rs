@@ -4,17 +4,6 @@
 //! port list (TCP main + TCP transfer + UDP voice + optional WS ports)
 //! and delegates discovery, lease renewal, and shutdown cleanup to the
 //! common adapter.
-//!
-//! When enabled with `--upnp`, the server:
-//! - Discovers the LAN gateway via multicast
-//! - Forwards TCP for the BBS port and the transfer port
-//! - Forwards UDP for the voice port (same number as the BBS port)
-//! - Optionally forwards TCP for the WebSocket BBS / transfer ports
-//! - Renews each lease every 30 minutes (50% of the 1-hour lease)
-//! - Removes mappings on graceful shutdown
-//!
-//! See `nexus_common::upnp` for the IPv4 / dual-stack rules and the
-//! lease-renewal / rediscovery behavior.
 
 use std::net::IpAddr;
 
@@ -30,15 +19,11 @@ const PROTOCOL_DESCRIPTION: &str = "Nexus BBS";
 /// server's port set.
 ///
 /// `main_port` is forwarded as TCP **and** UDP (UDP for voice, which
-/// shares the BBS port number). `transfer_port` is forwarded as TCP.
-/// When `websocket_port` / `transfer_websocket_port` are `Some`, those
-/// are also forwarded as TCP.
+/// shares the BBS port number); `transfer_port` and the optional
+/// WebSocket ports are TCP only.
 ///
-/// # Errors
-///
-/// Returns operator-facing English error strings on UPnP failure (no
-/// gateway found, IPv6 bind, etc.). All UPnP errors are recoverable —
-/// the server continues without port forwarding.
+/// All UPnP errors are recoverable — the server continues without port
+/// forwarding. Returns operator-facing English error strings.
 pub async fn setup(
     bind_addr: IpAddr,
     main_port: u16,

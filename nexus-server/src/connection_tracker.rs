@@ -1,9 +1,8 @@
-//! Connection tracking for DoS protection
+//! Per-IP connection limiting for DoS protection.
 //!
-//! Per-IP connection limiting to prevent resource exhaustion. Main BBS
-//! and file-transfer connections each have their own configurable limit;
-//! voice connections are counted separately but share the main BBS limit
-//! value (one voice stream per connected user from an IP).
+//! Main BBS and file-transfer connections each have their own configurable
+//! limit; voice connections are counted separately but share the main BBS
+//! limit value (one voice stream per connected user from an IP).
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -14,31 +13,21 @@ use crate::constants::{
     ERR_CONNECTION_TRACKER_LOCK, ERR_TRANSFER_TRACKER_LOCK, ERR_VOICE_TRACKER_LOCK,
 };
 
-/// Tracks active connections per IP address for both main and transfer connections
-///
-/// This is used to enforce connection limits and prevent a single IP
-/// from exhausting server resources.
-///
-/// A limit of 0 means unlimited connections are allowed.
+/// Per-IP connection limiting. A limit of 0 means unlimited.
 #[derive(Debug)]
 pub struct ConnectionTracker {
-    /// Map of IP addresses to their current main connection count
     connections: Arc<Mutex<HashMap<IpAddr, usize>>>,
-    /// Maximum main connections allowed per IP (0 = unlimited)
+    /// 0 = unlimited.
     max_connections_per_ip: AtomicUsize,
-    /// Map of IP addresses to their current transfer connection count
     transfer_connections: Arc<Mutex<HashMap<IpAddr, usize>>>,
-    /// Maximum transfer connections allowed per IP (0 = unlimited)
+    /// 0 = unlimited.
     max_transfers_per_ip: AtomicUsize,
-    /// Map of IP addresses to their current voice connection count.
     /// Capped against `max_connections_per_ip` (shared value, separate count).
     voice_connections: Arc<Mutex<HashMap<IpAddr, usize>>>,
 }
 
 impl ConnectionTracker {
-    /// Create a new connection tracker with the specified limits
-    ///
-    /// A limit of 0 means unlimited connections are allowed for that type.
+    /// Create a tracker with the given per-IP limits (0 = unlimited).
     #[must_use]
     pub fn new(max_connections_per_ip: usize, max_transfers_per_ip: usize) -> Self {
         Self {
@@ -50,28 +39,20 @@ impl ConnectionTracker {
         }
     }
 
-    /// Update the maximum main connections allowed per IP
-    ///
-    /// This affects new connections only; existing connections are not disconnected.
-    /// A limit of 0 means unlimited connections are allowed.
+    /// Set the per-IP main limit (0 = unlimited). Affects new connections
+    /// only; existing connections are not disconnected.
     pub fn set_max_connections_per_ip(&self, limit: usize) {
         self.max_connections_per_ip.store(limit, Ordering::Relaxed);
     }
 
-    /// Update the maximum transfer connections allowed per IP
-    ///
-    /// This affects new connections only; existing connections are not disconnected.
-    /// A limit of 0 means unlimited connections are allowed.
+    /// Set the per-IP transfer limit (0 = unlimited). Affects new connections
+    /// only; existing connections are not disconnected.
     pub fn set_max_transfers_per_ip(&self, limit: usize) {
         self.max_transfers_per_ip.store(limit, Ordering::Relaxed);
     }
 
-    /// Try to acquire a main connection slot for the given IP
-    ///
-    /// Returns `Some(ConnectionGuard)` if the connection is allowed,
-    /// or `None` if the IP has reached its connection limit.
-    ///
-    /// The returned guard will automatically release the slot when dropped.
+    /// Acquire a main connection slot, or `None` if the IP is at its limit.
+    /// The returned guard releases the slot on drop.
     pub fn try_acquire(&self, ip: IpAddr) -> Option<ConnectionGuard> {
         let max = self.max_connections_per_ip.load(Ordering::Relaxed);
         let mut connections = self.connections.lock().expect(ERR_CONNECTION_TRACKER_LOCK);
@@ -89,12 +70,8 @@ impl ConnectionTracker {
         })
     }
 
-    /// Try to acquire a transfer connection slot for the given IP
-    ///
-    /// Returns `Some(TransferGuard)` if the connection is allowed,
-    /// or `None` if the IP has reached its transfer limit.
-    ///
-    /// The returned guard will automatically release the slot when dropped.
+    /// Acquire a transfer slot, or `None` if the IP is at its transfer limit.
+    /// The returned guard releases the slot on drop.
     pub fn try_acquire_transfer(&self, ip: IpAddr) -> Option<TransferGuard> {
         let max = self.max_transfers_per_ip.load(Ordering::Relaxed);
         let mut connections = self
@@ -115,12 +92,9 @@ impl ConnectionTracker {
         })
     }
 
-    /// Try to acquire a voice connection slot for the given IP. Capped
-    /// against `max_connections_per_ip` — counted separately from BBS
-    /// connections, so a per-IP BBS limit of N also allows N voice streams.
-    ///
-    /// Returns `None` if the IP has reached the limit. The guard releases
-    /// the slot when dropped.
+    /// Acquire a voice slot, or `None` if the IP is at its limit. Capped
+    /// against `max_connections_per_ip` but counted separately, so a per-IP
+    /// BBS limit of N also allows N voice streams. Guard releases on drop.
     pub fn try_acquire_voice(&self, ip: IpAddr) -> Option<VoiceGuard> {
         let max = self.max_connections_per_ip.load(Ordering::Relaxed);
         let mut connections = self.voice_connections.lock().expect(ERR_VOICE_TRACKER_LOCK);
@@ -139,10 +113,8 @@ impl ConnectionTracker {
     }
 }
 
-/// RAII guard that releases a main connection slot when dropped
-///
-/// This ensures connection slots are always released, even if the
-/// connection handler panics or returns early.
+/// RAII guard releasing a main connection slot on drop (even on panic or
+/// early return).
 #[derive(Debug)]
 pub struct ConnectionGuard {
     ip: IpAddr,
@@ -161,10 +133,8 @@ impl Drop for ConnectionGuard {
     }
 }
 
-/// RAII guard that releases a transfer connection slot when dropped
-///
-/// This ensures connection slots are always released, even if the
-/// connection handler panics or returns early.
+/// RAII guard releasing a transfer connection slot on drop (even on panic or
+/// early return).
 #[derive(Debug)]
 pub struct TransferGuard {
     ip: IpAddr,
@@ -208,23 +178,19 @@ mod tests {
     use std::net::Ipv4Addr;
 
     impl ConnectionTracker {
-        /// Get the current main connection limit
         fn max_connections_per_ip(&self) -> usize {
             self.max_connections_per_ip.load(Ordering::Relaxed)
         }
 
-        /// Get the current transfer connection limit
         fn max_transfers_per_ip(&self) -> usize {
             self.max_transfers_per_ip.load(Ordering::Relaxed)
         }
 
-        /// Get the current main connection count for an IP
         fn connection_count(&self, ip: IpAddr) -> usize {
             let connections = self.connections.lock().expect(ERR_CONNECTION_TRACKER_LOCK);
             connections.get(&ip).copied().unwrap_or(0)
         }
 
-        /// Get the current transfer connection count for an IP
         fn transfer_count(&self, ip: IpAddr) -> usize {
             let connections = self
                 .transfer_connections
@@ -233,19 +199,16 @@ mod tests {
             connections.get(&ip).copied().unwrap_or(0)
         }
 
-        /// Get the current voice connection count for an IP
         fn voice_count(&self, ip: IpAddr) -> usize {
             let connections = self.voice_connections.lock().expect(ERR_VOICE_TRACKER_LOCK);
             connections.get(&ip).copied().unwrap_or(0)
         }
 
-        /// Get the total number of active main connections across all IPs
         fn total_connections(&self) -> usize {
             let connections = self.connections.lock().expect(ERR_CONNECTION_TRACKER_LOCK);
             connections.values().sum()
         }
 
-        /// Get the total number of active transfer connections across all IPs
         fn total_transfers(&self) -> usize {
             let connections = self
                 .transfer_connections
@@ -254,10 +217,6 @@ mod tests {
             connections.values().sum()
         }
     }
-
-    // =========================================================================
-    // Main connection tests
-    // =========================================================================
 
     #[test]
     fn test_acquire_and_release() {
@@ -426,10 +385,6 @@ mod tests {
         assert!(tracker.try_acquire(ip).is_none());
     }
 
-    // =========================================================================
-    // Transfer connection tests
-    // =========================================================================
-
     #[test]
     fn test_transfer_acquire_and_release() {
         let tracker = ConnectionTracker::new(5, 2);
@@ -531,10 +486,6 @@ mod tests {
         assert!(tracker.try_acquire_transfer(ip).is_none());
     }
 
-    // =========================================================================
-    // Independent limits tests
-    // =========================================================================
-
     #[test]
     fn test_connection_and_transfer_limits_independent() {
         let tracker = ConnectionTracker::new(2, 3);
@@ -563,10 +514,6 @@ mod tests {
         assert_eq!(tracker.max_connections_per_ip(), 5);
         assert_eq!(tracker.max_transfers_per_ip(), 3);
     }
-
-    // =========================================================================
-    // Voice connection tests
-    // =========================================================================
 
     #[test]
     fn test_voice_acquire_and_release() {
