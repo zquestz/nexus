@@ -1,11 +1,7 @@
-//! File upload handling for transfers
+//! File upload handling for transfers (resume support, conflict detection).
 //!
-//! Contains functions for handling upload requests and receiving files
-//! from clients with resume support and conflict detection.
-//!
-//! Uses StreamingHasher for single-pass hashing during file reception.
-//! The server independently verifies uploaded data by maintaining its own
-//! hasher fed with existing .part content + received FileData chunks.
+//! The server independently verifies uploaded data via its own StreamingHasher,
+//! fed with existing .part content + received FileData chunks.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -220,10 +216,9 @@ where
     let (target_path, part_path) =
         validate_and_build_upload_paths(&relative_path, destination, area_root, locale)?;
 
-    // Uploads use `Fail` mode — BBS handlers and other uploads bounce
-    // immediately rather than block on a multi-hour transfer. Lock both
-    // target AND `.part` so a rename of `.part` can't be promoted to the
-    // final target mid-upload.
+    // `Fail` mode: other uploads bounce immediately rather than block on a
+    // multi-hour transfer. Lock both target AND `.part` so a `.part` rename
+    // can't be promoted to the final target mid-upload.
     let target_key = files::lock_key(&target_path).await.map_err(|_| {
         ReceiveFileError::Transfer(TransferError::invalid(err_upload_path_invalid(locale)))
     })?;
@@ -238,8 +233,8 @@ where
             ReceiveFileError::Transfer(TransferError::conflict(err_upload_conflict(locale)))
         })?;
 
-    // Hasher is pre-fed with existing .part content for single-pass hashing.
-    // Sends FileHashing keepalives while hashing large existing files.
+    // Hasher pre-fed with existing .part for single-pass hashing; sends
+    // FileHashing keepalives while hashing large existing files.
     let (existing_size, existing_hash, mut hasher, complete_file_exists) =
         check_upload_conflicts_and_get_state(
             transfer.writer(),
@@ -270,7 +265,7 @@ where
                         err_upload_hash_mismatch(locale),
                     )));
                 }
-                // Handles the edge case of a leftover .part alongside the complete file.
+                // Edge case: leftover .part alongside the complete file.
                 finalize_part_file_if_exists(&part_path, &target_path, locale).await?;
                 debug!(id = %transfer_id, path = %relative_path, "{}", LOG_UPLOAD_ALREADY_COMPLETE);
             }
@@ -370,11 +365,9 @@ enum UploadAccess {
     Denied,
 }
 
-/// Check whether `user` may upload under `path`.
-///
-/// Normal case: `path` is under a folder typed as upload/dropbox → `Allowed`.
-/// Otherwise: admins and holders of `FileUploadAnywhere` get `Bypassed`;
-/// everyone else gets `Denied`. Callers log bypasses for audit.
+/// Upload-folder gate: under an upload/dropbox folder → `Allowed`; else admins
+/// and `FileUploadAnywhere` holders get `Bypassed` (callers log for audit),
+/// everyone else `Denied`.
 fn check_upload_access(user: &AuthenticatedUser, area_root: &Path, path: &Path) -> UploadAccess {
     if allows_upload(area_root, path) {
         return UploadAccess::Allowed;
@@ -385,7 +378,6 @@ fn check_upload_access(user: &AuthenticatedUser, area_root: &Path, path: &Path) 
     UploadAccess::Denied
 }
 
-/// Validate and resolve upload destination path
 async fn validate_and_resolve_upload_destination<R, W>(
     transfer: &Transfer<'_, R, W>,
     destination: &str,
@@ -492,7 +484,6 @@ where
     Ok((area_root, resolved_destination))
 }
 
-/// Validate relative path and build target/part paths
 fn validate_and_build_upload_paths(
     relative_path: &str,
     destination: &Path,
@@ -513,10 +504,9 @@ fn validate_and_build_upload_paths(
     let part_path = PathBuf::from(format!("{}{}", target_path.display(), PART_SUFFIX));
 
     // `destination` may be outside area_root via an admin-created symlink
-    // (e.g. `shared/Music -> /home/user/Music`), so we validate
-    // `relative_path` against area_root directly instead of stripping —
-    // strip_prefix would spuriously reject those uploads. The relative_path
-    // call below catches `..` traversal; canonical `destination` has none.
+    // (e.g. `shared/Music -> /home/user/Music`), so validate `relative_path`
+    // against area_root directly — strip_prefix would spuriously reject those.
+    // This catches `..` traversal; canonical `destination` has none.
     if validate_and_build_candidate_path(area_root, relative_path).is_err() {
         return Err(TransferError::invalid(err_upload_path_invalid(locale)));
     }
@@ -524,10 +514,8 @@ fn validate_and_build_upload_paths(
     Ok((target_path, part_path))
 }
 
-/// Check for upload conflicts and get existing file state
-///
-/// Sends FileHashing keepalive messages to the client while hashing large
-/// existing files to prevent client timeout.
+/// Sends FileHashing keepalives while hashing large existing files to prevent
+/// client timeout.
 async fn check_upload_conflicts_and_get_state<W>(
     frame_writer: &mut FrameWriter<W>,
     target_path: &Path,
@@ -590,7 +578,6 @@ where
     Ok((0, None, StreamingHasher::new(), false))
 }
 
-/// Check for concurrent upload conflict (different uploader) and offset mismatch
 fn check_resume_conflict(
     offset: u64,
     existing_size: u64,
@@ -602,9 +589,8 @@ fn check_resume_conflict(
         return Err(TransferError::conflict(err_upload_conflict(locale)));
     }
 
-    // Security: a malicious client could claim offset=1000 when .part is only
-    // 500 bytes, causing the server to append corrupt data. Valid resume
-    // requires offset == existing .part size.
+    // Security: a client claiming offset > .part size would append corrupt
+    // data. Valid resume requires offset == existing .part size.
     if offset > 0 && offset != existing_size {
         return Err(TransferError::protocol_error(err_upload_protocol_error(
             locale,
@@ -613,7 +599,6 @@ fn check_resume_conflict(
     Ok(())
 }
 
-/// Read FileStart message from client
 async fn read_client_file_start<R>(
     frame_reader: &mut FrameReader<R>,
     locale: &str,
@@ -640,7 +625,6 @@ where
                 return Ok((path, size));
             }
             ClientMessage::FileHashing { .. } => {
-                // Keepalive message - ignore and continue waiting for FileStart
                 continue;
             }
             _ => {
@@ -652,7 +636,6 @@ where
     }
 }
 
-/// Send FileStartResponse to client
 async fn send_file_start_response<W>(
     frame_writer: &mut FrameWriter<W>,
     existing_size: u64,
@@ -742,7 +725,6 @@ where
     }
 }
 
-/// Create an empty file at the target path
 async fn create_empty_file(target_path: &Path, locale: &str) -> Result<(), TransferError> {
     if let Some(parent) = target_path.parent() {
         tokio::fs::create_dir_all(parent)
@@ -755,7 +737,7 @@ async fn create_empty_file(target_path: &Path, locale: &str) -> Result<(), Trans
         .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))
 }
 
-/// If a .part file exists, rename it to the final target path
+/// Promotes a leftover `.part` to the final target, if present.
 async fn finalize_part_file_if_exists(
     part_path: &Path,
     target_path: &Path,
@@ -788,8 +770,8 @@ where
         })?;
     }
 
-    // Fresh uploads use `create_new` so two uploaders can't race the .part file.
-    // Resume opens the existing .part for append.
+    // Fresh uploads use `create_new` so two uploaders can't race the .part
+    // file; resume opens the existing .part for append.
     let file_result = if offset == 0 {
         tokio::fs::OpenOptions::new()
             .create_new(true)
@@ -819,10 +801,8 @@ where
         }
     };
 
-    // Wrap file with HashingWriter to feed received bytes to hasher
     let mut hashing_writer = HashingWriter::new(file, hasher);
 
-    // Stream data from client to .part file with ban checking and hashing
     let result = transfer
         .stream_file_from_client(header, &mut hashing_writer, DEFAULT_PROGRESS_TIMEOUT)
         .await;
@@ -852,7 +832,6 @@ mod tests {
 
     const TEST_LOCALE: &str = "en";
 
-    /// Create a mock writer for tests that discards all output
     fn mock_writer() -> FrameWriter<Vec<u8>> {
         FrameWriter::new(Vec::new())
     }
@@ -1073,14 +1052,12 @@ mod tests {
 
     #[test]
     fn test_resume_conflict_fresh_upload_no_existing() {
-        // Fresh upload (offset=0), no existing .part file (existing_size=0)
         let result = check_resume_conflict(0, 0, TEST_LOCALE);
         assert!(result.is_ok());
     }
 
     #[test]
     fn test_resume_conflict_resume_upload() {
-        // Resume upload (offset>0), existing .part file
         let result = check_resume_conflict(500, 500, TEST_LOCALE);
         assert!(result.is_ok());
     }
@@ -1112,7 +1089,6 @@ mod tests {
 
     #[test]
     fn test_resume_conflict_offset_matches() {
-        // Valid resume - client's offset matches .part file size
         let result = check_resume_conflict(500, 500, TEST_LOCALE);
         assert!(result.is_ok());
     }
@@ -1284,7 +1260,6 @@ mod tests {
         assert_eq!(partial, full);
     }
 
-    /// Helper: build a raw protocol frame from type name and payload bytes
     fn build_frame(type_name: &str, payload: &[u8]) -> Vec<u8> {
         let header = format!(
             "NX|{}|{}|a1b2c3d4e5f6|{}|",

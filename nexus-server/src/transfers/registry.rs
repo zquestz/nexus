@@ -1,11 +1,6 @@
-//! Transfer registry for tracking active file transfers
-//!
-//! Provides a way to track active transfers by IP address and signal them
-//! when their IP is banned. Uses oneshot channels to communicate ban events
-//! without holding locks during I/O operations.
-//!
-//! The registry stores `ActiveTransfer` structs with queryable metadata,
-//! enabling connection monitor integration.
+//! Tracks active transfers by IP and signals them via oneshot channels when
+//! their IP is banned, so no lock is held during I/O. Stored `ActiveTransfer`
+//! metadata also feeds the connection monitor.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -21,14 +16,6 @@ use crate::constants::{ERR_BAN_TX_LOCK_POISONED, ERR_TRANSFER_REGISTRY_LOCK_POIS
 /// Unique identifier for a transfer session
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TransferId(u64);
-
-impl TransferId {
-    /// Get the inner ID value
-    #[allow(dead_code)] // Public API for future connection monitor integration
-    pub fn as_u64(&self) -> u64 {
-        self.0
-    }
-}
 
 impl std::fmt::Display for TransferId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -55,65 +42,45 @@ impl std::fmt::Display for TransferDirection {
 }
 
 /// Parameters for [`TransferRegistry::register`] / [`ActiveTransfer::new`].
-///
-/// Bundles the transfer's identity (peer + authenticated user) with
-/// the description (direction, path, total size) so the constructors
-/// stay narrow.
 pub struct TransferRegistration {
-    /// Client's socket address (IP + port).
     pub peer_addr: SocketAddr,
     /// Display name (equals username for regular accounts).
     pub nickname: String,
-    /// Username of the authenticated user.
     pub username: String,
-    /// Whether the user is an admin.
     pub is_admin: bool,
-    /// Whether this is a shared account.
     pub is_shared: bool,
-    /// Upload or download.
     pub direction: TransferDirection,
-    /// Path being transferred (requested path for downloads, destination for uploads).
+    /// Requested path for downloads, destination for uploads.
     pub path: String,
     /// Total size in bytes (0 if unknown).
     pub total_size: u64,
 }
 
-/// Runtime state for an active transfer
-///
-/// This struct is shared between the registry and the Transfer via Arc.
-/// Progress is updated atomically during streaming without holding locks.
-///
-/// Note: This is distinct from `nexus_common::protocol::TransferInfo` which
-/// is the serializable wire format for connection monitor responses.
+/// Runtime state for an active transfer, Arc-shared between registry and the
+/// transfer task; progress is updated atomically without locks. Distinct from
+/// the serializable wire form `nexus_common::protocol::TransferInfo`.
 pub struct ActiveTransfer {
-    /// Unique transfer identifier
     pub id: TransferId,
-    /// Client's socket address (IP + port, port distinguishes WebSocket vs TCP)
+    /// Port distinguishes WebSocket vs TCP.
     pub peer_addr: SocketAddr,
-    /// Display name (equals username for regular accounts)
+    /// Display name (equals username for regular accounts).
     pub nickname: String,
-    /// Username of the authenticated user
     pub username: String,
-    /// Whether the user is an admin
     pub is_admin: bool,
-    /// Whether this is a shared account
     pub is_shared: bool,
-    /// Whether this is an upload or download
     pub direction: TransferDirection,
-    /// Path being transferred (requested path for downloads, destination for uploads)
+    /// Requested path for downloads, destination for uploads.
     pub path: String,
-    /// Total size in bytes (0 if unknown, e.g., downloads before resolution)
+    /// Total size in bytes (0 if unknown, e.g. downloads before resolution).
     pub total_size: AtomicU64,
-    /// Bytes transferred so far (updated atomically during streaming)
+    /// Updated atomically during streaming.
     pub bytes_transferred: AtomicU64,
-    /// When the transfer started
     pub started_at: Instant,
-    /// Channel to signal ban - wrapped in Mutex<Option<>> since we take it once
+    /// `Mutex<Option<>>` so the sender is taken exactly once.
     ban_tx: Mutex<Option<oneshot::Sender<()>>>,
 }
 
 impl ActiveTransfer {
-    /// Create a new ActiveTransfer from a registration bundle.
     fn new(id: TransferId, params: TransferRegistration, ban_tx: oneshot::Sender<()>) -> Self {
         Self {
             id,
@@ -131,35 +98,29 @@ impl ActiveTransfer {
         }
     }
 
-    /// Set the total size (used for downloads after path resolution)
-    #[allow(dead_code)] // Public API for future use
+    /// Set total size once known (downloads resolve it after registration).
     pub fn set_total_size(&self, size: u64) {
         self.total_size.store(size, Ordering::Relaxed);
     }
 
-    /// Get the current bytes transferred
     pub fn get_bytes_transferred(&self) -> u64 {
         self.bytes_transferred.load(Ordering::Relaxed)
     }
 
-    /// Add to bytes transferred, returns the new total
+    /// Returns the new running total.
     pub fn add_bytes_transferred(&self, bytes: u64) -> u64 {
         self.bytes_transferred.fetch_add(bytes, Ordering::Relaxed) + bytes
     }
 
-    /// Get the total size (0 if unknown)
     pub fn get_total_size(&self) -> u64 {
         self.total_size.load(Ordering::Relaxed)
     }
 
-    /// Get elapsed time since transfer started
     pub fn elapsed(&self) -> std::time::Duration {
         self.started_at.elapsed()
     }
 
-    /// Send ban signal to this transfer (takes ownership of sender)
-    ///
-    /// Returns true if signal was sent, false if already sent or receiver dropped.
+    /// Takes the sender; returns false if already sent or receiver dropped.
     fn send_ban_signal(&self) -> bool {
         let mut guard = self.ban_tx.lock().expect(ERR_BAN_TX_LOCK_POISONED);
         if let Some(tx) = guard.take() {
@@ -169,7 +130,7 @@ impl ActiveTransfer {
         }
     }
 
-    /// Convert to wire format for connection monitor response
+    /// Convert to wire format for the connection monitor response.
     pub fn to_transfer_info(&self) -> TransferInfo {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -210,23 +171,16 @@ impl std::fmt::Debug for ActiveTransfer {
     }
 }
 
-/// Registry for tracking active file transfers
-///
-/// Thread-safe registry that allows:
-/// - Registering new transfers with metadata
-/// - Unregistering transfers when they complete
-/// - Disconnecting all transfers matching a predicate (e.g., banned IPs)
-/// - Querying all active transfers for connection monitor
-///
-/// The registry uses oneshot channels to signal bans, so transfer tasks can
-/// use `tokio::select!` to check for bans during I/O without polling.
+/// Thread-safe registry of active transfers (register / unregister / query for
+/// the connection monitor / disconnect-by-predicate). Bans are signaled over
+/// oneshot channels so transfer tasks can `tokio::select!` on them during I/O
+/// without polling.
 pub struct TransferRegistry {
     transfers: Mutex<HashMap<TransferId, Arc<ActiveTransfer>>>,
     next_id: AtomicU64,
 }
 
 impl TransferRegistry {
-    /// Create a new empty transfer registry
     pub fn new() -> Self {
         Self {
             transfers: Mutex::new(HashMap::new()),
@@ -234,11 +188,8 @@ impl TransferRegistry {
         }
     }
 
-    /// Register a new transfer and get its shared info plus ban signal receiver.
-    ///
-    /// The returned receiver will receive `()` if this transfer's IP
-    /// is banned while the transfer is active. The transfer's id is
-    /// available as `info.id`.
+    /// Register a transfer, returning its shared info and a receiver that fires
+    /// `()` if this transfer's IP is banned while active. Id is `info.id`.
     pub fn register(
         &self,
         params: TransferRegistration,
@@ -256,7 +207,8 @@ impl TransferRegistry {
         (info, ban_rx)
     }
 
-    /// Unregister a transfer (called when transfer completes or fails)
+    /// Called when a transfer completes or fails. Entries are kept until then
+    /// (not removed on ban) so pause/cancel stay correct.
     pub fn unregister(&self, id: TransferId) {
         self.transfers
             .lock()
@@ -264,16 +216,9 @@ impl TransferRegistry {
             .remove(&id);
     }
 
-    /// Disconnect all transfers where the predicate returns true for their IP
-    ///
-    /// Sends ban signal to all matching transfers. The transfers are responsible
-    /// for closing their connections when they receive the signal.
-    ///
-    /// # Arguments
-    /// * `predicate` - Function that returns true for IPs that should be disconnected
-    ///
-    /// # Returns
-    /// The number of transfers that were signaled
+    /// Send the ban signal to every transfer whose IP matches `predicate`,
+    /// returning how many were signaled. Each transfer closes its own
+    /// connection on receipt.
     pub fn disconnect_matching<F>(&self, predicate: F) -> usize
     where
         F: Fn(std::net::IpAddr) -> bool,
@@ -293,11 +238,7 @@ impl TransferRegistry {
         count
     }
 
-    /// Get a snapshot of all active transfers
-    ///
-    /// Returns cloned Arc references to all active transfer structs.
-    /// Safe to call while transfers are in progress.
-    #[allow(dead_code)] // Public API for future connection monitor integration
+    /// Cloned Arc snapshot of all active transfers; safe to call mid-transfer.
     pub fn snapshot(&self) -> Vec<Arc<ActiveTransfer>> {
         self.transfers
             .lock()
@@ -307,8 +248,7 @@ impl TransferRegistry {
             .collect()
     }
 
-    /// Get the number of active transfers
-    #[allow(dead_code)] // Used in tests and future connection monitor
+    #[cfg(test)]
     pub fn active_count(&self) -> usize {
         self.transfers
             .lock()
@@ -323,25 +263,16 @@ impl Default for TransferRegistry {
     }
 }
 
-/// RAII guard that unregisters an active transfer when dropped
-///
-/// This ensures transfers are always unregistered even if the handler
-/// returns early due to errors or panics.
+/// RAII guard that unregisters the transfer on drop, so it is always removed
+/// even when the handler returns early due to an error or panic.
 pub struct TransferRegistryGuard<'a> {
     registry: &'a TransferRegistry,
     id: TransferId,
 }
 
 impl<'a> TransferRegistryGuard<'a> {
-    /// Create a new guard that will unregister the transfer on drop
     pub fn new(registry: &'a TransferRegistry, id: TransferId) -> Self {
         Self { registry, id }
-    }
-
-    /// Get the transfer ID
-    #[allow(dead_code)] // Public API for future use
-    pub fn id(&self) -> TransferId {
-        self.id
     }
 }
 
@@ -469,14 +400,11 @@ mod tests {
         let disconnected = registry.disconnect_matching(|ip| ip == banned_ip);
 
         assert_eq!(disconnected, 2);
-        // Transfers remain registered until explicitly unregistered
+        // Entries remain registered until explicitly unregistered.
         assert_eq!(registry.active_count(), 3);
 
-        // Banned transfers should have received the signal
         assert!(rx1.try_recv().is_ok());
         assert!(rx3.try_recv().is_ok());
-
-        // Safe transfer should not have received anything
         assert!(rx2.try_recv().is_err());
     }
 
@@ -484,7 +412,6 @@ mod tests {
     fn test_disconnect_matching_cidr_simulation() {
         let registry = TransferRegistry::new();
 
-        // Simulate a /24 CIDR ban on 10.0.1.0/24
         let ip1 = IpAddr::V4(Ipv4Addr::new(10, 0, 1, 1));
         let ip2 = IpAddr::V4(Ipv4Addr::new(10, 0, 1, 254));
         let ip3 = IpAddr::V4(Ipv4Addr::new(10, 0, 2, 1)); // Different subnet
@@ -520,7 +447,6 @@ mod tests {
             total_size: 0,
         });
 
-        // Predicate checks if IP is in 10.0.1.0/24
         let disconnected = registry.disconnect_matching(|ip| {
             if let IpAddr::V4(v4) = ip {
                 let octets = v4.octets();
@@ -587,7 +513,7 @@ mod tests {
         {
             let _guard = TransferRegistryGuard::new(&registry, info.id);
             assert_eq!(registry.active_count(), 1);
-        } // guard dropped here
+        }
 
         assert_eq!(registry.active_count(), 0);
     }
@@ -609,7 +535,6 @@ mod tests {
         });
         registry.unregister(info.id);
 
-        // Should not panic or error when trying to disconnect an already-gone transfer
         let disconnected = registry.disconnect_matching(|_| true);
         assert_eq!(disconnected, 0);
     }
@@ -631,10 +556,8 @@ mod tests {
         });
         drop(rx); // Simulate transfer ending before ban
 
-        // Should not panic when receiver is dropped
+        // Send fails (receiver dropped), so nothing is counted.
         let disconnected = registry.disconnect_matching(|_| true);
-
-        // Returns 0 because send failed (receiver dropped)
         assert_eq!(disconnected, 0);
     }
 
@@ -669,7 +592,6 @@ mod tests {
         let snapshot = registry.snapshot();
         assert_eq!(snapshot.len(), 2);
 
-        // Verify we can access all metadata
         let usernames: Vec<&str> = snapshot.iter().map(|i| i.username.as_str()).collect();
         assert!(usernames.contains(&"user1"));
         assert!(usernames.contains(&"user2"));
@@ -718,7 +640,6 @@ mod tests {
 
         assert_eq!(info.get_total_size(), 0);
 
-        // Later, after path resolution
         info.set_total_size(5000);
         assert_eq!(info.get_total_size(), 5000);
     }
@@ -733,7 +654,6 @@ mod tests {
     fn test_transfer_id_display() {
         let id = TransferId(42);
         assert_eq!(format!("{id}"), "42");
-        assert_eq!(id.as_u64(), 42);
     }
 
     #[test]
@@ -752,11 +672,10 @@ mod tests {
             total_size: 0,
         });
 
-        // First disconnect should succeed
         let disconnected1 = registry.disconnect_matching(|_| true);
         assert_eq!(disconnected1, 1);
 
-        // Second disconnect should return 0 (already signaled)
+        // Already signaled, so the second pass counts nothing.
         let disconnected2 = registry.disconnect_matching(|_| true);
         assert_eq!(disconnected2, 0);
     }

@@ -1,8 +1,5 @@
-//! Transfer connection wrapper with ban signal handling
-//!
-//! The `Transfer` struct owns a transfer connection and provides methods for all I/O.
-//! Ban signals are checked during streaming operations to stop file data transfer
-//! when a user is banned mid-transfer.
+//! Transfer connection wrapper. Ban signals are checked between streaming
+//! chunks so a mid-transfer ban stops file data immediately.
 
 use std::io;
 use std::net::SocketAddr;
@@ -22,20 +19,15 @@ use crate::files::{FileIndex, PathLockMap};
 use super::registry::TransferRegistration;
 use super::registry::{ActiveTransfer, TransferId, TransferRegistry, TransferRegistryGuard};
 
-/// Chunk size for streaming file data (64KB)
+/// Chunk size for streaming file data; ban is checked between chunks.
 const CHUNK_SIZE: usize = 64 * 1024;
 use super::types::AuthenticatedUser;
 
-/// Error type for streaming operations
-///
-/// Represents errors that can occur during file streaming (send/receive).
 #[derive(Debug)]
 pub enum StreamError {
-    /// Normal I/O error
     Io(io::Error),
-    /// Connection was terminated due to IP ban
+    /// Connection terminated due to IP ban
     Banned,
-    /// Connection closed cleanly
     ConnectionClosed,
 }
 
@@ -64,10 +56,7 @@ impl From<io::Error> for StreamError {
     }
 }
 
-/// Server-side context that every transfer needs: who the
-/// authenticated peer is, what locale to use for translated errors,
-/// where the file root and index live, and which registry the transfer
-/// belongs to. Bundled so [`Transfer::new`]'s signature stays narrow.
+/// Per-transfer context bundled to keep [`Transfer::new`]'s signature narrow.
 pub struct TransferContext<'a> {
     pub user: AuthenticatedUser,
     pub locale: String,
@@ -77,37 +66,27 @@ pub struct TransferContext<'a> {
     pub registry: &'a TransferRegistry,
 }
 
-/// A file transfer connection with integrated ban handling
-///
-/// This struct owns the reader and writer for a transfer connection, along with
-/// a channel receiver for ban signals. Streaming methods check for bans between
-/// chunks, allowing mid-transfer termination when the IP is banned.
-///
-/// The transfer is automatically unregistered from the registry when dropped.
-/// Progress is tracked via the shared `TransferInfo` which can be queried
-/// by the connection monitor.
+/// A file transfer connection with integrated ban handling. Streaming methods
+/// check the ban receiver between chunks; the transfer unregisters from the
+/// registry on drop. Its `info` is shared (Arc) with the registry, which the
+/// connection monitor snapshots.
 pub struct Transfer<'a, R, W> {
-    // I/O
     reader: FrameReader<R>,
     writer: FrameWriter<W>,
 
-    // Ban signal (Option so we can take it when received)
+    // Option so we can take it once the ban signal is received
     ban_rx: Option<oneshot::Receiver<()>>,
-    // Whether this transfer has been banned
     banned: bool,
 
-    // Shared transfer state (for metrics and monitoring)
     info: Arc<ActiveTransfer>,
 
-    // Per-transfer context — exposed via accessor methods (`user()`,
-    // `locale()`, `file_root()`, `file_index()`).
     user: AuthenticatedUser,
     locale: String,
     file_root: &'a Path,
     file_index: &'a Arc<FileIndex>,
     file_mutation_locks: &'a Arc<PathLockMap>,
 
-    // RAII cleanup (must be last so it drops after other fields)
+    // Must be last so it drops after the other fields
     _guard: TransferRegistryGuard<'a>,
 }
 
@@ -116,11 +95,7 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    /// Create a new transfer connection
-    ///
-    /// Uses the provided `ActiveTransfer` for shared state (progress tracking,
-    /// metadata for monitoring). The transfer will automatically unregister
-    /// from the registry when dropped.
+    /// Create a transfer; it unregisters from the registry on drop.
     pub fn new(
         reader: FrameReader<R>,
         writer: FrameWriter<W>,
@@ -128,7 +103,7 @@ where
         info: Arc<ActiveTransfer>,
         ctx: TransferContext<'a>,
     ) -> Self {
-        // Read out the id before `info` is moved into the struct.
+        // Read the id before `info` is moved into the struct.
         let id = info.id;
         Self {
             reader,
@@ -145,57 +120,39 @@ where
         }
     }
 
-    /// Get the transfer ID
     pub fn id(&self) -> TransferId {
         self.info.id
     }
 
-    /// Get the elapsed time since transfer started
     pub fn elapsed(&self) -> std::time::Duration {
         self.info.elapsed()
     }
 
-    /// Get total bytes transferred so far
     pub fn bytes_transferred(&self) -> u64 {
         self.info.get_bytes_transferred()
     }
 
-    /// Set the total size (used for downloads after path resolution)
+    /// Set the total size (downloads learn it after path resolution).
     pub fn set_total_size(&self, size: u64) {
         self.info.set_total_size(size);
     }
 
-    /// Get the shared active transfer state
-    #[allow(dead_code)] // Public API for future connection monitor integration
-    pub fn info(&self) -> &Arc<ActiveTransfer> {
-        &self.info
-    }
-
-    // =========================================================================
-    // Accessor methods for handler compatibility
-    // =========================================================================
-
-    /// Get a reference to the authenticated user
     pub fn user(&self) -> &AuthenticatedUser {
         &self.user
     }
 
-    /// Get the locale string
     pub fn locale(&self) -> &str {
         &self.locale
     }
 
-    /// Get the peer address
     pub fn peer_addr(&self) -> SocketAddr {
         self.info.peer_addr
     }
 
-    /// Get the file root path
     pub fn file_root(&self) -> &Path {
         self.file_root
     }
 
-    /// Get the file index
     pub fn file_index(&self) -> &Arc<FileIndex> {
         self.file_index
     }
@@ -204,12 +161,10 @@ where
         self.file_mutation_locks
     }
 
-    /// Send a server message
     pub async fn send(&mut self, msg: &ServerMessage) -> Result<(), StreamError> {
         self.send_with_id(msg, MessageId::new()).await
     }
 
-    /// Send a server message with a specific message ID
     pub async fn send_with_id(
         &mut self,
         msg: &ServerMessage,
@@ -220,24 +175,10 @@ where
             .map_err(StreamError::Io)
     }
 
-    /// Stream a file to the client with periodic ban checking
+    /// Stream a file to the client, checking for a ban between chunks.
     ///
-    /// This method streams file data in chunks, checking for ban signals between
-    /// chunks. This allows mid-transfer termination when a ban is created.
-    ///
-    /// When banned, returns `Err(StreamError::Banned)`. The caller should close
-    /// the connection immediately - no further protocol messages are needed since
-    /// the client receives the ban reason on the BBS connection.
-    ///
-    /// # Arguments
-    /// * `message_type` - The frame message type (typically "FileData")
-    /// * `reader` - The file reader to stream from
-    /// * `length` - Total bytes to stream
-    ///
-    /// # Returns
-    /// * `Ok(bytes_written)` - bytes actually written
-    /// * `Err(StreamError::Banned)` if banned
-    /// * `Err(StreamError::Io(_))` on I/O error
+    /// On ban, returns `Err(StreamError::Banned)`; the caller should close the
+    /// connection immediately — the client gets the ban reason on the BBS port.
     pub async fn stream_file_to_client<S>(
         &mut self,
         message_type: &str,
@@ -247,13 +188,11 @@ where
     where
         S: AsyncRead + Unpin,
     {
-        // Check ban before starting
         if self.is_banned() {
             return Err(StreamError::Banned);
         }
 
-        // Write frame header
-        // Format: NX|type_len|type|msg_id|payload_len|
+        // Frame header: NX|type_len|type|msg_id|payload_len|
         let msg_id = MessageId::new();
         let header = format!(
             "NX|{}|{}|{}|{}|",
@@ -268,13 +207,11 @@ where
             .await
             .map_err(StreamError::Io)?;
 
-        // Stream in chunks, checking ban between chunks
         let mut buffer = vec![0u8; CHUNK_SIZE];
         let mut remaining = length;
         let mut total_written: u64 = 0;
 
         while remaining > 0 {
-            // Check for ban between chunks
             if self.is_banned() {
                 return Err(StreamError::Banned);
             }
@@ -301,11 +238,10 @@ where
             remaining -= bytes_read as u64;
             total_written += bytes_read as u64;
 
-            // Update shared progress atomically
             self.info.add_bytes_transferred(bytes_read as u64);
         }
 
-        // Write frame terminator
+        // Frame terminator
         self.writer
             .get_mut()
             .write_all(b"\n")
@@ -321,24 +257,11 @@ where
         Ok(total_written)
     }
 
-    /// Stream file data from client to a writer with periodic ban checking
+    /// Receive file data from the client, checking for a ban between chunks.
     ///
-    /// This method receives file data in chunks from the client, checking for ban
-    /// signals between chunks. This allows mid-transfer termination when a ban is created.
-    ///
-    /// When banned, returns `Err(StreamError::Banned)`. The caller should close
-    /// the connection immediately - no further protocol messages are needed since
-    /// the client receives the ban reason on the BBS connection.
-    ///
-    /// # Arguments
-    /// * `header` - The frame header (contains payload length)
-    /// * `dest` - The destination writer (typically a file)
-    /// * `progress_timeout` - Maximum time to wait between receiving chunks
-    ///
-    /// # Returns
-    /// * `Ok(bytes_written)` - bytes actually written
-    /// * `Err(StreamError::Banned)` if banned
-    /// * `Err(StreamError::Io(_))` on I/O error
+    /// On ban, stops writing to `dest` but still drains the rest of the frame so
+    /// the connection stays framed before the caller closes it. `progress_timeout`
+    /// bounds the wait between chunks.
     pub async fn stream_file_from_client<D>(
         &mut self,
         header: &nexus_common::framing::FrameHeader,
@@ -350,7 +273,6 @@ where
     {
         use tokio::time::timeout;
 
-        // Check ban before starting
         if self.is_banned() {
             return Err(StreamError::Banned);
         }
@@ -360,15 +282,13 @@ where
         let mut total_written: u64 = 0;
 
         while remaining > 0 {
-            // Check for ban between chunks
             if self.is_banned() {
-                // Stop writing to file, but we need to drain the rest of the frame
+                // Stop writing; the drain loop below consumes the rest of the frame.
                 break;
             }
 
             let to_read = (remaining as usize).min(CHUNK_SIZE);
 
-            // Read with progress timeout
             let bytes_read = match timeout(
                 progress_timeout,
                 self.reader.get_mut().read(&mut buffer[..to_read]),
@@ -381,7 +301,6 @@ where
                 Err(_) => return Err(StreamError::Io(std::io::Error::other("Read timeout"))),
             };
 
-            // Write to destination
             dest.write_all(&buffer[..bytes_read])
                 .await
                 .map_err(StreamError::Io)?;
@@ -389,14 +308,12 @@ where
             remaining -= bytes_read as u64;
             total_written += bytes_read as u64;
 
-            // Update shared progress atomically
             self.info.add_bytes_transferred(bytes_read as u64);
         }
 
-        // Flush what we wrote
         dest.flush().await.map_err(StreamError::Io)?;
 
-        // If banned, drain remaining payload data (don't write to file)
+        // Drain any payload left after a mid-frame ban (not written to file).
         while remaining > 0 {
             let to_read = (remaining as usize).min(CHUNK_SIZE);
             let bytes_read = match timeout(
@@ -413,7 +330,7 @@ where
             remaining -= bytes_read as u64;
         }
 
-        // Read frame terminator
+        // Frame terminator
         let mut terminator = [0u8; 1];
         match timeout(
             progress_timeout,
@@ -435,9 +352,7 @@ where
         Ok(total_written)
     }
 
-    /// Check if a ban signal has been received (non-blocking)
-    ///
-    /// Returns true if banned, false if not yet banned.
+    /// Check (non-blocking) whether a ban signal has arrived.
     pub fn is_banned(&mut self) -> bool {
         if self.banned {
             return true;
@@ -452,8 +367,7 @@ where
                 }
                 Err(oneshot::error::TryRecvError::Empty) => false,
                 Err(oneshot::error::TryRecvError::Closed) => {
-                    // Channel closed without sending - registry was dropped?
-                    // Treat as not banned
+                    // Sender dropped without signaling (e.g. registry gone) — not a ban.
                     false
                 }
             }
@@ -462,20 +376,15 @@ where
         }
     }
 
-    /// Get a mutable reference to the underlying reader
     pub fn reader(&mut self) -> &mut FrameReader<R> {
         &mut self.reader
     }
 
-    /// Get a mutable reference to the underlying writer
     pub fn writer(&mut self) -> &mut FrameWriter<W> {
         &mut self.writer
     }
 
-    /// Borrow both reader and writer simultaneously
-    ///
-    /// This is needed when an operation requires access to both, since
-    /// calling `reader()` and `writer()` separately would cause borrow conflicts.
+    /// Borrow reader and writer together (separate calls would conflict).
     pub fn reader_writer(&mut self) -> (&mut FrameReader<R>, &mut FrameWriter<W>) {
         (&mut self.reader, &mut self.writer)
     }
@@ -569,8 +478,6 @@ mod tests {
         assert_eq!(transfer.id(), info.id);
         assert_eq!(transfer.bytes_transferred(), 0);
         assert_eq!(transfer.peer_addr(), peer_addr);
-
-        // Verify info is shared
         assert_eq!(info.get_bytes_transferred(), 0);
 
         drop(client);
@@ -615,16 +522,12 @@ mod tests {
             },
         );
 
-        // Not banned yet
         assert!(!transfer.is_banned());
 
-        // Send ban signal
         registry.disconnect_matching(|_| true);
 
-        // Now should be banned
+        // Banned and stays banned across repeated checks.
         assert!(transfer.is_banned());
-
-        // Should stay banned
         assert!(transfer.is_banned());
 
         drop(client);
@@ -632,7 +535,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_transfer_send_works_when_banned() {
-        // Verifies that send() still works even after ban (for protocol cleanup)
         let registry = TransferRegistry::new();
         let (_client, server) = duplex(4096);
         let (server_read, server_write) = tokio::io::split(server);
@@ -669,11 +571,10 @@ mod tests {
             },
         );
 
-        // Ban the transfer
         registry.disconnect_matching(|_| true);
         assert!(transfer.is_banned());
 
-        // send() should still work (for error messages, etc.)
+        // send() must still work after a ban (error messages, etc.)
         let msg = ServerMessage::Error {
             message: "Test".to_string(),
             command: None,
@@ -684,9 +585,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_stream_file_to_client_banned_mid_stream() {
-        // Test that ban is detected between chunks during streaming.
-        // We simulate this by banning before streaming a multi-chunk file.
-        // The streaming loop checks is_banned() between chunks.
+        // Ban before a multi-chunk stream; the loop's between-chunk check trips.
         let registry = TransferRegistry::new();
         let (_client, server) = duplex(1024 * 1024);
         let (server_read, server_write) = tokio::io::split(server);
@@ -723,11 +622,9 @@ mod tests {
             },
         );
 
-        // Ban before starting - this tests the pre-stream check
         registry.disconnect_matching(|_| true);
 
-        // Try to stream - should fail immediately with Banned
-        let file_data = vec![0xABu8; 100_000]; // 100KB (multiple chunks)
+        let file_data = vec![0xABu8; 100_000]; // multiple chunks
         let mut reader = std::io::Cursor::new(file_data.clone());
 
         let result = transfer
@@ -775,10 +672,8 @@ mod tests {
             },
         );
 
-        // Ban before starting stream
         registry.disconnect_matching(|_| true);
 
-        // Use tokio::io::Cursor which implements AsyncRead
         let file_data = vec![0u8; 1000];
         let mut async_reader = std::io::Cursor::new(file_data);
 
@@ -839,7 +734,6 @@ mod tests {
 
     #[tokio::test]
     async fn test_transfer_info_bytes_update() {
-        // Verify that bytes_transferred updates are visible through the shared info
         let registry = TransferRegistry::new();
         let (_client, server) = duplex(1024 * 1024);
         let (server_read, server_write) = tokio::io::split(server);
@@ -876,11 +770,9 @@ mod tests {
             },
         );
 
-        // Initial state
         assert_eq!(info.get_bytes_transferred(), 0);
         assert_eq!(transfer.bytes_transferred(), 0);
 
-        // Simulate a successful stream using std::io::Cursor which implements AsyncRead
         let file_data = vec![0xABu8; 1000];
         let mut async_reader = std::io::Cursor::new(file_data);
 
@@ -890,7 +782,7 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 1000);
 
-        // Both should show updated bytes
+        // Update is visible through both the transfer and the shared info.
         assert_eq!(info.get_bytes_transferred(), 1000);
         assert_eq!(transfer.bytes_transferred(), 1000);
     }

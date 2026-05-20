@@ -1,7 +1,4 @@
-//! Authentication and handshake handling for file transfers
-//!
-//! Contains functions for handling the handshake, login, and initial
-//! request phases of a transfer connection.
+//! Handshake, login, and initial-request phases for transfer connections.
 
 use std::collections::HashSet;
 use std::io;
@@ -36,7 +33,6 @@ use crate::handlers::{
 use super::helpers::{login_error_response, send_error_and_close};
 use super::types::{AuthenticatedUser, DownloadParams, TransferRequest, UploadParams};
 
-/// Handle the handshake phase for transfer connections
 pub(crate) async fn handle_transfer_handshake<R, W>(
     frame_reader: &mut FrameReader<R>,
     frame_writer: &mut FrameWriter<W>,
@@ -49,7 +45,7 @@ where
 {
     let server_version_str = nexus_common::PROTOCOL_VERSION;
 
-    // Read handshake message (with idle timeout - no idle connections on transfer port)
+    // Idle timeout enforced — no idle connections allowed on the transfer port.
     let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
         Ok(Some(msg)) => msg,
         Ok(None) => return Err(io::Error::other(ERR_TRANSFER_HANDSHAKE_CLOSED)),
@@ -75,7 +71,6 @@ where
         }
     };
 
-    // Validate version
     let client_version = match validators::validate_version(&version) {
         Ok(v) => v,
         Err(e) => {
@@ -97,7 +92,6 @@ where
         }
     };
 
-    // Check compatibility
     match version::check_compatibility(&version::protocol_version(), &client_version) {
         CompatibilityResult::Compatible => {
             let response = ServerMessage::HandshakeResponse {
@@ -169,7 +163,7 @@ where
     }
 }
 
-/// Handle the login phase for transfer connections (simplified - just authentication)
+/// Transfer-port login: authentication only (no server_info, channels, etc.).
 pub(crate) async fn handle_transfer_login<R, W>(
     frame_reader: &mut FrameReader<R>,
     frame_writer: &mut FrameWriter<W>,
@@ -180,7 +174,7 @@ where
     R: AsyncReadExt + Unpin,
     W: AsyncWriteExt + Unpin,
 {
-    // Read login message (with idle timeout - no idle connections on transfer port)
+    // Idle timeout enforced — no idle connections allowed on the transfer port.
     let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
         Ok(Some(msg)) => msg,
         Ok(None) => return Err(io::Error::other(ERR_TRANSFER_LOGIN_CLOSED)),
@@ -226,14 +220,13 @@ where
         return Err(io::Error::other(ERR_TRANSFER_USERNAME_INVALID));
     }
 
-    // Validate password (use validate_password_input which allows empty for guest accounts)
+    // validate_password_input allows empty for guest accounts.
     if let Err(PasswordError::TooLong) = validators::validate_password_input(&password) {
         let response = login_error_response(err_invalid_credentials(locale));
         send_server_message_with_id(frame_writer, &response, received.message_id).await?;
         return Err(io::Error::other(ERR_TRANSFER_PASSWORD_INVALID));
     }
 
-    // Look up user
     let account = match db.users.get_user_by_username(&username).await {
         Ok(Some(acc)) => acc,
         Ok(None) => {
@@ -248,9 +241,8 @@ where
         }
     };
 
-    // Verify password
     let password_valid = if account.hashed_password.is_empty() {
-        // Guest account - password must be empty
+        // Guest account — password must be empty.
         password.is_empty()
     } else {
         match db::verify_password_async(password.clone(), account.hashed_password.clone()).await {
@@ -272,7 +264,6 @@ where
         return Err(io::Error::other(ERR_TRANSFER_INVALID_CREDENTIALS));
     }
 
-    // Check if account is enabled
     if !account.enabled {
         let error_msg = if username.to_lowercase() == GUEST_USERNAME {
             err_guest_disabled(locale)
@@ -284,7 +275,6 @@ where
         return Err(io::Error::other(ERR_TRANSFER_ACCOUNT_DISABLED));
     }
 
-    // Get permissions
     let permissions = if account.is_admin {
         HashSet::new()
     } else {
@@ -294,8 +284,7 @@ where
         }
     };
 
-    // Send simplified success response (no server_info, channels, etc.)
-    // Determine nickname: use requested nickname for shared accounts, otherwise username
+    // Shared accounts use the requested nickname; otherwise it equals username.
     let nickname = if account.is_shared {
         request_nickname.unwrap_or_else(|| account.username.clone())
     } else {
@@ -327,7 +316,7 @@ where
     })
 }
 
-/// Handle transfer request (FileDownload or FileUpload)
+/// Read the initial transfer request (FileDownload or FileUpload).
 pub(crate) async fn handle_transfer_request<R, W>(
     frame_reader: &mut FrameReader<R>,
     frame_writer: &mut FrameWriter<W>,
@@ -337,7 +326,7 @@ where
     R: AsyncReadExt + Unpin,
     W: AsyncWriteExt + Unpin,
 {
-    // With idle timeout - no idle connections on transfer port
+    // Idle timeout enforced — no idle connections allowed on the transfer port.
     let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
         Ok(Some(msg)) => msg,
         Ok(None) => return Err(io::Error::other(ERR_TRANSFER_CONNECTION_CLOSED)),

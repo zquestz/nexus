@@ -1,11 +1,8 @@
-//! File download handling for transfers
+//! File download handling for transfers.
 //!
-//! Contains functions for handling download requests, scanning files,
-//! checking dropbox access, and streaming files to clients.
-//!
-//! Uses StreamingHasher for single-pass hashing during file transfers.
-//! For resume verification, computes intermediate hashes via clone-and-finalize.
-//! Sends FileHashing keepalive messages during hash-only phases to prevent timeouts.
+//! Single-pass StreamingHasher during streaming; resume verification computes
+//! intermediate hashes via clone-and-finalize, with FileHashing keepalives during
+//! hash-only phases to prevent timeouts.
 
 use std::io;
 use std::path::Path;
@@ -39,7 +36,6 @@ use super::helpers::{
 use super::transfer::{StreamError, Transfer};
 use super::types::{AuthenticatedUser, DownloadParams, FileInfo};
 
-/// Handle a file download request
 pub(crate) async fn handle_download<R, W>(
     transfer: &mut Transfer<'_, R, W>,
     params: DownloadParams,
@@ -53,14 +49,12 @@ where
         root: use_root,
     } = params;
 
-    // Extract values to avoid borrow checker issues
     let locale = transfer.locale().to_string();
     let username = transfer.user().username.clone();
     let is_admin = transfer.user().is_admin;
     let peer_addr = transfer.peer_addr();
     let file_root = transfer.file_root();
 
-    // Validate and resolve path using shared helpers
     let resolved_path = match validate_and_resolve_download_path(
         transfer.user(),
         file_root,
@@ -74,13 +68,11 @@ where
         Err(e) => return send_download_transfer_error(transfer.writer(), &e).await,
     };
 
-    // Check dropbox access
     if !can_access_for_download(&resolved_path, &username, is_admin) {
         let err = TransferError::permission(err_transfer_access_denied(&locale));
         return send_download_transfer_error(transfer.writer(), &err).await;
     }
 
-    // Scan files to transfer
     let files = match scan_files_for_transfer(&resolved_path, &username, is_admin).await {
         Ok(files) => files,
         Err(e) => {
@@ -95,14 +87,13 @@ where
         }
     };
 
-    // Calculate total size using saturating arithmetic to prevent overflow
+    // saturating_add: don't overflow on a huge directory
     let total_size: u64 = files.iter().fold(0u64, |acc, f| acc.saturating_add(f.size));
     let file_count = files.len() as u64;
 
-    // Update transfer registry with actual size (was 0 at registration time)
+    // Registry registered with size 0; fill in the real total now.
     transfer.set_total_size(total_size);
 
-    // Generate transfer ID for logging
     let log_transfer_id = generate_transfer_id();
 
     debug!(
@@ -114,7 +105,6 @@ where
         "{}", LOG_DOWNLOAD_STARTING
     );
 
-    // Send FileDownloadResponse
     let response = ServerMessage::FileDownloadResponse {
         success: true,
         error: None,
@@ -128,13 +118,12 @@ where
         return Ok(());
     }
 
-    // Stream each file
     let mut success = true;
     let mut error: Option<String> = None;
     let mut error_kind: Option<String> = None;
 
     for file_info in &files {
-        // Canonicalize path to handle symlinks
+        // Canonicalize to resolve symlinks before opening.
         let canonical_path = match tokio::fs::canonicalize(&file_info.absolute_path).await {
             Ok(p) => p,
             Err(e) => {
@@ -151,10 +140,10 @@ where
 
         match stream_file_with_hash(transfer, file_info, &canonical_path, &log_transfer_id).await {
             Ok(()) => {
-                // bytes_transferred is updated inside stream_file_with_hash
+                // bytes_transferred updated inside stream_file_with_hash
             }
             Err(StreamFileError::Banned) => {
-                // Just close the socket - client gets ban reason on BBS connection
+                // Close the socket; client gets the ban reason on its BBS connection.
                 info!(id = %log_transfer_id, user = %username, ip = %peer_addr, "{}", LOG_DOWNLOAD_BANNED);
                 let _ = transfer.writer().get_mut().shutdown().await;
                 return Ok(());
@@ -197,13 +186,12 @@ where
         }
     }
 
-    // Send TransferComplete
     let complete = ServerMessage::TransferComplete {
         success,
         error,
         error_kind,
     };
-    let _ = transfer.send(&complete).await; // Best effort - connection may be closing
+    let _ = transfer.send(&complete).await; // Best effort — connection may be closing.
 
     if success {
         info!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %download_path, "{}", LOG_DOWNLOAD_COMPLETE);
@@ -211,13 +199,11 @@ where
         warn!(id = %log_transfer_id, user = %username, ip = %peer_addr, path = %download_path, "{}", LOG_DOWNLOAD_FAILED);
     }
 
-    // Close connection
     let _ = transfer.writer().get_mut().shutdown().await;
 
     Ok(())
 }
 
-/// Error type for stream_file_with_hash
 enum StreamFileError {
     Io(io::Error),
     Banned,
@@ -242,10 +228,6 @@ impl From<StreamError> for StreamFileError {
     }
 }
 
-/// Validate and resolve a download path
-///
-/// This helper consolidates path validation, permission checks, and resolution
-/// into a single function to reduce code duplication.
 async fn validate_and_resolve_download_path(
     user: &AuthenticatedUser,
     file_root: &Path,
@@ -253,22 +235,13 @@ async fn validate_and_resolve_download_path(
     download_path: &str,
     use_root: bool,
 ) -> Result<std::path::PathBuf, TransferError> {
-    // Validate path
     validate_transfer_path(download_path, locale)?;
-
-    // Check download permission
     check_permission(user, Permission::FileDownload, locale)?;
-
-    // Check file_root permission if using root mode
     check_root_permission(user, use_root, locale)?;
 
-    // Resolve area root
     let area_root = resolve_area_root(file_root, &user.username, use_root, locale).await?;
-
-    // Build candidate path
     let candidate = build_validated_path(&area_root, download_path, locale).await?;
 
-    // Resolve to canonical path
     resolve_path(&area_root, &candidate)
         .await
         .map_err(|e| path_error_to_transfer_error(e, locale))
@@ -276,24 +249,23 @@ async fn validate_and_resolve_download_path(
 
 /// Check if a path can be accessed for download (dropbox restrictions)
 pub(crate) fn can_access_for_download(path: &Path, username: &str, is_admin: bool) -> bool {
-    // Check each component of the path for dropbox folders
     for ancestor in path.ancestors() {
         if let Some(name) = ancestor.file_name().and_then(|n| n.to_str()) {
             match parse_folder_type(name) {
                 FolderType::DropBox => {
-                    // Only admins can download from generic dropboxes
+                    // Generic dropbox: admins only.
                     if !is_admin {
                         return false;
                     }
                 }
                 FolderType::UserDropBox(owner) => {
-                    // Only the named user or admins can download
+                    // User dropbox: the named owner or an admin.
                     if !is_admin && owner.to_lowercase() != username.to_lowercase() {
                         return false;
                     }
                 }
                 FolderType::Upload | FolderType::Default => {
-                    // Anyone can download from upload folders and default folders
+                    // Open to all.
                 }
             }
         }
@@ -301,7 +273,6 @@ pub(crate) fn can_access_for_download(path: &Path, username: &str, is_admin: boo
     true
 }
 
-/// Scan files to transfer from a path (file or directory)
 async fn scan_files_for_transfer(
     resolved_path: &Path,
     username: &str,
@@ -312,34 +283,27 @@ async fn scan_files_for_transfer(
     let metadata = tokio::fs::metadata(resolved_path).await?;
 
     if metadata.is_file() {
-        // Single file download
         let file_name = resolved_path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(DEFAULT_FILENAME);
 
-        // Use just the filename for single file downloads
         files.push(FileInfo {
             relative_path: file_name.to_string(),
             absolute_path: resolved_path.to_path_buf(),
             size: metadata.len(),
         });
     } else if metadata.is_dir() {
-        // Directory download - recursively scan
-        // Use empty prefix because the client already includes the directory name in local_path.
-        // Files will have paths relative to inside the directory (e.g., "song.mp3", "Jazz/tune.mp3")
-        // rather than including the directory name (e.g., "Music/song.mp3", "Music/Jazz/tune.mp3").
+        // Empty prefix: the client already includes the directory name in local_path,
+        // so paths are relative to inside the directory ("song.mp3", "Jazz/tune.mp3").
         scan_directory_recursive(resolved_path, "", &mut files, username, is_admin).await?;
     }
 
     Ok(files)
 }
 
-/// Recursively scan a directory for files
-///
-/// Filters out files in dropbox folders that the user doesn't have access to.
-/// This prevents information leakage when downloading a parent directory that
-/// contains dropbox subfolders.
+/// Recursively scan a directory, skipping inaccessible dropbox subfolders so a
+/// parent-directory download can't leak their contents.
 fn scan_directory_recursive<'a>(
     dir: &'a Path,
     prefix: &'a str,
@@ -355,8 +319,7 @@ fn scan_directory_recursive<'a>(
         while let Some(entry) = entries.next_entry().await? {
             let path = entry.path();
             debug!(path = ?path, "{}", LOG_SCAN_ENTRY);
-            // Use tokio::fs::metadata instead of entry.metadata() to follow symlinks.
-            // entry.metadata() uses lstat which returns symlink metadata, not target metadata.
+            // tokio::fs::metadata (stat) follows symlinks; entry.metadata() (lstat) wouldn't.
             let metadata = match tokio::fs::metadata(&path).await {
                 Ok(m) => m,
                 Err(e) => {
@@ -364,26 +327,21 @@ fn scan_directory_recursive<'a>(
                     continue;
                 }
             };
-            // Skip files with non-UTF-8 names
             let Some(file_name) = entry.file_name().to_str().map(|s| s.to_string()) else {
                 debug!(name = ?entry.file_name(), "{}", LOG_SCAN_NON_UTF8);
                 continue;
             };
 
-            // Note: Hidden files (dotfiles) are included in downloads.
-            // The show_hidden setting only affects the file browser UI, not transfers.
+            // Dotfiles are included; show_hidden only affects the browser UI, not transfers.
 
-            // Check dropbox access on the symlink's location, NOT its target.
-            // Symlinks are trusted because only admins can create them (users can't create
-            // symlinks through the BBS protocol). If an admin creates a symlink in a public
-            // folder pointing into a dropbox, that's intentional - they're choosing to expose
-            // that content.
+            // Access-check the symlink's location, not its target: symlinks are
+            // admin-created and trusted, so one pointing into a dropbox is an
+            // intentional exposure.
             if !can_access_for_download(&path, username, is_admin) {
                 debug!(path = %file_name, "{}", LOG_SCAN_DROPBOX_DENIED);
                 continue;
             }
 
-            // Build relative path, handling empty prefix for top-level files
             let relative = if prefix.is_empty() {
                 file_name.clone()
             } else {
@@ -399,7 +357,6 @@ fn scan_directory_recursive<'a>(
                 });
             } else if metadata.is_dir() {
                 debug!(path = %relative, "{}", LOG_SCAN_RECURSING);
-                // For subdirectories, use the relative path as the new prefix
                 scan_directory_recursive(&path, &relative, files, username, is_admin).await?;
             } else {
                 debug!(path = %file_name, "{}", LOG_SCAN_SPECIAL_FILE);
@@ -412,16 +369,10 @@ fn scan_directory_recursive<'a>(
     })
 }
 
-/// Stream a file to the client with single-pass hashing
-///
-/// For each file:
-/// 1. Send FileStart (path, size — no hash)
-/// 2. Read FileStartResponse (for resume negotiation)
-/// 3. Hash 0..offset for resume verification (returns hasher with state)
-/// 4. Stream FileData from offset, feeding bytes to hasher
-/// 5. Send FileHash with full file hash
-///
-/// Uses Transfer's ban-checked streaming to allow mid-transfer termination.
+/// Stream a file to the client, hashing in a single pass:
+/// FileStart (no hash) → FileStartResponse (resume negotiation) → hash 0..offset for
+/// resume verification (hasher keeps state) → stream FileData from offset feeding the
+/// hasher → FileHash with the full hash. Streaming is ban-checked for mid-transfer kill.
 async fn stream_file_with_hash<R, W>(
     transfer: &mut Transfer<'_, R, W>,
     file_info: &FileInfo,
@@ -432,15 +383,14 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    // Send FileStart — no sha256, hash will be sent in FileHash after data
+    // FileStart carries no sha256; the hash follows in FileHash after the data.
     let file_start = ServerMessage::FileStart {
         path: file_info.relative_path.clone(),
         size: file_info.size,
     };
     transfer.send(&file_start).await?;
 
-    // Read FileStartResponse and determine resume offset
-    // Returns hasher pre-fed with 0..offset bytes for single-pass hashing
+    // Returns the resume offset and a hasher pre-fed with 0..offset.
     let (frame_reader, frame_writer) = transfer.reader_writer();
     let (offset, mut hasher) =
         match read_file_start_response(frame_reader, frame_writer, file_info.size, canonical_path)
@@ -470,7 +420,7 @@ where
         );
     }
 
-    // If offset equals file size, file is already complete — send FileHash only
+    // Already complete (offset == size): send FileHash alone, no data.
     if offset >= file_info.size {
         if file_info.size > 0 {
             debug!(
@@ -486,36 +436,34 @@ where
         return Ok(());
     }
 
-    // Calculate bytes to send
     let bytes_to_send = file_info.size - offset;
 
-    // Open file and seek to offset (use canonical path for safety)
     let file = File::open(canonical_path).await?;
     let mut reader = BufReader::new(file);
     if offset > 0 {
         reader.seek(SeekFrom::Start(offset)).await?;
     }
 
-    // Wrap reader with HashingReader to feed bytes to hasher during streaming.
-    // Each chunk read from disk is hashed before being sent to the client.
+    // HashingReader hashes each disk chunk before it's sent, extending the hasher
+    // (already holding 0..offset) over offset..end in a single pass.
     let mut hashing_reader = HashingReader::new(reader, &mut hasher);
 
-    // Stream file data with ban checking between chunks
+    // stream_file_to_client ban-checks between 64KB chunks for mid-transfer kill.
     let result = transfer
         .stream_file_to_client("FileData", &mut hashing_reader, bytes_to_send)
         .await;
 
-    // Drop hashing_reader to release the borrow on hasher before finalizing
+    // Release the hasher borrow before finalizing.
     drop(hashing_reader);
 
     let bytes_written = result?;
 
-    // Check if we were banned mid-stream (frame was finished but short)
+    // A short-but-finished frame means a mid-stream ban.
     if bytes_written < bytes_to_send || transfer.is_banned() {
         return Err(StreamFileError::Banned);
     }
 
-    // Send FileHash with the full file hash (hasher consumed 0..offset + offset..end)
+    // Full-file hash: hasher has now consumed 0..offset + offset..end.
     let file_hash = ServerMessage::FileHash {
         sha256: hasher.finalize(),
     };
@@ -524,19 +472,12 @@ where
     Ok(())
 }
 
-/// Read FileStartResponse and compute resume offset with single-pass hasher
+/// Read FileStartResponse and compute the resume offset with a single-pass hasher.
 ///
-/// If the client reports an existing file (partial or complete), this function:
-/// 1. Creates a StreamingHasher
-/// 2. Reads 0..client_size bytes of the server's file into the hasher
-/// 3. Verifies the hash against the client's reported hash
-/// 4. Returns (offset, hasher) — the hasher retains its state for continued use
-///
-/// The caller continues feeding offset..end into the returned hasher during
-/// streaming, then finalizes it to get the full file hash for FileHash.
-///
-/// Sends FileHashing keepalives during hash computation to prevent client timeout.
-/// Automatically skips FileHashing keepalives from the client.
+/// If the client reports an existing file, hash the server's 0..client_size into a
+/// StreamingHasher and compare against the client's hash; on match return
+/// (offset, hasher) with the hasher retaining 0..offset state for the caller to extend
+/// and finalize. FileHashing keepalives are sent (and skipped on input) during hashing.
 async fn read_file_start_response<R, W>(
     frame_reader: &mut FrameReader<R>,
     frame_writer: &mut FrameWriter<W>,
@@ -547,7 +488,7 @@ where
     R: AsyncReadExt + Unpin,
     W: AsyncWriteExt + Unpin,
 {
-    // Loop to skip any FileHashing keepalive messages from client
+    // Loop so we skip any FileHashing keepalives the client sends while hashing.
     let (size, sha256) = loop {
         let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
             Ok(Some(msg)) => msg,
@@ -568,7 +509,7 @@ where
                 break (size, sha256);
             }
             ClientMessage::FileHashing { .. } => {
-                // Keepalive — client is hashing a large local file
+                // Keepalive while the client hashes a large local file.
                 continue;
             }
             _ => {
@@ -577,23 +518,18 @@ where
         }
     };
 
-    // If client has no local file, start from beginning
+    // No local file, larger-than-server, or no hash to verify against → start over.
     if size == 0 {
         return Ok((0, StreamingHasher::new()));
     }
-
-    // If client reports size > server size, start from beginning
     if size > server_size {
         return Ok((0, StreamingHasher::new()));
     }
-
-    // Client must provide hash for resume verification
     let Some(client_hash) = sha256 else {
         return Ok((0, StreamingHasher::new()));
     };
 
-    // Hash 0..size bytes of the server's file using StreamingHasher
-    // Sends FileHashing keepalives to prevent client timeout during large file hashing
+    // Hash the server's 0..size (keepalives prevent client timeout on large files).
     let file_name = file_path
         .file_name()
         .and_then(|n| n.to_str())
@@ -602,14 +538,14 @@ where
 
     let hasher = hash_file_with_keepalives(file_path, size, &file_name, frame_writer).await?;
 
-    // Verify: clone+finalize to get hash of 0..size without consuming hasher
+    // partial_hash() clones and finalizes, so the hasher keeps its 0..size state.
     let server_hash = hasher.partial_hash();
 
     if client_hash == server_hash {
-        // Hash matches — resume from client's position (hasher retains 0..size state)
+        // Match: resume from `size` reusing the retained hasher state.
         Ok((size, hasher))
     } else {
-        // Hash mismatch — client's partial file doesn't match server's file
+        // Mismatch: client's partial file diverges from ours.
         Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "resume hash mismatch",
@@ -620,10 +556,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    // ==========================================================================
-    // can_access_for_download tests
-    // ==========================================================================
 
     #[test]
     fn test_can_access_default_folder() {

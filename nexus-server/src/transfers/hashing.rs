@@ -1,14 +1,9 @@
-//! Streaming hash wrappers for file transfers
+//! Streaming hash wrappers for file transfers.
 //!
-//! Provides `HashingReader` and `HashingWriter` — transparent `AsyncRead`/`AsyncWrite`
-//! wrappers that feed all bytes through a `StreamingHasher`. This enables single-pass
-//! hashing during file streaming without modifying the Transfer streaming infrastructure.
-//!
-//! Also provides `hash_file_with_keepalives` for hashing existing files (partial or
-//! complete) while sending periodic `FileHashing` keepalive messages.
-//!
-//! Used by download.rs (HashingReader: read from disk + hash + send to client)
-//! and upload.rs (HashingWriter: receive from client + hash + write to disk).
+//! `HashingReader` / `HashingWriter` are transparent `AsyncRead`/`AsyncWrite` wrappers
+//! that feed every byte through a `StreamingHasher`, enabling single-pass hashing during
+//! streaming. `hash_file_with_keepalives` hashes an existing (partial/complete) file while
+//! emitting periodic `FileHashing` keepalives.
 
 use std::io;
 use std::path::Path;
@@ -25,8 +20,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 
 pub(crate) use nexus_common::{FALLBACK_FILE_NAME, FALLBACK_PART_FILE_NAME};
 
-/// Wrapper around an `AsyncRead` that feeds all bytes read through it to a
-/// `StreamingHasher`. Each successful read updates the hasher with the new bytes
+/// `AsyncRead` wrapper that updates a `StreamingHasher` with each read's new bytes
 /// before returning them to the caller.
 pub(crate) struct HashingReader<'a, R> {
     inner: R,
@@ -55,9 +49,8 @@ impl<R: AsyncRead + Unpin> AsyncRead for HashingReader<'_, R> {
     }
 }
 
-/// Wrapper around an `AsyncWrite` that feeds all written bytes to a
-/// `StreamingHasher`. Each successful write updates the hasher with exactly
-/// the bytes that were accepted by the inner writer.
+/// `AsyncWrite` wrapper that updates a `StreamingHasher` with exactly the bytes the
+/// inner writer accepts on each write.
 pub(crate) struct HashingWriter<'a, W> {
     inner: W,
     hasher: &'a mut StreamingHasher,
@@ -68,7 +61,6 @@ impl<'a, W> HashingWriter<'a, W> {
         Self { inner, hasher }
     }
 
-    /// Consume the wrapper and return the inner writer.
     pub(crate) fn into_inner(self) -> W {
         self.inner
     }
@@ -97,13 +89,8 @@ impl<W: AsyncWrite + Unpin> AsyncWrite for HashingWriter<'_, W> {
     }
 }
 
-/// Hash a file into a StreamingHasher, sending FileHashing keepalives periodically
-///
-/// Reads the file from the beginning up to `byte_count` bytes, feeding each chunk
-/// into the hasher. Sends keepalive messages to the peer periodically to prevent
-/// timeout during large file hashing.
-///
-/// Used by both download.rs (resume verification) and upload.rs (existing file hashing).
+/// Hash a file's first `byte_count` bytes into a StreamingHasher, emitting periodic
+/// FileHashing keepalives so the peer doesn't time out while a large file is hashed.
 pub(crate) async fn hash_file_with_keepalives<W>(
     path: &Path,
     byte_count: u64,
@@ -147,10 +134,6 @@ mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    // =========================================================================
-    // HashingReader tests
-    // =========================================================================
-
     #[tokio::test]
     async fn test_hashing_reader_passes_bytes_through() {
         let data = b"Hello, World!";
@@ -159,14 +142,11 @@ mod tests {
         let mut hasher = StreamingHasher::new();
         let mut hashing_reader = HashingReader::new(async_reader, &mut hasher);
 
-        // Read all bytes through the hashing reader
         let mut output = Vec::new();
         hashing_reader.read_to_end(&mut output).await.unwrap();
 
-        // Bytes should pass through unchanged
         assert_eq!(output, data);
 
-        // Hasher should have accumulated the correct hash
         drop(hashing_reader);
         let hash = hasher.finalize();
         assert_eq!(
@@ -253,10 +233,6 @@ mod tests {
             "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
         );
     }
-
-    // =========================================================================
-    // HashingWriter tests
-    // =========================================================================
 
     #[tokio::test]
     async fn test_hashing_writer_passes_bytes_through() {

@@ -1,24 +1,11 @@
-//! Transfer connection handler for file downloads and uploads (port 7501)
+//! File download/upload handler on port 7501. Same TLS cert and framing as the
+//! BBS port, with a simplified flow. Per-file streaming is
+//! `FileStart → FileStartResponse → [FileData →] FileHash` (FileData omitted for
+//! zero-byte/already-complete files); the sender drives downloads, the client
+//! drives uploads.
 //!
-//! This module handles file transfer connections on a separate port from the main
-//! BBS protocol. The transfer protocol uses the same TLS certificate and framing
-//! format, but with a simplified flow:
-//!
-//! **Download flow:**
-//! 1. Client: Handshake → Server: HandshakeResponse
-//! 2. Client: Login → Server: LoginResponse (simplified: just success/error)
-//! 3. Client: FileDownload → Server: FileDownloadResponse
-//! 4. For each file: Server: FileStart → Client: FileStartResponse → Server: FileData → Server: FileHash
-//! 5. Server: TransferComplete
-//! 6. Server closes connection
-//!
-//! **Upload flow:**
-//! 1. Client: Handshake → Server: HandshakeResponse
-//! 2. Client: Login → Server: LoginResponse (simplified: just success/error)
-//! 3. Client: FileUpload → Server: FileUploadResponse
-//! 4. For each file: Client: FileStart → Server: FileStartResponse → Client: FileData → Client: FileHash
-//! 5. Server: TransferComplete
-//! 6. Server closes connection
+//! Both directions: Handshake → Login (success/error only) → FileDownload or
+//! FileUpload → per-file loop → TransferComplete → server closes.
 
 mod auth;
 mod download;
@@ -52,26 +39,22 @@ use transfer::{Transfer, TransferContext};
 use types::TransferRequest;
 use upload::handle_upload;
 
-// Re-export public types
 pub use registry::TransferRegistry;
 pub use types::TransferParams;
 
-/// Handle a transfer connection (file downloads and uploads on port 7501)
+/// Handle a transfer connection (downloads and uploads on port 7501).
 pub async fn handle_transfer_connection(
     socket: TcpStream,
     tls_acceptor: TlsAcceptor,
     params: TransferParams,
 ) -> io::Result<()> {
-    // Perform TLS handshake (mandatory, same cert as main port) with
-    // slowloris-defense timeout.
+    // Mandatory TLS (same cert as main port) with slowloris-defense timeout.
     let tls_stream = accept_tls_with_timeout(&tls_acceptor, socket).await?;
 
     handle_transfer_connection_inner(tls_stream, params).await
 }
 
-/// Inner transfer connection handler that works with any AsyncRead + AsyncWrite stream
-///
-/// This is used by both TCP and WebSocket connections.
+/// Inner handler over any byte stream, shared by TCP and WebSocket connections.
 pub async fn handle_transfer_connection_inner<S>(
     socket: S,
     params: TransferParams,
@@ -91,13 +74,12 @@ where
 
     debug!(ip = %peer_addr, "{}", LOG_TRANSFER_CONNECTION);
 
-    // Set up framed I/O
     let (reader, writer) = tokio::io::split(socket);
     let buf_reader = BufReader::new(reader);
     let mut frame_reader = FrameReader::new(buf_reader);
     let mut frame_writer = FrameWriter::new(writer);
 
-    // Default locale for error messages before login
+    // Default locale for errors sent before login.
     let mut locale = DEFAULT_LOCALE.to_string();
 
     // Phase 1: Handshake
@@ -109,7 +91,7 @@ where
         return Ok(());
     }
 
-    // Phase 2: Login (simplified - just authentication)
+    // Phase 2: Login (authentication only)
     let user =
         match handle_transfer_login(&mut frame_reader, &mut frame_writer, &db, &mut locale).await {
             Ok(user) => user,
@@ -124,8 +106,7 @@ where
 
     // Phase 3: Transfer request (FileDownload or FileUpload)
     let Some(file_root) = file_root else {
-        // File area not configured - send generic error since we don't know
-        // if this is a download or upload request yet
+        // Generic error: direction (download/upload) isn't known yet.
         return send_error_and_close(&mut frame_writer, &err_file_area_not_configured(&locale))
             .await;
     };
@@ -140,12 +121,10 @@ where
         }
     };
 
-    // Determine transfer direction, path, and size for registry metadata
+    // Registry metadata. Download size is unknown until path resolution (0 now,
+    // updated later); upload size is known up front.
     let (direction, path, total_size) = match &request {
-        TransferRequest::Download(p) => {
-            // For downloads, size is unknown until path resolution (set to 0, updated later)
-            (TransferDirection::Download, p.path.clone(), 0)
-        }
+        TransferRequest::Download(p) => (TransferDirection::Download, p.path.clone(), 0),
         TransferRequest::Upload(p) => (
             TransferDirection::Upload,
             p.destination.clone(),
@@ -153,8 +132,7 @@ where
         ),
     };
 
-    // Register with transfer registry for ban signal handling
-    // We do this after authentication so we have the user's locale for error messages
+    // Register after auth so the user's locale is available for error messages.
     let (info, ban_rx) = transfer_registry.register(TransferRegistration {
         peer_addr,
         nickname: user.nickname.clone(),
@@ -166,8 +144,7 @@ where
         total_size,
     });
 
-    // Create Transfer struct that owns the connection and handles ban signals
-    // The Transfer is automatically unregistered when dropped via RAII guard
+    // Owns the connection and ban handling; unregisters on drop via RAII guard.
     let mut transfer = Transfer::new(
         frame_reader,
         frame_writer,
@@ -183,7 +160,6 @@ where
         },
     );
 
-    // Dispatch to appropriate handler
     let result = match request {
         TransferRequest::Download(params) => handle_download(&mut transfer, params).await,
         TransferRequest::Upload(params) => handle_upload(&mut transfer, params).await,

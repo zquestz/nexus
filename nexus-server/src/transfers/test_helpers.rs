@@ -6,8 +6,6 @@ use super::types::AuthenticatedUser;
 use crate::db::Permission;
 
 /// Build an `AuthenticatedUser` with the given admin flag and permission set.
-///
-/// Used across the transfers submodules' unit tests.
 pub(crate) fn make_authenticated_user(is_admin: bool, perms: &[Permission]) -> AuthenticatedUser {
     let mut permissions = HashSet::new();
     for p in perms {

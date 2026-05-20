@@ -1,6 +1,4 @@
-//! Type definitions for file transfer handling
-//!
-//! Contains shared structs and enums used across the transfer module.
+//! Shared structs and enums used across the transfer module.
 
 use std::collections::HashSet;
 use std::net::SocketAddr;
@@ -20,24 +18,21 @@ pub struct TransferParams {
     pub file_index: Arc<FileIndex>,
     /// See `files::path_lock`.
     pub file_mutation_locks: Arc<PathLockMap>,
-    /// Transfer registry for ban signal handling
     pub transfer_registry: Arc<TransferRegistry>,
-    /// Server certificate fingerprint, included in HandshakeResponse so the
-    /// client can detect TLS interception before sending credentials.
+    /// Sent in HandshakeResponse so the client can detect TLS interception
+    /// before sending credentials.
     pub fingerprint: &'static str,
 }
 
-/// Information about a file to transfer (for downloads)
+/// A file to download.
 pub(crate) struct FileInfo {
-    /// Relative path from download root (e.g., "Games/app.zip")
+    /// Relative path from download root (e.g. "Games/app.zip").
     pub relative_path: String,
-    /// Absolute filesystem path
     pub absolute_path: PathBuf,
-    /// File size in bytes
     pub size: u64,
 }
 
-/// Authenticated user information (minimal for transfer port)
+/// Minimal authenticated user for the transfer port.
 pub(crate) struct AuthenticatedUser {
     pub nickname: String,
     pub username: String,
@@ -46,19 +41,16 @@ pub(crate) struct AuthenticatedUser {
     pub permissions: HashSet<Permission>,
 }
 
-/// Request type after authentication (either download or upload)
 pub(crate) enum TransferRequest {
     Download(DownloadParams),
     Upload(UploadParams),
 }
 
-/// Parameters for a download request
 pub(crate) struct DownloadParams {
     pub path: String,
     pub root: bool,
 }
 
-/// Parameters for an upload request
 pub(crate) struct UploadParams {
     pub destination: String,
     pub file_count: u64,
@@ -66,7 +58,6 @@ pub(crate) struct UploadParams {
     pub root: bool,
 }
 
-/// Parameters for receiving a file upload
 pub(crate) struct ReceiveFileParams<'a> {
     pub area_root: &'a Path,
     pub destination: &'a Path,
