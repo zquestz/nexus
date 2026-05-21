@@ -6,6 +6,7 @@ err-nickname-empty = Псевдоним не может быть пустым
 err-nickname-in-use = Псевдоним уже используется
 err-nickname-invalid = Псевдоним содержит недопустимые символы (разрешены буквы, цифры и символы - без пробелов и управляющих символов)
 err-nickname-is-username = Псевдоним не может совпадать с существующим именем пользователя
+err-username-is-active-nickname = Имя пользователя не может совпадать с уже используемым псевдонимом
 err-nickname-not-found = Пользователь "{ $nickname }" не найден
 err-nickname-not-online = Пользователь "{ $nickname }" не в сети
 err-nickname-required = Псевдоним обязателен для общих учетных записей

@@ -150,6 +150,7 @@ err-kicked-by-reason = You have been kicked by { $username }: { $reason }
 err-kick-reason-too-long = Kick reason is too long (max { $max_length } characters)
 err-kick-reason-invalid-characters = Kick reason contains invalid characters
 err-username-exists = Username '{ $username }' already exists
+err-username-is-active-nickname = Username cannot match a nickname currently in use
 err-user-not-found = User '{ $username }' not found
 err-user-not-online = User '{ $username }' is not online
 err-failed-to-create-user = Failed to create user '{ $username }'

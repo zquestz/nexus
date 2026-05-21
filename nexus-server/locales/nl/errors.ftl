@@ -6,6 +6,7 @@ err-nickname-empty = Bijnaam mag niet leeg zijn
 err-nickname-in-use = Bijnaam is al in gebruik
 err-nickname-invalid = Bijnaam bevat ongeldige tekens (letters, cijfers en symbolen toegestaan - geen spaties of stuurtekens)
 err-nickname-is-username = Bijnaam mag geen bestaande gebruikersnaam zijn
+err-username-is-active-nickname = Gebruikersnaam mag niet overeenkomen met een bijnaam die al in gebruik is
 err-nickname-not-found = Gebruiker "{ $nickname }" niet gevonden
 err-nickname-not-online = Gebruiker "{ $nickname }" is niet online
 err-nickname-required = Bijnaam vereist voor gedeelde accounts

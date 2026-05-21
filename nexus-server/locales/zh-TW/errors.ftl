@@ -6,6 +6,7 @@ err-nickname-empty = 暱稱不能為空
 err-nickname-in-use = 暱稱已被使用
 err-nickname-invalid = 暱稱包含無效字元（允許字母、數字和符號 - 不允許空格或控制字元）
 err-nickname-is-username = 暱稱不能是已存在的使用者名稱
+err-username-is-active-nickname = 使用者名稱不能與使用中的暱稱相同
 err-nickname-not-found = 找不到使用者「{ $nickname }」
 err-nickname-not-online = 使用者「{ $nickname }」不在線上
 err-nickname-required = 共享帳戶需要暱稱

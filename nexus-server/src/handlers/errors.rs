@@ -496,6 +496,10 @@ pub fn err_username_invalid(locale: &str) -> String {
     t(locale, "err-username-invalid")
 }
 
+pub fn err_username_is_active_nickname(locale: &str) -> String {
+    t(locale, "err-username-is-active-nickname")
+}
+
 pub fn err_username_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,

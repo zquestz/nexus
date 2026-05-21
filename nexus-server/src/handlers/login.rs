@@ -404,41 +404,76 @@ where
         (false, None)
     };
 
-    // For shared accounts, add_user performs an atomic nickname uniqueness
-    // check so two users can't race to claim the same nickname. Permissions
-    // are cached on the session to avoid DB lookups during broadcasts.
-    let id = match ctx
-        .user_manager
-        .add_user(NewSessionParams {
-            session_id: 0, // Will be assigned by add_user
-            user_id: authenticated_account.id,
-            username: authenticated_account.username.clone(),
-            is_admin: authenticated_account.is_admin,
-            is_shared: authenticated_account.is_shared,
-            permissions: cached_permissions.clone(),
-            address: ctx.peer_addr,
-            created_at: authenticated_account.created_at,
-            tx: ctx.tx.clone(),
-            features,
-            locale: locale.clone(),
-            avatar: avatar.clone(),
-            nickname: validated_nickname
-                .clone()
-                .unwrap_or_else(|| authenticated_account.username.clone()),
-            is_away: inherited_is_away,
-            status: inherited_status,
-            group_id,
-            group_name: group_name.clone(),
-            bandwidth_weight,
-            bandwidth_weight_override: authenticated_account.bandwidth_weight,
-            last_activity: std::time::Instant::now(),
-        })
-        .await
-    {
+    // Shared nicknames share one namespace with usernames, so admission must
+    // serialize against username renames (which hold user_state_lock).
+    // Re-check username_exists under the lock: the early pre-check is stale if
+    // a rename committed since — including an offline account renamed into the
+    // nickname, which leaves no active session for add_user to catch. The guard
+    // drops at the block's end, before any socket I/O. Regular accounts
+    // (nickname == username, DB-unique) skip the lock.
+    let admission: Result<u32, String> = {
+        let _guard = if validated_nickname.is_some() {
+            Some(ctx.user_manager.lock_user_state().await)
+        } else {
+            None
+        };
+
+        let username_conflict = if let Some(ref nickname) = validated_nickname {
+            match ctx.db.users.username_exists(nickname).await {
+                Ok(exists) => exists.then(|| err_nickname_is_username(&locale)),
+                Err(e) => {
+                    error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_NICKNAME);
+                    Some(err_database(&locale))
+                }
+            }
+        } else {
+            None
+        };
+
+        if let Some(error_msg) = username_conflict {
+            Err(error_msg)
+        } else {
+            // add_user rechecks active-nickname uniqueness and inserts
+            // atomically under users.write.
+            match ctx
+                .user_manager
+                .add_user(NewSessionParams {
+                    session_id: 0, // Will be assigned by add_user
+                    user_id: authenticated_account.id,
+                    username: authenticated_account.username.clone(),
+                    is_admin: authenticated_account.is_admin,
+                    is_shared: authenticated_account.is_shared,
+                    permissions: cached_permissions.clone(),
+                    address: ctx.peer_addr,
+                    created_at: authenticated_account.created_at,
+                    tx: ctx.tx.clone(),
+                    features,
+                    locale: locale.clone(),
+                    avatar: avatar.clone(),
+                    nickname: validated_nickname
+                        .clone()
+                        .unwrap_or_else(|| authenticated_account.username.clone()),
+                    is_away: inherited_is_away,
+                    status: inherited_status,
+                    group_id,
+                    group_name: group_name.clone(),
+                    bandwidth_weight,
+                    bandwidth_weight_override: authenticated_account.bandwidth_weight,
+                    last_activity: std::time::Instant::now(),
+                })
+                .await
+            {
+                Ok(id) => Ok(id),
+                Err(AddUserError::NicknameInUse) => Err(err_nickname_in_use(&locale)),
+            }
+        }
+    };
+
+    let id = match admission {
         Ok(id) => id,
-        Err(AddUserError::NicknameInUse) => {
+        Err(error_msg) => {
             return ctx
-                .send_error_and_disconnect(&err_nickname_in_use(&locale), Some(HANDLER_LOGIN))
+                .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
                 .await;
         }
     };

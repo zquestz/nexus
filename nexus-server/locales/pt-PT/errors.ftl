@@ -6,6 +6,7 @@ err-nickname-empty = A alcunha não pode estar vazia
 err-nickname-in-use = A alcunha já está em uso
 err-nickname-invalid = A alcunha contém caracteres inválidos (letras, números e símbolos permitidos - sem espaços ou caracteres de controlo)
 err-nickname-is-username = A alcunha não pode ser um nome de utilizador existente
+err-username-is-active-nickname = O nome de utilizador não pode corresponder a uma alcunha em uso
 err-nickname-not-found = Utilizador "{ $nickname }" não encontrado
 err-nickname-not-online = O utilizador "{ $nickname }" não está online
 err-nickname-required = Alcunha obrigatória para contas partilhadas

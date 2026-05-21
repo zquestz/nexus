@@ -6,6 +6,7 @@ err-nickname-empty = 닉네임은 비워둘 수 없습니다
 err-nickname-in-use = 닉네임이 이미 사용 중입니다
 err-nickname-invalid = 닉네임에 잘못된 문자가 포함되어 있습니다 (문자, 숫자, 기호 허용 - 공백 또는 제어 문자 불가)
 err-nickname-is-username = 닉네임은 기존 사용자 이름이 될 수 없습니다
+err-username-is-active-nickname = 사용자 이름은 현재 사용 중인 닉네임과 같을 수 없습니다
 err-nickname-not-found = 사용자 "{ $nickname }"을(를) 찾을 수 없습니다
 err-nickname-not-online = 사용자 "{ $nickname }"이(가) 온라인 상태가 아닙니다
 err-nickname-required = 공유 계정에는 닉네임이 필요합니다

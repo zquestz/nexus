@@ -6,6 +6,7 @@ err-nickname-empty = Il soprannome non può essere vuoto
 err-nickname-in-use = Il soprannome è già in uso
 err-nickname-invalid = Il soprannome contiene caratteri non validi (lettere, numeri e simboli consentiti - nessuno spazio o carattere di controllo)
 err-nickname-is-username = Il soprannome non può essere un nome utente esistente
+err-username-is-active-nickname = Il nome utente non può corrispondere a un soprannome attualmente in uso
 err-nickname-not-found = Utente "{ $nickname }" non trovato
 err-nickname-not-online = L'utente "{ $nickname }" non è online
 err-nickname-required = Soprannome richiesto per account condivisi

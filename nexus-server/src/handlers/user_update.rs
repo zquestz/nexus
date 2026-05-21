@@ -39,7 +39,8 @@ use super::{
     err_permissions_permission_too_long, err_permissions_too_many, err_shared_cannot_be_admin,
     err_shared_cannot_self_edit, err_shared_invalid_permissions, err_unknown_permission,
     err_update_failed, err_user_not_found, err_username_empty, err_username_exists,
-    err_username_invalid, err_username_too_long, remove_user_with_voice_cleanup,
+    err_username_invalid, err_username_is_active_nickname, err_username_too_long,
+    remove_user_with_voice_cleanup,
 };
 use super::{ServerInfoOptions, ServerInfoValues, build_server_info};
 #[cfg(test)]
@@ -321,6 +322,21 @@ where
             break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                 success: false,
                 error: Some(err_cannot_rename_guest(ctx.locale)),
+                id: None,
+                username: None,
+            }));
+        }
+
+        // A username can't take a nickname an active session already holds (they
+        // share one namespace; login enforces the inverse). Gated on a real
+        // case-insensitive change so a no-op resubmit isn't self-rejected.
+        if let Some(ref new_username) = request.username
+            && target_username.to_lowercase() != new_username.to_lowercase()
+            && ctx.user_manager.is_nickname_in_use(new_username).await
+        {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_username_is_active_nickname(ctx.locale)),
                 id: None,
                 username: None,
             }));
@@ -2576,6 +2592,255 @@ mod tests {
             ServerMessage::UserUpdateResponse { success, error, .. } => {
                 assert!(!success);
                 assert!(error.is_some());
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    /// A regular account can't be renamed onto a nickname an active shared
+    /// session already holds — usernames and active nicknames share one
+    /// namespace, and the shared nickname is not a DB username so only the
+    /// in-memory check catches it.
+    #[tokio::test]
+    async fn test_userupdate_rename_onto_active_shared_nickname_fails() {
+        let mut test_ctx = create_test_context().await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // Live shared session holding nickname "bob" (its username is shared_acct).
+        let shared = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: shared.id,
+                username: "shared_acct".to_string(),
+                is_admin: false,
+                is_shared: true,
+                permissions: HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("bob".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success, "rename onto an active nickname must be rejected");
+                assert!(error.is_some());
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_username("alice")
+                .await
+                .unwrap()
+                .is_some(),
+            "alice must keep her original name"
+        );
+    }
+
+    /// The active-nickname collision is case-insensitive: renaming onto "BOB"
+    /// while a session holds "bob" must still be rejected.
+    #[tokio::test]
+    async fn test_userupdate_rename_onto_active_shared_nickname_case_insensitive_fails() {
+        let mut test_ctx = create_test_context().await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let shared = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: shared.id,
+                username: "shared_acct".to_string(),
+                is_admin: false,
+                is_shared: true,
+                permissions: HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("BOB".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(
+                    !success,
+                    "case-insensitive nickname collision must be rejected"
+                );
+                assert!(error.is_some());
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    /// The active-nickname collision guard must not fire when a username is
+    /// resubmitted unchanged (a common form-submit shape, where every field is
+    /// sent back). The guard is gated on a real (case-insensitive) change, so
+    /// admin re-sending its own username while changing another field — with
+    /// its own session holding that nickname — still succeeds. Without the
+    /// gate, `is_nickname_in_use("admin")` would match admin's own session and
+    /// falsely reject.
+    #[tokio::test]
+    async fn test_userupdate_unchanged_username_not_blocked_by_own_nickname() {
+        let mut test_ctx = create_test_context().await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+        let request = UserUpdateRequest {
+            id: admin_user.id,
+            current_password: None,
+            username: Some("admin".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(42),
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(
+                    success,
+                    "unchanged-username resubmit must not be self-rejected: {error:?}"
+                );
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
