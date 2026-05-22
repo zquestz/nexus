@@ -31,7 +31,7 @@ use super::{
     err_permissions_invalid_characters, err_permissions_permission_too_long,
     err_permissions_too_many, err_shared_cannot_be_admin, err_shared_invalid_permissions,
     err_unknown_permission, err_username_empty, err_username_exists, err_username_invalid,
-    err_username_too_long,
+    err_username_is_active_nickname, err_username_too_long,
 };
 use crate::db::{CreateUserParams, Permission, Permissions, hash_password_async};
 
@@ -417,6 +417,18 @@ where
             }
         }
 
+        // A new username can't take a nickname an active session already holds
+        // (usernames and active nicknames share one namespace). Serialized
+        // against shared-login admission by the user_state_lock held above.
+        if ctx.user_manager.is_nickname_in_use(&username).await {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                success: false,
+                error: Some(err_username_is_active_nickname(ctx.locale)),
+                id: None,
+                username: None,
+            }));
+        }
+
         // Argon2id failure isn't a protocol violation.
         let password_hash = match hash_password_async(password.clone(), min_strength, false).await {
             Ok(hash) => hash,
@@ -702,6 +714,104 @@ mod tests {
             }
             _ => panic!("Expected UserCreateResponse"),
         }
+    }
+
+    /// A new username can't be created onto a nickname an active shared session
+    /// already holds — symmetric with the rename guard, since usernames and
+    /// active nicknames share one namespace.
+    #[tokio::test]
+    async fn test_usercreate_onto_active_shared_nickname_fails() {
+        let mut test_ctx = create_test_context().await;
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Live shared session holding nickname "bob" (its username is shared_acct).
+        let shared = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: shared.id,
+                username: "shared_acct".to_string(),
+                is_admin: false,
+                is_shared: true,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "bob".to_string(),
+                password: "newpassword".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+                group_id: None,
+                revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
+            },
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserCreateResponse { success, error, .. } => {
+                assert!(
+                    !success,
+                    "creating a username onto an active nickname must fail"
+                );
+                let error_msg = error.expect("should carry an error message");
+                assert!(
+                    error_msg.contains("nickname"),
+                    "expected the active-nickname error, got: {error_msg}"
+                );
+            }
+            _ => panic!("Expected UserCreateResponse"),
+        }
+
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_username("bob")
+                .await
+                .unwrap()
+                .is_none(),
+            "no account should have been created"
+        );
     }
 
     #[tokio::test]
