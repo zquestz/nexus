@@ -1,6 +1,7 @@
 //! URI intent handler for nexus:// scheme navigation
 
 use iced::Task;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
@@ -57,7 +58,7 @@ impl NexusApp {
 
             // If URI has credentials, also check username matches
             if let Some(ref uri_user) = uri.user
-                && conn.connection_info.username.to_lowercase() != uri_user.to_lowercase()
+                && fold_name(&conn.connection_info.username) != fold_name(uri_user)
             {
                 continue;
             }
@@ -197,13 +198,11 @@ impl NexusApp {
                 if let Some(target) = target {
                     if is_channel {
                         // Join or focus channel
-                        let channel_lower = target.to_lowercase();
+                        let channel_lower = fold_name(&target);
 
                         // Check if we're already in this channel
-                        let already_joined = conn
-                            .channels
-                            .keys()
-                            .any(|c| c.to_lowercase() == channel_lower);
+                        let already_joined =
+                            conn.channels.keys().any(|c| fold_name(c) == channel_lower);
 
                         if already_joined {
                             // Just switch to the tab
@@ -221,11 +220,11 @@ impl NexusApp {
                     } else {
                         // Open PM tab with user
                         // First check if the user exists (case-insensitive match)
-                        let user_lower = target.to_lowercase();
+                        let user_lower = fold_name(&target);
                         let actual_nickname = conn
                             .online_users
                             .iter()
-                            .find(|u| u.nickname.to_lowercase() == user_lower)
+                            .find(|u| fold_name(&u.nickname) == user_lower)
                             .map(|u| u.nickname.clone());
 
                         let tab_name = actual_nickname.unwrap_or(target);

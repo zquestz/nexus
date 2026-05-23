@@ -1,5 +1,6 @@
 //! Bookmark management methods for Config
 
+use nexus_common::names::fold_name;
 use uuid::Uuid;
 
 use crate::types::ServerBookmark;
@@ -71,12 +72,12 @@ impl Config {
         nickname: &str,
     ) -> Option<&ServerBookmark> {
         let address_lc = address.to_lowercase();
-        let username_lc = username.to_lowercase();
+        let username_lc = fold_name(username);
         let our_canonical_nick = canonical_nickname(nickname, username);
         self.bookmarks.iter().find(|b| {
             b.address.to_lowercase() == address_lc
                 && b.port == port
-                && b.username.to_lowercase() == username_lc
+                && fold_name(&b.username) == username_lc
                 && canonical_nickname(&b.nickname, &b.username) == our_canonical_nick
         })
     }
@@ -101,12 +102,12 @@ impl Config {
         username: Option<&str>,
     ) -> Option<&ServerBookmark> {
         let address_lc = address.to_lowercase();
-        let username_lc = username.map(|u| u.to_lowercase());
+        let username_lc = username.map(fold_name);
         self.bookmarks.iter().find(|b| {
             b.address.to_lowercase() == address_lc
                 && b.port == port
                 && match &username_lc {
-                    Some(u) => &b.username.to_lowercase() == u,
+                    Some(u) => &fold_name(&b.username) == u,
                     None => true,
                 }
         })
@@ -122,8 +123,8 @@ impl Config {
 /// same server-side login resolve to the same bookmark regardless of which
 /// equivalent form the nickname was saved or typed in.
 fn canonical_nickname(nickname: &str, username: &str) -> String {
-    let lc = nickname.to_lowercase();
-    if lc.is_empty() || lc == username.to_lowercase() {
+    let lc = fold_name(nickname);
+    if lc.is_empty() || lc == fold_name(username) {
         String::new()
     } else {
         lc

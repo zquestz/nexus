@@ -1,6 +1,7 @@
 //! /topic command implementation - view and manage chat topic
 
 use iced::Task;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, ChatTopicError};
 
@@ -118,7 +119,7 @@ fn show_topic(app: &mut NexusApp, connection_id: usize, channel: &str) -> Task<M
         return Task::none();
     };
 
-    let channel_lower = channel.to_lowercase();
+    let channel_lower = fold_name(channel);
     let (topic, set_by) = conn
         .channels
         .get(&channel_lower)

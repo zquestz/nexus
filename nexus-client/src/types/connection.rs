@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use iced::widget::markdown;
 use nexus_common::framing::MessageId;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, UserInfoDetailed};
 use nexus_common::validators::PasswordStrength;
 use serde::{Deserialize, Serialize};
@@ -327,12 +328,12 @@ impl ServerConnection {
 
     /// Get channel state by name (case-insensitive lookup)
     pub fn get_channel_state(&self, channel: &str) -> Option<&ChannelState> {
-        self.channels.get(&channel.to_lowercase())
+        self.channels.get(&fold_name(channel))
     }
 
     /// Get mutable channel state by name (case-insensitive lookup)
     pub fn get_channel_state_mut(&mut self, channel: &str) -> Option<&mut ChannelState> {
-        self.channels.get_mut(&channel.to_lowercase())
+        self.channels.get_mut(&fold_name(channel))
     }
 
     /// Get the display name for a channel (preserves original casing)
@@ -340,10 +341,10 @@ impl ServerConnection {
     /// Returns the channel name from `channel_tabs` which preserves the original casing,
     /// or falls back to the provided name if not found.
     pub fn get_channel_display_name(&self, channel: &str) -> String {
-        let channel_lower = channel.to_lowercase();
+        let channel_lower = fold_name(channel);
         self.channel_tabs
             .iter()
-            .find(|c| c.to_lowercase() == channel_lower)
+            .find(|c| fold_name(c) == channel_lower)
             .cloned()
             .unwrap_or_else(|| channel.to_string())
     }

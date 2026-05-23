@@ -3,6 +3,7 @@
 use chrono::{Local, TimeZone};
 use iced::Task;
 use nexus_common::framing::MessageId;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ChatAction, ServerMessage};
 
 use crate::NexusApp;
@@ -47,7 +48,7 @@ impl NexusApp {
             let current_nickname = conn.nickname.clone();
 
             // Check if this is a message from someone else (case-insensitive)
-            let is_from_self = from_nickname.to_lowercase() == current_nickname.to_lowercase();
+            let is_from_self = fold_name(&from_nickname) == fold_name(&current_nickname);
             let should_notify = !is_from_self;
 
             // Determine the other party's nickname

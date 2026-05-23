@@ -24,6 +24,7 @@ use iced::widget::{
 };
 use iced::{Center, Element, Fill, Length};
 use iced_aw::NumberInput;
+use nexus_common::names::fold_name;
 use nexus_common::tracker_protocol::ServerEntry;
 use uuid::Uuid;
 
@@ -93,7 +94,7 @@ fn build_options(trackers: &[ClientTracker]) -> Vec<TrackerOption> {
             name: t.name.clone(),
         })
         .collect();
-    options.sort_by_key(|o| o.name.to_lowercase());
+    options.sort_by_key(|o| fold_name(&o.name));
     options
 }
 
@@ -128,7 +129,7 @@ impl Hash for ServerTableDeps {
 fn sort_entries(entries: &mut [ServerEntry], column: TrackerBrowserSortColumn, ascending: bool) {
     entries.sort_by(|a, b| {
         let cmp = match column {
-            TrackerBrowserSortColumn::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            TrackerBrowserSortColumn::Name => fold_name(&a.name).cmp(&fold_name(&b.name)),
             TrackerBrowserSortColumn::Description => a
                 .description
                 .as_deref()

@@ -14,6 +14,7 @@ use iced::widget::{
 use iced::{Center, Element, Fill, Length};
 use iced_aw::NumberInput;
 use nexus_common::is_shared_account_permission;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::GroupInfo;
 use nexus_common::validators::MIN_BANDWIDTH_WEIGHT;
 
@@ -97,7 +98,7 @@ impl Hash for GroupTableDeps {
 fn sort_groups(groups: &mut [GroupInfo], column: GroupManagementSortColumn, ascending: bool) {
     groups.sort_by(|a, b| {
         let cmp = match column {
-            GroupManagementSortColumn::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            GroupManagementSortColumn::Name => fold_name(&a.name).cmp(&fold_name(&b.name)),
             GroupManagementSortColumn::Members => a.member_count.cmp(&b.member_count),
         };
         if ascending { cmp } else { cmp.reverse() }

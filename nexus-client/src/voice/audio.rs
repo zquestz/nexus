@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, FromSample, Host, Sample, SampleFormat, Stream, StreamConfig, StreamError};
 
+use nexus_common::names::fold_name;
 use nexus_common::voice::{
     MONO_CHANNELS, STEREO_CHANNELS, VOICE_SAMPLE_RATE, VOICE_SAMPLES_PER_FRAME,
 };
@@ -977,14 +978,14 @@ impl AudioMixer {
     /// Mute a user by nickname
     pub fn mute_user(&mut self, nickname: &str) {
         if let Ok(mut state) = self.state.lock() {
-            state.muted.insert(nickname.to_lowercase());
+            state.muted.insert(fold_name(nickname));
         }
     }
 
     /// Unmute a user by nickname
     pub fn unmute_user(&mut self, nickname: &str) {
         if let Ok(mut state) = self.state.lock() {
-            state.muted.remove(&nickname.to_lowercase());
+            state.muted.remove(&fold_name(nickname));
         }
     }
 
@@ -993,7 +994,7 @@ impl AudioMixer {
     pub fn is_muted(&self, nickname: &str) -> bool {
         self.state
             .lock()
-            .map(|state| state.muted.contains(&nickname.to_lowercase()))
+            .map(|state| state.muted.contains(&fold_name(nickname)))
             .unwrap_or(false)
     }
 
@@ -1016,12 +1017,12 @@ impl AudioMixer {
     pub fn queue_audio(&self, nickname: &str, samples: &[f32]) {
         if let Ok(mut state) = self.state.lock() {
             // Skip if deafened or user is muted
-            if state.deafened || state.muted.contains(&nickname.to_lowercase()) {
+            if state.deafened || state.muted.contains(&fold_name(nickname)) {
                 return;
             }
 
             // Get or create buffer for this user
-            let key = nickname.to_lowercase();
+            let key = fold_name(nickname);
             let buffer = state
                 .user_buffers
                 .entry(key)

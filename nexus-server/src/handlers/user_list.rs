@@ -174,7 +174,7 @@ where
             });
         } else {
             user_map
-                .entry(fold_name(&user.username))
+                .entry(user.username.clone())
                 .and_modify(|agg| {
                     agg.login_time = agg.login_time.min(user.login_time);
                     agg.session_ids.push(user.session_id);
@@ -330,6 +330,45 @@ mod tests {
                 assert_eq!(users[0].session_ids.len(), 1);
                 assert_eq!(users[0].session_ids[0], session_id);
                 assert!(!users[0].is_admin, "alice should not be admin");
+            }
+            _ => panic!("Expected UserListResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userlist_aggregation_preserves_username_case() {
+        let mut test_ctx = create_test_context().await;
+
+        // Mixed-case account so the folded key ("alice") differs from the
+        // display ("Alice"). The online-session aggregation must return the
+        // display case — folding the aggregation key (which is destructured
+        // into the response's username/nickname) leaks lowercase into the user
+        // list. Regression guard for that bug.
+        let session_id = login_user(
+            &mut test_ctx,
+            "Alice",
+            "password",
+            &[db::Permission::UserList],
+            false,
+        )
+        .await;
+
+        let result =
+            handle_user_list(false, Some(session_id), &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        use crate::handlers::testing::read_server_message;
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserListResponse { success, users, .. } => {
+                assert!(success);
+                let users = users.unwrap();
+                assert_eq!(users.len(), 1);
+                assert_eq!(users[0].username, "Alice", "display case preserved");
+                assert_eq!(
+                    users[0].nickname, "Alice",
+                    "nickname mirrors display username"
+                );
             }
             _ => panic!("Expected UserListResponse"),
         }

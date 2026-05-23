@@ -12,6 +12,7 @@ use iced::widget::text::Wrapping;
 use iced::widget::{Space, button, column, container, lazy, row, scrollable, table, tooltip};
 use iced::{Center, Element, Fill, Length, Theme, alignment};
 use iced_aw::{TabLabel, Tabs};
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ConnectionInfo, TransferInfo};
 
 use super::constants::{PERMISSION_BAN_CREATE, PERMISSION_USER_INFO, PERMISSION_USER_KICK};
@@ -819,10 +820,10 @@ fn sort_connections(
     connections.sort_by(|a, b| {
         let cmp = match column {
             ConnectionMonitorSortColumn::Nickname => {
-                a.nickname.to_lowercase().cmp(&b.nickname.to_lowercase())
+                fold_name(&a.nickname).cmp(&fold_name(&b.nickname))
             }
             ConnectionMonitorSortColumn::Username => {
-                a.username.to_lowercase().cmp(&b.username.to_lowercase())
+                fold_name(&a.username).cmp(&fold_name(&b.username))
             }
             ConnectionMonitorSortColumn::Ip => a.ip.cmp(&b.ip),
             ConnectionMonitorSortColumn::Connected => a.login_time.cmp(&b.login_time),
@@ -835,7 +836,7 @@ fn sort_connections(
 fn sort_transfers(transfers: &mut [TransferInfo], column: TransferSortColumn, ascending: bool) {
     transfers.sort_by(|a, b| {
         let cmp = match column {
-            TransferSortColumn::User => a.nickname.to_lowercase().cmp(&b.nickname.to_lowercase()),
+            TransferSortColumn::User => fold_name(&a.nickname).cmp(&fold_name(&b.nickname)),
             TransferSortColumn::Ip => a.ip.cmp(&b.ip),
             TransferSortColumn::Direction => a.direction.cmp(&b.direction),
             TransferSortColumn::Path => a.path.to_lowercase().cmp(&b.path.to_lowercase()),

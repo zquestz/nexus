@@ -2,21 +2,21 @@
 
 ## Implementation Order (Pre-Launch)
 
-| #   | Feature                     | Effort | Status                         |
-| --- | --------------------------- | ------ | ------------------------------ |
-| 1   | Account groups              | Low    | ✅ Done                        |
-| 2   | Password strength           | Low    | ✅ Done                        |
-| 3   | Streaming hash transfers    | Medium | ✅ Done                        |
-| 4   | Boards                      | High   | Planned                        |
-| 5   | File previews               | Low    | Planned                        |
-| 6   | Tracker registration        | Medium | ✅ Done                        |
-| 7   | Tracker discovery           | Low    | ✅ Done                        |
-| 8   | Speed limiting              | Medium | Phase 1 ✅, Phase 2 planned    |
-| 9   | Flood protection            | Low    | ✅ Done                        |
-| 10  | Server logs                 | Medium | ✅ Done                        |
-| 11  | Auto-away                   | Low    | ✅ Done                        |
-| 12  | Certificate fingerprint pin | Low    | ✅ Done                        |
-| 13  | Unicode name folding        | Low    | Phases 1–2 ✅, Phase 3 planned |
+| #   | Feature                     | Effort | Status                      |
+| --- | --------------------------- | ------ | --------------------------- |
+| 1   | Account groups              | Low    | ✅ Done                     |
+| 2   | Password strength           | Low    | ✅ Done                     |
+| 3   | Streaming hash transfers    | Medium | ✅ Done                     |
+| 4   | Boards                      | High   | Planned                     |
+| 5   | File previews               | Low    | Planned                     |
+| 6   | Tracker registration        | Medium | ✅ Done                     |
+| 7   | Tracker discovery           | Low    | ✅ Done                     |
+| 8   | Speed limiting              | Medium | Phase 1 ✅, Phase 2 planned |
+| 9   | Flood protection            | Low    | ✅ Done                     |
+| 10  | Server logs                 | Medium | ✅ Done                     |
+| 11  | Auto-away                   | Low    | ✅ Done                     |
+| 12  | Certificate fingerprint pin | Low    | ✅ Done                     |
+| 13  | Unicode name folding        | Low    | ✅ Done                     |
 
 ## Decided Against
 
@@ -385,45 +385,3 @@ The scheduler maintains two internal registries:
 - Per-channel / per-file-area limits.
 - Trust-based rate-limit bypass.
 - Burst budgets beyond what chunk size already bounds.
-
-### Unicode Name Folding
-
-_Tracking doc for an in-progress feature — delete this whole section once phase 3 (client) lands and the feature is complete._
-
-**Problem.** Username uniqueness/lookup folds **ASCII-only** — `users.username` is `UNIQUE COLLATE NOCASE`, and the `SQL_SELECT_USER_BY_USERNAME` / `SQL_CHECK_USERNAME_EXISTS` lookups lean on that collation — while every nickname comparison in `users/manager/queries.rs` folds **full Unicode** via `to_lowercase()`. The mismatch is a correctness defect, not cosmetic: two accounts the DB treats as distinct (`café` / `CAFÉ`, allowed because ASCII `NOCASE` doesn't fold `é/É`) collapse to the same key under every nickname-keyed operation (`get_session_by_nickname`, PM routing, kick, mention) — distinct entities the system can't reliably tell apart. This is **not** about visual lookalikes: NFC normalization and homoglyphs are explicitly out of scope. The only goal is that each entity is consistently unique across the username↔nickname namespace.
-
-**Fix.** Make username folding identical to nickname folding (Unicode `to_lowercase()`) via one shared helper plus a folded lookup column, so the namespace is uniformly folded and no two fold-equal names can coexist.
-
-**`fold_name` helper.** Add `nexus_common::fold_name(&str) -> String` (currently `s.to_lowercase()`; a new small `names` module, or alongside `validators`), documented as "canonical caseless comparison key for a server-side human-typed name; currently Unicode `to_lowercase()`." **Every** lowercasing of such a name — usernames, display nicknames, channel names, group names, tracker names, and ban/trust nickname annotations — routes through it, identity comparisons _and_ incidental (sort, mention-matching, etc.). The rule is deliberately blunt so it's auditable: after this lands, any name `.to_lowercase()` left in the tree is a bug. Non-name folding (IPs, file paths, search terms, topics, config) stays on `to_lowercase()` and is unaffected.
-
-**Schema (light migration — no table rebuild).** SQLite's `lower()`/`NOCASE` are ASCII-only, so the folded value cannot be Unicode-computed in pure SQL — but it doesn't need to be:
-
-- `ALTER TABLE users ADD COLUMN username_lower TEXT NOT NULL DEFAULT '';`
-- `UPDATE users SET username_lower = lower(username);` — backfill the folded key.
-- `CREATE UNIQUE INDEX idx_users_username_lower ON users(username_lower);` — plain `BINARY`, **not** `NOCASE` (the value is already folded; comparison must be exact, with `fold_name` as the sole case authority).
-- Keep the existing `username UNIQUE COLLATE NOCASE` as a vestigial ASCII backstop — redundant once `username_lower` is authoritative, but dropping it needs the heavy drop/recreate rebuild the consolidation migration already paid for. Document it so a future reader doesn't reach for `WHERE username = ?` (ASCII) instead of the folded lookup.
-
-**DB layer (`db/sql.rs`, `db/users.rs`).**
-
-- `SQL_INSERT_USER` / `SQL_UPDATE_USER` write `username_lower`; callers bind `fold_name(username)`.
-- `SQL_SELECT_USER_BY_USERNAME` / `SQL_CHECK_USERNAME_EXISTS` → `WHERE username_lower = ?`; callers pass `fold_name(input)`. (Optional: `ORDER BY username_lower` in `SQL_SELECT_ALL_USERS` for Unicode-consistent display ordering.)
-- `get_user_by_username` / `username_exists` fold their input via `fold_name` before the query — so all identity callers (login auth `login.rs`, transfer auth `transfers/auth.rs`, create/rename uniqueness, the shared-login admission re-check) become Unicode-correct with no further change.
-- `update_user`'s "did the username actually change?" guard becomes `fold_name(new) != fold_name(current)`. The `username_lower` UNIQUE index is the atomic backstop; confirm its violation maps to the existing `Blocked` / `err_username_exists` path.
-
-**Uniqueness model.** Create and rename are already serialized under `user_state_lock`, so the folded pre-check there is race-free; the `username_lower` UNIQUE index is the atomic DB backstop (defense-in-depth). No DB-level Unicode backstop is strictly _required_ for correctness, but the index is free and safe to keep.
-
-**Audit.** Sweep all `to_lowercase` in `nexus-server/src`; convert every server-side name site — username, nickname, channel, group, tracker, ban/trust nickname — to `fold_name`, leave non-name sites (IP / path / search term / config). `COLLATE NOCASE` is confined to the `db/sql.rs` constants, so the ASCII-fold surface is centralized there. **Scope is server-side:** the server is the uniqueness and message-routing authority, so it owns this correctness invariant. The client also folds names (avatar cache, mention highlight, tab routing) but for UX, not uniqueness — since `fold_name` lives in `nexus-common`, the client adopts it in its own sweep — **phase 3** below.
-
-**Tests.** Create `café` then `CAFÉ` → rejected (Unicode uniqueness, create _and_ rename); login as `CAFÉ` resolves the `café` account (Unicode-case-insensitive auth); ASCII behavior unchanged (`admin` / `ADMIN` still deduped). Both cross-namespace directions: shared-login nickname `CAFÉ` blocked when username `café` exists (the `username_exists` admission path), **and** create/rename username `CAFÉ` blocked when an active shared-account nickname `café` exists (the `is_nickname_in_use` guards in `user_create.rs` / `user_update.rs`, distinct path) — both under Unicode fold.
-
-**Implementation phasing (three phases — `common` → `server` → `client`, per the layer-by-layer rule).**
-
-1. **`nexus-common`** ✅ **(done)** — add `fold_name` (+ unit tests). Just the helper; nothing else changes. Enables phases 2–3.
-2. **`nexus-server`** ✅ **(done)** — the correctness fix: the `username_lower` migration, the `db/sql.rs` / `db/users.rs` changes, the server-side `to_lowercase` → `fold_name` sweep, and the tests above. This is where Unicode username uniqueness and the cross-namespace guards actually land. Extended beyond the original scope — the "big pass to fix all instances" — to give **channel, group, and tracker names** the same folded-column treatment (a `*_lower` column + migration each), and to split **ban/trust nicknames** into a display-case `nickname` plus a non-unique folded `nickname_lower` lookup key.
-3. **`nexus-client`** — _(remaining)_ sweep client-side username/nickname `to_lowercase` sites onto `fold_name` (avatar cache key, mention matching, message-tab routing, history keying, tab-completion). Behaviorally a no-op today (`fold_name` == `to_lowercase`); it keeps client folding identical to the server's so the two can't diverge if `fold_name` ever grows (e.g. NFC).
-
-**Out of scope.**
-
-- NFC/NFKC normalization (precomposed vs decomposed `é`) — visual confusability, not correctness.
-- Homoglyphs / mixed-script (Cyrillic `а` vs Latin `a`) — separate, harder anti-impersonation problem.
-- **Backfill / migration edge cases — intentionally undocumented.** These migrations almost always run against a brand-new empty DB; the existing installs are ASCII-only testers. Pre-existing non-ASCII rows aren't a real scenario — don't flag this or add backfill/repair caveats.

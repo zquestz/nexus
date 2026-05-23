@@ -9,6 +9,7 @@
 use std::net::ToSocketAddrs;
 
 use iced::Task;
+use nexus_common::names::fold_name;
 use uuid::Uuid;
 
 use crate::NexusApp;
@@ -250,14 +251,14 @@ impl NexusApp {
             // Use lowercase for consistency with ChatJoinResponse population
             if target.starts_with('#') {
                 conn.channel_voiced
-                    .entry(target.to_lowercase())
+                    .entry(fold_name(&target))
                     .or_default()
-                    .insert(nickname.to_lowercase());
+                    .insert(fold_name(&nickname));
             }
 
             // Update voice session participants if we're in the same session
             if let Some(ref mut session) = conn.voice_session
-                && session.target.to_lowercase() == target.to_lowercase()
+                && fold_name(&session.target) == fold_name(&target)
             {
                 session.add_participant(nickname.clone());
             }
@@ -305,7 +306,7 @@ impl NexusApp {
         let is_self = self
             .connections
             .get(&connection_id)
-            .map(|conn| conn.nickname.to_lowercase() == nickname.to_lowercase())
+            .map(|conn| fold_name(&conn.nickname) == fold_name(&nickname))
             .unwrap_or(false);
 
         if is_self {
@@ -315,9 +316,9 @@ impl NexusApp {
             // Also remove ourselves from channel voice tracking
             if let Some(conn) = self.connections.get_mut(&connection_id)
                 && target.starts_with('#')
-                && let Some(voiced) = conn.channel_voiced.get_mut(&target.to_lowercase())
+                && let Some(voiced) = conn.channel_voiced.get_mut(&fold_name(&target))
             {
-                voiced.remove(&nickname.to_lowercase());
+                voiced.remove(&fold_name(&nickname));
             }
 
             // Show notification in target tab
@@ -338,14 +339,14 @@ impl NexusApp {
 
             // Remove from per-channel voiced tracking (use lowercase for consistency)
             if target.starts_with('#')
-                && let Some(voiced) = conn.channel_voiced.get_mut(&target.to_lowercase())
+                && let Some(voiced) = conn.channel_voiced.get_mut(&fold_name(&target))
             {
-                voiced.remove(&nickname.to_lowercase());
+                voiced.remove(&fold_name(&nickname));
             }
 
             // Update voice session participants if we're in the same session
             if let Some(ref mut session) = conn.voice_session
-                && session.target.to_lowercase() == target.to_lowercase()
+                && fold_name(&session.target) == fold_name(&target)
             {
                 session.remove_participant(&nickname);
             }

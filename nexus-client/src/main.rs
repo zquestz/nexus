@@ -56,7 +56,7 @@ use types::{
     ServerConnection, SettingsFormState, SettingsTab, UiState, ViewConfig,
 };
 
-use crate::constants::{ERR_IPC_PREFIX, ERR_RUSTLS_PROVIDER};
+use crate::constants::{ERR_IPC_PREFIX, ERR_RUSTLS_PROVIDER, ERR_STARTUP_URI_LOCK_POISONED};
 
 /// Startup URI passed via command line (consumed by NexusApp::new)
 static STARTUP_URI: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
@@ -216,7 +216,10 @@ pub fn main() -> iced::Result {
 
     // Store startup URI in a static for NexusApp::new to pick up
     if let Some(uri_str) = startup_uri {
-        STARTUP_URI.lock().unwrap().replace(uri_str);
+        STARTUP_URI
+            .lock()
+            .expect(ERR_STARTUP_URI_LOCK_POISONED)
+            .replace(uri_str);
     }
 
     // Load config early to get saved window position/size
@@ -485,7 +488,10 @@ impl NexusApp {
         macos_url::install();
 
         // Check for startup URI
-        let startup_uri = STARTUP_URI.lock().unwrap().take();
+        let startup_uri = STARTUP_URI
+            .lock()
+            .expect(ERR_STARTUP_URI_LOCK_POISONED)
+            .take();
         let mut tasks: Vec<Task<Message>> = vec![app.focus_field(InputId::ServerName)];
 
         if let Some(uri_str) = startup_uri {

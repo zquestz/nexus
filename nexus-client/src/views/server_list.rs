@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use iced::widget::text::Wrapping;
 use iced::widget::{Column, Space, button, column, container, row, scrollable, tooltip};
 use iced::{Element, Fill, alignment};
+use nexus_common::names::fold_name;
 use uuid::Uuid;
 
 use crate::i18n::t;
@@ -153,7 +154,7 @@ fn bookmarks_section<'a>(
     } else {
         // Sort bookmarks alphabetically by name (case-insensitive)
         let mut sorted_bookmarks: Vec<_> = bookmarks.iter().collect();
-        sorted_bookmarks.sort_by_key(|b| b.name.to_lowercase());
+        sorted_bookmarks.sort_by_key(|b| fold_name(&b.name));
 
         for (index, bookmark) in sorted_bookmarks.into_iter().enumerate() {
             let bookmark_id = bookmark.id;

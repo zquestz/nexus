@@ -1,6 +1,7 @@
 //! Broadcast message handlers
 
 use iced::Task;
+use nexus_common::names::fold_name;
 
 use crate::NexusApp;
 use crate::config::events::EventType;
@@ -23,7 +24,7 @@ impl NexusApp {
         let is_from_self = self
             .connections
             .get(&connection_id)
-            .map(|conn| conn.connection_info.username.to_lowercase() == username.to_lowercase())
+            .map(|conn| fold_name(&conn.connection_info.username) == fold_name(&username))
             .unwrap_or(false);
 
         emit_event(

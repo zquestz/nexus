@@ -2,6 +2,7 @@
 
 use iced::Task;
 use iced::widget::markdown;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
@@ -207,7 +208,7 @@ impl NexusApp {
                 .config
                 .client_trackers
                 .iter()
-                .min_by_key(|t| t.name.to_lowercase())
+                .min_by_key(|t| fold_name(&t.name))
                 .map(|t| t.id)
         {
             self.tracker_browser.selected_tracker = Some(id);

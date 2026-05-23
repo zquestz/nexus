@@ -75,9 +75,11 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 
 use iced::Task;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ChatAction;
 
 use crate::NexusApp;
+use crate::constants::ERR_WHITESPACE_CHAR_AT_RFIND_INDEX;
 use crate::i18n::t_args;
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::{
@@ -429,17 +431,17 @@ pub fn complete_command(
 
 /// Complete a channel name. Returns matching channel names or None if no matches.
 pub fn complete_channel(prefix: &str, channels: &[String]) -> Option<Vec<String>> {
-    let prefix_lower = prefix.to_lowercase();
+    let prefix_lower = fold_name(prefix);
     let mut matches: Vec<String> = channels
         .iter()
-        .filter(|name| name.to_lowercase().starts_with(&prefix_lower))
+        .filter(|name| fold_name(name).starts_with(&prefix_lower))
         .cloned()
         .collect();
 
     if matches.is_empty() {
         None
     } else {
-        matches.sort_unstable_by_key(|a| a.to_lowercase());
+        matches.sort_unstable_by_key(|a| fold_name(a));
         Some(matches)
     }
 }
@@ -449,17 +451,17 @@ pub fn complete_nickname<T, F>(prefix: &str, users: &[T], get_nickname: F) -> Op
 where
     F: Fn(&T) -> &str,
 {
-    let prefix_lower = prefix.to_lowercase();
+    let prefix_lower = fold_name(prefix);
     let mut matches: Vec<String> = users
         .iter()
-        .filter(|u| get_nickname(u).to_lowercase().starts_with(&prefix_lower))
+        .filter(|u| fold_name(get_nickname(u)).starts_with(&prefix_lower))
         .map(|u| get_nickname(u).to_string())
         .collect();
 
     if matches.is_empty() {
         None
     } else {
-        matches.sort_unstable_by_key(|a| a.to_lowercase());
+        matches.sort_unstable_by_key(|a| fold_name(a));
         Some(matches)
     }
 }
@@ -475,7 +477,10 @@ pub fn last_word(input: &str) -> (usize, &str) {
     match input.rfind(char::is_whitespace) {
         Some(i) => {
             // Skip past the whitespace character (handles multi-byte whitespace)
-            let ws_char = input[i..].chars().next().unwrap();
+            let ws_char = input[i..]
+                .chars()
+                .next()
+                .expect(ERR_WHITESPACE_CHAR_AT_RFIND_INDEX);
             let start = i + ws_char.len_utf8();
             (start, &input[start..])
         }

@@ -1,6 +1,7 @@
 //! /secret command implementation - view or set channel secret mode
 
 use iced::Task;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
@@ -41,7 +42,7 @@ pub fn execute(
     };
 
     // Get current secret state
-    let channel_lower = channel.to_lowercase();
+    let channel_lower = fold_name(&channel);
     let current_secret = conn
         .channels
         .get(&channel_lower)

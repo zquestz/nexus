@@ -11,6 +11,7 @@ use iced::widget::{
     tooltip,
 };
 use iced::{Center, Element, Fill, Length, Theme, alignment};
+use nexus_common::names::fold_name;
 use nexus_common::protocol::NewsItem;
 
 use super::constants::{PERMISSION_NEWS_CREATE, PERMISSION_NEWS_DELETE, PERMISSION_NEWS_EDIT};
@@ -73,8 +74,7 @@ fn format_timestamp(iso_timestamp: &str) -> String {
 
 /// Check if the current user can edit this news item
 fn can_edit_news_item(news_item: &NewsItem, conn: &ServerConnection) -> bool {
-    let is_own_post =
-        news_item.author.to_lowercase() == conn.connection_info.username.to_lowercase();
+    let is_own_post = fold_name(&news_item.author) == fold_name(&conn.connection_info.username);
     let has_edit_perm = conn.has_permission(PERMISSION_NEWS_EDIT);
     let is_admin_post = news_item.author_is_admin;
 
@@ -84,8 +84,7 @@ fn can_edit_news_item(news_item: &NewsItem, conn: &ServerConnection) -> bool {
 
 /// Check if the current user can delete this news item
 fn can_delete_news_item(news_item: &NewsItem, conn: &ServerConnection) -> bool {
-    let is_own_post =
-        news_item.author.to_lowercase() == conn.connection_info.username.to_lowercase();
+    let is_own_post = fold_name(&news_item.author) == fold_name(&conn.connection_info.username);
     let has_delete_perm = conn.has_permission(PERMISSION_NEWS_DELETE);
     let is_admin_post = news_item.author_is_admin;
 

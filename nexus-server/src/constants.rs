@@ -250,6 +250,10 @@ pub const ERR_TARGET_NOT_CANONICAL: &str =
 /// which only passes a prefix in [0,32] (derived from an IPv6 prefix in [96,128]).
 pub const ERR_IPV4_PREFIX_FROM_MAPPED: &str = "ipv6 prefix - 96 yields IPv4 prefix in [0, 32]";
 
+/// expect() message — `expires_at` is `Some` after the `None` guard in
+/// `ip_rule_cache::rebuild_tries`.
+pub const ERR_IP_RULE_EXPIRY_MISSING: &str = "expires_at is present after None guard";
+
 /// expect() message — `sessions` confirmed non-empty just upstream (`users::manager::helpers`).
 pub const ERR_SESSIONS_NOT_EMPTY: &str = "sessions is not empty";
 

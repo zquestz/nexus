@@ -7,6 +7,7 @@
 
 use iced::Task;
 use iced::widget::Id;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, TrackerInfo};
 
 use crate::NexusApp;
@@ -721,13 +722,13 @@ fn validate_tracker_form(
         password,
     )?;
 
-    let name_key = name.trim().to_lowercase();
+    let name_key = fold_name(name.trim());
     let address_key = address.trim().to_lowercase();
     for entry in existing {
         if Some(entry.id) == excluding_id {
             continue;
         }
-        if entry.name.trim().to_lowercase() == name_key {
+        if fold_name(entry.name.trim()) == name_key {
             return Err(t_args(
                 "err-tracker-name-duplicate",
                 &[("name", name.trim())],

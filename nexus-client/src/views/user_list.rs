@@ -15,6 +15,7 @@ use iced::widget::{
     Column, Row, Space, button, column, container, rich_text, row, scrollable, span, tooltip,
 };
 use iced::{Center, Color, Element, Fill, Font, Theme};
+use nexus_common::names::fold_name;
 
 use super::constants::{
     PERMISSION_BAN_CREATE, PERMISSION_USER_INFO, PERMISSION_USER_KICK, PERMISSION_USER_MESSAGE,
@@ -134,11 +135,11 @@ fn get_contextual_users(conn: &ServerConnection) -> Vec<&UserInfo> {
                 conn.online_users
                     .iter()
                     .filter(|user| {
-                        let user_nickname_lower = user.nickname.to_lowercase();
+                        let user_nickname_lower = fold_name(&user.nickname);
                         channel_state
                             .members
                             .iter()
-                            .any(|m| m.to_lowercase() == user_nickname_lower)
+                            .any(|m| fold_name(m) == user_nickname_lower)
                     })
                     .collect()
             } else {
@@ -148,13 +149,13 @@ fn get_contextual_users(conn: &ServerConnection) -> Vec<&UserInfo> {
         }
         ChatTab::UserMessage(other_nickname) => {
             // Show you + the other user (if they're online)
-            let other_lower = other_nickname.to_lowercase();
-            let current_lower = current_nickname.to_lowercase();
+            let other_lower = fold_name(other_nickname);
+            let current_lower = fold_name(current_nickname);
 
             conn.online_users
                 .iter()
                 .filter(|user| {
-                    let nickname_lower = user.nickname.to_lowercase();
+                    let nickname_lower = fold_name(&user.nickname);
                     nickname_lower == current_lower || nickname_lower == other_lower
                 })
                 .collect()
@@ -201,10 +202,10 @@ fn create_user_toolbar<'a>(
 
     // Check if user is in voice with us (for mute button)
     let is_in_voice_with_us = conn.voice_session.as_ref().is_some_and(|s| {
-        let nickname_lower = nickname.to_lowercase();
+        let nickname_lower = fold_name(nickname);
         s.participants
             .iter()
-            .any(|p| p.to_lowercase() == nickname_lower)
+            .any(|p| fold_name(p) == nickname_lower)
     });
     let is_muted = conn
         .voice_session
@@ -382,27 +383,27 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
 
             // Check if user is in voice for the current tab
             // Only show voice indicators when viewing the channel/target we're in voice for
-            let nickname_lower = nickname.to_lowercase();
+            let nickname_lower = fold_name(nickname);
             let current_tab_target = match &conn.active_chat_tab {
-                ChatTab::Channel(name) => Some(name.to_lowercase()),
-                ChatTab::UserMessage(name) => Some(name.to_lowercase()),
+                ChatTab::Channel(name) => Some(fold_name(name)),
+                ChatTab::UserMessage(name) => Some(fold_name(name)),
                 ChatTab::Console => None,
             };
 
             let is_in_voice = if let Some(ref session) = conn.voice_session {
                 // We're in voice - only show indicators if viewing the same target
-                let session_target = session.target.to_lowercase();
+                let session_target = fold_name(&session.target);
                 current_tab_target
                     .as_ref()
                     .is_some_and(|tab| *tab == session_target)
                     && session
                         .participants
                         .iter()
-                        .any(|p| p.to_lowercase() == nickname_lower)
+                        .any(|p| fold_name(p) == nickname_lower)
             } else if let ChatTab::Channel(channel_name) = &conn.active_chat_tab {
                 // Not in voice, but viewing a channel - check channel_voiced
                 conn.channel_voiced
-                    .get(&channel_name.to_lowercase())
+                    .get(&fold_name(channel_name))
                     .map(|users| users.contains(&nickname_lower))
                     .unwrap_or(false)
             } else {
@@ -411,7 +412,7 @@ pub fn user_list_panel<'a>(conn: &'a ServerConnection, theme: &Theme) -> Element
 
             let is_speaking = conn.voice_session.as_ref().is_some_and(|s| {
                 // Only show speaking indicator if viewing the same target as our voice session
-                let session_target = s.target.to_lowercase();
+                let session_target = fold_name(&s.target);
                 current_tab_target
                     .as_ref()
                     .is_some_and(|tab| *tab == session_target)

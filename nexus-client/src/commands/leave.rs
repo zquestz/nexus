@@ -1,6 +1,7 @@
 //! /leave command implementation - leave a channel
 
 use iced::Task;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, ChannelError};
 
@@ -63,7 +64,7 @@ pub fn execute(
     };
 
     // Check if we're actually in this channel
-    let channel_lower = channel.to_lowercase();
+    let channel_lower = fold_name(&channel);
     if !conn.channels.contains_key(&channel_lower) {
         return app.add_active_tab_message(
             connection_id,
@@ -75,7 +76,7 @@ pub fn execute(
     if conn
         .pending_channel_leave
         .as_ref()
-        .is_some_and(|c| c.to_lowercase() == channel_lower)
+        .is_some_and(|c| fold_name(c) == channel_lower)
     {
         return app.add_active_tab_message(
             connection_id,

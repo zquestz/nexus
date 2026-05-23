@@ -9,6 +9,7 @@
 //! - ChatListResponse - Response to /channels command
 
 use iced::Task;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ChannelInfo;
 
 use nexus_common::framing::MessageId;
@@ -83,13 +84,13 @@ impl NexusApp {
                 data.secret.unwrap_or(false),
                 data.members.unwrap_or_default(),
             );
-            let channel_lower = channel_name.to_lowercase();
+            let channel_lower = fold_name(&channel_name);
             conn.channels.insert(channel_lower.clone(), channel_state);
             conn.channel_tabs.push(channel_name.clone());
 
             // Populate voiced nicknames if provided
             if let Some(voiced) = data.voiced {
-                let voiced_set = voiced.into_iter().map(|n| n.to_lowercase()).collect();
+                let voiced_set = voiced.into_iter().map(|n| fold_name(&n)).collect();
                 conn.channel_voiced
                     .insert(channel_lower.clone(), voiced_set);
             }
@@ -98,12 +99,12 @@ impl NexusApp {
             if !conn
                 .known_channels
                 .iter()
-                .any(|c| c.to_lowercase() == channel_lower)
+                .any(|c| fold_name(c) == channel_lower)
             {
                 let pos = conn
                     .known_channels
                     .iter()
-                    .position(|c| c.to_lowercase() > channel_lower)
+                    .position(|c| fold_name(c) > channel_lower)
                     .unwrap_or(conn.known_channels.len());
                 conn.known_channels.insert(pos, channel_name.clone());
             }
@@ -279,17 +280,17 @@ impl NexusApp {
             for channel in &channels {
                 let name = &channel.name;
                 // Insert in sorted position if not already present (case-insensitive)
-                let name_lower = name.to_lowercase();
+                let name_lower = fold_name(name);
                 if !conn
                     .known_channels
                     .iter()
-                    .any(|c| c.to_lowercase() == name_lower)
+                    .any(|c| fold_name(c) == name_lower)
                 {
                     // Find insertion point for sorted order
                     let pos = conn
                         .known_channels
                         .iter()
-                        .position(|c| c.to_lowercase() > name_lower)
+                        .position(|c| fold_name(c) > name_lower)
                         .unwrap_or(conn.known_channels.len());
                     conn.known_channels.insert(pos, name.clone());
                 }
@@ -398,16 +399,17 @@ impl NexusApp {
             return Task::none();
         };
 
-        let channel_lower = channel.to_lowercase();
+        let channel_lower = fold_name(channel);
 
         // Find the index of this channel in the tabs list
         let tab_index = conn
             .channel_tabs
             .iter()
-            .position(|c| c.to_lowercase() == channel_lower);
+            .position(|c| fold_name(c) == channel_lower);
 
         // Determine if we need to change focus
-        let was_active = matches!(&conn.active_chat_tab, ChatTab::Channel(c) if c.to_lowercase() == channel_lower);
+        let was_active =
+            matches!(&conn.active_chat_tab, ChatTab::Channel(c) if fold_name(c) == channel_lower);
 
         // Remove channel data
         conn.channels.remove(&channel_lower);
@@ -421,9 +423,8 @@ impl NexusApp {
 
         // Remove scroll state for this tab
         // Find the actual tab name for the scroll state key
-        conn.scroll_states.retain(
-            |tab, _| !matches!(tab, ChatTab::Channel(c) if c.to_lowercase() == channel_lower),
-        );
+        conn.scroll_states
+            .retain(|tab, _| !matches!(tab, ChatTab::Channel(c) if fold_name(c) == channel_lower));
 
         // If this was the active tab, move to previous tab
         if was_active {

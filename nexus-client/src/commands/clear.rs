@@ -1,6 +1,7 @@
 //! /clear command implementation - clear chat history for current tab
 
 use iced::Task;
+use nexus_common::names::fold_name;
 
 use crate::NexusApp;
 use crate::i18n::t_args;
@@ -40,7 +41,7 @@ pub fn execute(
             conn.console_messages.clear();
         }
         ChatTab::Channel(channel) => {
-            let channel_lower = channel.to_lowercase();
+            let channel_lower = fold_name(channel);
             if let Some(channel_state) = conn.channels.get_mut(&channel_lower) {
                 channel_state.messages.clear();
             }

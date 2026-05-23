@@ -4,9 +4,12 @@
 //! and provides smooth audio output despite network jitter. The buffer size
 //! adjusts dynamically based on observed network conditions.
 
-use crate::constants::ERR_NEXT_SEQUENCE_NONE;
 use std::collections::BTreeMap;
 use std::time::Instant;
+
+use nexus_common::names::fold_name;
+
+use crate::constants::ERR_NEXT_SEQUENCE_NONE;
 
 // =============================================================================
 // Constants
@@ -276,7 +279,7 @@ impl JitterBufferPool {
 
     /// Push a packet for a sender
     pub fn push(&mut self, sender: &str, sequence: u32, timestamp: u32, samples: Vec<f32>) -> bool {
-        let key = sender.to_lowercase();
+        let key = fold_name(sender);
         self.buffers
             .entry(key)
             .or_default()
@@ -285,7 +288,7 @@ impl JitterBufferPool {
 
     /// Remove a sender's jitter buffer
     pub fn remove(&mut self, sender: &str) {
-        self.buffers.remove(&sender.to_lowercase());
+        self.buffers.remove(&fold_name(sender));
     }
 
     /// Iterate over all buffers mutably

@@ -13,6 +13,7 @@ use lewton::inside_ogg::OggStreamReader;
 use once_cell::sync::Lazy;
 
 use crate::config::events::SoundChoice;
+use crate::constants::ERR_SOUND_STATE_LOCK_POISONED;
 
 // =============================================================================
 // Embedded Sounds
@@ -54,7 +55,7 @@ static SOUND_STATE: Lazy<Mutex<Option<SoundState>>> = Lazy::new(|| Mutex::new(No
 
 /// Initialize the audio thread if not already running
 fn ensure_audio_thread() -> bool {
-    let mut state = SOUND_STATE.lock().unwrap();
+    let mut state = SOUND_STATE.lock().expect(ERR_SOUND_STATE_LOCK_POISONED);
 
     if state.is_some() {
         return true;
@@ -198,7 +199,7 @@ fn get_sound_sender() -> Option<Sender<SoundRequest>> {
         return None;
     }
 
-    let state = SOUND_STATE.lock().unwrap();
+    let state = SOUND_STATE.lock().expect(ERR_SOUND_STATE_LOCK_POISONED);
     state.as_ref().map(|s| s.sender.clone())
 }
 

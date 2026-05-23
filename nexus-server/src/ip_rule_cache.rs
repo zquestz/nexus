@@ -16,7 +16,8 @@ use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use iprange::IpRange;
 
 use crate::constants::{
-    ERR_IPV4_PREFIX_FROM_MAPPED, ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK, ERR_TARGET_NOT_CANONICAL,
+    ERR_IP_RULE_EXPIRY_MISSING, ERR_IPV4_PREFIX_FROM_MAPPED,
+    ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK, ERR_TARGET_NOT_CANONICAL,
 };
 use crate::db::bans::BanRecord;
 use crate::db::trusts::TrustRecord;
@@ -284,10 +285,12 @@ impl IpRuleCache {
     fn rebuild_tries(&mut self) {
         let now = current_timestamp();
 
-        self.trust_entries
-            .retain(|e| e.expires_at.is_none() || e.expires_at.unwrap() > now);
-        self.ban_entries
-            .retain(|e| e.expires_at.is_none() || e.expires_at.unwrap() > now);
+        self.trust_entries.retain(|e| {
+            e.expires_at.is_none() || e.expires_at.expect(ERR_IP_RULE_EXPIRY_MISSING) > now
+        });
+        self.ban_entries.retain(|e| {
+            e.expires_at.is_none() || e.expires_at.expect(ERR_IP_RULE_EXPIRY_MISSING) > now
+        });
 
         self.trust_ipv4 = IpRange::new();
         self.trust_ipv6 = IpRange::new();

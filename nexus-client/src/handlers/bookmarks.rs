@@ -2,6 +2,7 @@
 
 use iced::Task;
 use iced::widget::Id;
+use nexus_common::names::fold_name;
 use uuid::Uuid;
 
 use crate::NexusApp;
@@ -424,15 +425,15 @@ pub(super) fn check_bookmark_dedup(
     existing: &[crate::types::ServerBookmark],
     excluding_id: Option<Uuid>,
 ) -> Option<String> {
-    let name_key = name.trim().to_lowercase();
+    let name_key = fold_name(name.trim());
     let address_key = address.trim().to_lowercase();
-    let username_key = username.trim().to_lowercase();
-    let nickname_key = nickname.trim().to_lowercase();
+    let username_key = fold_name(username.trim());
+    let nickname_key = fold_name(nickname.trim());
     for entry in existing {
         if Some(entry.id) == excluding_id {
             continue;
         }
-        if entry.name.trim().to_lowercase() == name_key {
+        if fold_name(entry.name.trim()) == name_key {
             return Some(t_args(
                 "err-bookmark-name-duplicate",
                 &[("name", name.trim())],
@@ -440,8 +441,8 @@ pub(super) fn check_bookmark_dedup(
         }
         if entry.address.trim().to_lowercase() == address_key
             && entry.port == port
-            && entry.username.trim().to_lowercase() == username_key
-            && entry.nickname.trim().to_lowercase() == nickname_key
+            && fold_name(entry.username.trim()) == username_key
+            && fold_name(entry.nickname.trim()) == nickname_key
         {
             return Some(t("err-bookmark-endpoint-duplicate"));
         }

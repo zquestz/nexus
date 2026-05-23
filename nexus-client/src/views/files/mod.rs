@@ -31,6 +31,7 @@ use toolbar::{breadcrumb_bar, search_breadcrumb, search_input_row, toolbar};
 
 use iced::widget::{Space, button, column, container, row, scrollable, stack, tooltip};
 use iced::{Center, Element, Fill, alignment};
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{FileEntry, FileSearchResult};
 
 use crate::i18n::t;
@@ -186,11 +187,11 @@ pub fn files_view<'a>(
     // username (matching the server-side `in_owned_dropbox` semantics — the
     // dropbox suffix names an account, not a nickname). Lowercase comparison
     // matches the server and respects IDN/Unicode handling.
-    let username_lower = username.to_lowercase();
+    let username_lower = fold_name(username);
     let bypass_via_ownership = tab
         .dropbox_owner
         .as_ref()
-        .is_some_and(|owner| owner.to_lowercase() == username_lower);
+        .is_some_and(|owner| fold_name(owner) == username_lower);
 
     // If overwrite confirmation is pending, show that dialog
     if let Some(pending) = &tab.pending_overwrite {

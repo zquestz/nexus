@@ -1,6 +1,7 @@
 //! /window command implementation - manage chat tabs
 
 use iced::Task;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
@@ -62,13 +63,13 @@ pub fn execute(
         } else if args.len() == 2 {
             // /window close <nickname> - close specific tab
             let target = &args[1];
-            let target_lower = target.to_lowercase();
+            let target_lower = fold_name(target);
 
             // Find matching tab (case-insensitive)
             let matching_user = conn
                 .user_messages
                 .keys()
-                .find(|nickname| nickname.to_lowercase() == target_lower)
+                .find(|nickname| fold_name(nickname) == target_lower)
                 .cloned();
 
             if let Some(nickname) = matching_user {

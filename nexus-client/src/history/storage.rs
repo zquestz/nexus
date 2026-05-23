@@ -11,6 +11,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -92,7 +93,9 @@ impl HistoryManager {
             .join("history");
 
         let fingerprint_hash = sha256_hex(fingerprint);
-        let username_hash = sha256_hex(your_username);
+        // Fold the username so case variants of one account share a history
+        // dir (the fingerprint is a cert hash, not a name — left raw).
+        let username_hash = sha256_hex(&fold_name(your_username));
 
         data_dir.join(fingerprint_hash).join(username_hash)
     }
@@ -156,7 +159,12 @@ impl HistoryManager {
             }
         }
 
-        self.conversations = loaded.clone();
+        // `loaded` is keyed by display nickname (for tab restoration); the
+        // internal cache keys by the folded nickname so case variants merge.
+        self.conversations = loaded
+            .iter()
+            .map(|(nick, msgs)| (fold_name(nick), msgs.clone()))
+            .collect();
         Ok(loaded)
     }
 
@@ -188,7 +196,7 @@ impl HistoryManager {
         // Add to in-memory cache
         let messages = self
             .conversations
-            .entry(other_nickname.to_string())
+            .entry(fold_name(other_nickname))
             .or_default();
 
         // Check for duplicates (can happen if same user logged in twice, both receive same message)
@@ -237,7 +245,7 @@ impl HistoryManager {
     fn save_conversation(&self, other_nickname: &str) -> Result<(), HistoryError> {
         let messages = self
             .conversations
-            .get(other_nickname)
+            .get(&fold_name(other_nickname))
             .ok_or(HistoryError::NotFound)?;
 
         self.save_conversation_internal(other_nickname, messages)
@@ -259,8 +267,13 @@ impl HistoryManager {
                 fs::set_permissions(&self.base_dir, fs::Permissions::from_mode(DIR_PERMISSIONS));
         }
 
-        // Build filename from nickname hash
-        let filename = format!("{}.{}", sha256_hex(other_nickname), HISTORY_FILE_EXT);
+        // Filename from the folded nickname hash (case variants share one file);
+        // the display nickname is preserved in the file content below.
+        let filename = format!(
+            "{}.{}",
+            sha256_hex(&fold_name(other_nickname)),
+            HISTORY_FILE_EXT
+        );
         let new_path = self.base_dir.join(&filename);
 
         // Wrap messages with metadata
@@ -296,10 +309,10 @@ impl HistoryManager {
     /// Clear history for a specific conversation
     pub fn clear_conversation(&mut self, other_nickname: &str) -> Result<(), HistoryError> {
         // Remove from memory
-        self.conversations.remove(other_nickname);
+        self.conversations.remove(&fold_name(other_nickname));
 
         // Delete file from disk
-        let hash = sha256_hex(other_nickname);
+        let hash = sha256_hex(&fold_name(other_nickname));
         let filename = format!("{}.{}", hash, HISTORY_FILE_EXT);
         let path = self.base_dir.join(filename);
 
@@ -580,5 +593,41 @@ mod tests {
         // Add message with different timestamp - should be added
         let _ = manager.add_message("bob", msg4);
         assert_eq!(manager.conversations.get("bob").map(|v| v.len()), Some(3));
+    }
+
+    #[test]
+    fn test_build_base_dir_folds_username() {
+        // Case variants of one account share a single history directory.
+        assert_eq!(
+            HistoryManager::build_base_dir("fp", "Alice"),
+            HistoryManager::build_base_dir("fp", "alice"),
+        );
+        assert_ne!(
+            HistoryManager::build_base_dir("fp", "alice"),
+            HistoryManager::build_base_dir("fp", "bob"),
+        );
+    }
+
+    #[test]
+    fn test_add_message_folds_partner_nickname() {
+        let mut manager = HistoryManager::new(
+            "test_fingerprint",
+            "test_user",
+            ChatHistoryRetention::Disabled,
+        );
+        manager.enabled = true;
+
+        // Two case variants of the same partner merge into one (folded)
+        // conversation rather than splitting — so they can't clobber the same
+        // on-disk file. The internal cache keys by the folded nickname.
+        let _ = manager.add_message("Bob", create_test_message("Bob", "me", "hi", 1));
+        let _ = manager.add_message("bob", create_test_message("bob", "me", "yo", 2));
+
+        assert_eq!(manager.conversations.len(), 1, "case variants merge");
+        assert_eq!(
+            manager.conversations.get("bob").map(|v| v.len()),
+            Some(2),
+            "both messages land in the one folded conversation"
+        );
     }
 }

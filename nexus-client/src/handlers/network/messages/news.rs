@@ -3,6 +3,7 @@
 use iced::Task;
 use iced::widget::markdown;
 use nexus_common::framing::MessageId;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{NewsAction, NewsItem};
 
 use crate::NexusApp;
@@ -99,8 +100,7 @@ impl NexusApp {
                             .connections
                             .get(&connection_id)
                             .map(|c| {
-                                c.connection_info.username.to_lowercase()
-                                    == item.author.to_lowercase()
+                                fold_name(&c.connection_info.username) == fold_name(&item.author)
                             })
                             .unwrap_or(false);
 

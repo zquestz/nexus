@@ -7,6 +7,7 @@
 use std::collections::HashMap;
 
 use crate::constants::ERR_DECODER_MISSING_AFTER_INSERT;
+use nexus_common::names::fold_name;
 use nexus_common::voice::{
     VOICE_CHANNELS, VOICE_SAMPLE_RATE, VOICE_SAMPLES_PER_FRAME, VoiceQuality,
 };
@@ -217,7 +218,7 @@ impl DecoderPool {
     /// * `Ok(Vec<f32>)` - Decoded audio samples
     /// * `Err(String)` - Error message if decoding failed
     pub fn decode(&mut self, sender: &str, data: &[u8]) -> Result<Vec<f32>, String> {
-        let key = sender.to_lowercase();
+        let key = fold_name(sender);
 
         let decoder = if let Some(d) = self.decoders.get_mut(&key) {
             d
@@ -243,7 +244,7 @@ impl DecoderPool {
     /// * `Ok(Vec<f32>)` - Concealed audio samples
     /// * `Err(String)` - Error message if PLC failed or sender unknown
     pub fn decode_lost(&mut self, sender: &str) -> Result<Vec<f32>, String> {
-        let key = sender.to_lowercase();
+        let key = fold_name(sender);
 
         let decoder = self
             .decoders
@@ -257,7 +258,7 @@ impl DecoderPool {
     ///
     /// Call this when a user leaves voice to free resources.
     pub fn remove(&mut self, sender: &str) {
-        self.decoders.remove(&sender.to_lowercase());
+        self.decoders.remove(&fold_name(sender));
     }
 }
 

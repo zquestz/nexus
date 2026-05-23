@@ -3,6 +3,7 @@
 use iced::Task;
 use iced::widget::Id;
 use nexus_common::is_shared_account_permission;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{
     self, BanReasonError, KickReasonError, PasswordError, UsernameError, resolve_bandwidth_weight,
@@ -878,7 +879,7 @@ impl NexusApp {
         // no-op for admin self (admins don't store a group), so we pass it
         // through to match the user's selection visually.
         let is_self_edit =
-            original_username.to_lowercase() == conn.connection_info.username.to_lowercase();
+            fold_name(&original_username) == fold_name(&conn.connection_info.username);
 
         // Only send admin flag if current user is admin and it's not a self-edit
         let requested_is_admin = if conn.is_admin && !is_self_edit {

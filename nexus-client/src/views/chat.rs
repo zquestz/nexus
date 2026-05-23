@@ -7,6 +7,7 @@ use iced::widget::{
 };
 use iced::{Color, Element, Fill, Font, Theme};
 use linkify::{LinkFinder, LinkKind};
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ChatAction;
 use once_cell::sync::Lazy;
 
@@ -481,7 +482,7 @@ fn build_message_list<'a>(
     let messages = match &conn.active_chat_tab {
         ChatTab::Console => conn.console_messages.as_slice(),
         ChatTab::Channel(channel) => {
-            let channel_lower = channel.to_lowercase();
+            let channel_lower = fold_name(channel);
             conn.channels
                 .get(&channel_lower)
                 .map(|ch| ch.messages.as_slice())

@@ -33,6 +33,23 @@ pub const ERR_SYSTEM_TIME_AFTER_EPOCH: &str = "system time should be after Unix 
 /// confirmed it. Used by `commands/list` and the user-info handler.
 pub const ERR_CONNECTION_EXISTS: &str = "connection exists";
 
+/// Panic message: `rfind(char::is_whitespace)` returned an index that should
+/// point at a valid whitespace character in the original string.
+pub const ERR_WHITESPACE_CHAR_AT_RFIND_INDEX: &str =
+    "rfind(char::is_whitespace) returns a valid character index";
+
+/// Panic message: the startup URI lock is poisoned. A poisoned lock means
+/// a previous holder panicked while updating the one-shot startup URI.
+pub const ERR_STARTUP_URI_LOCK_POISONED: &str = "startup URI lock poisoned";
+
+/// Panic message: the sound-state lock is poisoned. A poisoned lock means
+/// the audio-thread sender state may be unknown-shape.
+pub const ERR_SOUND_STATE_LOCK_POISONED: &str = "sound state lock poisoned";
+
+/// Panic message: `str::split` unexpectedly returned no segments while parsing
+/// a hotkey string. The standard-library iterator always yields at least one.
+pub const ERR_HOTKEY_SPLIT_EMPTY: &str = "str::split returns at least one segment";
+
 /// Panic message: identicon PNG generation from a string seed failed.
 /// Programmer-error: the underlying generator is documented to
 /// succeed for any string input.

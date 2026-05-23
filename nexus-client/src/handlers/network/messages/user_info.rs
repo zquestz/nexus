@@ -3,6 +3,7 @@
 use chrono::Local;
 use iced::Task;
 use nexus_common::framing::MessageId;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{UserInfo as ProtocolUserInfo, UserInfoDetailed};
 
 use crate::NexusApp;
@@ -52,7 +53,7 @@ impl NexusApp {
             // Check if requested nickname matches the response (case-insensitive)
             // nickname is always the display name (== username for regular accounts)
             let nickname_matches = match &user {
-                Some(u) => requested_nickname.to_lowercase() == u.nickname.to_lowercase(),
+                Some(u) => fold_name(&requested_nickname) == fold_name(&u.nickname),
                 None => true, // Error responses don't have user data, accept them
             };
 
@@ -384,11 +385,11 @@ impl NexusApp {
         // Use previous_username to find users (in case username changed)
         // Compare case-insensitively since online_users may have client-provided casing
         // while previous_username comes from the database
-        let previous_username_lower = previous_username.to_lowercase();
+        let previous_username_lower = fold_name(&previous_username);
         for existing_user in conn
             .online_users
             .iter_mut()
-            .filter(|u| u.username.to_lowercase() == previous_username_lower)
+            .filter(|u| fold_name(&u.username) == previous_username_lower)
         {
             // Get old nickname for cache invalidation
             let old_nickname = existing_user.nickname.clone();
@@ -442,7 +443,7 @@ impl NexusApp {
             // If this is our own username changing, update conn.connection_info.username
             // Compare case-insensitively since connection_info.username is user-typed
             // and previous_username is server-provided (may differ in case)
-            if conn.connection_info.username.to_lowercase() == previous_username.to_lowercase() {
+            if fold_name(&conn.connection_info.username) == fold_name(&previous_username) {
                 conn.connection_info.username = new_username.clone();
             }
 
@@ -479,8 +480,8 @@ impl NexusApp {
             // Update channel_voiced if the old nickname was in any channel's voiced set
             // (For regular accounts, nickname == username, so this renames correctly.
             // For shared accounts, nickname doesn't change with username, so this is a no-op.)
-            let old_lower = previous_username.to_lowercase();
-            let new_lower = new_username.to_lowercase();
+            let old_lower = fold_name(&previous_username);
+            let new_lower = fold_name(&new_username);
             for voiced_set in conn.channel_voiced.values_mut() {
                 if voiced_set.remove(&old_lower) {
                     voiced_set.insert(new_lower.clone());

@@ -1,5 +1,7 @@
 //! Channel state for multi-channel chat support
 
+use nexus_common::names::fold_name;
+
 use super::ChatMessage;
 
 /// State for a single chat channel
@@ -37,12 +39,8 @@ impl ChannelState {
     /// Add a member to the channel (maintains sorted order)
     pub fn add_member(&mut self, nickname: String) {
         // Check if already a member (case-insensitive)
-        let nickname_lower = nickname.to_lowercase();
-        if self
-            .members
-            .iter()
-            .any(|m| m.to_lowercase() == nickname_lower)
-        {
+        let nickname_lower = fold_name(&nickname);
+        if self.members.iter().any(|m| fold_name(m) == nickname_lower) {
             return;
         }
 
@@ -50,24 +48,22 @@ impl ChannelState {
         let pos = self
             .members
             .iter()
-            .position(|m| m.to_lowercase() > nickname_lower)
+            .position(|m| fold_name(m) > nickname_lower)
             .unwrap_or(self.members.len());
         self.members.insert(pos, nickname);
     }
 
     /// Remove a member from the channel
     pub fn remove_member(&mut self, nickname: &str) {
-        let nickname_lower = nickname.to_lowercase();
-        self.members.retain(|m| m.to_lowercase() != nickname_lower);
+        let nickname_lower = fold_name(nickname);
+        self.members.retain(|m| fold_name(m) != nickname_lower);
     }
 
     /// Check if a nickname is a member of this channel (case-insensitive)
     #[cfg(test)] // Currently only used in tests - will be used for tab completion
     pub fn is_member(&self, nickname: &str) -> bool {
-        let nickname_lower = nickname.to_lowercase();
-        self.members
-            .iter()
-            .any(|m| m.to_lowercase() == nickname_lower)
+        let nickname_lower = fold_name(nickname);
+        self.members.iter().any(|m| fold_name(m) == nickname_lower)
     }
 }
 

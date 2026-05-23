@@ -15,6 +15,7 @@ use iced::widget::{
 };
 use iced::{Center, Element, Fill, Length, Theme};
 use iced_aw::NumberInput;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::TrackerInfo;
 use nexus_common::{DEFAULT_TRACKER_PORT, ERROR_KIND_TRACKER_FINGERPRINT_INTERCEPTED};
 
@@ -103,7 +104,7 @@ fn sort_trackers(
 ) {
     trackers.sort_by(|a, b| {
         let cmp = match column {
-            TrackerManagementSortColumn::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            TrackerManagementSortColumn::Name => fold_name(&a.name).cmp(&fold_name(&b.name)),
             TrackerManagementSortColumn::Address => {
                 a.address.to_lowercase().cmp(&b.address.to_lowercase())
             }

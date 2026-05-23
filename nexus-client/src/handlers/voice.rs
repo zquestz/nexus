@@ -14,6 +14,7 @@ use crate::network::tls::should_bypass_proxy;
 
 use global_hotkey::GlobalHotKeyEvent;
 use iced::Task;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
@@ -76,7 +77,7 @@ impl NexusApp {
         // For channels, check if we're a member
         // Note: conn.channels is keyed by lowercase channel name WITH the # prefix
         if target.starts_with('#') {
-            let channel_lower = target.to_lowercase();
+            let channel_lower = fold_name(&target);
             if !conn.channels.contains_key(&channel_lower) {
                 return self.add_active_tab_message(
                     connection_id,
@@ -162,10 +163,8 @@ impl NexusApp {
 
         match &conn.active_chat_tab {
             // Channel name already includes the # prefix
-            ChatTab::Channel(channel) => session.target.to_lowercase() == channel.to_lowercase(),
-            ChatTab::UserMessage(nickname) => {
-                session.target.to_lowercase() == nickname.to_lowercase()
-            }
+            ChatTab::Channel(channel) => fold_name(&session.target) == fold_name(channel),
+            ChatTab::UserMessage(nickname) => fold_name(&session.target) == fold_name(nickname),
             ChatTab::Console => false,
         }
     }

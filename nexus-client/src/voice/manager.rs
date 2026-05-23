@@ -13,6 +13,7 @@ use std::time::Duration;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
+use nexus_common::names::fold_name;
 use nexus_common::voice::{VOICE_SAMPLES_PER_FRAME, VoiceQuality};
 
 use crate::config::audio::PttMode;
@@ -421,7 +422,7 @@ async fn run_voice_session(
                         }
                     }
                     Some(VoiceCommand::MuteUser(nickname)) => {
-                        let key = nickname.to_lowercase();
+                        let key = fold_name(&nickname);
                         muted_users.insert(key.clone());
                         mixer.mute_user(&nickname);
                         // Clear their jitter buffer
@@ -429,7 +430,7 @@ async fn run_voice_session(
                         decoder_pool.remove(&nickname);
                     }
                     Some(VoiceCommand::UnmuteUser(nickname)) => {
-                        let key = nickname.to_lowercase();
+                        let key = fold_name(&nickname);
                         muted_users.remove(&key);
                         mixer.unmute_user(&nickname);
                     }

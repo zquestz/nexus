@@ -2,6 +2,7 @@
 
 use chrono::{Local, TimeZone};
 use iced::Task;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ChatAction;
 
 use crate::NexusApp;
@@ -40,11 +41,11 @@ impl NexusApp {
         } = notif;
         // Extract mention/self info from connection (drop borrow before emit_event)
         let (is_from_self, is_mention) = if let Some(conn) = self.connections.get(&connection_id) {
-            let our_nickname_lower = conn.nickname.to_lowercase();
-            let from_self = nickname.to_lowercase() == our_nickname_lower;
+            let our_nickname_lower = fold_name(&conn.nickname);
+            let from_self = fold_name(&nickname) == our_nickname_lower;
             let mention = !from_self
                 && !our_nickname_lower.is_empty()
-                && contains_word(&message.to_lowercase(), &our_nickname_lower);
+                && contains_word(&fold_name(&message), &our_nickname_lower);
             (from_self, mention)
         } else {
             (false, false)
@@ -107,7 +108,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        let channel_lower = channel.to_lowercase();
+        let channel_lower = fold_name(&channel);
         let mut messages: Vec<String> = Vec::new();
 
         // Handle topic change

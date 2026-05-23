@@ -1,6 +1,7 @@
 //! /focus command implementation - switch focus to a chat tab
 
 use iced::Task;
+use nexus_common::names::fold_name;
 
 use crate::NexusApp;
 use crate::i18n::t_args;
@@ -35,7 +36,7 @@ pub fn execute(
     }
 
     let target = &args[0];
-    let target_lower = target.to_lowercase();
+    let target_lower = fold_name(target);
 
     // Check if target is a channel (starts with #)
     if target.starts_with('#') {
@@ -45,7 +46,7 @@ pub fn execute(
             let channel_name = conn
                 .channel_tabs
                 .iter()
-                .find(|c| c.to_lowercase() == target_lower)
+                .find(|c| fold_name(c) == target_lower)
                 .cloned()
                 .unwrap_or_else(|| target.clone());
             return Task::done(Message::SwitchChatTab(ChatTab::Channel(channel_name)));
@@ -63,7 +64,7 @@ pub fn execute(
     let matching_user = conn
         .user_messages
         .keys()
-        .find(|nickname| nickname.to_lowercase() == target_lower)
+        .find(|nickname| fold_name(nickname) == target_lower)
         .cloned();
 
     if let Some(nickname) = matching_user {
@@ -76,7 +77,7 @@ pub fn execute(
     let online_user = conn
         .online_users
         .iter()
-        .find(|user| user.nickname.to_lowercase() == target_lower)
+        .find(|user| fold_name(&user.nickname) == target_lower)
         .map(|user| user.nickname.clone());
 
     if let Some(nickname) = online_user {

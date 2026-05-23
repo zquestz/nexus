@@ -6,6 +6,7 @@
 
 use iced::Task;
 use iced::widget::Id;
+use nexus_common::names::fold_name;
 use uuid::Uuid;
 
 use super::focus::{dispatch_find_focused, next_in_cycle};
@@ -423,7 +424,7 @@ impl NexusApp {
         // delete so the full sorted list is still available.
         let next_pick: Option<Uuid> = if self.tracker_browser.selected_tracker == Some(id) {
             let mut sorted: Vec<&ClientTracker> = self.config.client_trackers.iter().collect();
-            sorted.sort_by_key(|t| t.name.to_lowercase());
+            sorted.sort_by_key(|t| fold_name(&t.name));
             sorted.iter().position(|t| t.id == id).and_then(|i| {
                 sorted
                     .get(i + 1)
@@ -874,14 +875,14 @@ fn validate_form(
     // the server-side trackers-table unique indexes:
     //   - LOWER(name)            → case-insensitive on name
     //   - (LOWER(address), port) → case-insensitive on address + exact port
-    let name_key = name.trim().to_lowercase();
+    let name_key = fold_name(name.trim());
     let address_key = address.trim().to_lowercase();
 
     for entry in existing {
         if Some(entry.id) == excluding_id {
             continue;
         }
-        if entry.name.trim().to_lowercase() == name_key {
+        if fold_name(entry.name.trim()) == name_key {
             return Some(t_args(
                 "err-tracker-name-duplicate",
                 &[("name", name.trim())],

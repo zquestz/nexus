@@ -16,6 +16,7 @@ use iced::futures::Stream;
 use iced::stream;
 
 use crate::config::audio::PttMode;
+use crate::constants::ERR_HOTKEY_SPLIT_EMPTY;
 use crate::types::Message;
 
 // =============================================================================
@@ -299,7 +300,7 @@ pub fn parse_hotkey(key: &str) -> Result<(Modifiers, Code), String> {
     }
 
     // Last part is the key, everything before is modifiers
-    let key_part = parts.last().unwrap();
+    let key_part = parts.last().expect(ERR_HOTKEY_SPLIT_EMPTY);
     let modifier_parts = &parts[..parts.len() - 1];
 
     // Parse modifiers (case-insensitive)

@@ -12,6 +12,7 @@ use iced::widget::{
 use iced::{Center, Element, Fill, Length, Theme};
 use iced_aw::{NumberInput, TabLabel, Tabs};
 use nexus_common::is_shared_account_permission;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{GroupInfo, UserInfo};
 use nexus_common::validators::{MIN_BANDWIDTH_WEIGHT, resolve_bandwidth_weight};
 
@@ -354,12 +355,12 @@ fn sort_users(users: &mut [UserInfo], column: UserManagementSortColumn, ascendin
     users.sort_by(|a, b| {
         let cmp = match column {
             UserManagementSortColumn::Username => {
-                a.username.to_lowercase().cmp(&b.username.to_lowercase())
+                fold_name(&a.username).cmp(&fold_name(&b.username))
             }
             UserManagementSortColumn::Group => {
                 let a_group = a.group_name.as_deref().unwrap_or("");
                 let b_group = b.group_name.as_deref().unwrap_or("");
-                a_group.to_lowercase().cmp(&b_group.to_lowercase())
+                fold_name(a_group).cmp(&fold_name(b_group))
             }
         };
         if ascending { cmp } else { cmp.reverse() }
@@ -408,8 +409,8 @@ fn lazy_user_table(deps: UserTableDeps) -> Element<'static, Message> {
         let username_column = table::column(username_header, move |user: UserInfo| {
             let user_id = user.id;
             let username_for_menu = user.username.clone();
-            let is_self = user.username.to_lowercase() == current_username_for_col.to_lowercase();
-            let is_guest = user.username.to_lowercase() == GUEST_USERNAME;
+            let is_self = fold_name(&user.username) == fold_name(&current_username_for_col);
+            let is_guest = fold_name(&user.username) == GUEST_USERNAME;
             // Admins can edit themselves (primarily to manage their own
             // username or bandwidth weight); non-admin self-edit still
             // routes to the Change Password dialog only.
@@ -931,7 +932,7 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
     // password change through the Change Password dialog and hard-disables
     // is_admin / enabled so the user can't accidentally lock themselves out.
     let is_self_edit =
-        ctx.original_username.to_lowercase() == ctx.conn.connection_info.username.to_lowercase();
+        fold_name(ctx.original_username) == fold_name(&ctx.conn.connection_info.username);
 
     let can_update = !ctx.new_username.trim().is_empty() && !ctx.user_management.is_submitting;
 
@@ -1238,7 +1239,7 @@ pub fn users_view<'a>(
                     new_password,
                     is_admin: *is_admin,
                     is_shared: *is_shared,
-                    is_guest: original_username.to_lowercase() == GUEST_USERNAME,
+                    is_guest: fold_name(original_username) == GUEST_USERNAME,
                     enabled: *enabled,
                     permissions,
                     group_id: *group_id,

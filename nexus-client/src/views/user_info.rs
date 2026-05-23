@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use iced::widget::button as btn;
 use iced::widget::{Id, Space, button, column, row, text_input};
 use iced::{Center, Color, Element, Fill, Theme};
+use nexus_common::names::fold_name;
 use nexus_common::protocol::UserInfoDetailed;
 use nexus_common::validators::PasswordStrength;
 
@@ -40,7 +41,7 @@ pub fn user_info_view<'a>(conn: &'a ServerConnection, theme: Theme) -> Element<'
     let viewing_self = data
         .as_ref()
         .and_then(|r| r.as_ref().ok())
-        .is_some_and(|user| user.username.to_lowercase() == current_username.to_lowercase());
+        .is_some_and(|user| fold_name(&user.username) == fold_name(current_username));
 
     match data {
         None => {
@@ -309,7 +310,7 @@ fn build_user_info_content<'a>(
 
     // Role (only shown if is_admin field is present)
     if user.is_admin.is_some() {
-        let is_guest = user.username.to_lowercase() == "guest";
+        let is_guest = fold_name(&user.username) == "guest";
         let role_value = if is_admin {
             t("user-info-role-admin")
         } else if is_guest {

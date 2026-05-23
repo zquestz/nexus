@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use sha2::{Digest, Sha256};
 
 use iced::widget::image;
+use nexus_common::names::fold_name;
 
 use crate::constants::ERR_IDENTICON_GENERATION;
 use crate::image::{CachedImage, decode_data_uri_square};
@@ -67,7 +68,7 @@ pub fn get_or_create_avatar(
     avatar_data_uri: Option<&str>,
 ) -> CachedImage {
     // Normalize key to lowercase for case-insensitive matching
-    let cache_key = nickname.to_lowercase();
+    let cache_key = fold_name(nickname);
 
     // Check if already cached
     if let Some(cached) = cache.get(&cache_key) {
@@ -87,7 +88,7 @@ pub fn get_or_create_avatar(
 
 /// Get the cache key for a nickname (lowercase for case-insensitive lookups)
 pub fn avatar_cache_key(nickname: &str) -> String {
-    nickname.to_lowercase()
+    fold_name(nickname)
 }
 
 // =============================================================================

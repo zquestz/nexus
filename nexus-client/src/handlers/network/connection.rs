@@ -1,6 +1,7 @@
 //! Connection result handlers
 
 use iced::Task;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ChannelJoinInfo, ClientMessage};
 use uuid::Uuid;
 
@@ -292,7 +293,7 @@ impl NexusApp {
         // Initialize channel state from auto-joined channels
         if let Some(conn) = self.connections.get_mut(&ctx.connection_id) {
             for channel_info in &reg.channels {
-                let channel_lower = channel_info.channel.to_lowercase();
+                let channel_lower = fold_name(&channel_info.channel);
 
                 // Create channel state
                 let channel_state = ChannelState::new(
@@ -308,7 +309,7 @@ impl NexusApp {
 
                 // Populate voiced nicknames if provided (requires voice_listen permission)
                 if let Some(ref voiced) = channel_info.voiced {
-                    let voiced_set = voiced.iter().map(|n| n.to_lowercase()).collect();
+                    let voiced_set = voiced.iter().map(|n| fold_name(n)).collect();
                     conn.channel_voiced
                         .insert(channel_lower.clone(), voiced_set);
                 }
@@ -317,12 +318,12 @@ impl NexusApp {
                 if !conn
                     .known_channels
                     .iter()
-                    .any(|c| c.to_lowercase() == channel_lower)
+                    .any(|c| fold_name(c) == channel_lower)
                 {
                     let pos = conn
                         .known_channels
                         .iter()
-                        .position(|c| c.to_lowercase() > channel_lower)
+                        .position(|c| fold_name(c) > channel_lower)
                         .unwrap_or(conn.known_channels.len());
                     conn.known_channels
                         .insert(pos, channel_info.channel.clone());
@@ -365,7 +366,7 @@ impl NexusApp {
             // and nickname comes from server (database-stored case)
             let username = &conn.connection_info.username;
             let nickname = &conn.nickname;
-            let is_shared = nickname.to_lowercase() != username.to_lowercase();
+            let is_shared = fold_name(nickname) != fold_name(username);
             let login_info = match (is_shared, conn.is_admin) {
                 (true, true) => t_args(
                     "msg-logged-in-as-shared-admin",
