@@ -6,6 +6,7 @@ use std::path::Path;
 use tokio::io::AsyncWrite;
 use tracing::warn;
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{FileEntry, ServerMessage};
 use nexus_common::validators::{self, FilePathError};
 
@@ -376,7 +377,7 @@ fn dropbox_context(
                     };
                 }
                 FolderType::UserDropBox(owner) => {
-                    let is_owner = owner.to_lowercase() == username.to_lowercase();
+                    let is_owner = fold_name(&owner) == fold_name(username);
                     return DropboxContext {
                         hide_contents: !is_admin && !is_owner,
                         dropbox_owner: Some(owner),

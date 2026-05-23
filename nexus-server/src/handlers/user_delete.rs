@@ -5,6 +5,7 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 
 use crate::constants::{
@@ -83,7 +84,7 @@ where
             }));
         }
 
-        if target_user.username.to_lowercase() == GUEST_USERNAME {
+        if fold_name(&target_user.username) == GUEST_USERNAME {
             break 'locked Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
                 success: false,
                 error: Some(err_cannot_delete_guest(ctx.locale)),
@@ -720,7 +721,7 @@ mod tests {
 
         let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
-        // Guest is seeded lowercase; the handler's to_lowercase() compare must still block it.
+        // Guest is seeded lowercase; the handler's fold_name() compare must still block it.
         let guest = test_ctx
             .db
             .users

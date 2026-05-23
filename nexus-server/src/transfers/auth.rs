@@ -7,6 +7,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::io::{read_client_message_with_full_timeout, send_server_message_with_id};
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::validators::{self, PasswordError, VersionError};
 use nexus_common::version::{self, CompatibilityResult};
@@ -212,7 +213,7 @@ where
     };
 
     // Validate username (skip for guest which was normalized from empty)
-    if username.to_lowercase() != GUEST_USERNAME
+    if fold_name(&username) != GUEST_USERNAME
         && let Err(_) = validators::validate_username(&username)
     {
         let response = login_error_response(err_invalid_credentials(locale));
@@ -265,7 +266,7 @@ where
     }
 
     if !account.enabled {
-        let error_msg = if username.to_lowercase() == GUEST_USERNAME {
+        let error_msg = if fold_name(&username) == GUEST_USERNAME {
             err_guest_disabled(locale)
         } else {
             err_account_disabled(locale, &username)

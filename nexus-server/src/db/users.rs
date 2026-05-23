@@ -1,11 +1,12 @@
 //! User account database operations
 
+use nexus_common::names::fold_name;
 use nexus_common::validators;
 use nexus_common::validators::{DEFAULT_BANDWIDTH_WEIGHT, resolve_bandwidth_weight};
 use sqlx::{SqliteConnection, SqlitePool};
 
 use super::permissions::{Permission, Permissions};
-use super::util::clamp_db_bandwidth_weight;
+use super::util::{clamp_db_bandwidth_weight, is_unique_violation};
 use crate::db::sql;
 
 pub struct CreateUserParams<'a> {
@@ -205,7 +206,7 @@ impl UserDb {
         Ok(row.map(UserAccount::from))
     }
 
-    /// Case-insensitive lookup (column-level `COLLATE NOCASE`).
+    /// Case-insensitive lookup via the folded `username_lower` key (`fold_name`).
     pub async fn get_user_by_username(
         &self,
         username: &str,
@@ -216,14 +217,14 @@ impl UserDb {
         }
 
         let row: Option<UserRow> = sqlx::query_as(sql::SQL_SELECT_USER_BY_USERNAME)
-            .bind(username)
+            .bind(fold_name(username))
             .fetch_optional(&self.pool)
             .await?;
 
         Ok(row.map(UserAccount::from))
     }
 
-    /// Case-insensitive existence check.
+    /// Case-insensitive existence check via the folded `username_lower` key.
     pub async fn username_exists(&self, username: &str) -> Result<bool, sqlx::Error> {
         // Failsafe validation — handlers should also validate.
         if let Err(e) = validators::validate_username(username) {
@@ -231,7 +232,7 @@ impl UserDb {
         }
 
         let (count,): (i64,) = sqlx::query_as(sql::SQL_CHECK_USERNAME_EXISTS)
-            .bind(username)
+            .bind(fold_name(username))
             .fetch_one(&self.pool)
             .await?;
         Ok(count > 0)
@@ -583,6 +584,7 @@ impl UserDb {
 
         let result = sqlx::query(sql::SQL_INSERT_USER)
             .bind(params.username)
+            .bind(fold_name(params.username))
             .bind(params.hashed_password)
             .bind(params.is_admin)
             .bind(params.is_shared)
@@ -682,6 +684,7 @@ impl UserDb {
 
         let result = sqlx::query(sql::SQL_INSERT_USER)
             .bind(username)
+            .bind(fold_name(username))
             .bind(hashed_password)
             .bind(true) // is_admin = true
             .bind(false) // is_shared = false (first user cannot be shared)
@@ -780,7 +783,7 @@ impl UserDb {
         };
 
         if let Some(new_name) = params.new_username
-            && new_name != params.username
+            && fold_name(new_name) != fold_name(params.username)
             && self.get_user_by_username(new_name).await?.is_some()
         {
             return Ok(UpdateUserResult::Blocked);
@@ -855,8 +858,9 @@ impl UserDb {
         // The SQL includes conditions to prevent:
         // 1. Disabling the last enabled admin
         // 2. Demoting the last admin
-        let result = sqlx::query(sql::SQL_UPDATE_USER)
+        let result = match sqlx::query(sql::SQL_UPDATE_USER)
             .bind(final_username)
+            .bind(fold_name(final_username))
             .bind(final_password)
             .bind(final_is_admin)
             .bind(final_enabled)
@@ -866,7 +870,19 @@ impl UserDb {
             .bind(final_is_admin) // Final admin status for the "promoting" check
             .bind(params.requester_is_admin) // Non-admin cannot edit admin target
             .execute(&mut *tx)
-            .await?;
+            .await
+        {
+            Ok(r) => r,
+            // `username_lower` UNIQUE collision: a fold-equal username exists.
+            // Pre-checked above and serialized under `user_state_lock`, so
+            // normally unreachable — map to Blocked (→ err_username_exists),
+            // never a generic DB error.
+            Err(e) if is_unique_violation(&e) => {
+                tx.rollback().await?;
+                return Ok(UpdateUserResult::Blocked);
+            }
+            Err(e) => return Err(e),
+        };
 
         // 0 rows affected: last-admin protection blocked it, or the user
         // is gone. Roll back and re-read to distinguish the cases (the
@@ -1287,6 +1303,54 @@ mod tests {
             })
             .await;
         assert!(result.is_err()); // Should fail due to unique constraint
+    }
+
+    #[tokio::test]
+    async fn test_username_unicode_case_insensitive() {
+        let pool = create_test_db().await;
+        let db = UserDb::new(pool.clone());
+
+        // Non-ASCII case pair: uppercase É folds to é only under the Unicode
+        // `username_lower`. The old ASCII-only COLLATE NOCASE kept them distinct,
+        // so these lookups missed and the duplicate create wrongly succeeded.
+        db.create_user(CreateUserParams {
+            username: "Éclair",
+            hashed_password: "hash",
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: &Permissions::new(),
+            group_id: None,
+            revokes: &[],
+            bandwidth_weight: None,
+        })
+        .await
+        .unwrap();
+
+        let lower = db.get_user_by_username("éclair").await.unwrap().unwrap();
+        let upper = db.get_user_by_username("ÉCLAIR").await.unwrap().unwrap();
+        assert_eq!(lower.id, upper.id);
+        // Original case preserved in the stored row.
+        assert_eq!(lower.username, "Éclair");
+
+        assert!(db.username_exists("éclair").await.unwrap());
+        assert!(db.username_exists("ÉCLAIR").await.unwrap());
+
+        // A differently-cased duplicate violates the folded unique index.
+        let result = db
+            .create_user(CreateUserParams {
+                username: "éclair",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await;
+        assert!(result.is_err());
     }
 
     #[tokio::test]

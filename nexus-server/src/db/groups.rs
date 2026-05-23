@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::GroupInfo;
 use nexus_common::validators;
 use sqlx::SqliteConnection;
@@ -99,7 +100,7 @@ impl GroupDb {
     /// Get a single group by name (case-insensitive)
     pub async fn get_group_by_name(&self, name: &str) -> Result<Option<GroupRecord>, sqlx::Error> {
         let row: Option<GroupRow> = sqlx::query_as(sql::SQL_SELECT_GROUP_BY_NAME)
-            .bind(name)
+            .bind(fold_name(name))
             .fetch_optional(&self.pool)
             .await?;
 
@@ -255,6 +256,7 @@ impl GroupDb {
 
         let result = sqlx::query(sql::SQL_INSERT_GROUP)
             .bind(name)
+            .bind(fold_name(name))
             .bind(is_shared)
             .bind(i64::from(bandwidth_weight))
             .execute(&mut *tx)
@@ -309,6 +311,7 @@ impl GroupDb {
 
         let result = sqlx::query(sql::SQL_UPDATE_GROUP)
             .bind(name)
+            .bind(fold_name(name))
             .bind(is_shared)
             .bind(i64::from(bandwidth_weight))
             .bind(id)
@@ -458,6 +461,29 @@ mod tests {
             .create_group("ADMINS", false, &Permissions::new(), 1)
             .await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_create_group_duplicate_name_unicode() {
+        let pool = create_test_db().await;
+        let group_db = GroupDb::new(pool);
+
+        // Non-ASCII case pair (uppercase É folds to é) collides only via the
+        // folded `name_lower`; the old ASCII-only COLLATE NOCASE kept them
+        // distinct, so this duplicate would wrongly succeed and the lookup miss.
+        group_db
+            .create_group("Équipe", false, &Permissions::new(), 1)
+            .await
+            .unwrap();
+
+        let result = group_db
+            .create_group("équipe", false, &Permissions::new(), 1)
+            .await;
+        assert!(result.is_err());
+
+        // Lookup with arbitrary case resolves the same group; stored name keeps case.
+        let found = group_db.get_group_by_name("ÉQUIPE").await.unwrap().unwrap();
+        assert_eq!(found.name, "Équipe");
     }
 
     #[tokio::test]

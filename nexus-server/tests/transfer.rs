@@ -7,6 +7,7 @@ use std::io::Cursor;
 
 use common::create_test_db;
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId, RawFrame};
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_server::db::{self, CreateUserParams, Permission, Permissions};
 use tempfile::TempDir;
@@ -82,7 +83,7 @@ fn test_dropbox_path_parsing() {
     ));
 
     match parse_folder_type("For Alice [NEXUS-DB-alice]") {
-        FolderType::UserDropBox(owner) => assert_eq!(owner.to_lowercase(), "alice"),
+        FolderType::UserDropBox(owner) => assert_eq!(fold_name(&owner), "alice"),
         _ => panic!("Expected UserDropBox"),
     }
 
@@ -629,7 +630,7 @@ fn test_dropbox_access_rules() {
     // User dropbox: named user and admins only.
     match parse_folder_type("For Alice [NEXUS-DB-alice]") {
         FolderType::UserDropBox(owner) => {
-            assert_eq!(owner.to_lowercase(), "alice");
+            assert_eq!(fold_name(&owner), "alice");
         }
         _ => panic!("Expected UserDropBox"),
     }

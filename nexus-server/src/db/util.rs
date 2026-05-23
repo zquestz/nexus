@@ -5,6 +5,16 @@ use tracing::warn;
 
 use crate::constants::LOG_BANDWIDTH_WEIGHT_CLAMPED;
 
+/// True if `err` is a UNIQUE-constraint violation.
+///
+/// Used to map a `username_lower` collision (the folded-username uniqueness
+/// backstop) to a "username already exists" response rather than a generic DB
+/// error. Handler pre-checks under `user_state_lock` make this normally
+/// unreachable; it's the atomic safety net.
+pub fn is_unique_violation(err: &sqlx::Error) -> bool {
+    matches!(err, sqlx::Error::Database(db) if db.is_unique_violation())
+}
+
 /// Clamp a raw `i64` bandwidth weight from a DB row into the valid `u16`
 /// range. Defends against corrupt rows (operator hand-edits, restored
 /// backup); all writer paths validate, so this is normally the identity.

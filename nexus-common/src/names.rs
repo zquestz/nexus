@@ -1,22 +1,31 @@
-//! Canonical case-insensitive folding for user-facing names (usernames and
-//! nicknames).
+//! Canonical case-insensitive folding for user-facing names — usernames,
+//! display nicknames, channel names, group names, tracker names, and ban/trust
+//! nickname annotations.
 //!
-//! Usernames and nicknames share one identity namespace, so every
-//! case-insensitive treatment of them — uniqueness, lookup, message routing,
-//! and incidental folding alike — must use the *same* rule, or two names that
-//! fold to the same key get treated as distinct (or vice versa). [`fold_name`]
-//! is that single rule: route all username/nickname lowercasing through it. A
-//! bare `to_lowercase()` on a name is a bug.
+//! Every case-insensitive treatment of a name — uniqueness, lookup, message
+//! routing, sorting, dedup, and incidental folding alike — must use the *same*
+//! rule, or two names that fold to one key get treated as distinct (or vice
+//! versa). [`fold_name`] is that single rule: a bare `to_lowercase()` on a name
+//! is a bug.
+//!
+//! Usernames and display nicknames additionally share *one* identity namespace
+//! — a username must not collide with an active nickname (and vice versa), so
+//! both fold identically. Channel, group, and tracker names are each their own
+//! single namespace (case-insensitive uniqueness + lookup). Ban/trust nicknames
+//! fold only for case-insensitive lookup/delete — they annotate a ban, they
+//! aren't a unique identity. All route through [`fold_name`] so the whole name
+//! surface shares one case rule.
 
 /// Returns the canonical case-insensitive comparison key for a user-facing
-/// name (username or nickname).
+/// name (username, nickname, channel / group / tracker name, or ban/trust
+/// nickname).
 ///
 /// Currently full Unicode lowercase ([`str::to_lowercase`]) — unlike SQLite's
 /// `COLLATE NOCASE` / `lower()`, which fold ASCII only. If this ever needs to
 /// grow (e.g. NFC normalization), it changes here and every caller folds
 /// identically.
 ///
-/// Not for non-name strings — IP addresses, file paths, channel names, etc.
+/// Not for non-name strings — IP addresses, file paths, search terms, etc.
 /// keep their own folding.
 pub fn fold_name(name: &str) -> String {
     name.to_lowercase()

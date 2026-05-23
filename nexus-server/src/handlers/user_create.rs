@@ -475,6 +475,17 @@ where
                     username: Some(username),
                 }))
             }
+            // `username_lower` UNIQUE collision (the folded-uniqueness backstop
+            // behind the pre-check above) — report as "username exists", not a
+            // generic DB error.
+            Err(e) if crate::db::is_unique_violation(&e) => {
+                Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
+                    success: false,
+                    error: Some(err_username_exists(ctx.locale, &username)),
+                    id: None,
+                    username: None,
+                }))
+            }
             Err(e) => {
                 error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_CREATE_DB_ERROR);
                 Outcome::Send(Box::new(ServerMessage::UserCreateResponse {
@@ -709,6 +720,63 @@ mod tests {
                 assert!(
                     error_msg.contains("exists") || error_msg.contains("already"),
                     "Error should mention username already exists, got: {}",
+                    error_msg
+                );
+            }
+            _ => panic!("Expected UserCreateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_usercreate_duplicate_username_unicode() {
+        let mut test_ctx = create_test_context().await;
+        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Pre-existing user; the create below differs only by Unicode case
+        // (É vs é), which collides solely through the folded username_lower index.
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "Éclair",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let result = handle_user_create(
+            UserCreateRequest {
+                username: "éclair".to_string(),
+                password: "newpassword".to_string(),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: vec![],
+                group_id: None,
+                revokes: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: None,
+            },
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserCreateResponse { success, error, .. } => {
+                assert!(!success, "differently-cased duplicate should be rejected");
+                let error_msg = error.expect("should have error message");
+                assert!(
+                    error_msg.contains("exists") || error_msg.contains("already"),
+                    "got: {}",
                     error_msg
                 );
             }

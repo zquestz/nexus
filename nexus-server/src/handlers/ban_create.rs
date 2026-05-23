@@ -5,6 +5,7 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, BanReasonError, DurationError, TargetError};
 
@@ -384,7 +385,7 @@ where
             return Err(TargetResolutionError::IsAdmin);
         }
 
-        if session.username.to_lowercase() == requesting_username.to_lowercase() {
+        if fold_name(&session.username) == fold_name(requesting_username) {
             return Err(TargetResolutionError::IsSelf);
         }
 

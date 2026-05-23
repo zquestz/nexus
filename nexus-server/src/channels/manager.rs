@@ -12,6 +12,7 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 
+use nexus_common::names::fold_name;
 use nexus_common::validators::MAX_CHANNELS_PER_USER;
 
 use super::types::{Channel, ChannelListInfo, JoinError, JoinPolicy, JoinResult, LeaveResult};
@@ -45,7 +46,7 @@ impl ChannelManager {
         let mut persistent = self.persistent_channels.write().await;
 
         for channel in channels_with_settings {
-            let key = channel.name.to_lowercase();
+            let key = fold_name(&channel.name);
             persistent.insert(key.clone());
             channels.insert(key, channel);
         }
@@ -59,7 +60,7 @@ impl ChannelManager {
 
         let new_persistent: HashSet<String> = channels_with_settings
             .iter()
-            .map(|ch| ch.name.to_lowercase())
+            .map(|ch| fold_name(&ch.name))
             .collect();
 
         let old_persistent = std::mem::take(&mut *persistent);
@@ -77,7 +78,7 @@ impl ChannelManager {
         }
 
         for channel in channels_with_settings {
-            let key = channel.name.to_lowercase();
+            let key = fold_name(&channel.name);
             persistent.insert(key.clone());
             // Don't overwrite an existing channel — preserve its members.
             channels.entry(key).or_insert(channel);
@@ -86,7 +87,7 @@ impl ChannelManager {
 
     #[cfg(test)]
     pub async fn is_persistent(&self, channel_name: &str) -> bool {
-        let key = channel_name.to_lowercase();
+        let key = fold_name(channel_name);
         let persistent = self.persistent_channels.read().await;
         persistent.contains(&key)
     }
@@ -99,7 +100,7 @@ impl ChannelManager {
         session_id: u32,
         policy: JoinPolicy,
     ) -> Result<JoinResult, JoinError> {
-        let key = channel_name.to_lowercase();
+        let key = fold_name(channel_name);
         let mut channels = self.channels.write().await;
 
         // Already-a-member doesn't count against the channel limit.
@@ -151,7 +152,7 @@ impl ChannelManager {
     ///
     /// Note: Persistent channels are never deleted even if empty.
     pub async fn leave(&self, channel_name: &str, session_id: u32) -> Option<LeaveResult> {
-        let key = channel_name.to_lowercase();
+        let key = fold_name(channel_name);
         let mut channels = self.channels.write().await;
         let persistent = self.persistent_channels.read().await;
 
@@ -230,7 +231,7 @@ impl ChannelManager {
                 // We can only count sessions we can map to an active user.
                 // If a session disappeared, skipping it is fine for display.
                 if let Some(user) = self.user_manager.get_user_by_session_id(sid).await {
-                    seen.insert(user.nickname.to_lowercase());
+                    seen.insert(fold_name(&user.nickname));
                 }
             }
 
@@ -248,7 +249,7 @@ impl ChannelManager {
     /// Returns Ok(true) if channel exists and was updated, Ok(false) if channel doesn't exist.
     /// Returns Err on database error (only possible for persistent channels).
     pub async fn set_secret(&self, channel_name: &str, secret: bool) -> io::Result<bool> {
-        let key = channel_name.to_lowercase();
+        let key = fold_name(channel_name);
         let mut channels = self.channels.write().await;
 
         if !channels.contains_key(&key) {
@@ -279,7 +280,7 @@ impl ChannelManager {
         topic: Option<String>,
         set_by: Option<String>,
     ) -> io::Result<bool> {
-        let key = channel_name.to_lowercase();
+        let key = fold_name(channel_name);
         let mut channels = self.channels.write().await;
 
         if !channels.contains_key(&key) {
@@ -308,7 +309,7 @@ impl ChannelManager {
     }
 
     pub async fn is_member(&self, channel_name: &str, session_id: u32) -> bool {
-        let key = channel_name.to_lowercase();
+        let key = fold_name(channel_name);
         let channels = self.channels.read().await;
 
         channels
@@ -318,7 +319,7 @@ impl ChannelManager {
 
     /// Returns None if the channel doesn't exist.
     pub async fn get_members(&self, channel_name: &str) -> Option<Vec<u32>> {
-        let key = channel_name.to_lowercase();
+        let key = fold_name(channel_name);
         let channels = self.channels.read().await;
 
         channels
@@ -340,13 +341,13 @@ impl ChannelManager {
             .map(|ch| ch.name.clone())
             .collect();
 
-        result.sort_by_key(|a| a.to_lowercase());
+        result.sort_by_key(|a| fold_name(a));
         result
     }
 
     #[cfg(test)]
     pub async fn get_channel(&self, channel_name: &str) -> Option<Channel> {
-        let key = channel_name.to_lowercase();
+        let key = fold_name(channel_name);
         let channels = self.channels.read().await;
         channels.get(&key).cloned()
     }

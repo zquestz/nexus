@@ -5,6 +5,7 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::warn;
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 
 use crate::constants::{
@@ -118,7 +119,7 @@ where
 
         // Build canonical sorted array [nick1, nick2]
         let mut pair = vec![user.nickname.clone(), target];
-        pair.sort_by_key(|a| a.to_lowercase());
+        pair.sort_by_key(|a| fold_name(a));
         pair
     };
 
@@ -151,7 +152,7 @@ where
     };
 
     participants.push(user.nickname.clone());
-    participants.sort_by_key(|a| a.to_lowercase());
+    participants.sort_by_key(|a| fold_name(a));
 
     if broadcast_joined {
         if is_channel {
@@ -185,7 +186,7 @@ where
         } else {
             // User messages: only notify the other participant.
             for participant_nickname in &participants {
-                if participant_nickname.to_lowercase() == user.nickname.to_lowercase() {
+                if fold_name(participant_nickname) == fold_name(&user.nickname) {
                     continue;
                 }
 

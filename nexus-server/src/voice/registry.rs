@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use nexus_common::names::fold_name;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
@@ -46,8 +47,8 @@ impl VoiceRegistry {
     pub async fn add(&self, session: VoiceSession) -> Option<AddOutcome> {
         let token = session.token;
         let session_id = session.session_id;
-        let target_key_lower = session.target_key().to_lowercase();
-        let nickname_lower = session.nickname.to_lowercase();
+        let target_key_lower = fold_name(&session.target_key());
+        let nickname_lower = fold_name(&session.nickname);
 
         let mut sessions = self.sessions.write().await;
         let mut id_to_token = self.session_id_to_token.write().await;
@@ -57,8 +58,8 @@ impl VoiceRegistry {
         }
 
         let nickname_already_in_target = sessions.values().any(|s| {
-            s.target_key().to_lowercase() == target_key_lower
-                && s.nickname.to_lowercase() == nickname_lower
+            fold_name(&s.target_key()) == target_key_lower
+                && fold_name(&s.nickname) == nickname_lower
         });
 
         sessions.insert(token, session);
@@ -122,7 +123,7 @@ impl VoiceRegistry {
             session
                 .target
                 .iter()
-                .find(|n| n.to_lowercase() != session.nickname.to_lowercase())
+                .find(|n| fold_name(n) != fold_name(&session.nickname))
                 .cloned()
                 .unwrap_or_default()
         };
@@ -182,12 +183,12 @@ impl VoiceRegistry {
         exclude_session_id: Option<u32>,
     ) -> bool {
         let sessions = self.sessions.read().await;
-        let target_lower = target_key.to_lowercase();
-        let nickname_lower = nickname.to_lowercase();
+        let target_key_lower = fold_name(target_key);
+        let nickname_lower = fold_name(nickname);
 
         sessions.values().any(|s| {
-            s.target_key().to_lowercase() == target_lower
-                && s.nickname.to_lowercase() == nickname_lower
+            fold_name(&s.target_key()) == target_key_lower
+                && fold_name(&s.nickname) == nickname_lower
                 && exclude_session_id != Some(s.session_id)
         })
     }
@@ -195,11 +196,11 @@ impl VoiceRegistry {
     /// Nicknames currently in voice for the given target.
     pub async fn get_participants(&self, target_key: &str) -> Vec<String> {
         let sessions = self.sessions.read().await;
-        let target_lower = target_key.to_lowercase();
+        let target_key_lower = fold_name(target_key);
 
         sessions
             .values()
-            .filter(|s| s.target_key().to_lowercase() == target_lower)
+            .filter(|s| fold_name(&s.target_key()) == target_key_lower)
             .map(|s| s.nickname.clone())
             .collect()
     }
@@ -207,11 +208,11 @@ impl VoiceRegistry {
     /// Cloned sessions for the target (for broadcasting voice events).
     pub async fn get_sessions_for_target(&self, target_key: &str) -> Vec<VoiceSession> {
         let sessions = self.sessions.read().await;
-        let target_lower = target_key.to_lowercase();
+        let target_key_lower = fold_name(target_key);
 
         sessions
             .values()
-            .filter(|s| s.target_key().to_lowercase() == target_lower)
+            .filter(|s| fold_name(&s.target_key()) == target_key_lower)
             .cloned()
             .collect()
     }

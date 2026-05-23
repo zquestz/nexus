@@ -8,6 +8,8 @@
 
 use std::path::Path;
 
+use nexus_common::names::fold_name;
+
 use crate::constants::{FOLDER_SUFFIX_DROPBOX, FOLDER_SUFFIX_DROPBOX_PREFIX, FOLDER_SUFFIX_UPLOAD};
 
 /// Type of folder based on suffix convention
@@ -123,7 +125,7 @@ pub fn parse_folder_type(name: &str) -> FolderType {
 /// drop-box ancestor exists at all.
 #[must_use]
 pub fn in_owned_dropbox(target: &Path, area_root: &Path, username: &str) -> bool {
-    let username_lower = username.to_lowercase();
+    let username_lower = fold_name(username);
     let mut path = target.parent();
 
     while let Some(current) = path {
@@ -136,7 +138,7 @@ pub fn in_owned_dropbox(target: &Path, area_root: &Path, username: &str) -> bool
                     // Innermost-wins: the first drop-box ancestor defines
                     // the scope. Bypass only applies if that ancestor is
                     // ours.
-                    return owner.to_lowercase() == username_lower;
+                    return fold_name(&owner) == username_lower;
                 }
                 FolderType::DropBox => {
                     // Generic drop box has no owner — scope is admin-only.

@@ -3,6 +3,7 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, KickReasonError, NicknameError};
 
@@ -90,8 +91,8 @@ where
     }
 
     // Prevent self-kick by nickname (display name), before DB queries.
-    let target_lower = nickname.to_lowercase();
-    let is_self_kick = requesting_user_session.nickname.to_lowercase() == target_lower;
+    let target_lower = fold_name(&nickname);
+    let is_self_kick = fold_name(&requesting_user_session.nickname) == target_lower;
     if is_self_kick {
         let response = ServerMessage::UserKickResponse {
             success: false,

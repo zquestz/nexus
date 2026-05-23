@@ -4,6 +4,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::AsyncWrite;
 use tracing::warn;
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ChatAction, ServerMessage};
 use nexus_common::validators::{self, MessageError, NicknameError};
 
@@ -136,8 +137,8 @@ where
     }
 
     // Prevent self-messaging by nickname (display name), before DB queries.
-    let to_nickname_lower = to_nickname.to_lowercase();
-    let is_self_message = requesting_user_session.nickname.to_lowercase() == to_nickname_lower;
+    let to_nickname_lower = fold_name(&to_nickname);
+    let is_self_message = fold_name(&requesting_user_session.nickname) == to_nickname_lower;
     if is_self_message {
         let response = ServerMessage::UserMessageResponse {
             success: false,

@@ -468,6 +468,71 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn rejects_duplicate_name_unicode() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::TrackerEdit],
+            false,
+        )
+        .await;
+
+        test_ctx
+            .db
+            .trackers
+            .create(CreateTrackerParams {
+                address: "first.example.com",
+                port: 7510,
+                fingerprint: None,
+                password: None,
+                name: "Équipe",
+                enabled: true,
+            })
+            .await
+            .expect("create first");
+        let second = test_ctx
+            .db
+            .trackers
+            .create(CreateTrackerParams {
+                address: "second.example.com",
+                port: 7510,
+                fingerprint: None,
+                password: None,
+                name: "Other",
+                enabled: true,
+            })
+            .await
+            .expect("create second");
+
+        // Rename `second` to a Unicode-case variant of "Équipe" — collides via
+        // the folded name_lower, which ASCII NOCASE would miss.
+        let result = handle_tracker_update(
+            TrackerUpdateRequest {
+                id: second.id,
+                address: "second.example.com".to_string(),
+                port: 7510,
+                fingerprint: None,
+                password: None,
+                name: "équipe".to_string(),
+                enabled: true,
+            },
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert!(error.is_some());
+            }
+            other => panic!("Expected TrackerUpdateResponse, got {other:?}"),
+        }
+    }
+
     /// Concurrent TrackerUpdate + TrackerRemove must not leave an orphan
     /// task (respawned for a deleted row) or a missing task. The lifecycle
     /// lock prevents both; the invariant helper catches either failure.

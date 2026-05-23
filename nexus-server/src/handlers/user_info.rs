@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 use tokio::io::AsyncWrite;
 use tracing::{error, warn};
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ServerMessage, UserInfoDetailed};
 use nexus_common::validators::{self, NicknameError};
 
@@ -188,7 +189,7 @@ where
         all_channels.extend(session_channels);
     }
     let mut channels: Vec<String> = all_channels.into_iter().collect();
-    channels.sort_by_key(|a| a.to_lowercase());
+    channels.sort_by_key(|a| fold_name(a));
     let channels = if channels.is_empty() {
         None
     } else {

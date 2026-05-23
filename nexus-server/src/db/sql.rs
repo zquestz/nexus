@@ -16,19 +16,24 @@ pub const SQL_GET_TRACKER_CONFIG_FIELDS: &str = "SELECT key, value FROM config W
 pub const GUEST_USERNAME: &str = "guest";
 
 /// Excludes the guest account so the first non-guest user becomes admin.
-pub const SQL_COUNT_NON_GUEST_USERS: &str = "SELECT COUNT(*) FROM users WHERE username != 'guest'";
+/// Matches on the folded `username_lower` (the literal is already folded).
+pub const SQL_COUNT_NON_GUEST_USERS: &str =
+    "SELECT COUNT(*) FROM users WHERE username_lower != 'guest'";
 
-/// Case-insensitive matching is enforced by the column's `COLLATE NOCASE`;
-/// the original case is preserved in the stored row.
-pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id, bandwidth_weight FROM users WHERE username = ?";
+/// Case-insensitive matching via the folded `username_lower` column (written
+/// as `fold_name(username)`); the original case is preserved in `username`.
+/// Bind the folded form (`fold_name(input)`), not the raw input.
+pub const SQL_SELECT_USER_BY_USERNAME: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id, bandwidth_weight FROM users WHERE username_lower = ?";
 
-pub const SQL_GET_GUEST_ENABLED: &str = "SELECT enabled FROM users WHERE username = 'guest'";
+pub const SQL_GET_GUEST_ENABLED: &str = "SELECT enabled FROM users WHERE username_lower = 'guest'";
 
-/// Results are sorted alphabetically by username (case-insensitive via the
-/// column's `COLLATE NOCASE`).
-pub const SQL_SELECT_ALL_USERS: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id, bandwidth_weight FROM users ORDER BY username";
+/// Results are sorted alphabetically by the folded `username_lower`
+/// (case-insensitive); the original-case `username` is returned for display.
+pub const SQL_SELECT_ALL_USERS: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id, bandwidth_weight FROM users ORDER BY username_lower";
 
-pub const SQL_CHECK_USERNAME_EXISTS: &str = "SELECT COUNT(*) FROM users WHERE username = ?";
+/// Case-insensitive via the folded `username_lower` column; bind
+/// `fold_name(input)`.
+pub const SQL_CHECK_USERNAME_EXISTS: &str = "SELECT COUNT(*) FROM users WHERE username_lower = ?";
 
 /// `override_type` is either `'grant'` or `'revoke'`.
 pub const SQL_SELECT_PERMISSIONS: &str =
@@ -92,7 +97,9 @@ pub const SQL_UPSERT_REVOKE_PERMISSION: &str = "INSERT INTO user_permissions (us
 /// alone. Symmetric to `SQL_DELETE_GRANT_PERMISSION`.
 pub const SQL_DELETE_REVOKE_PERMISSION: &str = "DELETE FROM user_permissions WHERE user_id = ? AND permission = ? AND override_type = 'revoke'";
 
-pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, is_admin, is_shared, enabled, created_at, group_id, bandwidth_weight) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+/// `username_lower` must be bound as `fold_name(username)` — the folded
+/// uniqueness/lookup key (its `UNIQUE` index is case-insensitivity's authority).
+pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, username_lower, password_hash, is_admin, is_shared, enabled, created_at, group_id, bandwidth_weight) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
 /// `is_shared` is not updated — it is immutable once set at creation.
 ///
@@ -101,7 +108,7 @@ pub const SQL_INSERT_USER: &str = "INSERT INTO users (username, password_hash, i
 /// admins, and a concurrent promotion can't let a non-admin's in-flight edit
 /// land on a now-admin row. Returns 0 rows affected if blocked.
 pub const SQL_UPDATE_USER: &str = "UPDATE users
-    SET username = ?, password_hash = ?, is_admin = ?, enabled = ?, bandwidth_weight = ?
+    SET username = ?, username_lower = ?, password_hash = ?, is_admin = ?, enabled = ?, bandwidth_weight = ?
     WHERE id = ?
     AND (
         -- Enabled protection: allow enabling, allow non-admin disable, allow if multiple enabled admins
@@ -186,15 +193,15 @@ pub const SQL_UPDATE_NEWS: &str = "
 
 pub const SQL_DELETE_NEWS: &str = "DELETE FROM news WHERE id = ?";
 
-/// `ORDER BY name` uses the column's `COLLATE NOCASE`, so the sort is
-/// case-insensitive; no tiebreaker needed because two rows can't have
-/// case-equivalent names. `port` is stored as INTEGER but always fits in
-/// `u16` (protocol-layer validation rejects out-of-range ports before insert).
+/// `ORDER BY name_lower` (the folded key) sorts case-insensitively; no
+/// tiebreaker needed because two rows can't have case-equivalent names. `port`
+/// is stored as INTEGER but always fits in `u16` (protocol-layer validation
+/// rejects out-of-range ports before insert).
 pub const SQL_SELECT_ALL_TRACKERS: &str = "
     SELECT id, address, port, fingerprint, password, name, enabled,
            created_at, updated_at
     FROM trackers
-    ORDER BY name";
+    ORDER BY name_lower";
 
 pub const SQL_SELECT_TRACKER_BY_ID: &str = "
     SELECT id, address, port, fingerprint, password, name, enabled,
@@ -209,9 +216,9 @@ pub const SQL_SELECT_TRACKER_BY_ID: &str = "
 /// via `rows_affected()`. Fails with a UNIQUE violation on a duplicate
 /// `(address, port)`.
 pub const SQL_INSERT_TRACKER: &str = "
-    INSERT INTO trackers (address, port, fingerprint, password, name, enabled,
-                          created_at, updated_at)
-    SELECT ?, ?, ?, ?, ?, ?, ?, ?
+    INSERT INTO trackers (address, port, fingerprint, password, name, name_lower,
+                          enabled, created_at, updated_at)
+    SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
     WHERE (SELECT COUNT(*) FROM trackers) < ?";
 
 /// `created_at` is preserved. Fails with a UNIQUE violation if changing
@@ -219,7 +226,7 @@ pub const SQL_INSERT_TRACKER: &str = "
 pub const SQL_UPDATE_TRACKER: &str = "
     UPDATE trackers
     SET address = ?, port = ?, fingerprint = ?, password = ?, name = ?,
-        enabled = ?, updated_at = ?
+        name_lower = ?, enabled = ?, updated_at = ?
     WHERE id = ?";
 
 /// Narrow update of only the fingerprint pin and `updated_at`. Used on TOFU
@@ -234,10 +241,11 @@ pub const SQL_DELETE_TRACKER: &str = "DELETE FROM trackers WHERE id = ?";
 
 /// `ON CONFLICT(ip_address)` updates all fields if the IP already exists.
 pub const SQL_UPSERT_BAN: &str = "
-    INSERT INTO ip_bans (ip_address, nickname, reason, created_by, created_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO ip_bans (ip_address, nickname, nickname_lower, reason, created_by, created_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(ip_address) DO UPDATE SET
         nickname = excluded.nickname,
+        nickname_lower = excluded.nickname_lower,
         reason = excluded.reason,
         created_by = excluded.created_by,
         created_at = excluded.created_at,
@@ -252,11 +260,12 @@ pub const SQL_SELECT_BAN_BY_IP_UNFILTERED: &str = "
 pub const SQL_DELETE_BAN_BY_IP: &str = "DELETE FROM ip_bans WHERE ip_address = ?";
 
 pub const SQL_SELECT_IPS_BY_NICKNAME: &str = "
-    SELECT ip_address FROM ip_bans WHERE nickname = ?";
+    SELECT ip_address FROM ip_bans WHERE nickname_lower = ?";
 
-pub const SQL_DELETE_BANS_BY_NICKNAME: &str = "DELETE FROM ip_bans WHERE nickname = ?";
+pub const SQL_DELETE_BANS_BY_NICKNAME: &str = "DELETE FROM ip_bans WHERE nickname_lower = ?";
 
-pub const SQL_COUNT_BANS_BY_NICKNAME: &str = "SELECT COUNT(*) FROM ip_bans WHERE nickname = ?";
+pub const SQL_COUNT_BANS_BY_NICKNAME: &str =
+    "SELECT COUNT(*) FROM ip_bans WHERE nickname_lower = ?";
 
 /// Sorted by creation time (newest first).
 pub const SQL_SELECT_ACTIVE_BANS: &str = "
@@ -273,10 +282,11 @@ pub const SQL_DELETE_EXPIRED_BANS: &str = "
 
 /// `ON CONFLICT(ip_address)` updates all fields if the entry already exists.
 pub const SQL_UPSERT_TRUST: &str = "
-    INSERT INTO ip_trusted (ip_address, nickname, reason, created_by, created_at, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO ip_trusted (ip_address, nickname, nickname_lower, reason, created_by, created_at, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(ip_address) DO UPDATE SET
         nickname = excluded.nickname,
+        nickname_lower = excluded.nickname_lower,
         reason = excluded.reason,
         created_by = excluded.created_by,
         created_at = excluded.created_at,
@@ -291,11 +301,12 @@ pub const SQL_SELECT_TRUST_BY_IP_UNFILTERED: &str = "
 pub const SQL_DELETE_TRUST_BY_IP: &str = "DELETE FROM ip_trusted WHERE ip_address = ?";
 
 pub const SQL_SELECT_TRUSTED_IPS_BY_NICKNAME: &str = "
-    SELECT ip_address FROM ip_trusted WHERE nickname = ?";
+    SELECT ip_address FROM ip_trusted WHERE nickname_lower = ?";
 
-pub const SQL_DELETE_TRUSTS_BY_NICKNAME: &str = "DELETE FROM ip_trusted WHERE nickname = ?";
+pub const SQL_DELETE_TRUSTS_BY_NICKNAME: &str = "DELETE FROM ip_trusted WHERE nickname_lower = ?";
 
-pub const SQL_COUNT_TRUSTS_BY_NICKNAME: &str = "SELECT COUNT(*) FROM ip_trusted WHERE nickname = ?";
+pub const SQL_COUNT_TRUSTS_BY_NICKNAME: &str =
+    "SELECT COUNT(*) FROM ip_trusted WHERE nickname_lower = ?";
 
 /// Sorted by creation time (newest first).
 pub const SQL_SELECT_ACTIVE_TRUSTS: &str = "
@@ -310,17 +321,19 @@ pub const SQL_DELETE_EXPIRED_TRUSTS: &str = "
     DELETE FROM ip_trusted
     WHERE expires_at IS NOT NULL AND expires_at <= ?";
 
-/// Member count and permissions are fetched separately per group.
+/// Member count and permissions are fetched separately per group. Ordered by
+/// the folded `name_lower` for Unicode-consistent display ordering.
 pub const SQL_SELECT_ALL_GROUPS: &str =
-    "SELECT id, name, is_shared, bandwidth_weight FROM groups ORDER BY name";
+    "SELECT id, name, is_shared, bandwidth_weight FROM groups ORDER BY name_lower";
 
 pub const SQL_SELECT_GROUP_BY_ID: &str =
     "SELECT id, name, is_shared, bandwidth_weight FROM groups WHERE id = ?";
 
-/// Case-insensitive matching is enforced by the column's `COLLATE NOCASE`;
-/// the original case is preserved in the stored row.
+/// Case-insensitive matching via the folded `name_lower` column (written as
+/// `fold_name(name)`); the original case is preserved in `name`. Bind the
+/// folded form (`fold_name(input)`), not the raw input.
 pub const SQL_SELECT_GROUP_BY_NAME: &str =
-    "SELECT id, name, is_shared, bandwidth_weight FROM groups WHERE name = ?";
+    "SELECT id, name, is_shared, bandwidth_weight FROM groups WHERE name_lower = ?";
 
 pub const SQL_COUNT_GROUP_MEMBERS: &str = "SELECT COUNT(*) FROM users WHERE group_id = ?";
 
@@ -345,15 +358,17 @@ pub const SQL_INSERT_GROUP_PERMISSION_OR_IGNORE: &str =
 pub const SQL_DELETE_GROUP_PERMISSION_BY_NAME: &str =
     "DELETE FROM group_permissions WHERE group_id = ? AND permission = ?";
 
+/// `name_lower` must be bound as `fold_name(name)` — the folded uniqueness key.
 pub const SQL_INSERT_GROUP: &str =
-    "INSERT INTO groups (name, is_shared, bandwidth_weight) VALUES (?, ?, ?)";
+    "INSERT INTO groups (name, name_lower, is_shared, bandwidth_weight) VALUES (?, ?, ?, ?)";
 
 /// Atomic protection: when `is_shared` is unchanged the `is_shared = ?`
 /// condition passes and the member-count subquery is skipped; when it IS
 /// changing the update only proceeds if the group has zero members,
 /// preventing a TOCTOU race against the handler's pre-check. Returns 0 rows
 /// affected if blocked.
-pub const SQL_UPDATE_GROUP: &str = "UPDATE groups SET name = ?, is_shared = ?, bandwidth_weight = ?
+pub const SQL_UPDATE_GROUP: &str =
+    "UPDATE groups SET name = ?, name_lower = ?, is_shared = ?, bandwidth_weight = ?
     WHERE id = ?
     AND (
         is_shared = ?
@@ -366,26 +381,31 @@ pub const SQL_UPDATE_GROUP: &str = "UPDATE groups SET name = ?, is_shared = ?, b
 pub const SQL_DELETE_GROUP: &str =
     "DELETE FROM groups WHERE id = ? AND (SELECT COUNT(*) FROM users WHERE group_id = ?) = 0";
 
-/// Case-insensitive matching is enforced by the column's `COLLATE NOCASE`;
-/// the original case is preserved in the stored row.
+/// Case-insensitive matching via the folded `name_lower` column (written as
+/// `fold_name(name)`); the original case is preserved in `name`. Bind the
+/// folded form (`fold_name(input)`), not the raw input.
 pub const SQL_SELECT_CHANNEL_SETTINGS: &str =
-    "SELECT name, topic, topic_set_by, secret FROM channel_settings WHERE name = ?";
+    "SELECT name, topic, topic_set_by, secret FROM channel_settings WHERE name_lower = ?";
 
 pub const SQL_SELECT_ALL_CHANNEL_SETTINGS: &str =
     "SELECT name, topic, topic_set_by, secret FROM channel_settings";
 
-/// `ON CONFLICT` upsert — creates if the channel doesn't exist, updates if it does.
-pub const SQL_UPSERT_CHANNEL_SETTINGS: &str = "INSERT INTO channel_settings (name, topic, topic_set_by, secret) VALUES (?, ?, ?, ?) ON CONFLICT(name) DO UPDATE SET topic = excluded.topic, topic_set_by = excluded.topic_set_by, secret = excluded.secret";
+/// `ON CONFLICT` upsert — creates if the channel doesn't exist, updates if it
+/// does. Conflicts resolve on the folded `name_lower` (bind it as
+/// `fold_name(name)`); `name` itself is never updated, so the original stored
+/// case is preserved across upserts.
+pub const SQL_UPSERT_CHANNEL_SETTINGS: &str = "INSERT INTO channel_settings (name, name_lower, topic, topic_set_by, secret) VALUES (?, ?, ?, ?, ?) ON CONFLICT(name_lower) DO UPDATE SET topic = excluded.topic, topic_set_by = excluded.topic_set_by, secret = excluded.secret";
 
-/// Matches on name case-insensitively via the column's `COLLATE NOCASE`.
+/// Matches on the folded `name_lower`; bind `fold_name(name)`.
 pub const SQL_UPDATE_CHANNEL_TOPIC: &str =
-    "UPDATE channel_settings SET topic = ?, topic_set_by = ? WHERE name = ?";
+    "UPDATE channel_settings SET topic = ?, topic_set_by = ? WHERE name_lower = ?";
 
-/// Matches on name case-insensitively via the column's `COLLATE NOCASE`.
-pub const SQL_UPDATE_CHANNEL_SECRET: &str = "UPDATE channel_settings SET secret = ? WHERE name = ?";
+/// Matches on the folded `name_lower`; bind `fold_name(name)`.
+pub const SQL_UPDATE_CHANNEL_SECRET: &str =
+    "UPDATE channel_settings SET secret = ? WHERE name_lower = ?";
 
-/// Matches on name case-insensitively via the column's `COLLATE NOCASE`.
-pub const SQL_DELETE_CHANNEL_SETTINGS: &str = "DELETE FROM channel_settings WHERE name = ?";
+/// Matches on the folded `name_lower`; bind `fold_name(name)`.
+pub const SQL_DELETE_CHANNEL_SETTINGS: &str = "DELETE FROM channel_settings WHERE name_lower = ?";
 
 pub const SQL_SELECT_USER_BY_ID: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id, bandwidth_weight FROM users WHERE id = ?";
 
@@ -415,8 +435,10 @@ pub const SQL_SELECT_TRUST_BY_IP: &str = "
 pub const SQL_COUNT_ADMINS: &str = "SELECT COUNT(*) FROM users WHERE is_admin = 1";
 
 /// Used in tests only — production code does not need this check.
+/// Matches on the folded `name_lower`; bind `fold_name(name)`.
 #[cfg(test)]
-pub const SQL_COUNT_CHANNEL_SETTINGS: &str = "SELECT COUNT(*) FROM channel_settings WHERE name = ?";
+pub const SQL_COUNT_CHANNEL_SETTINGS: &str =
+    "SELECT COUNT(*) FROM channel_settings WHERE name_lower = ?";
 
 /// Used in tests to verify permission insertion and cascade deletion.
 #[cfg(test)]

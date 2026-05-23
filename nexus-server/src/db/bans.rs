@@ -4,6 +4,7 @@ use std::net::IpAddr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ipnet::IpNet;
+use nexus_common::names::fold_name;
 use sqlx::sqlite::SqlitePool;
 
 use crate::constants::{ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK, ERR_VALID_IP_PREFIX};
@@ -16,10 +17,10 @@ pub struct BanRecord {
     /// zeroed for ranges). Produced by `canonicalize_target` at the handler
     /// boundary before storage.
     pub ip_address: String,
-    /// Optional nickname annotation. Stored in canonical lowercase by
-    /// `create_or_update_ban` so case-insensitive lookups
-    /// (`has_bans_for_nickname`, `delete_bans_by_nickname`) round-trip
-    /// regardless of admin-typed casing.
+    /// Optional nickname annotation, stored in display case (the true nickname
+    /// of the resolved session). Case-insensitive lookup/delete
+    /// (`has_bans_for_nickname`, `delete_bans_by_nickname`) match the folded
+    /// `nickname_lower` column, not this one.
     pub nickname: Option<String>,
     pub reason: Option<String>,
     /// Admin username, preserved as-typed. Display-only; never used in
@@ -71,10 +72,10 @@ impl BanDb {
     /// Create or update an IP ban (upsert)
     ///
     /// If the IP already exists, all fields are updated. The `nickname`
-    /// annotation is lowercased to its canonical form so case-insensitive
-    /// lookups (`has_bans_for_nickname`, `delete_bans_by_nickname`)
-    /// round-trip cleanly. `created_by` is preserved as-typed since it's a
-    /// display-only field.
+    /// annotation is stored in display case; its folded form is written to
+    /// `nickname_lower` so case-insensitive lookups (`has_bans_for_nickname`,
+    /// `delete_bans_by_nickname`) match. `created_by` and `reason` are
+    /// preserved as-typed since they're display-only fields.
     pub async fn create_or_update_ban(
         &self,
         ip_address: &str,
@@ -85,10 +86,11 @@ impl BanDb {
     ) -> Result<BanRecord, sqlx::Error> {
         assert_canonical_target(ip_address);
         let now = Self::now();
-        let nickname_lower = nickname.map(str::to_lowercase);
+        let nickname_lower = nickname.map(fold_name);
 
         sqlx::query(sql::SQL_UPSERT_BAN)
             .bind(ip_address)
+            .bind(nickname)
             .bind(nickname_lower.as_deref())
             .bind(reason)
             .bind(created_by)
@@ -166,14 +168,14 @@ impl BanDb {
 
     /// Delete all bans with a given nickname annotation.
     ///
-    /// Lookup is case-insensitive: the supplied nickname is lowercased to
-    /// match the stored form. Returns the list of IP addresses that were
-    /// unbanned.
+    /// Lookup is case-insensitive: the supplied nickname is folded and matched
+    /// against the `nickname_lower` column. Returns the list of IP addresses
+    /// that were unbanned.
     pub async fn delete_bans_by_nickname(
         &self,
         nickname: &str,
     ) -> Result<Vec<String>, sqlx::Error> {
-        let nickname_lower = nickname.to_lowercase();
+        let nickname_lower = fold_name(nickname);
 
         // Capture the matching IPs before deleting, so we can return them.
         let rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_IPS_BY_NICKNAME)
@@ -195,11 +197,11 @@ impl BanDb {
 
     /// Check if any bans exist with a given nickname annotation.
     ///
-    /// Lookup is case-insensitive: the supplied nickname is lowercased to
-    /// match the stored form.
+    /// Lookup is case-insensitive: the supplied nickname is folded and matched
+    /// against the `nickname_lower` column.
     pub async fn has_bans_for_nickname(&self, nickname: &str) -> Result<bool, sqlx::Error> {
         let row: (i64,) = sqlx::query_as(sql::SQL_COUNT_BANS_BY_NICKNAME)
-            .bind(nickname.to_lowercase())
+            .bind(fold_name(nickname))
             .fetch_one(&self.pool)
             .await?;
 
@@ -452,12 +454,12 @@ mod tests {
         let pool = create_test_db().await;
         let db = BanDb::new(pool);
 
-        // Mixed-case nickname at write time is lowered to canonical form
+        // Display case is preserved in `nickname`; `nickname_lower` keys lookups.
         let record = db
             .create_or_update_ban("192.168.1.100", Some("Spammer"), None, "Admin", None)
             .await
             .expect("create ban");
-        assert_eq!(record.nickname, Some("spammer".to_string()));
+        assert_eq!(record.nickname, Some("Spammer".to_string()));
         // created_by is display-only; preserved as-typed
         assert_eq!(record.created_by, "Admin");
 
@@ -468,6 +470,28 @@ mod tests {
         let deleted = db.delete_bans_by_nickname("Spammer").await.unwrap();
         assert_eq!(deleted, vec!["192.168.1.100".to_string()]);
         assert!(!db.has_bans_for_nickname("spammer").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_bans_by_nickname_unicode_case_insensitive() {
+        let pool = create_test_db().await;
+        let db = BanDb::new(pool);
+
+        // Display case is preserved in `nickname`; lookup/delete fold via
+        // `nickname_lower` (full Unicode), so a non-ASCII case pair (Ä↔ä) is
+        // found case-insensitively.
+        let record = db
+            .create_or_update_ban("192.168.1.100", Some("Spämmer"), None, "Admin", None)
+            .await
+            .expect("create ban");
+        assert_eq!(record.nickname, Some("Spämmer".to_string()));
+
+        assert!(db.has_bans_for_nickname("spämmer").await.unwrap());
+        assert!(db.has_bans_for_nickname("SPÄMMER").await.unwrap());
+
+        let deleted = db.delete_bans_by_nickname("Spämmer").await.unwrap();
+        assert_eq!(deleted, vec!["192.168.1.100".to_string()]);
+        assert!(!db.has_bans_for_nickname("spämmer").await.unwrap());
     }
 
     #[tokio::test]

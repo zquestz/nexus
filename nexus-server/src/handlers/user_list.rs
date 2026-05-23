@@ -33,6 +33,7 @@ struct UserAggregateData {
 
 use tokio::io::AsyncWrite;
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use nexus_common::validators::resolve_bandwidth_weight;
 
@@ -133,7 +134,7 @@ where
             .collect();
 
         // Clients require a sorted list (case-insensitive by username).
-        user_infos.sort_by_key(|u| u.username.to_lowercase());
+        user_infos.sort_by_key(|u| fold_name(&u.username));
 
         let response = ServerMessage::UserListResponse {
             success: true,
@@ -173,7 +174,7 @@ where
             });
         } else {
             user_map
-                .entry(user.username.clone())
+                .entry(fold_name(&user.username))
                 .and_modify(|agg| {
                     agg.login_time = agg.login_time.min(user.login_time);
                     agg.session_ids.push(user.session_id);
@@ -239,7 +240,7 @@ where
     user_infos.extend(shared_user_infos);
 
     // Clients require a sorted list (case-insensitive by display nickname).
-    user_infos.sort_by_key(|u| u.nickname.to_lowercase());
+    user_infos.sort_by_key(|u| fold_name(&u.nickname));
 
     let response = ServerMessage::UserListResponse {
         success: true,

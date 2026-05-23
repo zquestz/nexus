@@ -5,6 +5,7 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{debug, error, info, warn};
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ChannelJoinInfo, ServerMessage, UserInfo};
 use nexus_common::validators::{
     self, AvatarError, FeaturesError, LocaleError, NicknameError, PasswordError, UsernameError,
@@ -206,7 +207,7 @@ where
         if password_valid {
             if !account.enabled {
                 warn!(ip = %ctx.peer_addr, target = %username, "{}", LOG_LOGIN_ACCOUNT_DISABLED);
-                let error_msg = if username.to_lowercase() == GUEST_USERNAME {
+                let error_msg = if fold_name(&username) == GUEST_USERNAME {
                     err_guest_disabled(&locale)
                 } else {
                     err_account_disabled(&locale, &username)
@@ -358,7 +359,7 @@ where
 
     // A rename or password reset during password verify means the sent
     // credentials no longer describe this row — reject as stale.
-    if username.to_lowercase() != pre_snapshot.account.username.to_lowercase() {
+    if fold_name(&username) != fold_name(&pre_snapshot.account.username) {
         warn!(
             user = %username,
             new_username = %pre_snapshot.account.username,
@@ -522,9 +523,7 @@ where
 
     // Auth-field buckets come before the state bucket so a password
     // reset coinciding with state drift logs the auth-specific event.
-    if authenticated_account.username.to_lowercase()
-        != post_snapshot.account.username.to_lowercase()
-    {
+    if fold_name(&authenticated_account.username) != fold_name(&post_snapshot.account.username) {
         warn!(
             user = %authenticated_account.username,
             new_username = %post_snapshot.account.username,
@@ -2329,6 +2328,61 @@ mod tests {
         assert!(
             result.is_err(),
             "Login with nickname matching username (case-insensitive) should fail"
+        );
+        assert!(session_id.is_none(), "Session ID should not be set");
+    }
+
+    #[tokio::test]
+    async fn test_login_shared_account_nickname_collision_with_username_unicode() {
+        let mut test_ctx = create_test_context().await;
+        let handshake_complete = true;
+
+        let password = "password123";
+        let hashed = get_cached_password_hash(password);
+
+        // Regular user "Éclair"; a shared login with nickname "éclair" differs
+        // only by Unicode case. The admission re-check rejects it via the folded
+        // username lookup — under the old ASCII COLLATE NOCASE it would have been
+        // admitted (É and é were distinct there).
+        test_ctx
+            .db
+            .users
+            .create_first_user_if_none_exist("Éclair", &hashed)
+            .await
+            .expect("admin creation should succeed");
+
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .expect("shared account creation should succeed");
+
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "shared_acct".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: Some("éclair".to_string()),
+            handshake_complete,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(
+            result.is_err(),
+            "Login with nickname matching username (Unicode case) should fail"
         );
         assert!(session_id.is_none(), "Session ID should not be set");
     }

@@ -5,6 +5,7 @@ use std::net::IpAddr;
 use std::sync::atomic::Ordering;
 
 use ipnet::IpNet;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 
 use super::UserManager;
@@ -34,10 +35,10 @@ impl UserManager {
         let mut users = self.users.write().await;
 
         if params.is_shared {
-            let nickname_lower = params.nickname.to_lowercase();
+            let nickname_lower = fold_name(&params.nickname);
 
             for user in users.values() {
-                if user.nickname.to_lowercase() == nickname_lower {
+                if fold_name(&user.nickname) == nickname_lower {
                     return Err(AddUserError::NicknameInUse);
                 }
             }

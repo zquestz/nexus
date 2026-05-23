@@ -26,6 +26,7 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use clap::Parser;
+use nexus_common::names::fold_name;
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
@@ -310,8 +311,8 @@ async fn main() {
         // Prune DB rows for channels no longer in config.
         if let Ok(all_settings) = database.channels.get_all_channel_settings().await {
             for settings in all_settings {
-                let name_lower = settings.name.to_lowercase();
-                if !channel_names.iter().any(|n| n.to_lowercase() == name_lower) {
+                let name_lower = fold_name(&settings.name);
+                if !channel_names.iter().any(|n| fold_name(n) == name_lower) {
                     if let Err(e) = database
                         .channels
                         .delete_channel_settings(&settings.name)

@@ -22,6 +22,7 @@ use tokio::sync::RwLock;
 use webrtc_util::conn::{Conn, Listener};
 
 use nexus_common::address::normalize_socket_addr;
+use nexus_common::names::fold_name;
 use nexus_common::voice::{
     MAX_VOICE_PACKET_SIZE, RelayedVoicePacket, VOICE_SESSION_TIMEOUT_SECS, VoiceMessageType,
     VoicePacket,
@@ -279,7 +280,7 @@ impl VoiceUdpServer {
 
         for session in sessions {
             // Never echo back to the sender
-            if session.nickname == sender_nickname {
+            if fold_name(&session.nickname) == fold_name(sender_nickname) {
                 continue;
             }
 

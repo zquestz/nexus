@@ -2,6 +2,8 @@
 
 use std::net::{IpAddr, SocketAddr};
 
+use nexus_common::names::fold_name;
+
 use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
 use uuid::Uuid;
 
@@ -64,7 +66,7 @@ impl VoiceSession {
             && self
                 .target
                 .first()
-                .map(|t| t.to_lowercase() == channel.to_lowercase())
+                .map(|t| fold_name(t) == fold_name(channel))
                 .unwrap_or(false)
     }
 

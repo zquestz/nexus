@@ -35,6 +35,7 @@ pub use trusts::TrustDb;
 pub use users::{
     CreateUserParams, PermissionWriteScope, UpdateUserParams, UpdateUserResult, UserAccount, UserDb,
 };
+pub use util::is_unique_violation;
 
 use std::path::{Path, PathBuf};
 

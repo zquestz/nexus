@@ -7,6 +7,7 @@
 //! manager, not here.
 
 use chrono::Utc;
+use nexus_common::names::fold_name;
 use sqlx::sqlite::SqlitePool;
 
 use crate::db::sql;
@@ -67,9 +68,15 @@ pub fn is_transient_db_error(err: &sqlx::Error) -> bool {
 // SQLite reports UNIQUE constraint violations on column-based indexes
 // by table-qualified column list:
 //   `"UNIQUE constraint failed: trackers.address, trackers.port"` (compound)
-//   `"UNIQUE constraint failed: trackers.name"` (single)
+//   `"UNIQUE constraint failed: trackers.name"` (vestigial ASCII NOCASE)
+//   `"UNIQUE constraint failed: trackers.name_lower"` (folded uniqueness)
 // The endpoint marker uses the full pair so a future schema adding
-// another UNIQUE involving `address` alone won't false-match.
+// another UNIQUE involving `address` alone won't false-match. The name
+// marker is the prefix `trackers.name`, which intentionally matches both
+// `trackers.name` and `trackers.name_lower` — both are name collisions (an
+// ASCII-case dup trips either; a non-ASCII-case dup trips only `name_lower`).
+// Don't tighten it to an exact match or non-ASCII name collisions stop
+// classifying as NameDuplicate.
 const ENDPOINT_FAILURE_MARKER: &str = "trackers.address, trackers.port";
 const NAME_DUPLICATE_MARKER: &str = "trackers.name";
 
@@ -84,8 +91,8 @@ const NAME_DUPLICATE_MARKER: &str = "trackers.name";
 pub enum TrackerDbError {
     /// Another row already owns the `(address, port)` endpoint.
     EndpointDuplicate,
-    /// Another row already uses this name (case-insensitive collision
-    /// via the column's `COLLATE NOCASE`).
+    /// Another row already uses this name (case-insensitive collision on the
+    /// folded `name_lower` unique index).
     NameDuplicate,
     /// The configured-trackers row cap was already reached. Returned
     /// by `create()` when the atomic-insert WHERE clause matched zero
@@ -299,6 +306,7 @@ impl TrackerDb {
             .bind(params.fingerprint)
             .bind(params.password)
             .bind(params.name)
+            .bind(fold_name(params.name))
             .bind(params.enabled)
             .bind(now)
             .bind(now)
@@ -339,6 +347,7 @@ impl TrackerDb {
             .bind(params.fingerprint)
             .bind(params.password)
             .bind(params.name)
+            .bind(fold_name(params.name))
             .bind(params.enabled)
             .bind(now)
             .bind(id)
@@ -583,6 +592,28 @@ mod tests {
             .create(create_params("b.example.com", "public tracker"))
             .await
             .expect_err("duplicate name (case-insensitive) must fail");
+        assert!(
+            matches!(err, TrackerDbError::NameDuplicate),
+            "expected NameDuplicate, got: {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn duplicate_name_unicode_rejected() {
+        let pool = create_test_db().await;
+        let db = TrackerDb::new(pool);
+
+        db.create(create_params("a.example.com", "Équipe"))
+            .await
+            .expect("first create");
+
+        // Non-ASCII case pair (É folds to é) collides only via the folded
+        // `name_lower`; ASCII NOCASE on `name` would have allowed the duplicate.
+        // Distinct address so the endpoint index doesn't fire — isolates name.
+        let err = db
+            .create(create_params("b.example.com", "équipe"))
+            .await
+            .expect_err("duplicate name (Unicode case) must fail");
         assert!(
             matches!(err, TrackerDbError::NameDuplicate),
             "expected NameDuplicate, got: {err:?}"

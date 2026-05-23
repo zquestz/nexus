@@ -17,6 +17,7 @@ use nexus_common::ERROR_KIND_IO_ERROR;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::hash::StreamingHasher;
 use nexus_common::io::read_client_message_with_full_timeout;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 
 use crate::constants::*;
@@ -260,7 +261,7 @@ pub(crate) fn can_access_for_download(path: &Path, username: &str, is_admin: boo
                 }
                 FolderType::UserDropBox(owner) => {
                     // User dropbox: the named owner or an admin.
-                    if !is_admin && owner.to_lowercase() != username.to_lowercase() {
+                    if !is_admin && fold_name(&owner) != fold_name(username) {
                         return false;
                     }
                 }

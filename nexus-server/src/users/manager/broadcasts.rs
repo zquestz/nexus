@@ -1,5 +1,6 @@
 //! Broadcast methods for UserManager
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 
 use crate::handlers::{ServerInfoOptions, ServerInfoValues, build_server_info};
@@ -98,12 +99,12 @@ impl UserManager {
     pub async fn broadcast_to_nickname(&self, nickname: &str, message: &ServerMessage) {
         let mut disconnected = Vec::new();
 
-        let nickname_lower = nickname.to_lowercase();
+        let nickname_lower = fold_name(nickname);
 
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if user.nickname.to_lowercase() == nickname_lower
+                if fold_name(&user.nickname) == nickname_lower
                     && user.tx.send((message.clone(), None)).is_err()
                 {
                     disconnected.push(user.session_id);

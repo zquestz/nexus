@@ -1,6 +1,7 @@
 //! Query methods for UserManager
 
 use ipnet::IpNet;
+use nexus_common::names::fold_name;
 
 use super::UserManager;
 use crate::db::Permission;
@@ -28,7 +29,7 @@ impl UserManager {
         let users = self.users.read().await;
         let mut nicknames = std::collections::HashSet::new();
         for u in users.values() {
-            nicknames.insert(u.nickname.to_lowercase());
+            nicknames.insert(fold_name(&u.nickname));
         }
         u32::try_from(nicknames.len()).unwrap_or(u32::MAX)
     }
@@ -56,10 +57,10 @@ impl UserManager {
     /// from multiple devices.
     pub async fn get_sessions_by_username(&self, username: &str) -> Vec<UserSession> {
         let users = self.users.read().await;
-        let username_lower = username.to_lowercase();
+        let username_lower = fold_name(username);
         users
             .values()
-            .filter(|u| u.username.to_lowercase() == username_lower)
+            .filter(|u| fold_name(&u.username) == username_lower)
             .cloned()
             .collect()
     }
@@ -92,20 +93,20 @@ impl UserManager {
     /// all logged-in display names.
     pub async fn is_nickname_in_use(&self, nickname: &str) -> bool {
         let users = self.users.read().await;
-        let nickname_lower = nickname.to_lowercase();
+        let nickname_lower = fold_name(nickname);
         users
             .values()
-            .any(|u| u.nickname.to_lowercase() == nickname_lower)
+            .any(|u| fold_name(&u.nickname) == nickname_lower)
     }
 
     /// Find a session by display nickname (case-insensitive). Nickname is always
     /// populated (equals username for regular accounts).
     pub async fn get_session_by_nickname(&self, nickname: &str) -> Option<UserSession> {
         let users = self.users.read().await;
-        let nickname_lower = nickname.to_lowercase();
+        let nickname_lower = fold_name(nickname);
         users
             .values()
-            .find(|u| u.nickname.to_lowercase() == nickname_lower)
+            .find(|u| fold_name(&u.nickname) == nickname_lower)
             .cloned()
     }
 
@@ -115,10 +116,10 @@ impl UserManager {
     /// accounts have a unique nickname per session, so this returns just one.
     pub async fn get_sessions_by_nickname(&self, nickname: &str) -> Vec<UserSession> {
         let users = self.users.read().await;
-        let nickname_lower = nickname.to_lowercase();
+        let nickname_lower = fold_name(nickname);
         users
             .values()
-            .filter(|u| u.nickname.to_lowercase() == nickname_lower)
+            .filter(|u| fold_name(&u.nickname) == nickname_lower)
             .cloned()
             .collect()
     }
@@ -147,7 +148,7 @@ impl UserManager {
             .iter()
             .filter_map(|&session_id| users.get(&session_id).map(|u| u.nickname.clone()))
             .collect();
-        nicknames.sort_by_key(|n| n.to_lowercase());
+        nicknames.sort_by_key(|n| fold_name(n));
         nicknames
     }
 
@@ -159,7 +160,7 @@ impl UserManager {
 
         // `dedup_by_key` only removes adjacent items, but the source is already
         // sorted case-insensitively, so duplicates are adjacent.
-        nicknames.dedup_by_key(|n| n.to_lowercase());
+        nicknames.dedup_by_key(|n| fold_name(n));
 
         nicknames
     }
@@ -174,7 +175,7 @@ impl UserManager {
         skip_session_id: Option<u32>,
     ) -> bool {
         let users = self.users.read().await;
-        let nickname_lower = nickname.to_lowercase();
+        let nickname_lower = fold_name(nickname);
 
         for &sid in session_ids {
             if skip_session_id.is_some_and(|skip| skip == sid) {
@@ -185,7 +186,7 @@ impl UserManager {
                 continue;
             };
 
-            if user.nickname.to_lowercase() == nickname_lower {
+            if fold_name(&user.nickname) == nickname_lower {
                 return true;
             }
         }
@@ -196,10 +197,10 @@ impl UserManager {
     /// Unique IPs across all sessions with `nickname`, for banning by nickname.
     pub async fn get_ips_for_nickname(&self, nickname: &str) -> Vec<String> {
         let users = self.users.read().await;
-        let nickname_lower = nickname.to_lowercase();
+        let nickname_lower = fold_name(nickname);
         let mut ips: Vec<String> = users
             .values()
-            .filter(|u| u.nickname.to_lowercase() == nickname_lower)
+            .filter(|u| fold_name(&u.nickname) == nickname_lower)
             .map(|u| u.address.ip().to_string())
             .collect();
         ips.sort();
@@ -263,6 +264,25 @@ mod tests {
         assert!(manager.is_nickname_in_use("NICK1").await);
 
         assert!(!manager.is_nickname_in_use("Nick2").await);
+    }
+
+    #[tokio::test]
+    async fn test_is_nickname_in_use_unicode() {
+        let manager = UserManager::new();
+
+        let params = test_session_params("shared_acct", "Renée", true);
+        manager
+            .add_user(params)
+            .await
+            .expect("add_user should succeed");
+
+        // Regression guard: nickname matching folds via fold_name (full Unicode),
+        // so a non-ASCII case pair (uppercase É folds to é) is detected as in use.
+        assert!(manager.is_nickname_in_use("Renée").await);
+        assert!(manager.is_nickname_in_use("renée").await);
+        assert!(manager.is_nickname_in_use("RENÉE").await);
+
+        assert!(!manager.is_nickname_in_use("Renato").await);
     }
 
     #[tokio::test]

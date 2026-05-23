@@ -5,6 +5,7 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::warn;
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ConnectionInfo, ServerMessage};
 
 use super::{HandlerContext, err_not_logged_in, err_permission_denied};
@@ -69,7 +70,7 @@ where
         })
         .collect();
 
-    connections.sort_by_key(|c| c.nickname.to_lowercase());
+    connections.sort_by_key(|c| fold_name(&c.nickname));
 
     // Active transfers from the registry, sorted by nickname.
     let mut transfers: Vec<_> = ctx
@@ -78,7 +79,7 @@ where
         .iter()
         .map(|t| t.to_transfer_info())
         .collect();
-    transfers.sort_by_key(|t| t.nickname.to_lowercase());
+    transfers.sort_by_key(|t| fold_name(&t.nickname));
 
     let response = ServerMessage::ConnectionMonitorResponse {
         success: true,

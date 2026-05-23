@@ -8,6 +8,7 @@ use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use nexus_common::is_shared_account_permission;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
     self, BandwidthWeightError, GroupNameError, MIN_BANDWIDTH_WEIGHT, PermissionsError,
@@ -582,7 +583,7 @@ async fn broadcast_user_updated_for_members<W, F>(
                 .broadcast_to_permission(user_updated, Permission::UserList)
                 .await;
         } else {
-            let username_lower = session.username.to_lowercase();
+            let username_lower = fold_name(&session.username);
             if !seen_usernames.insert(username_lower) {
                 continue;
             }
@@ -829,6 +830,53 @@ mod tests {
         assert!(result.is_ok());
         let response = read_server_message(&mut test_ctx).await;
         match response {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_group_already_exists(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected GroupUpdateResponse with already exists"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_group_update_duplicate_name_unicode() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::GroupEdit],
+            false,
+        )
+        .await;
+
+        test_ctx
+            .db
+            .groups
+            .create_group("Équipe", false, &Permissions::new(), 1)
+            .await
+            .expect("create Équipe");
+        let other = test_ctx
+            .db
+            .groups
+            .create_group("Other", false, &Permissions::new(), 1)
+            .await
+            .expect("create Other");
+
+        // Rename Other to a Unicode-case variant of Équipe — collides via the
+        // folded name_lower, which ASCII NOCASE would miss.
+        let result = handle_group_update(
+            other.id,
+            Some("équipe".to_string()),
+            None,
+            None,
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
             ServerMessage::GroupUpdateResponse { success, error, .. } => {
                 assert!(!success);
                 assert_eq!(error, Some(err_group_already_exists(DEFAULT_TEST_LOCALE)));

@@ -5,6 +5,7 @@
 
 use std::io;
 
+use nexus_common::names::fold_name;
 use sqlx::SqlitePool;
 
 use crate::db::sql;
@@ -30,7 +31,7 @@ impl ChannelDb {
     pub async fn get_channel_settings(&self, name: &str) -> io::Result<Option<ChannelSettings>> {
         let result =
             sqlx::query_as::<_, (String, String, String, bool)>(sql::SQL_SELECT_CHANNEL_SETTINGS)
-                .bind(name)
+                .bind(fold_name(name))
                 .fetch_optional(&self.pool)
                 .await
                 .map_err(|e| io::Error::other(e.to_string()))?;
@@ -51,7 +52,7 @@ impl ChannelDb {
     ) -> io::Result<Option<ChannelSettings>> {
         let result =
             sqlx::query_as::<_, (String, String, String, bool)>(sql::SQL_SELECT_CHANNEL_SETTINGS)
-                .bind(name)
+                .bind(fold_name(name))
                 .fetch_optional(&mut **tx)
                 .await
                 .map_err(|e| io::Error::other(e.to_string()))?;
@@ -124,6 +125,7 @@ impl ChannelDb {
     ) -> io::Result<()> {
         sqlx::query(sql::SQL_UPSERT_CHANNEL_SETTINGS)
             .bind(&settings.name)
+            .bind(fold_name(&settings.name))
             .bind(&settings.topic)
             .bind(&settings.topic_set_by)
             .bind(settings.secret)
@@ -138,7 +140,7 @@ impl ChannelDb {
         sqlx::query(sql::SQL_UPDATE_CHANNEL_TOPIC)
             .bind(topic)
             .bind(set_by)
-            .bind(name)
+            .bind(fold_name(name))
             .execute(&self.pool)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
@@ -149,7 +151,7 @@ impl ChannelDb {
     pub async fn set_secret(&self, name: &str, secret: bool) -> io::Result<()> {
         sqlx::query(sql::SQL_UPDATE_CHANNEL_SECRET)
             .bind(secret)
-            .bind(name)
+            .bind(fold_name(name))
             .execute(&self.pool)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
@@ -174,7 +176,7 @@ impl ChannelDb {
         name: &str,
     ) -> io::Result<()> {
         sqlx::query(sql::SQL_DELETE_CHANNEL_SETTINGS)
-            .bind(name)
+            .bind(fold_name(name))
             .execute(&mut **tx)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
@@ -185,7 +187,7 @@ impl ChannelDb {
     #[cfg(test)]
     pub async fn channel_exists(&self, name: &str) -> io::Result<bool> {
         let count: i32 = sqlx::query_scalar(sql::SQL_COUNT_CHANNEL_SETTINGS)
-            .bind(name)
+            .bind(fold_name(name))
             .fetch_one(&self.pool)
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
@@ -234,6 +236,50 @@ mod tests {
             .await
             .unwrap();
         assert!(result.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_channel_settings_unicode_case_insensitive() {
+        let pool = create_test_db().await;
+        let db = ChannelDb::new(pool);
+
+        // Non-ASCII case pair (uppercase É folds to é) collapses only via the
+        // Unicode-folded `name_lower`; the old ASCII-only COLLATE NOCASE kept
+        // them distinct.
+        db.upsert_channel_settings(&ChannelSettings {
+            name: "#Café".to_string(),
+            topic: "first".to_string(),
+            topic_set_by: "admin".to_string(),
+            secret: false,
+        })
+        .await
+        .unwrap();
+
+        // Lookup with arbitrary case finds the row; stored name keeps its case.
+        let found = db.get_channel_settings("#café").await.unwrap().unwrap();
+        assert_eq!(found.name, "#Café");
+        assert_eq!(found.topic, "first");
+        assert!(db.channel_exists("#CAFÉ").await.unwrap());
+
+        let before = db.get_all_channel_settings().await.unwrap().len();
+
+        // Re-upsert with different case resolves on name_lower → updates the same
+        // row rather than inserting a second one.
+        db.upsert_channel_settings(&ChannelSettings {
+            name: "#café".to_string(),
+            topic: "second".to_string(),
+            topic_set_by: "admin".to_string(),
+            secret: false,
+        })
+        .await
+        .unwrap();
+
+        let after = db.get_all_channel_settings().await.unwrap();
+        assert_eq!(after.len(), before, "should update in place, not insert");
+        let updated = db.get_channel_settings("#CAFÉ").await.unwrap().unwrap();
+        assert_eq!(updated.topic, "second");
+        // ON CONFLICT does not touch `name`, so the original stored case survives.
+        assert_eq!(updated.name, "#Café");
     }
 
     #[tokio::test]

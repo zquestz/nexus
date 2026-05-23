@@ -5,6 +5,7 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
     self, BandwidthChunkSizeError, MAX_BANDWIDTH_CHUNK_SIZE, MIN_BANDWIDTH_CHUNK_SIZE,
@@ -342,10 +343,10 @@ where
             };
 
             for channel_name in &new_channel_names {
-                let name_lower = channel_name.to_lowercase();
+                let name_lower = fold_name(channel_name);
                 if !current_settings
                     .iter()
-                    .any(|s| s.name.to_lowercase() == name_lower)
+                    .any(|s| fold_name(&s.name) == name_lower)
                     && let Err(e) = ChannelDb::upsert_channel_settings_in_tx(
                         &mut tx,
                         &ChannelSettings {
@@ -366,10 +367,8 @@ where
             }
 
             for settings in &current_settings {
-                let name_lower = settings.name.to_lowercase();
-                if !new_channel_names
-                    .iter()
-                    .any(|n| n.to_lowercase() == name_lower)
+                let name_lower = fold_name(&settings.name);
+                if !new_channel_names.iter().any(|n| fold_name(n) == name_lower)
                     && let Err(e) =
                         ChannelDb::delete_channel_settings_in_tx(&mut tx, &settings.name).await
                 {

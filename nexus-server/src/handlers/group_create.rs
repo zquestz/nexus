@@ -366,6 +366,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_group_create_duplicate_name_unicode() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        handle_group_create(
+            "Équipe".to_string(),
+            false,
+            vec![],
+            1,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let _ = read_server_message(&mut test_ctx).await;
+
+        // Differs only by Unicode case (É↔é): collides via the folded name_lower,
+        // which the old ASCII-only COLLATE NOCASE would have allowed.
+        let result = handle_group_create(
+            "équipe".to_string(),
+            false,
+            vec![],
+            1,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::GroupCreateResponse { success, error, .. } => {
+                assert!(!success, "Unicode-case duplicate should be rejected");
+                assert_eq!(error, Some(err_group_already_exists(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected GroupCreateResponse"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_group_create_invalid_name() {
         let mut test_ctx = create_test_context().await;
 

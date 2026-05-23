@@ -90,9 +90,10 @@ where
                     success: true,
                     error: None,
                     ips: Some(deleted_ips),
-                    // Echo the canonical lowercase form the DB stores, not the
-                    // admin-typed casing, for consistency with `trust_create`.
-                    nickname: Some(target.to_lowercase()),
+                    // Echo the admin's typed target, not the folded key — the
+                    // fold is internal, and delete matches `nickname_lower`
+                    // across possibly-many rows with no single display casing.
+                    nickname: Some(target.clone()),
                 };
                 return ctx.send_message(&response).await;
             }
@@ -603,6 +604,48 @@ mod tests {
                 .await
                 .unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn test_trustdelete_echoes_typed_nickname_not_fold() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Trust annotated with a mixed-case nickname (display in `nickname`,
+        // folded in `nickname_lower`).
+        test_ctx
+            .db
+            .trusts
+            .create_or_update_trust("192.168.1.100", Some("Renée"), None, "admin", None)
+            .await
+            .unwrap();
+        {
+            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            cache.add_trust("192.168.1.100", None);
+        }
+
+        // Admin deletes by typing a different case; the response echoes what
+        // they typed, never the internal folded key.
+        let result = handle_trust_delete(
+            "RENÉE".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrustDeleteResponse {
+                success,
+                ips,
+                nickname,
+                ..
+            } => {
+                assert!(success);
+                assert_eq!(ips.unwrap(), vec!["192.168.1.100".to_string()]);
+                assert_eq!(nickname, Some("RENÉE".to_string()));
+            }
+            other => panic!("Expected TrustDeleteResponse, got: {other:?}"),
+        }
     }
 
     #[tokio::test]

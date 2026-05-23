@@ -459,6 +459,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rejects_duplicate_name_unicode() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::TrackerAdd],
+            false,
+        )
+        .await;
+
+        handle_tracker_add(
+            TrackerAddRequest {
+                name: "Équipe".to_string(),
+                ..valid_request()
+            },
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let _ = read_server_message(&mut test_ctx).await;
+
+        // Same name differing only by Unicode case (É↔é) at a different
+        // endpoint — collides via the folded name_lower, not ASCII NOCASE.
+        let result = handle_tracker_add(
+            TrackerAddRequest {
+                address: "other.example.com".to_string(),
+                name: "équipe".to_string(),
+                ..valid_request()
+            },
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerAddResponse { success, error, .. } => {
+                assert!(!success);
+                assert!(error.is_some());
+            }
+            other => panic!("Expected TrackerAddResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn rejects_when_at_limit() {
         let mut test_ctx = create_test_context().await;
         let session_id = login_user(

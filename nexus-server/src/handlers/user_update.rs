@@ -7,6 +7,7 @@ use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use nexus_common::is_shared_account_permission;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::{ServerMessage, UserInfo};
 use nexus_common::validators::{
     self, BandwidthWeightError, MIN_BANDWIDTH_WEIGHT, PasswordError, PermissionsError,
@@ -135,8 +136,7 @@ where
 
         // Self-edit allows a more restrictive field set than editing others;
         // drives the password / shared-account / forbidden-field branches below.
-        let is_self_edit =
-            target_username.to_lowercase() == requesting_user.username.to_lowercase();
+        let is_self_edit = fold_name(&target_username) == fold_name(&requesting_user.username);
 
         if is_self_edit {
             // Shared accounts have no password and no admissible self-edit fields.
@@ -316,8 +316,8 @@ where
 
         // The guest account cannot be renamed.
         if let Some(ref new_username) = request.username
-            && target_username.to_lowercase() == GUEST_USERNAME
-            && new_username.to_lowercase() != GUEST_USERNAME
+            && fold_name(&target_username) == GUEST_USERNAME
+            && fold_name(new_username) != GUEST_USERNAME
         {
             break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                 success: false,
@@ -331,7 +331,7 @@ where
         // share one namespace; login enforces the inverse). Gated on a real
         // case-insensitive change so a no-op resubmit isn't self-rejected.
         if let Some(ref new_username) = request.username
-            && target_username.to_lowercase() != new_username.to_lowercase()
+            && fold_name(&target_username) != fold_name(new_username)
             && ctx.user_manager.is_nickname_in_use(new_username).await
         {
             break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
@@ -345,7 +345,7 @@ where
         // The guest account password cannot be changed.
         if let Some(ref new_password) = request.password
             && !new_password.trim().is_empty()
-            && target_username.to_lowercase() == GUEST_USERNAME
+            && fold_name(&target_username) == GUEST_USERNAME
         {
             break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                 success: false,
@@ -1014,7 +1014,7 @@ where
                 // Rename the cache identity before any username-keyed cascade below,
                 // or PermissionsUpdated / voice cleanup / disconnect miss every session.
                 let username_changed =
-                    old_username.to_lowercase() != updated_account.username.to_lowercase();
+                    fold_name(&old_username) != fold_name(&updated_account.username);
 
                 if username_changed {
                     ctx.user_manager
@@ -1323,7 +1323,7 @@ where
                     warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_ADMIN);
                     err_cannot_edit_admin(ctx.locale)
                 } else if let Some(ref new_username) = request.username {
-                    let duplicate = if new_username != &target_username {
+                    let duplicate = if fold_name(new_username) != fold_name(&target_username) {
                         match ctx.db.users.get_user_by_username(new_username).await {
                             Ok(t) => t.is_some(),
                             Err(e) => {
@@ -1556,6 +1556,54 @@ mod tests {
             } => {
                 assert!(success, "admin self-rename should succeed: {:?}", error);
                 assert_eq!(username, Some("admin2".to_string()));
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_case_only_self_rename_succeeds() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+        // Case-only self-rename: the pre-check guard is fold-equal (skipped) and
+        // the UPDATE writes the same `username_lower` to the same row (no
+        // self-collision), so the new display case lands.
+        let request = UserUpdateRequest {
+            id: admin_user.id,
+            current_password: None,
+            username: Some("Admin".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+                ..
+            } => {
+                assert!(success, "case-only self-rename should succeed: {:?}", error);
+                assert_eq!(username, Some("Admin".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
@@ -2597,6 +2645,73 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn test_userupdate_duplicate_username_unicode() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // "Éclair" and "bob"; renaming bob to "éclair" differs only by Unicode
+        // case, colliding solely through the folded username_lower index.
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "Éclair",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: Some("éclair".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success);
+                assert!(error.is_some());
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
     /// A regular account can't be renamed onto a nickname an active shared
     /// session already holds — usernames and active nicknames share one
     /// namespace, and the shared nickname is not a DB username so only the
@@ -2793,6 +2908,100 @@ mod tests {
                     !success,
                     "case-insensitive nickname collision must be rejected"
                 );
+                assert!(error.is_some());
+            }
+            _ => panic!("Expected UserUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_rename_onto_active_shared_nickname_unicode_fails() {
+        let mut test_ctx = create_test_context().await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let shared = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        // Active shared session holding the nickname "Café"; renaming a regular
+        // account onto "CAFÉ" collides only under the Unicode fold (É↔é), which
+        // ASCII NOCASE would miss — exercises the is_nickname_in_use guard.
+        test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: shared.id,
+                username: "shared_acct".to_string(),
+                is_admin: false,
+                is_shared: true,
+                permissions: HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "Café".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("CAFÉ".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success, "Unicode nickname collision must be rejected");
                 assert!(error.is_some());
             }
             _ => panic!("Expected UserUpdateResponse"),
