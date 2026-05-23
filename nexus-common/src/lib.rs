@@ -12,6 +12,7 @@ pub mod hash;
 pub mod io;
 #[cfg(feature = "logging")]
 pub mod logging;
+pub mod names;
 pub mod protocol;
 pub mod secure_file;
 pub mod time;
