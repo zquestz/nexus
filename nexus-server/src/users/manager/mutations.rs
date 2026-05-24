@@ -1,6 +1,6 @@
 //! Mutation methods for UserManager
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::IpAddr;
 use std::sync::atomic::Ordering;
 
@@ -11,12 +11,6 @@ use nexus_common::protocol::ServerMessage;
 use super::UserManager;
 use crate::db::Permission;
 use crate::users::user::{NewSessionParams, UserSession};
-
-/// A disconnected session, carried back so the caller can broadcast UserDisconnected.
-pub struct DisconnectedSession {
-    pub session_id: u32,
-    pub nickname: String,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AddUserError {
@@ -58,43 +52,73 @@ impl UserManager {
         users.remove(&session_id)
     }
 
-    /// Remove a user and broadcast `UserDisconnected` to all users with `user_list`.
-    /// For normal disconnects, kicks, account deletion, and disable.
-    ///
-    /// For ban disconnects use `disconnect_sessions_by_ip()` /
-    /// `disconnect_sessions_in_range()` instead — those send a custom message to the
-    /// disconnected user before removing them.
+    /// Remove a single user and broadcast `UserDisconnected`, re-aggregating the
+    /// account if other sessions remain. Thin wrapper over
+    /// `remove_users_and_broadcast` for the single-session callers (normal
+    /// disconnect, kick, account deletion, disable).
     pub async fn remove_user_and_broadcast(&self, session_id: u32) -> Option<UserSession> {
-        if let Some(user) = self.remove_user(session_id).await {
-            self.broadcast_user_event(
-                ServerMessage::UserDisconnected {
-                    session_id,
-                    nickname: user.nickname.clone(),
-                },
-                Some(session_id),
-            )
-            .await;
+        self.remove_users_and_broadcast(&[session_id])
+            .await
+            .into_iter()
+            .next()
+    }
 
-            // Regular account with sessions still online: rebroadcast aggregated info
-            // (latest login for avatar/locale, most recently active for away/status).
-            if !user.is_shared {
-                let remaining_sessions = self.get_sessions_by_username(&user.username).await;
-                if let Some(user_info) = Self::build_aggregated_user_info(&remaining_sessions) {
-                    self.broadcast_user_event(
-                        ServerMessage::UserUpdated {
-                            previous_username: user.username.clone(),
-                            user: user_info,
-                        },
-                        Some(session_id),
-                    )
-                    .await;
-                }
+    /// Remove every listed session, broadcasting `UserDisconnected` for each, then
+    /// one re-aggregated `UserUpdated` per affected regular account (latest login
+    /// for avatar/locale, most recently active for away/status). Returns the
+    /// removed sessions. The single remove + broadcast + re-aggregate path for both
+    /// graceful disconnects and bans.
+    ///
+    /// Not for the dead-channel cleanup sweep (`remove_disconnected`): that runs
+    /// inside `broadcast_user_event`, so broadcasting here would re-enter the
+    /// broadcast → cleanup → broadcast recursion.
+    pub async fn remove_users_and_broadcast(&self, session_ids: &[u32]) -> Vec<UserSession> {
+        let mut removed_sessions = Vec::new();
+
+        for &session_id in session_ids {
+            // The Some-guard dedups repeated session_ids: a second `remove_user`
+            // returns None, so we never double-broadcast or double-push. (The
+            // removed session is already gone from the map, so excluding it from
+            // the broadcast is moot — pass None.)
+            if let Some(user_session) = self.remove_user(session_id).await {
+                self.broadcast_user_event(
+                    ServerMessage::UserDisconnected {
+                        session_id,
+                        nickname: user_session.nickname.clone(),
+                    },
+                    None,
+                )
+                .await;
+                removed_sessions.push(user_session);
             }
-
-            Some(user)
-        } else {
-            None
         }
+
+        // One UserUpdated per unique regular account. Shared sessions never
+        // re-aggregate — each is its own user-list entry, already handled by the
+        // UserDisconnected broadcasts above. Keyed on fold_name so case drift can't
+        // split one account into two entries; each bucket carries every removed
+        // session of the account for the avatar delta's "old".
+        let mut by_username: HashMap<String, Vec<UserSession>> = HashMap::new();
+        for user_session in removed_sessions.iter().filter(|u| !u.is_shared) {
+            by_username
+                .entry(fold_name(&user_session.username))
+                .or_default()
+                .push(user_session.clone());
+        }
+
+        for account_removed_sessions in by_username.into_values() {
+            if let Some(message) = self
+                .build_account_reaggregate(
+                    &account_removed_sessions[0].username,
+                    &account_removed_sessions,
+                )
+                .await
+            {
+                self.broadcast_user_event(message, None).await;
+            }
+        }
+
+        removed_sessions
     }
 
     /// Update username for all sessions of a user, returning the count updated.
@@ -269,18 +293,13 @@ impl UserManager {
         }
     }
 
-    /// Disconnect all sessions from an IP (ban system). `build_message` is given each
-    /// user's locale for a localized goodbye. `skip_ip` returning true exempts an IP
-    /// (e.g. trusted). Returns the disconnected sessions so the caller can broadcast
-    /// UserDisconnected.
-    pub async fn disconnect_sessions_by_ip<F, S>(
-        &self,
-        ip: &str,
-        build_message: F,
-        skip_ip: S,
-    ) -> Vec<DisconnectedSession>
+    /// Session IDs (paired with locale) for every session connected from `ip`, for
+    /// the ban system. `skip_ip` returning true exempts an IP (e.g. trusted), in
+    /// which case the result is empty. Pure lookup: the caller sends each session a
+    /// localized goodbye (while still live) and then removes them via
+    /// `remove_users_and_broadcast`.
+    pub async fn sessions_by_ip<S>(&self, ip: &str, skip_ip: S) -> Vec<(u32, String)>
     where
-        F: Fn(&str) -> ServerMessage,
         S: Fn(&IpAddr) -> bool,
     {
         if let Ok(parsed_ip) = ip.parse::<IpAddr>()
@@ -289,83 +308,30 @@ impl UserManager {
             return Vec::new();
         }
 
-        let session_ids: Vec<u32> = {
-            let users = self.users.read().await;
-            users
-                .values()
-                .filter(|u| u.address.ip().to_string() == ip)
-                .map(|u| u.session_id)
-                .collect()
-        };
-
-        if session_ids.is_empty() {
-            return Vec::new();
-        }
-
-        let mut users = self.users.write().await;
-        let mut disconnected = Vec::new();
-
-        for session_id in session_ids {
-            if let Some(user) = users.remove(&session_id) {
-                // Ignore send errors — the channel may already be closed.
-                let message = build_message(&user.locale);
-                let _ = user.tx.send((message, None));
-                disconnected.push(DisconnectedSession {
-                    session_id,
-                    nickname: user.nickname.clone(),
-                });
-            }
-        }
-
-        disconnected
+        let users = self.users.read().await;
+        users
+            .values()
+            .filter(|u| u.address.ip().to_string() == ip)
+            .map(|u| (u.session_id, u.locale.clone()))
+            .collect()
     }
 
-    /// Disconnect all sessions whose IP falls in a CIDR range (ban system). Same
-    /// `build_message` / `skip_ip` semantics as `disconnect_sessions_by_ip`; a skipped
-    /// IP is exempt even when inside the range. Returns the disconnected sessions for
-    /// UserDisconnected broadcasts.
-    pub async fn disconnect_sessions_in_range<F, S>(
-        &self,
-        range: &IpNet,
-        build_message: F,
-        skip_ip: S,
-    ) -> Vec<DisconnectedSession>
+    /// Session IDs (paired with locale) for every session whose IP falls in `range`,
+    /// for the ban system. A `skip_ip` hit is exempt even inside the range. Same
+    /// pure-lookup, send-then-remove flow as `sessions_by_ip`.
+    pub async fn sessions_in_range<S>(&self, range: &IpNet, skip_ip: S) -> Vec<(u32, String)>
     where
-        F: Fn(&str) -> ServerMessage,
         S: Fn(&IpAddr) -> bool,
     {
-        let session_ids: Vec<u32> = {
-            let users = self.users.read().await;
-            users
-                .values()
-                .filter(|u| {
-                    let ip = u.address.ip();
-                    range.contains(&ip) && !skip_ip(&ip)
-                })
-                .map(|u| u.session_id)
-                .collect()
-        };
-
-        if session_ids.is_empty() {
-            return Vec::new();
-        }
-
-        let mut users = self.users.write().await;
-        let mut disconnected = Vec::new();
-
-        for session_id in session_ids {
-            if let Some(user) = users.remove(&session_id) {
-                // Ignore send errors — the channel may already be closed.
-                let message = build_message(&user.locale);
-                let _ = user.tx.send((message, None));
-                disconnected.push(DisconnectedSession {
-                    session_id,
-                    nickname: user.nickname.clone(),
-                });
-            }
-        }
-
-        disconnected
+        let users = self.users.read().await;
+        users
+            .values()
+            .filter(|u| {
+                let ip = u.address.ip();
+                range.contains(&ip) && !skip_ip(&ip)
+            })
+            .map(|u| (u.session_id, u.locale.clone()))
+            .collect()
     }
 }
 
@@ -683,5 +649,395 @@ mod tests {
         assert_eq!(manager.get_sessions_by_user_id(1).await.len(), 2);
         assert_eq!(manager.get_sessions_by_user_id(2).await.len(), 1);
         assert!(manager.get_sessions_by_user_id(999).await.is_empty());
+    }
+
+    /// Fixture exposing the fields `remove_users_and_broadcast` tests vary
+    /// (avatar, shared/admin flags, captured tx).
+    fn broadcast_session_params(
+        user_id: i64,
+        username: &str,
+        nickname: &str,
+        is_shared: bool,
+        is_admin: bool,
+        avatar: Option<String>,
+        tx: mpsc::UnboundedSender<(ServerMessage, Option<nexus_common::framing::MessageId>)>,
+    ) -> NewSessionParams {
+        NewSessionParams {
+            session_id: 0,
+            user_id,
+            username: username.to_string(),
+            is_admin,
+            is_shared,
+            permissions: HashSet::new(),
+            address: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+            created_at: 0,
+            tx,
+            features: vec![],
+            locale: "en".to_string(),
+            avatar,
+            nickname: nickname.to_string(),
+            is_away: false,
+            status: None,
+            group_id: None,
+            group_name: None,
+            bandwidth_weight_override: None,
+            last_activity: std::time::Instant::now(),
+            bandwidth_weight: 1,
+        }
+    }
+
+    /// Removing one session of a multi-session regular account broadcasts
+    /// UserDisconnected for it, then a re-aggregated UserUpdated for the survivor.
+    /// Here the removed session is the sole avatar source, so the aggregate avatar
+    /// clears to `Some("")`.
+    #[tokio::test]
+    async fn test_remove_users_and_broadcast_reaggregates_surviving_session() {
+        let manager = UserManager::new();
+
+        // Observer (admin → has user_list) to capture broadcasts.
+        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        manager
+            .add_user(broadcast_session_params(
+                100, "observer", "observer", false, true, None, obs_tx,
+            ))
+            .await
+            .unwrap();
+
+        // alice: two regular sessions; only the first carries an avatar.
+        let (a1_tx, _a1_rx) = mpsc::unbounded_channel();
+        let s1 = manager
+            .add_user(broadcast_session_params(
+                1,
+                "alice",
+                "alice",
+                false,
+                false,
+                Some("data:avatar-x".to_string()),
+                a1_tx,
+            ))
+            .await
+            .unwrap();
+        let (a2_tx, _a2_rx) = mpsc::unbounded_channel();
+        let s2 = manager
+            .add_user(broadcast_session_params(
+                1, "alice", "alice", false, false, None, a2_tx,
+            ))
+            .await
+            .unwrap();
+
+        manager.remove_users_and_broadcast(&[s1]).await;
+
+        let (msg1, _) = obs_rx
+            .try_recv()
+            .expect("observer should receive UserDisconnected");
+        match msg1 {
+            ServerMessage::UserDisconnected {
+                session_id,
+                nickname,
+            } => {
+                assert_eq!(session_id, s1);
+                assert_eq!(nickname, "alice");
+            }
+            other => panic!("expected UserDisconnected, got {other:?}"),
+        }
+
+        let (msg2, _) = obs_rx
+            .try_recv()
+            .expect("observer should receive re-aggregated UserUpdated");
+        match msg2 {
+            ServerMessage::UserUpdated {
+                previous_username,
+                user,
+            } => {
+                assert_eq!(previous_username, "alice");
+                assert_eq!(user.session_ids, vec![s2]);
+                assert_eq!(
+                    user.avatar,
+                    Some(String::new()),
+                    "avatar source left → aggregate clears to Some(\"\")"
+                );
+            }
+            other => panic!("expected UserUpdated, got {other:?}"),
+        }
+
+        assert!(obs_rx.try_recv().is_err(), "no further broadcasts");
+        assert_eq!(manager.get_sessions_by_username("alice").await.len(), 1);
+    }
+
+    /// Removing all sessions of a regular account broadcasts one UserDisconnected
+    /// per session and no UserUpdated (nothing remains to aggregate).
+    #[tokio::test]
+    async fn test_remove_users_and_broadcast_full_removal_emits_no_user_updated() {
+        let manager = UserManager::new();
+
+        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        manager
+            .add_user(broadcast_session_params(
+                100, "observer", "observer", false, true, None, obs_tx,
+            ))
+            .await
+            .unwrap();
+
+        let (a1_tx, _a1_rx) = mpsc::unbounded_channel();
+        let s1 = manager
+            .add_user(broadcast_session_params(
+                1,
+                "alice",
+                "alice",
+                false,
+                false,
+                Some("data:avatar-x".to_string()),
+                a1_tx,
+            ))
+            .await
+            .unwrap();
+        let (a2_tx, _a2_rx) = mpsc::unbounded_channel();
+        let s2 = manager
+            .add_user(broadcast_session_params(
+                1, "alice", "alice", false, false, None, a2_tx,
+            ))
+            .await
+            .unwrap();
+
+        manager.remove_users_and_broadcast(&[s1, s2]).await;
+
+        let mut disconnected = Vec::new();
+        while let Ok((msg, _)) = obs_rx.try_recv() {
+            match msg {
+                ServerMessage::UserDisconnected { session_id, .. } => disconnected.push(session_id),
+                ServerMessage::UserUpdated { .. } => {
+                    panic!("no UserUpdated expected when the account is fully removed")
+                }
+                other => panic!("unexpected broadcast {other:?}"),
+            }
+        }
+        disconnected.sort_unstable();
+        let mut expected = vec![s1, s2];
+        expected.sort_unstable();
+        assert_eq!(disconnected, expected);
+        assert!(manager.get_sessions_by_username("alice").await.is_empty());
+    }
+
+    /// Shared sessions never re-aggregate — each is its own user-list entry, so
+    /// removal emits only UserDisconnected, never UserUpdated.
+    #[tokio::test]
+    async fn test_remove_users_and_broadcast_shared_never_reaggregates() {
+        let manager = UserManager::new();
+
+        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        manager
+            .add_user(broadcast_session_params(
+                100, "observer", "observer", false, true, None, obs_tx,
+            ))
+            .await
+            .unwrap();
+
+        // Shared account: two sessions, distinct nicknames, one bears an avatar.
+        let (g1_tx, _g1_rx) = mpsc::unbounded_channel();
+        let g1 = manager
+            .add_user(broadcast_session_params(
+                2,
+                "shared_acct",
+                "guest1",
+                true,
+                false,
+                Some("data:avatar-x".to_string()),
+                g1_tx,
+            ))
+            .await
+            .unwrap();
+        let (g2_tx, _g2_rx) = mpsc::unbounded_channel();
+        manager
+            .add_user(broadcast_session_params(
+                2,
+                "shared_acct",
+                "guest2",
+                true,
+                false,
+                None,
+                g2_tx,
+            ))
+            .await
+            .unwrap();
+
+        manager.remove_users_and_broadcast(&[g1]).await;
+
+        let (msg, _) = obs_rx
+            .try_recv()
+            .expect("observer should receive UserDisconnected");
+        match msg {
+            ServerMessage::UserDisconnected {
+                session_id,
+                nickname,
+            } => {
+                assert_eq!(session_id, g1);
+                assert_eq!(nickname, "guest1");
+            }
+            other => panic!("expected UserDisconnected, got {other:?}"),
+        }
+        assert!(
+            obs_rx.try_recv().is_err(),
+            "shared removal must not emit UserUpdated"
+        );
+    }
+
+    /// Removing a non-avatar session while the avatar-bearing session stays still
+    /// emits UserUpdated (other aggregate fields may move), but its avatar is
+    /// `None` — the source remained, so no spurious avatar change is carried.
+    #[tokio::test]
+    async fn test_remove_users_and_broadcast_keeps_avatar_when_source_remains() {
+        let manager = UserManager::new();
+
+        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        manager
+            .add_user(broadcast_session_params(
+                100, "observer", "observer", false, true, None, obs_tx,
+            ))
+            .await
+            .unwrap();
+
+        // alice: s1 carries the avatar and stays; s2 (no avatar) is removed.
+        let (a1_tx, _a1_rx) = mpsc::unbounded_channel();
+        let s1 = manager
+            .add_user(broadcast_session_params(
+                1,
+                "alice",
+                "alice",
+                false,
+                false,
+                Some("data:avatar-x".to_string()),
+                a1_tx,
+            ))
+            .await
+            .unwrap();
+        let (a2_tx, _a2_rx) = mpsc::unbounded_channel();
+        let s2 = manager
+            .add_user(broadcast_session_params(
+                1, "alice", "alice", false, false, None, a2_tx,
+            ))
+            .await
+            .unwrap();
+
+        manager.remove_users_and_broadcast(&[s2]).await;
+
+        let (msg1, _) = obs_rx
+            .try_recv()
+            .expect("observer should receive UserDisconnected");
+        match msg1 {
+            ServerMessage::UserDisconnected { session_id, .. } => assert_eq!(session_id, s2),
+            other => panic!("expected UserDisconnected, got {other:?}"),
+        }
+
+        let (msg2, _) = obs_rx
+            .try_recv()
+            .expect("observer should receive UserUpdated");
+        match msg2 {
+            ServerMessage::UserUpdated {
+                previous_username,
+                user,
+            } => {
+                assert_eq!(previous_username, "alice");
+                assert_eq!(user.session_ids, vec![s1]);
+                assert_eq!(
+                    user.avatar, None,
+                    "avatar source remained → no avatar change carried"
+                );
+            }
+            other => panic!("expected UserUpdated, got {other:?}"),
+        }
+
+        assert!(obs_rx.try_recv().is_err(), "no further broadcasts");
+    }
+
+    /// One removal call spanning two regular accounts re-aggregates each exactly
+    /// once (the fold-keyed grouping is per account, not per session).
+    #[tokio::test]
+    async fn test_remove_users_and_broadcast_reaggregates_each_account_once() {
+        let manager = UserManager::new();
+
+        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        manager
+            .add_user(broadcast_session_params(
+                100, "observer", "observer", false, true, None, obs_tx,
+            ))
+            .await
+            .unwrap();
+
+        // Two accounts, each with an avatar-bearing session (removed) and a
+        // surviving no-avatar session.
+        let (a1_tx, _a1_rx) = mpsc::unbounded_channel();
+        let alice_avatar = manager
+            .add_user(broadcast_session_params(
+                1,
+                "alice",
+                "alice",
+                false,
+                false,
+                Some("data:alice".to_string()),
+                a1_tx,
+            ))
+            .await
+            .unwrap();
+        let (a2_tx, _a2_rx) = mpsc::unbounded_channel();
+        manager
+            .add_user(broadcast_session_params(
+                1, "alice", "alice", false, false, None, a2_tx,
+            ))
+            .await
+            .unwrap();
+
+        let (b1_tx, _b1_rx) = mpsc::unbounded_channel();
+        let bob_avatar = manager
+            .add_user(broadcast_session_params(
+                2,
+                "bob",
+                "bob",
+                false,
+                false,
+                Some("data:bob".to_string()),
+                b1_tx,
+            ))
+            .await
+            .unwrap();
+        let (b2_tx, _b2_rx) = mpsc::unbounded_channel();
+        manager
+            .add_user(broadcast_session_params(
+                2, "bob", "bob", false, false, None, b2_tx,
+            ))
+            .await
+            .unwrap();
+
+        manager
+            .remove_users_and_broadcast(&[alice_avatar, bob_avatar])
+            .await;
+
+        // Two UserDisconnected, and exactly one UserUpdated per account.
+        let mut disconnected = Vec::new();
+        let mut updated: HashMap<String, Option<String>> = HashMap::new();
+        while let Ok((msg, _)) = obs_rx.try_recv() {
+            match msg {
+                ServerMessage::UserDisconnected { session_id, .. } => disconnected.push(session_id),
+                ServerMessage::UserUpdated {
+                    previous_username,
+                    user,
+                } => {
+                    assert!(
+                        updated.insert(previous_username, user.avatar).is_none(),
+                        "each account must re-aggregate at most once"
+                    );
+                }
+                other => panic!("unexpected broadcast {other:?}"),
+            }
+        }
+
+        disconnected.sort_unstable();
+        let mut expected = vec![alice_avatar, bob_avatar];
+        expected.sort_unstable();
+        assert_eq!(disconnected, expected);
+
+        // Each account's avatar source left → both clear to Some("").
+        assert_eq!(updated.len(), 2);
+        assert_eq!(updated.get("alice"), Some(&Some(String::new())));
+        assert_eq!(updated.get("bob"), Some(&Some(String::new())));
     }
 }

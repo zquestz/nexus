@@ -229,6 +229,8 @@ Admins bypass this restriction.
 
 Each user has a `bandwidth_weight` integer (range `1..=65535`) controlling their share of the server's outbound bandwidth cap when flows contend. Higher weight = larger share. Weights are advisory for fairness — they don't allocate dedicated bandwidth, they bias the scheduler. When only one user is transferring, that user gets the full cap; weights only matter under contention.
 
+**Shared accounts share one weight.** A `bandwidth_weight` is per *account*: every session of an account shares a single scheduler flow, so all logins of a shared account — the guest account included — draw from **one** combined share, not one per session or per nickname. N people on the guest account collectively get a single user's share, and a heavy transfer by one starves the others. This is intentional — it stops anyone from multiplying their bandwidth by opening more sessions under different nicknames. To give a busy shared or guest login more aggregate bandwidth, raise that account's (or its group's) weight.
+
 The server cap itself is configured separately by the operator — see [Configuration → Bandwidth](02-configuration.md#bandwidth).
 
 ### Resolution

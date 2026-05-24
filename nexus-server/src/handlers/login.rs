@@ -33,7 +33,7 @@ use crate::constants::{
 };
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, LoginSnapshotError, Permission};
-use crate::users::manager::AddUserError;
+use crate::users::manager::{AddUserError, UserManager};
 use crate::users::user::NewSessionParams;
 
 /// Login request parameters
@@ -744,6 +744,18 @@ where
     debug!(user = %authenticated_account.username, ip = %ctx.peer_addr, "{}", LOG_LOGIN_SUCCESS);
 
     // Announce the new connection to other users.
+    // Regular accounts: avatar = latest-login-with-an-avatar across all sessions
+    // (incl. the one just registered), so a no-avatar login can't blank an
+    // existing avatar. Shared accounts are per-session — use this session's own.
+    let connected_avatar = if authenticated_account.is_shared {
+        avatar
+    } else {
+        let sessions = ctx
+            .user_manager
+            .get_sessions_by_username(&authenticated_account.username)
+            .await;
+        UserManager::aggregate_avatar(sessions.iter())
+    };
     let user_info = UserInfo {
         id: authenticated_account.id,
         username: authenticated_account.username.clone(),
@@ -753,7 +765,7 @@ where
         is_shared: authenticated_account.is_shared,
         session_ids: vec![id],
         locale: locale.clone(),
-        avatar,
+        avatar: connected_avatar,
         is_away: false,
         status: None,
         group_id,

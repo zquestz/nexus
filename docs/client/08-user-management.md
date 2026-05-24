@@ -185,6 +185,8 @@ Administrators bypass all permission checks and always have full access. Group a
 
 Each user has a `bandwidth_weight` (1–65535) that controls their share of the server's outbound bandwidth cap when flows contend. Higher weight = larger share. See [Server Configuration → Bandwidth](../server/02-configuration.md#bandwidth) for what the server-side cap does.
 
+Weight is per **account**: all sessions of an account — including every login of a shared or guest account — share one combined bandwidth share, not one per session. To give a busy shared or guest login more, raise the account's or group's weight.
+
 **Effective weight resolution:** user override → admin default (50) → group's weight → system default (1). Admins skip group lookup entirely.
 
 The User edit form has a `Bandwidth Weight` number field and an always-visible `Inherit Bandwidth Weight` checkbox. Check Inherit to remove the per-user override and fall back to the resolver's baseline; uncheck to set or keep a per-user override. The value renders **bold** when it differs from the baseline (same convention as permission overrides).

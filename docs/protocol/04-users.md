@@ -502,10 +502,11 @@ A single account can have multiple concurrent sessions (e.g., desktop and mobile
 
 ## Avatar Handling
 
-- Avatars are sent at login and stored in the session
-- For multi-session users, the most recent login's avatar is used
-- Avatars are included in `UserConnected`, `UserListResponse`, `UserInfoResponse`, and `UserUpdated`
-- If no avatar is provided, clients should generate an identicon from the nickname
+- Avatars are sent at login and stored in the session.
+- For multi-session regular accounts, the avatar is the **most recent login that supplied one**: a no-avatar login does not clear an existing avatar, a newer login carrying one replaces it, and an identicon is used only when no session has an avatar. Shared accounts are per-session — each nickname keeps its own.
+- Avatars are carried on the **snapshot** messages — `UserConnected`, `UserListResponse`, `UserInfoResponse` — which are authoritative for clients (re)building their cache.
+- `UserUpdated` does **not** carry the avatar in the normal case: an absent/`null` `avatar` means "unchanged," and the client keeps its cached value. The one exception is a disconnect that changes the aggregate (the avatar-bearing latest session left) — that `UserUpdated` carries the new avatar, or an empty string `""` as a **`UserUpdated`-only removal sentinel** meaning "the user now has no avatar" (clients fall back to the identicon). `""` is never sent on snapshots; there `avatar` is `null`-or-data-URI.
+- If no avatar is available, clients generate an identicon from the nickname.
 
 ## Away/Status
 

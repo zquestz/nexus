@@ -19,6 +19,7 @@ use crate::constants::{
     LOG_USER_INFO_NOT_LOGGED_IN, LOG_USER_INFO_PERMISSION_DENIED,
 };
 use crate::db::Permission;
+use crate::users::manager::UserManager;
 
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
@@ -136,11 +137,10 @@ where
     }
     let features: Vec<String> = all_features.into_iter().collect();
 
-    // Latest login wins.
-    let avatar = target_sessions
-        .iter()
-        .max_by_key(|s| s.login_time)
-        .and_then(|s| s.avatar.clone());
+    // Latest login that actually carried an avatar wins (a no-avatar session
+    // doesn't blank it). Note: currently inert client-side — the user-info panel
+    // renders from avatar_cache, not this field.
+    let avatar = UserManager::aggregate_avatar(target_sessions.iter());
 
     // Most recently active session wins (shared accounts have only one).
     let (is_away, status) = target_sessions

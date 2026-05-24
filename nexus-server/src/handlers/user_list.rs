@@ -10,27 +10,6 @@ use crate::constants::{
     LOG_USER_LIST_PERMISSION_DENIED,
 };
 
-/// Aggregated user data for deduplication of regular (non-shared) accounts.
-///
-/// Avatar/locale/group use latest login (stable selection).
-/// Away/status use most recently active session (accurate presence).
-struct UserAggregateData {
-    login_time: i64,
-    is_admin: bool,
-    is_shared: bool,
-    session_ids: Vec<u32>,
-    locale: String,
-    avatar: Option<String>,
-    latest_session_login_time: i64,
-    is_away: bool,
-    status: Option<String>,
-    group_id: Option<i64>,
-    group_name: Option<String>,
-    bandwidth_weight: u16,
-    user_id: i64,
-    most_recent_activity: std::time::Instant,
-}
-
 use tokio::io::AsyncWrite;
 
 use nexus_common::names::fold_name;
@@ -39,6 +18,8 @@ use nexus_common::validators::resolve_bandwidth_weight;
 
 use super::{HandlerContext, err_database, err_not_logged_in, err_permission_denied};
 use crate::db::Permission;
+use crate::users::manager::UserManager;
+use crate::users::user::UserSession;
 
 /// `all=false`: online sessions only (requires `user_list`).
 /// `all=true`: all DB accounts for the management panel (requires
@@ -146,98 +127,39 @@ where
 
     let online_users = ctx.user_manager.get_all_users().await;
 
-    // Regular accounts aggregate by username (one entry for all sessions);
+    // Regular accounts aggregate by username (one entry for all their sessions);
     // shared accounts stay per-session (each has its own nickname).
-    let mut user_map: HashMap<String, UserAggregateData> = HashMap::new();
-    let mut shared_user_infos: Vec<UserInfo> = Vec::new();
-
+    let mut regular_groups: HashMap<String, Vec<UserSession>> = HashMap::new();
+    let mut shared_sessions: Vec<UserSession> = Vec::new();
     for user in online_users {
         if user.is_shared {
-            shared_user_infos.push(UserInfo {
-                id: user.user_id,
-                username: user.username.clone(),
-                nickname: user.nickname.clone(),
-                login_time: user.login_time,
-                is_admin: false, // Shared accounts are never admin
-                is_shared: true,
-                session_ids: vec![user.session_id],
-                locale: user.locale.clone(),
-                avatar: user.avatar.clone(),
-                is_away: user.is_away,
-                status: user.status.clone(),
-                group_id: user.group_id,
-                group_name: user.group_name.clone(),
-                bandwidth_weight: Some(
-                    user.bandwidth_weight
-                        .load(std::sync::atomic::Ordering::Relaxed),
-                ),
-            });
+            shared_sessions.push(user);
         } else {
-            user_map
+            regular_groups
                 .entry(user.username.clone())
-                .and_modify(|agg| {
-                    agg.login_time = agg.login_time.min(user.login_time);
-                    agg.session_ids.push(user.session_id);
-                    // Avatar/locale/group/weight track the latest login (stable).
-                    if user.login_time > agg.latest_session_login_time {
-                        agg.avatar = user.avatar.clone();
-                        agg.locale = user.locale.clone();
-                        agg.latest_session_login_time = user.login_time;
-                        agg.group_id = user.group_id;
-                        agg.group_name = user.group_name.clone();
-                        agg.bandwidth_weight = user
-                            .bandwidth_weight
-                            .load(std::sync::atomic::Ordering::Relaxed);
-                    }
-                    // Away/status track the most recently active session (accurate presence).
-                    if user.last_activity > agg.most_recent_activity {
-                        agg.is_away = user.is_away;
-                        agg.status = user.status.clone();
-                        agg.most_recent_activity = user.last_activity;
-                    }
-                })
-                .or_insert(UserAggregateData {
-                    login_time: user.login_time,
-                    is_admin: user.is_admin,
-                    is_shared: false,
-                    session_ids: vec![user.session_id],
-                    locale: user.locale.clone(),
-                    avatar: user.avatar.clone(),
-                    latest_session_login_time: user.login_time,
-                    is_away: user.is_away,
-                    status: user.status.clone(),
-                    group_id: user.group_id,
-                    group_name: user.group_name.clone(),
-                    bandwidth_weight: user
-                        .bandwidth_weight
-                        .load(std::sync::atomic::Ordering::Relaxed),
-                    user_id: user.user_id,
-                    most_recent_activity: user.last_activity,
-                });
+                .or_default()
+                .push(user);
         }
     }
 
-    let mut user_infos: Vec<UserInfo> = user_map
-        .into_iter()
-        .map(|(username, agg)| UserInfo {
-            id: agg.user_id,
-            nickname: username.clone(), // Regular account: nickname == username
-            username,
-            login_time: agg.login_time,
-            is_admin: agg.is_admin,
-            is_shared: agg.is_shared,
-            session_ids: agg.session_ids,
-            locale: agg.locale,
-            avatar: agg.avatar,
-            is_away: agg.is_away,
-            status: agg.status,
-            group_id: agg.group_id,
-            group_name: agg.group_name,
-            bandwidth_weight: Some(agg.bandwidth_weight),
-        })
-        .collect();
+    let mut user_infos: Vec<UserInfo> = Vec::new();
 
-    user_infos.extend(shared_user_infos);
+    // Regular: one entry per account. build_aggregated_user_info supplies every
+    // field but the avatar (left None); aggregate_avatar is the single avatar
+    // rule (latest login that carried one).
+    for group in regular_groups.into_values() {
+        if let Some(mut info) = UserManager::build_aggregated_user_info(&group) {
+            info.avatar = UserManager::aggregate_avatar(group.iter());
+            user_infos.push(info);
+        }
+    }
+
+    // Shared: one entry per session, each keeping its own avatar.
+    for session in shared_sessions {
+        let mut info = UserManager::build_user_info_from_session(&session);
+        info.avatar = session.avatar;
+        user_infos.push(info);
+    }
 
     // Clients require a sorted list (case-insensitive by display nickname).
     user_infos.sort_by_key(|u| fold_name(&u.nickname));

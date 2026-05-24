@@ -1232,17 +1232,15 @@ where
                 if broadcast_should_fire && !suppress_for_bw_only {
                     let session_ids: Vec<u32> = sessions.iter().map(|s| s.session_id).collect();
 
-                    let (login_time, locale, avatar, is_away, status) = if !sessions.is_empty() {
+                    let (login_time, locale, is_away, status) = if !sessions.is_empty() {
                         let login_time = sessions.iter().map(|u| u.login_time).min().unwrap_or(0);
 
-                        // Avatar, locale: latest login wins (stable)
+                        // Locale: latest login wins (stable)
                         let latest_login = sessions.iter().max_by_key(|u| u.login_time);
 
                         let locale = latest_login
                             .map(|u| u.locale.clone())
                             .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
-
-                        let avatar = latest_login.and_then(|u| u.avatar.clone());
 
                         // Away/status: most recently active wins (accurate presence)
                         let most_active = sessions.iter().max_by_key(|u| u.last_activity);
@@ -1250,22 +1248,24 @@ where
                         let is_away = most_active.is_some_and(|u| u.is_away);
                         let status = most_active.and_then(|u| u.status.clone());
 
-                        (login_time, locale, avatar, is_away, status)
+                        (login_time, locale, is_away, status)
                     } else {
-                        (0, DEFAULT_LOCALE.to_string(), None, false, None)
+                        (0, DEFAULT_LOCALE.to_string(), false, None)
                     };
 
                     let user_info = UserInfo {
                         id: updated_account.id,
                         username: updated_account.username.clone(),
-                        // Account-level broadcast: nickname == username.
+                        // Account-level broadcast keyed by username; the client matches by
+                        // username and ignores this nickname for shared accounts.
                         nickname: updated_account.username.clone(),
                         login_time,
                         is_admin: updated_account.is_admin,
                         is_shared: updated_account.is_shared,
                         session_ids,
                         locale,
-                        avatar,
+                        // UserUpdated never changes the avatar; clients keep their cache.
+                        avatar: None,
                         is_away,
                         status,
                         group_id: updated_group_id,

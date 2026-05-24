@@ -19,8 +19,6 @@ use super::{
 use crate::constants::*;
 use crate::db::Permission;
 use crate::ip_rule_cache::{canonicalize_target, parse_ip_or_cidr};
-use crate::users::UserManager;
-use crate::users::manager::DisconnectedSession;
 
 /// Creates or updates an IP ban. Target is an online nickname (bans its
 /// IP(s)), a bare IP, or a CIDR range.
@@ -277,25 +275,35 @@ where
         }
     }
 
-    // Disconnect banned sessions + transfers and broadcast UserDisconnected. Trusted IPs are
-    // left connected: trust bypasses ban checks, so disconnecting them would just churn.
+    // Disconnect banned sessions + transfers. Each banned session gets its reason
+    // while still live, then `remove_users_and_broadcast` removes them and emits
+    // UserDisconnected (+ re-aggregated UserUpdated for any surviving account
+    // session). Trusted IPs are left connected: trust bypasses ban checks, so
+    // disconnecting them would just churn.
     if is_range {
         if let Some(net) = parse_ip_or_cidr(&banned_targets[0]) {
-            let disconnected = ctx
+            let targets = ctx
                 .user_manager
-                .disconnect_sessions_in_range(
-                    &net,
-                    |user_locale| build_ban_disconnect_message(user_locale, expires_at),
-                    |ip| {
-                        ctx.ip_rule_cache
-                            .read()
-                            .expect(ERR_IP_CACHE_POISONED)
-                            .is_trusted_read_only(*ip)
-                    },
-                )
+                .sessions_in_range(&net, |ip| {
+                    ctx.ip_rule_cache
+                        .read()
+                        .expect(ERR_IP_CACHE_POISONED)
+                        .is_trusted_read_only(*ip)
+                })
                 .await;
 
-            broadcast_disconnections(ctx.user_manager, disconnected).await;
+            for (session_id, locale) in &targets {
+                ctx.user_manager
+                    .send_to_session(
+                        *session_id,
+                        build_ban_disconnect_message(locale, expires_at),
+                    )
+                    .await;
+            }
+            let session_ids: Vec<u32> = targets.into_iter().map(|(id, _)| id).collect();
+            ctx.user_manager
+                .remove_users_and_broadcast(&session_ids)
+                .await;
 
             ctx.transfer_registry.disconnect_matching(|ip| {
                 net.contains(&ip)
@@ -307,23 +315,33 @@ where
             });
         }
     } else {
+        // Banning a nickname can span several IPs of one account; gather all of
+        // them so the account re-aggregates once (final state), not per IP.
+        let mut session_ids = Vec::new();
         for ip in &banned_targets {
-            let disconnected = ctx
+            let targets = ctx
                 .user_manager
-                .disconnect_sessions_by_ip(
-                    ip,
-                    |user_locale| build_ban_disconnect_message(user_locale, expires_at),
-                    |ip| {
-                        ctx.ip_rule_cache
-                            .read()
-                            .expect(ERR_IP_CACHE_POISONED)
-                            .is_trusted_read_only(*ip)
-                    },
-                )
+                .sessions_by_ip(ip, |ip| {
+                    ctx.ip_rule_cache
+                        .read()
+                        .expect(ERR_IP_CACHE_POISONED)
+                        .is_trusted_read_only(*ip)
+                })
                 .await;
 
-            broadcast_disconnections(ctx.user_manager, disconnected).await;
+            for (session_id, locale) in &targets {
+                ctx.user_manager
+                    .send_to_session(
+                        *session_id,
+                        build_ban_disconnect_message(locale, expires_at),
+                    )
+                    .await;
+            }
+            session_ids.extend(targets.into_iter().map(|(id, _)| id));
         }
+        ctx.user_manager
+            .remove_users_and_broadcast(&session_ids)
+            .await;
 
         ctx.transfer_registry.disconnect_matching(|ip| {
             let ip_str = ip.to_string();
@@ -344,23 +362,6 @@ where
         nickname: nickname_annotation,
     };
     ctx.send_message(&response).await
-}
-
-async fn broadcast_disconnections(
-    user_manager: &UserManager,
-    disconnected: Vec<DisconnectedSession>,
-) {
-    for session in disconnected {
-        user_manager
-            .broadcast_user_event(
-                ServerMessage::UserDisconnected {
-                    session_id: session.session_id,
-                    nickname: session.nickname,
-                },
-                Some(session.session_id),
-            )
-            .await;
-    }
 }
 
 enum TargetResolutionError {

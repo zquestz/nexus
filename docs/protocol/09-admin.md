@@ -896,6 +896,8 @@ Broadcast when a user account is modified.
 | `previous_username` | string | Yes      | Username before the update |
 | `user`              | object | Yes      | Updated `UserInfo` object  |
 
+The `user.avatar` field follows [Users → Avatar Handling](04-users.md#avatar-handling): on `UserUpdated` it is normally `null` (unchanged — the client keeps its cached avatar) and is populated only when a disconnect changes the aggregate (where `""` means the user now has no avatar). Admin edits never change the avatar, so they always send `null` (as below).
+
 **Example:**
 
 ```json
