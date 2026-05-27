@@ -47,7 +47,7 @@ where
     }
 
     let status = message.clone();
-    let Some(session) = ctx
+    let Some(_) = ctx
         .user_manager
         .set_status(session_id, true, status.clone())
         .await
@@ -63,6 +63,14 @@ where
     };
     ctx.send_message(&response).await?;
 
+    // Re-fetch under user-state read lock so a concurrent rename cannot cause us
+    // to broadcast stale identity fields after it has committed. The lock is acquired
+    // after the socket write so no slow-client back-pressure holds the lock.
+    let _user_state = ctx.user_manager.read_user_state().await;
+    let Some(session) = ctx.user_manager.get_user_by_session_id(session_id).await else {
+        return Ok(()); // concurrent disconnect
+    };
+
     // Broadcast UserUpdated. Shared accounts broadcast this session directly;
     // regular accounts aggregate across all their sessions.
     let user_info = if session.is_shared {
@@ -72,8 +80,6 @@ where
             .user_manager
             .get_sessions_by_username(&session.username)
             .await;
-        // All sessions vanished between set_status and aggregation (concurrent
-        // disconnect). UserDisconnected will follow; skip the stale UserUpdated.
         let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) else {
             return Ok(());
         };

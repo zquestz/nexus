@@ -158,8 +158,8 @@ impl VoiceRegistry {
 
     pub async fn get_by_session_id(&self, session_id: u32) -> Option<VoiceSession> {
         // Lock order: sessions → id_to_token, matching every writer
-        // (`add`, `remove_by_*`, `update_nickname`). Reversing would
-        // create an AB-BA deadlock under contention.
+        // (`add`, `remove_by_*`). Reversing would create an AB-BA
+        // deadlock under contention.
         let sessions = self.sessions.read().await;
         let id_to_token = self.session_id_to_token.read().await;
 
@@ -228,19 +228,33 @@ impl VoiceRegistry {
         }
     }
 
-    /// Called when a user's username changes (regular accounts only;
-    /// shared accounts keep their per-session nickname).
-    pub async fn update_nickname(&self, session_id: u32, new_nickname: String) -> bool {
+    /// Apply a nickname change across all voice state in one write-lock pass:
+    /// every session whose nickname matches `old_nickname` takes `new_nickname`,
+    /// and any DM `target` containing the old nickname is re-keyed and re-sorted so
+    /// the canonical `target_key` matches what a fresh join would build (both the
+    /// renamed user's own DM session and the peer's, so an ongoing call and any
+    /// later rejoin still line up). Channel targets (`#name`) never match. The
+    /// voice registry only stores nicknames; the caller passes the username, which
+    /// equals the nickname for the regular accounts this is gated to (shared
+    /// accounts keep their per-session nicknames, so it's never called for them).
+    pub async fn update_nickname(&self, old_nickname: &str, new_nickname: &str) {
+        let old_lower = fold_name(old_nickname);
         let mut sessions = self.sessions.write().await;
-        let id_to_token = self.session_id_to_token.read().await;
-
-        if let Some(token) = id_to_token.get(&session_id)
-            && let Some(session) = sessions.get_mut(token)
-        {
-            session.nickname = new_nickname;
-            return true;
+        for session in sessions.values_mut() {
+            if fold_name(&session.nickname) == old_lower {
+                session.nickname = new_nickname.to_string();
+            }
+            let mut target_changed = false;
+            for entry in &mut session.target {
+                if fold_name(entry) == old_lower {
+                    *entry = new_nickname.to_string();
+                    target_changed = true;
+                }
+            }
+            if target_changed {
+                session.target.sort_by_key(|a| fold_name(a));
+            }
         }
-        false
     }
 
     /// Tokens of sessions that signaled `VoiceJoin` but never opened
@@ -323,6 +337,56 @@ mod tests {
         assert_eq!(retrieved.unwrap().nickname, "alice");
 
         assert!(registry.get_by_session_id(999).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_update_nickname() {
+        let registry = VoiceRegistry::new();
+        // The renamed user appears twice: in a channel and in a DM with bob.
+        // carol is an unrelated channel member who must stay untouched.
+        registry
+            .add(create_test_session("alice", "#general", 1))
+            .await
+            .expect("test setup: session_id is unique");
+        registry
+            .add(create_test_session("alice", "alice:bob", 2))
+            .await
+            .expect("test setup: session_id is unique");
+        registry
+            .add(create_test_session("bob", "alice:bob", 3))
+            .await
+            .expect("test setup: session_id is unique");
+        registry
+            .add(create_test_session("carol", "#general", 4))
+            .await
+            .expect("test setup: session_id is unique");
+
+        // "zara" sorts after "bob", so the DM canonical key must re-sort to
+        // "bob:zara" (not the stale "zara:bob") on both peers.
+        registry.update_nickname("alice", "zara").await;
+
+        let in_channel = registry.get_by_session_id(1).await.expect("session 1");
+        let in_dm = registry.get_by_session_id(2).await.expect("session 2");
+        let peer = registry.get_by_session_id(3).await.expect("session 3");
+        let unrelated = registry.get_by_session_id(4).await.expect("session 4");
+
+        // Both of the renamed user's sessions take the new nickname.
+        assert_eq!(in_channel.nickname, "zara");
+        assert_eq!(in_dm.nickname, "zara");
+        // Channel target carries no nickname and is untouched.
+        assert_eq!(in_channel.target_key(), "#general");
+        // The DM key re-keys + re-sorts consistently on both peers.
+        assert_eq!(in_dm.target_key(), "bob:zara");
+        assert_eq!(peer.target_key(), "bob:zara");
+        assert_eq!(peer.nickname, "bob", "the peer is not the one renamed");
+        // Unrelated session fully untouched.
+        assert_eq!(unrelated.nickname, "carol");
+        assert_eq!(unrelated.target_key(), "#general");
+
+        // Participant listing reflects the new nickname, not the old.
+        let participants = registry.get_participants("#general").await;
+        assert!(participants.contains(&"zara".to_string()));
+        assert!(!participants.contains(&"alice".to_string()));
     }
 
     #[tokio::test]
@@ -638,35 +702,6 @@ mod tests {
                 .is_nickname_in_target("#general", "alice", None)
                 .await
         );
-    }
-
-    #[tokio::test]
-    async fn test_update_nickname() {
-        let registry = VoiceRegistry::new();
-
-        registry
-            .add(create_test_session("alice", "#general", 1))
-            .await
-            .expect("test setup: session_id is unique");
-
-        let participants = registry.get_participants("#general").await;
-        assert!(participants.contains(&"alice".to_string()));
-        assert!(!participants.contains(&"alicia".to_string()));
-
-        let updated = registry.update_nickname(1, "alicia".to_string()).await;
-        assert!(updated);
-
-        let participants = registry.get_participants("#general").await;
-        assert!(!participants.contains(&"alice".to_string()));
-        assert!(participants.contains(&"alicia".to_string()));
-    }
-
-    #[tokio::test]
-    async fn test_update_nickname_not_in_voice() {
-        let registry = VoiceRegistry::new();
-
-        let updated = registry.update_nickname(999, "bob".to_string()).await;
-        assert!(!updated);
     }
 
     /// Two concurrent `add` calls for the same `session_id` must

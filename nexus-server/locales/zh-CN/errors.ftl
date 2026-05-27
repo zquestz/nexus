@@ -7,7 +7,6 @@ err-nickname-in-use = 昵称已被使用
 err-nickname-invalid = 昵称包含无效字符（允许字母、数字和符号 - 不允许空格或控制字符）
 err-nickname-is-username = 昵称不能是已存在的用户名
 err-username-is-active-nickname = 用户名不能与正在使用的昵称相同
-err-nickname-not-found = 找不到用户"{ $nickname }"
 err-nickname-not-online = 用户"{ $nickname }"不在线
 err-nickname-required = 共享账户需要昵称
 err-nickname-too-long = 昵称太长（最多{ $max_length }个字符）
@@ -21,8 +20,6 @@ err-status-invalid-characters = 离开消息包含无效字符
 err-shared-cannot-be-admin = 共享账户不能成为管理员
 err-shared-cannot-self-edit = 共享账户无法编辑自身
 err-shared-invalid-permissions = 共享账户不能拥有这些权限：{ $permissions }
-err-shared-message-requires-nickname = 共享账户只能通过昵称接收消息
-err-shared-kick-requires-nickname = 共享账户只能通过昵称踢出
 
 # 访客账户错误
 err-guest-disabled = 此服务器未启用访客访问
@@ -33,7 +30,8 @@ err-cannot-delete-guest = 访客账户不能被删除
 # 头像验证错误
 err-avatar-invalid-format = 头像格式无效（必须是base64编码的数据URI）
 err-avatar-too-large = 头像太大（最多{ $max_length }个字节）
-err-avatar-unsupported-type = 不支持的头像类型（仅支持PNG、WebP或SVG）
+err-avatar-unsupported-type = 不支持的头像类型（仅支持PNG、JPEG、WebP或SVG）
+err-avatar-undecodable = 无法将头像解码为有效图像
 err-authentication = 身份验证错误
 err-invalid-credentials = 用户名或密码无效
 err-handshake-required = 需要握手
@@ -41,7 +39,6 @@ err-already-logged-in = 已经登录
 err-handshake-already-completed = 握手已完成
 err-account-deleted = 您的账户已被删除
 err-account-disabled-by-admin = 账户已被管理员禁用
-err-account-type-changed = 此账户的类型已更改。请重新连接。
 
 # 权限和访问错误
 err-permission-denied = 权限被拒绝
@@ -144,7 +141,6 @@ err-kick-reason-too-long = 踢出原因过长（最多 { $max_length } 个字符
 err-kick-reason-invalid-characters = 踢出原因包含无效字符
 err-username-exists = 用户名"{ $username }"已存在
 err-user-not-found = 找不到用户"{ $username }"
-err-user-not-online = 用户"{ $username }"不在线
 err-failed-to-create-user = 创建用户"{ $username }"失败
 err-account-disabled = 账户"{ $username }"已被禁用
 err-update-failed = 更新用户"{ $username }"失败
@@ -172,7 +168,7 @@ err-invalid-password-strength = 无效的密码强度值
 
 err-server-image-too-large = 服务器图片太大（最大512KB）
 err-server-image-invalid-format = 服务器图片格式无效（必须是base64编码的数据URI）
-err-server-image-unsupported-type = 不支持的服务器图片类型（仅支持PNG、WebP、JPEG或SVG）
+err-server-image-unsupported-type = 不支持的服务器图片类型（仅支持PNG、JPEG、WebP或SVG）
 err-public-address-too-long = 公开地址太长（最多{ $max_length }个字节）
 err-public-address-contains-scheme = 公开地址不能包含URL协议
 err-public-address-contains-brackets = 公开地址不能包含方括号
@@ -189,7 +185,7 @@ err-news-body-too-long = 新闻内容太长（最多{ $max_length }个字符）
 err-news-body-invalid-characters = 新闻内容包含无效字符
 err-news-image-too-large = 新闻图片太大（最大512KB）
 err-news-image-invalid-format = 新闻图片格式无效（必须是base64编码的数据URI）
-err-news-image-unsupported-type = 不支持的新闻图片类型（仅支持PNG、WebP、JPEG或SVG）
+err-news-image-unsupported-type = 不支持的新闻图片类型（仅支持PNG、JPEG、WebP或SVG）
 err-news-empty-content = 新闻必须包含文字内容或图片
 err-cannot-edit-admin-news = 只有管理员可以编辑管理员发布的新闻
 err-cannot-delete-admin-news = 只有管理员可以删除管理员发布的新闻

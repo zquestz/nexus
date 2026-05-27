@@ -18,8 +18,7 @@ pub struct TrustRecord {
     /// boundary before storage.
     pub ip_address: String,
     /// Optional nickname annotation, stored in display case (the true nickname
-    /// of the resolved session). Case-insensitive lookup/delete
-    /// (`has_trusts_for_nickname`, `delete_trusts_by_nickname`) match the folded
+    /// of the resolved session). Case-insensitive delete matches the folded
     /// `nickname_lower` column, not this one.
     pub nickname: Option<String>,
     pub reason: Option<String>,
@@ -69,43 +68,89 @@ impl TrustDb {
             .as_secs() as i64
     }
 
-    /// Create or update a trusted IP entry (upsert)
+    /// Create or update one trusted target (upsert).
     ///
-    /// If the IP already exists, all fields are updated. The `nickname`
+    /// If the target already exists, all fields are updated. The `nickname`
     /// annotation is stored in display case; its folded form is written to
-    /// `nickname_lower` so case-insensitive lookups (`has_trusts_for_nickname`,
-    /// `delete_trusts_by_nickname`) match. `created_by` and `reason` are
-    /// preserved as-typed since they're display-only fields.
+    /// `nickname_lower` so case-insensitive deletes by nickname match.
+    /// `created_by` and `reason` are preserved as-typed since they're
+    /// display-only fields.
+    #[cfg(test)]
     pub async fn create_or_update_trust(
         &self,
-        ip_address: &str,
+        target: &str,
         nickname: Option<&str>,
         reason: Option<&str>,
         created_by: &str,
         expires_at: Option<i64>,
     ) -> Result<TrustRecord, sqlx::Error> {
-        assert_canonical_target(ip_address);
-        let now = Self::now();
-        let nickname_lower = nickname.map(fold_name);
-
-        sqlx::query(sql::SQL_UPSERT_TRUST)
-            .bind(ip_address)
-            .bind(nickname)
-            .bind(nickname_lower.as_deref())
-            .bind(reason)
-            .bind(created_by)
-            .bind(now)
-            .bind(expires_at)
-            .execute(&self.pool)
-            .await?;
-
-        // Re-read without the expiry filter so the just-written row is returned.
-        self.get_trust_by_ip_unfiltered(ip_address)
-            .await?
-            .ok_or(sqlx::Error::RowNotFound)
+        self.create_or_update_trust_targets(
+            std::iter::once(target),
+            nickname,
+            reason,
+            created_by,
+            expires_at,
+        )
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(sqlx::Error::RowNotFound)
     }
 
-    /// Get a trust entry by IP address regardless of expiry status.
+    /// Create or update multiple trusted targets atomically.
+    ///
+    /// A target is a canonical single IP or CIDR range. Used when a nickname
+    /// resolves to several connected IPs: either every resolved target is
+    /// persisted, or none are.
+    pub async fn create_or_update_trust_targets<'a, I>(
+        &self,
+        targets: I,
+        nickname: Option<&str>,
+        reason: Option<&str>,
+        created_by: &str,
+        expires_at: Option<i64>,
+    ) -> Result<Vec<TrustRecord>, sqlx::Error>
+    where
+        I: IntoIterator<Item = &'a str>,
+    {
+        let targets: Vec<&str> = targets.into_iter().collect();
+        for target in &targets {
+            assert_canonical_target(target);
+        }
+
+        let now = Self::now();
+        let nickname_lower = nickname.map(fold_name);
+        let mut records = Vec::with_capacity(targets.len());
+        let mut tx = self.pool.begin().await?;
+
+        for target in targets {
+            sqlx::query(sql::SQL_UPSERT_TRUST)
+                .bind(target)
+                .bind(nickname)
+                .bind(nickname_lower.as_deref())
+                .bind(reason)
+                .bind(created_by)
+                .bind(now)
+                .bind(expires_at)
+                .execute(&mut *tx)
+                .await?;
+
+            records.push(TrustRecord {
+                ip_address: target.to_string(),
+                nickname: nickname.map(str::to_owned),
+                reason: reason.map(str::to_owned),
+                created_by: created_by.to_string(),
+                created_at: now,
+                expires_at,
+            });
+        }
+
+        tx.commit().await?;
+        Ok(records)
+    }
+
+    /// Get a trust entry by IP/CIDR target regardless of expiry status.
+    #[cfg(test)]
     async fn get_trust_by_ip_unfiltered(
         &self,
         ip_address: &str,
@@ -176,28 +221,19 @@ impl TrustDb {
     ) -> Result<Vec<String>, sqlx::Error> {
         let nickname_lower = fold_name(nickname);
 
-        // Capture the matching IPs before deleting, so we can return them.
-        let rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_TRUSTED_IPS_BY_NICKNAME)
+        let rows: Vec<(String,)> = sqlx::query_as(sql::SQL_DELETE_TRUSTS_BY_NICKNAME_RETURNING)
             .bind(&nickname_lower)
             .fetch_all(&self.pool)
             .await?;
 
-        let ips: Vec<String> = rows.into_iter().map(|(ip,)| ip).collect();
-
-        if !ips.is_empty() {
-            sqlx::query(sql::SQL_DELETE_TRUSTS_BY_NICKNAME)
-                .bind(&nickname_lower)
-                .execute(&self.pool)
-                .await?;
-        }
-
-        Ok(ips)
+        Ok(rows.into_iter().map(|(ip,)| ip).collect())
     }
 
     /// Check if any trusts exist with a given nickname annotation.
     ///
     /// Lookup is case-insensitive: the supplied nickname is folded and matched
     /// against the `nickname_lower` column.
+    #[cfg(test)]
     pub async fn has_trusts_for_nickname(&self, nickname: &str) -> Result<bool, sqlx::Error> {
         let row: (i64,) = sqlx::query_as(sql::SQL_COUNT_TRUSTS_BY_NICKNAME)
             .bind(fold_name(nickname))
@@ -239,45 +275,55 @@ impl TrustDb {
     /// Cascades a CIDR untrust to the single IPs and smaller ranges nested
     /// inside it. Returns the IP/CIDR strings that were deleted.
     pub async fn delete_trusts_in_range(&self, range: &IpNet) -> Result<Vec<String>, sqlx::Error> {
-        let all_trusts = self.list_active_trusts().await?;
+        let mut tx = self.pool.begin().await?;
+        let rows: Vec<(String,)> = sqlx::query_as(sql::SQL_SELECT_ALL_TRUST_TARGETS)
+            .fetch_all(&mut *tx)
+            .await?;
 
-        let mut deleted = Vec::new();
+        let targets: Vec<String> = rows
+            .into_iter()
+            .map(|(target,)| target)
+            .filter(|target| target_is_contained_by_range(target, range))
+            .collect();
 
-        for trust in all_trusts {
-            let trust_net = if let Ok(net) = trust.ip_address.parse::<IpNet>() {
-                net
-            } else if let Ok(ip) = trust.ip_address.parse::<IpAddr>() {
-                // A bare IP is treated as a single-host /32 or /128.
-                match ip {
-                    IpAddr::V4(v4) => {
-                        IpNet::V4(ipnet::Ipv4Net::new(v4, 32).expect(ERR_VALID_IP_PREFIX))
-                    }
-                    IpAddr::V6(v6) => {
-                        IpNet::V6(ipnet::Ipv6Net::new(v6, 128).expect(ERR_VALID_IP_PREFIX))
-                    }
-                }
-            } else {
-                continue;
-            };
+        let mut deleted = Vec::with_capacity(targets.len());
+        for target in targets {
+            let result = sqlx::query(sql::SQL_DELETE_TRUST_BY_IP)
+                .bind(&target)
+                .execute(&mut *tx)
+                .await?;
 
-            let is_contained = match (&trust_net, range) {
-                (IpNet::V4(trust_v4), IpNet::V4(range_v4)) => {
-                    range_v4.contains(&trust_v4.network())
-                        && trust_v4.prefix_len() >= range_v4.prefix_len()
-                }
-                (IpNet::V6(trust_v6), IpNet::V6(range_v6)) => {
-                    range_v6.contains(&trust_v6.network())
-                        && trust_v6.prefix_len() >= range_v6.prefix_len()
-                }
-                _ => false, // IPv4/IPv6 mismatch
-            };
-
-            if is_contained && self.delete_trust_by_ip(&trust.ip_address).await? {
-                deleted.push(trust.ip_address);
+            if result.rows_affected() > 0 {
+                deleted.push(target);
             }
         }
 
+        tx.commit().await?;
         Ok(deleted)
+    }
+}
+
+fn target_is_contained_by_range(target: &str, range: &IpNet) -> bool {
+    let rule_net = if let Ok(net) = target.parse::<IpNet>() {
+        net
+    } else if let Ok(ip) = target.parse::<IpAddr>() {
+        // A bare IP is treated as a single-host /32 or /128.
+        match ip {
+            IpAddr::V4(v4) => IpNet::V4(ipnet::Ipv4Net::new(v4, 32).expect(ERR_VALID_IP_PREFIX)),
+            IpAddr::V6(v6) => IpNet::V6(ipnet::Ipv6Net::new(v6, 128).expect(ERR_VALID_IP_PREFIX)),
+        }
+    } else {
+        return false;
+    };
+
+    match (&rule_net, range) {
+        (IpNet::V4(rule_v4), IpNet::V4(range_v4)) => {
+            range_v4.contains(&rule_v4.network()) && rule_v4.prefix_len() >= range_v4.prefix_len()
+        }
+        (IpNet::V6(rule_v6), IpNet::V6(range_v6)) => {
+            range_v6.contains(&rule_v6.network()) && rule_v6.prefix_len() >= range_v6.prefix_len()
+        }
+        _ => false,
     }
 }
 
@@ -323,6 +369,28 @@ mod tests {
 
         assert_eq!(trust.ip_address, "10.0.0.1");
         assert_eq!(trust.expires_at, Some(expires));
+    }
+
+    #[tokio::test]
+    async fn test_create_or_update_trust_targets_multi_target() {
+        let pool = create_test_db().await;
+        let db = TrustDb::new(pool);
+
+        let trusts = db
+            .create_or_update_trust_targets(
+                ["192.168.1.100", "192.168.1.0/24"],
+                Some("target"),
+                Some("reason"),
+                "admin",
+                None,
+            )
+            .await
+            .expect("create trusts");
+
+        assert_eq!(trusts.len(), 2);
+        assert!(db.is_ip_trusted("192.168.1.100").await.unwrap());
+        assert!(db.trust_exists("192.168.1.0/24").await.unwrap());
+        assert!(db.has_trusts_for_nickname("TARGET").await.unwrap());
     }
 
     #[tokio::test]
@@ -544,6 +612,27 @@ mod tests {
         // Permanent and future trusts survive cleanup.
         let trusts = db.list_active_trusts().await.unwrap();
         assert_eq!(trusts.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_delete_trusts_in_range_deletes_expired_contained_trusts() {
+        let pool = create_test_db().await;
+        let db = TrustDb::new(pool);
+
+        let expired = TrustDb::now() - 1;
+        db.create_or_update_trust("192.168.1.50", None, None, "admin", Some(expired))
+            .await
+            .expect("create contained expired trust");
+        db.create_or_update_trust("192.168.2.1", None, None, "admin", Some(expired))
+            .await
+            .expect("create outside expired trust");
+
+        let range: IpNet = "192.168.1.0/24".parse().unwrap();
+        let deleted = db.delete_trusts_in_range(&range).await.unwrap();
+
+        assert_eq!(deleted, vec!["192.168.1.50".to_string()]);
+        assert!(!db.trust_exists("192.168.1.50").await.unwrap());
+        assert!(db.trust_exists("192.168.2.1").await.unwrap());
     }
 
     #[tokio::test]

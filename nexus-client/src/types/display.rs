@@ -177,6 +177,9 @@ impl ChatMessage {
 /// User information for display
 #[derive(Debug, Clone)]
 pub struct UserInfo {
+    /// Account database id (immutable PK). Used to match a regular account's
+    /// `online_users` entry across renames, where username/nickname can change.
+    pub id: i64,
     /// Username (account name / database identifier)
     pub username: String,
     /// Display name (what users see and type)

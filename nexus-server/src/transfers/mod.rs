@@ -29,7 +29,9 @@ use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::tls::accept_tls_with_timeout;
 
 use crate::constants::*;
-use crate::handlers::err_file_area_not_configured;
+use crate::handlers::duration::format_duration_remaining;
+use crate::handlers::{err_banned_permanent, err_banned_with_expiry, err_file_area_not_configured};
+use crate::ip_rule_cache::IpAdmission;
 
 use auth::{handle_transfer_handshake, handle_transfer_login, handle_transfer_request};
 use download::handle_download;
@@ -69,6 +71,7 @@ where
         file_index,
         file_mutation_locks,
         transfer_registry,
+        ip_rule_cache,
         fingerprint,
     } = params;
 
@@ -144,6 +147,12 @@ where
         total_size,
     });
 
+    if let IpAdmission::Banned { expires_at } = ip_rule_cache.check_admission(peer_addr.ip()).await
+    {
+        transfer_registry.unregister(info.id);
+        return send_error_and_close(&mut frame_writer, &late_ban_error(&locale, expires_at)).await;
+    }
+
     // Owns the connection and ban handling; unregisters on drop via RAII guard.
     let mut transfer = Transfer::new(
         frame_reader,
@@ -177,4 +186,11 @@ where
     );
 
     result
+}
+
+fn late_ban_error(locale: &str, expires_at: Option<i64>) -> String {
+    match expires_at {
+        Some(expiry) => err_banned_with_expiry(locale, &format_duration_remaining(expiry)),
+        None => err_banned_permanent(locale),
+    }
 }

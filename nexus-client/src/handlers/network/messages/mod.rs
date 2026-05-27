@@ -164,6 +164,12 @@ impl NexusApp {
                 self.handle_chat_user_left(connection_id, channel, nickname)
             }
 
+            ServerMessage::ChatUserRenamed {
+                channel,
+                old_nickname,
+                new_nickname,
+            } => self.handle_chat_user_renamed(connection_id, channel, old_nickname, new_nickname),
+
             // Note: Channel membership is session-based and no longer syncs across a user's other sessions.
             ServerMessage::ChatSecretResponse { success, error } => {
                 self.handle_chat_secret_response(connection_id, message_id, success, error)

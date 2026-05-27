@@ -54,10 +54,37 @@ impl VoiceState {
 
     /// Remove a participant from the session
     pub fn remove_participant(&mut self, nickname: &str) {
-        self.participants.retain(|n| n != nickname);
+        let nickname_lower = fold_name(nickname);
+        // Fold both sides (matching add_participant) so a leave whose casing differs
+        // from the stored entry — e.g. an order-edge "alice" against "Alice" — still
+        // clears it instead of leaving a ghost participant.
+        self.participants.retain(|n| fold_name(n) != nickname_lower);
         // Clear speaking state for the removed user (but keep muted state
         // in case they rejoin - user's mute preference should persist)
-        self.speaking_users.remove(&fold_name(nickname));
+        self.speaking_users.remove(&nickname_lower);
+    }
+
+    /// Re-key this session's per-user state when a participant — or the DM peer —
+    /// changes nickname. `target` is rewritten only when it equals `old` (so a
+    /// `#channel` target is left alone); `speaking_users`/`muted_users` hold folded
+    /// names, so a muted user stays muted across a rename.
+    pub fn rename_user(&mut self, old: &str, new: &str) {
+        let old_lower = fold_name(old);
+        if fold_name(&self.target) == old_lower {
+            self.target = new.to_string();
+        }
+        for participant in &mut self.participants {
+            if fold_name(participant) == old_lower {
+                *participant = new.to_string();
+            }
+        }
+        self.participants.sort_by_key(|a| fold_name(a));
+        if self.speaking_users.remove(&old_lower) {
+            self.speaking_users.insert(fold_name(new));
+        }
+        if self.muted_users.remove(&old_lower) {
+            self.muted_users.insert(fold_name(new));
+        }
     }
 
     /// Get the number of participants
@@ -98,5 +125,32 @@ impl VoiceState {
     /// Check if a user is muted
     pub fn is_muted(&self, nickname: &str) -> bool {
         self.muted_users.contains(&fold_name(nickname))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression: `remove_participant` once compared exactly while the rest of
+    /// VoiceState folds, so a differently-cased leave (e.g. "alice" against a stored
+    /// "Alice") left a ghost participant. Both the participant list and the speaking set
+    /// must clear regardless of casing.
+    #[test]
+    fn remove_participant_folds_case() {
+        let mut state = VoiceState::new(
+            "#general".to_string(),
+            vec!["Alice".to_string(), "Bob".to_string()],
+        );
+        state.set_speaking("Alice");
+
+        // A differently-cased leave clears both the participant and the speaking entry.
+        state.remove_participant("alice");
+        assert_eq!(state.participants, vec!["Bob".to_string()]);
+        assert!(!state.is_speaking("Alice"));
+
+        // A removal that matches no one (already gone) is a no-op.
+        state.remove_participant("ALICE");
+        assert_eq!(state.participants, vec!["Bob".to_string()]);
     }
 }

@@ -2,11 +2,13 @@
 //!
 //! Handles reading, writing, and managing obfuscated chat history files on disk.
 //! Files are organized as:
-//! `~/.local/share/nexus/history/{sha256(fingerprint)}/{sha256(your_username)}/{sha256(other_nickname)}.enc`
+//! `~/.local/share/nexus/history/{sha256(fingerprint)}/{sha256(fingerprint:user_id)}/{sha256(fold_name(other_nickname))}.enc`
 //!
-//! See the parent module for security model details (obfuscation, not encryption).
+//! The per-account segment is keyed by the immutable user id (not the username),
+//! so a rename never moves the directory. See the parent module for security
+//! model details (obfuscation, not encryption).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -42,8 +44,9 @@ struct ConversationFile {
 
 /// Manages chat history storage for a single server connection
 pub struct HistoryManager {
-    /// Base directory for this server+user combination
-    /// `~/.local/share/nexus/history/{sha256(fingerprint)}/{sha256(your_username)}/`
+    /// Base directory for this server+account combination, keyed by the immutable
+    /// user id so a rename never moves it:
+    /// `~/.local/share/nexus/history/{sha256(fingerprint)}/{sha256(fingerprint:user_id)}/`
     base_dir: PathBuf,
     /// Crypto instance for this server
     crypto: HistoryCrypto,
@@ -60,10 +63,11 @@ impl HistoryManager {
     ///
     /// # Arguments
     /// * `fingerprint` - Server certificate fingerprint (hex-encoded SHA-256)
-    /// * `your_username` - Your account username on this server
+    /// * `user_id` - Your immutable account id on this server. Keys the directory,
+    ///   so a username rename never moves it.
     /// * `retention` - Retention policy from settings
-    pub fn new(fingerprint: &str, your_username: &str, retention: ChatHistoryRetention) -> Self {
-        let base_dir = Self::build_base_dir(fingerprint, your_username);
+    pub fn new(fingerprint: &str, user_id: i64, retention: ChatHistoryRetention) -> Self {
+        let base_dir = Self::build_base_dir(fingerprint, user_id);
         let crypto = HistoryCrypto::new(fingerprint);
         let enabled = retention.is_enabled();
 
@@ -80,24 +84,50 @@ impl HistoryManager {
     pub fn update_retention(&mut self, retention: ChatHistoryRetention) {
         self.retention = retention;
         self.enabled = retention.is_enabled();
+        // Clear in-memory conversations when disabling so the "map is empty when
+        // disabled" invariant holds unconditionally, not just at creation/load time.
+        // This prevents stale pre-disable entries from reappearing if re-enabled.
+        if !self.enabled {
+            self.conversations.clear();
+        }
     }
 
     /// Build the base directory path for a server+user combination
     ///
     /// This can be used as a key to share managers across connections
     /// to the same server+account.
-    pub fn build_base_dir(fingerprint: &str, your_username: &str) -> PathBuf {
+    pub fn build_base_dir(fingerprint: &str, user_id: i64) -> PathBuf {
         let data_dir = dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("nexus")
             .join("history");
 
         let fingerprint_hash = sha256_hex(fingerprint);
-        // Fold the username so case variants of one account share a history
-        // dir (the fingerprint is a cert hash, not a name — left raw).
-        let username_hash = sha256_hex(&fold_name(your_username));
+        // Key the per-account segment by the immutable user id so a username rename
+        // never moves the directory. The fingerprint is folded into the hash so the
+        // same id on different servers hashes differently — no single precomputed
+        // table works across servers.
+        let user_hash = sha256_hex(&format!("{fingerprint}:{user_id}"));
 
-        data_dir.join(fingerprint_hash).join(username_hash)
+        data_dir.join(fingerprint_hash).join(user_hash)
+    }
+
+    /// One-time, best-effort migration of the pre-id history layout. Directories
+    /// used to be keyed by `sha256(fold(username))`; they're now keyed by user id
+    /// (see `build_base_dir`). If the legacy dir exists and the id-keyed dir does
+    /// not, move it. Misses an account renamed while offline across this upgrade
+    /// (the prior username is unknown) — that history is orphaned once.
+    pub fn migrate_legacy_user_dir(fingerprint: &str, username: &str, user_id: i64) {
+        let current = Self::build_base_dir(fingerprint, user_id);
+        let Some(parent) = current.parent() else {
+            return;
+        };
+        let legacy = parent.join(sha256_hex(&fold_name(username)));
+        if legacy != current && legacy.exists() && !current.exists() {
+            // Whole-directory move within one server's tree (same filesystem); the
+            // fingerprint-derived crypto key is unchanged, so no re-encryption.
+            let _ = fs::rename(&legacy, &current);
+        }
     }
 
     /// Load all conversations from disk
@@ -322,6 +352,73 @@ impl HistoryManager {
 
         Ok(())
     }
+
+    /// Re-key a conversation when the other party renames `old` -> `new`: move the
+    /// in-memory entry and the on-disk file, merging into any existing `new`
+    /// conversation (you may have prior history with a different account that has
+    /// since taken the name `new`). The stored `other_nickname` is the load-time tab
+    /// key, so we rewrite under the new filename and delete the old. No-op when
+    /// nothing is keyed under `old` — including a self-rename, since you have no
+    /// conversation with yourself.
+    pub fn rename_conversation(&mut self, old: &str, new: &str) -> Result<(), HistoryError> {
+        // Disabled retention leaves history files untouched (preserved until
+        // re-enabled), so a rename is a no-op — and the in-memory map is empty when
+        // disabled anyway.
+        if !self.enabled {
+            return Ok(());
+        }
+
+        let old_key = fold_name(old);
+        let new_key = fold_name(new);
+        if old_key == new_key {
+            // Same folded identity. A display-case-only change (alice -> Alice) must
+            // still rewrite the stored display name in place (same filename), or a
+            // reload restores the old case. An exact match is a true no-op.
+            if old != new
+                && let Some(messages) = self.conversations.get(&new_key).cloned()
+            {
+                self.save_conversation_internal(new, &messages)?;
+            }
+            return Ok(());
+        }
+
+        let old_path = self
+            .base_dir
+            .join(format!("{}.{}", sha256_hex(&old_key), HISTORY_FILE_EXT));
+
+        // Messages currently under `old` (from memory, with a disk fallback).
+        let old_messages = match self.conversations.remove(&old_key) {
+            Some(messages) => messages,
+            None if old_path.exists() => match self.load_file(&old_path) {
+                Ok((_, messages)) => messages,
+                Err(_) => return Ok(()),
+            },
+            None => return Ok(()),
+        };
+
+        // Merge into any existing `new` conversation (memory or disk) so a name
+        // collision with prior history doesn't drop messages.
+        let new_path = self
+            .base_dir
+            .join(format!("{}.{}", sha256_hex(&new_key), HISTORY_FILE_EXT));
+        let existing_new = match self.conversations.remove(&new_key) {
+            Some(messages) => Some(messages),
+            None if new_path.exists() => self.load_file(&new_path).ok().map(|(_, m)| m),
+            None => None,
+        };
+        let merged = match existing_new {
+            Some(existing) => merge_messages(existing, old_messages),
+            None => old_messages,
+        };
+
+        // Persist under the new name, drop the old file, update memory.
+        self.save_conversation_internal(new, &merged)?;
+        if old_path.exists() {
+            let _ = fs::remove_file(&old_path);
+        }
+        self.conversations.insert(new_key, merged);
+        Ok(())
+    }
 }
 
 /// Rotate history files from old fingerprint to new fingerprint
@@ -373,13 +470,13 @@ pub fn rotate_fingerprint(old_fingerprint: &str, new_fingerprint: &str) -> usize
             continue;
         }
 
-        // Get the username hash (directory name)
-        let Some(username_hash) = user_path.file_name().and_then(|n| n.to_str()) else {
+        // Preserve the per-account directory hash.
+        let Some(user_dir_hash) = user_path.file_name().and_then(|n| n.to_str()) else {
             continue;
         };
 
         // Create corresponding directory in new fingerprint location
-        let new_user_dir = new_dir.join(username_hash);
+        let new_user_dir = new_dir.join(user_dir_hash);
         if fs::create_dir_all(&new_user_dir).is_err() {
             continue;
         }
@@ -508,6 +605,40 @@ fn get_message_timestamp(msg: &ServerMessage) -> u64 {
     }
 }
 
+/// Combine two message lists into one ordered by timestamp, dropping exact-looking
+/// repeats (same timestamp, sender, recipient, content). Used when a rename
+/// collides with an existing conversation; this intentionally collapses repeated
+/// identical same-second lines rather than preserving spam verbatim.
+fn merge_messages(mut a: Vec<ServerMessage>, b: Vec<ServerMessage>) -> Vec<ServerMessage> {
+    a.extend(b);
+    a.sort_by_key(get_message_timestamp);
+
+    // dedup_by only removes adjacent duplicates; with same-timestamp messages the
+    // sort does not guarantee equal entries are adjacent. Use a set-based retain so
+    // every duplicate is removed regardless of position.
+    let mut seen = HashSet::new();
+    a.retain(|msg| {
+        if let ServerMessage::UserMessage {
+            timestamp,
+            from_nickname,
+            to_nickname,
+            message,
+            ..
+        } = msg
+        {
+            seen.insert((
+                *timestamp,
+                from_nickname.clone(),
+                to_nickname.clone(),
+                message.clone(),
+            ))
+        } else {
+            true
+        }
+    });
+    a
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -526,6 +657,110 @@ mod tests {
     }
 
     #[test]
+    fn test_merge_messages_orders_and_dedups() {
+        let a = vec![
+            create_test_message("alice", "me", "first", 10),
+            create_test_message("me", "alice", "third", 30),
+        ];
+        let b = vec![
+            create_test_message("me", "alice", "third", 30), // duplicate of a's last
+            create_test_message("alice", "me", "second", 20),
+        ];
+        let merged = merge_messages(a, b);
+        let timestamps: Vec<u64> = merged.iter().map(get_message_timestamp).collect();
+        assert_eq!(
+            timestamps,
+            vec![10, 20, 30],
+            "merged conversation is time-ordered with the duplicate dropped"
+        );
+    }
+
+    #[test]
+    fn test_rename_conversation_moves_to_new_key() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut manager = HistoryManager::new("test_fp", 1, ChatHistoryRetention::Forever);
+        manager.base_dir = tmp.path().to_path_buf();
+
+        manager
+            .add_message("alice", create_test_message("alice", "me", "hi", 10))
+            .unwrap();
+
+        manager.rename_conversation("alice", "bob").unwrap();
+
+        assert!(!manager.conversations.contains_key(&fold_name("alice")));
+        assert_eq!(
+            manager.conversations.get(&fold_name("bob")).unwrap().len(),
+            1
+        );
+        let old_file = tmp.path().join(format!(
+            "{}.{}",
+            sha256_hex(&fold_name("alice")),
+            HISTORY_FILE_EXT
+        ));
+        let new_file = tmp.path().join(format!(
+            "{}.{}",
+            sha256_hex(&fold_name("bob")),
+            HISTORY_FILE_EXT
+        ));
+        assert!(!old_file.exists(), "old conversation file removed");
+        assert!(new_file.exists(), "new conversation file written");
+    }
+
+    #[test]
+    fn test_rename_conversation_merges_on_collision() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut manager = HistoryManager::new("test_fp", 1, ChatHistoryRetention::Forever);
+        manager.base_dir = tmp.path().to_path_buf();
+
+        // Prior history with an earlier account that was named "bob".
+        manager
+            .add_message("bob", create_test_message("bob", "me", "old", 5))
+            .unwrap();
+        // Current history with "alice", who is about to be renamed to "bob".
+        manager
+            .add_message("alice", create_test_message("alice", "me", "new", 20))
+            .unwrap();
+
+        manager.rename_conversation("alice", "bob").unwrap();
+
+        assert!(!manager.conversations.contains_key(&fold_name("alice")));
+        let bob = manager.conversations.get(&fold_name("bob")).unwrap();
+        let timestamps: Vec<u64> = bob.iter().map(get_message_timestamp).collect();
+        assert_eq!(
+            timestamps,
+            vec![5, 20],
+            "collision merges both conversations rather than overwriting"
+        );
+    }
+
+    #[test]
+    fn test_rename_conversation_case_only_rewrites_stored_display_name() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let mut manager = HistoryManager::new("test_fp", 1, ChatHistoryRetention::Forever);
+        manager.base_dir = tmp.path().to_path_buf();
+
+        manager
+            .add_message("alice", create_test_message("alice", "me", "hi", 10))
+            .unwrap();
+
+        manager.rename_conversation("alice", "Alice").unwrap();
+
+        // Folded key (and filename) unchanged, but the stored display name follows
+        // the new case, so a reload restores "Alice" rather than "alice".
+        let file = tmp.path().join(format!(
+            "{}.{}",
+            sha256_hex(&fold_name("alice")),
+            HISTORY_FILE_EXT
+        ));
+        let (stored_nick, messages) = manager.load_file(&file).expect("read conversation file");
+        assert_eq!(
+            stored_nick, "Alice",
+            "case-only rename must rewrite the stored display name in place"
+        );
+        assert_eq!(messages.len(), 1, "messages preserved");
+    }
+
+    #[test]
     fn test_sha256_hex() {
         let hash = sha256_hex("test");
         assert_eq!(hash.len(), 64); // SHA-256 produces 32 bytes = 64 hex chars
@@ -535,11 +770,7 @@ mod tests {
     #[test]
     fn test_history_manager_new() {
         // Just verify construction doesn't panic
-        let _manager = HistoryManager::new(
-            "test_fingerprint",
-            "test_user",
-            ChatHistoryRetention::Forever,
-        );
+        let _manager = HistoryManager::new("test_fingerprint", 1, ChatHistoryRetention::Forever);
     }
 
     #[test]
@@ -566,7 +797,7 @@ mod tests {
     fn test_add_message_deduplication() {
         let mut manager = HistoryManager::new(
             "test_fingerprint",
-            "test_user",
+            1,
             ChatHistoryRetention::Disabled, // Disabled so we don't write to disk
         );
 
@@ -596,25 +827,29 @@ mod tests {
     }
 
     #[test]
-    fn test_build_base_dir_folds_username() {
-        // Case variants of one account share a single history directory.
+    fn test_build_base_dir_keys_by_user_id_and_fingerprint() {
+        // Deterministic for a given (fingerprint, id).
         assert_eq!(
-            HistoryManager::build_base_dir("fp", "Alice"),
-            HistoryManager::build_base_dir("fp", "alice"),
+            HistoryManager::build_base_dir("fp", 7),
+            HistoryManager::build_base_dir("fp", 7),
         );
+        // Different accounts on one server get different directories.
         assert_ne!(
-            HistoryManager::build_base_dir("fp", "alice"),
-            HistoryManager::build_base_dir("fp", "bob"),
+            HistoryManager::build_base_dir("fp", 7),
+            HistoryManager::build_base_dir("fp", 8),
+        );
+        // The same id on different servers hashes differently (fingerprint folded
+        // into the user segment defeats a single cross-server precomputed table).
+        assert_ne!(
+            HistoryManager::build_base_dir("fp_a", 7),
+            HistoryManager::build_base_dir("fp_b", 7),
         );
     }
 
     #[test]
     fn test_add_message_folds_partner_nickname() {
-        let mut manager = HistoryManager::new(
-            "test_fingerprint",
-            "test_user",
-            ChatHistoryRetention::Disabled,
-        );
+        let mut manager =
+            HistoryManager::new("test_fingerprint", 1, ChatHistoryRetention::Disabled);
         manager.enabled = true;
 
         // Two case variants of the same partner merge into one (folded)

@@ -92,10 +92,6 @@ pub fn err_account_disabled_by_admin(locale: &str) -> String {
     t(locale, "err-account-disabled-by-admin")
 }
 
-pub fn err_account_type_changed(locale: &str) -> String {
-    t(locale, "err-account-type-changed")
-}
-
 pub fn err_already_logged_in(locale: &str) -> String {
     t(locale, "err-already-logged-in")
 }
@@ -118,6 +114,10 @@ pub fn err_avatar_too_large(locale: &str, max_length: usize) -> String {
 
 pub fn err_avatar_unsupported_type(locale: &str) -> String {
     t(locale, "err-avatar-unsupported-type")
+}
+
+pub fn err_avatar_undecodable(locale: &str) -> String {
+    t(locale, "err-avatar-undecodable")
 }
 
 pub fn err_broadcast_too_long(locale: &str, max_length: usize) -> String {

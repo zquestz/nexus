@@ -38,12 +38,9 @@ where
 
     if !requesting_user.has_permission(Permission::BanList) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_BAN_LIST_PERMISSION_DENIED);
-        let response = ServerMessage::BanListResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            bans: None,
-        };
-        return ctx.send_message(&response).await;
+        return ctx
+            .send_message(&reject_ban_list(err_permission_denied(ctx.locale)))
+            .await;
     }
 
     match ctx.db.bans.list_active_bans().await {
@@ -60,22 +57,29 @@ where
                 })
                 .collect();
 
-            let response = ServerMessage::BanListResponse {
-                success: true,
-                error: None,
-                bans: Some(bans),
-            };
-            ctx.send_message(&response).await
+            ctx.send_message(&ban_list_success(bans)).await
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_BAN_LIST_DB_ERROR);
-            let response = ServerMessage::BanListResponse {
-                success: false,
-                error: Some(super::err_database(ctx.locale)),
-                bans: None,
-            };
-            ctx.send_message(&response).await
+            ctx.send_message(&reject_ban_list(super::err_database(ctx.locale)))
+                .await
         }
+    }
+}
+
+fn ban_list_success(bans: Vec<BanInfo>) -> ServerMessage {
+    ServerMessage::BanListResponse {
+        success: true,
+        error: None,
+        bans: Some(bans),
+    }
+}
+
+fn reject_ban_list(error: String) -> ServerMessage {
+    ServerMessage::BanListResponse {
+        success: false,
+        error: Some(error),
+        bans: None,
     }
 }
 

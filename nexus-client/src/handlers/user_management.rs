@@ -1032,16 +1032,11 @@ impl NexusApp {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
         {
-            // Create user message tab entry if it doesn't exist (keyed by display name)
-            conn.user_messages.entry(nickname.clone()).or_default();
-
-            // Add to user_message_tabs if not already present (creates the tab in UI)
-            if !conn.user_message_tabs.contains(&nickname) {
-                conn.user_message_tabs.push(nickname.clone());
-            }
+            // Create or relabel the DM tab, resolved by folded identity.
+            let key = conn.resolve_user_message_tab(&nickname);
 
             // Switch to the user message tab
-            let tab = ChatTab::UserMessage(nickname);
+            let tab = ChatTab::UserMessage(key);
             return Task::done(Message::SwitchChatTab(tab));
         }
         Task::none()
@@ -1236,10 +1231,12 @@ impl NexusApp {
     /// Requires user_info permission.
     ///
     /// The `nickname` parameter is the display name (always populated; equals username for regular accounts).
-    pub fn handle_user_info_icon_clicked(&mut self, nickname: String) -> Task<Message> {
-        if let Some(conn_id) = self.active_connection
-            && let Some(conn) = self.connections.get_mut(&conn_id)
-        {
+    pub fn handle_user_info_icon_clicked(
+        &mut self,
+        connection_id: usize,
+        nickname: String,
+    ) -> Task<Message> {
+        if let Some(conn) = self.connections.get_mut(&connection_id) {
             // Check permission (admins always have access)
             if !conn.has_permission(PERMISSION_USER_INFO) {
                 return Task::none();

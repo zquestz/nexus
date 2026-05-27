@@ -642,6 +642,12 @@ const CHAT_USER_LEFT_SIZE: usize = json_type_base("ChatUserLeft")
     + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
     + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
+/// ChatUserRenamed: {"type":"ChatUserRenamed","channel":"...32...","old_nickname":"...64...","new_nickname":"...64..."}
+const CHAT_USER_RENAMED_SIZE: usize = json_type_base("ChatUserRenamed")
+    + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
+    + json_string_chars_field("old_nickname", MAX_NICKNAME_LENGTH)
+    + json_string_chars_field("new_nickname", MAX_NICKNAME_LENGTH);
+
 /// ChatSecretResponse: {"type":"ChatSecretResponse","success":false,"error":"...2048..."}
 const CHAT_SECRET_RESPONSE_SIZE: usize = json_type_base("ChatSecretResponse")
     + json_bool_field("success")
@@ -1466,6 +1472,7 @@ static MESSAGE_TYPE_LIMITS: LazyLock<HashMap<&'static str, u64>> = LazyLock::new
     );
     m.insert("ChatUserJoined", pad_limit(CHAT_USER_JOINED_SIZE as u64));
     m.insert("ChatUserLeft", pad_limit(CHAT_USER_LEFT_SIZE as u64));
+    m.insert("ChatUserRenamed", pad_limit(CHAT_USER_RENAMED_SIZE as u64));
     m.insert("Error", pad_limit(ERROR_SIZE as u64));
     m.insert(
         "HandshakeResponse",
@@ -2189,7 +2196,7 @@ mod tests {
     // (UserMessage, FileStart, FileStartResponse, FileData, FileHashing, FileHash),
     // so they're only counted once in the HashMap.
     const CLIENT_MESSAGE_COUNT: usize = 64; // 6 News + 8 File + 6 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 4 Chat channel + 1 ConnectionMonitor + 5 Group + 6 Tracker + 2 Voice client messages + 1 Ping
-    const SERVER_MESSAGE_COUNT: usize = 79; // 7 News + 9 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 6 Chat channel + 1 ConnectionMonitor + 5 Group + 6 Tracker + 4 Voice server messages + 1 Pong
+    const SERVER_MESSAGE_COUNT: usize = 80; // 7 News + 9 File + 7 Transfer + 3 Away/Status + 3 Ban + 3 Trust + 2 FileSearch + 7 Chat channel + 1 ConnectionMonitor + 5 Group + 6 Tracker + 4 Voice server messages + 1 Pong
     const SHARED_MESSAGE_COUNT: usize = 6; // UserMessage, FileStart, FileStartResponse, FileData, FileHashing, FileHash
 
     // Tracker protocol message counts (separate protocol from BBS).
@@ -2871,6 +2878,23 @@ mod tests {
         assert!(
             size <= limit,
             "ChatUserLeft size {} exceeds limit {}",
+            size,
+            limit
+        );
+    }
+
+    #[test]
+    fn test_limit_chat_user_renamed() {
+        let msg = ServerMessage::ChatUserRenamed {
+            channel: str_of_len(MAX_CHANNEL_LENGTH),
+            old_nickname: str_of_len(MAX_NICKNAME_LENGTH),
+            new_nickname: str_of_len(MAX_NICKNAME_LENGTH),
+        };
+        let size = json_size(&msg);
+        let limit = max_payload_for_type("ChatUserRenamed") as usize;
+        assert!(
+            size <= limit,
+            "ChatUserRenamed size {} exceeds limit {}",
             size,
             limit
         );

@@ -462,11 +462,6 @@ impl NexusApp {
                         return Message::AvatarLoaded(Err(ImagePickerError::TooLarge));
                     }
 
-                    // Validate file content matches expected format
-                    if !crate::image::validate_image_bytes(&bytes, mime_type) {
-                        return Message::AvatarLoaded(Err(ImagePickerError::UnsupportedType));
-                    }
-
                     // Build data URI
                     use base64::Engine;
                     let base64_data = base64::engine::general_purpose::STANDARD.encode(&bytes);
@@ -490,13 +485,33 @@ impl NexusApp {
         match result {
             Ok(data_uri) => {
                 if let Some(form) = &mut self.settings_form {
-                    let cached = decode_data_uri_square(&data_uri, AVATAR_MAX_CACHE_SIZE);
-                    if cached.is_some() {
-                        form.error = None;
-                        form.cached_avatar = cached;
-                        self.config.settings.avatar = Some(data_uri);
-                    } else {
-                        form.error = Some(t("err-avatar-decode-failed"));
+                    // Validate with the avatar-specific validator (size, MIME, and a
+                    // real decode — usvg for SVG) — the exact check the server runs at
+                    // login, so the picker can't store an avatar the server rejects.
+                    match validators::validate_avatar(&data_uri) {
+                        Ok(()) => match decode_data_uri_square(&data_uri, AVATAR_MAX_CACHE_SIZE) {
+                            Some(cached) => {
+                                form.error = None;
+                                form.cached_avatar = Some(cached);
+                                self.config.settings.avatar = Some(data_uri);
+                            }
+                            None => form.error = Some(t("err-avatar-decode-failed")),
+                        },
+                        Err(e) => {
+                            form.error = Some(match e {
+                                validators::AvatarError::TooLarge => t_args(
+                                    "err-avatar-too-large",
+                                    &[("max_kb", &(AVATAR_MAX_SIZE / 1024).to_string())],
+                                ),
+                                validators::AvatarError::UnsupportedType => {
+                                    t("err-avatar-unsupported-type")
+                                }
+                                validators::AvatarError::InvalidFormat
+                                | validators::AvatarError::Undecodable => {
+                                    t("err-avatar-decode-failed")
+                                }
+                            });
+                        }
                     }
                 }
             }

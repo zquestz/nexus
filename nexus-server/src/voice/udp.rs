@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::{Arc, RwLock as StdRwLock};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tracing::{debug, error, warn};
@@ -34,7 +34,7 @@ use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Permission;
-use crate::ip_rule_cache::IpRuleCache;
+use crate::ip_rule_cache::IpRuleState;
 use crate::users::UserManager;
 
 use super::{VoiceRegistry, send_voice_leave_notifications};
@@ -51,7 +51,7 @@ pub struct VoiceUdpServer {
     registry: VoiceRegistry,
     /// Active DTLS clients, keyed by remote address.
     clients: Arc<RwLock<HashMap<SocketAddr, Arc<RwLock<DtlsClient>>>>>,
-    ip_rule_cache: Arc<StdRwLock<IpRuleCache>>,
+    ip_rule_cache: Arc<IpRuleState>,
     user_manager: UserManager,
     channel_manager: ChannelManager,
     connection_tracker: Arc<ConnectionTracker>,
@@ -61,7 +61,7 @@ impl VoiceUdpServer {
     pub fn new(
         listener: Arc<dyn Listener + Send + Sync>,
         registry: VoiceRegistry,
-        ip_rule_cache: Arc<StdRwLock<IpRuleCache>>,
+        ip_rule_cache: Arc<IpRuleState>,
         user_manager: UserManager,
         channel_manager: ChannelManager,
         connection_tracker: Arc<ConnectionTracker>,
@@ -91,18 +91,7 @@ impl VoiceUdpServer {
                     // form the TCP path registered (it normalizes at accept too).
                     let remote_addr = normalize_socket_addr(remote_addr);
                     // Ban check before processing; trust bypasses ban.
-                    let should_allow = {
-                        let cache = self.ip_rule_cache.read().expect(ERR_IP_CACHE_POISONED);
-                        if cache.needs_rebuild() {
-                            drop(cache);
-                            self.ip_rule_cache
-                                .write()
-                                .expect(ERR_IP_CACHE_POISONED)
-                                .should_allow(remote_addr.ip())
-                        } else {
-                            cache.should_allow_read_only(remote_addr.ip())
-                        }
-                    };
+                    let should_allow = self.ip_rule_cache.should_allow(remote_addr.ip()).await;
 
                     if !should_allow {
                         debug!(ip = %remote_addr.ip(), "{}", LOG_VOICE_REJECTED_BANNED);
@@ -324,6 +313,9 @@ impl VoiceUdpServer {
                     let _ = client_guard.conn.close().await;
                 }
             }
+            // Release the UDP client map before the stale-token reap, which only touches
+            // the registry — and so it isn't held across read_user_state below.
+            drop(clients);
 
             // Reap sessions that joined via TCP but never established UDP
             // (e.g. DTLS handshake blocked by a firewall).
@@ -332,23 +324,30 @@ impl VoiceUdpServer {
                 .find_stale_sessions(VOICE_SESSION_TIMEOUT_SECS)
                 .await;
 
-            for token in stale_tokens {
-                if let Some(info) = self.registry.remove_by_token(token).await {
-                    let leaving_user_tx = self
-                        .user_manager
-                        .get_user_by_session_id(info.session.session_id)
-                        .await
-                        .map(|u| u.tx.clone());
+            if !stale_tokens.is_empty() {
+                // read_user_state across the reap so each VoiceUserLeft orders
+                // consistently with a concurrent rename (same reasoning as VoiceLeave):
+                // the rename re-keys the registry entry before we remove it, or its
+                // ChatUserRenamed is ordered after our VoiceUserLeft.
+                let _user_state = self.user_manager.read_user_state().await;
+                for token in stale_tokens {
+                    if let Some(info) = self.registry.remove_by_token(token).await {
+                        let leaving_user_tx = self
+                            .user_manager
+                            .get_user_by_session_id(info.session.session_id)
+                            .await
+                            .map(|u| u.tx.clone());
 
-                    send_voice_leave_notifications(
-                        &info,
-                        leaving_user_tx.as_ref(),
-                        &self.user_manager,
-                        &self.channel_manager,
-                    )
-                    .await;
+                        send_voice_leave_notifications(
+                            &info,
+                            leaving_user_tx.as_ref(),
+                            &self.user_manager,
+                            &self.channel_manager,
+                        )
+                        .await;
 
-                    debug!(user = %info.session.nickname, "{}", LOG_VOICE_STALE_SESSION);
+                        debug!(user = %info.session.nickname, "{}", LOG_VOICE_STALE_SESSION);
+                    }
                 }
             }
         }

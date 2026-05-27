@@ -32,7 +32,7 @@ use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::{CreateUserParams, Database, Permissions};
 use crate::files::{FileIndex, PathLockMap};
-use crate::ip_rule_cache::IpRuleCache;
+use crate::ip_rule_cache::{IpRuleCache, IpRuleState};
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
 use crate::users::user::NewSessionParams;
@@ -85,7 +85,7 @@ pub struct TestContext {
     pub message_id: MessageId,
     pub file_root: Option<&'static Path>,
     pub connection_tracker: Arc<ConnectionTracker>,
-    pub ip_rule_cache: Arc<RwLock<IpRuleCache>>,
+    pub ip_rule_cache: Arc<IpRuleState>,
     pub file_index: Arc<FileIndex>,
     pub file_mutation_locks: Arc<PathLockMap>,
     pub channel_manager: ChannelManager,
@@ -175,7 +175,7 @@ pub async fn create_test_context() -> TestContext {
     // Unlimited connections by default.
     let connection_tracker = Arc::new(ConnectionTracker::new(0, 0));
 
-    let ip_rule_cache = Arc::new(RwLock::new(IpRuleCache::new()));
+    let ip_rule_cache = Arc::new(IpRuleState::new(IpRuleCache::new()));
 
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let file_index = Arc::new(FileIndex::new(temp_dir.path(), temp_dir.path()));

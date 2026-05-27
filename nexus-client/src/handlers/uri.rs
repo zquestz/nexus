@@ -227,15 +227,13 @@ impl NexusApp {
                             .find(|u| fold_name(&u.nickname) == user_lower)
                             .map(|u| u.nickname.clone());
 
-                        let tab_name = actual_nickname.unwrap_or(target);
+                        let tab_name = actual_nickname
+                            .or_else(|| conn.user_message_tab_key(&target))
+                            .unwrap_or(target);
 
-                        // Create or focus the PM tab
-                        if !conn.user_message_tabs.contains(&tab_name) {
-                            conn.user_message_tabs.push(tab_name.clone());
-                            conn.user_messages.entry(tab_name.clone()).or_default();
-                        }
-
-                        conn.active_chat_tab = ChatTab::UserMessage(tab_name);
+                        // Create or focus the PM tab (resolved by folded identity).
+                        let key = conn.resolve_user_message_tab(&tab_name);
+                        conn.active_chat_tab = ChatTab::UserMessage(key);
                     }
                 }
                 // If target is None, just show chat panel (don't change active tab)

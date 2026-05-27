@@ -15,8 +15,8 @@ use nexus_common::validators::{
 };
 
 use super::{
-    HandlerContext, ServerInfoValues, channel_error_to_message, err_admin_required,
-    err_bandwidth_chunk_size_too_large, err_bandwidth_chunk_size_too_small,
+    HandlerContext, Outcome, ServerInfoValues, channel_error_to_message, dispatch_outcome,
+    err_admin_required, err_bandwidth_chunk_size_too_large, err_bandwidth_chunk_size_too_small,
     err_channel_list_invalid, err_database, err_invalid_password_strength, err_no_fields_to_update,
     err_not_logged_in, err_public_address_contains_brackets, err_public_address_contains_path,
     err_public_address_contains_port, err_public_address_contains_scheme,
@@ -118,14 +118,13 @@ where
             .await;
     };
 
+    // Admin gate before validation so non-admins never receive validation-specific
+    // errors (information leak). This early check has no lock — the 'locked block
+    // re-checks admin under read_user_state to close the demotion race at commit time.
     let user = match ctx.user_manager.get_user_by_session_id(id).await {
         Some(u) => u,
-        None => {
-            return send_failure(ctx, err_not_logged_in(ctx.locale)).await;
-        }
+        None => return send_failure(ctx, err_not_logged_in(ctx.locale)).await,
     };
-
-    // Admin gate before validation, so validation rules aren't leaked to non-admins.
     if !user.is_admin {
         warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_ADMIN_REQUIRED);
         return send_failure(ctx, err_admin_required(ctx.locale)).await;
@@ -268,264 +267,295 @@ where
         return send_failure(ctx, error_msg).await;
     }
 
-    // The block scopes `tx` so it drops (rolling back on early `break`)
-    // before the failure response is written — otherwise the SQLite write
-    // lock would be held across that write to a possibly-slow client.
-    let staged: Result<Option<Vec<crate::channels::Channel>>, StageFail> = 'stage: {
-        let mut tx = match ctx.db.begin().await {
-            Ok(t) => t,
-            Err(e) => break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_BEGIN, e.to_string())),
+    let outcome = 'locked: {
+        let _user_state = ctx.user_manager.read_user_state().await;
+
+        // Re-read the session under the user_state read lock so a concurrent
+        // demotion either completes before this check or waits until after the
+        // commit — preventing a non-admin from slipping through the admin gate.
+        let user = match ctx.user_manager.get_user_by_session_id(id).await {
+            Some(u) => u,
+            None => break 'locked Outcome::Disconnect,
         };
 
-        if let Some(ref n) = name
-            && let Err(e) = ConfigDb::set_server_name_in_tx(&mut tx, n).await
-        {
-            break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_NAME, e.to_string()));
+        if !user.is_admin {
+            warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_ADMIN_REQUIRED);
+            break 'locked Outcome::Send(Box::new(ServerMessage::ServerInfoUpdateResponse {
+                success: false,
+                error: Some(err_admin_required(ctx.locale)),
+            }));
         }
 
-        if let Some(ref d) = description
-            && let Err(e) = ConfigDb::set_server_description_in_tx(&mut tx, d).await
-        {
-            break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_DESC, e.to_string()));
-        }
+        let _server_info_guard = ctx.user_manager.lock_server_info_state().await;
 
-        if let Some(ref addr) = public_address
-            && let Err(e) = ConfigDb::set_public_address_in_tx(&mut tx, addr).await
-        {
-            break 'stage Err(StageFail::Db(
-                LOG_SERVER_INFO_DB_PUBLIC_ADDRESS,
-                e.to_string(),
-            ));
-        }
-
-        if let Some(max_conn) = max_connections_per_ip
-            && let Err(e) = ConfigDb::set_max_connections_per_ip_in_tx(&mut tx, max_conn).await
-        {
-            break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_CONNECTIONS, e.to_string()));
-        }
-
-        if let Some(max_xfer) = max_transfers_per_ip
-            && let Err(e) = ConfigDb::set_max_transfers_per_ip_in_tx(&mut tx, max_xfer).await
-        {
-            break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_TRANSFERS, e.to_string()));
-        }
-
-        if let Some(ref img) = image
-            && let Err(e) = ConfigDb::set_server_image_in_tx(&mut tx, img).await
-        {
-            break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_IMAGE, e.to_string()));
-        }
-
-        if let Some(interval) = file_reindex_interval
-            && let Err(e) = ConfigDb::set_file_reindex_interval_in_tx(&mut tx, interval).await
-        {
-            break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_REINDEX, e.to_string()));
-        }
-        // No runtime update needed: the timer task re-reads config each cycle.
-
-        // Reconcile per-channel settings rows in-tx so the materialized
-        // `channels_to_init` reflects the staged (not yet committed) state.
-        let channels_to_init = if let Some(ref channels_str) = persistent_channels {
-            if let Err(e) = ConfigDb::set_persistent_channels_in_tx(&mut tx, channels_str).await {
-                break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_PERSISTENT, e.to_string()));
-            }
-
-            let new_channel_names = ConfigDb::parse_channel_list(channels_str);
-
-            let current_settings = match ChannelDb::get_all_channel_settings_in_tx(&mut tx).await {
-                Ok(v) => v,
-                Err(e) => {
-                    break 'stage Err(StageFail::Db(
-                        LOG_SERVER_INFO_CHANNEL_READ_FAILED,
-                        e.to_string(),
-                    ));
-                }
+        // The block scopes `tx` so it drops (rolling back on early `break`)
+        // before the failure response is written — otherwise the SQLite write
+        // lock would be held across that write to a possibly-slow client.
+        let staged: Result<Option<Vec<crate::channels::Channel>>, StageFail> = 'stage: {
+            let mut tx = match ctx.db.begin().await {
+                Ok(t) => t,
+                Err(e) => break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_BEGIN, e.to_string())),
             };
 
-            for channel_name in &new_channel_names {
-                let name_lower = fold_name(channel_name);
-                if !current_settings
-                    .iter()
-                    .any(|s| fold_name(&s.name) == name_lower)
-                    && let Err(e) = ChannelDb::upsert_channel_settings_in_tx(
-                        &mut tx,
-                        &ChannelSettings {
-                            name: channel_name.clone(),
-                            topic: String::new(),
-                            topic_set_by: String::new(),
-                            secret: false,
-                        },
-                    )
-                    .await
-                {
-                    break 'stage Err(StageFail::Channel(
-                        LOG_SERVER_INFO_CHANNEL_CREATE_FAILED,
-                        e.to_string(),
-                        channel_name.clone(),
-                    ));
-                }
+            if let Some(ref n) = name
+                && let Err(e) = ConfigDb::set_server_name_in_tx(&mut tx, n).await
+            {
+                break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_NAME, e.to_string()));
             }
 
-            for settings in &current_settings {
-                let name_lower = fold_name(&settings.name);
-                if !new_channel_names.iter().any(|n| fold_name(n) == name_lower)
-                    && let Err(e) =
-                        ChannelDb::delete_channel_settings_in_tx(&mut tx, &settings.name).await
-                {
-                    break 'stage Err(StageFail::Channel(
-                        LOG_SERVER_INFO_CHANNEL_DELETE_FAILED,
-                        e.to_string(),
-                        settings.name.clone(),
-                    ));
-                }
+            if let Some(ref d) = description
+                && let Err(e) = ConfigDb::set_server_description_in_tx(&mut tx, d).await
+            {
+                break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_DESC, e.to_string()));
             }
 
-            let mut init = Vec::with_capacity(new_channel_names.len());
-            for channel_name in &new_channel_names {
-                match ChannelDb::get_channel_settings_in_tx(&mut tx, channel_name).await {
-                    Ok(Some(settings)) => {
-                        let (topic, topic_set_by) = if settings.topic.is_empty() {
-                            (None, None)
-                        } else {
-                            (Some(settings.topic), Some(settings.topic_set_by))
-                        };
-                        init.push(crate::channels::Channel::with_settings(
-                            channel_name.clone(),
-                            topic,
-                            topic_set_by,
-                            settings.secret,
-                        ));
-                    }
-                    Ok(None) => {
-                        init.push(crate::channels::Channel::new(channel_name.clone()));
-                    }
-                    Err(e) => {
+            if let Some(ref addr) = public_address
+                && let Err(e) = ConfigDb::set_public_address_in_tx(&mut tx, addr).await
+            {
+                break 'stage Err(StageFail::Db(
+                    LOG_SERVER_INFO_DB_PUBLIC_ADDRESS,
+                    e.to_string(),
+                ));
+            }
+
+            if let Some(max_conn) = max_connections_per_ip
+                && let Err(e) = ConfigDb::set_max_connections_per_ip_in_tx(&mut tx, max_conn).await
+            {
+                break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_CONNECTIONS, e.to_string()));
+            }
+
+            if let Some(max_xfer) = max_transfers_per_ip
+                && let Err(e) = ConfigDb::set_max_transfers_per_ip_in_tx(&mut tx, max_xfer).await
+            {
+                break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_TRANSFERS, e.to_string()));
+            }
+
+            if let Some(ref img) = image
+                && let Err(e) = ConfigDb::set_server_image_in_tx(&mut tx, img).await
+            {
+                break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_IMAGE, e.to_string()));
+            }
+
+            if let Some(interval) = file_reindex_interval
+                && let Err(e) = ConfigDb::set_file_reindex_interval_in_tx(&mut tx, interval).await
+            {
+                break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_REINDEX, e.to_string()));
+            }
+            // No runtime update needed: the timer task re-reads config each cycle.
+
+            // Reconcile per-channel settings rows in-tx so the materialized
+            // `channels_to_init` reflects the staged (not yet committed) state.
+            let channels_to_init = if let Some(ref channels_str) = persistent_channels {
+                if let Err(e) = ConfigDb::set_persistent_channels_in_tx(&mut tx, channels_str).await
+                {
+                    break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_PERSISTENT, e.to_string()));
+                }
+
+                let new_channel_names = ConfigDb::parse_channel_list(channels_str);
+
+                let current_settings =
+                    match ChannelDb::get_all_channel_settings_in_tx(&mut tx).await {
+                        Ok(v) => v,
+                        Err(e) => {
+                            break 'stage Err(StageFail::Db(
+                                LOG_SERVER_INFO_CHANNEL_READ_FAILED,
+                                e.to_string(),
+                            ));
+                        }
+                    };
+
+                for channel_name in &new_channel_names {
+                    let name_lower = fold_name(channel_name);
+                    if !current_settings
+                        .iter()
+                        .any(|s| fold_name(&s.name) == name_lower)
+                        && let Err(e) = ChannelDb::upsert_channel_settings_in_tx(
+                            &mut tx,
+                            &ChannelSettings {
+                                name: channel_name.clone(),
+                                topic: String::new(),
+                                topic_set_by: String::new(),
+                                secret: false,
+                            },
+                        )
+                        .await
+                    {
                         break 'stage Err(StageFail::Channel(
-                            LOG_SERVER_INFO_CHANNEL_READ_FAILED,
+                            LOG_SERVER_INFO_CHANNEL_CREATE_FAILED,
                             e.to_string(),
                             channel_name.clone(),
                         ));
                     }
                 }
+
+                for settings in &current_settings {
+                    let name_lower = fold_name(&settings.name);
+                    if !new_channel_names.iter().any(|n| fold_name(n) == name_lower)
+                        && let Err(e) =
+                            ChannelDb::delete_channel_settings_in_tx(&mut tx, &settings.name).await
+                    {
+                        break 'stage Err(StageFail::Channel(
+                            LOG_SERVER_INFO_CHANNEL_DELETE_FAILED,
+                            e.to_string(),
+                            settings.name.clone(),
+                        ));
+                    }
+                }
+
+                let mut init = Vec::with_capacity(new_channel_names.len());
+                for channel_name in &new_channel_names {
+                    match ChannelDb::get_channel_settings_in_tx(&mut tx, channel_name).await {
+                        Ok(Some(settings)) => {
+                            let (topic, topic_set_by) = if settings.topic.is_empty() {
+                                (None, None)
+                            } else {
+                                (Some(settings.topic), Some(settings.topic_set_by))
+                            };
+                            init.push(crate::channels::Channel::with_settings(
+                                channel_name.clone(),
+                                topic,
+                                topic_set_by,
+                                settings.secret,
+                            ));
+                        }
+                        Ok(None) => {
+                            init.push(crate::channels::Channel::new(channel_name.clone()));
+                        }
+                        Err(e) => {
+                            break 'stage Err(StageFail::Channel(
+                                LOG_SERVER_INFO_CHANNEL_READ_FAILED,
+                                e.to_string(),
+                                channel_name.clone(),
+                            ));
+                        }
+                    }
+                }
+                Some(init)
+            } else {
+                None
+            };
+
+            if let Some(ref channels_str) = auto_join_channels
+                && let Err(e) = ConfigDb::set_auto_join_channels_in_tx(&mut tx, channels_str).await
+            {
+                break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_AUTO_JOIN, e.to_string()));
             }
-            Some(init)
-        } else {
-            None
+
+            if let Some(burst) = chat_burst_limit
+                && let Err(e) = ConfigDb::set_chat_burst_limit_in_tx(&mut tx, burst).await
+            {
+                break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_CHAT_BURST, e.to_string()));
+            }
+
+            if let Some(rate) = chat_rate_limit
+                && let Err(e) = ConfigDb::set_chat_rate_limit_in_tx(&mut tx, rate).await
+            {
+                break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_CHAT_RATE, e.to_string()));
+            }
+
+            if let Some(score) = min_password_strength {
+                let strength = validators::PasswordStrength::from(score);
+                if let Err(e) = ConfigDb::set_min_password_strength_in_tx(&mut tx, strength).await {
+                    break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_PASSWORD, e.to_string()));
+                }
+            }
+
+            if let Some(rate) = max_outbound_rate
+                && let Err(e) = ConfigDb::set_max_outbound_rate_in_tx(&mut tx, rate).await
+            {
+                break 'stage Err(StageFail::Db(
+                    LOG_SERVER_INFO_DB_MAX_OUTBOUND_RATE,
+                    e.to_string(),
+                ));
+            }
+
+            if let Some(size) = scheduler_chunk_size
+                && let Err(e) = ConfigDb::set_scheduler_chunk_size_in_tx(&mut tx, size).await
+            {
+                break 'stage Err(StageFail::Db(
+                    LOG_SERVER_INFO_DB_SCHEDULER_CHUNK_SIZE,
+                    e.to_string(),
+                ));
+            }
+
+            if let Err(e) = tx.commit().await {
+                break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_COMMIT, e.to_string()));
+            }
+
+            Ok(channels_to_init)
         };
 
-        if let Some(ref channels_str) = auto_join_channels
-            && let Err(e) = ConfigDb::set_auto_join_channels_in_tx(&mut tx, channels_str).await
-        {
-            break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_AUTO_JOIN, e.to_string()));
-        }
-
-        if let Some(burst) = chat_burst_limit
-            && let Err(e) = ConfigDb::set_chat_burst_limit_in_tx(&mut tx, burst).await
-        {
-            break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_CHAT_BURST, e.to_string()));
-        }
-
-        if let Some(rate) = chat_rate_limit
-            && let Err(e) = ConfigDb::set_chat_rate_limit_in_tx(&mut tx, rate).await
-        {
-            break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_CHAT_RATE, e.to_string()));
-        }
-
-        if let Some(score) = min_password_strength {
-            let strength = validators::PasswordStrength::from(score);
-            if let Err(e) = ConfigDb::set_min_password_strength_in_tx(&mut tx, strength).await {
-                break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_PASSWORD, e.to_string()));
+        let channels_to_init = match staged {
+            Ok(c) => c,
+            Err(StageFail::Db(log_const, detail)) => {
+                error!(user = %user.username, ip = %ctx.peer_addr, err = %detail, "{}", log_const);
+                break 'locked Outcome::Send(Box::new(ServerMessage::ServerInfoUpdateResponse {
+                    success: false,
+                    error: Some(err_database(ctx.locale)),
+                }));
             }
+            Err(StageFail::Channel(log_const, detail, target)) => {
+                error!(user = %user.username, ip = %ctx.peer_addr, target = %target, err = %detail, "{}", log_const);
+                break 'locked Outcome::Send(Box::new(ServerMessage::ServerInfoUpdateResponse {
+                    success: false,
+                    error: Some(err_database(ctx.locale)),
+                }));
+            }
+        };
+
+        // Runtime side-effects apply only after the commit succeeds.
+        if let Some(max_conn) = max_connections_per_ip {
+            ctx.connection_tracker
+                .set_max_connections_per_ip(max_conn as usize);
+        }
+        if let Some(max_xfer) = max_transfers_per_ip {
+            ctx.connection_tracker
+                .set_max_transfers_per_ip(max_xfer as usize);
+        }
+        if let Some(burst) = chat_burst_limit {
+            ctx.flood_config.set_burst(burst);
+        }
+        if let Some(rate) = chat_rate_limit {
+            ctx.flood_config.set_rate(rate);
+        }
+        if let Some(init) = channels_to_init {
+            ctx.channel_manager
+                .reinitialize_persistent_channels(init)
+                .await;
         }
 
-        if let Some(rate) = max_outbound_rate
-            && let Err(e) = ConfigDb::set_max_outbound_rate_in_tx(&mut tx, rate).await
-        {
-            break 'stage Err(StageFail::Db(
-                LOG_SERVER_INFO_DB_MAX_OUTBOUND_RATE,
-                e.to_string(),
-            ));
-        }
+        let config = ctx.db.config.get_all().await;
 
-        if let Some(size) = scheduler_chunk_size
-            && let Err(e) = ConfigDb::set_scheduler_chunk_size_in_tx(&mut tx, size).await
-        {
-            break 'stage Err(StageFail::Db(
-                LOG_SERVER_INFO_DB_SCHEDULER_CHUNK_SIZE,
-                e.to_string(),
-            ));
-        }
-
-        if let Err(e) = tx.commit().await {
-            break 'stage Err(StageFail::Db(LOG_SERVER_INFO_DB_COMMIT, e.to_string()));
-        }
-
-        Ok(channels_to_init)
-    };
-
-    let channels_to_init = match staged {
-        Ok(c) => c,
-        Err(StageFail::Db(log_const, detail)) => {
-            error!(user = %user.username, ip = %ctx.peer_addr, err = %detail, "{}", log_const);
-            return send_failure(ctx, err_database(ctx.locale)).await;
-        }
-        Err(StageFail::Channel(log_const, detail, target)) => {
-            error!(user = %user.username, ip = %ctx.peer_addr, target = %target, err = %detail, "{}", log_const);
-            return send_failure(ctx, err_database(ctx.locale)).await;
-        }
-    };
-
-    // Runtime side-effects apply only after the commit succeeds.
-    if let Some(max_conn) = max_connections_per_ip {
-        ctx.connection_tracker
-            .set_max_connections_per_ip(max_conn as usize);
-    }
-    if let Some(max_xfer) = max_transfers_per_ip {
-        ctx.connection_tracker
-            .set_max_transfers_per_ip(max_xfer as usize);
-    }
-    if let Some(burst) = chat_burst_limit {
-        ctx.flood_config.set_burst(burst);
-    }
-    if let Some(rate) = chat_rate_limit {
-        ctx.flood_config.set_rate(rate);
-    }
-    if let Some(init) = channels_to_init {
-        ctx.channel_manager
-            .reinitialize_persistent_channels(init)
+        ctx.user_manager
+            .broadcast_server_info_updated(ServerInfoValues {
+                name: config.server_name,
+                description: config.server_description,
+                public_address: config.public_address,
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                max_connections_per_ip: config.max_connections_per_ip,
+                max_transfers_per_ip: config.max_transfers_per_ip,
+                image: config.server_image,
+                transfer_port: ctx.transfer_port,
+                transfer_websocket_port: ctx.transfer_websocket_port,
+                file_reindex_interval: config.file_reindex_interval,
+                persistent_channels: config.persistent_channels,
+                auto_join_channels: config.auto_join_channels,
+                min_password_strength: config.min_password_strength.score(),
+                chat_burst_limit: config.chat_burst_limit,
+                chat_rate_limit: config.chat_rate_limit,
+                max_outbound_rate: config.max_outbound_rate,
+                scheduler_chunk_size: config.scheduler_chunk_size,
+            })
             .await;
-    }
 
-    let config = ctx.db.config.get_all().await;
+        info!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_SUCCESS);
+        Outcome::Send(Box::new(ServerMessage::ServerInfoUpdateResponse {
+            success: true,
+            error: None,
+        }))
+    };
 
-    ctx.user_manager
-        .broadcast_server_info_updated(ServerInfoValues {
-            name: config.server_name,
-            description: config.server_description,
-            public_address: config.public_address,
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            max_connections_per_ip: config.max_connections_per_ip,
-            max_transfers_per_ip: config.max_transfers_per_ip,
-            image: config.server_image,
-            transfer_port: ctx.transfer_port,
-            transfer_websocket_port: ctx.transfer_websocket_port,
-            file_reindex_interval: config.file_reindex_interval,
-            persistent_channels: config.persistent_channels,
-            auto_join_channels: config.auto_join_channels,
-            min_password_strength: config.min_password_strength.score(),
-            chat_burst_limit: config.chat_burst_limit,
-            chat_rate_limit: config.chat_rate_limit,
-            max_outbound_rate: config.max_outbound_rate,
-            scheduler_chunk_size: config.scheduler_chunk_size,
-        })
-        .await;
-
-    info!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_SERVER_INFO_SUCCESS);
-    ctx.send_message(&ServerMessage::ServerInfoUpdateResponse {
-        success: true,
-        error: None,
-    })
-    .await
+    dispatch_outcome(outcome, ctx, HANDLER_SERVER_INFO_UPDATE).await
 }
 
 #[cfg(test)]

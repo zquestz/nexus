@@ -3,7 +3,6 @@
 use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 
-use nexus_common::names::fold_name;
 use nexus_common::protocol::{ServerMessage, UserInfo};
 
 use super::UserManager;
@@ -16,7 +15,7 @@ impl UserManager {
     /// `user_list` clients: a `UserDisconnected` per removed session, plus one
     /// re-aggregated `UserUpdated` per affected regular account (so a surviving
     /// session's aggregate doesn't go stale — the same fix as
-    /// `remove_users_and_broadcast`). Called by the broadcast methods; sends
+    /// `broadcast_disconnections`). Called by the broadcast methods; sends
     /// directly rather than via `broadcast_user_event()` to break the type-level
     /// recursion (broadcast → remove_disconnected → broadcast).
     pub(super) async fn remove_disconnected(&self, session_ids: Vec<u32>) {
@@ -24,22 +23,18 @@ impl UserManager {
             return;
         }
 
-        // Capture full sessions before removal — the re-aggregate needs username,
-        // is_shared, and avatar, not just the nickname.
+        // Remove and capture in one write-lock pass: `remove` yields the session only
+        // if it was still in the map, so we broadcast exactly what *this* call removed.
+        // A session another path already swept (and announced) returns None here and is
+        // skipped — no duplicate UserDisconnected. The re-aggregate below needs the full
+        // session (username, is_shared, avatar), not just the id.
         let removed_sessions: Vec<UserSession> = {
-            let users = self.users.read().await;
+            let mut users = self.users.write().await;
             session_ids
                 .iter()
-                .filter_map(|session_id| users.get(session_id).cloned())
+                .filter_map(|session_id| users.remove(session_id))
                 .collect()
         };
-
-        {
-            let mut users = self.users.write().await;
-            for session_id in &session_ids {
-                users.remove(session_id);
-            }
-        }
 
         // Notify user_list holders of each disconnect.
         for user_session in &removed_sessions {
@@ -51,20 +46,20 @@ impl UserManager {
         }
 
         // Re-aggregate each affected regular account once (same as
-        // remove_users_and_broadcast), direct-sent for the recursion reason above.
+        // broadcast_disconnections), direct-sent for the recursion reason above.
         // Shared sessions never re-aggregate — each is its own user-list entry.
-        let mut by_username: HashMap<String, Vec<UserSession>> = HashMap::new();
+        let mut by_user_id: HashMap<i64, Vec<UserSession>> = HashMap::new();
         for user_session in removed_sessions.iter().filter(|u| !u.is_shared) {
-            by_username
-                .entry(fold_name(&user_session.username))
+            by_user_id
+                .entry(user_session.user_id)
                 .or_default()
                 .push(user_session.clone());
         }
 
-        for account_removed_sessions in by_username.into_values() {
+        for account_removed_sessions in by_user_id.into_values() {
             if let Some(message) = self
                 .build_account_reaggregate(
-                    &account_removed_sessions[0].username,
+                    account_removed_sessions[0].user_id,
                     &account_removed_sessions,
                 )
                 .await
@@ -120,7 +115,7 @@ impl UserManager {
     pub fn aggregate_avatar<'a>(sessions: impl Iterator<Item = &'a UserSession>) -> Option<String> {
         sessions
             .filter(|s| s.avatar.is_some())
-            .max_by_key(|s| s.login_time)
+            .max_by_key(|s| (s.login_time, s.session_id))
             .and_then(|s| s.avatar.clone())
     }
 
@@ -139,7 +134,7 @@ impl UserManager {
 
         let latest_login = sessions
             .iter()
-            .max_by_key(|s| s.login_time)
+            .max_by_key(|s| (s.login_time, s.session_id))
             .expect(ERR_SESSIONS_NOT_EMPTY);
 
         let most_active = sessions
@@ -179,7 +174,7 @@ impl UserManager {
 
     /// Build the post-removal aggregated `UserUpdated` for a regular account, or
     /// `None` if no sessions remain. `removed_sessions` is every session just
-    /// removed for this username, so the avatar delta's "old" reflects all
+    /// removed for this account, so the avatar delta's "old" reflects all
     /// departing avatar sources, not just one.
     ///
     /// Build-only: the caller delivers the message. The normal remove paths
@@ -189,10 +184,10 @@ impl UserManager {
     /// user-list entries, not aggregated.
     pub(super) async fn build_account_reaggregate(
         &self,
-        username: &str,
+        user_id: i64,
         removed_sessions: &[UserSession],
     ) -> Option<ServerMessage> {
-        let remaining_sessions = self.get_sessions_by_username(username).await;
+        let remaining_sessions = self.get_sessions_by_user_id(user_id).await;
         let mut user_info = Self::build_aggregated_user_info(&remaining_sessions)?;
 
         // UserUpdated normally omits the avatar (unchanged). A disconnect is the one
@@ -208,7 +203,10 @@ impl UserManager {
         }
 
         Some(ServerMessage::UserUpdated {
-            previous_username: username.to_string(),
+            // Not a rename: survivors keep their current name, so previous == new
+            // and the client's rename bookkeeping is a no-op. (The client matches
+            // regular accounts by immutable id, not this field.)
+            previous_username: user_info.username.clone(),
             user: user_info,
         })
     }
@@ -383,6 +381,52 @@ mod tests {
         assert!(
             obs_rx.try_recv().is_err(),
             "shared cleanup must not emit UserUpdated"
+        );
+    }
+
+    /// `login_time` is second-resolution, so two sessions can tie; the aggregate
+    /// must pick a stable winner (higher `session_id`) rather than letting HashMap
+    /// iteration order decide which avatar/identity wins.
+    #[tokio::test]
+    async fn test_aggregate_avatar_breaks_login_time_ties_by_session_id() {
+        use crate::users::user::UserSession;
+
+        let (tx_a, _rx_a) = mpsc::unbounded_channel();
+        let mut lower = UserSession::new(session_params(
+            1,
+            "alice",
+            "alice",
+            false,
+            false,
+            Some("data:lower".to_string()),
+            tx_a,
+        ));
+        lower.session_id = 10;
+        lower.login_time = 100;
+
+        let (tx_b, _rx_b) = mpsc::unbounded_channel();
+        let mut higher = UserSession::new(session_params(
+            1,
+            "alice",
+            "alice",
+            false,
+            false,
+            Some("data:higher".to_string()),
+            tx_b,
+        ));
+        higher.session_id = 20;
+        higher.login_time = 100; // same second as `lower` → tie on login_time alone
+
+        // Higher session_id wins the tie, regardless of iteration order.
+        let forward = [lower.clone(), higher.clone()];
+        assert_eq!(
+            UserManager::aggregate_avatar(forward.iter()),
+            Some("data:higher".to_string())
+        );
+        let reverse = [higher, lower];
+        assert_eq!(
+            UserManager::aggregate_avatar(reverse.iter()),
+            Some("data:higher".to_string())
         );
     }
 }

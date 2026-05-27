@@ -7,7 +7,6 @@ err-nickname-in-use = Bijnaam is al in gebruik
 err-nickname-invalid = Bijnaam bevat ongeldige tekens (letters, cijfers en symbolen toegestaan - geen spaties of stuurtekens)
 err-nickname-is-username = Bijnaam mag geen bestaande gebruikersnaam zijn
 err-username-is-active-nickname = Gebruikersnaam mag niet overeenkomen met een bijnaam die al in gebruik is
-err-nickname-not-found = Gebruiker "{ $nickname }" niet gevonden
 err-nickname-not-online = Gebruiker "{ $nickname }" is niet online
 err-nickname-required = Bijnaam vereist voor gedeelde accounts
 err-nickname-too-long = Bijnaam is te lang (max. { $max_length } tekens)
@@ -21,8 +20,6 @@ err-status-invalid-characters = Afwezigheidsbericht bevat ongeldige tekens
 err-shared-cannot-be-admin = Gedeelde accounts kunnen geen beheerders zijn
 err-shared-cannot-self-edit = Gedeelde accounts kunnen zichzelf niet bewerken
 err-shared-invalid-permissions = Gedeelde accounts kunnen deze rechten niet hebben: { $permissions }
-err-shared-message-requires-nickname = Gedeelde accounts kunnen alleen berichten ontvangen via bijnaam
-err-shared-kick-requires-nickname = Gedeelde accounts kunnen alleen worden verwijderd via bijnaam
 
 # Gastaccount-fouten
 err-guest-disabled = Gasttoegang is niet ingeschakeld op deze server
@@ -33,7 +30,8 @@ err-cannot-delete-guest = Het gastaccount kan niet worden verwijderd
 # Avatar Validatiefouten
 err-avatar-invalid-format = Ongeldig avatar-formaat (moet een data-URI zijn met base64-codering)
 err-avatar-too-large = Avatar is te groot (max. { $max_length } bytes)
-err-avatar-unsupported-type = Niet-ondersteund avatar-type (alleen PNG, WebP of SVG)
+err-avatar-unsupported-type = Niet-ondersteund avatar-type (alleen PNG, JPEG, WebP of SVG)
+err-avatar-undecodable = Avatar kon niet worden gedecodeerd als een geldige afbeelding
 err-authentication = Authenticatiefout
 err-invalid-credentials = Ongeldige gebruikersnaam of wachtwoord
 err-handshake-required = Handshake vereist
@@ -41,7 +39,6 @@ err-already-logged-in = Al ingelogd
 err-handshake-already-completed = Handshake al voltooid
 err-account-deleted = Uw account is verwijderd
 err-account-disabled-by-admin = Account uitgeschakeld door beheerder
-err-account-type-changed = Het type van dit account is gewijzigd. Maak opnieuw verbinding.
 
 # Permissie- en toegangsfouten
 err-permission-denied = Toestemming geweigerd
@@ -144,7 +141,6 @@ err-kick-reason-too-long = Kickreden is te lang (max { $max_length } tekens)
 err-kick-reason-invalid-characters = Kickreden bevat ongeldige tekens
 err-username-exists = De gebruikersnaam "{ $username }" bestaat al
 err-user-not-found = Gebruiker "{ $username }" niet gevonden
-err-user-not-online = Gebruiker "{ $username }" is niet online
 err-failed-to-create-user = Kan gebruiker "{ $username }" niet aanmaken
 err-account-disabled = Account "{ $username }" is uitgeschakeld
 err-update-failed = Kan gebruiker "{ $username }" niet bijwerken
@@ -172,7 +168,7 @@ err-invalid-password-strength = Ongeldige wachtwoordsterkte-waarde
 
 err-server-image-too-large = De serverafbeelding is te groot (maximaal 512KB)
 err-server-image-invalid-format = Ongeldig serverafbeeldingsformaat (moet een data-URI met base64-codering zijn)
-err-server-image-unsupported-type = Niet-ondersteund serverafbeeldingstype (alleen PNG, WebP, JPEG of SVG)
+err-server-image-unsupported-type = Niet-ondersteund serverafbeeldingstype (alleen PNG, JPEG, WebP of SVG)
 err-public-address-too-long = Het openbare adres is te lang (maximaal { $max_length } bytes)
 err-public-address-contains-scheme = Het openbare adres mag geen URL-schema bevatten
 err-public-address-contains-brackets = Het openbare adres mag geen haakjes bevatten
@@ -189,7 +185,7 @@ err-news-body-too-long = Nieuwstekst is te lang (maximaal { $max_length } tekens
 err-news-body-invalid-characters = Nieuwstekst bevat ongeldige tekens
 err-news-image-too-large = Nieuwsafbeelding is te groot (maximaal 512KB)
 err-news-image-invalid-format = Ongeldig nieuwsafbeeldingsformaat (moet een data-URI met base64-codering zijn)
-err-news-image-unsupported-type = Niet-ondersteund nieuwsafbeeldingstype (alleen PNG, WebP, JPEG of SVG)
+err-news-image-unsupported-type = Niet-ondersteund nieuwsafbeeldingstype (alleen PNG, JPEG, WebP of SVG)
 err-news-empty-content = Nieuws moet tekstinhoud of een afbeelding bevatten
 err-cannot-edit-admin-news = Alleen beheerders kunnen nieuws bewerken dat door beheerders is geplaatst
 err-cannot-delete-admin-news = Alleen beheerders kunnen nieuws verwijderen dat door beheerders is geplaatst

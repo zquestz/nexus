@@ -668,7 +668,10 @@ impl NexusApp {
             Message::SwitchChatTab(tab) => self.handle_switch_chat_tab(tab),
 
             // User list interactions
-            Message::UserInfoIconClicked(nickname) => self.handle_user_info_icon_clicked(nickname),
+            Message::UserInfoIconClicked(nickname) => match self.active_connection {
+                Some(id) => self.handle_user_info_icon_clicked(id, nickname),
+                None => Task::none(),
+            },
             Message::DisconnectIconClicked(nickname) => {
                 self.handle_disconnect_icon_clicked(nickname)
             }

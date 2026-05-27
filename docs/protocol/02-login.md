@@ -52,7 +52,9 @@ violation and disconnects the connection.
   `username`.
 - `avatar` (when present): ≤176 KB data URI, must be a well-formed
   `data:image/<type>;base64,...` URI for one of the allowed image
-  types (PNG, JPEG, WebP, SVG).
+  types (PNG, JPEG, WebP, SVG), and the base64 payload must decode as a
+  valid image of that type. An avatar that fails to decode is rejected
+  and the connection is closed.
 
 **Regular account example:**
 
@@ -268,6 +270,8 @@ data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...
 | Max size    | 176KB (as data URI)  |
 | Max decoded | 128KB (binary)       |
 | Formats     | PNG, WebP, JPEG, SVG |
+
+Validation goes beyond the MIME label: the payload must decode as a valid image of the declared type. A payload that fails to decode is rejected at login and the connection is closed.
 
 If no avatar is provided, the server/client generates an identicon from the nickname.
 

@@ -345,6 +345,21 @@ impl ChannelManager {
         result
     }
 
+    /// All channels the session belongs to, regardless of secret visibility.
+    ///
+    /// Unlike `get_channels_for_session` (which applies secret-channel *listing*
+    /// rules), this returns every channel the session is actually a member of —
+    /// used to target channel-scoped broadcasts (e.g. `ChatUserRenamed`) at the
+    /// members of each channel the user is in, secret ones included.
+    pub async fn channels_with_member(&self, session_id: u32) -> Vec<String> {
+        let channels = self.channels.read().await;
+        channels
+            .values()
+            .filter(|ch| ch.has_member(session_id))
+            .map(|ch| ch.name.clone())
+            .collect()
+    }
+
     #[cfg(test)]
     pub async fn get_channel(&self, channel_name: &str) -> Option<Channel> {
         let key = fold_name(channel_name);

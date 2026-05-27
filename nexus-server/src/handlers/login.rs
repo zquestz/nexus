@@ -6,26 +6,27 @@ use tokio::io::AsyncWrite;
 use tracing::{debug, error, info, warn};
 
 use nexus_common::names::fold_name;
-use nexus_common::protocol::{ChannelJoinInfo, ServerMessage, UserInfo};
+use nexus_common::protocol::{ChannelJoinInfo, ServerMessage};
 use nexus_common::validators::{
     self, AvatarError, FeaturesError, LocaleError, NicknameError, PasswordError, UsernameError,
 };
 
+use super::duration::format_duration_remaining;
 use super::{
-    HandlerContext, ServerInfoOptions, ServerInfoValues, build_server_info, current_timestamp,
-    err_account_disabled, err_account_type_changed, err_already_logged_in, err_authentication,
-    err_avatar_invalid_format, err_avatar_too_large, err_avatar_unsupported_type, err_database,
-    err_failed_to_create_user, err_features_empty_feature, err_features_feature_too_long,
-    err_features_invalid_characters, err_features_too_many, err_guest_disabled,
-    err_handshake_required, err_invalid_credentials, err_locale_invalid_characters,
-    err_locale_too_long, err_login_bandwidth_failed, err_login_group_failed,
-    err_login_permissions_failed, err_nickname_empty, err_nickname_in_use, err_nickname_invalid,
-    err_nickname_is_username, err_nickname_required, err_nickname_too_long, err_password_too_long,
-    err_username_empty, err_username_invalid, err_username_too_long,
+    HandlerContext, ServerInfoOptions, ServerInfoValues, build_server_info, err_account_disabled,
+    err_already_logged_in, err_authentication, err_avatar_invalid_format, err_avatar_too_large,
+    err_avatar_undecodable, err_avatar_unsupported_type, err_banned_permanent,
+    err_banned_with_expiry, err_database, err_failed_to_create_user, err_features_empty_feature,
+    err_features_feature_too_long, err_features_invalid_characters, err_features_too_many,
+    err_guest_disabled, err_handshake_required, err_internal_error, err_invalid_credentials,
+    err_locale_invalid_characters, err_locale_too_long, err_login_bandwidth_failed,
+    err_login_group_failed, err_login_permissions_failed, err_nickname_empty, err_nickname_in_use,
+    err_nickname_invalid, err_nickname_is_username, err_nickname_required, err_nickname_too_long,
+    err_password_too_long, err_username_empty, err_username_invalid, err_username_too_long,
 };
 use crate::constants::{
-    FEATURE_CHAT, HANDLER_LOGIN, LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED, LOG_LOGIN_ACCOUNT_DISABLED,
-    LOG_LOGIN_ACCOUNT_STATE_CHANGED, LOG_LOGIN_ACCOUNT_TYPE_CHANGED, LOG_LOGIN_ALREADY_LOGGED_IN,
+    ERR_SESSION_ID_AFTER_LOGIN, FEATURE_CHAT, HANDLER_LOGIN, LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED,
+    LOG_LOGIN_ACCOUNT_DISABLED, LOG_LOGIN_ALREADY_LOGGED_IN, LOG_LOGIN_AVATAR_VALIDATE_ERROR,
     LOG_LOGIN_CREATE_USER_ERROR, LOG_LOGIN_DB_ERROR, LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN,
     LOG_LOGIN_GROUP_ERROR, LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR,
     LOG_LOGIN_INVALID_CREDENTIALS, LOG_LOGIN_PASSWORD_CHANGED, LOG_LOGIN_PASSWORD_VERIFY_ERROR,
@@ -33,6 +34,7 @@ use crate::constants::{
 };
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, LoginSnapshotError, Permission};
+use crate::ip_rule_cache::IpAdmission;
 use crate::users::manager::{AddUserError, UserManager};
 use crate::users::user::NewSessionParams;
 
@@ -69,6 +71,13 @@ fn handle_login_snapshot_error(
     };
     error!(user = %username, ip = %peer, err = %e, "{}", msg);
     client_err
+}
+
+fn late_ban_error(locale: &str, expires_at: Option<i64>) -> String {
+    match expires_at {
+        Some(expiry) => err_banned_with_expiry(locale, &format_duration_remaining(expiry)),
+        None => err_banned_permanent(locale),
+    }
 }
 
 pub async fn handle_login<W>(
@@ -159,19 +168,33 @@ where
             .await;
     }
 
-    if let Some(ref avatar_data) = avatar
-        && let Err(e) = validators::validate_avatar(avatar_data)
-    {
-        let error_msg = match e {
-            AvatarError::TooLarge => {
-                err_avatar_too_large(&locale, validators::MAX_AVATAR_DATA_URI_LENGTH)
+    if let Some(ref avatar_data) = avatar {
+        // Decode-validation (raster decode / SVG parse under `avatar-decode`) is
+        // CPU-bound; run it on the blocking pool so a login storm can't stall the
+        // async runtime's message dispatch — same offload as `verify_password_async`.
+        let owned = avatar_data.clone();
+        match tokio::task::spawn_blocking(move || validators::validate_avatar(&owned)).await {
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => {
+                let error_msg = match e {
+                    AvatarError::TooLarge => {
+                        err_avatar_too_large(&locale, validators::MAX_AVATAR_DATA_URI_LENGTH)
+                    }
+                    AvatarError::InvalidFormat => err_avatar_invalid_format(&locale),
+                    AvatarError::UnsupportedType => err_avatar_unsupported_type(&locale),
+                    AvatarError::Undecodable => err_avatar_undecodable(&locale),
+                };
+                return ctx
+                    .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
+                    .await;
             }
-            AvatarError::InvalidFormat => err_avatar_invalid_format(&locale),
-            AvatarError::UnsupportedType => err_avatar_unsupported_type(&locale),
-        };
-        return ctx
-            .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
-            .await;
+            Err(e) => {
+                error!(ip = %ctx.peer_addr, err = %e, "{}", LOG_LOGIN_AVATAR_VALIDATE_ERROR);
+                return ctx
+                    .send_error_and_disconnect(&err_internal_error(&locale), Some(HANDLER_LOGIN))
+                    .await;
+            }
+        }
     }
 
     let account = match ctx.db.users.get_user_by_username(&username).await {
@@ -325,459 +348,330 @@ where
         None
     };
 
-    let pre_snapshot = match ctx
-        .db
-        .get_login_session_snapshot(authenticated_account.id)
-        .await
-    {
-        Ok(Some(s)) if s.account.enabled => s,
-        Ok(Some(_)) => {
-            return ctx
-                .send_error_and_disconnect(
-                    &err_account_disabled(&locale, &authenticated_account.username),
-                    Some(HANDLER_LOGIN),
-                )
-                .await;
-        }
-        Ok(None) => {
-            return ctx
-                .send_error_and_disconnect(&err_authentication(&locale), Some(HANDLER_LOGIN))
-                .await;
-        }
-        Err(e) => {
-            let client_err = handle_login_snapshot_error(
-                &e,
-                &authenticated_account.username,
-                ctx.peer_addr,
-                &locale,
+    let mut user_connected: Option<ServerMessage> = None;
+
+    let result: Result<Box<ServerMessage>, String> = 'locked: {
+        let _user_state = ctx.user_manager.read_user_state().await;
+
+        let user_snapshot = match ctx
+            .db
+            .get_login_session_snapshot(authenticated_account.id)
+            .await
+        {
+            Ok(Some(s)) if s.account.enabled => s,
+            Ok(Some(_)) => {
+                break 'locked Err(err_account_disabled(
+                    &locale,
+                    &authenticated_account.username,
+                ));
+            }
+            Ok(None) => {
+                break 'locked Err(err_authentication(&locale));
+            }
+            Err(e) => {
+                break 'locked Err(handle_login_snapshot_error(
+                    &e,
+                    &authenticated_account.username,
+                    ctx.peer_addr,
+                    &locale,
+                ));
+            }
+        };
+
+        // A rename or password reset between initial fetch and lock acquisition —
+        // reject as stale credentials.
+        if fold_name(&username) != fold_name(&user_snapshot.account.username) {
+            warn!(
+                user = %username,
+                new_username = %user_snapshot.account.username,
+                ip = %ctx.peer_addr,
+                "{}", LOG_LOGIN_RENAMED_MID_LOGIN
             );
-            return ctx
-                .send_error_and_disconnect(&client_err, Some(HANDLER_LOGIN))
-                .await;
+            break 'locked Err(err_invalid_credentials(&locale));
         }
-    };
+        if authenticated_account.hashed_password != user_snapshot.account.hashed_password {
+            warn!(
+                user = %authenticated_account.username,
+                ip = %ctx.peer_addr,
+                "{}", LOG_LOGIN_PASSWORD_CHANGED
+            );
+            break 'locked Err(err_invalid_credentials(&locale));
+        }
 
-    // A rename or password reset during password verify means the sent
-    // credentials no longer describe this row — reject as stale.
-    if fold_name(&username) != fold_name(&pre_snapshot.account.username) {
-        warn!(
-            user = %username,
-            new_username = %pre_snapshot.account.username,
-            ip = %ctx.peer_addr,
-            "{}", LOG_LOGIN_RENAMED_MID_LOGIN
-        );
-        return ctx
-            .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
-            .await;
-    }
-    if authenticated_account.hashed_password != pre_snapshot.account.hashed_password {
-        warn!(
-            user = %authenticated_account.username,
-            ip = %ctx.peer_addr,
-            "{}", LOG_LOGIN_PASSWORD_CHANGED
-        );
-        return ctx
-            .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
-            .await;
-    }
+        let has_chat_feature = features.iter().any(|f| f == FEATURE_CHAT);
 
-    let authenticated_account = pre_snapshot.account;
-    let cached_permissions = pre_snapshot.permissions.permissions;
-    let group_id = authenticated_account.group_id;
-    let group_name = pre_snapshot.group_name;
-    let bandwidth_weight = pre_snapshot.resolved_bandwidth_weight;
-
-    let has_chat_feature = features.iter().any(|f| f == FEATURE_CHAT);
-
-    // Regular accounts inherit is_away/status from the latest existing
-    // session so a multi-device login doesn't clear away state.
-    let (inherited_is_away, inherited_status) = if !authenticated_account.is_shared {
-        let existing_sessions = ctx
-            .user_manager
-            .get_sessions_by_username(&authenticated_account.username)
-            .await;
-        if let Some(latest) = existing_sessions.iter().max_by_key(|s| s.login_time) {
-            (latest.is_away, latest.status.clone())
+        // Regular accounts inherit is_away/status from the latest existing
+        // session so a multi-device login doesn't clear away state.
+        let (inherited_is_away, inherited_status) = if !user_snapshot.account.is_shared {
+            let existing_sessions = ctx
+                .user_manager
+                .get_sessions_by_user_id(user_snapshot.account.id)
+                .await;
+            if let Some(latest) = existing_sessions
+                .iter()
+                .max_by_key(|s| (s.login_time, s.session_id))
+            {
+                (latest.is_away, latest.status.clone())
+            } else {
+                (false, None)
+            }
         } else {
             (false, None)
-        }
-    } else {
-        (false, None)
-    };
-
-    // Shared nicknames share one namespace with usernames, so admission must
-    // serialize against username renames (which hold user_state_lock).
-    // Re-check username_exists under the lock: the early pre-check is stale if
-    // a rename committed since — including an offline account renamed into the
-    // nickname, which leaves no active session for add_user to catch. The guard
-    // drops at the block's end, before any socket I/O. Regular accounts
-    // (nickname == username, DB-unique) skip the lock.
-    let admission: Result<u32, String> = {
-        let _guard = if validated_nickname.is_some() {
-            Some(ctx.user_manager.lock_user_state().await)
-        } else {
-            None
         };
 
-        let username_conflict = if let Some(ref nickname) = validated_nickname {
+        // Re-check username_exists under the lock: a rename may have committed
+        // since the pre-check, including renaming an offline account into the
+        // chosen nickname.
+        if let Some(ref nickname) = validated_nickname {
             match ctx.db.users.username_exists(nickname).await {
-                Ok(exists) => exists.then(|| err_nickname_is_username(&locale)),
+                Ok(true) => {
+                    break 'locked Err(err_nickname_is_username(&locale));
+                }
+                Ok(false) => {}
                 Err(e) => {
                     error!(ip = %ctx.peer_addr, target = %username, err = %e, "{}", LOG_LOGIN_DB_NICKNAME);
-                    Some(err_database(&locale))
+                    break 'locked Err(err_database(&locale));
                 }
             }
-        } else {
-            None
-        };
-
-        if let Some(error_msg) = username_conflict {
-            Err(error_msg)
-        } else {
-            // add_user rechecks active-nickname uniqueness and inserts
-            // atomically under users.write.
-            match ctx
-                .user_manager
-                .add_user(NewSessionParams {
-                    session_id: 0, // Will be assigned by add_user
-                    user_id: authenticated_account.id,
-                    username: authenticated_account.username.clone(),
-                    is_admin: authenticated_account.is_admin,
-                    is_shared: authenticated_account.is_shared,
-                    permissions: cached_permissions.clone(),
-                    address: ctx.peer_addr,
-                    created_at: authenticated_account.created_at,
-                    tx: ctx.tx.clone(),
-                    features,
-                    locale: locale.clone(),
-                    avatar: avatar.clone(),
-                    nickname: validated_nickname
-                        .clone()
-                        .unwrap_or_else(|| authenticated_account.username.clone()),
-                    is_away: inherited_is_away,
-                    status: inherited_status,
-                    group_id,
-                    group_name: group_name.clone(),
-                    bandwidth_weight,
-                    bandwidth_weight_override: authenticated_account.bandwidth_weight,
-                    last_activity: std::time::Instant::now(),
-                })
-                .await
-            {
-                Ok(id) => Ok(id),
-                Err(AddUserError::NicknameInUse) => Err(err_nickname_in_use(&locale)),
-            }
         }
-    };
 
-    let id = match admission {
-        Ok(id) => id,
-        Err(error_msg) => {
-            return ctx
-                .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
-                .await;
+        // Late ban check, before creating the session: a ban may have committed
+        // between the pre-TLS accept check and acquiring user_state.
+        // check_admission waits for any in-flight ban mutation, so it observes
+        // every ban committed before now. Checking here (still under
+        // read_user_state) means a banned login never creates a transient
+        // session; a ban that commits after this point is blocked until we
+        // release user_state, then handled by ban_create's own teardown.
+        if let IpAdmission::Banned { expires_at } =
+            ctx.ip_rule_cache.check_admission(ctx.peer_addr.ip()).await
+        {
+            break 'locked Err(late_ban_error(&locale, expires_at));
         }
-    };
-    *session_id = Some(id);
 
-    // Re-snapshot to catch mutations that committed during add_user,
-    // including delete/disable races whose cleanup ran before our session
-    // was registered.
-    let post_snapshot = match ctx
-        .db
-        .get_login_session_snapshot(authenticated_account.id)
-        .await
-    {
-        Ok(Some(s)) if s.account.enabled => s,
-        Ok(Some(disabled)) => {
-            ctx.user_manager.remove_user(id).await;
-            *session_id = None;
-            return ctx
-                .send_error_and_disconnect(
-                    &err_account_disabled(&locale, &disabled.account.username),
-                    Some(HANDLER_LOGIN),
-                )
-                .await;
-        }
-        Ok(None) => {
-            ctx.user_manager.remove_user(id).await;
-            *session_id = None;
-            return ctx
-                .send_error_and_disconnect(&err_authentication(&locale), Some(HANDLER_LOGIN))
-                .await;
-        }
-        Err(e) => {
-            let client_err = handle_login_snapshot_error(
-                &e,
-                &authenticated_account.username,
-                ctx.peer_addr,
-                &locale,
-            );
-            ctx.user_manager.remove_user(id).await;
-            *session_id = None;
-            return ctx
-                .send_error_and_disconnect(&client_err, Some(HANDLER_LOGIN))
-                .await;
-        }
-    };
-
-    // Auth-field buckets come before the state bucket so a password
-    // reset coinciding with state drift logs the auth-specific event.
-    if fold_name(&authenticated_account.username) != fold_name(&post_snapshot.account.username) {
-        warn!(
-            user = %authenticated_account.username,
-            new_username = %post_snapshot.account.username,
-            ip = %ctx.peer_addr,
-            "{}", LOG_LOGIN_RENAMED_MID_LOGIN
-        );
-        ctx.user_manager.remove_user(id).await;
-        *session_id = None;
-        return ctx
-            .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
-            .await;
-    }
-    if authenticated_account.hashed_password != post_snapshot.account.hashed_password {
-        warn!(
-            user = %authenticated_account.username,
-            ip = %ctx.peer_addr,
-            "{}", LOG_LOGIN_PASSWORD_CHANGED
-        );
-        ctx.user_manager.remove_user(id).await;
-        *session_id = None;
-        return ctx
-            .send_error_and_disconnect(&err_invalid_credentials(&locale), Some(HANDLER_LOGIN))
-            .await;
-    }
-    if authenticated_account.is_shared != post_snapshot.account.is_shared {
-        warn!(
-            user = %authenticated_account.username,
-            was_shared = authenticated_account.is_shared,
-            now_shared = post_snapshot.account.is_shared,
-            ip = %ctx.peer_addr,
-            "{}", LOG_LOGIN_ACCOUNT_TYPE_CHANGED
-        );
-        ctx.user_manager.remove_user(id).await;
-        *session_id = None;
-        return ctx
-            .send_error_and_disconnect(&err_account_type_changed(&locale), Some(HANDLER_LOGIN))
-            .await;
-    }
-    if authenticated_account.is_admin != post_snapshot.account.is_admin
-        || cached_permissions != post_snapshot.permissions.permissions
-        || authenticated_account.group_id != post_snapshot.account.group_id
-        || group_name != post_snapshot.group_name
-        || bandwidth_weight != post_snapshot.resolved_bandwidth_weight
-    {
-        warn!(
-            user = %authenticated_account.username,
-            ip = %ctx.peer_addr,
-            "{}", LOG_LOGIN_ACCOUNT_STATE_CHANGED
-        );
-        ctx.user_manager.remove_user(id).await;
-        *session_id = None;
-        return ctx
-            .send_error_and_disconnect(&err_authentication(&locale), Some(HANDLER_LOGIN))
-            .await;
-    }
-
-    let has_chat_join_permission =
-        authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatJoin);
-    let has_chat_create_permission =
-        authenticated_account.is_admin || cached_permissions.contains(&Permission::ChatCreate);
-    let has_voice_listen_permission =
-        authenticated_account.is_admin || cached_permissions.contains(&Permission::VoiceListen);
-    let can_auto_join = has_chat_feature && has_chat_join_permission;
-
-    let config = ctx.db.config.get_all().await;
-
-    // Admin-configured auto-join channels (distinct from persistent channels:
-    // these are joined on login, not restart-surviving). can_auto_join was
-    // computed before add_user(), since `features` is moved into it.
-    let auto_join_channel_names = if can_auto_join {
-        crate::db::ConfigDb::parse_channel_list(&config.auto_join_channels)
-    } else {
-        Vec::new()
-    };
-
-    // Captured before the loop (user not yet in UserManager). Use the
-    // DB-canonical username for consistent casing.
-    let joining_user_nickname = validated_nickname
-        .clone()
-        .unwrap_or_else(|| authenticated_account.username.clone());
-    let joining_user_is_admin = authenticated_account.is_admin;
-    let joining_user_is_shared = authenticated_account.is_shared;
-
-    let auto_join_policy = if has_chat_create_permission {
-        crate::channels::JoinPolicy::CreateIfMissing
-    } else {
-        crate::channels::JoinPolicy::ExistingOnly
-    };
-
-    let mut joined_channels = Vec::new();
-    for channel_name in auto_join_channel_names {
-        // Skip on any error (missing channel + no ChatCreate, at limit, …).
-        let Ok(result) = ctx
-            .channel_manager
-            .join(&channel_name, id, auto_join_policy)
+        // add_user rechecks active-nickname uniqueness and inserts atomically.
+        let id = match ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0, // Will be assigned by add_user
+                user_id: user_snapshot.account.id,
+                username: user_snapshot.account.username.clone(),
+                is_admin: user_snapshot.account.is_admin,
+                is_shared: user_snapshot.account.is_shared,
+                permissions: user_snapshot.permissions.permissions.clone(),
+                address: ctx.peer_addr,
+                created_at: user_snapshot.account.created_at,
+                tx: ctx.tx.clone(),
+                features,
+                locale: locale.clone(),
+                avatar: avatar.clone(),
+                nickname: validated_nickname
+                    .clone()
+                    .unwrap_or_else(|| user_snapshot.account.username.clone()),
+                is_away: inherited_is_away,
+                status: inherited_status,
+                group_id: user_snapshot.account.group_id,
+                group_name: user_snapshot.group_name.clone(),
+                bandwidth_weight: user_snapshot.resolved_bandwidth_weight,
+                bandwidth_weight_override: user_snapshot.account.bandwidth_weight,
+                last_activity: std::time::Instant::now(),
+            })
             .await
-        else {
-            continue;
+        {
+            Ok(id) => id,
+            Err(AddUserError::NicknameInUse) => break 'locked Err(err_nickname_in_use(&locale)),
         };
 
-        // Build member list as unique nicknames (member counts are nicknames, not sessions).
-        let member_nicknames = ctx
-            .user_manager
-            .get_unique_nicknames_for_sessions(&result.member_session_ids)
-            .await;
+        *session_id = Some(id);
 
-        // Membership is nickname-based: only broadcast when this nickname
-        // first becomes present (multiple sessions may share a nickname).
-        let nickname_present_elsewhere = ctx
-            .user_manager
-            .sessions_contain_nickname(&result.member_session_ids, &joining_user_nickname, Some(id))
-            .await;
+        // Session is the source of truth for everything after this point.
+        let session = match ctx.user_manager.get_user_by_session_id(id).await {
+            Some(s) => s,
+            None => {
+                *session_id = None;
+                break 'locked Err(err_authentication(&locale));
+            }
+        };
 
-        if !nickname_present_elsewhere {
-            let join_broadcast = ServerMessage::ChatUserJoined {
-                channel: channel_name.clone(),
-                nickname: joining_user_nickname.clone(),
-                is_admin: joining_user_is_admin,
-                is_shared: joining_user_is_shared,
+        let can_auto_join = has_chat_feature && session.has_permission(Permission::ChatJoin);
+        let has_chat_create_permission = session.has_permission(Permission::ChatCreate);
+        let has_voice_listen_permission = session.has_permission(Permission::VoiceListen);
+
+        // Acquire server info read lock right before config read.
+        let _server_info = ctx.user_manager.read_server_info_state().await;
+        let config = ctx.db.config.get_all().await;
+
+        // Admin-configured auto-join channels.
+        let auto_join_channel_names = if can_auto_join {
+            crate::db::ConfigDb::parse_channel_list(&config.auto_join_channels)
+        } else {
+            Vec::new()
+        };
+
+        let auto_join_policy = if has_chat_create_permission {
+            crate::channels::JoinPolicy::CreateIfMissing
+        } else {
+            crate::channels::JoinPolicy::ExistingOnly
+        };
+
+        let mut joined_channels = Vec::new();
+        for channel_name in auto_join_channel_names {
+            // Skip on any error (missing channel + no ChatCreate, at limit, …).
+            let Ok(result) = ctx
+                .channel_manager
+                .join(&channel_name, id, auto_join_policy)
+                .await
+            else {
+                continue;
             };
-            for &member_session_id in &result.member_session_ids {
-                if member_session_id != id {
-                    ctx.user_manager
-                        .send_to_session(member_session_id, join_broadcast.clone())
-                        .await;
+
+            // Build member list as unique nicknames.
+            let member_nicknames = ctx
+                .user_manager
+                .get_unique_nicknames_for_sessions(&result.member_session_ids)
+                .await;
+
+            // Membership is nickname-based: only broadcast when this nickname
+            // first becomes present (multiple sessions may share a nickname).
+            let nickname_present_elsewhere = ctx
+                .user_manager
+                .sessions_contain_nickname(&result.member_session_ids, &session.nickname, Some(id))
+                .await;
+
+            if !nickname_present_elsewhere {
+                let join_broadcast = ServerMessage::ChatUserJoined {
+                    channel: channel_name.clone(),
+                    nickname: session.nickname.clone(),
+                    is_admin: session.is_admin,
+                    is_shared: session.is_shared,
+                };
+                for &member_session_id in &result.member_session_ids {
+                    if member_session_id != id {
+                        ctx.user_manager
+                            .send_to_session(member_session_id, join_broadcast.clone())
+                            .await;
+                    }
                 }
             }
+
+            // Voiced nicknames are gated on voice_listen permission.
+            let voiced = if has_voice_listen_permission {
+                let participants = ctx.voice_registry.get_participants(&channel_name).await;
+                if participants.is_empty() {
+                    None
+                } else {
+                    Some(participants)
+                }
+            } else {
+                None
+            };
+
+            joined_channels.push(ChannelJoinInfo {
+                channel: channel_name,
+                topic: result.topic,
+                topic_set_by: result.topic_set_by,
+                secret: result.secret,
+                members: member_nicknames,
+                voiced,
+            });
         }
 
-        // Voiced nicknames are gated on voice_listen permission.
-        let voiced = if has_voice_listen_permission {
-            let participants = ctx.voice_registry.get_participants(&channel_name).await;
-            if participants.is_empty() {
-                None
-            } else {
-                Some(participants)
-            }
+        // Resolved effective permissions. Admins get an empty list; the client
+        // infers "all" from the is_admin flag.
+        let user_permissions: Vec<String> = if session.is_admin {
+            vec![]
         } else {
-            None
+            session
+                .permissions
+                .iter()
+                .map(|p| p.as_str().to_string())
+                .collect()
         };
 
-        joined_channels.push(ChannelJoinInfo {
-            channel: channel_name,
-            topic: result.topic,
-            topic_set_by: result.topic_set_by,
-            secret: result.secret,
-            members: member_nicknames,
-            voiced,
-        });
+        let server_info_values = ServerInfoValues {
+            name: config.server_name,
+            description: config.server_description,
+            public_address: config.public_address,
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            image: config.server_image,
+            max_connections_per_ip: config.max_connections_per_ip,
+            max_transfers_per_ip: config.max_transfers_per_ip,
+            transfer_port: ctx.transfer_port,
+            transfer_websocket_port: ctx.transfer_websocket_port,
+            file_reindex_interval: config.file_reindex_interval,
+            persistent_channels: config.persistent_channels,
+            auto_join_channels: config.auto_join_channels,
+            min_password_strength: config.min_password_strength.score(),
+            chat_burst_limit: config.chat_burst_limit,
+            chat_rate_limit: config.chat_rate_limit,
+            max_outbound_rate: config.max_outbound_rate,
+            scheduler_chunk_size: config.scheduler_chunk_size,
+        };
+
+        let server_info_options = ServerInfoOptions {
+            is_admin: session.is_admin,
+            has_file_reindex: session.has_permission(Permission::FileReindex),
+            has_chat_join: can_auto_join,
+            include_image: true,
+        };
+
+        let server_info = Some(build_server_info(&server_info_values, &server_info_options));
+
+        let channels = if joined_channels.is_empty() {
+            None
+        } else {
+            Some(joined_channels)
+        };
+
+        let response = ServerMessage::LoginResponse {
+            success: true,
+            session_id: Some(id),
+            user_id: Some(session.user_id),
+            is_admin: Some(session.is_admin),
+            permissions: Some(user_permissions),
+            server_info,
+            locale: Some(locale.clone()),
+            channels,
+            nickname: Some(session.nickname.clone()),
+            error: None,
+            group_id: session.group_id,
+            group_name: session.group_name.clone(),
+        };
+
+        // Build UserConnected inside the lock while session data is consistent.
+        let mut user_info = UserManager::build_user_info_from_session(&session);
+        user_info.avatar = if session.is_shared {
+            session.avatar.clone()
+        } else {
+            let sessions = ctx
+                .user_manager
+                .get_sessions_by_user_id(session.user_id)
+                .await;
+            UserManager::aggregate_avatar(sessions.iter())
+        };
+        user_connected = Some(ServerMessage::UserConnected { user: user_info });
+
+        debug!(user = %session.username, ip = %ctx.peer_addr, "{}", LOG_LOGIN_SUCCESS);
+        Ok(Box::new(response))
+        // _user_state and _server_info drop here
+    };
+
+    match result {
+        Ok(response) => {
+            // Broadcast UserConnected before sending LoginResponse so other
+            // clients already know about this user before they can interact.
+            if let Some(msg) = user_connected {
+                ctx.user_manager
+                    .broadcast_user_event(msg, Some(session_id.expect(ERR_SESSION_ID_AFTER_LOGIN)))
+                    .await;
+            }
+            ctx.send_message(&response).await?;
+        }
+        Err(msg) => {
+            return ctx
+                .send_error_and_disconnect(&msg, Some(HANDLER_LOGIN))
+                .await;
+        }
     }
-
-    // Resolved effective permissions sent as a flat string set. Admins get an
-    // empty list; the client infers "all" from the is_admin flag.
-    let user_permissions: Vec<String> = if authenticated_account.is_admin {
-        vec![]
-    } else {
-        cached_permissions
-            .iter()
-            .map(|p| p.as_str().to_string())
-            .collect()
-    };
-
-    let server_info_values = ServerInfoValues {
-        name: config.server_name,
-        description: config.server_description,
-        public_address: config.public_address,
-        version: env!("CARGO_PKG_VERSION").to_string(),
-        image: config.server_image,
-        max_connections_per_ip: config.max_connections_per_ip,
-        max_transfers_per_ip: config.max_transfers_per_ip,
-        transfer_port: ctx.transfer_port,
-        transfer_websocket_port: ctx.transfer_websocket_port,
-        file_reindex_interval: config.file_reindex_interval,
-        persistent_channels: config.persistent_channels,
-        auto_join_channels: config.auto_join_channels,
-        min_password_strength: config.min_password_strength.score(),
-        chat_burst_limit: config.chat_burst_limit,
-        chat_rate_limit: config.chat_rate_limit,
-        max_outbound_rate: config.max_outbound_rate,
-        scheduler_chunk_size: config.scheduler_chunk_size,
-    };
-
-    let server_info_options = ServerInfoOptions {
-        is_admin: authenticated_account.is_admin,
-        has_file_reindex: cached_permissions.contains(&Permission::FileReindex),
-        has_chat_join: can_auto_join,
-        include_image: true,
-    };
-
-    let server_info = Some(build_server_info(&server_info_values, &server_info_options));
-
-    let channels = if joined_channels.is_empty() {
-        None
-    } else {
-        Some(joined_channels)
-    };
-
-    // Server-confirmed nickname: validated nickname for shared accounts, the
-    // DB-canonical username (consistent casing) for regular accounts.
-    let nickname = validated_nickname.unwrap_or_else(|| authenticated_account.username.clone());
-
-    let response = ServerMessage::LoginResponse {
-        success: true,
-        session_id: Some(id),
-        user_id: Some(authenticated_account.id),
-        is_admin: Some(authenticated_account.is_admin),
-        permissions: Some(user_permissions),
-        server_info,
-        locale: Some(locale.clone()),
-        channels,
-        nickname: Some(nickname.clone()),
-        error: None,
-        group_id,
-        group_name: group_name.clone(),
-    };
-    ctx.send_message(&response).await?;
-
-    debug!(user = %authenticated_account.username, ip = %ctx.peer_addr, "{}", LOG_LOGIN_SUCCESS);
-
-    // Announce the new connection to other users.
-    // Regular accounts: avatar = latest-login-with-an-avatar across all sessions
-    // (incl. the one just registered), so a no-avatar login can't blank an
-    // existing avatar. Shared accounts are per-session — use this session's own.
-    let connected_avatar = if authenticated_account.is_shared {
-        avatar
-    } else {
-        let sessions = ctx
-            .user_manager
-            .get_sessions_by_username(&authenticated_account.username)
-            .await;
-        UserManager::aggregate_avatar(sessions.iter())
-    };
-    let user_info = UserInfo {
-        id: authenticated_account.id,
-        username: authenticated_account.username.clone(),
-        nickname,
-        login_time: current_timestamp(),
-        is_admin: authenticated_account.is_admin,
-        is_shared: authenticated_account.is_shared,
-        session_ids: vec![id],
-        locale: locale.clone(),
-        avatar: connected_avatar,
-        is_away: false,
-        status: None,
-        group_id,
-        group_name,
-        bandwidth_weight: Some(bandwidth_weight),
-    };
-    ctx.user_manager
-        .broadcast_user_event(
-            ServerMessage::UserConnected { user: user_info },
-            Some(id), // Don't send to the connecting user
-        )
-        .await;
 
     Ok(())
 }
@@ -948,6 +842,61 @@ mod tests {
             }
             _ => panic!("Expected LoginResponse"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_login_late_ban_check_rejects_after_admission_race() {
+        let mut test_ctx = create_test_context().await;
+
+        let password = "mypassword";
+        let hashed = get_cached_password_hash(password);
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let peer_ip = test_ctx.peer_addr.ip().to_string();
+        {
+            let mut cache = test_ctx.ip_rule_cache.write();
+            cache.add_ban(&peer_ip, None);
+        }
+
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "bob".to_string(),
+            password: password.to_string(),
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete: true,
+        };
+
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_err(), "banned IP should be rejected at login");
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            err_banned_permanent(DEFAULT_TEST_LOCALE)
+        );
+        assert!(session_id.is_none(), "Session ID should remain unset");
+        assert_eq!(
+            test_ctx.user_manager.user_count().await,
+            0,
+            "late ban rejection must not create the session"
+        );
     }
 
     #[tokio::test]
@@ -1912,7 +1861,10 @@ mod tests {
         let mut session_id = None;
         let handshake_complete = true;
 
-        let valid_avatar = "data:image/png;base64,iVBORw0KGgo=".to_string();
+        // A real, complete SVG — usvg parses it (a bare "<svg>" would not).
+        let valid_avatar =
+            "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiPjwvc3ZnPg=="
+                .to_string();
 
         let request = LoginRequest {
             username: "alice".to_string(),

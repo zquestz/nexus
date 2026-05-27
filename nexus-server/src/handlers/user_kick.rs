@@ -11,8 +11,7 @@ use super::{
     HandlerContext, err_cannot_kick_admin, err_cannot_kick_self, err_database,
     err_kick_reason_invalid_characters, err_kick_reason_too_long, err_kicked_by,
     err_kicked_by_with_reason, err_nickname_empty, err_nickname_invalid, err_nickname_not_online,
-    err_nickname_too_long, err_not_logged_in, err_permission_denied,
-    remove_user_with_voice_cleanup,
+    err_nickname_too_long, err_not_logged_in, err_permission_denied, remove_users_with_cleanup,
 };
 use crate::constants::{
     HANDLER_USER_KICK, LOG_USER_KICK_DB_ERROR, LOG_USER_KICK_NOT_LOGGED_IN,
@@ -102,87 +101,128 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Target by nickname (equals username for regular accounts).
-    let target_session = match ctx.user_manager.get_session_by_nickname(&nickname).await {
-        Some(session) => session,
-        None => {
-            let response = ServerMessage::UserKickResponse {
+    // Resolve the target, check admin status, capture all its sessions, and tear
+    // them down — all under read_user_state. This serializes the whole window
+    // against a concurrent rename: otherwise a rename committing during the admin
+    // DB lookup would make the later get_sessions_by_nickname miss (kicking nobody
+    // while still reporting success), and the nickname-keyed ChatUserLeft broadcast
+    // (no client id-reconciliation) would leave a ghost member. Socket responses are
+    // built here but sent after the guard drops; the kick Error sends and the
+    // teardown are all in-memory. The disable path in user_update already holds the
+    // write lock; this guard covers the callers that don't.
+    let kick_result: Result<String, ServerMessage> = {
+        let _user_state = ctx.user_manager.read_user_state().await;
+
+        // Target by nickname (equals username for regular accounts).
+        match ctx.user_manager.get_session_by_nickname(&nickname).await {
+            None => Err(ServerMessage::UserKickResponse {
                 success: false,
                 error: Some(err_nickname_not_online(ctx.locale, &nickname)),
                 nickname: None,
-            };
-            return ctx.send_message(&response).await;
+            }),
+            Some(target_session) => {
+                // Re-check self-kick under the lock: the pre-lock check used the entry
+                // snapshot's nickname, which a concurrent rename could have changed so the
+                // resolved target is now the requester's own (renamed) session. Compare the
+                // requester's CURRENT nickname to the resolved target before the admin
+                // check or any teardown.
+                let is_self_now = ctx
+                    .user_manager
+                    .get_user_by_session_id(session_id)
+                    .await
+                    .is_some_and(|current| {
+                        fold_name(&current.nickname) == fold_name(&target_session.nickname)
+                    });
+                if is_self_now {
+                    Err(ServerMessage::UserKickResponse {
+                        success: false,
+                        error: Some(err_cannot_kick_self(ctx.locale)),
+                        nickname: None,
+                    })
+                } else {
+                    // Look up account in DB to check admin status.
+                    match ctx
+                        .db
+                        .users
+                        .get_user_by_username(&target_session.username)
+                        .await
+                    {
+                        Err(e) => {
+                            error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_KICK_DB_ERROR);
+                            Err(ServerMessage::UserKickResponse {
+                                success: false,
+                                error: Some(err_database(ctx.locale)),
+                                nickname: None,
+                            })
+                        }
+                        Ok(Some(ref target_db)) if target_db.is_admin => {
+                            Err(ServerMessage::UserKickResponse {
+                                success: false,
+                                error: Some(err_cannot_kick_admin(ctx.locale)),
+                                nickname: None,
+                            })
+                        }
+                        Ok(_) => {
+                            let preserved_nickname = target_session.nickname.clone();
+
+                            // Kick all sessions sharing this nickname. Regular accounts:
+                            // nickname == username so every session matches; shared
+                            // accounts: unique per nickname.
+                            let sessions_to_kick = ctx
+                                .user_manager
+                                .get_sessions_by_nickname(&preserved_nickname)
+                                .await;
+
+                            // Send each session the kick Error (command "UserKick") in its
+                            // own locale before disconnecting — the client maps it to
+                            // UserKicked, not ConnectionLost.
+                            for user in &sessions_to_kick {
+                                let kick_message = if let Some(ref r) = reason {
+                                    err_kicked_by_with_reason(
+                                        &user.locale,
+                                        &requesting_user_session.username,
+                                        r,
+                                    )
+                                } else {
+                                    err_kicked_by(&user.locale, &requesting_user_session.username)
+                                };
+                                let kick_msg = ServerMessage::Error {
+                                    message: kick_message,
+                                    command: Some("UserKick".to_string()),
+                                };
+                                let _ = user.tx.send((kick_msg, None));
+                            }
+
+                            // Remove the batch: per-session UserDisconnected, no
+                            // intermediate UserUpdated (the account fully leaves).
+                            remove_users_with_cleanup(
+                                ctx.user_manager,
+                                ctx.voice_registry,
+                                ctx.channel_manager,
+                                &sessions_to_kick,
+                            )
+                            .await;
+
+                            Ok(preserved_nickname)
+                        }
+                    }
+                }
+            }
         }
     };
 
-    // Look up account in DB to check admin status.
-    let db_lookup_username = target_session.username.clone();
-
-    let target_user_db = match ctx.db.users.get_user_by_username(&db_lookup_username).await {
-        Ok(user) => user,
-        Err(e) => {
-            error!(user = %requesting_user_session.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_KICK_DB_ERROR);
+    match kick_result {
+        Err(response) => ctx.send_message(&response).await,
+        Ok(preserved_nickname) => {
+            info!(user = %requesting_user_session.username, ip = %ctx.peer_addr, target = %preserved_nickname, "{}", LOG_USER_KICK_SUCCESS);
             let response = ServerMessage::UserKickResponse {
-                success: false,
-                error: Some(err_database(ctx.locale)),
-                nickname: None,
+                success: true,
+                error: None,
+                nickname: Some(preserved_nickname),
             };
-            return ctx.send_message(&response).await;
+            ctx.send_message(&response).await
         }
-    };
-
-    if let Some(ref target_db) = target_user_db
-        && target_db.is_admin
-    {
-        let response = ServerMessage::UserKickResponse {
-            success: false,
-            error: Some(err_cannot_kick_admin(ctx.locale)),
-            nickname: None,
-        };
-        return ctx.send_message(&response).await;
     }
-
-    let preserved_nickname = target_session.nickname.clone();
-
-    // Kick all sessions sharing this nickname. Regular accounts: nickname ==
-    // username so every session matches; shared accounts: unique per nickname.
-    let sessions_to_kick = ctx
-        .user_manager
-        .get_sessions_by_nickname(&preserved_nickname)
-        .await;
-
-    for user in sessions_to_kick {
-        // Send the kick Error (command "UserKick") in the user's locale before
-        // disconnecting — the client maps it to UserKicked, not ConnectionLost.
-        let kick_message = if let Some(ref r) = reason {
-            err_kicked_by_with_reason(&user.locale, &requesting_user_session.username, r)
-        } else {
-            err_kicked_by(&user.locale, &requesting_user_session.username)
-        };
-        let kick_msg = ServerMessage::Error {
-            message: kick_message,
-            command: Some("UserKick".to_string()),
-        };
-        let _ = user.tx.send((kick_msg, None));
-
-        let target_session_id = user.session_id;
-        remove_user_with_voice_cleanup(
-            ctx.user_manager,
-            ctx.voice_registry,
-            ctx.channel_manager,
-            target_session_id,
-            &user,
-        )
-        .await;
-    }
-
-    info!(user = %requesting_user_session.username, ip = %ctx.peer_addr, target = %preserved_nickname, "{}", LOG_USER_KICK_SUCCESS);
-    let response = ServerMessage::UserKickResponse {
-        success: true,
-        error: None,
-        nickname: Some(preserved_nickname),
-    };
-    ctx.send_message(&response).await
 }
 
 #[cfg(test)]

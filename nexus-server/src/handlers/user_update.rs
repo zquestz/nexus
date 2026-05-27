@@ -8,14 +8,14 @@ use tracing::{error, info, warn};
 
 use nexus_common::is_shared_account_permission;
 use nexus_common::names::fold_name;
-use nexus_common::protocol::{ServerMessage, UserInfo};
+use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
     self, BandwidthWeightError, MIN_BANDWIDTH_WEIGHT, PasswordError, PermissionsError,
     UsernameError, validate_bandwidth_weight,
 };
 
 use crate::constants::{
-    DEFAULT_LOCALE, HANDLER_USER_UPDATE, LOG_USER_UPDATE_ADMIN, LOG_USER_UPDATE_DB_ERROR,
+    HANDLER_USER_UPDATE, LOG_USER_UPDATE_ADMIN, LOG_USER_UPDATE_DB_ERROR,
     LOG_USER_UPDATE_DB_ERROR_DUPLICATE_CHECK, LOG_USER_UPDATE_DB_ERROR_GROUP,
     LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS, LOG_USER_UPDATE_DB_ERROR_LOOKUP,
     LOG_USER_UPDATE_DB_ERROR_PERMISSIONS, LOG_USER_UPDATE_DB_ERROR_TARGET,
@@ -41,15 +41,19 @@ use super::{
     err_shared_cannot_self_edit, err_shared_invalid_permissions, err_unknown_permission,
     err_update_failed, err_user_not_found, err_username_empty, err_username_exists,
     err_username_invalid, err_username_is_active_nickname, err_username_too_long,
-    remove_user_with_voice_cleanup,
+    remove_users_with_cleanup,
 };
-use super::{ServerInfoOptions, ServerInfoValues, build_server_info};
+use super::{
+    ServerInfoOptions, ServerInfoValues, broadcast_chat_user_renamed,
+    broadcast_user_updated_for_members, build_server_info,
+};
 #[cfg(test)]
 use crate::db::hash_password;
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{
     Permission, Permissions, UpdateUserParams, hash_password_async, verify_password_async,
 };
+use crate::users::manager::UserManager;
 use crate::voice::send_voice_leave_notifications;
 
 pub struct UserUpdateRequest {
@@ -1011,32 +1015,22 @@ where
                         (None, None)
                     };
 
-                // Rename the cache identity before any username-keyed cascade below,
-                // or PermissionsUpdated / voice cleanup / disconnect miss every session.
-                let username_changed =
-                    fold_name(&old_username) != fold_name(&updated_account.username);
+                // A casing-only edit ("alice" -> "Alice") is still a display change
+                // that must propagate, so compare exact display strings, not folded
+                // keys (which would treat it as no change and broadcast nothing).
+                let username_changed = old_username != updated_account.username;
 
-                if username_changed {
-                    ctx.user_manager
-                        .update_username(updated_account.id, updated_account.username.clone())
-                        .await;
-
-                    // Shared accounts keep their login-chosen per-session nicknames
-                    // (same invariant `UserManager::update_username` honors).
-                    if !updated_account.is_shared {
-                        let sessions = ctx
-                            .user_manager
-                            .get_sessions_by_user_id(updated_account.id)
-                            .await;
-                        for session in sessions {
-                            ctx.voice_registry
-                                .update_nickname(
-                                    session.session_id,
-                                    updated_account.username.clone(),
-                                )
-                                .await;
-                        }
-                    }
+                // Transfers (separate port, identity snapshotted at start) cache the
+                // owner's name + admin color for the connection monitor; a rename OR a
+                // promote/demote can make that stale, so refresh on either. The registry
+                // keeps a shared account's per-session nickname intact and reads the
+                // immutable is_shared from the transfer.
+                if username_changed || admin_status_changed {
+                    ctx.transfer_registry.update_user(
+                        &old_username,
+                        &updated_account.username,
+                        updated_account.is_admin,
+                    );
                 }
 
                 {
@@ -1144,25 +1138,45 @@ where
                 // loop's rx.recv() returns None and the TCP connection closes.
                 // connection.rs won't re-broadcast UserDisconnected — already removed.
                 if let Some(false) = request.enabled {
-                    for user in ctx
+                    let sessions = ctx
                         .user_manager
                         .get_sessions_by_user_id(updated_account.id)
-                        .await
-                    {
+                        .await;
+                    for user in &sessions {
                         let disconnect_msg = ServerMessage::Error {
                             message: err_account_disabled_by_admin(&user.locale),
                             command: None,
                         };
                         let _ = user.tx.send((disconnect_msg, None));
+                    }
+                    remove_users_with_cleanup(
+                        ctx.user_manager,
+                        ctx.voice_registry,
+                        ctx.channel_manager,
+                        &sessions,
+                    )
+                    .await;
+                }
 
-                        remove_user_with_voice_cleanup(
-                            ctx.user_manager,
-                            ctx.voice_registry,
-                            ctx.channel_manager,
-                            user.session_id,
-                            &user,
-                        )
+                // Update the cached username/nickname only AFTER the teardown cascades
+                // above (voice-listen revoke, disable) — so their nickname-keyed cleanup
+                // (VoiceUserLeft / ChatUserLeft) carries the pre-rename name that clients
+                // still hold; the rename broadcast below then re-keys survivors to the new
+                // name. Those cascades route by user_id, so deferring the cache write
+                // doesn't change who they reach.
+                if username_changed {
+                    ctx.user_manager
+                        .update_username(updated_account.id, updated_account.username.clone())
                         .await;
+
+                    // Voice stores nicknames, which a shared account's per-session logins
+                    // keep across a username change (same invariant
+                    // `UserManager::update_username` honors), so voice is
+                    // regular-accounts-only.
+                    if !updated_account.is_shared {
+                        ctx.voice_registry
+                            .update_nickname(&old_username, &updated_account.username)
+                            .await;
                     }
                 }
 
@@ -1225,62 +1239,100 @@ where
                 }
 
                 // Suppress a bandwidth-only broadcast when the effective weight didn't
-                // move for an online user. Offline (`None`) always broadcasts.
+                // move for an online user. (Offline accounts are skipped by the
+                // emptiness guard below — UserUpdated is presence-only.)
                 let suppress_for_bw_only =
                     bw_only_trigger && old_resolved == Some(resolved_bandwidth_weight);
 
                 if broadcast_should_fire && !suppress_for_bw_only {
-                    let session_ids: Vec<u32> = sessions.iter().map(|s| s.session_id).collect();
-
-                    let (login_time, locale, is_away, status) = if !sessions.is_empty() {
-                        let login_time = sessions.iter().map(|u| u.login_time).min().unwrap_or(0);
-
-                        // Locale: latest login wins (stable)
-                        let latest_login = sessions.iter().max_by_key(|u| u.login_time);
-
-                        let locale = latest_login
-                            .map(|u| u.locale.clone())
-                            .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
-
-                        // Away/status: most recently active wins (accurate presence)
-                        let most_active = sessions.iter().max_by_key(|u| u.last_activity);
-
-                        let is_away = most_active.is_some_and(|u| u.is_away);
-                        let status = most_active.and_then(|u| u.status.clone());
-
-                        (login_time, locale, is_away, status)
-                    } else {
-                        (0, DEFAULT_LOCALE.to_string(), false, None)
-                    };
-
-                    let user_info = UserInfo {
-                        id: updated_account.id,
-                        username: updated_account.username.clone(),
-                        // Account-level broadcast keyed by username; the client matches by
-                        // username and ignores this nickname for shared accounts.
-                        nickname: updated_account.username.clone(),
-                        login_time,
-                        is_admin: updated_account.is_admin,
-                        is_shared: updated_account.is_shared,
-                        session_ids,
-                        locale,
-                        // UserUpdated never changes the avatar; clients keep their cache.
-                        avatar: None,
-                        is_away,
-                        status,
-                        group_id: updated_group_id,
-                        group_name: updated_group_name,
-                        // Resolved in-tx by `update_user`, so always Some.
-                        bandwidth_weight: Some(resolved_bandwidth_weight),
-                    };
-
-                    let user_updated = ServerMessage::UserUpdated {
-                        previous_username: old_username.clone(),
-                        user: user_info,
-                    };
-                    ctx.user_manager
-                        .broadcast_to_permission(user_updated, Permission::UserList)
+                    // Re-read post-update so per-session (shared) broadcasts carry the
+                    // edited group/admin/weight — the `sessions` snapshot above predates
+                    // the cache writes.
+                    let online_sessions = ctx
+                        .user_manager
+                        .get_sessions_by_user_id(updated_account.id)
                         .await;
+
+                    // Presence-only: an offline account has no live entry to refresh,
+                    // and there's no reconnect reconciliation, so we broadcast nothing.
+                    // Online: per-session for shared accounts, one aggregated entry for
+                    // regular. `old_username` is the pre-edit name so a rename still
+                    // matches the client's existing entry.
+                    if !online_sessions.is_empty() {
+                        broadcast_user_updated_for_members(
+                            ctx,
+                            &online_sessions,
+                            Some(&old_username),
+                            |_| true,
+                        )
+                        .await;
+
+                        // A username rename leaves some of the account's own sessions
+                        // unaware: UserUpdated above only reaches user_list holders. Cover
+                        // the rest so no session keeps a stale cached identity.
+                        if old_username != updated_account.username {
+                            if updated_account.is_shared {
+                                // Shared accounts' per-session nicknames don't change on a
+                                // username rename (so no ChatUserRenamed), but the account
+                                // username each session carries does. Direct-send the
+                                // per-session UserUpdated to the sessions lacking user_list
+                                // (user_list holders already got theirs via the broadcast
+                                // above) so they refresh their cached account username; the
+                                // client re-keys by previous_username and leaves the session
+                                // nickname intact.
+                                for session in &online_sessions {
+                                    if !session.has_permission(Permission::UserList) {
+                                        let self_update = ServerMessage::UserUpdated {
+                                            previous_username: old_username.clone(),
+                                            user: UserManager::build_user_info_from_session(
+                                                session,
+                                            ),
+                                        };
+                                        let _ = session.tx.send((self_update, None));
+                                    }
+                                }
+                            } else {
+                                // A regular-account rename changes the nickname (==
+                                // username), so tell every channel the user is in — via the
+                                // channel stream, not the UserList-gated UserUpdated — to
+                                // keep member lists and voiced sets in sync for all members
+                                // (incl. non-UserList ones) and the renamed user themselves.
+                                broadcast_chat_user_renamed(
+                                    ctx.user_manager,
+                                    ctx.channel_manager,
+                                    &online_sessions,
+                                    &old_username,
+                                    &updated_account.username,
+                                )
+                                .await;
+
+                                // ChatUserRenamed only reaches channels the user is in, so a
+                                // renamed regular user with neither user_list nor channels
+                                // would never learn of their own rename — leaving a stale
+                                // cached identity (broken self-message detection).
+                                // Direct-send the aggregated UserUpdated to the account's own
+                                // sessions that lack user_list (the ones the broadcast above
+                                // skipped); the client applies it idempotently, so the
+                                // overlap with ChatUserRenamed for channel members is
+                                // harmless. user_list sessions already got it above, so
+                                // they're skipped to keep exactly one UserUpdated per
+                                // receiver.
+                                if let Some(user_info) =
+                                    UserManager::build_aggregated_user_info(&online_sessions)
+                                {
+                                    let self_update = ServerMessage::UserUpdated {
+                                        previous_username: old_username.clone(),
+                                        user: user_info,
+                                    };
+                                    for session in &online_sessions {
+                                        if !session.has_permission(Permission::UserList) {
+                                            let _ = session.tx.send((self_update.clone(), None));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Outcome::Send(Box::new(response))
@@ -2507,6 +2559,342 @@ mod tests {
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_casing_only_change_propagates() {
+        let mut test_ctx = create_test_context().await;
+
+        // Admin actor with UserEdit, plus an online target to observe propagation.
+        let admin_session = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[crate::db::Permission::UserEdit],
+            false,
+        )
+        .await;
+        let carol_session = login_user(&mut test_ctx, "carol", "password", &[], false).await;
+        let carol = test_ctx
+            .db
+            .users
+            .get_user_by_username("carol")
+            .await
+            .unwrap()
+            .unwrap();
+
+        // Casing-only rename: "carol" -> "Carol".
+        let request = UserUpdateRequest {
+            id: carol.id,
+            current_password: None,
+            username: Some("Carol".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        // The session cache must reflect the new case — proving `username_changed`
+        // fired and `update_username` ran (the folded comparison treated it as a
+        // no-op and propagated nothing).
+        let session = test_ctx
+            .user_manager
+            .get_user_by_session_id(carol_session)
+            .await
+            .expect("carol session present");
+        assert_eq!(
+            session.username, "Carol",
+            "casing-only rename must update the cached username"
+        );
+        assert_eq!(session.nickname, "Carol");
+    }
+
+    /// A session in `#general` with a readable rx, for asserting on channel-stream
+    /// messages other members receive.
+    async fn add_channel_member(
+        test_ctx: &TestContext,
+        user_id: i64,
+        username: &str,
+        permissions: std::collections::HashSet<Permission>,
+    ) -> (
+        u32,
+        tokio::sync::mpsc::UnboundedReceiver<(
+            ServerMessage,
+            Option<nexus_common::framing::MessageId>,
+        )>,
+    ) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let session_id = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id,
+                username: username.to_string(),
+                nickname: username.to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions,
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx,
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .expect("add session");
+        let _ = test_ctx
+            .channel_manager
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
+            .await;
+        (session_id, rx)
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_rename_emits_chat_user_renamed_to_channel_observer() {
+        use std::collections::HashSet;
+
+        let mut test_ctx = create_test_context().await;
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let (_alice_session, _alice_rx) =
+            add_channel_member(&test_ctx, alice.id, "alice", HashSet::new()).await;
+        let (_observer_session, mut observer_rx) =
+            add_channel_member(&test_ctx, 999, "observer", HashSet::new()).await;
+
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("alicia".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let mut found = false;
+        while let Ok((msg, _)) = observer_rx.try_recv() {
+            if let ServerMessage::ChatUserRenamed {
+                channel,
+                old_nickname,
+                new_nickname,
+            } = msg
+            {
+                assert_eq!(channel, "#general");
+                assert_eq!(old_nickname, "alice");
+                assert_eq!(new_nickname, "alicia");
+                found = true;
+            }
+        }
+        assert!(
+            found,
+            "channel observer must receive ChatUserRenamed for a regular account rename"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_rename_and_disable_uses_pre_rename_nickname() {
+        use std::collections::HashSet;
+
+        let mut test_ctx = create_test_context().await;
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        let alice = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // alice and an observer both in #general; the observer's rx is readable.
+        let (alice_session, _a) =
+            add_channel_member(&test_ctx, alice.id, "alice", HashSet::new()).await;
+        let (_obs, mut obs_rx) =
+            add_channel_member(&test_ctx, 999, "observer", HashSet::new()).await;
+        assert!(
+            test_ctx
+                .channel_manager
+                .get_members("#general")
+                .await
+                .is_some_and(|m| m.contains(&alice_session)),
+            "test setup: alice must be a #general member"
+        );
+
+        // Rename alice -> alicia AND disable in one update.
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("alicia".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: Some(false),
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        // The disable teardown fires before clients learn of the rename, so its
+        // ChatUserLeft must carry the pre-rename nickname the observer still holds.
+        let mut left = None;
+        while let Ok((msg, _)) = obs_rx.try_recv() {
+            if let ServerMessage::ChatUserLeft { nickname, .. } = msg {
+                left = Some(nickname);
+            }
+        }
+        assert_eq!(
+            left,
+            Some("alice".to_string()),
+            "rename+disable teardown must use the pre-rename nickname"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_rename_and_voice_revoke_uses_pre_rename_nickname() {
+        use std::collections::HashSet;
+
+        let mut test_ctx = create_test_context().await;
+        let mut voice_perms = Permissions::new();
+        voice_perms.permissions.insert(Permission::VoiceListen);
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &voice_perms,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        let alice = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let voiced: HashSet<Permission> = [Permission::VoiceListen].into_iter().collect();
+        let (alice_session, _a) =
+            add_channel_member(&test_ctx, alice.id, "alice", voiced.clone()).await;
+        // Observer holds voice_listen so it receives the channel's VoiceUserLeft.
+        let (_obs, mut obs_rx) = add_channel_member(&test_ctx, 999, "observer", voiced).await;
+
+        // Put alice in voice.
+        test_ctx
+            .voice_registry
+            .add(crate::voice::VoiceSession::new(
+                "alice".to_string(),
+                vec!["#general".to_string()],
+                alice_session,
+                test_ctx.peer_addr.ip(),
+            ))
+            .await
+            .expect("add voice session");
+
+        // Rename alice -> alicia AND revoke voice_listen in one update.
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("alicia".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: Some(vec![]),
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        // The voice teardown fires before the rename broadcast, so VoiceUserLeft must
+        // carry the pre-rename nickname.
+        let mut left = None;
+        while let Ok((msg, _)) = obs_rx.try_recv() {
+            if let ServerMessage::VoiceUserLeft { nickname, .. } = msg {
+                left = Some(nickname);
+            }
+        }
+        assert_eq!(
+            left,
+            Some("alice".to_string()),
+            "rename+voice-revoke teardown must use the pre-rename nickname"
+        );
     }
 
     #[tokio::test]
@@ -7906,6 +8294,325 @@ mod tests {
         );
     }
 
+    /// Regression: a renamed regular account that holds neither `user_list` nor any
+    /// channel membership must still learn of its own rename. `UserUpdated` is
+    /// `user_list`-gated and `ChatUserRenamed` only fans out through channels, so
+    /// such a session would otherwise keep a stale cached identity (breaking
+    /// self-message detection). The handler must direct-send the `UserUpdated` to the
+    /// account's own non-`user_list` sessions.
+    #[tokio::test]
+    async fn test_userupdate_rename_reaches_own_non_userlist_session() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Alice: regular account, NO user_list (DB + session), in NO channels.
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // Alice's session on its OWN channel so we can assert exactly what she gets.
+        let (alice_tx, mut alice_rx) = tokio::sync::mpsc::unbounded_channel();
+        test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: alice.id,
+                username: "alice".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: alice_tx,
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "alice".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("alicia".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        // Alice's own session — lacking user_list and channels — must still receive a
+        // UserUpdated carrying the rename. Without the direct-send it gets nothing.
+        let mut found = false;
+        while let Ok((msg, _)) = alice_rx.try_recv() {
+            if let ServerMessage::UserUpdated {
+                previous_username,
+                user,
+            } = msg
+            {
+                assert_eq!(previous_username, "alice");
+                assert_eq!(user.username, "alicia");
+                assert_eq!(user.id, alice.id);
+                found = true;
+            }
+        }
+        assert!(
+            found,
+            "renamed regular account's own non-user_list session must receive a UserUpdated"
+        );
+    }
+
+    /// Regression: renaming a *shared* account's username must still reach the
+    /// account's own sessions that lack `user_list`. Their per-session nickname is
+    /// unchanged, but the account username they carry changes; `UserUpdated` is
+    /// `user_list`-gated and `ChatUserRenamed` is regular-only, so without a direct-send
+    /// such a session keeps a stale cached identity. The handler must direct-send the
+    /// per-session `UserUpdated`.
+    #[tokio::test]
+    async fn test_userupdate_shared_rename_reaches_own_non_userlist_session() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        // Shared account, NO user_list, with one session whose nickname differs from the
+        // account username.
+        let shared = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // The shared session on its OWN channel so we can assert exactly what it gets.
+        let (member_tx, mut member_rx) = tokio::sync::mpsc::unbounded_channel();
+        test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: shared.id,
+                username: "shared_acct".to_string(),
+                is_admin: false,
+                is_shared: true,
+                permissions: HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: member_tx,
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "Member1".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: shared.id,
+            current_password: None,
+            username: Some("shared_acct2".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        // The shared session — lacking user_list — must receive a per-session UserUpdated
+        // carrying the new account username while keeping its own nickname.
+        let mut found = false;
+        while let Ok((msg, _)) = member_rx.try_recv() {
+            if let ServerMessage::UserUpdated {
+                previous_username,
+                user,
+            } = msg
+            {
+                assert_eq!(previous_username, "shared_acct");
+                assert_eq!(user.username, "shared_acct2");
+                assert_eq!(user.id, shared.id);
+                assert!(user.is_shared);
+                assert_eq!(
+                    user.nickname, "Member1",
+                    "shared session keeps its per-session nickname across a username rename"
+                );
+                assert_eq!(
+                    user.session_ids.len(),
+                    1,
+                    "per-session UserUpdated carries only its own session id"
+                );
+                found = true;
+            }
+        }
+        assert!(
+            found,
+            "renamed shared account's own non-user_list session must receive a per-session UserUpdated"
+        );
+    }
+
+    /// Regression: a `UserUpdated` for a *shared* account must fan out one message
+    /// per session (each carrying that session's nickname and its single session
+    /// id), not one aggregated message with every session id — otherwise the client
+    /// stamps all ids onto every shared entry and mis-decrements on disconnect.
+    #[tokio::test]
+    async fn test_userupdate_shared_account_fans_out_per_session() {
+        let mut test_ctx = create_test_context().await;
+
+        // Admin observer (holds user_list via admin bypass), on the shared test tx.
+        let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let admin_session = test_ctx
+            .user_manager
+            .get_sessions_by_username("admin")
+            .await
+            .first()
+            .map(|s| s.session_id);
+
+        let shared = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "shared_acct",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        // Two live sessions under the shared account, with distinct nicknames.
+        for nick in ["alice", "bob"] {
+            test_ctx
+                .user_manager
+                .add_user(NewSessionParams {
+                    session_id: 0,
+                    user_id: shared.id,
+                    username: "shared_acct".to_string(),
+                    is_admin: false,
+                    is_shared: true,
+                    permissions: HashSet::new(),
+                    address: test_ctx.peer_addr,
+                    created_at: 0,
+                    tx: test_ctx.tx.clone(),
+                    features: vec![],
+                    locale: DEFAULT_TEST_LOCALE.to_string(),
+                    avatar: None,
+                    nickname: nick.to_string(),
+                    is_away: false,
+                    status: None,
+                    group_id: None,
+                    group_name: None,
+                    bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                    bandwidth_weight_override: None,
+                    last_activity: std::time::Instant::now(),
+                })
+                .await
+                .unwrap();
+        }
+
+        // A bandwidth-weight change (allowed for shared) fires the broadcast.
+        let request = UserUpdateRequest {
+            id: shared.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(42),
+            inherit_bandwidth_weight: None,
+            session_id: admin_session,
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        // First message is the UserUpdateResponse to admin; the broadcasts follow.
+        let _response = read_server_message(&mut test_ctx).await;
+
+        let mut nicknames = Vec::new();
+        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+            if let ServerMessage::UserUpdated { user, .. } = msg
+                && user.id == shared.id
+            {
+                assert!(user.is_shared, "shared update must keep is_shared");
+                assert_eq!(
+                    user.session_ids.len(),
+                    1,
+                    "each shared per-session UserUpdated carries only its own session id"
+                );
+                assert_eq!(user.bandwidth_weight, Some(42));
+                nicknames.push(user.nickname);
+            }
+        }
+        nicknames.sort();
+        assert_eq!(
+            nicknames,
+            vec!["alice".to_string(), "bob".to_string()],
+            "expected one UserUpdated per shared session (per nickname), not one aggregated"
+        );
+    }
+
     /// Regression: with both `bandwidth_weight: Some(N)` and `inherit: Some(true)`,
     /// inherit wins in the DB (override cleared to NULL regardless of N). The
     /// broadcast detector must mirror that, or an N equal to the stored value would
@@ -8402,15 +9109,15 @@ mod tests {
     }
 
     // No-op broadcast suppression: a bandwidth-only update skips `UserUpdated` when
-    // the effective weight didn't move (pre vs post resolved value). Offline users
-    // (`None`) always broadcast; cross-trigger updates bypass suppression since the
-    // other field is visible on its own.
+    // the effective weight didn't move (pre vs post resolved value). Cross-trigger
+    // updates bypass suppression since the other field is visible on its own.
 
-    /// Bandwidth-only update to an OFFLINE user → broadcast still fires:
-    /// `old_resolved` is `None`, which never equals `Some(_)`, so observers
-    /// converge on the post-update value.
+    /// `UserUpdated` is presence-only: a bandwidth-only update to an OFFLINE
+    /// account (no live sessions) broadcasts nothing — there's no live entry to
+    /// refresh and no reconnect reconciliation. Observers learn the change at the
+    /// target's next login (via the snapshot), not from a delta.
     #[tokio::test]
-    async fn test_userupdate_bandwidth_only_offline_broadcasts() {
+    async fn test_userupdate_offline_account_does_not_broadcast() {
         let mut test_ctx = create_test_context().await;
 
         let _admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
@@ -8466,18 +9173,12 @@ mod tests {
             if let ServerMessage::UserUpdated { user, .. } = msg
                 && user.username == "bob"
             {
-                assert_eq!(
-                    user.bandwidth_weight,
-                    Some(200),
-                    "broadcast must carry the post-update resolved weight"
-                );
                 saw_broadcast = true;
             }
         }
         assert!(
-            saw_broadcast,
-            "offline-user bw-only update must still broadcast UserUpdated \
-             (None ≠ any Some(_) resolved value)"
+            !saw_broadcast,
+            "offline-account update must not broadcast UserUpdated (presence-only)"
         );
     }
 

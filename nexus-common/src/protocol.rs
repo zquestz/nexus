@@ -695,6 +695,15 @@ pub enum ServerMessage {
         channel: String,
         nickname: String,
     },
+    /// Broadcast to a channel's members when a member is renamed, so channel-scoped
+    /// state (member list, voiced set) stays correct without depending on the
+    /// `UserList`-gated `UserUpdated`. Sent to every member of the channel,
+    /// including the renamed user.
+    ChatUserRenamed {
+        channel: String,
+        old_nickname: String,
+        new_nickname: String,
+    },
     /// Response to ConnectionMonitor request
     ConnectionMonitorResponse {
         success: bool,

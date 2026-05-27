@@ -34,7 +34,7 @@ windows_url_schemes = ["nexus"]
 deb_depends = ["libasound2"]
 
 [dependencies]
-nexus-common = { path = "../nexus-common" }
+nexus-common = { path = "../nexus-common", features = ["avatar-decode"] }
 idna = "1"
 iced = { version = "0.14", features = ["advanced", "image", "lazy", "markdown", "svg", "tokio"] }
 iced_aw = { version = "0.13", features = ["context_menu", "number_input", "tabs"] }
@@ -67,6 +67,7 @@ rfd = "0.17"
 base64 = "0.22"
 identicon-rs = "7.0"
 image = "0.25"
+usvg = "0.45"
 uuid = { version = "1.20", features = ["v4", "serde"] }
 webrtc-audio-processing = { git = "https://github.com/zquestz/webrtc-audio-processing", features = ["bundled"] }
 hex = "0.4"

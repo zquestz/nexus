@@ -122,24 +122,38 @@ where
         .await;
 
     // Broadcast ChatUserJoined only when this nickname first becomes present.
-    let nickname_present_elsewhere = ctx
-        .user_manager
-        .sessions_contain_nickname(&result.member_session_ids, &user.nickname, Some(session_id))
-        .await;
+    // Re-fetch under read_user_state so a concurrent rename can't make the broadcast
+    // nickname stale: ChatUserJoined is nickname-keyed with no id-reconciliation on the
+    // client, so a stale nickname would be a permanent ghost member. Holding the read
+    // lock across the re-fetch + broadcast forces a rename to fully precede (we send the
+    // new nick) or fully follow (its ChatUserRenamed is ordered after our ChatUserJoined).
+    {
+        let _user_state = ctx.user_manager.read_user_state().await;
+        if let Some(current) = ctx.user_manager.get_user_by_session_id(session_id).await {
+            let nickname_present_elsewhere = ctx
+                .user_manager
+                .sessions_contain_nickname(
+                    &result.member_session_ids,
+                    &current.nickname,
+                    Some(session_id),
+                )
+                .await;
 
-    if !nickname_present_elsewhere {
-        let join_broadcast = ServerMessage::ChatUserJoined {
-            channel: channel.clone(),
-            nickname: user.nickname.clone(),
-            is_admin: user.is_admin,
-            is_shared: user.is_shared,
-        };
+            if !nickname_present_elsewhere {
+                let join_broadcast = ServerMessage::ChatUserJoined {
+                    channel: channel.clone(),
+                    nickname: current.nickname.clone(),
+                    is_admin: current.is_admin,
+                    is_shared: current.is_shared,
+                };
 
-        for member_session_id in &result.member_session_ids {
-            if *member_session_id != session_id {
-                ctx.user_manager
-                    .send_to_session(*member_session_id, join_broadcast.clone())
-                    .await;
+                for member_session_id in &result.member_session_ids {
+                    if *member_session_id != session_id {
+                        ctx.user_manager
+                            .send_to_session(*member_session_id, join_broadcast.clone())
+                            .await;
+                    }
+                }
             }
         }
     }

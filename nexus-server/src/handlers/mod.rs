@@ -124,30 +124,28 @@ pub use user_update::{UserUpdateRequest, handle_user_update};
 pub use voice_join::handle_voice_join;
 pub use voice_leave::handle_voice_leave;
 
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
-use crate::constants::{ERR_CHANNEL_CLOSED, ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK};
+use crate::constants::ERR_CHANNEL_CLOSED;
 
 use tokio::io::AsyncWrite;
 use tokio::sync::mpsc;
 
 use nexus_common::framing::{FrameWriter, MessageId};
 use nexus_common::io::send_server_message_with_id;
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
-
-use std::net::IpAddr;
-
-use ipnet::IpNet;
 
 use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
-use crate::db::Database;
+use crate::db::{Database, Permission};
 use crate::files::{FileIndex, PathLockMap};
 use crate::flood::FloodConfig;
-use crate::ip_rule_cache::IpRuleCache;
+use crate::ip_rule_cache::IpRuleState;
 use crate::tracker::TrackerManager;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
@@ -170,8 +168,8 @@ pub struct HandlerContext<'a, W> {
     /// WebSocket transfer port; None when WebSocket is disabled.
     pub transfer_websocket_port: Option<u16>,
     pub connection_tracker: Arc<ConnectionTracker>,
-    /// In-memory ban/trust lookup cache.
-    pub ip_rule_cache: Arc<RwLock<IpRuleCache>>,
+    /// In-memory ban/trust lookup cache plus mutation gate.
+    pub ip_rule_cache: Arc<IpRuleState>,
     pub file_index: Arc<FileIndex>,
     /// See `files::path_lock`.
     pub file_mutation_locks: Arc<PathLockMap>,
@@ -247,94 +245,312 @@ where
     }
 }
 
-/// Current Unix timestamp in seconds.
-pub fn current_timestamp() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect(ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK)
-        .as_secs() as i64
-}
-
-/// Remove a user from voice (if any), then from UserManager, broadcasting the
-/// disconnect. Voice cleanup must precede removal; used by handlers (kick,
-/// delete, disable) that bypass the normal `connection.rs` cleanup path.
-/// Returns the removed session if found.
-pub async fn remove_user_with_voice_cleanup(
+/// Remove a batch of sessions and run the full disconnect teardown for each:
+/// remove them from the map (the serialization point — only sessions this call
+/// actually removes are torn down), release their channel + voice resources, then
+/// announce the disconnects. Used by kick, account deletion, disable, and ban;
+/// each caller sends its own per-session reason while the sessions are still live,
+/// so `cleanup_resources` also notifies each leaver (`notify_leaving_user = true`).
+/// The forced/batch counterpart to the graceful single-session teardown in
+/// `connection.rs`; both share `cleanup_resources` so they clean up identically.
+pub async fn remove_users_with_cleanup(
     user_manager: &UserManager,
     voice_registry: &VoiceRegistry,
     channel_manager: &ChannelManager,
-    session_id: u32,
-    user: &UserSession,
-) -> Option<UserSession> {
-    if let Some(info) = voice_registry.remove_by_session_id(session_id).await {
-        send_voice_leave_notifications(&info, Some(&user.tx), user_manager, channel_manager).await;
-    }
-    user_manager.remove_user_and_broadcast(session_id).await
-}
-
-/// Clean up voice sessions for all users at a specific IP, before a ban
-/// disconnects them. `skip_ip` exempts certain IPs (e.g. trusted ones).
-pub async fn cleanup_voice_for_ip<S>(
-    user_manager: &UserManager,
-    voice_registry: &VoiceRegistry,
-    channel_manager: &ChannelManager,
-    ip: &str,
-    skip_ip: S,
-) where
-    S: Fn(&IpAddr) -> bool,
-{
-    if let Ok(parsed_ip) = ip.parse::<IpAddr>()
-        && skip_ip(&parsed_ip)
-    {
-        return;
-    }
-
-    let sessions: Vec<UserSession> = user_manager
-        .get_all_users()
-        .await
-        .into_iter()
-        .filter(|u| u.address.ip().to_string() == ip)
-        .collect();
-
-    for user in sessions {
-        cleanup_voice_for_session(user_manager, voice_registry, channel_manager, &user).await;
-    }
-}
-
-/// Like `cleanup_voice_for_ip`, but for all users whose IP falls within a
-/// CIDR range. `skip_ip` exempts certain IPs (e.g. trusted ones).
-pub async fn cleanup_voice_for_range<S>(
-    user_manager: &UserManager,
-    voice_registry: &VoiceRegistry,
-    channel_manager: &ChannelManager,
-    range: &IpNet,
-    skip_ip: S,
-) where
-    S: Fn(&IpAddr) -> bool,
-{
-    let sessions: Vec<UserSession> = user_manager
-        .get_all_users()
-        .await
-        .into_iter()
-        .filter(|u| {
-            let ip = u.address.ip();
-            range.contains(&ip) && !skip_ip(&ip)
-        })
-        .collect();
-
-    for user in sessions {
-        cleanup_voice_for_session(user_manager, voice_registry, channel_manager, &user).await;
-    }
-}
-
-/// Clean up voice for a single session (helper for the two functions above).
-async fn cleanup_voice_for_session(
-    user_manager: &UserManager,
-    voice_registry: &VoiceRegistry,
-    channel_manager: &ChannelManager,
-    user: &UserSession,
+    sessions: &[UserSession],
 ) {
-    if let Some(info) = voice_registry.remove_by_session_id(user.session_id).await {
-        send_voice_leave_notifications(&info, Some(&user.tx), user_manager, channel_manager).await;
+    let session_ids: Vec<u32> = sessions.iter().map(|u| u.session_id).collect();
+    let removed = user_manager.remove_users(&session_ids).await;
+    cleanup_resources(
+        user_manager,
+        voice_registry,
+        channel_manager,
+        &removed,
+        true,
+    )
+    .await;
+    user_manager.broadcast_disconnections(&removed).await;
+}
+
+/// Release the per-session resources a disconnect must free, identically for
+/// either teardown path: remove each session from every channel (emitting
+/// `ChatUserLeft` to remaining members on the last leave of a nickname) and from
+/// any voice session (notifying other participants). Does NOT remove sessions from
+/// the user manager or announce `UserDisconnected` — the caller owns that
+/// (`remove_users` before, `broadcast_disconnections` after, so cleanup messages
+/// precede the disconnect). `notify_leaving_user` forwards each leaver their own
+/// `VoiceUserLeft`: true while they're still live (kick/ban/etc.), false for a
+/// session that's already gone (graceful teardown).
+pub async fn cleanup_resources(
+    user_manager: &UserManager,
+    voice_registry: &VoiceRegistry,
+    channel_manager: &ChannelManager,
+    sessions: &[UserSession],
+    notify_leaving_user: bool,
+) {
+    // Pass 1: remove all sessions from all channels, recording which nicknames left
+    // each channel. Processing in bulk before the leave-check prevents duplicate
+    // ChatUserLeft for the same nickname when a regular account's multiple sessions
+    // are removed in one batch — all sessions are already out of UserManager by the
+    // time cleanup runs, so interleaving removal and the "still present?" check would
+    // incorrectly treat batch-sibling sessions as gone from UserManager even though
+    // they are still in the channel.
+    let mut channel_to_nicknames: HashMap<String, HashSet<String>> = HashMap::new();
+    for session in sessions {
+        for channel_name in channel_manager.remove_from_all(session.session_id).await {
+            channel_to_nicknames
+                .entry(channel_name)
+                .or_default()
+                .insert(session.nickname.clone());
+        }
+    }
+
+    // Pass 2: for each affected channel, emit one ChatUserLeft per nickname that
+    // fully departed. All batch sessions are now removed from both UserManager and
+    // the channel, so remaining_members is clean and sessions_contain_nickname
+    // correctly reflects only surviving sessions.
+    for (channel_name, nicknames) in &channel_to_nicknames {
+        if let Some(remaining_members) = channel_manager.get_members(channel_name).await {
+            for nickname in nicknames {
+                let still_present = user_manager
+                    .sessions_contain_nickname(&remaining_members, nickname, None)
+                    .await;
+                if !still_present {
+                    let leave_msg = ServerMessage::ChatUserLeft {
+                        channel: channel_name.clone(),
+                        nickname: nickname.clone(),
+                    };
+                    for &member_session_id in &remaining_members {
+                        user_manager
+                            .send_to_session(member_session_id, leave_msg.clone())
+                            .await;
+                    }
+                }
+            }
+        }
+    }
+
+    // Pass 3: voice cleanup — voice sessions are 1:1 with user sessions, so no
+    // nickname dedup is needed here.
+    for session in sessions {
+        if let Some(info) = voice_registry
+            .remove_by_session_id(session.session_id)
+            .await
+        {
+            send_voice_leave_notifications(
+                &info,
+                notify_leaving_user.then_some(&session.tx),
+                user_manager,
+                channel_manager,
+            )
+            .await;
+        }
+    }
+}
+
+/// Fan out one `UserUpdated` per affected member (filtered by `should_emit`) to
+/// all `user_list` holders. Shared accounts broadcast **per session**
+/// (`build_user_info_from_session`), since each shared session is its own
+/// user-list entry; regular accounts dedup by username and send one aggregated
+/// `UserInfo`. `previous_username_override` carries the pre-edit username for
+/// single-account callers that may rename (`user_update`); pass `None` when each
+/// member's current username is already the previous one (group cascades, which
+/// never rename and may span multiple accounts).
+pub(crate) async fn broadcast_user_updated_for_members<W, F>(
+    ctx: &HandlerContext<'_, W>,
+    member_sessions: &[UserSession],
+    previous_username_override: Option<&str>,
+    should_emit: F,
+) where
+    W: AsyncWrite + Unpin,
+    F: Fn(&UserSession) -> bool,
+{
+    let mut seen_usernames: HashSet<String> = HashSet::new();
+    for session in member_sessions {
+        if !should_emit(session) {
+            continue;
+        }
+
+        if session.is_shared {
+            let user_updated = ServerMessage::UserUpdated {
+                previous_username: previous_username_override
+                    .unwrap_or(&session.username)
+                    .to_string(),
+                user: UserManager::build_user_info_from_session(session),
+            };
+            ctx.user_manager
+                .broadcast_to_permission(user_updated, Permission::UserList)
+                .await;
+        } else if seen_usernames.insert(fold_name(&session.username)) {
+            // Regular account: collapse all of its sessions into one aggregated entry.
+            let all_sessions = ctx
+                .user_manager
+                .get_sessions_by_username(&session.username)
+                .await;
+            if let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) {
+                let user_updated = ServerMessage::UserUpdated {
+                    previous_username: previous_username_override
+                        .unwrap_or(&session.username)
+                        .to_string(),
+                    user: user_info,
+                };
+                ctx.user_manager
+                    .broadcast_to_permission(user_updated, Permission::UserList)
+                    .await;
+            }
+        }
+    }
+}
+
+/// Tell every channel the user's sessions belong to that a nickname changed,
+/// via the channel stream (not the UserList-gated `UserUpdated`), so member
+/// lists and voiced sets stay correct for members without `user_list` and for
+/// the renamed user themselves. ChannelManager supplies membership; the send
+/// happens here, mirroring `cleanup_resources`.
+pub(crate) async fn broadcast_chat_user_renamed(
+    user_manager: &UserManager,
+    channel_manager: &ChannelManager,
+    sessions: &[UserSession],
+    old_nickname: &str,
+    new_nickname: &str,
+) {
+    // Union of channels across the user's sessions (small N).
+    let mut channels: Vec<String> = Vec::new();
+    for session in sessions {
+        for channel in channel_manager
+            .channels_with_member(session.session_id)
+            .await
+        {
+            if !channels.contains(&channel) {
+                channels.push(channel);
+            }
+        }
+    }
+    for channel in channels {
+        if let Some(members) = channel_manager.get_members(&channel).await {
+            let msg = ServerMessage::ChatUserRenamed {
+                channel,
+                old_nickname: old_nickname.to_string(),
+                new_nickname: new_nickname.to_string(),
+            };
+            for member_session_id in members {
+                user_manager
+                    .send_to_session(member_session_id, msg.clone())
+                    .await;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::channels::JoinPolicy;
+    use crate::db::ChannelDb;
+    use crate::db::testing::create_test_db;
+    use crate::users::user::NewSessionParams;
+
+    type TestTx = mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>;
+
+    fn regular_session(user_id: i64, nickname: &str, tx: TestTx) -> NewSessionParams {
+        NewSessionParams {
+            session_id: 0,
+            user_id,
+            username: nickname.to_string(),
+            is_admin: false,
+            is_shared: false,
+            permissions: HashSet::new(),
+            address: "127.0.0.1:12345".parse::<SocketAddr>().unwrap(),
+            created_at: 0,
+            tx,
+            features: vec![],
+            locale: "en".to_string(),
+            avatar: None,
+            nickname: nickname.to_string(),
+            is_away: false,
+            status: None,
+            group_id: None,
+            group_name: None,
+            bandwidth_weight_override: None,
+            last_activity: std::time::Instant::now(),
+            bandwidth_weight: 1,
+        }
+    }
+
+    /// Regression for the forced-removal channel-cleanup gap: tearing a session
+    /// down must release its channel state exactly like graceful disconnect — a
+    /// co-channel member receives `ChatUserLeft` for the departed nickname, and a
+    /// channel the session was alone in (ephemeral) is reaped. Mirrors the forced
+    /// path: `remove_users` first, then `cleanup_resources` on the owned copies.
+    #[tokio::test]
+    async fn test_cleanup_resources_emits_chat_user_left_and_reaps_empty_channel() {
+        let user_manager = UserManager::new();
+        let voice_registry = VoiceRegistry::new();
+        let channel_manager =
+            ChannelManager::new(ChannelDb::new(create_test_db().await), UserManager::new());
+
+        // observer survives; victim is the one being torn down.
+        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let observer = user_manager
+            .add_user(regular_session(1, "observer", obs_tx))
+            .await
+            .unwrap();
+        let (victim_tx, _victim_rx) = mpsc::unbounded_channel();
+        let victim = user_manager
+            .add_user(regular_session(2, "victim", victim_tx))
+            .await
+            .unwrap();
+
+        // #general has both; #solo has only the victim.
+        channel_manager
+            .join("#general", observer, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        channel_manager
+            .join("#general", victim, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        channel_manager
+            .join("#solo", victim, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+
+        // Forced-path order: remove from the map, then clean up the owned copy.
+        let removed = user_manager.remove_users(&[victim]).await;
+        assert_eq!(removed.len(), 1);
+        cleanup_resources(
+            &user_manager,
+            &voice_registry,
+            &channel_manager,
+            &removed,
+            true,
+        )
+        .await;
+
+        // The surviving member is told the victim left #general (last-leave rule);
+        // #solo emptied, so it's reaped before it could emit a leave.
+        let mut left_channels: Vec<String> = Vec::new();
+        while let Ok((msg, _)) = obs_rx.try_recv() {
+            if let ServerMessage::ChatUserLeft { channel, nickname } = msg {
+                assert_eq!(nickname, "victim");
+                left_channels.push(channel);
+            }
+        }
+        assert_eq!(
+            left_channels,
+            vec!["#general".to_string()],
+            "co-channel member must get exactly one ChatUserLeft for the removed session"
+        );
+
+        // Victim dropped from #general (observer remains); #solo emptied → reaped.
+        let general = channel_manager
+            .get_members("#general")
+            .await
+            .expect("#general persists while observer remains");
+        assert!(general.contains(&observer) && !general.contains(&victim));
+        assert!(
+            channel_manager.get_members("#solo").await.is_none(),
+            "an emptied ephemeral channel must be removed"
+        );
     }
 }

@@ -8,10 +8,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::TransferInfo;
 use tokio::sync::oneshot;
 
-use crate::constants::{ERR_BAN_TX_LOCK_POISONED, ERR_TRANSFER_REGISTRY_LOCK_POISONED};
+use crate::constants::{
+    ERR_BAN_TX_LOCK_POISONED, ERR_TRANSFER_IDENTITY_LOCK_POISONED,
+    ERR_TRANSFER_REGISTRY_LOCK_POISONED,
+};
 
 /// Unique identifier for a transfer session
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -56,6 +60,17 @@ pub struct TransferRegistration {
     pub total_size: u64,
 }
 
+/// The mutable display identity of a transfer's owner — name plus admin flag —
+/// behind a lock on `ActiveTransfer` so a rename or a promote/demote can refresh
+/// the connection monitor's view mid-transfer. `is_shared` is not here because it
+/// is immutable for an account (see `ActiveTransfer`).
+struct TransferIdentity {
+    /// Display name (equals username for regular accounts).
+    nickname: String,
+    username: String,
+    is_admin: bool,
+}
+
 /// Runtime state for an active transfer, Arc-shared between registry and the
 /// transfer task; progress is updated atomically without locks. Distinct from
 /// the serializable wire form `nexus_common::protocol::TransferInfo`.
@@ -63,10 +78,12 @@ pub struct ActiveTransfer {
     pub id: TransferId,
     /// Port distinguishes WebSocket vs TCP.
     pub peer_addr: SocketAddr,
-    /// Display name (equals username for regular accounts).
-    pub nickname: String,
-    pub username: String,
-    pub is_admin: bool,
+    /// Owner display identity (name + admin flag), lockable so a rename or
+    /// promote/demote refreshes the connection monitor's view while the transfer
+    /// is still live.
+    identity: Mutex<TransferIdentity>,
+    /// Immutable for an account (`update_user` in db/users.rs has no `is_shared`
+    /// parameter), so it's not behind the lock.
     pub is_shared: bool,
     pub direction: TransferDirection,
     /// Requested path for downloads, destination for uploads.
@@ -85,9 +102,11 @@ impl ActiveTransfer {
         Self {
             id,
             peer_addr: params.peer_addr,
-            nickname: params.nickname,
-            username: params.username,
-            is_admin: params.is_admin,
+            identity: Mutex::new(TransferIdentity {
+                nickname: params.nickname,
+                username: params.username,
+                is_admin: params.is_admin,
+            }),
             is_shared: params.is_shared,
             direction: params.direction,
             path: params.path,
@@ -137,12 +156,16 @@ impl ActiveTransfer {
             .map(|d| d.as_secs() as i64)
             .unwrap_or(0);
 
+        let identity = self
+            .identity
+            .lock()
+            .expect(ERR_TRANSFER_IDENTITY_LOCK_POISONED);
         TransferInfo {
-            nickname: self.nickname.clone(),
-            username: self.username.clone(),
+            nickname: identity.nickname.clone(),
+            username: identity.username.clone(),
             ip: self.peer_addr.ip().to_string(),
             port: self.peer_addr.port(),
-            is_admin: self.is_admin,
+            is_admin: identity.is_admin,
             is_shared: self.is_shared,
             direction: self.direction.to_string(),
             path: self.path.clone(),
@@ -155,13 +178,22 @@ impl ActiveTransfer {
 
 impl std::fmt::Debug for ActiveTransfer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TransferInfo")
-            .field("id", &self.id)
-            .field("peer_addr", &self.peer_addr)
-            .field("nickname", &self.nickname)
-            .field("username", &self.username)
-            .field("is_admin", &self.is_admin)
-            .field("is_shared", &self.is_shared)
+        let mut dbg = f.debug_struct("ActiveTransfer");
+        dbg.field("id", &self.id)
+            .field("peer_addr", &self.peer_addr);
+        // try_lock: never block (or risk a same-thread re-entrancy deadlock) just
+        // to format diagnostics.
+        match self.identity.try_lock() {
+            Ok(identity) => {
+                dbg.field("nickname", &identity.nickname)
+                    .field("username", &identity.username)
+                    .field("is_admin", &identity.is_admin);
+            }
+            Err(_) => {
+                dbg.field("identity", &"<locked>");
+            }
+        }
+        dbg.field("is_shared", &self.is_shared)
             .field("direction", &self.direction)
             .field("path", &self.path)
             .field("total_size", &self.get_total_size())
@@ -238,6 +270,34 @@ impl TransferRegistry {
         count
     }
 
+    /// Refresh the cached display identity of every active transfer owned by the
+    /// account `old_username` after a `UserUpdate`, so the connection monitor shows
+    /// the current name and admin color without waiting for the transfer to end.
+    /// Always updates the username and admin flag; the display nickname only moves
+    /// for non-shared accounts (a shared account keeps its per-session nickname,
+    /// which a username change doesn't touch). `is_shared` is read from the
+    /// transfer itself, since it's immutable for an account.
+    pub fn update_user(&self, old_username: &str, new_username: &str, is_admin: bool) {
+        let old_lower = fold_name(old_username);
+        let transfers = self
+            .transfers
+            .lock()
+            .expect(ERR_TRANSFER_REGISTRY_LOCK_POISONED);
+        for info in transfers.values() {
+            let mut identity = info
+                .identity
+                .lock()
+                .expect(ERR_TRANSFER_IDENTITY_LOCK_POISONED);
+            if fold_name(&identity.username) == old_lower {
+                identity.username = new_username.to_string();
+                identity.is_admin = is_admin;
+                if !info.is_shared {
+                    identity.nickname = new_username.to_string();
+                }
+            }
+        }
+    }
+
     /// Cloned Arc snapshot of all active transfers; safe to call mid-transfer.
     pub fn snapshot(&self) -> Vec<Arc<ActiveTransfer>> {
         self.transfers
@@ -308,13 +368,110 @@ mod tests {
         });
 
         assert_eq!(registry.active_count(), 1);
-        assert_eq!(info.username, "testuser");
+        assert_eq!(info.to_transfer_info().username, "testuser");
         assert_eq!(info.direction, TransferDirection::Download);
         assert_eq!(info.path, "/files/test.zip");
         assert_eq!(info.get_total_size(), 1024);
 
         registry.unregister(info.id);
         assert_eq!(registry.active_count(), 0);
+    }
+
+    #[test]
+    fn test_update_user_regular_rename_moves_name_and_admin() {
+        let registry = TransferRegistry::new();
+        let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
+
+        let (alice, _a) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "alice".to_string(),
+            username: "alice".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/files/a.zip".to_string(),
+            total_size: 1024,
+        });
+        let (bob, _b) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "bob".to_string(),
+            username: "bob".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Upload,
+            path: "/files/b.zip".to_string(),
+            total_size: 1024,
+        });
+
+        // Regular rename that also promotes to admin.
+        registry.update_user("alice", "alice2", true);
+
+        // Matched transfer: nickname == username for regular accounts, both move,
+        // and the admin flag (used to colorize the monitor) follows.
+        let alice_info = alice.to_transfer_info();
+        assert_eq!(alice_info.nickname, "alice2");
+        assert_eq!(alice_info.username, "alice2");
+        assert!(alice_info.is_admin);
+
+        // Unrelated transfer is untouched.
+        let bob_info = bob.to_transfer_info();
+        assert_eq!(bob_info.nickname, "bob");
+        assert_eq!(bob_info.username, "bob");
+        assert!(!bob_info.is_admin);
+    }
+
+    #[test]
+    fn test_update_user_shared_keeps_session_nickname() {
+        let registry = TransferRegistry::new();
+        let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
+
+        // Shared account "guests": the transfer's nickname is the per-session
+        // name "Alice", distinct from the account username.
+        let (transfer, _rx) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "Alice".to_string(),
+            username: "guests".to_string(),
+            is_admin: false,
+            is_shared: true,
+            direction: TransferDirection::Download,
+            path: "/files/a.zip".to_string(),
+            total_size: 1024,
+        });
+
+        // Rename the shared account "guests" -> "visitors".
+        registry.update_user("guests", "visitors", false);
+
+        let info = transfer.to_transfer_info();
+        assert_eq!(info.username, "visitors", "account username must follow");
+        assert_eq!(
+            info.nickname, "Alice",
+            "shared account's per-session nickname must be preserved"
+        );
+    }
+
+    #[test]
+    fn test_update_user_admin_only_change_keeps_name() {
+        let registry = TransferRegistry::new();
+        let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
+
+        let (transfer, _rx) = registry.register(TransferRegistration {
+            peer_addr: addr,
+            nickname: "carol".to_string(),
+            username: "carol".to_string(),
+            is_admin: true,
+            is_shared: false,
+            direction: TransferDirection::Upload,
+            path: "/files/c.zip".to_string(),
+            total_size: 1024,
+        });
+
+        // Demote without a rename (old username == new username).
+        registry.update_user("carol", "carol", false);
+
+        let info = transfer.to_transfer_info();
+        assert!(!info.is_admin, "demotion must clear the admin flag");
+        assert_eq!(info.nickname, "carol");
+        assert_eq!(info.username, "carol");
     }
 
     #[test]
@@ -592,9 +749,12 @@ mod tests {
         let snapshot = registry.snapshot();
         assert_eq!(snapshot.len(), 2);
 
-        let usernames: Vec<&str> = snapshot.iter().map(|i| i.username.as_str()).collect();
-        assert!(usernames.contains(&"user1"));
-        assert!(usernames.contains(&"user2"));
+        let usernames: Vec<String> = snapshot
+            .iter()
+            .map(|i| i.to_transfer_info().username)
+            .collect();
+        assert!(usernames.iter().any(|u| u == "user1"));
+        assert!(usernames.iter().any(|u| u == "user2"));
     }
 
     #[test]

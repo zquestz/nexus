@@ -252,6 +252,7 @@ pub const SQL_UPSERT_BAN: &str = "
         expires_at = excluded.expires_at";
 
 /// Returns the ban even if expired. Used internally after upsert.
+#[cfg(test)]
 pub const SQL_SELECT_BAN_BY_IP_UNFILTERED: &str = "
     SELECT ip_address, nickname, reason, created_by, created_at, expires_at
     FROM ip_bans
@@ -259,13 +260,14 @@ pub const SQL_SELECT_BAN_BY_IP_UNFILTERED: &str = "
 
 pub const SQL_DELETE_BAN_BY_IP: &str = "DELETE FROM ip_bans WHERE ip_address = ?";
 
-pub const SQL_SELECT_IPS_BY_NICKNAME: &str = "
-    SELECT ip_address FROM ip_bans WHERE nickname_lower = ?";
+pub const SQL_DELETE_BANS_BY_NICKNAME_RETURNING: &str =
+    "DELETE FROM ip_bans WHERE nickname_lower = ? RETURNING ip_address";
 
-pub const SQL_DELETE_BANS_BY_NICKNAME: &str = "DELETE FROM ip_bans WHERE nickname_lower = ?";
-
+#[cfg(test)]
 pub const SQL_COUNT_BANS_BY_NICKNAME: &str =
     "SELECT COUNT(*) FROM ip_bans WHERE nickname_lower = ?";
+
+pub const SQL_SELECT_ALL_BAN_TARGETS: &str = "SELECT ip_address FROM ip_bans";
 
 /// Sorted by creation time (newest first).
 pub const SQL_SELECT_ACTIVE_BANS: &str = "
@@ -293,6 +295,7 @@ pub const SQL_UPSERT_TRUST: &str = "
         expires_at = excluded.expires_at";
 
 /// Returns the entry even if expired.
+#[cfg(test)]
 pub const SQL_SELECT_TRUST_BY_IP_UNFILTERED: &str = "
     SELECT ip_address, nickname, reason, created_by, created_at, expires_at
     FROM ip_trusted
@@ -300,13 +303,14 @@ pub const SQL_SELECT_TRUST_BY_IP_UNFILTERED: &str = "
 
 pub const SQL_DELETE_TRUST_BY_IP: &str = "DELETE FROM ip_trusted WHERE ip_address = ?";
 
-pub const SQL_SELECT_TRUSTED_IPS_BY_NICKNAME: &str = "
-    SELECT ip_address FROM ip_trusted WHERE nickname_lower = ?";
+pub const SQL_DELETE_TRUSTS_BY_NICKNAME_RETURNING: &str =
+    "DELETE FROM ip_trusted WHERE nickname_lower = ? RETURNING ip_address";
 
-pub const SQL_DELETE_TRUSTS_BY_NICKNAME: &str = "DELETE FROM ip_trusted WHERE nickname_lower = ?";
-
+#[cfg(test)]
 pub const SQL_COUNT_TRUSTS_BY_NICKNAME: &str =
     "SELECT COUNT(*) FROM ip_trusted WHERE nickname_lower = ?";
+
+pub const SQL_SELECT_ALL_TRUST_TARGETS: &str = "SELECT ip_address FROM ip_trusted";
 
 /// Sorted by creation time (newest first).
 pub const SQL_SELECT_ACTIVE_TRUSTS: &str = "

@@ -97,18 +97,15 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Get or create the message list for this user
-        let user_msgs = conn.user_messages.entry(nickname.to_string()).or_default();
+        // Resolve to the canonical DM tab by folded identity (creates it, or relabels
+        // a case-variant tab to this case), then append under that key.
+        let key = conn.resolve_user_message_tab(nickname);
+        let user_msgs = conn.user_messages.entry(key.clone()).or_default();
         user_msgs.push(message);
         truncate_scrollback(user_msgs, self.config.settings.max_scrollback);
 
-        // Add to user_message_tabs if not already present (creates the tab in UI)
-        if !conn.user_message_tabs.contains(&nickname.to_string()) {
-            conn.user_message_tabs.push(nickname.to_string());
-        }
-
         // Mark user message tab as unread if not currently viewing it
-        let pm_tab = ChatTab::UserMessage(nickname.to_string());
+        let pm_tab = ChatTab::UserMessage(key);
         if conn.active_chat_tab != pm_tab {
             conn.unread_tabs.insert(pm_tab);
         }

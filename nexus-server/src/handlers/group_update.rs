@@ -8,7 +8,6 @@ use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use nexus_common::is_shared_account_permission;
-use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{
     self, BandwidthWeightError, GroupNameError, MIN_BANDWIDTH_WEIGHT, PermissionsError,
@@ -18,8 +17,9 @@ use nexus_common::validators::{
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
-    HandlerContext, Outcome, ServerInfoOptions, ServerInfoValues, build_server_info,
-    dispatch_outcome, err_bandwidth_weight_delegation, err_bandwidth_weight_zero, err_database,
+    HandlerContext, Outcome, ServerInfoOptions, ServerInfoValues,
+    broadcast_user_updated_for_members, build_server_info, dispatch_outcome,
+    err_bandwidth_weight_delegation, err_bandwidth_weight_zero, err_database,
     err_group_already_exists, err_group_name_empty, err_group_name_invalid,
     err_group_name_too_long, err_group_no_fields, err_group_not_empty_modify, err_group_not_found,
     err_group_shared_permission, err_not_logged_in, err_permission_denied,
@@ -29,8 +29,6 @@ use super::{
 };
 use crate::constants::*;
 use crate::db::{GroupPermissionWriteScope, Permission, Permissions};
-use crate::users::manager::UserManager;
-use crate::users::user::UserSession;
 use crate::voice::send_voice_leave_notifications;
 
 pub async fn handle_group_update<W>(
@@ -475,7 +473,7 @@ where
                 // sends) so a concurrent UserUpdate can't re-grant VoiceListen
                 // between our cache write and cleanup. Keyed on user_id.
                 if name_changed || !inheriting_set.is_empty() {
-                    broadcast_user_updated_for_members(ctx, &member_sessions, |session| {
+                    broadcast_user_updated_for_members(ctx, &member_sessions, None, |session| {
                         name_changed || inheriting_set.contains(&session.user_id)
                     })
                     .await;
@@ -555,53 +553,6 @@ where
     };
 
     dispatch_outcome(outcome, ctx, HANDLER_GROUP_UPDATE).await
-}
-
-/// Fan out one `UserUpdated` per affected member (filtered by `should_emit`)
-/// to all `UserList` holders. Shared accounts broadcast per-session;
-/// regular accounts dedup by username with an aggregated `UserInfo`.
-async fn broadcast_user_updated_for_members<W, F>(
-    ctx: &HandlerContext<'_, W>,
-    member_sessions: &[UserSession],
-    should_emit: F,
-) where
-    W: AsyncWrite + Unpin,
-    F: Fn(&UserSession) -> bool,
-{
-    let mut seen_usernames: HashSet<String> = HashSet::new();
-    for session in member_sessions {
-        if !should_emit(session) {
-            continue;
-        }
-        if session.is_shared {
-            let user_info = UserManager::build_user_info_from_session(session);
-            let user_updated = ServerMessage::UserUpdated {
-                previous_username: session.username.clone(),
-                user: user_info,
-            };
-            ctx.user_manager
-                .broadcast_to_permission(user_updated, Permission::UserList)
-                .await;
-        } else {
-            let username_lower = fold_name(&session.username);
-            if !seen_usernames.insert(username_lower) {
-                continue;
-            }
-            let all_sessions = ctx
-                .user_manager
-                .get_sessions_by_username(&session.username)
-                .await;
-            if let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) {
-                let user_updated = ServerMessage::UserUpdated {
-                    previous_username: session.username.clone(),
-                    user: user_info,
-                };
-                ctx.user_manager
-                    .broadcast_to_permission(user_updated, Permission::UserList)
-                    .await;
-            }
-        }
-    }
 }
 
 #[cfg(test)]

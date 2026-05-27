@@ -360,7 +360,7 @@ Broadcast when a user disconnects.
 
 ### UserUpdated (Server → Client)
 
-Broadcast when a user's account is modified (e.g., username change, admin status change).
+Broadcast when a user's account is modified (e.g., username change, admin status change), and when a multi-session regular account's aggregate changes on a session disconnect (see [Multi-Session Handling](#multi-session-handling)).
 
 | Field               | Type   | Required | Description                |
 | ------------------- | ------ | -------- | -------------------------- |
@@ -404,7 +404,7 @@ Broadcast when a user's account is modified (e.g., username change, admin status
     "is_shared": false,
     "session_ids": [1, 5],
     "locale": "en",
-    "avatar": "data:image/png;base64,...",
+    "avatar": null,
     "is_away": true,
     "status": "in a meeting",
     "group_id": null,
@@ -412,6 +412,8 @@ Broadcast when a user's account is modified (e.g., username change, admin status
   }
 }
 ```
+
+**Rename propagation:** `UserUpdated` is normally sent only to recipients with the `user_list` permission. A regular-account rename (a `UserUpdate` that changes the username, and therefore the nickname) is the exception: the renamed account's own sessions receive `UserUpdated` even without `user_list`, and every channel the user belongs to receives [`ChatUserRenamed`](03-chat.md#chatuserrenamed-server--client) regardless of `user_list`.
 
 ## Data Structures
 
@@ -493,12 +495,24 @@ A single account can have multiple concurrent sessions (e.g., desktop and mobile
 - All sessions share the same `username` and `nickname`
 - `session_ids` array contains all active session IDs
 - User appears once in the list with multiple session IDs
+- The single entry is **aggregated** across the account's sessions:
+  - identity (`username`, `nickname`, `locale`, group, `bandwidth_weight`) — from the most recent login
+  - `is_away` / `status` — from the most recently active session
+  - `login_time` — the earliest (for "connected since")
+  - `session_ids` — the full set of active sessions
+  - `avatar` — see [Avatar Handling](#avatar-handling) below
 
 **Shared accounts:**
 
 - All sessions share the same `username`
 - Each session has a unique `nickname`
 - Each session appears as a separate entry in the user list
+
+**Session disconnect broadcasts:**
+
+- `UserDisconnected` is sent **once per session** as that session ends — a multi-session account emits one per session.
+- When a session of a multi-session regular account leaves while others remain, the server also broadcasts a re-aggregated `UserUpdated` (its `session_ids`, and possibly `avatar`/`is_away`/`status`, change). When the **last** session leaves, only `UserDisconnected` is sent — no `UserUpdated`.
+- Shared accounts never get the aggregated `UserUpdated`; each session is its own entry, removed by its own `UserDisconnected`.
 
 ## Avatar Handling
 
@@ -654,8 +668,9 @@ User lists are sorted alphabetically by nickname (case-insensitive).
 - `UserList` with `all: false` only returns currently connected users
 - `UserList` with `all: true` returns all accounts (for user management)
 - `UserInfo` only works for online users (lookup by nickname)
-- `UserConnected` and `UserDisconnected` are only sent to users with `user_list` permission
-- `UserUpdated` is sent when an admin modifies a user account
+- `UserConnected`, `UserDisconnected`, and `UserUpdated` are only sent to users with `user_list` permission
+- `UserUpdated` is sent when an admin modifies a user account, and when a multi-session regular account re-aggregates on a session disconnect (see [Multi-Session Handling](#multi-session-handling))
+- A regular-account rename also fans out [`ChatUserRenamed`](03-chat.md#chatuserrenamed-server--client) to every channel the user is in (ungated by `user_list`), and sends the `UserUpdated` to the renamed account's own non-`user_list` sessions, so no one keeps a stale identity
 - Session IDs are unique per connection, not per account
 - The same account can be logged in multiple times with different session IDs
 

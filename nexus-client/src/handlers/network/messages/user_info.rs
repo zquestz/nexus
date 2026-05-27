@@ -4,20 +4,30 @@ use chrono::Local;
 use iced::Task;
 use nexus_common::framing::MessageId;
 use nexus_common::names::fold_name;
-use nexus_common::protocol::{UserInfo as ProtocolUserInfo, UserInfoDetailed};
+use nexus_common::protocol::{ClientMessage, UserInfo as ProtocolUserInfo, UserInfoDetailed};
 
 use crate::NexusApp;
-use crate::avatar::{avatar_cache_key, compute_avatar_hash, get_or_create_avatar};
+use crate::avatar::{apply_avatar_update, compute_avatar_hash, get_or_create_avatar};
 use crate::constants::{ERR_CONNECTION_EXISTS, ERR_SYSTEM_TIME_AFTER_EPOCH};
 use crate::handlers::network::constants::DATETIME_FORMAT;
 use crate::handlers::network::helpers::{format_duration, sort_user_list};
 use crate::i18n::{t, t_args};
 use crate::types::{
-    ActivePanel, ChatMessage, ChatTab, Message, ResponseRouting, UserInfo as ClientUserInfo,
+    ActivePanel, ChatMessage, Message, PendingRequests, ResponseRouting, UserInfo as ClientUserInfo,
 };
 
 /// Indentation for user info display lines
 const INFO_INDENT: &str = "  ";
+
+fn detailed_user_matches_update(detail: &UserInfoDetailed, user: &ProtocolUserInfo) -> bool {
+    if user.is_shared {
+        detail.is_shared
+            && detail.id == user.id
+            && fold_name(&detail.nickname) == fold_name(&user.nickname)
+    } else {
+        !detail.is_shared && detail.id == user.id
+    }
+}
 
 impl NexusApp {
     /// Handle user info response
@@ -304,6 +314,7 @@ impl NexusApp {
                 // Pre-populate avatar cache using display name (nickname is always populated)
                 get_or_create_avatar(&mut conn.avatar_cache, &u.nickname, u.avatar.as_deref());
                 ClientUserInfo {
+                    id: u.id,
                     username: u.username.clone(),
                     nickname: u.nickname,
                     is_admin: u.is_admin,
@@ -319,9 +330,14 @@ impl NexusApp {
         conn.online_users = user_list;
         sort_user_list(&mut conn.online_users);
 
-        // Clear expanded_user if the user is no longer in the list
+        // Clear expanded_user if the user is no longer in the list (folded compare so a
+        // case-only rename snapshot — "Alice" in the list vs expanded "alice" — doesn't
+        // drop the panel for the same user).
         if let Some(expanded) = &conn.expanded_user
-            && !conn.online_users.iter().any(|u| u.nickname == *expanded)
+            && !conn
+                .online_users
+                .iter()
+                .any(|u| fold_name(&u.nickname) == fold_name(expanded))
         {
             conn.expanded_user = None;
         }
@@ -377,29 +393,32 @@ impl NexusApp {
             return Task::none();
         };
 
-        let new_username = user.username;
+        let new_username = user.username.clone();
         let username_changed = previous_username != new_username;
-        let new_avatar_hash = compute_avatar_hash(user.avatar.as_deref());
 
-        // Update all users with this account username (for shared accounts, there may be multiple)
-        // Use previous_username to find users (in case username changed)
-        // Compare case-insensitively since online_users may have client-provided casing
-        // while previous_username comes from the database
-        let previous_username_lower = fold_name(&previous_username);
-        for existing_user in conn
-            .online_users
-            .iter_mut()
-            .filter(|u| fold_name(&u.username) == previous_username_lower)
-        {
-            // Get old nickname for cache invalidation
+        // Match the affected entry/entries: a shared account's UserUpdated is sent
+        // per session, so target the single entry by nickname; a regular account is
+        // matched by its (previous) username (nickname == username). Case-insensitive
+        // throughout, since online_users may carry client-provided casing.
+        let target_nickname_lower = fold_name(&user.nickname);
+        for existing_user in conn.online_users.iter_mut().filter(|u| {
+            if user.is_shared {
+                // Shared: one entry per nickname; this message targets exactly one.
+                u.is_shared && fold_name(&u.nickname) == target_nickname_lower
+            } else {
+                // Regular: match by immutable id, not the (mutable) username — a
+                // concurrent rename must not make this miss.
+                !u.is_shared && u.id == user.id
+            }
+        }) {
             let old_nickname = existing_user.nickname.clone();
-
-            // Check if avatar changed (invalidate cache if so)
-            let avatar_changed = existing_user.avatar_hash != new_avatar_hash;
+            // Captured before the hash is reassigned: whether a decoded (non-identicon)
+            // avatar exists to preserve across a rename in the unchanged case.
+            let had_real_avatar = existing_user.avatar_hash.is_some();
 
             existing_user.username = new_username.clone();
-            // Note: For shared accounts, nickname is per-session and doesn't come from UserUpdated
-            // Only update nickname if this is not a shared account
+            // For shared accounts, nickname is per-session and doesn't come from
+            // UserUpdated; only regular accounts take the new nickname.
             if !existing_user.is_shared {
                 existing_user.nickname = user.nickname.clone();
             }
@@ -407,88 +426,126 @@ impl NexusApp {
             // is_shared is immutable, but update anyway for consistency
             existing_user.is_shared = user.is_shared;
             existing_user.session_ids = user.session_ids.clone();
-            existing_user.avatar_hash = new_avatar_hash;
             existing_user.is_away = user.is_away;
             existing_user.status = user.status.clone();
 
-            // Get new nickname for cache update
+            // Avatar tri-state delta: None = unchanged (keep cache), "" = cleared,
+            // data = new. A None must never be recomputed into a blank hash.
+            let new_avatar_hash = match user.avatar.as_deref() {
+                None => existing_user.avatar_hash,
+                Some("") => None,
+                Some(data) => compute_avatar_hash(Some(data)),
+            };
+            existing_user.avatar_hash = new_avatar_hash;
+
+            // Apply the same delta to the decoded-avatar cache (re-keying on rename).
             let new_nickname = existing_user.nickname.clone();
-
-            // If nickname changed, remove old cache entry
-            if old_nickname != new_nickname {
-                conn.avatar_cache.remove(&avatar_cache_key(&old_nickname));
-            } else if avatar_changed {
-                // Same nickname but avatar changed - invalidate cache
-                conn.avatar_cache.remove(&avatar_cache_key(&new_nickname));
-            }
-
-            // Pre-populate cache with new avatar (keyed by nickname)
-            get_or_create_avatar(
+            apply_avatar_update(
                 &mut conn.avatar_cache,
+                &old_nickname,
                 &new_nickname,
                 user.avatar.as_deref(),
+                had_real_avatar,
             );
+        }
+
+        let refetch_user_info_nickname = if conn.active_panel == ActivePanel::UserInfo {
+            conn.user_info_data.as_ref().and_then(|data| match data {
+                Ok(detail) if detailed_user_matches_update(detail, &user) => {
+                    Some(if user.is_shared {
+                        detail.nickname.clone()
+                    } else {
+                        user.nickname.clone()
+                    })
+                }
+                _ => None,
+            })
+        } else {
+            None
+        };
+
+        if let Some(nickname) = refetch_user_info_nickname {
+            conn.user_info_data = None;
+            match conn.send(ClientMessage::UserInfo {
+                nickname: nickname.clone(),
+            }) {
+                Ok(message_id) => conn
+                    .pending_requests
+                    .track(message_id, ResponseRouting::PopulateUserInfoPanel(nickname)),
+                Err(e) => {
+                    let error_msg = format!("{}: {}", t("err-send-failed"), e);
+                    conn.user_info_data = Some(Err(error_msg));
+                }
+            }
         }
 
         // Re-sort the list since username may have changed
         sort_user_list(&mut conn.online_users);
 
-        // If username changed, update user_messages HashMap and active tab
-        // Note: User message tabs are keyed by nickname.
-        // For regular accounts, nickname == username, so this rename works correctly.
-        // For shared accounts, nickname is session-specific (not username), so the remove()
-        // will return None and this becomes a no-op, which is correct behavior since
-        // the shared user's nickname (and thus user message tab key) hasn't changed.
+        // If the username changed, re-key this connection's rename-sensitive state.
+        // DM tabs display the nickname but are resolved by folded identity, so the
+        // re-key merges any fold-equal conversation onto the new name. Regular accounts
+        // (nickname == username) move the tab; a shared account's per-session nickname is
+        // unaffected by a username change, so it's a no-op — both correct.
         if username_changed {
-            // If this is our own username changing, update conn.connection_info.username
-            // Compare case-insensitively since connection_info.username is user-typed
-            // and previous_username is server-provided (may differ in case)
-            if fold_name(&conn.connection_info.username) == fold_name(&previous_username) {
-                conn.connection_info.username = new_username.clone();
-            }
+            // DM tab, our own identity, and active voice session (shared with
+            // ChatUserRenamed; idempotent). Channel member lists and voiced sets are
+            // re-keyed by ChatUserRenamed instead, so they reach channel members who
+            // lack `user_list` and never receive this UserUpdated.
+            conn.apply_user_rename(&previous_username, &new_username);
 
-            // Rename the user_messages entry (only affects regular accounts, see note above)
-            if let Some(messages) = conn.user_messages.remove(&previous_username) {
-                conn.user_messages.insert(new_username.clone(), messages);
-            }
-
-            // Rename the scroll_states entry
-            let old_tab = ChatTab::UserMessage(previous_username.clone());
-            let new_tab = ChatTab::UserMessage(new_username.clone());
-            if let Some(scroll_state) = conn.scroll_states.remove(&old_tab) {
-                conn.scroll_states.insert(new_tab.clone(), scroll_state);
-            }
-
-            // Update unread_tabs if present
-            if conn.unread_tabs.remove(&old_tab) {
-                conn.unread_tabs.insert(new_tab.clone());
-            }
-
-            // Update active_chat_tab if it's for this user
-            if conn.active_chat_tab == old_tab {
-                conn.active_chat_tab = new_tab;
-            }
-
-            // Update expanded_user if it was set to the old nickname
-            // (For regular accounts, nickname == username, so this works.
-            // For shared accounts, nickname is session-specific and won't match
-            // previous_username, so this correctly does nothing since nickname didn't change.)
-            if conn.expanded_user.as_ref() == Some(&previous_username) {
+            // expanded_user is a user-list detail, so it stays here (UserUpdated is
+            // itself UserList-gated). Regular accounts have nickname == username so
+            // this matches; a shared account's per-session nickname is unaffected by a
+            // username change, so this is a no-op for it.
+            if conn
+                .expanded_user
+                .as_ref()
+                .is_some_and(|n| fold_name(n) == fold_name(&previous_username))
+            {
                 conn.expanded_user = Some(new_username.clone());
-            }
-
-            // Update channel_voiced if the old nickname was in any channel's voiced set
-            // (For regular accounts, nickname == username, so this renames correctly.
-            // For shared accounts, nickname doesn't change with username, so this is a no-op.)
-            let old_lower = fold_name(&previous_username);
-            let new_lower = fold_name(&new_username);
-            for voiced_set in conn.channel_voiced.values_mut() {
-                if voiced_set.remove(&old_lower) {
-                    voiced_set.insert(new_lower.clone());
-                }
             }
         }
 
+        // Rename effects that live outside this connection's own state (voice audio
+        // thread, chat history). The `conn` borrow has ended, so this takes `&mut self`.
+        if username_changed {
+            self.apply_rename_side_effects(connection_id, &previous_username, &new_username);
+        }
+
         Task::none()
+    }
+
+    /// Apply the parts of a rename that live outside the renamed user's
+    /// `ServerConnection`, and so can't ride along in
+    /// `ServerConnection::apply_user_rename`. Called from both rename paths
+    /// (`handle_user_updated` and `handle_chat_user_renamed`) right after that
+    /// method, once the `conn` borrow has been released.
+    pub(crate) fn apply_rename_side_effects(&mut self, connection_id: usize, old: &str, new: &str) {
+        // The audio thread keeps its own mute set, separate from the UI `muted_users`
+        // that `apply_user_rename` already re-keyed, and only mutable via voice
+        // commands. Re-sync it when this connection owns the active voice session and
+        // `old` was muted (post-rekey, `new` is the muted entry). speaking_users and
+        // per-user buffers self-heal from incoming packets, so they need no re-key.
+        if self.active_voice_connection == Some(connection_id)
+            && let Some(handle) = &self.voice_session_handle
+            && self
+                .connections
+                .get(&connection_id)
+                .and_then(|c| c.voice_session.as_ref())
+                .is_some_and(|vs| vs.muted_users.contains(&fold_name(new)))
+        {
+            handle.unmute_user(old);
+            handle.mute_user(new);
+        }
+
+        // Chat history: re-key the renamed party's DM conversation. A self-rename is
+        // a no-op here (no conversation is keyed by your own nickname, and the history
+        // directory is keyed by the immutable user id, so it never moves on a rename).
+        if let Some(base_dir) = self.connection_history_keys.get(&connection_id).cloned()
+            && let Some(manager) = self.history_managers.get_mut(&base_dir)
+        {
+            let _ = manager.rename_conversation(old, new);
+        }
     }
 }

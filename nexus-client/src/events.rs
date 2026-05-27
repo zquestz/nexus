@@ -29,7 +29,7 @@ use crate::NexusApp;
 use crate::config::events::{EventType, NotificationContent};
 use crate::constants::APP_NAME;
 use crate::i18n::{t, t_args};
-use crate::types::{ActivePanel, ChatTab};
+use crate::types::ActivePanel;
 
 // =============================================================================
 // Constants
@@ -248,7 +248,7 @@ fn should_show_event(app: &NexusApp, event_type: EventType, context: &EventConte
                 && event_conn_id == active_conn_id
                 && let Some(conn) = app.connections.get(&event_conn_id)
                 && let Some(ref username) = context.username
-                && conn.active_chat_tab == ChatTab::UserMessage(username.clone())
+                && conn.is_active_user_message_tab(username)
             {
                 return false;
             }
@@ -266,7 +266,7 @@ fn should_show_event(app: &NexusApp, event_type: EventType, context: &EventConte
                 && event_conn_id == active_conn_id
                 && let Some(conn) = app.connections.get(&event_conn_id)
                 && let Some(ref channel) = context.channel
-                && conn.active_chat_tab == ChatTab::Channel(channel.clone())
+                && conn.is_active_channel_tab(channel)
                 && conn.active_panel == ActivePanel::None
             {
                 return false;
@@ -293,7 +293,7 @@ fn should_show_event(app: &NexusApp, event_type: EventType, context: &EventConte
                 && event_conn_id == active_conn_id
                 && let Some(conn) = app.connections.get(&event_conn_id)
                 && let Some(ref channel) = context.channel
-                && conn.active_chat_tab == ChatTab::Channel(channel.clone())
+                && conn.is_active_channel_tab(channel)
                 && conn.active_panel == ActivePanel::None
             {
                 return false;
@@ -342,7 +342,7 @@ fn should_show_event(app: &NexusApp, event_type: EventType, context: &EventConte
                 && event_conn_id == active_conn_id
                 && let Some(conn) = app.connections.get(&event_conn_id)
                 && let Some(ref channel) = context.channel
-                && conn.active_chat_tab == ChatTab::Channel(channel.clone())
+                && conn.is_active_channel_tab(channel)
                 && conn.active_panel == ActivePanel::None
             {
                 return false;
@@ -360,9 +360,9 @@ fn should_show_event(app: &NexusApp, event_type: EventType, context: &EventConte
             {
                 // Check if viewing the channel or user message tab where voice event occurred
                 let viewing_target = if channel.starts_with('#') {
-                    conn.active_chat_tab == ChatTab::Channel(channel.clone())
+                    conn.is_active_channel_tab(channel)
                 } else {
-                    conn.active_chat_tab == ChatTab::UserMessage(channel.clone())
+                    conn.is_active_user_message_tab(channel)
                 };
                 if viewing_target && conn.active_panel == ActivePanel::None {
                     return false;

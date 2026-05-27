@@ -12,8 +12,9 @@ use nexus_common::validators::{self, DurationError, TargetError, TrustReasonErro
 
 use super::duration::parse_duration;
 use super::{
-    HandlerContext, err_not_logged_in, err_permission_denied, err_reason_invalid,
-    err_reason_too_long, err_target_too_long, err_trust_invalid_duration, err_trust_invalid_target,
+    HandlerContext, Outcome, dispatch_outcome, err_not_logged_in, err_permission_denied,
+    err_reason_invalid, err_reason_too_long, err_target_too_long, err_trust_invalid_duration,
+    err_trust_invalid_target,
 };
 use crate::db::Permission;
 use crate::ip_rule_cache::canonicalize_target;
@@ -38,170 +39,197 @@ where
             .await;
     };
 
-    let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
-        Some(user) => user,
-        None => {
-            return ctx
-                .send_error_and_disconnect(
-                    &err_not_logged_in(ctx.locale),
-                    Some(HANDLER_TRUST_CREATE),
-                )
-                .await;
+    // Guard lives only inside this block; all socket sends to the requester happen
+    // after it. Trusts only need a read guard: they do not tear down live sessions,
+    // but `created_by` and nickname target resolution should observe one stable
+    // user-map snapshot.
+    let outcome = 'locked: {
+        let _user_state = ctx.user_manager.read_user_state().await;
+
+        let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
+            Some(user) => user,
+            None => break 'locked Outcome::Disconnect,
+        };
+
+        if !requesting_user.has_permission(Permission::TrustCreate) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_TRUST_CREATE_PERMISSION_DENIED);
+            break 'locked Outcome::Send(Box::new(reject_trust_create(err_permission_denied(
+                ctx.locale,
+            ))));
         }
-    };
 
-    if !requesting_user.has_permission(Permission::TrustCreate) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_TRUST_CREATE_PERMISSION_DENIED);
-        let response = ServerMessage::TrustCreateResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            ips: None,
-            nickname: None,
+        let validated = match validate_trust_create_inputs(&target, &duration, &reason, ctx.locale)
+        {
+            Ok(validated) => validated,
+            Err(error) => break 'locked Outcome::Send(Box::new(reject_trust_create(error))),
         };
-        return ctx.send_message(&response).await;
-    }
+        let expires_at = validated.expires_at;
 
-    if let Err(e) = validators::validate_target(&target) {
-        let error_msg = match e {
-            TargetError::Empty => err_trust_invalid_target(ctx.locale),
-            TargetError::TooLong => err_target_too_long(ctx.locale, validators::MAX_TARGET_LENGTH),
-        };
-        let response = ServerMessage::TrustCreateResponse {
-            success: false,
-            error: Some(error_msg),
-            ips: None,
-            nickname: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    if let Some(ref d) = duration
-        && let Err(DurationError::TooLong) = validators::validate_duration(d)
-    {
-        let response = ServerMessage::TrustCreateResponse {
-            success: false,
-            error: Some(err_trust_invalid_duration(ctx.locale)),
-            ips: None,
-            nickname: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    if let Some(ref r) = reason
-        && let Err(e) = validators::validate_trust_reason(r)
-    {
-        let error_msg = match e {
-            TrustReasonError::TooLong => {
-                err_reason_too_long(ctx.locale, validators::MAX_TRUST_REASON_LENGTH)
-            }
-            TrustReasonError::InvalidCharacters => err_reason_invalid(ctx.locale),
-        };
-        let response = ServerMessage::TrustCreateResponse {
-            success: false,
-            error: Some(error_msg),
-            ips: None,
-            nickname: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    let expires_at = match parse_duration(&duration) {
-        Ok(expires) => expires,
-        Err(_) => {
-            let response = ServerMessage::TrustCreateResponse {
-                success: false,
-                error: Some(err_trust_invalid_duration(ctx.locale)),
-                ips: None,
-                nickname: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
-
-    // Third tuple field (is_range) is discarded — the trust path doesn't branch
-    // on it the way ban_create does.
-    let (targets_to_trust, nickname_annotation, _) =
-        match resolve_target(&target, ctx.user_manager).await {
+        let resolved_target = match resolve_target(&target, ctx.user_manager).await {
             Ok(result) => result,
             Err(TargetResolutionError::InvalidTarget) => {
-                let response = ServerMessage::TrustCreateResponse {
-                    success: false,
-                    error: Some(err_trust_invalid_target(ctx.locale)),
-                    ips: None,
-                    nickname: None,
-                };
-                return ctx.send_message(&response).await;
+                break 'locked Outcome::Send(Box::new(reject_trust_create(
+                    err_trust_invalid_target(ctx.locale),
+                )));
             }
         };
+        let targets_to_trust = resolved_target.targets;
+        let nickname_annotation = resolved_target.nickname;
 
-    let mut trusted_targets = Vec::new();
-    for target_str in &targets_to_trust {
-        match ctx
-            .db
-            .trusts
-            .create_or_update_trust(
-                target_str,
-                nickname_annotation.as_deref(),
-                reason.as_deref(),
-                &requesting_user.username,
-                expires_at,
-            )
-            .await
+        let trusted_targets = match create_or_update_trust_rules(
+            ctx,
+            &targets_to_trust,
+            nickname_annotation.as_deref(),
+            reason.as_deref(),
+            &requesting_user.username,
+            expires_at,
+        )
+        .await
         {
-            Ok(_) => {
-                trusted_targets.push(target_str.clone());
-            }
-            Err(e) => {
-                error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target_str, err = %e, "{}", LOG_TRUST_CREATE_DB_ERROR);
-                let response = ServerMessage::TrustCreateResponse {
-                    success: false,
-                    error: Some(super::err_database(ctx.locale)),
-                    ips: None,
-                    nickname: None,
-                };
-                return ctx.send_message(&response).await;
-            }
-        }
-    }
+            Ok(targets) => targets,
+            Err(response) => break 'locked Outcome::Send(Box::new(response)),
+        };
 
-    {
-        let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
-        for target_str in &trusted_targets {
-            cache.add_trust(target_str, expires_at);
-        }
-    }
+        info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_TRUST_CREATE_SUCCESS);
+        Outcome::Send(Box::new(trust_create_success(
+            trusted_targets,
+            nickname_annotation,
+        )))
+    };
 
-    info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_TRUST_CREATE_SUCCESS);
-    let response = ServerMessage::TrustCreateResponse {
+    dispatch_outcome(outcome, ctx, HANDLER_TRUST_CREATE).await
+}
+
+fn reject_trust_create(error: String) -> ServerMessage {
+    ServerMessage::TrustCreateResponse {
+        success: false,
+        error: Some(error),
+        ips: None,
+        nickname: None,
+    }
+}
+
+fn trust_create_success(ips: Vec<String>, nickname: Option<String>) -> ServerMessage {
+    ServerMessage::TrustCreateResponse {
         success: true,
         error: None,
-        ips: Some(trusted_targets),
-        nickname: nickname_annotation,
-    };
-    ctx.send_message(&response).await
+        ips: Some(ips),
+        nickname,
+    }
+}
+
+struct ValidatedTrustCreate {
+    expires_at: Option<i64>,
+}
+
+struct ResolvedTrustTarget {
+    targets: Vec<String>,
+    nickname: Option<String>,
+}
+
+fn validate_trust_create_inputs(
+    target: &str,
+    duration: &Option<String>,
+    reason: &Option<String>,
+    locale: &str,
+) -> Result<ValidatedTrustCreate, String> {
+    if let Err(e) = validators::validate_target(target) {
+        return Err(match e {
+            TargetError::Empty => err_trust_invalid_target(locale),
+            TargetError::TooLong => err_target_too_long(locale, validators::MAX_TARGET_LENGTH),
+        });
+    }
+
+    if let Some(d) = duration
+        && let Err(DurationError::TooLong) = validators::validate_duration(d)
+    {
+        return Err(err_trust_invalid_duration(locale));
+    }
+
+    if let Some(r) = reason
+        && let Err(e) = validators::validate_trust_reason(r)
+    {
+        return Err(match e {
+            TrustReasonError::TooLong => {
+                err_reason_too_long(locale, validators::MAX_TRUST_REASON_LENGTH)
+            }
+            TrustReasonError::InvalidCharacters => err_reason_invalid(locale),
+        });
+    }
+
+    let expires_at = parse_duration(duration).map_err(|_| err_trust_invalid_duration(locale))?;
+
+    Ok(ValidatedTrustCreate { expires_at })
+}
+
+async fn create_or_update_trust_rules<W>(
+    ctx: &HandlerContext<'_, W>,
+    targets_to_trust: &[String],
+    nickname_annotation: Option<&str>,
+    reason: Option<&str>,
+    requested_by: &str,
+    expires_at: Option<i64>,
+) -> Result<Vec<String>, ServerMessage>
+where
+    W: AsyncWrite + Unpin,
+{
+    let _ip_rule_mutation = ctx.ip_rule_cache.lock_mutation().await;
+
+    let trusted_targets: Vec<String> = ctx
+        .db
+        .trusts
+        .create_or_update_trust_targets(
+            targets_to_trust.iter().map(String::as_str),
+            nickname_annotation,
+            reason,
+            requested_by,
+            expires_at,
+        )
+        .await
+        .map_err(|e| {
+            error!(user = %requested_by, ip = %ctx.peer_addr, targets = ?targets_to_trust, err = %e, "{}", LOG_TRUST_CREATE_DB_ERROR);
+            reject_trust_create(super::err_database(ctx.locale))
+        })?
+        .into_iter()
+        .map(|trust| trust.ip_address)
+        .collect();
+
+    {
+        let mut cache = ctx.ip_rule_cache.write();
+        for target in &trusted_targets {
+            cache.add_trust(target, expires_at);
+        }
+    }
+
+    Ok(trusted_targets)
 }
 
 enum TargetResolutionError {
     InvalidTarget,
 }
 
-/// Returns (IPs to trust, optional nickname annotation, is_range).
-/// IP/CIDR targets are returned canonical-lowercase so `2001:DB8::1` and
-/// `2001:db8::1` can't create separate rows for the same host. Nickname
-/// targets annotate with the session's canonical nickname (not the
-/// admin-typed form), matching `ban_create::resolve_target`.
+/// Resolve a target to IP/CIDR strings plus an optional nickname annotation.
+/// IP/CIDR targets are canonicalized so stored/cached/response strings match
+/// regardless of admin-typed casing.
 async fn resolve_target(
     target: &str,
     user_manager: &UserManager,
-) -> Result<(Vec<String>, Option<String>, bool), TargetResolutionError> {
-    if let Some(session) = user_manager.get_session_by_nickname(target).await {
-        let ips = user_manager.get_ips_for_nickname(target).await;
-        return Ok((ips, Some(session.nickname.clone()), false));
+) -> Result<ResolvedTrustTarget, TargetResolutionError> {
+    // Caller holds the user-state read guard so the nickname cannot change while
+    // this snapshot is captured. The trust itself is IP-keyed and rename-immune
+    // once the IPs are captured.
+    if let Some(snapshot) = user_manager.get_nickname_ip_snapshot(target).await {
+        return Ok(ResolvedTrustTarget {
+            targets: snapshot.ips,
+            nickname: Some(snapshot.representative.nickname),
+        });
     }
 
-    // `canonicalize_target` returns the precomputed is_range flag.
-    if let Some((canonical, _net, is_range)) = canonicalize_target(target) {
-        return Ok((vec![canonical], None, is_range));
+    if let Some((canonical, _net, _is_range)) = canonicalize_target(target) {
+        return Ok(ResolvedTrustTarget {
+            targets: vec![canonical],
+            nickname: None,
+        });
     }
 
     Err(TargetResolutionError::InvalidTarget)
@@ -299,7 +327,7 @@ mod tests {
 
         // Verify trust is in cache
         {
-            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            let mut cache = test_ctx.ip_rule_cache.write();
             assert!(cache.is_trusted("192.168.1.100".parse().unwrap()));
         }
     }
@@ -363,7 +391,7 @@ mod tests {
 
         // Verify any IP in the range is trusted
         {
-            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            let mut cache = test_ctx.ip_rule_cache.write();
             assert!(cache.is_trusted("192.168.1.100".parse().unwrap()));
             assert!(cache.is_trusted("192.168.1.1".parse().unwrap()));
             assert!(!cache.is_trusted("192.168.2.1".parse().unwrap()));

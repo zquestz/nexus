@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use crate::db::{Database, Permission};
 use crate::files::{FileIndex, PathLockMap};
+use crate::ip_rule_cache::IpRuleState;
 
 use super::registry::TransferRegistry;
 
@@ -19,6 +20,7 @@ pub struct TransferParams {
     /// See `files::path_lock`.
     pub file_mutation_locks: Arc<PathLockMap>,
     pub transfer_registry: Arc<TransferRegistry>,
+    pub ip_rule_cache: Arc<IpRuleState>,
     /// Sent in HandshakeResponse so the client can detect TLS interception
     /// before sending credentials.
     pub fingerprint: &'static str,

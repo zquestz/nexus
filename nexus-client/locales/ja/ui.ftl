@@ -440,6 +440,7 @@ msg-user-kicked-success = ユーザーを正常にキックしました
 msg-user-kicked-success-name = ユーザー '{ $nickname }' を正常にキックしました
 msg-chat-join = { $nickname } がチャンネルに参加しました
 msg-chat-leave = { $nickname } がチャンネルを退出しました
+msg-chat-renamed = { $old } は { $new } に改名しました
 msg-channel-is-secret = このチャンネルは秘密です
 msg-channel-list-header = 利用可能なチャンネル:
 msg-no-channels = 利用可能なチャンネルがありません

@@ -60,14 +60,8 @@ pub fn execute(
         }
     }
 
-    // Check if target matches a user message tab (case-insensitive)
-    let matching_user = conn
-        .user_messages
-        .keys()
-        .find(|nickname| fold_name(nickname) == target_lower)
-        .cloned();
-
-    if let Some(nickname) = matching_user {
+    // Check if target matches an existing user message tab (folded identity)
+    if let Some(nickname) = conn.user_message_tab_key(target) {
         // Tab exists, switch to it
         return Task::done(Message::SwitchChatTab(ChatTab::UserMessage(nickname)));
     }

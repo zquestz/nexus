@@ -440,6 +440,7 @@ msg-user-kicked-success = 成功踢出使用者
 msg-user-kicked-success-name = 成功踢出使用者 '{ $nickname }'
 msg-chat-join = { $nickname } 加入了頻道
 msg-chat-leave = { $nickname } 離開了頻道
+msg-chat-renamed = { $old } 現已更名為 { $new }
 msg-channel-is-secret = 此頻道為私密頻道
 msg-channel-list-header = 可用頻道:
 msg-no-channels = 沒有可用頻道

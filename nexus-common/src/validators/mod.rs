@@ -42,7 +42,7 @@ mod trust_reason;
 mod username;
 mod version;
 
-pub use avatar::{AvatarError, MAX_AVATAR_DATA_URI_LENGTH, validate_avatar};
+pub use avatar::{AvatarError, MAX_AVATAR_DATA_URI_LENGTH, is_valid_svg, validate_avatar};
 pub use ban_reason::{BanReasonError, MAX_BAN_REASON_LENGTH, validate_ban_reason};
 pub use bandwidth_chunk_size::{
     BandwidthChunkSizeError, DEFAULT_BANDWIDTH_CHUNK_SIZE, MAX_BANDWIDTH_CHUNK_SIZE,

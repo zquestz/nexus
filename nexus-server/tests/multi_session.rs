@@ -73,8 +73,8 @@ async fn test_multi_session_partial_disconnect() {
     assert!(alice_sessions.contains(&session_id3));
 
     // Disconnect session 2 (middle device) and broadcast to the rest.
-    let removed = user_manager.remove_user(session_id2).await;
-    assert!(removed.is_some(), "Session 2 should be removed");
+    let removed = user_manager.remove_users(&[session_id2]).await;
+    assert!(!removed.is_empty(), "Session 2 should be removed");
 
     user_manager
         .broadcast_user_event(
@@ -124,8 +124,8 @@ async fn test_multi_session_partial_disconnect() {
         "Session 20 should not receive message (already disconnected)"
     );
 
-    user_manager.remove_user(session_id1).await;
-    user_manager.remove_user(session_id3).await;
+    user_manager.remove_users(&[session_id1]).await;
+    user_manager.remove_users(&[session_id3]).await;
 
     let final_users = user_manager.get_all_users().await;
     let final_alice: Vec<_> = final_users

@@ -255,6 +255,56 @@ impl NexusApp {
         }
     }
 
+    /// Handle ChatUserRenamed - a member of a channel you're in changed nickname.
+    ///
+    /// Sent per channel the renamed user belongs to, regardless of your `user_list`
+    /// permission, so member lists and voice indicators stay correct even for
+    /// members who never receive the UserList-gated `UserUpdated`. Re-keys this
+    /// channel's member list and voiced set, plus the shared DM-tab / self / voice
+    /// re-key (idempotent across the per-channel fan-out).
+    pub fn handle_chat_user_renamed(
+        &mut self,
+        connection_id: usize,
+        channel: String,
+        old_nickname: String,
+        new_nickname: String,
+    ) -> Task<Message> {
+        {
+            let Some(conn) = self.connections.get_mut(&connection_id) else {
+                return Task::none();
+            };
+
+            if let Some(channel_state) = conn.get_channel_state_mut(&channel) {
+                channel_state.rename_member(&old_nickname, new_nickname.clone());
+            }
+
+            if let Some(voiced_set) = conn.channel_voiced.get_mut(&fold_name(&channel))
+                && voiced_set.remove(&fold_name(&old_nickname))
+            {
+                voiced_set.insert(fold_name(&new_nickname));
+            }
+
+            conn.apply_user_rename(&old_nickname, &new_nickname);
+        }
+
+        // Rename effects outside this connection's own state (shared with the
+        // UserUpdated path); the `conn` borrow has ended.
+        self.apply_rename_side_effects(connection_id, &old_nickname, &new_nickname);
+
+        // Notice in the channel so members (including those without `user_list`) see
+        // the continuity. Gated like join/leave events; the member-list re-key above
+        // runs regardless of the setting.
+        if self.config.settings.show_join_leave_events {
+            let message = ChatMessage::system(t_args(
+                "msg-chat-renamed",
+                &[("old", &old_nickname), ("new", &new_nickname)],
+            ));
+            self.add_channel_message(connection_id, &channel, message)
+        } else {
+            Task::none()
+        }
+    }
+
     /// Handle ChatListResponse - response to /channels command
     ///
     /// Displays the list of available channels in the console.

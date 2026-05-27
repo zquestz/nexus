@@ -3,7 +3,7 @@
 use ipnet::IpNet;
 use nexus_common::names::fold_name;
 
-use super::UserManager;
+use super::{NicknameIpSnapshot, UserManager};
 use crate::db::Permission;
 use crate::users::user::UserSession;
 
@@ -110,6 +110,35 @@ impl UserManager {
             .cloned()
     }
 
+    /// Representative session plus unique IPs for a display nickname, captured
+    /// from one user-map snapshot. This avoids lookup/IP races in handlers that
+    /// turn nickname targets into IP-keyed rules.
+    pub async fn get_nickname_ip_snapshot(&self, nickname: &str) -> Option<NicknameIpSnapshot> {
+        let users = self.users.read().await;
+        let nickname_lower = fold_name(nickname);
+        let mut representative = None;
+        let mut ips = Vec::new();
+
+        for user in users
+            .values()
+            .filter(|u| fold_name(&u.nickname) == nickname_lower)
+        {
+            if representative.is_none() {
+                representative = Some(user.clone());
+            }
+            ips.push(user.address.ip().to_string());
+        }
+
+        let representative = representative?;
+        ips.sort();
+        ips.dedup();
+
+        Some(NicknameIpSnapshot {
+            representative,
+            ips,
+        })
+    }
+
     /// All sessions with a given nickname (case-insensitive) — every session of
     /// a "user" identified by display name, for kick/disconnect. Regular
     /// accounts (nickname == username) return all of the user's sessions; shared
@@ -192,20 +221,6 @@ impl UserManager {
         }
 
         false
-    }
-
-    /// Unique IPs across all sessions with `nickname`, for banning by nickname.
-    pub async fn get_ips_for_nickname(&self, nickname: &str) -> Vec<String> {
-        let users = self.users.read().await;
-        let nickname_lower = fold_name(nickname);
-        let mut ips: Vec<String> = users
-            .values()
-            .filter(|u| fold_name(&u.nickname) == nickname_lower)
-            .map(|u| u.address.ip().to_string())
-            .collect();
-        ips.sort();
-        ips.dedup();
-        ips
     }
 }
 
@@ -475,6 +490,40 @@ mod tests {
         );
 
         assert!(manager.get_session_by_nickname("Nick3").await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_nickname_ip_snapshot_deduplicates_ips() {
+        let manager = UserManager::new();
+
+        let mut params1 = test_session_params("alice", "alice", false);
+        params1.address = "192.168.1.50:12345".parse::<SocketAddr>().unwrap();
+        manager
+            .add_user(params1)
+            .await
+            .expect("add_user should succeed");
+
+        let mut params2 = test_session_params("alice", "alice", false);
+        params2.address = "192.168.1.51:12345".parse::<SocketAddr>().unwrap();
+        manager
+            .add_user(params2)
+            .await
+            .expect("add_user should succeed");
+
+        let mut params3 = test_session_params("alice", "alice", false);
+        params3.address = "192.168.1.50:54321".parse::<SocketAddr>().unwrap();
+        manager
+            .add_user(params3)
+            .await
+            .expect("add_user should succeed");
+
+        let snapshot = manager
+            .get_nickname_ip_snapshot("ALICE")
+            .await
+            .expect("snapshot should exist");
+
+        assert_eq!(snapshot.representative.nickname, "alice");
+        assert_eq!(snapshot.ips, vec!["192.168.1.50", "192.168.1.51"]);
     }
 
     #[tokio::test]

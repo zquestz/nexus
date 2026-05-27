@@ -1,7 +1,7 @@
 //! Chat history persistence for user message conversations
 //!
 //! Stores user message history on disk with the following structure:
-//! `~/.local/share/nexus/history/{sha256(fingerprint)}/{sha256(your_username)}/{sha256(other_nickname)}.enc`
+//! `~/.local/share/nexus/history/{sha256(fingerprint)}/{sha256(fingerprint:user_id)}/{sha256(fold_name(other_nickname))}.enc`
 //!
 //! # Security Model
 //!

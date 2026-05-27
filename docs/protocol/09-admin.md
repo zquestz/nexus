@@ -898,6 +898,8 @@ Broadcast when a user account is modified.
 
 The `user.avatar` field follows [Users → Avatar Handling](04-users.md#avatar-handling): on `UserUpdated` it is normally `null` (unchanged — the client keeps its cached avatar) and is populated only when a disconnect changes the aggregate (where `""` means the user now has no avatar). Admin edits never change the avatar, so they always send `null` (as below).
 
+`UserUpdated` reaches only recipients with the `user_list` permission. When an edit renames a regular account, two extra paths cover everyone else (see [Users → UserUpdated](04-users.md#userupdated-server--client)): the renamed account's own sessions receive `UserUpdated` even without `user_list`, and every channel the user is in receives [`ChatUserRenamed`](03-chat.md#chatuserrenamed-server--client).
+
 **Example:**
 
 ```json
@@ -1699,12 +1701,12 @@ the first failing rule.
 
 When a user is kicked:
 
-1. Server sends `Error` message to the kicked user with `command: "UserKick"`
-2. Server disconnects the kicked user
-3. Server broadcasts `UserDisconnected` to all other users
+1. Server sends an `Error` message (with `command: "UserKick"`) to each of the kicked user's sessions
+2. Server disconnects those sessions
+3. Server broadcasts a `UserDisconnected` per disconnected session to all users with `user_list`
 4. Kicker receives `UserKickResponse` with success
 
-The kicked user's sessions are all disconnected (for regular accounts with multiple sessions).
+A kick removes **all** of the target nickname's sessions at once, so a regular account with multiple sessions emits one `UserDisconnected` per session and no `UserUpdated` (the account is fully removed). See [Multi-Session Handling](04-users.md#multi-session-handling).
 
 ## Notes
 

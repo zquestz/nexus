@@ -21,6 +21,24 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::flood::{FloodCheck, FloodTracker};
 
+/// Outcome of the lock-serialized delivery section, dispatched to a
+/// `UserMessageResponse` after the `read_user_state` guard drops (so no socket I/O
+/// happens under the lock).
+enum DeliveryOutcome {
+    /// Sender's session vanished mid-send (raced disconnect); send nothing.
+    SenderGone,
+    /// Target nickname not online; send a not-online error.
+    TargetOffline,
+    /// Target resolves to the sender's own (possibly renamed) session; reject as
+    /// a self-message.
+    SelfMessage,
+    /// Delivered to both parties; carry the target's away state for the response.
+    Delivered {
+        is_away: bool,
+        status: Option<String>,
+    },
+}
+
 pub async fn handle_user_message<W>(
     to_nickname: String,
     message: String,
@@ -149,60 +167,97 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Target by nickname (equals username for regular accounts).
-    let target_session = match ctx.user_manager.get_session_by_nickname(&to_nickname).await {
-        Some(session) => session,
-        None => {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // Resolve both the sender and the target, then broadcast, all under read_user_state
+    // so a concurrent rename can't re-key either party between the lookup and the
+    // nickname-keyed broadcast. The sender must be re-fetched here, not reused from the
+    // entry snapshot: a rename runs on another thread holding the write lock, so the
+    // snapshot can go stale regardless of there being no await between it and this lock.
+    // A stale sender nickname would misroute the echo (the sender never sees her own
+    // message) and stamp the recipient's DM tab with the old name; a stale target would
+    // silently drop the message while the sender still saw success. Both broadcasts are
+    // in-memory; the response is sent after the guard drops.
+    let outcome = 'deliver: {
+        let _user_state = ctx.user_manager.read_user_state().await;
+
+        let Some(sender) = ctx.user_manager.get_user_by_session_id(session_id).await else {
+            break 'deliver DeliveryOutcome::SenderGone;
+        };
+
+        // Target by nickname (equals username for regular accounts).
+        let Some(target_session) = ctx.user_manager.get_session_by_nickname(&to_nickname).await
+        else {
+            break 'deliver DeliveryOutcome::TargetOffline;
+        };
+
+        // Re-check self-message under the lock: the pre-lock check used the entry
+        // snapshot, which a concurrent rename could have changed so the target now
+        // resolves to the sender's own (renamed) session — which would deliver a self-DM.
+        if fold_name(&sender.nickname) == fold_name(&target_session.nickname) {
+            break 'deliver DeliveryOutcome::SelfMessage;
+        }
+
+        let broadcast = ServerMessage::UserMessage {
+            from_nickname: sender.nickname.clone(),
+            from_admin: sender.is_admin,
+            from_shared: sender.is_shared,
+            to_nickname: target_session.nickname.clone(),
+            message,
+            action,
+            timestamp,
+        };
+        // Broadcast to both parties by nickname. Regular accounts (nickname == username)
+        // reach all sessions; shared accounts reach the one nickname.
+        ctx.user_manager
+            .broadcast_to_nickname(&sender.nickname, &broadcast)
+            .await;
+        ctx.user_manager
+            .broadcast_to_nickname(&target_session.nickname, &broadcast)
+            .await;
+
+        DeliveryOutcome::Delivered {
+            is_away: target_session.is_away,
+            status: target_session.status.clone(),
+        }
+    };
+
+    match outcome {
+        // Sender disconnected mid-send; nothing to deliver and no live socket to answer.
+        DeliveryOutcome::SenderGone => Ok(()),
+        DeliveryOutcome::TargetOffline => {
             let response = ServerMessage::UserMessageResponse {
                 success: false,
                 error: Some(err_nickname_not_online(ctx.locale, &to_nickname)),
                 is_away: None,
                 status: None,
             };
-            return ctx.send_message(&response).await;
+            ctx.send_message(&response).await
         }
-    };
-
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let broadcast = ServerMessage::UserMessage {
-        from_nickname: requesting_user_session.nickname.clone(),
-        from_admin: requesting_user_session.is_admin,
-        from_shared: requesting_user_session.is_shared,
-        to_nickname: target_session.nickname.clone(),
-        message,
-        action,
-        timestamp,
-    };
-
-    // Broadcast to both parties by nickname. Regular accounts (nickname ==
-    // username) reach all sessions; shared accounts reach the one nickname.
-    ctx.user_manager
-        .broadcast_to_nickname(&requesting_user_session.nickname, &broadcast)
-        .await;
-    ctx.user_manager
-        .broadcast_to_nickname(&target_session.nickname, &broadcast)
-        .await;
-
-    // Respond via the channel so it queues after the broadcasts — the away
-    // notice must appear after the message in the client's receive order.
-    let response = ServerMessage::UserMessageResponse {
-        success: true,
-        error: None,
-        is_away: if target_session.is_away {
-            Some(true)
-        } else {
-            None
-        },
-        status: if target_session.is_away {
-            target_session.status.clone()
-        } else {
-            None
-        },
-    };
-    ctx.send_message_via_channel(&response)
+        DeliveryOutcome::SelfMessage => {
+            let response = ServerMessage::UserMessageResponse {
+                success: false,
+                error: Some(err_cannot_message_self(ctx.locale)),
+                is_away: None,
+                status: None,
+            };
+            ctx.send_message(&response).await
+        }
+        DeliveryOutcome::Delivered { is_away, status } => {
+            // Respond via the channel so it queues after the broadcasts — the away
+            // notice must appear after the message in the client's receive order.
+            let response = ServerMessage::UserMessageResponse {
+                success: true,
+                error: None,
+                is_away: if is_away { Some(true) } else { None },
+                status: if is_away { status } else { None },
+            };
+            ctx.send_message_via_channel(&response)
+        }
+    }
 }
 
 #[cfg(test)]

@@ -1136,6 +1136,7 @@ err-uri-connection-failed = Failed to connect to { $host }: { $error }
 # Channel user join/leave messages
 msg-chat-join = { $nickname } joined the channel
 msg-chat-leave = { $nickname } left the channel
+msg-chat-renamed = { $old } is now known as { $new }
 msg-channel-is-secret = This channel is secret
 
 # Channel list messages

@@ -5,6 +5,8 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::warn;
 
+use uuid::Uuid;
+
 use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 
@@ -18,6 +20,20 @@ use super::{
 };
 use crate::db::Permission;
 use crate::voice::VoiceSession;
+
+/// Outcome of the lock-serialized join section, dispatched to a `VoiceJoinResponse`
+/// after the `read_user_state` guard drops (so no socket I/O happens under the lock).
+enum VoiceJoinOutcome {
+    /// Session vanished mid-join (raced disconnect); send nothing.
+    Gone,
+    /// Join rejected; send a failure response carrying this error.
+    Error(String),
+    /// Join succeeded; send a success response.
+    Success {
+        token: Uuid,
+        participants: Vec<String>,
+    },
+}
 
 /// Join voice. Client target is `"#general"` (must be a member) or `"bob"`
 /// (must be online). User-message targets are stored internally as a sorted
@@ -87,133 +103,153 @@ where
 
     let client_target = target.clone();
 
-    let internal_target = if is_channel {
-        if !ctx.channel_manager.is_member(&target, session_id).await {
-            let response = ServerMessage::VoiceJoinResponse {
-                success: false,
-                token: None,
-                target: None,
-                participants: None,
-                error: Some(err_voice_not_channel_member(ctx.locale, &target)),
-            };
-            return ctx.send_message(&response).await;
-        }
-        vec![target]
-    } else {
-        let target_online = ctx
-            .user_manager
-            .get_session_by_nickname(&target)
-            .await
-            .is_some();
+    // Serialize the resolve → registry insert → VoiceUserJoined broadcast under
+    // read_user_state so a concurrent rename can't land between snapshotting the
+    // joiner's nickname and the nickname-keyed registry entry / broadcast. The joiner's
+    // nickname keys the DM target pair, the stored VoiceSession, and the VoiceUserJoined
+    // nickname — all of which a rename would otherwise leave stale (VoiceUserJoined has
+    // no client-side id reconciliation, so a stale nickname is a permanent ghost
+    // participant). The read lock forces the rename to fully precede (we re-fetch the
+    // new nickname) or fully follow (its update_nickname re-keys our registry entry and
+    // its ChatUserRenamed re-keys clients' voiced sets). All work here is in-memory; the
+    // VoiceJoinResponse is sent after the guard drops.
+    let outcome = 'locked: {
+        let _user_state = ctx.user_manager.read_user_state().await;
 
-        if !target_online {
-            let response = ServerMessage::VoiceJoinResponse {
-                success: false,
-                token: None,
-                target: None,
-                participants: None,
-                error: Some(err_voice_target_not_online(ctx.locale, &target)),
-            };
-            return ctx.send_message(&response).await;
-        }
+        let Some(current) = ctx.user_manager.get_user_by_session_id(session_id).await else {
+            // Session vanished mid-join (raced disconnect); nothing to send back.
+            break 'locked VoiceJoinOutcome::Gone;
+        };
 
-        // Build canonical sorted array [nick1, nick2]
-        let mut pair = vec![user.nickname.clone(), target];
-        pair.sort_by_key(|a| fold_name(a));
-        pair
-    };
-
-    let target_key = internal_target.join(":");
-
-    // Get current participants before adding the new session
-    let mut participants = ctx.voice_registry.get_participants(&target_key).await;
-
-    // Atomic guard: registry.add rejects duplicate session_id and
-    // reports `broadcast_joined` so concurrent same-nickname joins
-    // can't both broadcast.
-    let voice_session = VoiceSession::new(
-        user.nickname.clone(),
-        internal_target,
-        session_id,
-        ctx.peer_addr.ip(),
-    );
-    let (token, broadcast_joined) = match ctx.voice_registry.add(voice_session).await {
-        Some(outcome) => (outcome.token, outcome.broadcast_joined),
-        None => {
-            let response = ServerMessage::VoiceJoinResponse {
-                success: false,
-                token: None,
-                target: None,
-                participants: None,
-                error: Some(err_voice_already_joined(ctx.locale)),
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
-
-    participants.push(user.nickname.clone());
-    participants.sort_by_key(|a| fold_name(a));
-
-    if broadcast_joined {
-        if is_channel {
-            // Notify ALL channel members with voice_listen (not just voice
-            // participants) so everyone sees who's in voice.
-            let channel_name = client_target.clone();
-            let members = ctx
-                .channel_manager
-                .get_members(&channel_name)
-                .await
-                .unwrap_or_default();
-
-            for member_session_id in members {
-                if member_session_id == session_id {
-                    continue;
-                }
-
-                if let Some(member) = ctx
-                    .user_manager
-                    .get_user_by_session_id(member_session_id)
-                    .await
-                    && member.has_permission(Permission::VoiceListen)
-                {
-                    let join_notification = ServerMessage::VoiceUserJoined {
-                        nickname: user.nickname.clone(),
-                        target: channel_name.clone(),
-                    };
-                    let _ = member.tx.send((join_notification, None));
-                }
+        let internal_target = if is_channel {
+            if !ctx.channel_manager.is_member(&target, session_id).await {
+                break 'locked VoiceJoinOutcome::Error(err_voice_not_channel_member(
+                    ctx.locale, &target,
+                ));
             }
+            vec![target.clone()]
         } else {
-            // User messages: only notify the other participant.
-            for participant_nickname in &participants {
-                if fold_name(participant_nickname) == fold_name(&user.nickname) {
-                    continue;
-                }
+            if ctx
+                .user_manager
+                .get_session_by_nickname(&target)
+                .await
+                .is_none()
+            {
+                break 'locked VoiceJoinOutcome::Error(err_voice_target_not_online(
+                    ctx.locale, &target,
+                ));
+            }
 
-                let join_notification = ServerMessage::VoiceUserJoined {
-                    nickname: user.nickname.clone(),
-                    target: user.nickname.clone(), // Send joiner's nickname to other participant
-                };
+            // Canonical sorted pair [nick1, nick2] from the joiner's current nickname.
+            let mut pair = vec![current.nickname.clone(), target.clone()];
+            pair.sort_by_key(|a| fold_name(a));
+            pair
+        };
 
-                if let Some(participant_user) = ctx
-                    .user_manager
-                    .get_session_by_nickname(participant_nickname)
+        let target_key = internal_target.join(":");
+
+        // Current participants before adding the new session.
+        let mut participants = ctx.voice_registry.get_participants(&target_key).await;
+
+        // Atomic guard: registry.add rejects duplicate session_id and reports
+        // `broadcast_joined` so concurrent same-nickname joins can't both broadcast.
+        let voice_session = VoiceSession::new(
+            current.nickname.clone(),
+            internal_target,
+            session_id,
+            ctx.peer_addr.ip(),
+        );
+        let (token, broadcast_joined) = match ctx.voice_registry.add(voice_session).await {
+            Some(add_outcome) => (add_outcome.token, add_outcome.broadcast_joined),
+            None => break 'locked VoiceJoinOutcome::Error(err_voice_already_joined(ctx.locale)),
+        };
+
+        participants.push(current.nickname.clone());
+        participants.sort_by_key(|a| fold_name(a));
+
+        if broadcast_joined {
+            if is_channel {
+                // Notify ALL channel members with voice_listen (not just voice
+                // participants) so everyone sees who's in voice.
+                let members = ctx
+                    .channel_manager
+                    .get_members(&client_target)
                     .await
-                {
-                    let _ = participant_user.tx.send((join_notification, None));
+                    .unwrap_or_default();
+
+                for member_session_id in members {
+                    if member_session_id == session_id {
+                        continue;
+                    }
+
+                    if let Some(member) = ctx
+                        .user_manager
+                        .get_user_by_session_id(member_session_id)
+                        .await
+                        && member.has_permission(Permission::VoiceListen)
+                    {
+                        let join_notification = ServerMessage::VoiceUserJoined {
+                            nickname: current.nickname.clone(),
+                            target: client_target.clone(),
+                        };
+                        let _ = member.tx.send((join_notification, None));
+                    }
+                }
+            } else {
+                // User messages: only notify the other participant.
+                for participant_nickname in &participants {
+                    if fold_name(participant_nickname) == fold_name(&current.nickname) {
+                        continue;
+                    }
+
+                    let join_notification = ServerMessage::VoiceUserJoined {
+                        nickname: current.nickname.clone(),
+                        target: current.nickname.clone(), // joiner's nickname keys the other's tab
+                    };
+
+                    if let Some(participant_user) = ctx
+                        .user_manager
+                        .get_session_by_nickname(participant_nickname)
+                        .await
+                    {
+                        let _ = participant_user.tx.send((join_notification, None));
+                    }
                 }
             }
+        }
+
+        VoiceJoinOutcome::Success {
+            token,
+            participants,
+        }
+    };
+
+    match outcome {
+        VoiceJoinOutcome::Gone => Ok(()),
+        VoiceJoinOutcome::Error(error) => {
+            let response = ServerMessage::VoiceJoinResponse {
+                success: false,
+                token: None,
+                target: None,
+                participants: None,
+                error: Some(error),
+            };
+            ctx.send_message(&response).await
+        }
+        VoiceJoinOutcome::Success {
+            token,
+            participants,
+        } => {
+            let response = ServerMessage::VoiceJoinResponse {
+                success: true,
+                token: Some(token),
+                target: Some(client_target),
+                participants: Some(participants),
+                error: None,
+            };
+            ctx.send_message(&response).await
         }
     }
-
-    let response = ServerMessage::VoiceJoinResponse {
-        success: true,
-        token: Some(token),
-        target: Some(client_target),
-        participants: Some(participants),
-        error: None,
-    };
-    ctx.send_message(&response).await
 }
 
 #[cfg(test)]

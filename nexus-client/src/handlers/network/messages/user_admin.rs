@@ -249,9 +249,33 @@ impl NexusApp {
             };
             let task = self.add_active_tab_message(connection_id, ChatMessage::system(message));
 
-            // If from user management panel, return to list and refresh
+            // If from user management panel, return to where we came from and refresh.
             if matches!(routing, Some(ResponseRouting::UserManagementUpdateResult)) {
-                return Task::batch([task, self.return_to_user_management_list(connection_id)]);
+                // Returning to the User Info view? Refetch the full record so it
+                // reflects every edited field (group, perms, admin, bandwidth,
+                // enabled, name) — not stale pre-edit values. Key: regular → the
+                // current/new username from the response; shared → the session's own
+                // (unchanged) nickname, still a live lookup. Checked before
+                // return_to_user_management_list resets return_to_panel.
+                let refetch_nick = self.connections.get(&connection_id).and_then(|conn| {
+                    if conn.user_management.return_to_panel != Some(ActivePanel::UserInfo) {
+                        return None;
+                    }
+                    match &conn.user_info_data {
+                        Some(Ok(d)) if d.is_shared => Some(d.nickname.clone()),
+                        Some(Ok(_)) => username.clone(),
+                        _ => None,
+                    }
+                });
+                let return_task = self.return_to_user_management_list(connection_id);
+                return match refetch_nick {
+                    Some(nick) => Task::batch([
+                        task,
+                        return_task,
+                        self.handle_user_info_icon_clicked(connection_id, nick),
+                    ]),
+                    None => Task::batch([task, return_task]),
+                };
             }
 
             return task;
@@ -297,19 +321,21 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Check if we should return to a different panel (e.g., UserInfo)
-        if let Some(return_panel) = conn.user_management.return_to_panel {
-            conn.user_management.return_to_panel = None;
-            conn.user_management.mode = UserManagementMode::List;
-            conn.user_management.edit_error = None;
+        // Full reset first — clears mode, errors, AND the submit flags. Capture the
+        // return panel beforehand since reset_to_list() clears it. (Previously the
+        // return-to-panel branch below reset only mode/error, leaving is_submitting
+        // stuck true, which disabled Save on the next edit opened from that panel.)
+        let return_panel = conn.user_management.return_to_panel;
+        conn.user_management.reset_to_list();
+
+        // If we came from a different panel (e.g., UserInfo), return there without
+        // refreshing the user-management list.
+        if let Some(return_panel) = return_panel {
             conn.active_panel = return_panel;
             return Task::none();
         }
 
-        // Reset to list mode
-        conn.user_management.reset_to_list();
-
-        // Refresh the user list
+        // Otherwise refresh the user list in place.
         self.refresh_user_management_list_for(connection_id)
     }
 

@@ -7,7 +7,6 @@ err-nickname-in-use = 닉네임이 이미 사용 중입니다
 err-nickname-invalid = 닉네임에 잘못된 문자가 포함되어 있습니다 (문자, 숫자, 기호 허용 - 공백 또는 제어 문자 불가)
 err-nickname-is-username = 닉네임은 기존 사용자 이름이 될 수 없습니다
 err-username-is-active-nickname = 사용자 이름은 현재 사용 중인 닉네임과 같을 수 없습니다
-err-nickname-not-found = 사용자 "{ $nickname }"을(를) 찾을 수 없습니다
 err-nickname-not-online = 사용자 "{ $nickname }"이(가) 온라인 상태가 아닙니다
 err-nickname-required = 공유 계정에는 닉네임이 필요합니다
 err-nickname-too-long = 닉네임이 너무 깁니다 (최대 { $max_length }자)
@@ -21,8 +20,6 @@ err-status-invalid-characters = 부재 메시지에 잘못된 문자가 포함�
 err-shared-cannot-be-admin = 공유 계정은 관리자가 될 수 없습니다
 err-shared-cannot-self-edit = 공유 계정은 자신을 편집할 수 없습니다
 err-shared-invalid-permissions = 공유 계정은 다음 권한을 가질 수 없습니다: { $permissions }
-err-shared-message-requires-nickname = 공유 계정은 닉네임으로만 메시지를 받을 수 있습니다
-err-shared-kick-requires-nickname = 공유 계정은 닉네임으로만 추방할 수 있습니다
 
 # 게스트 계정 오류
 err-guest-disabled = 이 서버에서는 게스트 접속이 활성화되지 않았습니다
@@ -33,7 +30,8 @@ err-cannot-delete-guest = 게스트 계정은 삭제할 수 없습니다
 # 아바타 유효성 검사 오류
 err-avatar-invalid-format = 아바타 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
 err-avatar-too-large = 아바타가 너무 큽니다 (최대 { $max_length } 바이트)
-err-avatar-unsupported-type = 지원되지 않는 아바타 유형입니다 (PNG, WebP 또는 SVG만 가능)
+err-avatar-unsupported-type = 지원되지 않는 아바타 유형입니다 (PNG, JPEG, WebP 또는 SVG만 가능)
+err-avatar-undecodable = 아바타를 유효한 이미지로 디코딩할 수 없습니다
 err-authentication = 인증 오류
 err-invalid-credentials = 잘못된 사용자 이름 또는 비밀번호
 err-handshake-required = 핸드셰이크 필요
@@ -41,7 +39,6 @@ err-already-logged-in = 이미 로그인됨
 err-handshake-already-completed = 핸드셰이크가 이미 완료됨
 err-account-deleted = 계정이 삭제되었습니다
 err-account-disabled-by-admin = 관리자가 계정을 비활성화했습니다
-err-account-type-changed = 이 계정의 유형이 변경되었습니다. 다시 연결해 주세요.
 
 # 권한 및 액세스 오류
 err-permission-denied = 권한이 거부됨
@@ -144,7 +141,6 @@ err-kick-reason-too-long = 추방 사유가 너무 깁니다 (최대 { $max_leng
 err-kick-reason-invalid-characters = 추방 사유에 잘못된 문자가 포함되어 있습니다
 err-username-exists = 사용자 이름 "{ $username }"이(가) 이미 존재합니다
 err-user-not-found = 사용자 "{ $username }"을(를) 찾을 수 없습니다
-err-user-not-online = 사용자 "{ $username }"이(가) 온라인 상태가 아닙니다
 err-failed-to-create-user = 사용자 "{ $username }"을(를) 생성하지 못했습니다
 err-account-disabled = 계정 "{ $username }"이(가) 비활성화되었습니다
 err-update-failed = 사용자 "{ $username }"을(를) 업데이트하지 못했습니다
@@ -172,7 +168,7 @@ err-invalid-password-strength = 잘못된 비밀번호 강도 값입니다
 
 err-server-image-too-large = 서버 이미지가 너무 큽니다 (최대 512KB)
 err-server-image-invalid-format = 서버 이미지 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
-err-server-image-unsupported-type = 지원되지 않는 서버 이미지 유형입니다 (PNG, WebP, JPEG 또는 SVG만 지원)
+err-server-image-unsupported-type = 지원되지 않는 서버 이미지 유형입니다 (PNG, JPEG, WebP 또는 SVG만 지원)
 err-public-address-too-long = 공개 주소가 너무 깁니다 (최대 { $max_length } 바이트)
 err-public-address-contains-scheme = 공개 주소에는 URL 스킴을 포함할 수 없습니다
 err-public-address-contains-brackets = 공개 주소에는 대괄호를 포함할 수 없습니다
@@ -189,7 +185,7 @@ err-news-body-too-long = 뉴스 내용이 너무 깁니다 (최대 { $max_length
 err-news-body-invalid-characters = 뉴스 내용에 잘못된 문자가 포함되어 있습니다
 err-news-image-too-large = 뉴스 이미지가 너무 큽니다 (최대 512KB)
 err-news-image-invalid-format = 뉴스 이미지 형식이 잘못되었습니다 (base64 인코딩된 데이터 URI여야 합니다)
-err-news-image-unsupported-type = 지원되지 않는 뉴스 이미지 유형입니다 (PNG, WebP, JPEG 또는 SVG만 지원)
+err-news-image-unsupported-type = 지원되지 않는 뉴스 이미지 유형입니다 (PNG, JPEG, WebP 또는 SVG만 지원)
 err-news-empty-content = 뉴스에는 텍스트 또는 이미지가 있어야 합니다
 err-cannot-edit-admin-news = 관리자가 게시한 뉴스는 관리자만 수정할 수 있습니다
 err-cannot-delete-admin-news = 관리자가 게시한 뉴스는 관리자만 삭제할 수 있습니다

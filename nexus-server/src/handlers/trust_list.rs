@@ -38,12 +38,9 @@ where
 
     if !requesting_user.has_permission(Permission::TrustList) {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_TRUST_LIST_PERMISSION_DENIED);
-        let response = ServerMessage::TrustListResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            entries: None,
-        };
-        return ctx.send_message(&response).await;
+        return ctx
+            .send_message(&reject_trust_list(err_permission_denied(ctx.locale)))
+            .await;
     }
 
     match ctx.db.trusts.list_active_trusts().await {
@@ -60,22 +57,29 @@ where
                 })
                 .collect();
 
-            let response = ServerMessage::TrustListResponse {
-                success: true,
-                error: None,
-                entries: Some(trust_infos),
-            };
-            ctx.send_message(&response).await
+            ctx.send_message(&trust_list_success(trust_infos)).await
         }
         Err(e) => {
             error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_TRUST_LIST_DB_ERROR);
-            let response = ServerMessage::TrustListResponse {
-                success: false,
-                error: Some(super::err_database(ctx.locale)),
-                entries: None,
-            };
-            ctx.send_message(&response).await
+            ctx.send_message(&reject_trust_list(super::err_database(ctx.locale)))
+                .await
         }
+    }
+}
+
+fn trust_list_success(entries: Vec<TrustInfo>) -> ServerMessage {
+    ServerMessage::TrustListResponse {
+        success: true,
+        error: None,
+        entries: Some(entries),
+    }
+}
+
+fn reject_trust_list(error: String) -> ServerMessage {
+    ServerMessage::TrustListResponse {
+        success: false,
+        error: Some(error),
+        entries: None,
     }
 }
 

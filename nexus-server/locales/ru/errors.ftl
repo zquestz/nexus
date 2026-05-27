@@ -7,7 +7,6 @@ err-nickname-in-use = Псевдоним уже используется
 err-nickname-invalid = Псевдоним содержит недопустимые символы (разрешены буквы, цифры и символы - без пробелов и управляющих символов)
 err-nickname-is-username = Псевдоним не может совпадать с существующим именем пользователя
 err-username-is-active-nickname = Имя пользователя не может совпадать с уже используемым псевдонимом
-err-nickname-not-found = Пользователь "{ $nickname }" не найден
 err-nickname-not-online = Пользователь "{ $nickname }" не в сети
 err-nickname-required = Псевдоним обязателен для общих учетных записей
 err-nickname-too-long = Псевдоним слишком длинный (макс. { $max_length } символов)
@@ -21,8 +20,6 @@ err-status-invalid-characters = Сообщение об отсутствии с�
 err-shared-cannot-be-admin = Общие учетные записи не могут быть администраторами
 err-shared-cannot-self-edit = Общие учетные записи не могут редактировать сами себя
 err-shared-invalid-permissions = Общие учетные записи не могут иметь эти разрешения: { $permissions }
-err-shared-message-requires-nickname = Общим учетным записям можно отправлять сообщения только по никнейму
-err-shared-kick-requires-nickname = Общие учетные записи можно кикнуть только по никнейму
 
 # Ошибки гостевой учетной записи
 err-guest-disabled = Гостевой доступ не включен на этом сервере
@@ -33,7 +30,8 @@ err-cannot-delete-guest = Гостевую учетную запись нель�
 # Ошибки валидации аватара
 err-avatar-invalid-format = Недопустимый формат аватара (должен быть data URI с кодировкой base64)
 err-avatar-too-large = Аватар слишком большой (макс. { $max_length } байт)
-err-avatar-unsupported-type = Неподдерживаемый тип аватара (только PNG, WebP или SVG)
+err-avatar-unsupported-type = Неподдерживаемый тип аватара (только PNG, JPEG, WebP или SVG)
+err-avatar-undecodable = Не удалось декодировать аватар как корректное изображение
 err-authentication = Ошибка аутентификации
 err-invalid-credentials = Неверное имя пользователя или пароль
 err-handshake-required = Требуется рукопожатие
@@ -41,7 +39,6 @@ err-already-logged-in = Вы уже вошли в систему
 err-handshake-already-completed = Рукопожатие уже выполнено
 err-account-deleted = Ваша учетная запись удалена
 err-account-disabled-by-admin = Учетная запись отключена администратором
-err-account-type-changed = Тип этой учётной записи изменился. Пожалуйста, переподключитесь.
 
 # Ошибки прав доступа
 err-permission-denied = Доступ запрещен
@@ -144,7 +141,6 @@ err-kick-reason-too-long = Причина кика слишком длинная
 err-kick-reason-invalid-characters = Причина кика содержит недопустимые символы
 err-username-exists = Имя пользователя "{ $username }" уже существует
 err-user-not-found = Пользователь "{ $username }" не найден
-err-user-not-online = Пользователь "{ $username }" не в сети
 err-failed-to-create-user = Не удалось создать пользователя "{ $username }"
 err-account-disabled = Учетная запись "{ $username }" отключена
 err-update-failed = Не удалось обновить пользователя "{ $username }"
@@ -172,7 +168,7 @@ err-invalid-password-strength = Недопустимое значение над
 
 err-server-image-too-large = Изображение сервера слишком большое (максимум 512КБ)
 err-server-image-invalid-format = Недопустимый формат изображения сервера (должен быть data URI с кодировкой base64)
-err-server-image-unsupported-type = Неподдерживаемый тип изображения сервера (только PNG, WebP, JPEG или SVG)
+err-server-image-unsupported-type = Неподдерживаемый тип изображения сервера (только PNG, JPEG, WebP или SVG)
 err-public-address-too-long = Публичный адрес слишком длинный (максимум { $max_length } байт)
 err-public-address-contains-scheme = Публичный адрес не должен содержать URL-схему
 err-public-address-contains-brackets = Публичный адрес не должен содержать скобки
@@ -189,7 +185,7 @@ err-news-body-too-long = Текст новости слишком длинный
 err-news-body-invalid-characters = Текст новости содержит недопустимые символы
 err-news-image-too-large = Изображение новости слишком большое (максимум 512КБ)
 err-news-image-invalid-format = Недопустимый формат изображения новости (должен быть data URI с кодировкой base64)
-err-news-image-unsupported-type = Неподдерживаемый тип изображения новости (только PNG, WebP, JPEG или SVG)
+err-news-image-unsupported-type = Неподдерживаемый тип изображения новости (только PNG, JPEG, WebP или SVG)
 err-news-empty-content = Новость должна содержать текст или изображение
 err-cannot-edit-admin-news = Только администраторы могут редактировать новости, опубликованные администраторами
 err-cannot-delete-admin-news = Только администраторы могут удалять новости, опубликованные администраторами

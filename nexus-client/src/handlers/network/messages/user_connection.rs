@@ -63,6 +63,7 @@ impl NexusApp {
             } else {
                 // New shared account session - add as separate entry
                 conn.online_users.push(ClientUserInfo {
+                    id: user.id,
                     username: user.username.clone(),
                     nickname: user.nickname.clone(),
                     is_admin: user.is_admin,
@@ -80,11 +81,13 @@ impl NexusApp {
                 true
             }
         } else {
-            // Regular account: Check if user already exists (multi-device connection)
+            // Regular account: merge into the existing row if present. Match by the
+            // immutable id, not username — if a rename and this UserConnected race on
+            // the wire, a username match could miss the row and push a duplicate entry.
             if let Some(existing_user) = conn
                 .online_users
                 .iter_mut()
-                .find(|u| !u.is_shared && u.username == user.username)
+                .find(|u| !u.is_shared && u.id == user.id)
             {
                 // User already exists - merge session_ids
                 for session_id in &user.session_ids {
@@ -96,8 +99,17 @@ impl NexusApp {
                 // Update avatar if it changed (latest login wins)
                 if existing_user.avatar_hash != new_avatar_hash {
                     existing_user.avatar_hash = new_avatar_hash;
-                    conn.avatar_cache.remove(&avatar_cache_key(&nickname));
-                    get_or_create_avatar(&mut conn.avatar_cache, &nickname, user.avatar.as_deref());
+                    // Cache under the row's CURRENT nickname, not the incoming one: if a
+                    // rename is in flight it hasn't been applied to this row yet (the
+                    // rename UserUpdated re-keys it), so caching under the incoming name
+                    // would be clobbered when that rename moves the old key over it.
+                    let cache_nickname = existing_user.nickname.clone();
+                    conn.avatar_cache.remove(&avatar_cache_key(&cache_nickname));
+                    get_or_create_avatar(
+                        &mut conn.avatar_cache,
+                        &cache_nickname,
+                        user.avatar.as_deref(),
+                    );
                 }
 
                 // Update away/status (latest login wins)
@@ -108,6 +120,7 @@ impl NexusApp {
             } else {
                 // New user - add to list
                 conn.online_users.push(ClientUserInfo {
+                    id: user.id,
                     username: user.username.clone(),
                     nickname: user.nickname.clone(),
                     is_admin: user.is_admin,

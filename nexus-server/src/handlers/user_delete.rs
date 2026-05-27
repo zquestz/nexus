@@ -18,7 +18,7 @@ use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, Outcome, dispatch_outcome, err_account_deleted, err_cannot_delete_admin,
     err_cannot_delete_guest, err_cannot_delete_last_admin, err_cannot_delete_self, err_database,
-    err_not_logged_in, err_permission_denied, err_user_not_found, remove_user_with_voice_cleanup,
+    err_not_logged_in, err_permission_denied, err_user_not_found, remove_users_with_cleanup,
 };
 use crate::db::Permission;
 use crate::db::sql::GUEST_USERNAME;
@@ -116,23 +116,20 @@ where
                     .user_manager
                     .get_sessions_by_user_id(target_user.id)
                     .await;
-                for online_user in online_users {
+                for online_user in &online_users {
                     let disconnect_msg = ServerMessage::Error {
                         message: err_account_deleted(&online_user.locale),
                         command: None,
                     };
                     let _ = online_user.tx.send((disconnect_msg, None));
-
-                    let session_id = online_user.session_id;
-                    remove_user_with_voice_cleanup(
-                        ctx.user_manager,
-                        ctx.voice_registry,
-                        ctx.channel_manager,
-                        session_id,
-                        &online_user,
-                    )
-                    .await;
                 }
+                remove_users_with_cleanup(
+                    ctx.user_manager,
+                    ctx.voice_registry,
+                    ctx.channel_manager,
+                    &online_users,
+                )
+                .await;
 
                 Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
                     success: true,

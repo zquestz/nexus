@@ -4,6 +4,8 @@
 //! - `generate_identicon()` - Generate identicon from username
 //! - `get_or_create_avatar()` - Get cached avatar or create one
 //! - `compute_avatar_hash()` - Compute hash for efficient change detection
+//! - `apply_avatar_update()` - Apply a `UserUpdated` avatar delta (tri-state, re-keys on rename)
+//! - `avatar_cache_key()` - Folded cache key for a nickname
 
 use std::collections::HashMap;
 
@@ -59,7 +61,7 @@ pub fn compute_avatar_hash(avatar_data_uri: Option<&str>) -> Option<[u8; 32]> {
 /// - If the user has a custom avatar (data URI), decodes and caches it
 /// - If decoding fails or no avatar, generates and caches an identicon
 ///
-/// The cache key is the nickname normalized to lowercase for case-insensitive lookups.
+/// The cache key is the nickname folded for case-insensitive lookups.
 /// This ensures consistent avatar display regardless of nickname casing from different
 /// server responses (e.g., UserConnected vs UserInfoDetailed).
 pub fn get_or_create_avatar(
@@ -67,7 +69,7 @@ pub fn get_or_create_avatar(
     nickname: &str,
     avatar_data_uri: Option<&str>,
 ) -> CachedImage {
-    // Normalize key to lowercase for case-insensitive matching
+    // Fold for case-insensitive matching.
     let cache_key = fold_name(nickname);
 
     // Check if already cached
@@ -81,14 +83,69 @@ pub fn get_or_create_avatar(
         .and_then(|uri| decode_data_uri_square(uri, AVATAR_MAX_CACHE_SIZE))
         .unwrap_or_else(|| generate_identicon(nickname));
 
-    // Cache and return (keyed by lowercase nickname)
+    // Cache and return (keyed by folded nickname).
     cache.insert(cache_key, avatar.clone());
     avatar
 }
 
-/// Get the cache key for a nickname (lowercase for case-insensitive lookups)
+/// Get the cache key for a nickname (folded for case-insensitive lookups).
 pub fn avatar_cache_key(nickname: &str) -> String {
     fold_name(nickname)
+}
+
+/// Apply a `UserUpdated` avatar delta to the cache, honoring the wire rule:
+/// `Some(non-empty)` = set this avatar, `Some("")` = clear (fall back to an
+/// identicon), `None` = unchanged. On a rename (`old_nickname` != `new_nickname`)
+/// the cache is re-keyed to the new nickname; in the unchanged (`None`) case a
+/// *real* avatar is moved across (we no longer hold the data URI to re-decode it),
+/// while an identicon is dropped so it regenerates from the new nickname.
+/// `had_real_avatar` is whether the user had a decoded (non-identicon) avatar
+/// before this update.
+pub fn apply_avatar_update(
+    cache: &mut HashMap<String, CachedImage>,
+    old_nickname: &str,
+    new_nickname: &str,
+    avatar: Option<&str>,
+    had_real_avatar: bool,
+) {
+    let old_key = avatar_cache_key(old_nickname);
+    let new_key = avatar_cache_key(new_nickname);
+    let renamed = old_key != new_key;
+
+    match avatar {
+        // Unchanged: keep the cached avatar. On a rename, move a real avatar to the
+        // new key; an identicon is dropped so it regenerates from the new nickname.
+        None => {
+            if renamed {
+                match cache.remove(&old_key) {
+                    Some(image) if had_real_avatar => {
+                        cache.insert(new_key, image);
+                    }
+                    _ => {}
+                }
+            } else if old_nickname != new_nickname && !had_real_avatar {
+                // Case-only rename (same folded key, e.g. alice -> Alice): the
+                // identicon is seeded from the exact nickname, so drop the stale one
+                // and let the next render regenerate it from the new case.
+                cache.remove(&new_key);
+            }
+        }
+        // Cleared: drop any cached image so the view falls back to an identicon.
+        Some("") => {
+            cache.remove(&old_key);
+            if renamed {
+                cache.remove(&new_key);
+            }
+        }
+        // Set: decode the new avatar under the new key.
+        Some(data) => {
+            if renamed {
+                cache.remove(&old_key);
+            }
+            cache.remove(&new_key);
+            get_or_create_avatar(cache, new_nickname, Some(data));
+        }
+    }
 }
 
 // =============================================================================
@@ -354,5 +411,100 @@ mod tests {
         // Should have one cache entry (both map to same lowercase key)
         assert_eq!(cache.len(), 1);
         assert!(cache.contains_key("testuser"));
+    }
+
+    // =========================================================================
+    // apply_avatar_update tests (UserUpdated tri-state delta)
+    // =========================================================================
+
+    #[test]
+    fn test_apply_avatar_update_none_same_nick_keeps_cache() {
+        let mut cache = HashMap::new();
+        cache.insert(avatar_cache_key("alice"), generate_identicon("alice"));
+
+        // None = unchanged: the cache must be left exactly as-is.
+        apply_avatar_update(&mut cache, "alice", "alice", None, true);
+
+        assert!(cache.contains_key(&avatar_cache_key("alice")));
+    }
+
+    #[test]
+    fn test_apply_avatar_update_none_rename_moves_real_avatar() {
+        let mut cache = HashMap::new();
+        cache.insert(avatar_cache_key("alice"), generate_identicon("seed"));
+
+        // Rename with a real avatar and no new data URI: the decoded image must
+        // move to the new key (it can't be re-decoded).
+        apply_avatar_update(&mut cache, "alice", "alicia", None, true);
+
+        assert!(!cache.contains_key(&avatar_cache_key("alice")));
+        assert!(cache.contains_key(&avatar_cache_key("alicia")));
+    }
+
+    #[test]
+    fn test_apply_avatar_update_none_rename_drops_identicon() {
+        let mut cache = HashMap::new();
+        cache.insert(avatar_cache_key("alice"), generate_identicon("alice"));
+
+        // Rename of an identicon-only user: don't move it (the new nickname has a
+        // different identicon); just drop the stale old key.
+        apply_avatar_update(&mut cache, "alice", "alicia", None, false);
+
+        assert!(!cache.contains_key(&avatar_cache_key("alice")));
+        assert!(!cache.contains_key(&avatar_cache_key("alicia")));
+    }
+
+    #[test]
+    fn test_apply_avatar_update_empty_clears() {
+        let mut cache = HashMap::new();
+        cache.insert(avatar_cache_key("alice"), generate_identicon("alice"));
+
+        // "" = cleared: drop the entry so the view falls back to an identicon.
+        apply_avatar_update(&mut cache, "alice", "alice", Some(""), true);
+
+        assert!(!cache.contains_key(&avatar_cache_key("alice")));
+    }
+
+    #[test]
+    fn test_apply_avatar_update_case_only_drops_identicon() {
+        let mut cache = HashMap::new();
+        // Identicon cached for "alice" (no real avatar), keyed by the folded name.
+        get_or_create_avatar(&mut cache, "alice", None);
+        assert!(cache.contains_key(&avatar_cache_key("alice")));
+
+        // Case-only rename with no avatar change: the stale identicon (seeded from
+        // the exact "alice") is dropped so it regenerates from "Alice".
+        apply_avatar_update(&mut cache, "alice", "Alice", None, false);
+        assert!(
+            !cache.contains_key(&avatar_cache_key("Alice")),
+            "case-only rename drops the name-seeded identicon"
+        );
+
+        // A real avatar is not name-seeded, so a case-only rename keeps it.
+        let mut real = HashMap::new();
+        real.insert(avatar_cache_key("bob"), generate_identicon("stand-in"));
+        apply_avatar_update(&mut real, "bob", "Bob", None, true);
+        assert!(
+            real.contains_key(&avatar_cache_key("Bob")),
+            "case-only rename keeps a real avatar"
+        );
+    }
+
+    #[test]
+    fn test_apply_avatar_update_data_repopulates() {
+        let mut cache = HashMap::new();
+        cache.insert(avatar_cache_key("alice"), generate_identicon("stale"));
+
+        // Some(data) = set: the entry is invalidated and repopulated (decoded, or
+        // identicon fallback when the URI is unusable — either way, present).
+        apply_avatar_update(
+            &mut cache,
+            "alice",
+            "alice",
+            Some("data:image/png;base64,xxx"),
+            false,
+        );
+
+        assert!(cache.contains_key(&avatar_cache_key("alice")));
     }
 }

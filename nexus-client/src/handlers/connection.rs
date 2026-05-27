@@ -475,18 +475,21 @@ impl NexusApp {
 
     /// Close a user message tab
     ///
-    /// The `nickname` parameter is the display name (always populated; equals username for regular accounts).
+    /// The `nickname` parameter is the display name (always populated; equals username
+    /// for regular accounts). Resolved to the canonical tab key by folded identity, so
+    /// any-case input closes the right tab; a non-existent tab is a no-op.
     pub fn handle_close_user_message_tab(&mut self, nickname: String) -> Task<Message> {
         if let Some(conn_id) = self.active_connection
             && let Some(conn) = self.connections.get_mut(&conn_id)
+            && let Some(key) = conn.user_message_tab_key(&nickname)
         {
             // Remove from tab list
-            conn.user_message_tabs.retain(|n| n != &nickname);
+            conn.user_message_tabs.retain(|n| n != &key);
 
             // Remove message history
-            conn.user_messages.remove(&nickname);
+            conn.user_messages.remove(&key);
 
-            let tab = ChatTab::UserMessage(nickname);
+            let tab = ChatTab::UserMessage(key);
             conn.unread_tabs.remove(&tab);
             conn.scroll_states.remove(&tab);
 

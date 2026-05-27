@@ -2,6 +2,7 @@
 
 use std::io;
 
+use ipnet::IpNet;
 use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
@@ -11,14 +12,14 @@ use nexus_common::validators::{self, BanReasonError, DurationError, TargetError}
 
 use super::duration::{format_duration_remaining, parse_duration};
 use super::{
-    HandlerContext, cleanup_voice_for_ip, cleanup_voice_for_range, err_ban_admin_by_ip,
-    err_ban_admin_by_nickname, err_ban_invalid_duration, err_ban_invalid_target, err_ban_self,
-    err_database, err_not_logged_in, err_permission_denied, err_reason_invalid,
-    err_reason_too_long, err_target_too_long,
+    HandlerContext, Outcome, dispatch_outcome, err_ban_admin_by_ip, err_ban_admin_by_nickname,
+    err_ban_invalid_duration, err_ban_invalid_target, err_ban_self, err_database,
+    err_not_logged_in, err_permission_denied, err_reason_invalid, err_reason_too_long,
+    err_target_too_long, remove_users_with_cleanup,
 };
 use crate::constants::*;
 use crate::db::Permission;
-use crate::ip_rule_cache::{canonicalize_target, parse_ip_or_cidr};
+use crate::ip_rule_cache::canonicalize_target;
 
 /// Creates or updates an IP ban. Target is an online nickname (bans its
 /// IP(s)), a bare IP, or a CIDR range.
@@ -39,329 +40,305 @@ where
             .await;
     };
 
-    let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
-        Some(user) => user,
-        None => {
-            return ctx
-                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_BAN_CREATE))
-                .await;
+    // Guard lives only inside this block; all socket sends to the requester happen
+    // after it. Bans take the write side because they mutate live user state via
+    // forced teardown. That keeps login's add_user -> auto-join path from
+    // interleaving with ban cleanup after the new session becomes visible.
+    let outcome = 'locked: {
+        let _user_state = ctx.user_manager.lock_user_state().await;
+
+        let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
+            Some(user) => user,
+            None => break 'locked Outcome::Disconnect,
+        };
+
+        if !requesting_user.has_permission(Permission::BanCreate) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_BAN_CREATE_PERMISSION_DENIED);
+            break 'locked Outcome::Send(Box::new(reject_ban_create(err_permission_denied(
+                ctx.locale,
+            ))));
         }
-    };
 
-    if !requesting_user.has_permission(Permission::BanCreate) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_BAN_CREATE_PERMISSION_DENIED);
-        let response = ServerMessage::BanCreateResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            ips: None,
-            nickname: None,
+        let validated = match validate_ban_create_inputs(&target, &duration, &reason, ctx.locale) {
+            Ok(validated) => validated,
+            Err(error) => break 'locked Outcome::Send(Box::new(reject_ban_create(error))),
         };
-        return ctx.send_message(&response).await;
-    }
+        let expires_at = validated.expires_at;
 
-    if let Err(e) = validators::validate_target(&target) {
-        let error_msg = match e {
-            TargetError::Empty => err_ban_invalid_target(ctx.locale),
-            TargetError::TooLong => err_target_too_long(ctx.locale, validators::MAX_TARGET_LENGTH),
-        };
-        let response = ServerMessage::BanCreateResponse {
-            success: false,
-            error: Some(error_msg),
-            ips: None,
-            nickname: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    if let Some(ref d) = duration
-        && let Err(DurationError::TooLong) = validators::validate_duration(d)
-    {
-        let response = ServerMessage::BanCreateResponse {
-            success: false,
-            error: Some(err_ban_invalid_duration(ctx.locale)),
-            ips: None,
-            nickname: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    if let Some(ref r) = reason
-        && let Err(e) = validators::validate_ban_reason(r)
-    {
-        let error_msg = match e {
-            BanReasonError::TooLong => {
-                err_reason_too_long(ctx.locale, validators::MAX_BAN_REASON_LENGTH)
+        let resolved_target = match resolve_target(&target, &requesting_user.username, ctx).await {
+            Ok(result) => result,
+            Err(TargetResolutionError::InvalidTarget) => {
+                break 'locked Outcome::Send(Box::new(reject_ban_create(err_ban_invalid_target(
+                    ctx.locale,
+                ))));
             }
-            BanReasonError::InvalidCharacters => err_reason_invalid(ctx.locale),
+            Err(TargetResolutionError::IsAdmin) => {
+                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_BAN_CREATE_ADMIN_NICKNAME);
+                break 'locked Outcome::Send(Box::new(reject_ban_create(
+                    err_ban_admin_by_nickname(ctx.locale),
+                )));
+            }
+            Err(TargetResolutionError::IsSelf) => {
+                break 'locked Outcome::Send(Box::new(reject_ban_create(err_ban_self(ctx.locale))));
+            }
         };
-        let response = ServerMessage::BanCreateResponse {
-            success: false,
-            error: Some(error_msg),
-            ips: None,
-            nickname: None,
+
+        // Refuse any ban (by nickname, IP, or CIDR) that would cover a connected admin.
+        match &resolved_target {
+            ResolvedBanTarget::Range { target, net } => {
+                if ctx.user_manager.is_admin_connected_in_range(net).await {
+                    warn!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_BAN_CREATE_ADMIN_CIDR);
+                    break 'locked Outcome::Send(Box::new(reject_ban_create(err_ban_admin_by_ip(
+                        ctx.locale,
+                    ))));
+                }
+            }
+            ResolvedBanTarget::ExactIps { ips, .. } => {
+                for target_ip in ips {
+                    if ctx.user_manager.is_admin_connected_from_ip(target_ip).await {
+                        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target_ip, "{}", LOG_BAN_CREATE_ADMIN_IP);
+                        break 'locked Outcome::Send(Box::new(reject_ban_create(
+                            err_ban_admin_by_ip(ctx.locale),
+                        )));
+                    }
+                }
+            }
+        }
+
+        // Always check (even banning by nickname): the target may share our IP.
+        let our_ip = ctx.peer_addr.ip();
+        let would_ban_self = match &resolved_target {
+            ResolvedBanTarget::Range { net, .. } => net.contains(&our_ip),
+            ResolvedBanTarget::ExactIps { ips, .. } => ips.contains(&our_ip.to_string()),
         };
-        return ctx.send_message(&response).await;
-    }
 
-    let expires_at = match parse_duration(&duration) {
-        Ok(expires) => expires,
-        Err(_) => {
-            let response = ServerMessage::BanCreateResponse {
-                success: false,
-                error: Some(err_ban_invalid_duration(ctx.locale)),
-                ips: None,
-                nickname: None,
-            };
-            return ctx.send_message(&response).await;
+        if would_ban_self {
+            break 'locked Outcome::Send(Box::new(reject_ban_create(err_ban_self(ctx.locale))));
         }
-    };
 
-    let (targets_to_ban, nickname_annotation, is_range) = match resolve_target(
-        &target,
-        &requesting_user.username,
-        ctx,
-    )
-    .await
-    {
-        Ok(result) => result,
-        Err(TargetResolutionError::InvalidTarget) => {
-            let response = ServerMessage::BanCreateResponse {
-                success: false,
-                error: Some(err_ban_invalid_target(ctx.locale)),
-                ips: None,
-                nickname: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-        Err(TargetResolutionError::IsAdmin) => {
-            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_BAN_CREATE_ADMIN_NICKNAME);
-            let response = ServerMessage::BanCreateResponse {
-                success: false,
-                error: Some(err_ban_admin_by_nickname(ctx.locale)),
-                ips: None,
-                nickname: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-        Err(TargetResolutionError::IsSelf) => {
-            let response = ServerMessage::BanCreateResponse {
-                success: false,
-                error: Some(err_ban_self(ctx.locale)),
-                ips: None,
-                nickname: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
+        let targets_to_ban = resolved_target.targets();
+        let nickname_annotation = resolved_target.nickname_annotation().map(str::to_string);
 
-    // Refuse any ban (by nickname, IP, or CIDR) that would cover a connected admin.
-    if is_range {
-        if let Some(net) = parse_ip_or_cidr(&targets_to_ban[0])
-            && ctx.user_manager.is_admin_connected_in_range(&net).await
+        let banned_targets = match create_or_update_ban_rules(
+            ctx,
+            &targets_to_ban,
+            nickname_annotation.as_deref(),
+            reason.as_deref(),
+            &requesting_user.username,
+            expires_at,
+        )
+        .await
         {
-            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %targets_to_ban[0], "{}", LOG_BAN_CREATE_ADMIN_CIDR);
-            let response = ServerMessage::BanCreateResponse {
-                success: false,
-                error: Some(err_ban_admin_by_ip(ctx.locale)),
-                ips: None,
-                nickname: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-    } else {
-        for target_ip in &targets_to_ban {
-            if ctx.user_manager.is_admin_connected_from_ip(target_ip).await {
-                warn!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target_ip, "{}", LOG_BAN_CREATE_ADMIN_IP);
-                let response = ServerMessage::BanCreateResponse {
-                    success: false,
-                    error: Some(err_ban_admin_by_ip(ctx.locale)),
-                    ips: None,
-                    nickname: None,
-                };
-                return ctx.send_message(&response).await;
-            }
-        }
-    }
-
-    // Always check (even banning by nickname): the target may share our IP.
-    let our_ip = ctx.peer_addr.ip();
-    let would_ban_self = if is_range {
-        parse_ip_or_cidr(&targets_to_ban[0])
-            .map(|net| net.contains(&our_ip))
-            .unwrap_or(false)
-    } else {
-        targets_to_ban.contains(&our_ip.to_string())
-    };
-
-    if would_ban_self {
-        let response = ServerMessage::BanCreateResponse {
-            success: false,
-            error: Some(err_ban_self(ctx.locale)),
-            ips: None,
-            nickname: None,
+            Ok(targets) => targets,
+            Err(response) => break 'locked Outcome::Send(Box::new(response)),
         };
-        return ctx.send_message(&response).await;
-    }
 
-    let mut banned_targets = Vec::new();
-    for target_str in &targets_to_ban {
-        match ctx
-            .db
-            .bans
-            .create_or_update_ban(
-                target_str,
-                nickname_annotation.as_deref(),
-                reason.as_deref(),
-                &requesting_user.username,
-                expires_at,
-            )
-            .await
-        {
-            Ok(_) => {
-                banned_targets.push(target_str.clone());
-            }
-            Err(e) => {
-                error!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target_str, err = %e, "{}", LOG_BAN_CREATE_DB_ERROR);
-                let response = ServerMessage::BanCreateResponse {
-                    success: false,
-                    error: Some(err_database(ctx.locale)),
-                    ips: None,
-                    nickname: None,
-                };
-                return ctx.send_message(&response).await;
-            }
-        }
-    }
+        let (sessions, transfer_scope) = {
+            let _ip_rule_read = ctx.ip_rule_cache.lock_rule_read().await;
+            match &resolved_target {
+                ResolvedBanTarget::Range { net, .. } => {
+                    let sessions = ctx
+                        .user_manager
+                        .sessions_in_range(net, |ip| {
+                            ctx.ip_rule_cache.read().is_trusted_read_only(*ip)
+                        })
+                        .await;
 
-    {
-        let mut cache = ctx.ip_rule_cache.write().expect(ERR_IP_CACHE_POISONED);
-        for target_str in &banned_targets {
-            cache.add_ban(target_str, expires_at);
-        }
-    }
+                    (sessions, BanDisconnectScope::Range(*net))
+                }
+                ResolvedBanTarget::ExactIps { .. } => {
+                    // Exact-IP targets may contain several IPs when resolved from a nickname.
+                    // Gather all matching sessions first so multi-session accounts
+                    // re-aggregate once from the final state, not once per IP.
+                    let mut sessions = Vec::new();
+                    for ip in &banned_targets {
+                        sessions.extend(
+                            ctx.user_manager
+                                .sessions_by_ip(ip, |ip| {
+                                    ctx.ip_rule_cache.read().is_trusted_read_only(*ip)
+                                })
+                                .await,
+                        );
+                    }
 
-    // Tear down voice (notifying other participants) before disconnecting; trusted IPs skipped.
-    if is_range {
-        if let Some(net) = parse_ip_or_cidr(&banned_targets[0]) {
-            cleanup_voice_for_range(
-                ctx.user_manager,
-                ctx.voice_registry,
-                ctx.channel_manager,
-                &net,
-                |ip| {
-                    ctx.ip_rule_cache
-                        .read()
-                        .expect(ERR_IP_CACHE_POISONED)
-                        .is_trusted_read_only(*ip)
-                },
-            )
-            .await;
-        }
-    } else {
-        for ip in &banned_targets {
-            cleanup_voice_for_ip(
-                ctx.user_manager,
-                ctx.voice_registry,
-                ctx.channel_manager,
-                ip,
-                |ip| {
-                    ctx.ip_rule_cache
-                        .read()
-                        .expect(ERR_IP_CACHE_POISONED)
-                        .is_trusted_read_only(*ip)
-                },
-            )
-            .await;
-        }
-    }
-
-    // Disconnect banned sessions + transfers. Each banned session gets its reason
-    // while still live, then `remove_users_and_broadcast` removes them and emits
-    // UserDisconnected (+ re-aggregated UserUpdated for any surviving account
-    // session). Trusted IPs are left connected: trust bypasses ban checks, so
-    // disconnecting them would just churn.
-    if is_range {
-        if let Some(net) = parse_ip_or_cidr(&banned_targets[0]) {
-            let targets = ctx
-                .user_manager
-                .sessions_in_range(&net, |ip| {
-                    ctx.ip_rule_cache
-                        .read()
-                        .expect(ERR_IP_CACHE_POISONED)
-                        .is_trusted_read_only(*ip)
-                })
-                .await;
-
-            for (session_id, locale) in &targets {
-                ctx.user_manager
-                    .send_to_session(
-                        *session_id,
-                        build_ban_disconnect_message(locale, expires_at),
+                    (
+                        sessions,
+                        BanDisconnectScope::ExactIps(banned_targets.clone()),
                     )
-                    .await;
+                }
             }
-            let session_ids: Vec<u32> = targets.into_iter().map(|(id, _)| id).collect();
-            ctx.user_manager
-                .remove_users_and_broadcast(&session_ids)
-                .await;
+        };
 
+        // Disconnect banned sessions + transfers. Each banned session gets its reason
+        // while still live, then `remove_users_with_cleanup` tears down voice
+        // (notifying other participants) and removes them — emitting one
+        // UserDisconnected per session plus a re-aggregated UserUpdated for any
+        // surviving session of a partially-banned account. Trusted IPs are left
+        // connected: trust bypasses ban checks, so disconnecting them would just churn.
+        for session in &sessions {
+            let _ = session.tx.send((
+                build_ban_disconnect_message(&session.locale, expires_at),
+                None,
+            ));
+        }
+        remove_users_with_cleanup(
+            ctx.user_manager,
+            ctx.voice_registry,
+            ctx.channel_manager,
+            &sessions,
+        )
+        .await;
+
+        {
+            let _ip_rule_read = ctx.ip_rule_cache.lock_rule_read().await;
             ctx.transfer_registry.disconnect_matching(|ip| {
-                net.contains(&ip)
-                    && !ctx
-                        .ip_rule_cache
-                        .read()
-                        .expect(ERR_IP_CACHE_POISONED)
-                        .is_trusted_read_only(ip)
+                let is_banned = match &transfer_scope {
+                    BanDisconnectScope::Range(net) => net.contains(&ip),
+                    BanDisconnectScope::ExactIps(ips) => ips.contains(&ip.to_string()),
+                };
+                is_banned && !ctx.ip_rule_cache.read().is_trusted_read_only(ip)
             });
         }
-    } else {
-        // Banning a nickname can span several IPs of one account; gather all of
-        // them so the account re-aggregates once (final state), not per IP.
-        let mut session_ids = Vec::new();
-        for ip in &banned_targets {
-            let targets = ctx
-                .user_manager
-                .sessions_by_ip(ip, |ip| {
-                    ctx.ip_rule_cache
-                        .read()
-                        .expect(ERR_IP_CACHE_POISONED)
-                        .is_trusted_read_only(*ip)
-                })
-                .await;
 
-            for (session_id, locale) in &targets {
-                ctx.user_manager
-                    .send_to_session(
-                        *session_id,
-                        build_ban_disconnect_message(locale, expires_at),
-                    )
-                    .await;
-            }
-            session_ids.extend(targets.into_iter().map(|(id, _)| id));
+        info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_BAN_CREATE_SUCCESS);
+        Outcome::Send(Box::new(ban_create_success(
+            banned_targets,
+            nickname_annotation,
+        )))
+    };
+
+    dispatch_outcome(outcome, ctx, HANDLER_BAN_CREATE).await
+}
+
+fn reject_ban_create(error: String) -> ServerMessage {
+    ServerMessage::BanCreateResponse {
+        success: false,
+        error: Some(error),
+        ips: None,
+        nickname: None,
+    }
+}
+
+fn ban_create_success(ips: Vec<String>, nickname: Option<String>) -> ServerMessage {
+    ServerMessage::BanCreateResponse {
+        success: true,
+        error: None,
+        ips: Some(ips),
+        nickname,
+    }
+}
+
+async fn create_or_update_ban_rules<W>(
+    ctx: &HandlerContext<'_, W>,
+    targets_to_ban: &[String],
+    nickname_annotation: Option<&str>,
+    reason: Option<&str>,
+    requested_by: &str,
+    expires_at: Option<i64>,
+) -> Result<Vec<String>, ServerMessage>
+where
+    W: AsyncWrite + Unpin,
+{
+    let _ip_rule_mutation = ctx.ip_rule_cache.lock_mutation().await;
+
+    let banned_targets: Vec<String> = ctx
+        .db
+        .bans
+        .create_or_update_ban_targets(
+            targets_to_ban.iter().map(String::as_str),
+            nickname_annotation,
+            reason,
+            requested_by,
+            expires_at,
+        )
+        .await
+        .map_err(|e| {
+            error!(user = %requested_by, ip = %ctx.peer_addr, targets = ?targets_to_ban, err = %e, "{}", LOG_BAN_CREATE_DB_ERROR);
+            reject_ban_create(err_database(ctx.locale))
+        })?
+        .into_iter()
+        .map(|ban| ban.ip_address)
+        .collect();
+
+    {
+        let mut cache = ctx.ip_rule_cache.write();
+        for target in &banned_targets {
+            cache.add_ban(target, expires_at);
         }
-        ctx.user_manager
-            .remove_users_and_broadcast(&session_ids)
-            .await;
+    }
 
-        ctx.transfer_registry.disconnect_matching(|ip| {
-            let ip_str = ip.to_string();
-            banned_targets.contains(&ip_str)
-                && !ctx
-                    .ip_rule_cache
-                    .read()
-                    .expect(ERR_IP_CACHE_POISONED)
-                    .is_trusted_read_only(ip)
+    Ok(banned_targets)
+}
+
+struct ValidatedBanCreate {
+    expires_at: Option<i64>,
+}
+
+enum BanDisconnectScope {
+    Range(IpNet),
+    ExactIps(Vec<String>),
+}
+
+enum ResolvedBanTarget {
+    ExactIps {
+        ips: Vec<String>,
+        nickname: Option<String>,
+    },
+    Range {
+        target: String,
+        net: IpNet,
+    },
+}
+
+impl ResolvedBanTarget {
+    fn targets(&self) -> Vec<String> {
+        match self {
+            Self::ExactIps { ips, .. } => ips.clone(),
+            Self::Range { target, .. } => vec![target.clone()],
+        }
+    }
+
+    fn nickname_annotation(&self) -> Option<&str> {
+        match self {
+            Self::ExactIps { nickname, .. } => nickname.as_deref(),
+            Self::Range { .. } => None,
+        }
+    }
+}
+
+fn validate_ban_create_inputs(
+    target: &str,
+    duration: &Option<String>,
+    reason: &Option<String>,
+    locale: &str,
+) -> Result<ValidatedBanCreate, String> {
+    if let Err(e) = validators::validate_target(target) {
+        return Err(match e {
+            TargetError::Empty => err_ban_invalid_target(locale),
+            TargetError::TooLong => err_target_too_long(locale, validators::MAX_TARGET_LENGTH),
         });
     }
 
-    info!(user = %requesting_user.username, ip = %ctx.peer_addr, target = %target, "{}", LOG_BAN_CREATE_SUCCESS);
-    let response = ServerMessage::BanCreateResponse {
-        success: true,
-        error: None,
-        ips: Some(banned_targets),
-        nickname: nickname_annotation,
-    };
-    ctx.send_message(&response).await
+    if let Some(d) = duration
+        && let Err(DurationError::TooLong) = validators::validate_duration(d)
+    {
+        return Err(err_ban_invalid_duration(locale));
+    }
+
+    if let Some(r) = reason
+        && let Err(e) = validators::validate_ban_reason(r)
+    {
+        return Err(match e {
+            BanReasonError::TooLong => {
+                err_reason_too_long(locale, validators::MAX_BAN_REASON_LENGTH)
+            }
+            BanReasonError::InvalidCharacters => err_reason_invalid(locale),
+        });
+    }
+
+    let expires_at = parse_duration(duration).map_err(|_| err_ban_invalid_duration(locale))?;
+
+    Ok(ValidatedBanCreate { expires_at })
 }
 
 enum TargetResolutionError {
@@ -370,18 +347,22 @@ enum TargetResolutionError {
     IsSelf,
 }
 
-/// Resolve a target to (IPs, nickname annotation, is_range). IP/CIDR targets are
+/// Resolve a target to exact IPs or one CIDR range. IP/CIDR targets are
 /// canonicalized (lowercase, host-bits zeroed) so stored/cached/response strings
 /// match regardless of admin-typed casing.
 async fn resolve_target<W>(
     target: &str,
     requesting_username: &str,
     ctx: &HandlerContext<'_, W>,
-) -> Result<(Vec<String>, Option<String>, bool), TargetResolutionError>
+) -> Result<ResolvedBanTarget, TargetResolutionError>
 where
     W: AsyncWrite + Unpin,
 {
-    if let Some(session) = ctx.user_manager.get_session_by_nickname(target).await {
+    // Caller holds the user-state lock so the nickname cannot change while this
+    // snapshot is captured. The ban itself is IP-keyed and rename-immune once the
+    // IPs are captured.
+    if let Some(snapshot) = ctx.user_manager.get_nickname_ip_snapshot(target).await {
+        let session = snapshot.representative;
         if session.is_admin {
             return Err(TargetResolutionError::IsAdmin);
         }
@@ -391,14 +372,26 @@ where
         }
 
         // A nickname may have multiple sessions, hence multiple IPs.
-        let ips = ctx.user_manager.get_ips_for_nickname(target).await;
-
-        return Ok((ips, Some(session.nickname.clone()), false));
+        return Ok(ResolvedBanTarget::ExactIps {
+            ips: snapshot.ips,
+            nickname: Some(session.nickname),
+        });
     }
 
-    // `canonicalize_target` hands back the precomputed `is_range` flag.
-    if let Some((canonical, _net, is_range)) = canonicalize_target(target) {
-        return Ok((vec![canonical], None, is_range));
+    // `canonicalize_target` hands back the parsed net and range flag so callers
+    // do not need to re-parse the canonical target string.
+    if let Some((canonical, net, is_range)) = canonicalize_target(target) {
+        if is_range {
+            return Ok(ResolvedBanTarget::Range {
+                target: canonical,
+                net,
+            });
+        }
+
+        return Ok(ResolvedBanTarget::ExactIps {
+            ips: vec![canonical],
+            nickname: None,
+        });
     }
 
     Err(TargetResolutionError::InvalidTarget)
@@ -848,7 +841,7 @@ mod tests {
 
         // Cache must block every IP in the banned range, but nothing outside it.
         {
-            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            let mut cache = test_ctx.ip_rule_cache.write();
             assert!(cache.is_banned("2001:db8::1".parse().unwrap()));
             assert!(cache.is_banned("2001:db8:1234::5678".parse().unwrap()));
             assert!(!cache.is_banned("2001:db9::1".parse().unwrap()));
@@ -887,7 +880,7 @@ mod tests {
 
         // Trust alice's IP before banning the range
         {
-            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            let mut cache = test_ctx.ip_rule_cache.write();
             cache.add_trust("192.168.1.100", None);
         }
         test_ctx
@@ -930,7 +923,7 @@ mod tests {
 
         // Both IPs are banned in cache, but the trusted one is still allowed through.
         {
-            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            let mut cache = test_ctx.ip_rule_cache.write();
             assert!(cache.is_banned("192.168.1.100".parse().unwrap()));
             assert!(cache.is_banned("192.168.1.200".parse().unwrap()));
             assert!(cache.is_trusted("192.168.1.100".parse().unwrap()));
@@ -953,7 +946,7 @@ mod tests {
 
         // Trust alice's IP before banning it
         {
-            let mut cache = test_ctx.ip_rule_cache.write().unwrap();
+            let mut cache = test_ctx.ip_rule_cache.write();
             cache.add_trust("10.0.0.50", None);
         }
         test_ctx

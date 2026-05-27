@@ -7,7 +7,6 @@ err-nickname-in-use = Il soprannome è già in uso
 err-nickname-invalid = Il soprannome contiene caratteri non validi (lettere, numeri e simboli consentiti - nessuno spazio o carattere di controllo)
 err-nickname-is-username = Il soprannome non può essere un nome utente esistente
 err-username-is-active-nickname = Il nome utente non può corrispondere a un soprannome attualmente in uso
-err-nickname-not-found = Utente "{ $nickname }" non trovato
 err-nickname-not-online = L'utente "{ $nickname }" non è online
 err-nickname-required = Soprannome richiesto per account condivisi
 err-nickname-too-long = Il soprannome è troppo lungo (max { $max_length } caratteri)
@@ -21,8 +20,6 @@ err-status-invalid-characters = Il messaggio di assenza contiene caratteri non v
 err-shared-cannot-be-admin = Gli account condivisi non possono essere amministratori
 err-shared-cannot-self-edit = Gli account condivisi non possono modificarsi
 err-shared-invalid-permissions = Gli account condivisi non possono avere questi permessi: { $permissions }
-err-shared-message-requires-nickname = Gli account condivisi possono ricevere messaggi solo tramite nickname
-err-shared-kick-requires-nickname = Gli account condivisi possono essere espulsi solo tramite nickname
 
 # Errori account ospite
 err-guest-disabled = L'accesso ospite non è abilitato su questo server
@@ -33,7 +30,8 @@ err-cannot-delete-guest = L'account ospite non può essere eliminato
 # Errori di Validazione Avatar
 err-avatar-invalid-format = Formato avatar non valido (deve essere un URI di dati con codifica base64)
 err-avatar-too-large = L'avatar è troppo grande (max { $max_length } byte)
-err-avatar-unsupported-type = Tipo di avatar non supportato (solo PNG, WebP o SVG)
+err-avatar-unsupported-type = Tipo di avatar non supportato (solo PNG, JPEG, WebP o SVG)
+err-avatar-undecodable = Impossibile decodificare l'avatar come immagine valida
 err-authentication = Errore di autenticazione
 err-invalid-credentials = Nome utente o password non validi
 err-handshake-required = Handshake richiesto
@@ -41,7 +39,6 @@ err-already-logged-in = Già connesso
 err-handshake-already-completed = Handshake già completato
 err-account-deleted = Il tuo account è stato eliminato
 err-account-disabled-by-admin = Account disabilitato dall'amministratore
-err-account-type-changed = Il tipo di questo account è cambiato. Riconnettiti.
 
 # Errori di permesso e accesso
 err-permission-denied = Permesso negato
@@ -144,7 +141,6 @@ err-kick-reason-too-long = Il motivo dell'espulsione è troppo lungo (max { $max
 err-kick-reason-invalid-characters = Il motivo dell'espulsione contiene caratteri non validi
 err-username-exists = Il nome utente "{ $username }" esiste già
 err-user-not-found = Utente "{ $username }" non trovato
-err-user-not-online = L'utente "{ $username }" non è online
 err-failed-to-create-user = Impossibile creare l'utente "{ $username }"
 err-account-disabled = L'account "{ $username }" è disabilitato
 err-update-failed = Impossibile aggiornare l'utente "{ $username }"
@@ -172,7 +168,7 @@ err-invalid-password-strength = Valore di sicurezza della password non valido
 
 err-server-image-too-large = L'immagine del server è troppo grande (massimo 512KB)
 err-server-image-invalid-format = Formato immagine del server non valido (deve essere un URI di dati con codifica base64)
-err-server-image-unsupported-type = Tipo di immagine del server non supportato (solo PNG, WebP, JPEG o SVG)
+err-server-image-unsupported-type = Tipo di immagine del server non supportato (solo PNG, JPEG, WebP o SVG)
 err-public-address-too-long = L'indirizzo pubblico è troppo lungo (massimo { $max_length } byte)
 err-public-address-contains-scheme = L'indirizzo pubblico non deve includere uno schema URL
 err-public-address-contains-brackets = L'indirizzo pubblico non deve includere parentesi
@@ -189,7 +185,7 @@ err-news-body-too-long = Il testo della notizia è troppo lungo (massimo { $max_
 err-news-body-invalid-characters = Il testo della notizia contiene caratteri non validi
 err-news-image-too-large = L'immagine della notizia è troppo grande (massimo 512KB)
 err-news-image-invalid-format = Formato immagine della notizia non valido (deve essere un URI di dati con codifica base64)
-err-news-image-unsupported-type = Tipo di immagine della notizia non supportato (solo PNG, WebP, JPEG o SVG)
+err-news-image-unsupported-type = Tipo di immagine della notizia non supportato (solo PNG, JPEG, WebP o SVG)
 err-news-empty-content = La notizia deve avere contenuto testuale o un'immagine
 err-cannot-edit-admin-news = Solo gli amministratori possono modificare le notizie pubblicate dagli amministratori
 err-cannot-delete-admin-news = Solo gli amministratori possono eliminare le notizie pubblicate dagli amministratori

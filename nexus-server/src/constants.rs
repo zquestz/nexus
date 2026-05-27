@@ -226,6 +226,7 @@ pub const ERR_CHANNEL_CLOSED: &str = "channel closed";
 // expect() messages for poisoned mutexes — a previous holder panicked mid-update,
 // leaving the in-memory state unknown-shape. Should never fire in normal operation.
 pub const ERR_TRANSFER_REGISTRY_LOCK_POISONED: &str = "transfer registry lock poisoned";
+pub const ERR_TRANSFER_IDENTITY_LOCK_POISONED: &str = "transfer identity lock poisoned";
 pub const ERR_BAN_TX_LOCK_POISONED: &str = "ban_tx lock poisoned";
 pub const ERR_CONNECTION_TRACKER_LOCK: &str = "connection tracker lock";
 pub const ERR_TRANSFER_TRACKER_LOCK: &str = "transfer tracker lock";
@@ -803,10 +804,13 @@ pub const LOG_LOGIN_GROUP_ERROR: &str = "Login: error fetching group";
 pub const LOG_LOGIN_HASH_ERROR: &str = "Login: failed to hash password";
 pub const LOG_LOGIN_CREATE_USER_ERROR: &str = "Login: failed to create first user";
 pub const LOG_LOGIN_PASSWORD_VERIFY_ERROR: &str = "Login: password verification error";
+pub const LOG_LOGIN_AVATAR_VALIDATE_ERROR: &str = "Login: avatar validation task failed";
 pub const LOG_LOGIN_RENAMED_MID_LOGIN: &str = "Login: account renamed";
 pub const LOG_LOGIN_PASSWORD_CHANGED: &str = "Login: password changed";
-pub const LOG_LOGIN_ACCOUNT_TYPE_CHANGED: &str = "Login: account type changed";
-pub const LOG_LOGIN_ACCOUNT_STATE_CHANGED: &str = "Login: account state changed";
+/// expect() message — session_id is set to Some(id) when add_user succeeds,
+/// so it is always populated by the time UserConnected is broadcast.
+pub const ERR_SESSION_ID_AFTER_LOGIN: &str =
+    "session_id is set after add_user succeeds and must be present at broadcast";
 
 // --- Handler: Voice ---
 pub const LOG_VOICE_JOIN_NOT_LOGGED_IN: &str = "VoiceJoin: not logged in";

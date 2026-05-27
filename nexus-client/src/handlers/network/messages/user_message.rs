@@ -115,18 +115,15 @@ impl NexusApp {
             from_shared,
             action,
         );
+        // Resolve to the canonical DM tab (folded identity), then append under it.
+        let key = conn.resolve_user_message_tab(&other_nickname);
         conn.user_messages
-            .entry(other_nickname.clone())
+            .entry(key.clone())
             .or_default()
             .push(chat_msg);
 
-        // Add to user_message_tabs if not already present (creates the tab in UI)
-        if !conn.user_message_tabs.contains(&other_nickname) {
-            conn.user_message_tabs.push(other_nickname.clone());
-        }
-
         // Mark as unread if not currently viewing this tab
-        let pm_tab = ChatTab::UserMessage(other_nickname);
+        let pm_tab = ChatTab::UserMessage(key);
         if conn.active_chat_tab != pm_tab {
             conn.unread_tabs.insert(pm_tab);
 
@@ -157,43 +154,69 @@ impl NexusApp {
             .and_then(|conn| conn.pending_requests.remove(&message_id));
 
         if success {
-            // Get the nickname for showing away notice
-            let nickname_for_away = match &routing {
-                Some(ResponseRouting::OpenMessageTab(nickname)) => Some(nickname.clone()),
-                Some(ResponseRouting::ShowErrorInMessageTab(nickname)) => Some(nickname.clone()),
-                _ => None,
+            // For /msg, resolve (create) the canonical tab up front so the away notice
+            // lands in it and we can switch to it. Uses the server-confirmed display name
+            // from the online user list (correct casing regardless of what the user
+            // typed); falls back to an existing tab's key, then the typed nickname when
+            // the recipient isn't currently visible (offline, no user_list, etc.).
+            let opened_tab_key = if let Some(ResponseRouting::OpenMessageTab(nickname)) = &routing {
+                self.connections.get_mut(&connection_id).map(|conn| {
+                    let canonical = conn
+                        .online_users
+                        .iter()
+                        .find(|u| fold_name(&u.nickname) == fold_name(nickname))
+                        .map(|u| u.nickname.clone())
+                        .or_else(|| conn.user_message_tab_key(nickname))
+                        .unwrap_or_else(|| nickname.clone());
+                    conn.resolve_user_message_tab(&canonical)
+                })
+            } else {
+                None
             };
 
-            // Show away notice if recipient is away
-            if let Some(true) = is_away
-                && let Some(nickname) = &nickname_for_away
-            {
-                let away_msg = if let Some(status_msg) = &status {
-                    ChatMessage::info(t_args(
-                        "msg-user-is-away-status",
-                        &[
-                            ("nickname", nickname.as_str()),
-                            ("status", status_msg.as_str()),
-                        ],
-                    ))
-                } else {
-                    ChatMessage::info(t_args(
-                        "msg-user-is-away",
-                        &[("nickname", nickname.as_str())],
-                    ))
+            // Show away notice if recipient is away.
+            if let Some(true) = is_away {
+                let nickname_for_away = match &routing {
+                    Some(ResponseRouting::OpenMessageTab(nickname))
+                    | Some(ResponseRouting::ShowErrorInMessageTab(nickname)) => {
+                        Some(nickname.clone())
+                    }
+                    _ => None,
                 };
+                if let Some(nickname) = &nickname_for_away {
+                    let away_msg = if let Some(status_msg) = &status {
+                        ChatMessage::info(t_args(
+                            "msg-user-is-away-status",
+                            &[
+                                ("nickname", nickname.as_str()),
+                                ("status", status_msg.as_str()),
+                            ],
+                        ))
+                    } else {
+                        ChatMessage::info(t_args(
+                            "msg-user-is-away",
+                            &[("nickname", nickname.as_str())],
+                        ))
+                    };
 
-                // Add the away notice to the user message tab
-                if let Some(conn) = self.connections.get_mut(&connection_id)
-                    && let Some(messages) = conn.user_messages.get_mut(nickname)
-                {
-                    messages.push(away_msg);
+                    if let Some(conn) = self.connections.get_mut(&connection_id) {
+                        // /msg: the tab was just resolved above. ShowError: the tab is
+                        // already open; don't re-create a closed one.
+                        if let Some(key) = &opened_tab_key {
+                            conn.user_messages
+                                .entry(key.clone())
+                                .or_default()
+                                .push(away_msg);
+                        } else if let Some(messages) = conn.user_messages_for_mut(nickname) {
+                            messages.push(away_msg);
+                        }
+                    }
                 }
             }
 
-            // Switch to tab if this was a /msg command
-            if let Some(ResponseRouting::OpenMessageTab(nickname)) = routing {
-                return Task::done(Message::SwitchChatTab(ChatTab::UserMessage(nickname)));
+            // Switch to the tab if this was a /msg command.
+            if let Some(key) = opened_tab_key {
+                return Task::done(Message::SwitchChatTab(ChatTab::UserMessage(key)));
             }
             return Task::none();
         }
@@ -212,13 +235,13 @@ impl NexusApp {
                     return Task::none();
                 };
 
-                // Only add to user message tab if it still exists (user didn't close it)
-                if let Some(messages) = conn.user_messages.get_mut(&nickname) {
+                // Only add to user message tab if it still exists (user didn't close it).
+                // Folded lookup so a case-different reply still lands in the tab.
+                if let Some(messages) = conn.user_messages_for_mut(&nickname) {
                     messages.push(error_msg);
 
                     // Scroll to bottom if we're viewing this tab
-                    let pm_tab = ChatTab::UserMessage(nickname);
-                    if conn.active_chat_tab == pm_tab {
+                    if conn.is_active_user_message_tab(&nickname) {
                         return self.scroll_chat_if_visible(true);
                     }
 

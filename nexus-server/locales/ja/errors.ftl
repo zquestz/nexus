@@ -7,7 +7,6 @@ err-nickname-in-use = ニックネームは既に使用されています
 err-nickname-invalid = ニックネームに無効な文字が含まれています（文字、数字、記号は許可 - スペースや制御文字は不可）
 err-nickname-is-username = ニックネームは既存のユーザー名にすることはできません
 err-username-is-active-nickname = ユーザー名は現在使用中のニックネームと一致することはできません
-err-nickname-not-found = ユーザー「{ $nickname }」が見つかりません
 err-nickname-not-online = ユーザー「{ $nickname }」はオンラインではありません
 err-nickname-required = 共有アカウントにはニックネームが必要です
 err-nickname-too-long = ニックネームが長すぎます（最大{ $max_length }文字）
@@ -21,8 +20,6 @@ err-status-invalid-characters = 離席メッセージに無効な文字が含ま
 err-shared-cannot-be-admin = 共有アカウントは管理者になれません
 err-shared-cannot-self-edit = 共有アカウントは自身を編集できません
 err-shared-invalid-permissions = 共有アカウントはこれらの権限を持つことができません: { $permissions }
-err-shared-message-requires-nickname = 共有アカウントにはニックネームでのみメッセージを送信できます
-err-shared-kick-requires-nickname = 共有アカウントはニックネームでのみキックできます
 
 # ゲストアカウントエラー
 err-guest-disabled = このサーバーではゲストアクセスが有効になっていません
@@ -33,7 +30,8 @@ err-cannot-delete-guest = ゲストアカウントは削除できません
 # アバター検証エラー
 err-avatar-invalid-format = アバター形式が無効です（base64エンコードのデータURIである必要があります）
 err-avatar-too-large = アバターが大きすぎます（最大{ $max_length }バイト）
-err-avatar-unsupported-type = サポートされていないアバタータイプです（PNG、WebP、SVGのみ）
+err-avatar-unsupported-type = サポートされていないアバタータイプです（PNG、JPEG、WebP、SVGのみ）
+err-avatar-undecodable = アバターを有効な画像としてデコードできませんでした
 err-authentication = 認証エラー
 err-invalid-credentials = ユーザー名またはパスワードが無効です
 err-handshake-required = ハンドシェイクが必要です
@@ -41,7 +39,6 @@ err-already-logged-in = 既にログインしています
 err-handshake-already-completed = ハンドシェイクは既に完了しています
 err-account-deleted = アカウントが削除されました
 err-account-disabled-by-admin = 管理者によってアカウントが無効化されました
-err-account-type-changed = このアカウントの種類が変更されました。再接続してください。
 
 # 権限とアクセスのエラー
 err-permission-denied = 権限がありません
@@ -144,7 +141,6 @@ err-kick-reason-too-long = キック理由が長すぎます（最大{ $max_leng
 err-kick-reason-invalid-characters = キック理由に無効な文字が含まれています
 err-username-exists = ユーザー名「{ $username }」は既に存在します
 err-user-not-found = ユーザー「{ $username }」が見つかりません
-err-user-not-online = ユーザー「{ $username }」はオンラインではありません
 err-failed-to-create-user = ユーザー「{ $username }」の作成に失敗しました
 err-account-disabled = アカウント「{ $username }」は無効化されています
 err-update-failed = ユーザー「{ $username }」の更新に失敗しました
@@ -172,7 +168,7 @@ err-invalid-password-strength = 無効なパスワード強度の値です
 
 err-server-image-too-large = サーバー画像が大きすぎます（最大512KB）
 err-server-image-invalid-format = サーバー画像の形式が無効です（base64エンコードのデータURIである必要があります）
-err-server-image-unsupported-type = サポートされていないサーバー画像タイプです（PNG、WebP、JPEG、SVGのみ）
+err-server-image-unsupported-type = サポートされていないサーバー画像タイプです（PNG、JPEG、WebP、SVGのみ）
 err-public-address-too-long = 公開アドレスが長すぎます（最大{ $max_length }バイト）
 err-public-address-contains-scheme = 公開アドレスにURLスキームを含めることはできません
 err-public-address-contains-brackets = 公開アドレスに角括弧を含めることはできません
@@ -189,7 +185,7 @@ err-news-body-too-long = ニュース本文が長すぎます（最大{ $max_len
 err-news-body-invalid-characters = ニュース本文に無効な文字が含まれています
 err-news-image-too-large = ニュース画像が大きすぎます（最大512KB）
 err-news-image-invalid-format = ニュース画像の形式が無効です（base64エンコードのデータURIである必要があります）
-err-news-image-unsupported-type = サポートされていないニュース画像タイプです（PNG、WebP、JPEG、SVGのみ）
+err-news-image-unsupported-type = サポートされていないニュース画像タイプです（PNG、JPEG、WebP、SVGのみ）
 err-news-empty-content = ニュースにはテキストまたは画像が必要です
 err-cannot-edit-admin-news = 管理者が投稿したニュースを編集できるのは管理者のみです
 err-cannot-delete-admin-news = 管理者が投稿したニュースを削除できるのは管理者のみです

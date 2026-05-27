@@ -21,7 +21,7 @@ Channel names must start with `#` (e.g., `#general`, `#support`). The default ch
 
 ## Flow
 
-Note: `ChatUserJoined` / `ChatUserLeft` are emitted when a nickname becomes present/absent in the channel. Member lists are nicknames (deduped), not sessions.
+Note: `ChatUserJoined` / `ChatUserLeft` are emitted when a nickname becomes present/absent in the channel; `ChatUserRenamed` is emitted when a present member's nickname changes (regular-account rename). Member lists are nicknames (deduped), not sessions.
 
 ### Joining a Channel
 
@@ -400,7 +400,7 @@ Broadcast to existing channel members when a user joins.
 }
 ```
 
-Note: Not broadcast during login auto-join (UserConnected already notifies about new users).
+Note: Also broadcast during login auto-join, but only to existing channel members (never the joining session) and only when the joining nickname is not already present in the channel via another session.
 
 ### ChatUserLeft (Server → Client)
 
@@ -417,6 +417,28 @@ Broadcast to remaining channel members when a user leaves.
 {
   "channel": "#general",
   "nickname": "alice"
+}
+```
+
+### ChatUserRenamed (Server → Client)
+
+Broadcast to **all** members of every channel a user belongs to (secret channels included, no permission gate) when that user's nickname changes. Emitted only for regular-account renames — a regular account's nickname equals its username, so a `UserUpdate` that changes the username changes the nickname. Shared accounts' per-session nicknames don't change on a username rename, so they never emit this.
+
+Unlike `UserUpdated` (sent only to holders of the `user_list` permission), `ChatUserRenamed` reaches every channel member regardless of permission, so the rename is visible to users who can't see the user list.
+
+| Field          | Type   | Required | Description           |
+| -------------- | ------ | -------- | --------------------- |
+| `channel`      | string | Yes      | Channel name          |
+| `old_nickname` | string | Yes      | Nickname before rename |
+| `new_nickname` | string | Yes      | Nickname after rename  |
+
+**Example:**
+
+```json
+{
+  "channel": "#general",
+  "old_nickname": "alice",
+  "new_nickname": "alicia"
 }
 ```
 

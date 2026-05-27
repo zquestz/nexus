@@ -442,6 +442,7 @@ msg-user-kicked-success = Usuario expulsado exitosamente
 msg-user-kicked-success-name = Usuario '{ $nickname }' expulsado exitosamente
 msg-chat-join = { $nickname } se unió al canal
 msg-chat-leave = { $nickname } abandonó el canal
+msg-chat-renamed = { $old } ahora se conoce como { $new }
 msg-channel-is-secret = Este canal es secreto
 msg-channel-list-header = Canales disponibles:
 msg-no-channels = No hay canales disponibles

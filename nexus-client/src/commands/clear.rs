@@ -47,7 +47,7 @@ pub fn execute(
             }
         }
         ChatTab::UserMessage(nickname) => {
-            if let Some(messages) = conn.user_messages.get_mut(nickname) {
+            if let Some(messages) = conn.user_messages_for_mut(nickname) {
                 messages.clear();
             }
         }

@@ -200,7 +200,7 @@ When enabled, shows system messages when users connect or disconnect from the se
 
 ### Show Join/Leave Events
 
-When enabled, shows system messages when users join or leave channels you're in. Default: enabled.
+When enabled, shows system messages when users join or leave channels you're in, and when a user in a channel is renamed ("X is now known as Y"). The underlying member-list update always happens; this setting only controls the visible notice. Default: enabled.
 
 ### Timestamps
 

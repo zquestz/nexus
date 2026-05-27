@@ -489,8 +489,7 @@ fn build_message_list<'a>(
                 .unwrap_or(&[])
         }
         ChatTab::UserMessage(nickname) => conn
-            .user_messages
-            .get(nickname)
+            .user_messages_for(nickname)
             .map(|v| v.as_slice())
             .unwrap_or(&[]),
     };

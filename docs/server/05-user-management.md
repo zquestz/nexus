@@ -287,7 +287,7 @@ The numbers shift as users start and stop transferring; the scheduler is work-co
 
 ### Shared accounts
 
-Each session of a shared account gets its own flow, identified by the session's nickname. Two people logged in under the same shared account contend with each other on equal footing — the shared group's weight applies to each session, not to the account as a whole.
+Because weight is per account (see [above](#bandwidth-weight)), all sessions of a shared account share one scheduler flow and one weighted slice — keyed on the account's `user_id`, not the session nickname. Co-logged-in users contend for that single share, so a heavy transfer by one starves the others. To give a busy shared account more aggregate bandwidth, raise its (or its group's) weight.
 
 ### Trust does not bypass the cap
 

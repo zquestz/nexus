@@ -329,6 +329,7 @@ Configure how long to keep history in **Settings > Chat > Chat History**:
 - Using `/clear` on a user message tab deletes both the display and the saved history file
 - Changing the retention setting only affects new connections
 - If you disable history, existing history files are kept (not deleted)
+- History survives renames — both yours and the other party's. Your history is keyed by your account identity (not your display name), and when someone you've messaged is renamed, their conversation is relabeled with its history intact (merging if you already had history under the new name)
 
 ## Session Membership
 

@@ -443,6 +443,7 @@ msg-user-kicked-success = Gebruiker succesvol verwijderd
 msg-user-kicked-success-name = Gebruiker '{ $nickname }' succesvol verwijderd
 msg-chat-join = { $nickname } is het kanaal binnengekomen
 msg-chat-leave = { $nickname } heeft het kanaal verlaten
+msg-chat-renamed = { $old } heet nu { $new }
 msg-channel-is-secret = Dit kanaal is geheim
 msg-channel-list-header = Beschikbare kanalen:
 msg-no-channels = Geen kanalen beschikbaar

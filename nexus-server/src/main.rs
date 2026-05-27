@@ -22,7 +22,7 @@ use std::fs;
 use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Parser;
@@ -38,7 +38,7 @@ use connection_tracker::ConnectionTracker;
 use constants::*;
 use files::{FileIndex, PathLockMap};
 use flood::FloodConfig;
-use ip_rule_cache::IpRuleCache;
+use ip_rule_cache::{IpRuleCache, IpRuleState};
 use nexus_common::address::normalize_socket_addr;
 use nexus_common::logging::{self, LogInitParams, LogLevel};
 use transfers::{TransferParams, TransferRegistry};
@@ -130,7 +130,7 @@ async fn main() {
         });
     let ban_count = ban_records.len();
     let trust_count = trust_records.len();
-    let ip_rule_cache = Arc::new(RwLock::new(IpRuleCache::from_records(
+    let ip_rule_cache = Arc::new(IpRuleState::new(IpRuleCache::from_records(
         ban_records,
         trust_records,
     )));
@@ -399,23 +399,9 @@ async fn main() {
                             // Hold guard until connection ends.
                             let _guard = connection_guard;
 
-                            // Check IP rules before the TLS handshake (trust bypasses
-                            // ban). Read lock for the check; upgrade to write only to
-                            // clean up expired entries.
-                            let should_allow = {
-                                let cache = ip_rule_cache_for_check
-                                    .read()
-                                    .expect(ERR_IP_CACHE_POISONED);
-                                if cache.needs_rebuild() {
-                                    drop(cache);
-                                    ip_rule_cache_for_check
-                                        .write()
-                                        .expect(ERR_IP_CACHE_POISONED)
-                                        .should_allow(peer_addr.ip())
-                                } else {
-                                    cache.should_allow_read_only(peer_addr.ip())
-                                }
-                            };
+                            // Check IP rules before the TLS handshake (trust bypasses ban).
+                            let should_allow =
+                                ip_rule_cache_for_check.should_allow(peer_addr.ip()).await;
 
                             if !should_allow {
                                 debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP);
@@ -458,6 +444,7 @@ async fn main() {
                             file_index: file_index.clone(),
                             file_mutation_locks: file_mutation_locks.clone(),
                             transfer_registry: transfer_registry.clone(),
+                            ip_rule_cache: ip_rule_cache.clone(),
                             fingerprint,
                         };
                         let tls_acceptor = tls_acceptor.clone();
@@ -466,23 +453,9 @@ async fn main() {
                         tokio::spawn(async move {
                             let _guard = transfer_guard;
 
-                            // Check IP rules before the TLS handshake (trust bypasses
-                            // ban). Read lock for the check; upgrade to write only to
-                            // clean up expired entries.
-                            let should_allow = {
-                                let cache = ip_rule_cache_for_check
-                                    .read()
-                                    .expect(ERR_IP_CACHE_POISONED);
-                                if cache.needs_rebuild() {
-                                    drop(cache);
-                                    ip_rule_cache_for_check
-                                        .write()
-                                        .expect(ERR_IP_CACHE_POISONED)
-                                        .should_allow(peer_addr.ip())
-                                } else {
-                                    cache.should_allow_read_only(peer_addr.ip())
-                                }
-                            };
+                            // Check IP rules before the TLS handshake (trust bypasses ban).
+                            let should_allow =
+                                ip_rule_cache_for_check.should_allow(peer_addr.ip()).await;
 
                             if !should_allow {
                                 debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP_TRANSFER);
@@ -549,20 +522,8 @@ async fn main() {
                             let _guard = connection_guard;
 
                             // Check IP rules before the TLS handshake (same as TCP).
-                            let should_allow = {
-                                let cache = ip_rule_cache_for_check
-                                    .read()
-                                    .expect(ERR_IP_CACHE_POISONED);
-                                if cache.needs_rebuild() {
-                                    drop(cache);
-                                    ip_rule_cache_for_check
-                                        .write()
-                                        .expect(ERR_IP_CACHE_POISONED)
-                                        .should_allow(peer_addr.ip())
-                                } else {
-                                    cache.should_allow_read_only(peer_addr.ip())
-                                }
-                            };
+                            let should_allow =
+                                ip_rule_cache_for_check.should_allow(peer_addr.ip()).await;
 
                             if !should_allow {
                                 debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP_WS);
@@ -611,6 +572,7 @@ async fn main() {
                             file_index: file_index.clone(),
                             file_mutation_locks: file_mutation_locks.clone(),
                             transfer_registry: transfer_registry.clone(),
+                            ip_rule_cache: ip_rule_cache.clone(),
                             fingerprint,
                         };
                         let tls_acceptor = tls_acceptor.clone();
@@ -620,20 +582,8 @@ async fn main() {
                             let _guard = transfer_guard;
 
                             // Check IP rules before the TLS handshake (same as TCP).
-                            let should_allow = {
-                                let cache = ip_rule_cache_for_check
-                                    .read()
-                                    .expect(ERR_IP_CACHE_POISONED);
-                                if cache.needs_rebuild() {
-                                    drop(cache);
-                                    ip_rule_cache_for_check
-                                        .write()
-                                        .expect(ERR_IP_CACHE_POISONED)
-                                        .should_allow(peer_addr.ip())
-                                } else {
-                                    cache.should_allow_read_only(peer_addr.ip())
-                                }
-                            };
+                            let should_allow =
+                                ip_rule_cache_for_check.should_allow(peer_addr.ip()).await;
 
                             if !should_allow {
                                 debug!(ip = %peer_addr.ip(), "{}", LOG_REJECTED_BANNED_IP_WS_TRANSFER);

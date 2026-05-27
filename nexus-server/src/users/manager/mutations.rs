@@ -46,70 +46,60 @@ impl UserManager {
         Ok(session_id)
     }
 
-    /// Remove a user by session ID
-    pub async fn remove_user(&self, session_id: u32) -> Option<UserSession> {
+    /// Remove every listed session from the map in one write-lock pass, returning
+    /// the sessions actually removed. `remove` yields a session only if it was
+    /// still present, so a repeated or already-swept id is skipped — this removal
+    /// is the single serialization point that decides who owns a session's
+    /// teardown. Broadcasts nothing and touches no channel/voice state: the caller
+    /// runs `cleanup_resources` on the returned sessions, then
+    /// `broadcast_disconnections` (cleanup messages must precede `UserDisconnected`).
+    pub async fn remove_users(&self, session_ids: &[u32]) -> Vec<UserSession> {
         let mut users = self.users.write().await;
-        users.remove(&session_id)
+        session_ids
+            .iter()
+            .filter_map(|session_id| users.remove(session_id))
+            .collect()
     }
 
-    /// Remove a single user and broadcast `UserDisconnected`, re-aggregating the
-    /// account if other sessions remain. Thin wrapper over
-    /// `remove_users_and_broadcast` for the single-session callers (normal
-    /// disconnect, kick, account deletion, disable).
-    pub async fn remove_user_and_broadcast(&self, session_id: u32) -> Option<UserSession> {
-        self.remove_users_and_broadcast(&[session_id])
-            .await
-            .into_iter()
-            .next()
-    }
-
-    /// Remove every listed session, broadcasting `UserDisconnected` for each, then
-    /// one re-aggregated `UserUpdated` per affected regular account (latest login
-    /// for avatar/locale, most recently active for away/status). Returns the
-    /// removed sessions. The single remove + broadcast + re-aggregate path for both
-    /// graceful disconnects and bans.
+    /// Announce a set of just-removed sessions to `user_list` holders: one
+    /// `UserDisconnected` per session, then one re-aggregated `UserUpdated` per
+    /// affected regular account (latest login for avatar/locale, most recently
+    /// active for away/status). `sessions` must already be out of the map (via
+    /// `remove_users`) so the re-aggregate reads only the survivors.
     ///
     /// Not for the dead-channel cleanup sweep (`remove_disconnected`): that runs
     /// inside `broadcast_user_event`, so broadcasting here would re-enter the
     /// broadcast → cleanup → broadcast recursion.
-    pub async fn remove_users_and_broadcast(&self, session_ids: &[u32]) -> Vec<UserSession> {
-        let mut removed_sessions = Vec::new();
-
-        for &session_id in session_ids {
-            // The Some-guard dedups repeated session_ids: a second `remove_user`
-            // returns None, so we never double-broadcast or double-push. (The
-            // removed session is already gone from the map, so excluding it from
-            // the broadcast is moot — pass None.)
-            if let Some(user_session) = self.remove_user(session_id).await {
-                self.broadcast_user_event(
-                    ServerMessage::UserDisconnected {
-                        session_id,
-                        nickname: user_session.nickname.clone(),
-                    },
-                    None,
-                )
-                .await;
-                removed_sessions.push(user_session);
-            }
+    pub async fn broadcast_disconnections(&self, sessions: &[UserSession]) {
+        for user_session in sessions {
+            self.broadcast_user_event(
+                ServerMessage::UserDisconnected {
+                    session_id: user_session.session_id,
+                    nickname: user_session.nickname.clone(),
+                },
+                None,
+            )
+            .await;
         }
 
         // One UserUpdated per unique regular account. Shared sessions never
         // re-aggregate — each is its own user-list entry, already handled by the
-        // UserDisconnected broadcasts above. Keyed on fold_name so case drift can't
-        // split one account into two entries; each bucket carries every removed
-        // session of the account for the avatar delta's "old".
-        let mut by_username: HashMap<String, Vec<UserSession>> = HashMap::new();
-        for user_session in removed_sessions.iter().filter(|u| !u.is_shared) {
-            by_username
-                .entry(fold_name(&user_session.username))
+        // UserDisconnected broadcasts above. Keyed on the immutable user_id so a
+        // concurrent rename can't make the survivor lookup miss an account; each
+        // bucket carries every removed session of the account for the avatar
+        // delta's "old".
+        let mut by_user_id: HashMap<i64, Vec<UserSession>> = HashMap::new();
+        for user_session in sessions.iter().filter(|u| !u.is_shared) {
+            by_user_id
+                .entry(user_session.user_id)
                 .or_default()
                 .push(user_session.clone());
         }
 
-        for account_removed_sessions in by_username.into_values() {
+        for account_removed_sessions in by_user_id.into_values() {
             if let Some(message) = self
                 .build_account_reaggregate(
-                    &account_removed_sessions[0].username,
+                    account_removed_sessions[0].user_id,
                     &account_removed_sessions,
                 )
                 .await
@@ -117,8 +107,6 @@ impl UserManager {
                 self.broadcast_user_event(message, None).await;
             }
         }
-
-        removed_sessions
     }
 
     /// Update username for all sessions of a user, returning the count updated.
@@ -293,12 +281,11 @@ impl UserManager {
         }
     }
 
-    /// Session IDs (paired with locale) for every session connected from `ip`, for
-    /// the ban system. `skip_ip` returning true exempts an IP (e.g. trusted), in
-    /// which case the result is empty. Pure lookup: the caller sends each session a
-    /// localized goodbye (while still live) and then removes them via
-    /// `remove_users_and_broadcast`.
-    pub async fn sessions_by_ip<S>(&self, ip: &str, skip_ip: S) -> Vec<(u32, String)>
+    /// Full sessions connected from `ip`, for the ban system. `skip_ip` returning
+    /// true exempts an IP (e.g. trusted), in which case the result is empty. Pure
+    /// lookup: the caller sends each session its localized goodbye (while still
+    /// live) and then removes them via `remove_users_with_cleanup`.
+    pub async fn sessions_by_ip<S>(&self, ip: &str, skip_ip: S) -> Vec<UserSession>
     where
         S: Fn(&IpAddr) -> bool,
     {
@@ -312,14 +299,14 @@ impl UserManager {
         users
             .values()
             .filter(|u| u.address.ip().to_string() == ip)
-            .map(|u| (u.session_id, u.locale.clone()))
+            .cloned()
             .collect()
     }
 
-    /// Session IDs (paired with locale) for every session whose IP falls in `range`,
-    /// for the ban system. A `skip_ip` hit is exempt even inside the range. Same
-    /// pure-lookup, send-then-remove flow as `sessions_by_ip`.
-    pub async fn sessions_in_range<S>(&self, range: &IpNet, skip_ip: S) -> Vec<(u32, String)>
+    /// Full sessions whose IP falls in `range`, for the ban system. A `skip_ip` hit
+    /// is exempt even inside the range. Same pure-lookup, send-then-remove flow as
+    /// `sessions_by_ip`.
+    pub async fn sessions_in_range<S>(&self, range: &IpNet, skip_ip: S) -> Vec<UserSession>
     where
         S: Fn(&IpAddr) -> bool,
     {
@@ -330,7 +317,7 @@ impl UserManager {
                 let ip = u.address.ip();
                 range.contains(&ip) && !skip_ip(&ip)
             })
-            .map(|u| (u.session_id, u.locale.clone()))
+            .cloned()
             .collect()
     }
 }
@@ -651,7 +638,7 @@ mod tests {
         assert!(manager.get_sessions_by_user_id(999).await.is_empty());
     }
 
-    /// Fixture exposing the fields `remove_users_and_broadcast` tests vary
+    /// Fixture exposing the fields the `broadcast_disconnections` tests vary
     /// (avatar, shared/admin flags, captured tx).
     fn broadcast_session_params(
         user_id: i64,
@@ -691,7 +678,7 @@ mod tests {
     /// Here the removed session is the sole avatar source, so the aggregate avatar
     /// clears to `Some("")`.
     #[tokio::test]
-    async fn test_remove_users_and_broadcast_reaggregates_surviving_session() {
+    async fn test_broadcast_disconnections_reaggregates_surviving_session() {
         let manager = UserManager::new();
 
         // Observer (admin → has user_list) to capture broadcasts.
@@ -725,7 +712,8 @@ mod tests {
             .await
             .unwrap();
 
-        manager.remove_users_and_broadcast(&[s1]).await;
+        let removed = manager.remove_users(&[s1]).await;
+        manager.broadcast_disconnections(&removed).await;
 
         let (msg1, _) = obs_rx
             .try_recv()
@@ -767,7 +755,7 @@ mod tests {
     /// Removing all sessions of a regular account broadcasts one UserDisconnected
     /// per session and no UserUpdated (nothing remains to aggregate).
     #[tokio::test]
-    async fn test_remove_users_and_broadcast_full_removal_emits_no_user_updated() {
+    async fn test_broadcast_disconnections_full_removal_emits_no_user_updated() {
         let manager = UserManager::new();
 
         let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
@@ -799,7 +787,8 @@ mod tests {
             .await
             .unwrap();
 
-        manager.remove_users_and_broadcast(&[s1, s2]).await;
+        let removed = manager.remove_users(&[s1, s2]).await;
+        manager.broadcast_disconnections(&removed).await;
 
         let mut disconnected = Vec::new();
         while let Ok((msg, _)) = obs_rx.try_recv() {
@@ -821,7 +810,7 @@ mod tests {
     /// Shared sessions never re-aggregate — each is its own user-list entry, so
     /// removal emits only UserDisconnected, never UserUpdated.
     #[tokio::test]
-    async fn test_remove_users_and_broadcast_shared_never_reaggregates() {
+    async fn test_broadcast_disconnections_shared_never_reaggregates() {
         let manager = UserManager::new();
 
         let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
@@ -860,7 +849,8 @@ mod tests {
             .await
             .unwrap();
 
-        manager.remove_users_and_broadcast(&[g1]).await;
+        let removed = manager.remove_users(&[g1]).await;
+        manager.broadcast_disconnections(&removed).await;
 
         let (msg, _) = obs_rx
             .try_recv()
@@ -885,7 +875,7 @@ mod tests {
     /// emits UserUpdated (other aggregate fields may move), but its avatar is
     /// `None` — the source remained, so no spurious avatar change is carried.
     #[tokio::test]
-    async fn test_remove_users_and_broadcast_keeps_avatar_when_source_remains() {
+    async fn test_broadcast_disconnections_keeps_avatar_when_source_remains() {
         let manager = UserManager::new();
 
         let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
@@ -918,7 +908,8 @@ mod tests {
             .await
             .unwrap();
 
-        manager.remove_users_and_broadcast(&[s2]).await;
+        let removed = manager.remove_users(&[s2]).await;
+        manager.broadcast_disconnections(&removed).await;
 
         let (msg1, _) = obs_rx
             .try_recv()
@@ -950,9 +941,9 @@ mod tests {
     }
 
     /// One removal call spanning two regular accounts re-aggregates each exactly
-    /// once (the fold-keyed grouping is per account, not per session).
+    /// once (the user_id-keyed grouping is per account, not per session).
     #[tokio::test]
-    async fn test_remove_users_and_broadcast_reaggregates_each_account_once() {
+    async fn test_broadcast_disconnections_reaggregates_each_account_once() {
         let manager = UserManager::new();
 
         let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
@@ -1007,9 +998,8 @@ mod tests {
             .await
             .unwrap();
 
-        manager
-            .remove_users_and_broadcast(&[alice_avatar, bob_avatar])
-            .await;
+        let removed = manager.remove_users(&[alice_avatar, bob_avatar]).await;
+        manager.broadcast_disconnections(&removed).await;
 
         // Two UserDisconnected, and exactly one UserUpdated per account.
         let mut disconnected = Vec::new();

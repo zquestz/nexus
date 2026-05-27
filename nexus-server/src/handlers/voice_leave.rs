@@ -39,20 +39,37 @@ where
             .await;
     }
 
-    let Some(info) = ctx.voice_registry.remove_by_session_id(session_id).await else {
-        let response = ServerMessage::VoiceLeaveResponse {
-            success: false,
-            error: Some(err_voice_not_joined(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
+    // Serialize removal + leave notifications under read_user_state so a concurrent
+    // rename orders consistently with our VoiceUserLeft: the rename either fully precedes
+    // (it re-keys the registry entry before we remove it, so we broadcast the new
+    // nickname) or fully follows (our VoiceUserLeft is enqueued before its
+    // ChatUserRenamed). Otherwise a stale-nickname VoiceUserLeft could arrive after the
+    // client re-keyed and fail to clear the voiced participant.
+    // send_voice_leave_notifications is in-memory; the response is sent after the guard
+    // drops.
+    let removed = {
+        let _user_state = ctx.user_manager.read_user_state().await;
+        match ctx.voice_registry.remove_by_session_id(session_id).await {
+            Some(info) => {
+                // Notify remaining participants (not self — this is an explicit leave).
+                send_voice_leave_notifications(&info, None, ctx.user_manager, ctx.channel_manager)
+                    .await;
+                true
+            }
+            None => false,
+        }
     };
 
-    // Notify remaining participants (not self — this is an explicit leave).
-    send_voice_leave_notifications(&info, None, ctx.user_manager, ctx.channel_manager).await;
-
-    let response = ServerMessage::VoiceLeaveResponse {
-        success: true,
-        error: None,
+    let response = if removed {
+        ServerMessage::VoiceLeaveResponse {
+            success: true,
+            error: None,
+        }
+    } else {
+        ServerMessage::VoiceLeaveResponse {
+            success: false,
+            error: Some(err_voice_not_joined(ctx.locale)),
+        }
     };
     ctx.send_message(&response).await
 }

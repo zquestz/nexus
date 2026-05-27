@@ -8,15 +8,20 @@
 //! iff not banned.
 
 use std::net::IpAddr;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use nexus_common::address::normalize_ip;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ipnet::{IpNet, Ipv4Net, Ipv6Net};
 use iprange::IpRange;
+use tokio::sync::{
+    RwLock as AsyncRwLock, RwLockReadGuard as AsyncRwLockReadGuard,
+    RwLockWriteGuard as AsyncRwLockWriteGuard,
+};
 
 use crate::constants::{
-    ERR_IP_RULE_EXPIRY_MISSING, ERR_IPV4_PREFIX_FROM_MAPPED,
+    ERR_IP_CACHE_POISONED, ERR_IP_RULE_EXPIRY_MISSING, ERR_IPV4_PREFIX_FROM_MAPPED,
     ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK, ERR_TARGET_NOT_CANONICAL,
 };
 use crate::db::bans::BanRecord;
@@ -31,6 +36,73 @@ struct RuleEntry {
     net: IpNet,
     /// Unix expiry timestamp (None = permanent)
     expires_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IpAdmission {
+    Allowed,
+    Banned { expires_at: Option<i64> },
+}
+
+/// Shared IP-rule state: fast cache reads plus a narrow mutation gate for
+/// DB+cache writes.
+pub struct IpRuleState {
+    cache: RwLock<IpRuleCache>,
+    mutation_lock: AsyncRwLock<()>,
+}
+
+impl IpRuleState {
+    pub fn new(cache: IpRuleCache) -> Self {
+        Self {
+            cache: RwLock::new(cache),
+            mutation_lock: AsyncRwLock::new(()),
+        }
+    }
+
+    pub fn read(&self) -> RwLockReadGuard<'_, IpRuleCache> {
+        self.cache.read().expect(ERR_IP_CACHE_POISONED)
+    }
+
+    pub fn write(&self) -> RwLockWriteGuard<'_, IpRuleCache> {
+        self.cache.write().expect(ERR_IP_CACHE_POISONED)
+    }
+
+    /// Serializes the DB mutation plus matching cache update for ban/trust
+    /// handlers. Do not hold this across socket I/O.
+    pub async fn lock_mutation(&self) -> AsyncRwLockWriteGuard<'_, ()> {
+        self.mutation_lock.write().await
+    }
+
+    /// Hold while making multi-step synchronous cache reads that must not observe
+    /// a ban/trust DB+cache mutation halfway through.
+    pub async fn lock_rule_read(&self) -> AsyncRwLockReadGuard<'_, ()> {
+        self.mutation_lock.read().await
+    }
+
+    /// Check the cache, rebuilding expired entries if needed. Admission reads
+    /// wait for any in-flight DB+cache mutation so they never observe the old
+    /// cache after the database has changed but before the cache update lands.
+    pub async fn check_admission(&self, ip: IpAddr) -> IpAdmission {
+        let _mutation_read = self.lock_rule_read().await;
+        self.check_admission_cached(ip)
+    }
+
+    fn check_admission_cached(&self, ip: IpAddr) -> IpAdmission {
+        let cache_guard = self.read();
+        if cache_guard.needs_rebuild() {
+            drop(cache_guard);
+            let mut cache_guard = self.write();
+            cache_guard.maybe_rebuild_on_expiry();
+            cache_guard.admission_read_only(ip)
+        } else {
+            cache_guard.admission_read_only(ip)
+        }
+    }
+
+    /// True iff the IP is trusted or not banned.
+    pub async fn should_allow(&self, ip: IpAddr) -> bool {
+        matches!(self.check_admission(ip).await, IpAdmission::Allowed)
+    }
 }
 
 /// In-memory cache for IP access rules (trusts and bans). O(log n) lookups via
@@ -92,6 +164,7 @@ impl IpRuleCache {
 
     /// Allow iff trusted (bypasses ban check) or not banned. Lazily rebuilds
     /// on expiry first.
+    #[cfg(test)]
     pub fn should_allow(&mut self, ip: IpAddr) -> bool {
         self.maybe_rebuild_on_expiry();
         self.should_allow_read_only(ip)
@@ -99,11 +172,24 @@ impl IpRuleCache {
 
     /// Allow iff trusted (bypasses ban check) or not banned. Does not rebuild
     /// on expiry — caller must check `needs_rebuild()`.
+    #[cfg(test)]
     pub fn should_allow_read_only(&self, ip: IpAddr) -> bool {
         if self.is_trusted_read_only(ip) {
             return true;
         }
         !self.is_banned_read_only(ip)
+    }
+
+    /// Admission decision with ban expiry metadata for user-facing late rejects.
+    pub fn admission_read_only(&self, ip: IpAddr) -> IpAdmission {
+        if self.is_trusted_read_only(ip) {
+            return IpAdmission::Allowed;
+        }
+
+        match self.active_ban_expiry_read_only(ip) {
+            Some(expires_at) => IpAdmission::Banned { expires_at },
+            None => IpAdmission::Allowed,
+        }
     }
 
     /// True if `ip` matches a non-expired trust. Lazily rebuilds on expiry.
@@ -137,6 +223,7 @@ impl IpRuleCache {
     ///
     /// Re-folds IPv4-mapped IPv6 to IPv4 as defense-in-depth; the accept path
     /// (`normalize_socket_addr` in `main.rs`) is the primary funnel.
+    #[cfg(test)]
     pub fn is_banned_read_only(&self, ip: IpAddr) -> bool {
         let ip = normalize_ip(ip);
 
@@ -144,6 +231,26 @@ impl IpRuleCache {
             IpAddr::V4(v4) => self.ban_ipv4.contains(&v4),
             IpAddr::V6(v6) => self.ban_ipv6.contains(&v6),
         }
+    }
+
+    fn active_ban_expiry_read_only(&self, ip: IpAddr) -> Option<Option<i64>> {
+        let ip = normalize_ip(ip);
+        let now = current_timestamp();
+        let mut latest_expiry: Option<i64> = None;
+
+        for entry in &self.ban_entries {
+            if entry.expires_at.is_some_and(|expiry| expiry <= now) || !entry.net.contains(&ip) {
+                continue;
+            }
+
+            let Some(expiry) = entry.expires_at else {
+                return Some(None);
+            };
+
+            latest_expiry = Some(latest_expiry.map_or(expiry, |latest| latest.max(expiry)));
+        }
+
+        latest_expiry.map(Some)
     }
 
     /// Read-only check for expired entries; lets callers acquire a write lock
@@ -196,6 +303,7 @@ impl IpRuleCache {
 
     /// Remove all trusts contained by `cidr` (e.g. single IPs inside an
     /// untrusted range). Returns the removed IP/CIDR strings.
+    #[cfg(test)]
     pub fn remove_trusts_contained_by(&mut self, cidr: &str) -> Vec<String> {
         let Some(range_net) = parse_ip_or_cidr(cidr) else {
             return Vec::new();
@@ -255,6 +363,7 @@ impl IpRuleCache {
 
     /// Remove all bans contained by `cidr` (e.g. single IPs inside an unbanned
     /// range). Returns the removed IP/CIDR strings.
+    #[cfg(test)]
     pub fn remove_bans_contained_by(&mut self, cidr: &str) -> Vec<String> {
         let Some(range_net) = parse_ip_or_cidr(cidr) else {
             return Vec::new();
@@ -356,6 +465,7 @@ impl Default for IpRuleCache {
 
 /// True if `entry_net` is fully contained within `range_net` (same family,
 /// network covered, and prefix at least as specific).
+#[cfg(test)]
 fn is_contained_by(entry_net: &IpNet, range_net: &IpNet) -> bool {
     match (entry_net, range_net) {
         (IpNet::V4(entry_net), IpNet::V4(range_net)) => {

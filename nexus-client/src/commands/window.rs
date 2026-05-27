@@ -1,7 +1,6 @@
 //! /window command implementation - manage chat tabs
 
 use iced::Task;
-use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
@@ -63,16 +62,9 @@ pub fn execute(
         } else if args.len() == 2 {
             // /window close <nickname> - close specific tab
             let target = &args[1];
-            let target_lower = fold_name(target);
 
-            // Find matching tab (case-insensitive)
-            let matching_user = conn
-                .user_messages
-                .keys()
-                .find(|nickname| fold_name(nickname) == target_lower)
-                .cloned();
-
-            if let Some(nickname) = matching_user {
+            // Find matching tab (folded identity)
+            if let Some(nickname) = conn.user_message_tab_key(target) {
                 Task::done(Message::CloseUserMessageTab(nickname))
             } else {
                 let error_msg = t_args("cmd-window-not-found", &[("name", target.as_str())]);

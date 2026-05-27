@@ -9,6 +9,7 @@
 
 use iced::Element;
 use iced::widget::{image, svg};
+use nexus_common::validators::is_valid_svg;
 
 // =============================================================================
 // Types
@@ -189,34 +190,17 @@ fn resize_and_cache_raster(bytes: &[u8], constraint: ResizeConstraint) -> Option
 /// Supported MIME types: `image/png`, `image/webp`, `image/jpeg`, `image/svg+xml`
 ///
 /// Uses the `image` crate for raster format validation (magic byte detection).
-/// SVG is validated by checking for XML-like content (starts with `<`).
+/// SVG is validated by a real `usvg` parse — the same engine the client renders
+/// with and the server validates with — so a malformed SVG is rejected here rather
+/// than accepted and later refused by the server at login.
 pub fn validate_image_bytes(bytes: &[u8], mime_type: &str) -> bool {
     match mime_type {
         "image/png" => matches!(::image::guess_format(bytes), Ok(::image::ImageFormat::Png)),
         "image/webp" => matches!(::image::guess_format(bytes), Ok(::image::ImageFormat::WebP)),
         "image/jpeg" => matches!(::image::guess_format(bytes), Ok(::image::ImageFormat::Jpeg)),
-        "image/svg+xml" => is_valid_svg(bytes),
+        "image/svg+xml" => usvg::Tree::from_data(bytes, &usvg::Options::default()).is_ok(),
         _ => false,
     }
-}
-
-/// Check if bytes represent a valid SVG file
-///
-/// SVG files should start with '<' (possibly after whitespace or BOM).
-/// We also accept '<?xml' declarations.
-fn is_valid_svg(bytes: &[u8]) -> bool {
-    // Skip UTF-8 BOM if present
-    let bytes = if bytes.starts_with(&[0xEF, 0xBB, 0xBF]) {
-        &bytes[3..]
-    } else {
-        bytes
-    };
-
-    // Find first non-whitespace byte and check if it's '<'
-    bytes
-        .iter()
-        .find(|&&b| b != b' ' && b != b'\t' && b != b'\n' && b != b'\r')
-        .is_some_and(|&b| b == b'<')
 }
 
 // =============================================================================
@@ -586,13 +570,15 @@ mod tests {
 
     #[test]
     fn test_validate_image_bytes_valid_svg() {
-        let svg_bytes = b"<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>";
+        let svg_bytes =
+            b"<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\"></svg>";
         assert!(validate_image_bytes(svg_bytes, "image/svg+xml"));
     }
 
     #[test]
     fn test_validate_image_bytes_svg_with_xml_declaration() {
-        let svg_bytes = b"<?xml version=\"1.0\"?><svg></svg>";
+        let svg_bytes =
+            b"<?xml version=\"1.0\"?><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"1\" height=\"1\"></svg>";
         assert!(validate_image_bytes(svg_bytes, "image/svg+xml"));
     }
 

@@ -7,7 +7,6 @@ err-nickname-in-use = 暱稱已被使用
 err-nickname-invalid = 暱稱包含無效字元（允許字母、數字和符號 - 不允許空格或控制字元）
 err-nickname-is-username = 暱稱不能是已存在的使用者名稱
 err-username-is-active-nickname = 使用者名稱不能與使用中的暱稱相同
-err-nickname-not-found = 找不到使用者「{ $nickname }」
 err-nickname-not-online = 使用者「{ $nickname }」不在線上
 err-nickname-required = 共享帳戶需要暱稱
 err-nickname-too-long = 暱稱太長（最多{ $max_length }個字元）
@@ -21,8 +20,6 @@ err-status-invalid-characters = 離開訊息包含無效字元
 err-shared-cannot-be-admin = 共享帳戶不能成為管理員
 err-shared-cannot-self-edit = 共享帳戶無法編輯自身
 err-shared-invalid-permissions = 共享帳戶不能擁有這些權限：{ $permissions }
-err-shared-message-requires-nickname = 共享帳戶只能通過暱稱接收訊息
-err-shared-kick-requires-nickname = 共享帳戶只能通過暱稱踢出
 
 # 訪客帳戶錯誤
 err-guest-disabled = 此伺服器未啟用訪客存取
@@ -33,7 +30,8 @@ err-cannot-delete-guest = 訪客帳戶無法刪除
 # 頭像驗證錯誤
 err-avatar-invalid-format = 頭像格式無效（必須是base64編碼的資料URI）
 err-avatar-too-large = 頭像太大（最多{ $max_length }個位元組）
-err-avatar-unsupported-type = 不支援的頭像類型（僅支援PNG、WebP或SVG）
+err-avatar-unsupported-type = 不支援的頭像類型（僅支援PNG、JPEG、WebP或SVG）
+err-avatar-undecodable = 無法將頭像解碼為有效圖像
 err-authentication = 身份驗證錯誤
 err-invalid-credentials = 使用者名稱或密碼無效
 err-handshake-required = 需要握手
@@ -41,7 +39,6 @@ err-already-logged-in = 已經登入
 err-handshake-already-completed = 握手已完成
 err-account-deleted = 您的帳戶已被刪除
 err-account-disabled-by-admin = 帳戶已被管理員停用
-err-account-type-changed = 此帳號的類型已變更。請重新連線。
 
 # 權限和存取錯誤
 err-permission-denied = 權限被拒絕
@@ -144,7 +141,6 @@ err-kick-reason-too-long = 踢出原因過長（最多 { $max_length } 個字元
 err-kick-reason-invalid-characters = 踢出原因包含無效字元
 err-username-exists = 使用者名稱「{ $username }」已存在
 err-user-not-found = 找不到使用者「{ $username }」
-err-user-not-online = 使用者「{ $username }」不在線上
 err-failed-to-create-user = 建立使用者「{ $username }」失敗
 err-account-disabled = 帳戶「{ $username }」已被停用
 err-update-failed = 更新使用者「{ $username }」失敗
@@ -172,7 +168,7 @@ err-invalid-password-strength = 無效的密碼強度值
 
 err-server-image-too-large = 伺服器圖片太大（最大512KB）
 err-server-image-invalid-format = 伺服器圖片格式無效（必須是base64編碼的資料URI）
-err-server-image-unsupported-type = 不支援的伺服器圖片類型（僅支援PNG、WebP、JPEG或SVG）
+err-server-image-unsupported-type = 不支援的伺服器圖片類型（僅支援PNG、JPEG、WebP或SVG）
 err-public-address-too-long = 公開位址太長（最多{ $max_length }個位元組）
 err-public-address-contains-scheme = 公開位址不能包含URL協定
 err-public-address-contains-brackets = 公開位址不能包含方括號
@@ -189,7 +185,7 @@ err-news-body-too-long = 新聞內容太長（最多{ $max_length }個字元）
 err-news-body-invalid-characters = 新聞內容包含無效字元
 err-news-image-too-large = 新聞圖片太大（最大512KB）
 err-news-image-invalid-format = 新聞圖片格式無效（必須是base64編碼的資料URI）
-err-news-image-unsupported-type = 不支援的新聞圖片類型（僅支援PNG、WebP、JPEG或SVG）
+err-news-image-unsupported-type = 不支援的新聞圖片類型（僅支援PNG、JPEG、WebP或SVG）
 err-news-empty-content = 新聞必須包含文字內容或圖片
 err-cannot-edit-admin-news = 只有管理員可以編輯管理員發布的新聞
 err-cannot-delete-admin-news = 只有管理員可以刪除管理員發布的新聞

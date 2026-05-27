@@ -3,7 +3,7 @@
 use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
@@ -28,11 +28,11 @@ use crate::flood::{FloodConfig, FloodTracker};
 use crate::handlers::{
     self, HandlerContext, err_invalid_message_format, err_message_not_supported,
 };
-use crate::ip_rule_cache::IpRuleCache;
+use crate::ip_rule_cache::IpRuleState;
 use crate::tracker::TrackerManager;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
-use crate::voice::{VoiceRegistry, send_voice_leave_notifications};
+use crate::voice::VoiceRegistry;
 
 /// Parameters for handling a connection
 pub struct ConnectionParams {
@@ -43,7 +43,7 @@ pub struct ConnectionParams {
     pub transfer_port: u16,
     pub transfer_websocket_port: Option<u16>,
     pub connection_tracker: Arc<ConnectionTracker>,
-    pub ip_rule_cache: Arc<RwLock<IpRuleCache>>,
+    pub ip_rule_cache: Arc<IpRuleState>,
     pub file_index: Arc<FileIndex>,
     pub file_mutation_locks: Arc<PathLockMap>,
     pub channel_manager: ChannelManager,
@@ -223,43 +223,33 @@ where
 
     let _ = frame_writer.get_mut().shutdown().await;
 
-    // Remove user on disconnect and broadcast to other clients.
+    // Disconnect teardown. Remove from the map first so the map is the single
+    // serialization point: if a forced path (kick/ban/delete) already removed this
+    // session, `remove_users` returns empty and we do nothing — no double cleanup,
+    // no double disconnect. Cleanup runs before `broadcast_disconnections` so
+    // ChatUserLeft / VoiceUserLeft precede UserDisconnected. `notify_leaving_user`
+    // is false: the user is already gone, there's nothing to tell them.
     if let Some(id) = conn_state.session_id {
-        // Remove from all channels, then notify remaining channel members if needed.
-        if let Some(user) = user_manager.get_user_by_session_id(id).await {
-            let channel_names = channel_manager.remove_from_all(id).await;
-
-            for channel_name in channel_names {
-                if let Some(remaining_members) = channel_manager.get_members(&channel_name).await {
-                    let nickname_present_elsewhere = user_manager
-                        .sessions_contain_nickname(&remaining_members, &user.nickname, None)
-                        .await;
-
-                    if !nickname_present_elsewhere {
-                        let leave_msg = ServerMessage::ChatUserLeft {
-                            channel: channel_name,
-                            nickname: user.nickname.clone(),
-                        };
-
-                        for member_session_id in remaining_members {
-                            user_manager
-                                .send_to_session(member_session_id, leave_msg.clone())
-                                .await;
-                        }
-                    }
-                }
-            }
-
-            // Remove from voice session and notify remaining participants.
-            if let Some(info) = voice_registry.remove_by_session_id(id).await {
-                // No notification to the leaving user — they're disconnecting.
-                send_voice_leave_notifications(&info, None, &user_manager, &channel_manager).await;
-            }
-        }
-
-        if let Some(user) = user_manager.remove_user_and_broadcast(id).await {
+        // Hold read_user_state across the snapshot → cleanup → disconnect broadcasts so a
+        // concurrent rename can't make the nickname-keyed ChatUserLeft / VoiceUserLeft /
+        // UserDisconnected stale (no client-side id reconciliation → permanent ghost).
+        // Every forced teardown (kick/ban/delete/disable) already holds this lock via its
+        // handler; the graceful path must match. All sends here are in-memory; the socket
+        // shutdown above already happened outside the lock.
+        let _user_state = user_manager.read_user_state().await;
+        let removed = user_manager.remove_users(&[id]).await;
+        handlers::cleanup_resources(
+            &user_manager,
+            &voice_registry,
+            &channel_manager,
+            &removed,
+            false,
+        )
+        .await;
+        for user in &removed {
             debug!(user = %user.username, ip = %peer_addr, "{}", LOG_DISCONNECTED);
         }
+        user_manager.broadcast_disconnections(&removed).await;
     }
 
     Ok(())

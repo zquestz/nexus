@@ -59,6 +59,16 @@ impl ChannelState {
         self.members.retain(|m| fold_name(m) != nickname_lower);
     }
 
+    /// Rename a member in place (preserves sorted order). No-op if `old` isn't a
+    /// member, so a stray rename never adds a non-member.
+    pub fn rename_member(&mut self, old: &str, new: String) {
+        let old_lower = fold_name(old);
+        if self.members.iter().any(|m| fold_name(m) == old_lower) {
+            self.remove_member(old);
+            self.add_member(new);
+        }
+    }
+
     /// Check if a nickname is a member of this channel (case-insensitive)
     #[cfg(test)] // Currently only used in tests - will be used for tab completion
     pub fn is_member(&self, nickname: &str) -> bool {

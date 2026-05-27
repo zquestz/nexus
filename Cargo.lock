@@ -4709,6 +4709,7 @@ dependencies = [
  "tokio-socks",
  "tray-icon",
  "unic-langid",
+ "usvg",
  "uuid",
  "webpki-roots",
  "webrtc-audio-processing",
@@ -4719,11 +4720,13 @@ dependencies = [
 name = "nexus-common"
 version = "0.8.4"
 dependencies = [
+ "base64",
  "futures-util",
  "hex",
  "humantime",
  "idna",
  "igd-next",
+ "image",
  "ipnet",
  "pem",
  "rand 0.10.1",
@@ -4741,6 +4744,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "usvg",
  "uuid",
  "zxcvbn",
 ]

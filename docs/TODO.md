@@ -36,6 +36,82 @@ Features intentionally excluded with rationale.
 | DCC                  | Peer-to-peer adds complexity; server-mediated transfers work well                          |
 | Remote desktop       | Most servers are headless; out of scope for BBS software                                   |
 
+## Deferred Correctness Work
+
+### Transfer Registration Identity Refresh
+
+Transfer-port authentication currently snapshots `username` / `nickname` before the
+client sends its file request. A username rename can commit during that request-read
+window; the rename updates already-registered transfers, but this not-yet-registered
+transfer can later enter `TransferRegistry` with the stale auth-time username. This
+only affects connection-monitor display while the transfer is active.
+
+Fix direction:
+
+- Add immutable `user_id` to transfer authentication state.
+- At transfer registration time, acquire `UserManager::read_user_state()` only as the
+  rename serialization guard; do not require an online BBS session.
+- Re-read the current account identity from the DB by `user_id` under that guard, then
+  register the transfer before dropping the guard.
+- Regular accounts register with the current DB username as both username and
+  nickname. Shared accounts register with the current DB username but keep the
+  transfer auth-time shared nickname.
+- Transfers must continue to work when the user is offline from the BBS port, including
+  pause/resume flows.
+
+**Code anchors:** `transfers/auth.rs::handle_transfer_login` builds `AuthenticatedUser`
+(today has no `user_id`); the register call site is `transfer_registry.register(...)` in
+`transfers/mod.rs` (after `handle_transfer_request`); `transfers/registry.rs::update_user`
+matches active transfers by *folded username*; the rename calls
+`transfer_registry.update_user` in `handlers/user_update.rs` under the write
+`lock_user_state`. `TransferParams` (in `transfers/mod.rs`) carries no `user_manager` — it
+must be plumbed through the transfer accept loop to acquire the guard, which is the main
+implementation cost.
+
+**Why the re-read is essential (not just the lock):** if the rename fully precedes
+registration, its `update_user` already ran against a transfer that didn't exist yet and
+the DB now holds the new name — locking alone would still register the stale auth-time
+snapshot. Registration must re-read current identity by `user_id`, never reuse the auth
+snapshot.
+
+**Alternative considered:** store only `user_id` (+ `is_shared` + shared nickname) in the
+registry and resolve the regular username live in the connection-monitor handler, so no
+mutable name is cached. Viable; not chosen here only to keep the `read_user_state`
+serialization pattern uniform with the BBS port.
+
+### Voice Stable Sender Identity
+
+Relayed voice packets carry the sender nickname. During a username rename, TCP
+`ChatUserRenamed` and UDP voice packets have no cross-transport ordering guarantee, so
+clients can receive `SpeakingStarted` / `SpeakingStopped` around the rename in an order
+that leaves a stale speaking key or briefly misses mute/decoder state.
+
+Fix direction:
+
+- Add a stable sender id to voice wire messages. Prefer `session_id` over `user_id`
+  because shared-account sessions have distinct nicknames under one account id.
+- Include the same stable id in voice participant messages (`VoiceJoinResponse`
+  participants / `VoiceUserJoined`) so the client can maintain id-to-current-nickname
+  mappings locally.
+- Key client voice state that must survive renames (`participants`, `speaking_users`,
+  mute/decoder/jitter state) by the stable id and render the current nickname from the
+  mapping.
+- A server-side `read_user_state()` wrapper around UDP relay is only a partial
+  mitigation and should not be treated as the fix; it cannot solve UDP/TCP ordering.
+- Consider a small server hardening while doing the protocol work: make relay self-skip
+  compare stable sender identity (`token` or `session_id`) instead of nickname.
+
+**Code anchors:** `voice/udp.rs::handle_packet` captures `sender_nickname` from the
+registry session and `relay_packet` stamps it into `RelayedVoicePacket` (defined in
+`nexus-common`) — the wire type to extend. Client re-key sites are
+`handlers/network/messages/chat_channel.rs::handle_chat_user_renamed` and
+`types/voice.rs::VoiceState::rename_user`.
+
+**Severity:** transient and minor — the participant roster is still re-keyed by
+`ChatUserRenamed`, so there's no permanent visible ghost; a stuck `speaking_users` entry
+has no matching participant to render, and the mute/decoder miss is momentary at the
+rename instant. Low priority.
+
 ## Feature Specs
 
 ### File Previews
@@ -394,7 +470,7 @@ The scheduler maintains two internal registries:
 3. **`ConnectionWriter` refactor (no behavior change).** Introduce `ConnectionWriter` as a concrete type with only the `Direct` variant (`Box<dyn AsyncWrite + Unpin + Send>`) wrapping today's writers. Thread it through `HandlerContext`, `Transfer`, and every handler, erasing the `<W>` generic. Pure mechanical refactor — no scheduler, no behavior change — landable and reviewable (and revertible) independently. Large diff, low risk. Independent of #2 (either order); prereq for #4.
 4. **Scheduler + cap (the big one).** Add the `Scheduled` variant and the new `nexus-server/src/scheduler/` module hosting WF2Q+ state + dispatch task. Wire all four accept loops, voice UDP exempt, LAN bypass at accept. **Depends on #3**; **assumes #2** (the bounded inbox is what keeps push traffic inside the per-connection memory bound). Scheduler consumes the config values phase 1 made available; the cap=0 default keeps it a pass-through until an operator sets a rate.
 
-**Broadcast avatar diet (companion — server done; client handler + protocol-doc update pending)**
+**Broadcast avatar diet (companion — done)**
 
 Standalone bandwidth fix the bounded-broadcast bound relies on. Avatars (≤176 KB data URIs) used to ride every `UserUpdated` — away/back/status, admin edit, group cascade, disconnect — though they never change within a session and the client hashes-and-discards unchanged ones; auto-away made that the dominant broadcast volume. Now the avatar = `UserManager::aggregate_avatar(live sessions)` — the most recent login that supplied one (regular accounts; shared are per-session) — carried only on **snapshots** (`UserConnected`, `UserListResponse`, `UserInfoResponse`) and on a **disconnect** `UserUpdated` that changes the aggregate (`Some(bytes)`, or `Some("")` = removed). Every other `UserUpdated` sends `avatar: None` and the client keeps its cache; a no-avatar login never blanks an existing avatar. Drops `UserUpdated` from ~176 KB to ~KB. Spec: `docs/protocol/04-users.md` → Avatar Handling.
 

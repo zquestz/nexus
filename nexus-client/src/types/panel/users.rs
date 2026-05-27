@@ -352,6 +352,9 @@ impl UserManagementState {
             original_bandwidth_weight_override: bandwidth_weight,
         };
         self.edit_error = None;
+        // Start every edit with a clean submit flag (matches enter_create_mode /
+        // enter_confirm_delete_mode), so a stuck flag can never disable Save.
+        self.is_submitting = false;
     }
 
     /// Enter confirm delete mode for a user

@@ -440,6 +440,7 @@ msg-user-kicked-success = 사용자가 성공적으로 추방되었습니다
 msg-user-kicked-success-name = 사용자 '{ $nickname }'이(가) 성공적으로 추방되었습니다
 msg-chat-join = { $nickname }님이 채널에 참가했습니다
 msg-chat-leave = { $nickname }님이 채널을 떠났습니다
+msg-chat-renamed = { $old }님이 { $new }(으)로 이름을 변경했습니다
 msg-channel-is-secret = 이 채널은 비공개입니다
 msg-channel-list-header = 사용 가능한 채널:
 msg-no-channels = 사용 가능한 채널이 없습니다

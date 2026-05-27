@@ -363,6 +363,7 @@ pub fn server_message_type(message: &ServerMessage) -> &'static str {
         ServerMessage::ChatSecretResponse { .. } => "ChatSecretResponse",
         ServerMessage::ChatUserJoined { .. } => "ChatUserJoined",
         ServerMessage::ChatUserLeft { .. } => "ChatUserLeft",
+        ServerMessage::ChatUserRenamed { .. } => "ChatUserRenamed",
         ServerMessage::Error { .. } => "Error",
         ServerMessage::HandshakeResponse { .. } => "HandshakeResponse",
         ServerMessage::LoginResponse { .. } => "LoginResponse",

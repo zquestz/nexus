@@ -441,6 +441,7 @@ msg-user-kicked-success = 成功踢出用户
 msg-user-kicked-success-name = 成功踢出用户 '{ $nickname }'
 msg-chat-join = { $nickname } 加入了频道
 msg-chat-leave = { $nickname } 离开了频道
+msg-chat-renamed = { $old } 现已更名为 { $new }
 msg-channel-is-secret = 此频道是私密的
 msg-channel-list-header = 可用频道:
 msg-no-channels = 没有可用频道

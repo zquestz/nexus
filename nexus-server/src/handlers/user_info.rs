@@ -76,45 +76,49 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Regular accounts (nickname == username) match all their sessions;
-    // shared accounts have a unique nickname, so just the one.
-    let target_sessions = ctx.user_manager.get_sessions_by_nickname(&nickname).await;
+    // Resolve the target's sessions and account together under read_user_state so a
+    // concurrent rename can't split them across epochs — a stale snapshot nickname paired
+    // with a fresh DB username, or a spurious not-found when the looked-up username just
+    // changed. The account is fetched by the session's immutable user_id, never the
+    // mutable username. Error responses are built here but sent after the guard drops (no
+    // socket I/O under the lock).
+    let resolved = {
+        let _user_state = ctx.user_manager.read_user_state().await;
 
-    if target_sessions.is_empty() {
-        let response = ServerMessage::UserInfoResponse {
-            success: false,
-            error: Some(err_nickname_not_online(ctx.locale, &nickname)),
-            user: None,
-        };
-        return ctx.send_message(&response).await;
-    }
+        // Regular accounts (nickname == username) match all their sessions; shared
+        // accounts have a unique nickname, so just the one.
+        let target_sessions = ctx.user_manager.get_sessions_by_nickname(&nickname).await;
 
-    let db_lookup_username = target_sessions
-        .first()
-        .map(|s| s.username.clone())
-        .expect(ERR_TARGET_SESSIONS_NON_EMPTY);
-
-    // Both Ok(None) (row vanished mid-request, rare race) and Err report a DB
-    // error so the user can retry without losing the session.
-    let target_account = match ctx.db.users.get_user_by_username(&db_lookup_username).await {
-        Ok(Some(acc)) => acc,
-        Ok(None) => {
-            let response = ServerMessage::UserInfoResponse {
+        match target_sessions.first().map(|s| s.user_id) {
+            None => Err(ServerMessage::UserInfoResponse {
                 success: false,
-                error: Some(err_database(ctx.locale)),
+                error: Some(err_nickname_not_online(ctx.locale, &nickname)),
                 user: None,
-            };
-            return ctx.send_message(&response).await;
+            }),
+            // Both Ok(None) (row vanished mid-request, rare race) and Err report a DB
+            // error so the user can retry without losing the session.
+            Some(user_id) => match ctx.db.users.get_user_by_id(user_id).await {
+                Ok(Some(acc)) => Ok((target_sessions, acc)),
+                Ok(None) => Err(ServerMessage::UserInfoResponse {
+                    success: false,
+                    error: Some(err_database(ctx.locale)),
+                    user: None,
+                }),
+                Err(e) => {
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_INFO_DB_ERROR);
+                    Err(ServerMessage::UserInfoResponse {
+                        success: false,
+                        error: Some(err_database(ctx.locale)),
+                        user: None,
+                    })
+                }
+            },
         }
-        Err(e) => {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_INFO_DB_ERROR);
-            let response = ServerMessage::UserInfoResponse {
-                success: false,
-                error: Some(err_database(ctx.locale)),
-                user: None,
-            };
-            return ctx.send_message(&response).await;
-        }
+    };
+
+    let (target_sessions, target_account) = match resolved {
+        Ok(pair) => pair,
+        Err(response) => return ctx.send_message(&response).await,
     };
 
     let session_ids: Vec<u32> = target_sessions.iter().map(|s| s.session_id).collect();
@@ -125,7 +129,7 @@ where
         .expect(ERR_TARGET_SESSIONS_NON_EMPTY);
     let locale = target_sessions
         .iter()
-        .max_by_key(|s| s.login_time)
+        .max_by_key(|s| (s.login_time, s.session_id))
         .map(|s| s.locale.clone())
         .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
 
@@ -153,7 +157,7 @@ where
     // when no session carries group info.
     let (group_id, group_name) = target_sessions
         .iter()
-        .max_by_key(|s| s.login_time)
+        .max_by_key(|s| (s.login_time, s.session_id))
         .map(|s| (s.group_id, s.group_name.clone()))
         .unwrap_or((None, None));
     let (group_id, group_name) = if group_id.is_some() {

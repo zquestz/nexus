@@ -461,6 +461,8 @@ impl NexusApp {
         // Extract values needed for history manager before moving connection_info
         let fingerprint = conn.connection_info.certificate_fingerprint.clone();
         let username = conn.connection_info.username.clone();
+        // Immutable account id keys the history dir, so a rename never moves it.
+        let user_id = conn.user_id;
         // Use server-confirmed nickname (equals username for regular accounts)
         let nickname = conn.nickname.clone();
         let connection_id = conn.connection_id;
@@ -507,82 +509,83 @@ impl NexusApp {
         self.connections.insert(connection_id, server_conn);
         self.active_connection = Some(connection_id);
 
-        // Get or create shared history manager for this server+account combination
-        let base_dir = HistoryManager::build_base_dir(&fingerprint, &username);
-        let is_new_manager = !self.history_managers.contains_key(&base_dir);
+        // History is keyed by the immutable account id (survives renames); skip if
+        // somehow unauthenticated (shouldn't happen post-login).
+        if let Some(user_id) = user_id {
+            // One-time move of any pre-id (username-keyed) history into the id-keyed dir.
+            HistoryManager::migrate_legacy_user_dir(&fingerprint, &username, user_id);
 
-        if is_new_manager {
-            let manager = HistoryManager::new(
-                &fingerprint,
-                &username,
-                self.config.settings.chat_history_retention,
-            );
-            self.history_managers.insert(base_dir.clone(), manager);
-        } else {
-            // Update existing manager's retention to current setting
-            if let Some(manager) = self.history_managers.get_mut(&base_dir) {
-                manager.update_retention(self.config.settings.chat_history_retention);
-            }
-        }
+            // Get or create shared history manager for this server+account combination
+            let base_dir = HistoryManager::build_base_dir(&fingerprint, user_id);
+            let is_new_manager = !self.history_managers.contains_key(&base_dir);
 
-        // Record which manager this connection uses
-        self.connection_history_keys
-            .insert(connection_id, base_dir.clone());
-
-        // Load history and restore tabs (only loads from disk on first access)
-        if let Some(history_manager) = self.history_managers.get_mut(&base_dir)
-            && let Ok(conversations) = history_manager.load_all()
-            && let Some(server_conn) = self.connections.get_mut(&connection_id)
-        {
-            for (other_nickname, messages) in conversations {
-                // Use the other user's nickname as the tab name
-                let tab_name = other_nickname.clone();
-
-                // Create tab if not exists
-                if !server_conn.user_message_tabs.contains(&tab_name) {
-                    server_conn.user_message_tabs.push(tab_name.clone());
+            if is_new_manager {
+                let manager = HistoryManager::new(
+                    &fingerprint,
+                    user_id,
+                    self.config.settings.chat_history_retention,
+                );
+                self.history_managers.insert(base_dir.clone(), manager);
+            } else {
+                // Update existing manager's retention to current setting
+                if let Some(manager) = self.history_managers.get_mut(&base_dir) {
+                    manager.update_retention(self.config.settings.chat_history_retention);
                 }
+            }
 
-                // Convert ServerMessage::UserMessage to ChatMessage for display
-                let chat_messages: Vec<_> = messages
-                    .iter()
-                    .filter_map(|msg| {
-                        if let nexus_common::protocol::ServerMessage::UserMessage {
-                            from_nickname,
-                            from_admin,
-                            from_shared,
-                            message,
-                            action,
-                            timestamp,
-                            ..
-                        } = msg
-                        {
-                            let datetime = if *timestamp > 0 {
-                                chrono::TimeZone::timestamp_opt(
-                                    &chrono::Local,
-                                    *timestamp as i64,
-                                    0,
-                                )
-                                .single()
-                                .unwrap_or_else(chrono::Local::now)
+            // Record which manager this connection uses
+            self.connection_history_keys
+                .insert(connection_id, base_dir.clone());
+
+            // Load history and restore tabs (only loads from disk on first access)
+            if let Some(history_manager) = self.history_managers.get_mut(&base_dir)
+                && let Ok(conversations) = history_manager.load_all()
+                && let Some(server_conn) = self.connections.get_mut(&connection_id)
+            {
+                for (other_nickname, messages) in conversations {
+                    // Convert ServerMessage::UserMessage to ChatMessage for display
+                    let chat_messages: Vec<_> = messages
+                        .iter()
+                        .filter_map(|msg| {
+                            if let nexus_common::protocol::ServerMessage::UserMessage {
+                                from_nickname,
+                                from_admin,
+                                from_shared,
+                                message,
+                                action,
+                                timestamp,
+                                ..
+                            } = msg
+                            {
+                                let datetime = if *timestamp > 0 {
+                                    chrono::TimeZone::timestamp_opt(
+                                        &chrono::Local,
+                                        *timestamp as i64,
+                                        0,
+                                    )
+                                    .single()
+                                    .unwrap_or_else(chrono::Local::now)
+                                } else {
+                                    chrono::Local::now()
+                                };
+                                Some(crate::types::ChatMessage::with_timestamp_and_status(
+                                    from_nickname.clone(),
+                                    message.clone(),
+                                    datetime,
+                                    *from_admin,
+                                    *from_shared,
+                                    *action,
+                                ))
                             } else {
-                                chrono::Local::now()
-                            };
-                            Some(crate::types::ChatMessage::with_timestamp_and_status(
-                                from_nickname.clone(),
-                                message.clone(),
-                                datetime,
-                                *from_admin,
-                                *from_shared,
-                                *action,
-                            ))
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
+                                None
+                            }
+                        })
+                        .collect();
 
-                server_conn.user_messages.insert(tab_name, chat_messages);
+                    // Resolve to the canonical DM tab (folded identity), then store.
+                    let key = server_conn.resolve_user_message_tab(&other_nickname);
+                    server_conn.user_messages.insert(key, chat_messages);
+                }
             }
         }
 
