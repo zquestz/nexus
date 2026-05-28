@@ -527,6 +527,7 @@ err-port-required = 端口为必填项
 err-username-required = 用户名为必填项
 err-password-required = 密码为必填项
 err-message-required = 消息为必填项
+err-user-edit-stale = 此用户已在服务器上更改。保存前请重新打开编辑表单以加载最新详情。
 
 # Validation errors
 err-message-empty = 消息不能为空

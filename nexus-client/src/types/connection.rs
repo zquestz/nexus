@@ -364,6 +364,21 @@ impl ServerConnection {
         // DM tab/message state, re-keyed by folded identity (merge on collision).
         self.rekey_user_message_tab(old_username, new_username);
 
+        // In-flight DM responses carry the request-time nickname. Re-key them
+        // with the tab so success/away/error responses don't reopen the old name.
+        let old_folded = fold_name(old_username);
+        for routing in self.pending_requests.values_mut() {
+            match routing {
+                ResponseRouting::OpenMessageTab(nickname)
+                | ResponseRouting::ShowErrorInMessageTab(nickname)
+                    if fold_name(nickname) == old_folded =>
+                {
+                    *nickname = new_username.to_string();
+                }
+                _ => {}
+            }
+        }
+
         // Active voice session: DM peer / participant / speaking / muted state.
         if let Some(voice_session) = &mut self.voice_session {
             voice_session.rename_user(old_username, new_username);
@@ -928,6 +943,39 @@ mod tests {
         assert!(conn.user_messages.contains_key("charlie"));
         assert!(!conn.user_messages.contains_key("bob"));
         assert_eq!(conn.active_chat_tab, dm("charlie"));
+    }
+
+    #[test]
+    fn apply_user_rename_rekeys_pending_dm_routes() {
+        let mut conn = test_connection();
+        let open_id = MessageId::new();
+        let error_id = MessageId::new();
+        let unrelated_id = MessageId::new();
+        conn.pending_requests
+            .insert(open_id, ResponseRouting::OpenMessageTab("bob".to_string()));
+        conn.pending_requests.insert(
+            error_id,
+            ResponseRouting::ShowErrorInMessageTab("BOB".to_string()),
+        );
+        conn.pending_requests.insert(
+            unrelated_id,
+            ResponseRouting::OpenMessageTab("alice".to_string()),
+        );
+
+        conn.apply_user_rename("bob", "charlie");
+
+        assert!(matches!(
+            conn.pending_requests.get(&open_id),
+            Some(ResponseRouting::OpenMessageTab(name)) if name == "charlie"
+        ));
+        assert!(matches!(
+            conn.pending_requests.get(&error_id),
+            Some(ResponseRouting::ShowErrorInMessageTab(name)) if name == "charlie"
+        ));
+        assert!(matches!(
+            conn.pending_requests.get(&unrelated_id),
+            Some(ResponseRouting::OpenMessageTab(name)) if name == "alice"
+        ));
     }
 
     // Scenario 3: a case-only rename bob -> Bob still relabels the tab.

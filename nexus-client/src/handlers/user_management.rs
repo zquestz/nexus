@@ -102,6 +102,7 @@ impl NexusApp {
                     conn.user_management.return_to_panel = None;
                     conn.user_management.mode = UserManagementMode::List;
                     conn.user_management.edit_error = None;
+                    conn.user_management.edit_stale = false;
                     conn.active_panel = return_panel;
                     Task::none()
                 } else {
@@ -774,8 +775,8 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Prevent double-submit
-        if conn.user_management.is_submitting {
+        // Prevent double-submit and stale edits.
+        if conn.user_management.is_submitting || conn.user_management.edit_stale {
             return Task::none();
         }
 

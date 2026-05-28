@@ -526,6 +526,7 @@ err-port-required = 連接埠為必填
 err-username-required = 使用者名稱為必填
 err-password-required = 密碼為必填
 err-message-required = 訊息為必填
+err-user-edit-stale = 此使用者已在伺服器上變更。儲存前請重新開啟編輯表單以載入最新詳細資料。
 
 # Validation errors
 err-message-empty = 訊息不能為空

@@ -59,6 +59,27 @@ When a user browses files:
 
 Users see their area as `/` — they don't know which physical location they're in.
 
+### Username Renames
+
+When an account username changes, the server also handles that account's
+personal area:
+
+- If `files/users/{old_username}/` exists and `files/users/{new_username}/`
+  does not, the directory is renamed to the new username.
+- If both old and new personal-area directories exist as distinct filesystem
+  entries, the account rename fails. The server never merges or overwrites
+  personal areas.
+- If the old personal-area directory does not exist, the server leaves the
+  filesystem alone. This allows admins to pre-create `files/users/{new_username}/`
+  before renaming an account.
+- If the old or new personal area is busy because a file operation or transfer
+  is active there, the account rename fails immediately instead of waiting.
+- This applies to both regular accounts and shared accounts.
+
+User drop boxes (`[NEXUS-DB-username]`) are an admin-managed naming convention.
+They are not renamed automatically when an account username changes; update those
+folder names manually if you want the ownership suffix to follow the new username.
+
 ## Creating Personal Areas
 
 Personal folders are created manually by the admin:
@@ -105,6 +126,8 @@ mkdir "For Alice [NEXUS-DB-alice]"
 - Case-insensitive: `[NEXUS-UL]` = `[nexus-ul]`
 - Must be at end of folder name
 - Subfolders inherit upload permission from parent
+- User drop-box owner suffixes are not automatically changed by account
+  username renames
 
 ### Client Display
 
@@ -194,6 +217,12 @@ Admins have all permissions automatically.
 ## Root Mode
 
 Users with `file_root` permission (typically admins) can toggle "Root Mode" to see the entire file structure, including all user areas.
+
+Root-mode operations against a specific personal area are serialized against that
+account's username changes. Whole-tree operations such as listing, searching, or
+downloading `/` or `/users` do not lock every personal area. If an account rename
+happens at the same time, the root-mode operation may see a partial snapshot or
+return an error for a path that moved.
 
 ## Admin Responsibilities
 
@@ -289,6 +318,10 @@ Verify the folder exists and matches the username exactly (case-sensitive on mos
 ```bash
 ls -la ~/.local/share/nexusd/files/users/
 ```
+
+If the user was renamed, verify that the rename either migrated the old personal
+folder or that a new folder was intentionally pre-created under the new username.
+Account renames fail rather than overwrite a distinct existing target folder.
 
 ### Uploads not working
 

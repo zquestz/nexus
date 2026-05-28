@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::db::{Database, Permission};
-use crate::files::{FileIndex, PathLockMap};
+use crate::files::{FileIndex, PathLockMap, PersonalAreaLockMap};
 use crate::ip_rule_cache::IpRuleState;
 use crate::users::UserManager;
 
@@ -20,6 +20,8 @@ pub struct TransferParams {
     pub file_index: Arc<FileIndex>,
     /// See `files::path_lock`.
     pub file_mutation_locks: Arc<PathLockMap>,
+    /// Serializes account personal-area renames against transfer I/O.
+    pub personal_area_locks: Arc<PersonalAreaLockMap>,
     pub transfer_registry: Arc<TransferRegistry>,
     pub ip_rule_cache: Arc<IpRuleState>,
     pub user_manager: UserManager,

@@ -456,6 +456,19 @@ Two side effects of `permissions` worth knowing about:
 
 Only include fields you want to change.
 
+**Username rename and personal file areas.** If a username changes and the
+server has a configured file area, the server checks
+`{file_root}/users/{old_username}/`. When that directory exists and
+`{file_root}/users/{new_username}/` does not, the directory is renamed as part
+of the account rename. If both directories exist as distinct filesystem entries,
+`UserUpdate` fails and the account username is left unchanged. If the old
+directory does not exist, no filesystem migration is attempted; an admin may
+pre-create the new personal-area directory before renaming. If either personal
+area is busy due to an active file operation or transfer, `UserUpdate` fails
+immediately instead of waiting. This applies to both regular and shared
+accounts. User drop-box suffixes (`[NEXUS-DB-username]`) are not renamed
+automatically.
+
 **Self-edit semantics.** A request whose `id` resolves to the
 requesting user is treated as a self-edit, and the accepted field
 set narrows:
@@ -1617,6 +1630,9 @@ A server can have at most 64 configured trackers.
 | Cannot assign admin users to a group             | Admin XOR group invariant violated                                                                                                                 |
 | Incorrect current password                       | Wrong password for self-update                                                                                                                     |
 | Username already exists                          | New username conflicts                                                                                                                             |
+| Personal file area already exists                | Rename would overwrite or merge an existing `users/{new_username}` personal area                                                                   |
+| Personal file area is busy                       | Rename would move a personal area currently used by a file operation or transfer                                                                   |
+| Failed to migrate personal file area             | Filesystem error while renaming `users/{old_username}` to `users/{new_username}`                                                                   |
 | Cannot rename the guest account                  | Attempted guest rename                                                                                                                             |
 | Cannot change the guest account password         | Attempted guest password change                                                                                                                    |
 | Shared accounts cannot edit themselves           | Shared-account session attempted self-update                                                                                                       |

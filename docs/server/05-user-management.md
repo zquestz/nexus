@@ -44,6 +44,14 @@ Admins manage users through the client's **User Management** panel (accessible f
 
 When editing a user who belongs to a group, permissions shown in **bold** indicate individual overrides (differ from the group's base permissions).
 
+Renaming a user also migrates their personal file-area folder when
+`files/users/{old_username}/` exists. If `files/users/{new_username}/` already
+exists as a distinct folder, the rename fails instead of overwriting or merging
+data. If either personal area is busy due to an active file operation or
+transfer, the rename fails immediately instead of waiting. User drop-box
+suffixes (`[NEXUS-DB-username]`) are not renamed automatically; adjust those
+folder names manually if needed.
+
 **Editing your own row.** Clicking your own row opens **Change Password** if you're not an admin, or **Edit** if you are. The right-click context menu on your own row offers Change Password (always) and Edit (admins only). See [Admin Protection](#admin-protection) for what's editable when editing yourself.
 
 ### Deleting Users

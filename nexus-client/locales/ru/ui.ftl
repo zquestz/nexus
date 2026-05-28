@@ -548,6 +548,7 @@ err-port-required = Требуется порт
 err-username-required = Требуется имя пользователя
 err-password-required = Требуется пароль
 err-message-required = Требуется сообщение
+err-user-edit-stale = Этот пользователь был изменён на сервере. Откройте форму редактирования заново, чтобы загрузить актуальные данные перед сохранением.
 
 # Validation errors
 err-message-empty = Сообщение не может быть пустым

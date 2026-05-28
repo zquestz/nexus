@@ -538,6 +538,7 @@ err-port-required = Port ist erforderlich
 err-username-required = Benutzername ist erforderlich
 err-password-required = Passwort ist erforderlich
 err-message-required = Nachricht ist erforderlich
+err-user-edit-stale = Dieser Benutzer wurde auf dem Server geändert. Öffnen Sie das Bearbeitungsformular erneut, um vor dem Speichern die neuesten Details zu laden.
 
 # Validation errors
 err-message-empty = Nachricht darf nicht leer sein

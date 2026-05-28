@@ -18,7 +18,10 @@ use crate::constants::{
     LOG_FILE_INFO_ROOT_DENIED,
 };
 use crate::db::Permission;
-use crate::files::{build_and_validate_candidate_path, resolve_path, resolve_user_area};
+use crate::files::{
+    build_and_validate_candidate_path, personal_area_names_for_root_path, resolve_path,
+    resolve_user_area_with_read_lock,
+};
 
 /// Count items in a directory (non-recursive), off the async runtime.
 async fn count_directory_items_async(path: &Path) -> Option<u64> {
@@ -122,23 +125,6 @@ where
             .await;
     };
 
-    let requesting_user = match ctx
-        .user_manager
-        .get_user_by_session_id(requesting_session_id)
-        .await
-    {
-        Some(u) => u,
-        None => {
-            // Session gone — a race, not a security event.
-            let response = ServerMessage::FileInfoResponse {
-                success: false,
-                error: Some(err_not_logged_in(ctx.locale)),
-                info: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
-
     let Some(file_root) = ctx.file_root else {
         let response = ServerMessage::FileInfoResponse {
             success: false,
@@ -147,27 +133,6 @@ where
         };
         return ctx.send_message(&response).await;
     };
-
-    if !requesting_user.has_permission(Permission::FileInfo) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_INFO_PERMISSION_DENIED);
-        let response = ServerMessage::FileInfoResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            info: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Root browsing additionally requires FileRoot.
-    if root && !requesting_user.has_permission(Permission::FileRoot) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_INFO_ROOT_DENIED);
-        let response = ServerMessage::FileInfoResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            info: None,
-        };
-        return ctx.send_message(&response).await;
-    }
 
     if let Err(e) = validators::validate_file_path(&path) {
         let error_msg = match e {
@@ -186,11 +151,66 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Area root: file_root in root mode, else the user's personal area.
-    let area_root_path = if root {
-        file_root.to_path_buf()
-    } else {
-        resolve_user_area(file_root, &requesting_user.username).await
+    let user_area_result = 'user_area: {
+        let _state_guard = ctx.user_manager.read_user_state().await;
+        let requesting_user = match ctx
+            .user_manager
+            .get_user_by_session_id(requesting_session_id)
+            .await
+        {
+            Some(u) => u,
+            None => {
+                // Session gone — a race, not a security event.
+                let response = ServerMessage::FileInfoResponse {
+                    success: false,
+                    error: Some(err_not_logged_in(ctx.locale)),
+                    info: None,
+                };
+                break 'user_area Err(response);
+            }
+        };
+
+        if !requesting_user.has_permission(Permission::FileInfo) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_INFO_PERMISSION_DENIED);
+            let response = ServerMessage::FileInfoResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                info: None,
+            };
+            break 'user_area Err(response);
+        }
+
+        // Root browsing additionally requires FileRoot.
+        if root && !requesting_user.has_permission(Permission::FileRoot) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_INFO_ROOT_DENIED);
+            let response = ServerMessage::FileInfoResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                info: None,
+            };
+            break 'user_area Err(response);
+        }
+
+        let (area_root_path, personal_area_guards) = if root {
+            (
+                file_root.to_path_buf(),
+                ctx.personal_area_locks
+                    .read_many(personal_area_names_for_root_path(&path))
+                    .await,
+            )
+        } else {
+            resolve_user_area_with_read_lock(
+                file_root,
+                ctx.personal_area_locks.as_ref(),
+                &requesting_user.username,
+            )
+            .await
+        };
+        Ok((area_root_path, personal_area_guards))
+    };
+    let (area_root_path, _personal_area_guards) = match user_area_result {
+        Ok(user_area) => user_area,
+        Err(response) => return ctx.send_message(&response).await,
     };
 
     let area_root = match tokio::fs::canonicalize(&area_root_path).await {

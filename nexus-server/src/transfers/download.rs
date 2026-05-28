@@ -35,7 +35,7 @@ use super::helpers::{
     send_download_error_and_close, send_download_transfer_error, validate_transfer_path,
 };
 use super::transfer::{StreamError, Transfer};
-use super::types::{AuthenticatedUser, DownloadParams, FileInfo};
+use super::types::{DownloadParams, FileInfo};
 
 pub(crate) async fn handle_download<R, W>(
     transfer: &mut Transfer<'_, R, W>,
@@ -54,20 +54,13 @@ where
     let username = transfer.user().username.clone();
     let is_admin = transfer.user().is_admin;
     let peer_addr = transfer.peer_addr();
-    let file_root = transfer.file_root();
 
-    let resolved_path = match validate_and_resolve_download_path(
-        transfer.user(),
-        file_root,
-        &locale,
-        &download_path,
-        use_root,
-    )
-    .await
-    {
-        Ok(path) => path,
-        Err(e) => return send_download_transfer_error(transfer.writer(), &e).await,
-    };
+    let resolved_path =
+        match validate_and_resolve_download_path(transfer, &locale, &download_path, use_root).await
+        {
+            Ok(path) => path,
+            Err(e) => return send_download_transfer_error(transfer.writer(), &e).await,
+        };
 
     if !can_access_for_download(&resolved_path, &username, is_admin) {
         let err = TransferError::permission(err_transfer_access_denied(&locale));
@@ -230,17 +223,23 @@ impl From<StreamError> for StreamFileError {
 }
 
 async fn validate_and_resolve_download_path(
-    user: &AuthenticatedUser,
-    file_root: &Path,
+    transfer: &Transfer<'_, impl AsyncRead + Unpin, impl AsyncWrite + Unpin>,
     locale: &str,
     download_path: &str,
     use_root: bool,
 ) -> Result<std::path::PathBuf, TransferError> {
+    let user = transfer.user();
     validate_transfer_path(download_path, locale)?;
     check_permission(user, Permission::FileDownload, locale)?;
     check_root_permission(user, use_root, locale)?;
 
-    let area_root = resolve_area_root(file_root, &user.username, use_root, locale).await?;
+    let area_root = resolve_area_root(
+        transfer.file_root(),
+        transfer.user_area_root(),
+        use_root,
+        locale,
+    )
+    .await?;
     let candidate = build_validated_path(&area_root, download_path, locale).await?;
 
     resolve_path(&area_root, &candidate)

@@ -526,6 +526,7 @@ err-port-required = 포트는 필수입니다
 err-username-required = 사용자 이름은 필수입니다
 err-password-required = 비밀번호는 필수입니다
 err-message-required = 메시지는 필수입니다
+err-user-edit-stale = 이 사용자는 서버에서 변경되었습니다. 저장하기 전에 편집 양식을 다시 열어 최신 세부 정보를 불러오세요.
 
 # Validation errors
 err-message-empty = 메시지는 비워둘 수 없습니다

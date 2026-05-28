@@ -333,7 +333,8 @@ impl NexusApp {
                         }
                         UserManagementMode::Edit { new_username, .. } => {
                             let can_save = !new_username.trim().is_empty()
-                                && !conn.user_management.is_submitting;
+                                && !conn.user_management.is_submitting
+                                && !conn.user_management.edit_stale;
                             let msg = if can_save {
                                 Message::UserManagementUpdatePressed
                             } else {

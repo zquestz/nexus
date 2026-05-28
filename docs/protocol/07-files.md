@@ -764,6 +764,19 @@ Each user has a file area root:
 
 Users cannot see or access other users' areas. Paths are presented as absolute from `/`.
 
+On account username rename, the server migrates the personal-area directory only
+when `{file_root}/users/{old_username}/` exists. The rename fails if
+`{file_root}/users/{new_username}/` also exists as a distinct filesystem entry;
+the server never merges or overwrites personal areas. If the old directory does
+not exist, the filesystem is left untouched, so an admin-prepared new personal
+area is allowed. If the old or new personal area is busy because a file
+operation or transfer is active there, the account rename fails immediately
+instead of waiting. This behavior applies to regular and shared accounts.
+
+`[NEXUS-DB-username]` user drop-box suffixes are not renamed automatically.
+They remain an admin-managed naming convention and must be updated manually if
+the suffix should follow an account rename.
+
 **Example with personal area:**
 
 - User `alice` sees `/` which maps to `{file_root}/users/alice/`
@@ -777,6 +790,12 @@ Users cannot see or access other users' areas. Paths are presented as absolute f
 ## Root Mode
 
 When `root: true`, paths are relative to the file root instead of the user's area. This requires the `file_root` permission and is intended for admin file management.
+
+Root-mode operations that target a specific personal area are serialized against
+that account's username changes. Whole-tree root operations such as `/` or
+`/users` are not serialized against every personal area; if an account rename
+happens concurrently, the operation may observe a partial snapshot or fail for a
+path that moved.
 
 ## Permissions
 

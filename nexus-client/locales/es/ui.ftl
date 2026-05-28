@@ -540,6 +540,7 @@ err-port-required = El puerto es requerido
 err-username-required = El nombre de usuario es requerido
 err-password-required = La contraseña es requerida
 err-message-required = El mensaje es requerido
+err-user-edit-stale = Este usuario se modificó en el servidor. Vuelve a abrir el formulario de edición para cargar los datos más recientes antes de guardar.
 
 # Validation errors
 err-message-empty = El mensaje no puede estar vacío

@@ -21,8 +21,9 @@ use crate::constants::{
 };
 use crate::db::Permission;
 use crate::files::{
-    PathLockMode, build_and_validate_candidate_path, in_owned_dropbox, lock_key, rename_path_async,
-    resolve_path, resolve_user_area,
+    PathLockMode, build_and_validate_candidate_path, in_owned_dropbox, lock_key,
+    personal_area_names_for_root_rename, rename_path_async, resolve_path,
+    resolve_user_area_with_read_lock,
 };
 
 pub async fn handle_file_rename<W>(
@@ -42,22 +43,6 @@ where
             .await;
     };
 
-    let requesting_user = match ctx
-        .user_manager
-        .get_user_by_session_id(requesting_session_id)
-        .await
-    {
-        Some(u) => u,
-        None => {
-            // Race, not a security event — don't log.
-            let response = ServerMessage::FileRenameResponse {
-                success: false,
-                error: Some(err_not_logged_in(ctx.locale)),
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
-
     let Some(file_root) = ctx.file_root else {
         let response = ServerMessage::FileRenameResponse {
             success: false,
@@ -65,15 +50,6 @@ where
         };
         return ctx.send_message(&response).await;
     };
-
-    if root && !requesting_user.has_permission(Permission::FileRoot) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_ROOT_DENIED);
-        let response = ServerMessage::FileRenameResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
-    }
 
     if let Err(e) = validators::validate_file_path(&path) {
         let error_msg = match e {
@@ -110,10 +86,53 @@ where
         return ctx.send_message(&response).await;
     }
 
-    let area_root_path = if root {
-        file_root.to_path_buf()
-    } else {
-        resolve_user_area(file_root, &requesting_user.username).await
+    let user_area_result = 'user_area: {
+        let _state_guard = ctx.user_manager.read_user_state().await;
+        let requesting_user = match ctx
+            .user_manager
+            .get_user_by_session_id(requesting_session_id)
+            .await
+        {
+            Some(u) => u,
+            None => {
+                // Race, not a security event — don't log.
+                let response = ServerMessage::FileRenameResponse {
+                    success: false,
+                    error: Some(err_not_logged_in(ctx.locale)),
+                };
+                break 'user_area Err(response);
+            }
+        };
+
+        if root && !requesting_user.has_permission(Permission::FileRoot) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_ROOT_DENIED);
+            let response = ServerMessage::FileRenameResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+            };
+            break 'user_area Err(response);
+        }
+
+        let (area_root_path, personal_area_guards) = if root {
+            (
+                file_root.to_path_buf(),
+                ctx.personal_area_locks
+                    .read_many(personal_area_names_for_root_rename(&path, &new_name))
+                    .await,
+            )
+        } else {
+            resolve_user_area_with_read_lock(
+                file_root,
+                ctx.personal_area_locks.as_ref(),
+                &requesting_user.username,
+            )
+            .await
+        };
+        Ok((requesting_user, area_root_path, personal_area_guards))
+    };
+    let (requesting_user, area_root_path, _personal_area_guards) = match user_area_result {
+        Ok(user_area) => user_area,
+        Err(response) => return ctx.send_message(&response).await,
     };
 
     let area_root = match tokio::fs::canonicalize(&area_root_path).await {

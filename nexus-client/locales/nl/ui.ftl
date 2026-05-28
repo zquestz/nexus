@@ -539,6 +539,7 @@ err-port-required = Poort is vereist
 err-username-required = Gebruikersnaam is vereist
 err-password-required = Wachtwoord is vereist
 err-message-required = Bericht is vereist
+err-user-edit-stale = Deze gebruiker is op de server gewijzigd. Open het bewerkingsformulier opnieuw om de nieuwste details te laden voordat u opslaat.
 
 # Validation errors
 err-message-empty = Bericht mag niet leeg zijn

@@ -19,9 +19,12 @@ use crate::constants::{
     LOG_USER_UPDATE_DB_ERROR_DUPLICATE_CHECK, LOG_USER_UPDATE_DB_ERROR_GROUP,
     LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS, LOG_USER_UPDATE_DB_ERROR_LOOKUP,
     LOG_USER_UPDATE_DB_ERROR_PERMISSIONS, LOG_USER_UPDATE_DB_ERROR_TARGET,
-    LOG_USER_UPDATE_DB_ERROR_USER, LOG_USER_UPDATE_HASH_ERROR, LOG_USER_UPDATE_NOT_LOGGED_IN,
-    LOG_USER_UPDATE_PASSWORD_VERIFY, LOG_USER_UPDATE_PERMISSION_DENIED, LOG_USER_UPDATE_SUCCESS,
-    LOG_USER_UPDATE_UNOWNED_PERMISSION, LOG_USER_UPDATE_UNOWNED_REVOKE,
+    LOG_USER_UPDATE_DB_ERROR_USER, LOG_USER_UPDATE_FILE_AREA_BUSY,
+    LOG_USER_UPDATE_FILE_AREA_MIGRATE_FAILED, LOG_USER_UPDATE_FILE_AREA_MIGRATED,
+    LOG_USER_UPDATE_FILE_AREA_ROLLBACK_FAILED, LOG_USER_UPDATE_FILE_AREA_TARGET_EXISTS,
+    LOG_USER_UPDATE_HASH_ERROR, LOG_USER_UPDATE_NOT_LOGGED_IN, LOG_USER_UPDATE_PASSWORD_VERIFY,
+    LOG_USER_UPDATE_PERMISSION_DENIED, LOG_USER_UPDATE_SUCCESS, LOG_USER_UPDATE_UNOWNED_PERMISSION,
+    LOG_USER_UPDATE_UNOWNED_REVOKE,
 };
 
 #[cfg(test)]
@@ -37,7 +40,9 @@ use super::{
     err_password_empty, err_password_too_long, err_password_too_weak, err_permission_denied,
     err_permission_grant_revoke_conflict, err_permissions_contains_newlines,
     err_permissions_empty_permission, err_permissions_invalid_characters,
-    err_permissions_permission_too_long, err_permissions_too_many, err_shared_cannot_be_admin,
+    err_permissions_permission_too_long, err_permissions_too_many, err_personal_file_area_busy,
+    err_personal_file_area_exists, err_personal_file_area_migration_failed,
+    err_personal_file_area_rollback_failed_warning, err_shared_cannot_be_admin,
     err_shared_cannot_self_edit, err_shared_invalid_permissions, err_unknown_permission,
     err_update_failed, err_user_not_found, err_username_empty, err_username_exists,
     err_username_invalid, err_username_is_active_nickname, err_username_too_long,
@@ -52,6 +57,9 @@ use crate::db::hash_password;
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{
     Permission, Permissions, UpdateUserParams, hash_password_async, verify_password_async,
+};
+use crate::files::{
+    PersonalAreaMigration, PersonalAreaMigrationError, migrate_personal_area_on_rename_with_locks,
 };
 use crate::users::manager::UserManager;
 use crate::voice::send_voice_leave_notifications;
@@ -945,6 +953,129 @@ where
             Some(requesting_user.bandwidth_weight.load(Ordering::Relaxed))
         };
 
+        if let Some(new_username) = request.username.as_deref()
+            && fold_name(new_username) != fold_name(&old_username)
+        {
+            match ctx.db.users.get_user_by_username(new_username).await {
+                Ok(Some(_)) => {
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_username_exists(ctx.locale, new_username)),
+                        id: None,
+                        username: None,
+                    }));
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_DUPLICATE_CHECK);
+                    break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                        success: false,
+                        error: Some(err_database(ctx.locale)),
+                        id: None,
+                        username: None,
+                    }));
+                }
+            }
+        }
+
+        let personal_area_migration = if let Some(new_username) = request.username.as_deref() {
+            if old_username != new_username {
+                match ctx.file_root {
+                    Some(file_root) => {
+                        match migrate_personal_area_on_rename_with_locks(
+                            file_root,
+                            ctx.personal_area_locks.as_ref(),
+                            ctx.file_mutation_locks.as_ref(),
+                            &old_username,
+                            new_username,
+                        )
+                        .await
+                        {
+                            Ok(PersonalAreaMigration::Migrated) => {
+                                info!(
+                                    user = %requesting_user.username,
+                                    ip = %ctx.peer_addr,
+                                    old_username = %old_username,
+                                    new_username = %new_username,
+                                    "{}",
+                                    LOG_USER_UPDATE_FILE_AREA_MIGRATED
+                                );
+                                PersonalAreaMigration::Migrated
+                            }
+                            Ok(PersonalAreaMigration::NotNeeded) => {
+                                PersonalAreaMigration::NotNeeded
+                            }
+                            Err(PersonalAreaMigrationError::TargetExists) => {
+                                warn!(
+                                    user = %requesting_user.username,
+                                    ip = %ctx.peer_addr,
+                                    old_username = %old_username,
+                                    new_username = %new_username,
+                                    "{}",
+                                    LOG_USER_UPDATE_FILE_AREA_TARGET_EXISTS
+                                );
+                                break 'locked Outcome::Send(Box::new(
+                                    ServerMessage::UserUpdateResponse {
+                                        success: false,
+                                        error: Some(err_personal_file_area_exists(
+                                            ctx.locale,
+                                            new_username,
+                                        )),
+                                        id: None,
+                                        username: None,
+                                    },
+                                ));
+                            }
+                            Err(PersonalAreaMigrationError::Busy) => {
+                                warn!(
+                                    user = %requesting_user.username,
+                                    ip = %ctx.peer_addr,
+                                    old_username = %old_username,
+                                    new_username = %new_username,
+                                    "{}",
+                                    LOG_USER_UPDATE_FILE_AREA_BUSY
+                                );
+                                break 'locked Outcome::Send(Box::new(
+                                    ServerMessage::UserUpdateResponse {
+                                        success: false,
+                                        error: Some(err_personal_file_area_busy(ctx.locale)),
+                                        id: None,
+                                        username: None,
+                                    },
+                                ));
+                            }
+                            Err(PersonalAreaMigrationError::Io(e)) => {
+                                error!(
+                                    user = %requesting_user.username,
+                                    ip = %ctx.peer_addr,
+                                    old_username = %old_username,
+                                    new_username = %new_username,
+                                    err = %e,
+                                    "{}",
+                                    LOG_USER_UPDATE_FILE_AREA_MIGRATE_FAILED
+                                );
+                                break 'locked Outcome::Send(Box::new(
+                                    ServerMessage::UserUpdateResponse {
+                                        success: false,
+                                        error: Some(err_personal_file_area_migration_failed(
+                                            ctx.locale,
+                                        )),
+                                        id: None,
+                                        username: None,
+                                    },
+                                ));
+                            }
+                        }
+                    }
+                    None => PersonalAreaMigration::NotNeeded,
+                }
+            } else {
+                PersonalAreaMigration::NotNeeded
+            }
+        } else {
+            PersonalAreaMigration::NotNeeded
+        };
+
         // Update (atomic last-admin protection lives in the SQL).
         match ctx
             .db
@@ -987,6 +1118,9 @@ where
                     id: Some(request.id),
                     username: Some(updated_account.username.clone()),
                 };
+                if personal_area_migration == PersonalAreaMigration::Migrated {
+                    ctx.file_index.mark_dirty();
+                }
 
                 let group_changed = validated_remove_group || validated_group_id.is_some();
                 let admin_status_changed = old_is_admin != updated_account.is_admin;
@@ -1339,18 +1473,56 @@ where
                 Outcome::Send(Box::new(response))
             }
             Ok(crate::db::UpdateUserResult::BlockedForGroupAuth) => {
+                let rollback_failed = if let Some(new_username) = request.username.as_deref() {
+                    rollback_personal_area_migration_if_needed(
+                        ctx.file_root,
+                        ctx.personal_area_locks.as_ref(),
+                        ctx.file_mutation_locks.as_ref(),
+                        personal_area_migration,
+                        &old_username,
+                        new_username,
+                    )
+                    .await
+                } else {
+                    false
+                };
+                if rollback_failed {
+                    ctx.file_index.mark_dirty();
+                }
                 // In-tx group-auth race: target group changed between pre-check and tx.
                 // Conservative message — we don't know which condition raced.
                 warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_USER_UPDATE_PERMISSION_DENIED);
                 let response = ServerMessage::UserUpdateResponse {
                     success: false,
-                    error: Some(err_update_failed(ctx.locale, &target_username)),
+                    error: Some(append_personal_area_rollback_warning_if_needed(
+                        ctx.locale,
+                        err_update_failed(ctx.locale, &target_username),
+                        &old_username,
+                        request.username.as_deref(),
+                        rollback_failed,
+                    )),
                     id: None,
                     username: None,
                 };
                 Outcome::Send(Box::new(response))
             }
             Ok(crate::db::UpdateUserResult::Blocked) => {
+                let rollback_failed = if let Some(new_username) = request.username.as_deref() {
+                    rollback_personal_area_migration_if_needed(
+                        ctx.file_root,
+                        ctx.personal_area_locks.as_ref(),
+                        ctx.file_mutation_locks.as_ref(),
+                        personal_area_migration,
+                        &old_username,
+                        new_username,
+                    )
+                    .await
+                } else {
+                    false
+                };
+                if rollback_failed {
+                    ctx.file_index.mark_dirty();
+                }
                 // Blocked (not found / last admin / duplicate username / raced
                 // promotion). Disambiguate with explicit DB reads — a silent
                 // `.ok().flatten()` would let a DB error look like "not found".
@@ -1360,7 +1532,13 @@ where
                         error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_TARGET);
                         break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                             success: false,
-                            error: Some(err_database(ctx.locale)),
+                            error: Some(append_personal_area_rollback_warning_if_needed(
+                                ctx.locale,
+                                err_database(ctx.locale),
+                                &old_username,
+                                request.username.as_deref(),
+                                rollback_failed,
+                            )),
                             id: None,
                             username: None,
                         }));
@@ -1384,7 +1562,15 @@ where
                                 break 'locked Outcome::Send(Box::new(
                                     ServerMessage::UserUpdateResponse {
                                         success: false,
-                                        error: Some(err_database(ctx.locale)),
+                                        error: Some(
+                                            append_personal_area_rollback_warning_if_needed(
+                                                ctx.locale,
+                                                err_database(ctx.locale),
+                                                &old_username,
+                                                request.username.as_deref(),
+                                                rollback_failed,
+                                            ),
+                                        ),
                                         id: None,
                                         username: None,
                                     },
@@ -1410,17 +1596,45 @@ where
 
                 let response = ServerMessage::UserUpdateResponse {
                     success: false,
-                    error: Some(error_message),
+                    error: Some(append_personal_area_rollback_warning_if_needed(
+                        ctx.locale,
+                        error_message,
+                        &old_username,
+                        request.username.as_deref(),
+                        rollback_failed,
+                    )),
                     id: None,
                     username: None,
                 };
                 Outcome::Send(Box::new(response))
             }
             Err(e) => {
+                let rollback_failed = if let Some(new_username) = request.username.as_deref() {
+                    rollback_personal_area_migration_if_needed(
+                        ctx.file_root,
+                        ctx.personal_area_locks.as_ref(),
+                        ctx.file_mutation_locks.as_ref(),
+                        personal_area_migration,
+                        &old_username,
+                        new_username,
+                    )
+                    .await
+                } else {
+                    false
+                };
+                if rollback_failed {
+                    ctx.file_index.mark_dirty();
+                }
                 error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR);
                 Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                     success: false,
-                    error: Some(err_database(ctx.locale)),
+                    error: Some(append_personal_area_rollback_warning_if_needed(
+                        ctx.locale,
+                        err_database(ctx.locale),
+                        &old_username,
+                        request.username.as_deref(),
+                        rollback_failed,
+                    )),
                     id: None,
                     username: None,
                 }))
@@ -1431,9 +1645,64 @@ where
     dispatch_outcome(outcome, ctx, HANDLER_USER_UPDATE).await
 }
 
+fn append_personal_area_rollback_warning_if_needed(
+    locale: &str,
+    error: String,
+    old_username: &str,
+    new_username: Option<&str>,
+    rollback_failed: bool,
+) -> String {
+    let Some(new_username) = new_username.filter(|_| rollback_failed) else {
+        return error;
+    };
+    format!(
+        "{} {}",
+        error,
+        err_personal_file_area_rollback_failed_warning(locale, old_username, new_username)
+    )
+}
+
+async fn rollback_personal_area_migration_if_needed(
+    file_root: Option<&std::path::Path>,
+    personal_area_locks: &crate::files::PersonalAreaLockMap,
+    file_mutation_locks: &crate::files::PathLockMap,
+    migration: PersonalAreaMigration,
+    old_username: &str,
+    new_username: &str,
+) -> bool {
+    if migration != PersonalAreaMigration::Migrated {
+        return false;
+    }
+
+    let Some(file_root) = file_root else {
+        return false;
+    };
+
+    if let Err(e) = migrate_personal_area_on_rename_with_locks(
+        file_root,
+        personal_area_locks,
+        file_mutation_locks,
+        new_username,
+        old_username,
+    )
+    .await
+    {
+        error!(
+            old_username,
+            new_username,
+            err = %e,
+            "{}",
+            LOG_USER_UPDATE_FILE_AREA_ROLLBACK_FAILED
+        );
+        return true;
+    }
+
+    false
+}
+
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{collections::HashSet, fs};
 
     use super::*;
     use crate::channels::JoinPolicy;
@@ -1442,6 +1711,35 @@ mod tests {
     use crate::handlers::testing::read_login_response;
     use crate::handlers::testing::*;
     use crate::users::user::NewSessionParams;
+
+    #[test]
+    fn test_personal_area_rollback_warning_appends_to_primary_error() {
+        let message = append_personal_area_rollback_warning_if_needed(
+            DEFAULT_TEST_LOCALE,
+            "Primary failure.".to_string(),
+            "alice",
+            Some("alicia"),
+            true,
+        );
+
+        assert!(message.starts_with("Primary failure. "));
+        assert!(message.contains("rollback failed"));
+        assert!(message.contains("alice"));
+        assert!(message.contains("alicia"));
+    }
+
+    #[test]
+    fn test_personal_area_rollback_warning_skipped_when_not_failed() {
+        let message = append_personal_area_rollback_warning_if_needed(
+            DEFAULT_TEST_LOCALE,
+            "Primary failure.".to_string(),
+            "alice",
+            Some("alicia"),
+            false,
+        );
+
+        assert_eq!(message, "Primary failure.");
+    }
 
     #[tokio::test]
     async fn test_userupdate_requires_login() {
@@ -1660,6 +1958,510 @@ mod tests {
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_case_only_rename_keeps_personal_file_area_access() {
+        let mut test_ctx = create_test_context().await;
+        let _file_area = setup_file_area_basic(&mut test_ctx);
+        let file_root = test_ctx.file_root.expect("file root configured");
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "Alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let old_dir = file_root.join("users").join("Alice");
+        let new_dir = file_root.join("users").join("alice");
+        fs::create_dir(&old_dir).unwrap();
+        fs::write(old_dir.join("note.txt"), "personal").unwrap();
+
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("alice".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                username,
+                ..
+            } => {
+                assert!(success, "case-only rename should succeed: {:?}", error);
+                assert_eq!(username, Some("alice".to_string()));
+            }
+            other => panic!("Expected UserUpdateResponse, got {other:?}"),
+        }
+
+        let updated = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .expect("renamed user should exist");
+        assert_eq!(updated.id, alice.id);
+        assert_eq!(updated.username, "alice");
+        let old_note_exists = old_dir.join("note.txt").exists();
+        assert!(new_dir.join("note.txt").exists());
+        if old_note_exists {
+            assert!(!test_ctx.file_index.is_dirty());
+        } else {
+            assert!(test_ctx.file_index.is_dirty());
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_rename_migrates_personal_file_area() {
+        let mut test_ctx = create_test_context().await;
+        let _file_area = setup_file_area_basic(&mut test_ctx);
+        let file_root = test_ctx.file_root.expect("file root configured");
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let old_dir = file_root.join("users").join("alice");
+        let new_dir = file_root.join("users").join("alicia");
+        fs::create_dir(&old_dir).unwrap();
+        fs::write(old_dir.join("note.txt"), "personal").unwrap();
+
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("alicia".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "rename should succeed: {:?}", error);
+            }
+            other => panic!("Expected UserUpdateResponse, got {other:?}"),
+        }
+        assert!(!old_dir.exists());
+        assert!(new_dir.join("note.txt").exists());
+        assert!(test_ctx.file_index.is_dirty());
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_rename_migrates_shared_account_personal_file_area() {
+        let mut test_ctx = create_test_context().await;
+        let _file_area = setup_file_area_basic(&mut test_ctx);
+        let file_root = test_ctx.file_root.expect("file root configured");
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let shared = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "guests",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: true,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let old_dir = file_root.join("users").join("guests");
+        let new_dir = file_root.join("users").join("visitors");
+        fs::create_dir(&old_dir).unwrap();
+        fs::write(old_dir.join("welcome.txt"), "shared").unwrap();
+
+        let request = UserUpdateRequest {
+            id: shared.id,
+            current_password: None,
+            username: Some("visitors".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "shared rename should succeed: {:?}", error);
+            }
+            other => panic!("Expected UserUpdateResponse, got {other:?}"),
+        }
+        assert!(!old_dir.exists());
+        assert!(new_dir.join("welcome.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_rename_fails_when_personal_file_area_target_exists() {
+        let mut test_ctx = create_test_context().await;
+        let _file_area = setup_file_area_basic(&mut test_ctx);
+        let file_root = test_ctx.file_root.expect("file root configured");
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let old_dir = file_root.join("users").join("alice");
+        let new_dir = file_root.join("users").join("alicia");
+        fs::create_dir(&old_dir).unwrap();
+        fs::create_dir(&new_dir).unwrap();
+
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("alicia".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success, "rename should fail on area collision");
+                assert!(
+                    error
+                        .as_deref()
+                        .is_some_and(|msg| msg.contains("Personal file area")),
+                    "unexpected error: {:?}",
+                    error
+                );
+            }
+            other => panic!("Expected UserUpdateResponse, got {other:?}"),
+        }
+        assert!(old_dir.exists());
+        assert!(new_dir.exists());
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_username("alice")
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_username("alicia")
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_rename_fails_when_personal_file_area_busy() {
+        let mut test_ctx = create_test_context().await;
+        let _file_area = setup_file_area_basic(&mut test_ctx);
+        let file_root = test_ctx.file_root.expect("file root configured");
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let old_dir = file_root.join("users").join("alice");
+        let new_dir = file_root.join("users").join("alicia");
+        fs::create_dir(&old_dir).unwrap();
+        fs::write(old_dir.join("note.txt"), "personal").unwrap();
+
+        let _active_file_operation = test_ctx.personal_area_locks.read("alice").await;
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("alicia".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success, "rename should fail while area is busy");
+                assert_eq!(
+                    error,
+                    Some(err_personal_file_area_busy(DEFAULT_TEST_LOCALE))
+                );
+            }
+            other => panic!("Expected UserUpdateResponse, got {other:?}"),
+        }
+        assert!(old_dir.join("note.txt").exists());
+        assert!(!new_dir.exists());
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_username("alice")
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_duplicate_username_does_not_move_personal_file_area() {
+        let mut test_ctx = create_test_context().await;
+        let _file_area = setup_file_area_basic(&mut test_ctx);
+        let file_root = test_ctx.file_root.expect("file root configured");
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let old_dir = file_root.join("users").join("alice");
+        let duplicate_dir = file_root.join("users").join("bob");
+        fs::create_dir(&old_dir).unwrap();
+        fs::write(old_dir.join("note.txt"), "personal").unwrap();
+
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("bob".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(!success, "duplicate username should fail");
+                assert_eq!(error, Some(err_username_exists(DEFAULT_TEST_LOCALE, "bob")));
+            }
+            other => panic!("Expected UserUpdateResponse, got {other:?}"),
+        }
+        assert!(old_dir.join("note.txt").exists());
+        assert!(!duplicate_dir.exists());
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_username("alice")
+                .await
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_rename_allows_preprovisioned_area_when_old_missing() {
+        let mut test_ctx = create_test_context().await;
+        let _file_area = setup_file_area_basic(&mut test_ctx);
+        let file_root = test_ctx.file_root.expect("file root configured");
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let alice = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "alice",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let new_dir = file_root.join("users").join("alicia");
+        fs::create_dir(&new_dir).unwrap();
+        fs::write(new_dir.join("prepared.txt"), "ready").unwrap();
+
+        let request = UserUpdateRequest {
+            id: alice.id,
+            current_password: None,
+            username: Some("alicia".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(
+                    success,
+                    "rename should use preprovisioned area: {:?}",
+                    error
+                );
+            }
+            other => panic!("Expected UserUpdateResponse, got {other:?}"),
+        }
+        assert!(new_dir.join("prepared.txt").exists());
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_username("alicia")
+                .await
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[tokio::test]

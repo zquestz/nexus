@@ -143,7 +143,7 @@ use nexus_common::protocol::ServerMessage;
 use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::{Database, Permission};
-use crate::files::{FileIndex, PathLockMap};
+use crate::files::{FileIndex, PathLockMap, PersonalAreaLockMap};
 use crate::flood::FloodConfig;
 use crate::ip_rule_cache::IpRuleState;
 use crate::tracker::TrackerManager;
@@ -173,6 +173,8 @@ pub struct HandlerContext<'a, W> {
     pub file_index: Arc<FileIndex>,
     /// See `files::path_lock`.
     pub file_mutation_locks: Arc<PathLockMap>,
+    /// Serializes account personal-area renames against file operations.
+    pub personal_area_locks: Arc<PersonalAreaLockMap>,
     pub channel_manager: &'a ChannelManager,
     /// Used to disconnect active transfers on ban.
     pub transfer_registry: Arc<TransferRegistry>,

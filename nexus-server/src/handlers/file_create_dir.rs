@@ -23,7 +23,8 @@ use crate::db::Permission;
 use crate::files::path::PathError;
 use crate::files::{
     PathLockMode, allows_upload, build_and_validate_candidate_path, lock_key,
-    normalize_client_path, resolve_new_path, resolve_path, resolve_user_area,
+    normalize_client_path, personal_area_names_for_root_child, resolve_new_path, resolve_path,
+    resolve_user_area_with_read_lock,
 };
 
 pub async fn handle_file_create_dir<W>(
@@ -46,23 +47,6 @@ where
             .await;
     };
 
-    let requesting_user = match ctx
-        .user_manager
-        .get_user_by_session_id(requesting_session_id)
-        .await
-    {
-        Some(u) => u,
-        None => {
-            // Race, not a security event — don't log.
-            let response = ServerMessage::FileCreateDirResponse {
-                success: false,
-                error: Some(err_not_logged_in(ctx.locale)),
-                path: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
-
     let Some(file_root) = ctx.file_root else {
         let response = ServerMessage::FileCreateDirResponse {
             success: false,
@@ -71,16 +55,6 @@ where
         };
         return ctx.send_message(&response).await;
     };
-
-    if root && !requesting_user.has_permission(Permission::FileRoot) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_CREATE_DIR_ROOT_DENIED);
-        let response = ServerMessage::FileCreateDirResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            path: None,
-        };
-        return ctx.send_message(&response).await;
-    }
 
     if let Err(e) = validators::validate_file_path(&path) {
         let error_msg = match e {
@@ -118,10 +92,55 @@ where
         return ctx.send_message(&response).await;
     }
 
-    let area_root_path = if root {
-        file_root.to_path_buf()
-    } else {
-        resolve_user_area(file_root, &requesting_user.username).await
+    let user_area_result = 'user_area: {
+        let _state_guard = ctx.user_manager.read_user_state().await;
+        let requesting_user = match ctx
+            .user_manager
+            .get_user_by_session_id(requesting_session_id)
+            .await
+        {
+            Some(u) => u,
+            None => {
+                // Race, not a security event — don't log.
+                let response = ServerMessage::FileCreateDirResponse {
+                    success: false,
+                    error: Some(err_not_logged_in(ctx.locale)),
+                    path: None,
+                };
+                break 'user_area Err(response);
+            }
+        };
+
+        if root && !requesting_user.has_permission(Permission::FileRoot) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_CREATE_DIR_ROOT_DENIED);
+            let response = ServerMessage::FileCreateDirResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                path: None,
+            };
+            break 'user_area Err(response);
+        }
+
+        let (area_root_path, personal_area_guards) = if root {
+            (
+                file_root.to_path_buf(),
+                ctx.personal_area_locks
+                    .read_many(personal_area_names_for_root_child(&path, &name))
+                    .await,
+            )
+        } else {
+            resolve_user_area_with_read_lock(
+                file_root,
+                ctx.personal_area_locks.as_ref(),
+                &requesting_user.username,
+            )
+            .await
+        };
+        Ok((requesting_user, area_root_path, personal_area_guards))
+    };
+    let (requesting_user, area_root_path, _personal_area_guards) = match user_area_result {
+        Ok(user_area) => user_area,
+        Err(response) => return ctx.send_message(&response).await,
     };
 
     let area_root = match tokio::fs::canonicalize(&area_root_path).await {

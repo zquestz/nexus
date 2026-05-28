@@ -36,7 +36,7 @@ use channels::{Channel, ChannelManager};
 use connection::ConnectionParams;
 use connection_tracker::ConnectionTracker;
 use constants::*;
-use files::{FileIndex, PathLockMap};
+use files::{FileIndex, PathLockMap, PersonalAreaLockMap};
 use flood::FloodConfig;
 use ip_rule_cache::{IpRuleCache, IpRuleState};
 use nexus_common::address::normalize_socket_addr;
@@ -229,6 +229,7 @@ async fn main() {
 
     // Shared between BBS handlers and transfer-port upload finalization.
     let file_mutation_locks = Arc::new(PathLockMap::new());
+    let personal_area_locks = Arc::new(PersonalAreaLockMap::new());
 
     let transfer_registry = Arc::new(TransferRegistry::new());
     let voice_registry = VoiceRegistry::new();
@@ -385,6 +386,7 @@ async fn main() {
                             ip_rule_cache: ip_rule_cache.clone(),
                             file_index: file_index.clone(),
                             file_mutation_locks: file_mutation_locks.clone(),
+                            personal_area_locks: personal_area_locks.clone(),
                             channel_manager: channel_manager.clone(),
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: voice_registry.clone(),
@@ -443,6 +445,7 @@ async fn main() {
                             file_root: Some(file_root),
                             file_index: file_index.clone(),
                             file_mutation_locks: file_mutation_locks.clone(),
+                            personal_area_locks: personal_area_locks.clone(),
                             transfer_registry: transfer_registry.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
                             user_manager: user_manager.clone(),
@@ -509,6 +512,7 @@ async fn main() {
                             ip_rule_cache: ip_rule_cache.clone(),
                             file_index: file_index.clone(),
                             file_mutation_locks: file_mutation_locks.clone(),
+                            personal_area_locks: personal_area_locks.clone(),
                             channel_manager: channel_manager.clone(),
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: voice_registry.clone(),
@@ -572,6 +576,7 @@ async fn main() {
                             file_root: Some(file_root),
                             file_index: file_index.clone(),
                             file_mutation_locks: file_mutation_locks.clone(),
+                            personal_area_locks: personal_area_locks.clone(),
                             transfer_registry: transfer_registry.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
                             user_manager: user_manager.clone(),

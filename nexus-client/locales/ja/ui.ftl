@@ -526,6 +526,7 @@ err-port-required = ポートは必須です
 err-username-required = ユーザー名は必須です
 err-password-required = パスワードは必須です
 err-message-required = メッセージは必須です
+err-user-edit-stale = このユーザーはサーバーで変更されました。保存する前に編集フォームを開き直して最新の詳細を読み込んでください。
 
 # Validation errors
 err-message-empty = メッセージは空にできません

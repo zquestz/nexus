@@ -157,6 +157,8 @@ pub struct UserManagementState {
     pub create_error: Option<String>,
     /// Error message for edit user form
     pub edit_error: Option<String>,
+    /// Whether the edit form has been invalidated by a newer server-side update.
+    pub edit_stale: bool,
     /// Panel-level action error from the user side (e.g., `UserEdit` fetch
     /// failed when clicking Edit on a row). Displayed as a banner above the
     /// tabs in the user-management panel. Mutually exclusive with
@@ -202,6 +204,7 @@ impl Default for UserManagementState {
             bandwidth_weight_inherit: true,
             create_error: None,
             edit_error: None,
+            edit_stale: false,
             list_error: None,
             delete_error: None,
             is_submitting: false,
@@ -238,6 +241,7 @@ impl std::fmt::Debug for UserManagementState {
             .field("bandwidth_weight_inherit", &self.bandwidth_weight_inherit)
             .field("create_error", &self.create_error)
             .field("edit_error", &self.edit_error)
+            .field("edit_stale", &self.edit_stale)
             .field("list_error", &self.list_error)
             .field("delete_error", &self.delete_error)
             .field("is_submitting", &self.is_submitting)
@@ -275,6 +279,7 @@ impl UserManagementState {
         self.mode = UserManagementMode::List;
         self.clear_create_form();
         self.edit_error = None;
+        self.edit_stale = false;
         self.list_error = None;
         self.return_to_panel = None;
         self.is_submitting = false;
@@ -301,6 +306,7 @@ impl UserManagementState {
     /// Enter create mode
     pub fn enter_create_mode(&mut self) {
         self.clear_create_form();
+        self.edit_stale = false;
         self.mode = UserManagementMode::Create;
     }
 
@@ -352,6 +358,7 @@ impl UserManagementState {
             original_bandwidth_weight_override: bandwidth_weight,
         };
         self.edit_error = None;
+        self.edit_stale = false;
         // Start every edit with a clean submit flag (matches enter_create_mode /
         // enter_confirm_delete_mode), so a stuck flag can never disable Save.
         self.is_submitting = false;
@@ -360,8 +367,22 @@ impl UserManagementState {
     /// Enter confirm delete mode for a user
     pub fn enter_confirm_delete_mode(&mut self, id: i64, username: String) {
         self.mode = UserManagementMode::ConfirmDelete { id, username };
+        self.edit_stale = false;
         self.delete_error = None;
         self.is_delete_submitting = false;
+    }
+
+    /// Mark the active edit form stale if it is editing the updated user.
+    pub fn mark_edit_stale_if_user_id(&mut self, updated_user_id: i64) -> bool {
+        let is_editing_updated_user = matches!(
+            &self.mode,
+            UserManagementMode::Edit { id, .. } if *id == updated_user_id
+        );
+        if is_editing_updated_user {
+            self.edit_stale = true;
+            self.is_submitting = false;
+        }
+        is_editing_updated_user
     }
 
     /// Set the user-side panel error and clear any pending group-side
@@ -389,5 +410,63 @@ impl UserManagementState {
             .as_ref()
             .and_then(|r| r.as_ref().ok())
             .map(Vec::as_slice)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn edit_init(id: i64, username: &str) -> UserEditInit {
+        UserEditInit {
+            id,
+            username: username.to_string(),
+            is_admin: false,
+            is_shared: false,
+            enabled: true,
+            permissions: Vec::new(),
+            group_id: None,
+            group_permissions: Vec::new(),
+            revoked_permissions: Vec::new(),
+            bandwidth_weight: None,
+        }
+    }
+
+    #[test]
+    fn mark_edit_stale_if_user_id_invalidates_active_edit_only() {
+        let mut state = UserManagementState::default();
+        state.enter_edit_mode(edit_init(42, "alice"));
+        state.edit_error = Some("username is required".to_string());
+        state.is_submitting = true;
+
+        assert!(!state.mark_edit_stale_if_user_id(7));
+        assert!(!state.edit_stale);
+        assert!(state.is_submitting);
+
+        assert!(state.mark_edit_stale_if_user_id(42));
+        assert!(state.edit_stale);
+        assert!(!state.is_submitting);
+        assert_eq!(state.edit_error.as_deref(), Some("username is required"));
+    }
+
+    #[test]
+    fn mode_transitions_clear_edit_stale() {
+        let mut state = UserManagementState::default();
+        state.enter_edit_mode(edit_init(42, "alice"));
+        assert!(state.mark_edit_stale_if_user_id(42));
+
+        state.enter_edit_mode(edit_init(42, "alice"));
+        assert!(!state.edit_stale);
+        assert!(state.mark_edit_stale_if_user_id(42));
+
+        state.enter_create_mode();
+        assert!(!state.edit_stale);
+        assert!(!state.mark_edit_stale_if_user_id(42));
+
+        state.enter_edit_mode(edit_init(42, "alice"));
+        assert!(state.mark_edit_stale_if_user_id(42));
+        state.reset_to_list();
+        assert!(!state.edit_stale);
+        assert!(!state.mark_edit_stale_if_user_id(42));
     }
 }

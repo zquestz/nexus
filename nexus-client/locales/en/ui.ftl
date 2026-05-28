@@ -550,6 +550,7 @@ err-port-required = Port is required
 err-username-required = Username is required
 err-password-required = Password is required
 err-message-required = Message is required
+err-user-edit-stale = This user was changed on the server. Reopen the edit form to load the latest details before saving.
 
 # Validation errors
 err-message-empty = Message cannot be empty

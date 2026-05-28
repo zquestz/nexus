@@ -22,7 +22,8 @@ use crate::db::Permission;
 use crate::files::path::PathError;
 use crate::files::{
     FolderType, allows_upload, build_and_validate_candidate_path, is_hidden_name,
-    parse_folder_type, resolve_path, resolve_user_area,
+    parse_folder_type, personal_area_names_for_root_path, resolve_path,
+    resolve_user_area_with_read_lock,
 };
 
 /// Read directory entries (sorted dirs-first, then by name). None if unreadable.
@@ -124,26 +125,6 @@ where
             .await;
     };
 
-    let requesting_user = match ctx
-        .user_manager
-        .get_user_by_session_id(requesting_session_id)
-        .await
-    {
-        Some(u) => u,
-        None => {
-            // Session not found — likely a race, not a security event.
-            let response = ServerMessage::FileListResponse {
-                success: false,
-                error: Some(err_not_logged_in(ctx.locale)),
-                path: None,
-                entries: None,
-                can_upload: false,
-                dropbox_owner: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
-
     let Some(file_root) = ctx.file_root else {
         let response = ServerMessage::FileListResponse {
             success: false,
@@ -155,32 +136,6 @@ where
         };
         return ctx.send_message(&response).await;
     };
-
-    if !requesting_user.has_permission(Permission::FileList) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_LIST_PERMISSION_DENIED);
-        let response = ServerMessage::FileListResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            path: None,
-            entries: None,
-            can_upload: false,
-            dropbox_owner: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    if root && !requesting_user.has_permission(Permission::FileRoot) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_LIST_ROOT_DENIED);
-        let response = ServerMessage::FileListResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            path: None,
-            entries: None,
-            can_upload: false,
-            dropbox_owner: None,
-        };
-        return ctx.send_message(&response).await;
-    }
 
     if let Err(e) = validators::validate_file_path(&path) {
         let error_msg = match e {
@@ -202,10 +157,74 @@ where
         return ctx.send_message(&response).await;
     }
 
-    let area_root_path = if root {
-        file_root.to_path_buf()
-    } else {
-        resolve_user_area(file_root, &requesting_user.username).await
+    let user_area_result = 'user_area: {
+        let _state_guard = ctx.user_manager.read_user_state().await;
+        let requesting_user = match ctx
+            .user_manager
+            .get_user_by_session_id(requesting_session_id)
+            .await
+        {
+            Some(u) => u,
+            None => {
+                // Session not found — likely a race, not a security event.
+                let response = ServerMessage::FileListResponse {
+                    success: false,
+                    error: Some(err_not_logged_in(ctx.locale)),
+                    path: None,
+                    entries: None,
+                    can_upload: false,
+                    dropbox_owner: None,
+                };
+                break 'user_area Err(response);
+            }
+        };
+
+        if !requesting_user.has_permission(Permission::FileList) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_LIST_PERMISSION_DENIED);
+            let response = ServerMessage::FileListResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                path: None,
+                entries: None,
+                can_upload: false,
+                dropbox_owner: None,
+            };
+            break 'user_area Err(response);
+        }
+
+        if root && !requesting_user.has_permission(Permission::FileRoot) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_LIST_ROOT_DENIED);
+            let response = ServerMessage::FileListResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                path: None,
+                entries: None,
+                can_upload: false,
+                dropbox_owner: None,
+            };
+            break 'user_area Err(response);
+        }
+
+        let (area_root_path, personal_area_guards) = if root {
+            (
+                file_root.to_path_buf(),
+                ctx.personal_area_locks
+                    .read_many(personal_area_names_for_root_path(&path))
+                    .await,
+            )
+        } else {
+            resolve_user_area_with_read_lock(
+                file_root,
+                ctx.personal_area_locks.as_ref(),
+                &requesting_user.username,
+            )
+            .await
+        };
+        Ok((requesting_user, area_root_path, personal_area_guards))
+    };
+    let (requesting_user, area_root_path, _personal_area_guards) = match user_area_result {
+        Ok(user_area) => user_area,
+        Err(response) => return ctx.send_message(&response).await,
     };
 
     // area_root may not exist yet for new users → empty listing.

@@ -934,7 +934,9 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
     let is_self_edit =
         fold_name(ctx.original_username) == fold_name(&ctx.conn.connection_info.username);
 
-    let can_update = !ctx.new_username.trim().is_empty() && !ctx.user_management.is_submitting;
+    let can_update = !ctx.new_username.trim().is_empty()
+        && !ctx.user_management.is_submitting
+        && !ctx.user_management.edit_stale;
 
     // Helper for on_submit
     let submit_action = if can_update {
@@ -1080,8 +1082,14 @@ fn edit_view<'a>(ctx: EditUserContext<'a>, theme: &Theme) -> Element<'a, Message
 
     let mut items: Vec<Element<'a, Message>> = vec![title.into(), subtitle.into()];
 
-    // Show error if present
-    if let Some(error) = &ctx.user_management.edit_error {
+    let edit_banner = if ctx.user_management.edit_stale {
+        Some(t("err-user-edit-stale"))
+    } else {
+        ctx.user_management.edit_error.clone()
+    };
+
+    // Show stale-edit notice or validation error if present.
+    if let Some(error) = edit_banner {
         items.push(
             shaped_text_wrapped(error)
                 .size(TEXT_SIZE)

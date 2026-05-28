@@ -20,7 +20,7 @@ use super::{
     err_search_query_too_short,
 };
 use crate::db::Permission;
-use crate::files::resolve_user_area;
+use crate::files::resolve_user_area_with_read_lock;
 
 pub async fn handle_file_search<W>(
     query: String,
@@ -37,39 +37,6 @@ where
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_FILE_SEARCH))
             .await;
     };
-
-    let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
-        Some(user) => user,
-        None => {
-            return ctx
-                .send_error_and_disconnect(
-                    &err_not_logged_in(ctx.locale),
-                    Some(HANDLER_FILE_SEARCH),
-                )
-                .await;
-        }
-    };
-
-    if !requesting_user.has_permission(Permission::FileSearch) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_SEARCH_PERMISSION_DENIED);
-        let response = ServerMessage::FileSearchResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            results: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Whole-area search requires FileRoot.
-    if root && !requesting_user.has_permission(Permission::FileRoot) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_SEARCH_ROOT_DENIED);
-        let response = ServerMessage::FileSearchResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            results: None,
-        };
-        return ctx.send_message(&response).await;
-    }
 
     if let Err(e) = validate_search_query(&query) {
         let error_msg = match e {
@@ -91,26 +58,79 @@ where
     }
 
     // Root search has no prefix filter; otherwise scope to the user's area.
-    let area_prefix = if root {
-        None
-    } else {
-        let Some(file_root) = ctx.file_root else {
-            let response = ServerMessage::FileSearchResponse {
-                success: true,
-                error: None,
-                results: Some(vec![]),
-            };
-            return ctx.send_message(&response).await;
+    let user_area_result = 'user_area: {
+        let _state_guard = ctx.user_manager.read_user_state().await;
+        let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
+            Some(user) => user,
+            None => {
+                let response = ServerMessage::Error {
+                    message: err_not_logged_in(ctx.locale),
+                    command: Some(HANDLER_FILE_SEARCH.to_string()),
+                };
+                break 'user_area Err(response);
+            }
         };
 
-        // Relative area path, e.g. "/shared" or "/users/alice".
-        let area_root = resolve_user_area(file_root, &requesting_user.username).await;
-        let relative_area = area_root
-            .strip_prefix(file_root)
-            .map(|p| format!("/{}", p.to_string_lossy().replace('\\', "/")))
-            .unwrap_or_else(|_| "/".to_string());
+        if !requesting_user.has_permission(Permission::FileSearch) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_SEARCH_PERMISSION_DENIED);
+            let response = ServerMessage::FileSearchResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                results: None,
+            };
+            break 'user_area Err(response);
+        }
 
-        Some(relative_area)
+        // Whole-area search requires FileRoot.
+        if root && !requesting_user.has_permission(Permission::FileRoot) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_SEARCH_ROOT_DENIED);
+            let response = ServerMessage::FileSearchResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                results: None,
+            };
+            break 'user_area Err(response);
+        }
+
+        if root {
+            Ok((None, Vec::new(), requesting_user.username))
+        } else {
+            let Some(file_root) = ctx.file_root else {
+                let response = ServerMessage::FileSearchResponse {
+                    success: true,
+                    error: None,
+                    results: Some(vec![]),
+                };
+                break 'user_area Err(response);
+            };
+
+            // Relative area path, e.g. "/shared" or "/users/alice".
+            let (area_root, personal_area_guards) = resolve_user_area_with_read_lock(
+                file_root,
+                ctx.personal_area_locks.as_ref(),
+                &requesting_user.username,
+            )
+            .await;
+            let relative_area = area_root
+                .strip_prefix(file_root)
+                .map(|p| format!("/{}", p.to_string_lossy().replace('\\', "/")))
+                .unwrap_or_else(|_| "/".to_string());
+
+            Ok((
+                Some(relative_area),
+                personal_area_guards,
+                requesting_user.username,
+            ))
+        }
+    };
+    let (area_prefix, _personal_area_guards, username) = match user_area_result {
+        Ok(user_area) => user_area,
+        Err(ServerMessage::Error { message, command }) => {
+            return ctx
+                .send_error_and_disconnect(&message, command.as_deref())
+                .await;
+        }
+        Err(response) => return ctx.send_message(&response).await,
     };
 
     // Perform the search on blocking thread pool (grep-searcher does synchronous I/O)
@@ -125,7 +145,7 @@ where
     let mut results = match search_result {
         Ok(Ok(results)) => results,
         Ok(Err(e)) => {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_SEARCH_ERROR);
+            error!(user = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_SEARCH_ERROR);
             let response = ServerMessage::FileSearchResponse {
                 success: false,
                 error: Some(err_search_failed(ctx.locale)),
@@ -134,7 +154,7 @@ where
             return ctx.send_message(&response).await;
         }
         Err(e) => {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_SEARCH_PANIC);
+            error!(user = %username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_SEARCH_PANIC);
             let response = ServerMessage::FileSearchResponse {
                 success: false,
                 error: Some(err_search_failed(ctx.locale)),

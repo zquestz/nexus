@@ -220,6 +220,9 @@ pub const ERR_FILE_NOT_FOUND: &str = "File or directory not found";
 pub const ERR_FILE_CANONICALIZE: &str = "Failed to resolve path";
 pub const ERR_FILE_ROOT_CANONICALIZE: &str = "Failed to canonicalize file root: ";
 pub const ERR_FILE_INVALID_AREA_ROOT: &str = "Area root must be an absolute path";
+pub const ERR_PERSONAL_FILE_AREA_TARGET_EXISTS: &str = "personal file area target already exists";
+pub const ERR_PERSONAL_FILE_AREA_MIGRATION_FAILED: &str = "personal file area migration failed";
+pub const ERR_PERSONAL_FILE_AREA_PATH_BUSY: &str = "personal file area path is busy";
 
 pub const ERR_CHANNEL_CLOSED: &str = "channel closed";
 
@@ -497,6 +500,14 @@ pub const LOG_USER_UPDATE_DB_ERROR_PERMISSIONS: &str =
     "UserUpdate: database error reading user permissions";
 pub const LOG_USER_UPDATE_DB_ERROR_DUPLICATE_CHECK: &str =
     "UserUpdate: database error checking duplicate username";
+pub const LOG_USER_UPDATE_FILE_AREA_TARGET_EXISTS: &str =
+    "UserUpdate: personal file area target already exists";
+pub const LOG_USER_UPDATE_FILE_AREA_BUSY: &str = "UserUpdate: personal file area is busy";
+pub const LOG_USER_UPDATE_FILE_AREA_MIGRATE_FAILED: &str =
+    "UserUpdate: personal file area migration failed";
+pub const LOG_USER_UPDATE_FILE_AREA_MIGRATED: &str = "UserUpdate: personal file area migrated";
+pub const LOG_USER_UPDATE_FILE_AREA_ROLLBACK_FAILED: &str =
+    "UserUpdate: personal file area rollback failed";
 pub const LOG_USER_UPDATE_PASSWORD_VERIFY: &str = "UserUpdate: password verification error";
 pub const LOG_USER_UPDATE_HASH_ERROR: &str = "UserUpdate: password hashing error";
 pub const LOG_USER_UPDATE_SUCCESS: &str = "UserUpdate: success";

@@ -22,7 +22,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::db::Permission;
 use crate::files::path::{allows_upload, validate_and_build_candidate_path};
-use crate::files::{self, PathLockMode};
+use crate::files::{self, PathLockMode, personal_area_names_for_root_filesystem_path};
 use crate::handlers::{
     err_upload_conflict, err_upload_connection_lost, err_upload_destination_not_allowed,
     err_upload_empty, err_upload_file_exists, err_upload_hash_mismatch, err_upload_path_invalid,
@@ -215,6 +215,13 @@ where
 
     let (target_path, part_path) =
         validate_and_build_upload_paths(&relative_path, destination, area_root, locale)?;
+    let _personal_area_guards = transfer
+        .personal_area_locks()
+        .read_many(personal_area_names_for_root_filesystem_path(
+            transfer.file_root(),
+            &target_path,
+        ))
+        .await;
 
     // `Fail` mode: other uploads bounce immediately rather than block on a
     // multi-hour transfer. Lock both target AND `.part` so a `.part` rename
@@ -391,8 +398,6 @@ where
     use crate::files::path::resolve_path;
 
     let user = transfer.user();
-    let file_root = transfer.file_root();
-
     validate_transfer_path(destination, locale)?;
 
     // FileUploadAnywhere implies upload capability plus folder-restriction
@@ -405,7 +410,13 @@ where
 
     check_root_permission(user, use_root, locale)?;
 
-    let area_root = resolve_area_root(file_root, &user.username, use_root, locale).await?;
+    let area_root = resolve_area_root(
+        transfer.file_root(),
+        transfer.user_area_root(),
+        use_root,
+        locale,
+    )
+    .await?;
 
     let candidate = build_validated_path(&area_root, destination, locale).await?;
 

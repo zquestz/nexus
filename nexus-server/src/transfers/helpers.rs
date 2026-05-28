@@ -16,7 +16,6 @@ use nexus_common::{
 };
 
 use crate::db::Permission;
-use crate::files::area::resolve_user_area;
 use crate::files::path::{PathError, build_and_validate_candidate_path};
 use crate::handlers::{
     err_file_area_not_accessible, err_permission_denied, err_transfer_path_invalid,
@@ -138,14 +137,16 @@ pub(crate) fn check_root_permission(
 /// otherwise the user's personal (or shared) area.
 pub(crate) async fn resolve_area_root(
     file_root: &Path,
-    username: &str,
+    user_area_root: Option<&Path>,
     use_root: bool,
     locale: &str,
 ) -> Result<PathBuf, TransferError> {
     let area_root = if use_root {
         file_root.to_path_buf()
     } else {
-        resolve_user_area(file_root, username).await
+        user_area_root
+            .ok_or_else(|| TransferError::not_found(err_file_area_not_accessible(locale)))?
+            .to_path_buf()
     };
 
     tokio::fs::canonicalize(&area_root)

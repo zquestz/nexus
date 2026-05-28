@@ -24,7 +24,8 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::files::{
     PathLockMode, build_and_validate_candidate_path, copy_path_recursive_async, is_subpath,
-    lock_key, remove_path_async, resolve_path, resolve_user_area,
+    lock_key, personal_area_names_for_root_destination, personal_area_names_for_root_path,
+    remove_path_async, resolve_path, resolve_user_area_with_read_lock,
 };
 
 pub async fn handle_file_copy<W>(
@@ -46,23 +47,6 @@ where
             .await;
     };
 
-    let requesting_user = match ctx
-        .user_manager
-        .get_user_by_session_id(requesting_session_id)
-        .await
-    {
-        Some(u) => u,
-        None => {
-            // Race, not a security event — don't log.
-            let response = ServerMessage::FileCopyResponse {
-                success: false,
-                error: Some(err_not_logged_in(ctx.locale)),
-                error_kind: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-    };
-
     let Some(file_root) = ctx.file_root else {
         let response = ServerMessage::FileCopyResponse {
             success: false,
@@ -71,37 +55,6 @@ where
         };
         return ctx.send_message(&response).await;
     };
-
-    if !requesting_user.has_permission(Permission::FileCopy) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_PERMISSION_DENIED);
-        let response = ServerMessage::FileCopyResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            error_kind: Some(ErrorKind::Permission.into()),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    if (source_root || destination_root) && !requesting_user.has_permission(Permission::FileRoot) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_ROOT_DENIED);
-        let response = ServerMessage::FileCopyResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            error_kind: Some(ErrorKind::Permission.into()),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Overwrite removes the existing target, so it requires file_delete.
-    if overwrite && !requesting_user.has_permission(Permission::FileDelete) {
-        warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_DELETE_DENIED);
-        let response = ServerMessage::FileCopyResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-            error_kind: Some(ErrorKind::Permission.into()),
-        };
-        return ctx.send_message(&response).await;
-    }
 
     if let Err(e) = validators::validate_file_path(&source_path) {
         let error_msg = match e {
@@ -137,11 +90,118 @@ where
         return ctx.send_message(&response).await;
     }
 
-    let source_area_root_path = if source_root {
-        file_root.to_path_buf()
-    } else {
-        resolve_user_area(file_root, &requesting_user.username).await
+    let user_area_result = 'user_area: {
+        let _state_guard = ctx.user_manager.read_user_state().await;
+        let requesting_user = match ctx
+            .user_manager
+            .get_user_by_session_id(requesting_session_id)
+            .await
+        {
+            Some(u) => u,
+            None => {
+                // Race, not a security event — don't log.
+                let response = ServerMessage::FileCopyResponse {
+                    success: false,
+                    error: Some(err_not_logged_in(ctx.locale)),
+                    error_kind: None,
+                };
+                break 'user_area Err(response);
+            }
+        };
+
+        if !requesting_user.has_permission(Permission::FileCopy) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_PERMISSION_DENIED);
+            let response = ServerMessage::FileCopyResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                error_kind: Some(ErrorKind::Permission.into()),
+            };
+            break 'user_area Err(response);
+        }
+
+        if (source_root || destination_root)
+            && !requesting_user.has_permission(Permission::FileRoot)
+        {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_ROOT_DENIED);
+            let response = ServerMessage::FileCopyResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                error_kind: Some(ErrorKind::Permission.into()),
+            };
+            break 'user_area Err(response);
+        }
+
+        // Overwrite removes the existing target, so it requires file_delete.
+        if overwrite && !requesting_user.has_permission(Permission::FileDelete) {
+            warn!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_DELETE_DENIED);
+            let response = ServerMessage::FileCopyResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+                error_kind: Some(ErrorKind::Permission.into()),
+            };
+            break 'user_area Err(response);
+        }
+
+        let source_basename_for_lock = source_path
+            .trim_end_matches(['/', '\\'])
+            .rsplit(['/', '\\'])
+            .find(|segment| !segment.is_empty())
+            .unwrap_or("");
+        let mut personal_area_guards = Vec::new();
+
+        let source_area_root_path = if source_root {
+            personal_area_guards.extend(
+                ctx.personal_area_locks
+                    .read_many(personal_area_names_for_root_path(&source_path))
+                    .await,
+            );
+            file_root.to_path_buf()
+        } else {
+            let (area_root, guards) = resolve_user_area_with_read_lock(
+                file_root,
+                ctx.personal_area_locks.as_ref(),
+                &requesting_user.username,
+            )
+            .await;
+            personal_area_guards.extend(guards);
+            area_root
+        };
+
+        let dest_area_root_path = if destination_root {
+            personal_area_guards.extend(
+                ctx.personal_area_locks
+                    .read_many(personal_area_names_for_root_destination(
+                        &destination_dir,
+                        source_basename_for_lock,
+                    ))
+                    .await,
+            );
+            file_root.to_path_buf()
+        } else if source_root {
+            let (area_root, guards) = resolve_user_area_with_read_lock(
+                file_root,
+                ctx.personal_area_locks.as_ref(),
+                &requesting_user.username,
+            )
+            .await;
+            personal_area_guards.extend(guards);
+            area_root
+        } else {
+            source_area_root_path.clone()
+        };
+
+        Ok((
+            requesting_user,
+            source_area_root_path,
+            dest_area_root_path,
+            personal_area_guards,
+        ))
     };
+    let (requesting_user, source_area_root_path, dest_area_root_path, _personal_area_guards) =
+        match user_area_result {
+            Ok(user_area) => user_area,
+            Err(response) => return ctx.send_message(&response).await,
+        };
 
     let source_area_root = match tokio::fs::canonicalize(&source_area_root_path).await {
         Ok(p) => p,
@@ -160,12 +220,6 @@ where
             };
             return ctx.send_message(&response).await;
         }
-    };
-
-    let dest_area_root_path = if destination_root {
-        file_root.to_path_buf()
-    } else {
-        resolve_user_area(file_root, &requesting_user.username).await
     };
 
     let dest_area_root = match tokio::fs::canonicalize(&dest_area_root_path).await {

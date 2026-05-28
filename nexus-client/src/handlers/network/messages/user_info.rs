@@ -396,6 +396,8 @@ impl NexusApp {
         let new_username = user.username.clone();
         let username_changed = previous_username != new_username;
 
+        conn.user_management.mark_edit_stale_if_user_id(user.id);
+
         // Match the affected entry/entries: a shared account's UserUpdated is sent
         // per session, so target the single entry by nickname; a regular account is
         // matched by its (previous) username (nickname == username). Case-insensitive

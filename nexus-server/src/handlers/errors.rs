@@ -492,6 +492,37 @@ pub fn err_username_exists(locale: &str, username: &str) -> String {
     t_args(locale, "err-username-exists", &[("username", username)])
 }
 
+pub fn err_personal_file_area_exists(locale: &str, username: &str) -> String {
+    t_args(
+        locale,
+        "err-personal-file-area-exists",
+        &[("username", username)],
+    )
+}
+
+pub fn err_personal_file_area_migration_failed(locale: &str) -> String {
+    t(locale, "err-personal-file-area-migration-failed")
+}
+
+pub fn err_personal_file_area_busy(locale: &str) -> String {
+    t(locale, "err-personal-file-area-busy")
+}
+
+pub fn err_personal_file_area_rollback_failed_warning(
+    locale: &str,
+    old_username: &str,
+    new_username: &str,
+) -> String {
+    t_args(
+        locale,
+        "err-personal-file-area-rollback-failed-warning",
+        &[
+            ("old_username", old_username),
+            ("new_username", new_username),
+        ],
+    )
+}
+
 pub fn err_username_invalid(locale: &str) -> String {
     t(locale, "err-username-invalid")
 }

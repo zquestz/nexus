@@ -542,6 +542,7 @@ err-port-required = La porta è obbligatoria
 err-username-required = Il nome utente è obbligatorio
 err-password-required = La password è obbligatoria
 err-message-required = Il messaggio è obbligatorio
+err-user-edit-stale = Questo utente è stato modificato sul server. Riapri il modulo di modifica per caricare i dettagli più recenti prima di salvare.
 
 # Validation errors
 err-message-empty = Il messaggio non può essere vuoto

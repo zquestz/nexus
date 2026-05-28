@@ -16,7 +16,13 @@ pub mod operations;
 pub mod path;
 pub mod path_lock;
 
-pub use area::resolve_user_area;
+pub use area::{
+    PersonalAreaLockMap, PersonalAreaMigration, PersonalAreaMigrationError, PersonalAreaReadGuard,
+    migrate_personal_area_on_rename_with_locks, personal_area_names_for_root_child,
+    personal_area_names_for_root_destination, personal_area_names_for_root_filesystem_path,
+    personal_area_names_for_root_path, personal_area_names_for_root_rename,
+    resolve_user_area_with_read_lock,
+};
 pub use folder_type::{FolderType, in_owned_dropbox, parse_folder_type};
 pub use index::FileIndex;
 pub use operations::{copy_path_recursive_async, is_subpath, remove_path_async, rename_path_async};
