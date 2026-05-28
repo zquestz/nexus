@@ -508,13 +508,15 @@ impl NexusApp {
         }
 
         // Rename effects that live outside this connection's own state (voice audio
-        // thread, chat history). The `conn` borrow has ended, so this takes `&mut self`.
+        // thread, chat history, news cache, saved bookmarks, persisted transfers).
+        // The `conn` borrow has ended, so this takes `&mut self`.
         if username_changed {
             self.apply_rename_side_effects(
                 connection_id,
                 &previous_username,
                 &new_username,
                 user.is_shared,
+                user.is_admin,
             );
         }
 
@@ -532,6 +534,7 @@ impl NexusApp {
         old: &str,
         new: &str,
         is_shared: bool,
+        is_admin: bool,
     ) {
         let connection_info = self
             .connections
@@ -562,6 +565,11 @@ impl NexusApp {
             && let Some(manager) = self.history_managers.get_mut(&base_dir)
         {
             let _ = manager.rename_conversation(old, new);
+        }
+
+        if let Some(conn) = self.connections.get_mut(&connection_id) {
+            conn.news_management
+                .rename_cached_author(old, new, is_admin);
         }
 
         if let Some(connection_info) = connection_info {

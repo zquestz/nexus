@@ -168,7 +168,14 @@ impl NexusApp {
                 channel,
                 old_nickname,
                 new_nickname,
-            } => self.handle_chat_user_renamed(connection_id, channel, old_nickname, new_nickname),
+                is_admin,
+            } => self.handle_chat_user_renamed(
+                connection_id,
+                channel,
+                old_nickname,
+                new_nickname,
+                is_admin,
+            ),
 
             // Note: Channel membership is session-based and no longer syncs across a user's other sessions.
             ServerMessage::ChatSecretResponse { success, error } => {

@@ -703,6 +703,8 @@ pub enum ServerMessage {
         channel: String,
         old_nickname: String,
         new_nickname: String,
+        /// Current admin status for the renamed user.
+        is_admin: bool,
     },
     /// Response to ConnectionMonitor request
     ConnectionMonitorResponse {
@@ -2601,6 +2603,21 @@ mod tests {
         assert!(json.contains("\"nickname\":\"Nick1\""));
         assert!(json.contains("\"is_admin\":false"));
         assert!(json.contains("\"is_shared\":true"));
+    }
+
+    #[test]
+    fn test_serialize_chat_user_renamed_with_is_admin() {
+        let msg = ServerMessage::ChatUserRenamed {
+            channel: "#general".to_string(),
+            old_nickname: "alice".to_string(),
+            new_nickname: "alicia".to_string(),
+            is_admin: true,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"ChatUserRenamed\""));
+        assert!(json.contains("\"old_nickname\":\"alice\""));
+        assert!(json.contains("\"new_nickname\":\"alicia\""));
+        assert!(json.contains("\"is_admin\":true"));
     }
 
     #[test]

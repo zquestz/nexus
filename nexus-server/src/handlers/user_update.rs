@@ -1303,6 +1303,7 @@ where
                                     &online_sessions,
                                     &old_username,
                                     &updated_account.username,
+                                    updated_account.is_admin,
                                 )
                                 .await;
 
@@ -2719,11 +2720,13 @@ mod tests {
                 channel,
                 old_nickname,
                 new_nickname,
+                is_admin,
             } = msg
             {
                 assert_eq!(channel, "#general");
                 assert_eq!(old_nickname, "alice");
                 assert_eq!(new_nickname, "alicia");
+                assert!(!is_admin);
                 found = true;
             }
         }

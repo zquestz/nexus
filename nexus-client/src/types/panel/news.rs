@@ -1,5 +1,6 @@
 //! News management panel state
 
+use nexus_common::names::fold_name;
 use nexus_common::protocol::NewsItem;
 
 use crate::image::{CachedImage, decode_data_uri_max_width};
@@ -129,5 +130,56 @@ impl NewsManagementState {
         self.mode = NewsManagementMode::ConfirmDelete { id };
         self.delete_error = None;
         self.is_delete_submitting = false;
+    }
+
+    /// Re-label cached news authors after a user rename.
+    pub fn rename_cached_author(&mut self, old: &str, new: &str, is_admin: bool) {
+        let Some(Ok(items)) = &mut self.news_items else {
+            return;
+        };
+
+        let old_folded = fold_name(old);
+        for item in items {
+            if fold_name(&item.author) == old_folded {
+                item.author = new.to_string();
+                item.author_is_admin = is_admin;
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn news_item(id: i64, author: &str, author_is_admin: bool) -> NewsItem {
+        NewsItem {
+            id,
+            body: Some("body".to_string()),
+            image: None,
+            author: author.to_string(),
+            author_is_admin,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: None,
+        }
+    }
+
+    #[test]
+    fn rename_cached_author_updates_author_and_admin_flag() {
+        let mut state = NewsManagementState {
+            news_items: Some(Ok(vec![
+                news_item(1, "Alice", false),
+                news_item(2, "bob", true),
+            ])),
+            ..Default::default()
+        };
+
+        state.rename_cached_author("alice", "alicia", true);
+
+        let items = state.news_items.as_ref().unwrap().as_ref().unwrap();
+        assert_eq!(items[0].author, "alicia");
+        assert!(items[0].author_is_admin);
+        assert_eq!(items[1].author, "bob");
+        assert!(items[1].author_is_admin);
     }
 }

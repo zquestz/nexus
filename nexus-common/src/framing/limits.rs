@@ -642,11 +642,12 @@ const CHAT_USER_LEFT_SIZE: usize = json_type_base("ChatUserLeft")
     + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
     + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
-/// ChatUserRenamed: {"type":"ChatUserRenamed","channel":"...32...","old_nickname":"...64...","new_nickname":"...64..."}
+/// ChatUserRenamed: {"type":"ChatUserRenamed","channel":"...32...","old_nickname":"...64...","new_nickname":"...64...","is_admin":false}
 const CHAT_USER_RENAMED_SIZE: usize = json_type_base("ChatUserRenamed")
     + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
     + json_string_chars_field("old_nickname", MAX_NICKNAME_LENGTH)
-    + json_string_chars_field("new_nickname", MAX_NICKNAME_LENGTH);
+    + json_string_chars_field("new_nickname", MAX_NICKNAME_LENGTH)
+    + json_bool_field("is_admin");
 
 /// ChatSecretResponse: {"type":"ChatSecretResponse","success":false,"error":"...2048..."}
 const CHAT_SECRET_RESPONSE_SIZE: usize = json_type_base("ChatSecretResponse")
@@ -2889,6 +2890,7 @@ mod tests {
             channel: str_of_len(MAX_CHANNEL_LENGTH),
             old_nickname: str_of_len(MAX_NICKNAME_LENGTH),
             new_nickname: str_of_len(MAX_NICKNAME_LENGTH),
+            is_admin: true,
         };
         let size = json_size(&msg);
         let limit = max_payload_for_type("ChatUserRenamed") as usize;

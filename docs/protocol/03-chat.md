@@ -426,11 +426,12 @@ Broadcast to **all** members of every channel a user belongs to (secret channels
 
 Unlike `UserUpdated` (sent only to holders of the `user_list` permission), `ChatUserRenamed` reaches every channel member regardless of permission, so the rename is visible to users who can't see the user list.
 
-| Field          | Type   | Required | Description           |
-| -------------- | ------ | -------- | --------------------- |
-| `channel`      | string | Yes      | Channel name          |
-| `old_nickname` | string | Yes      | Nickname before rename |
-| `new_nickname` | string | Yes      | Nickname after rename  |
+| Field          | Type    | Required | Description                       |
+| -------------- | ------- | -------- | --------------------------------- |
+| `channel`      | string  | Yes      | Channel name                      |
+| `old_nickname` | string  | Yes      | Nickname before rename            |
+| `new_nickname` | string  | Yes      | Nickname after rename             |
+| `is_admin`     | boolean | Yes      | Whether the renamed user is admin |
 
 **Example:**
 
@@ -438,7 +439,8 @@ Unlike `UserUpdated` (sent only to holders of the `user_list` permission), `Chat
 {
   "channel": "#general",
   "old_nickname": "alice",
-  "new_nickname": "alicia"
+  "new_nickname": "alicia",
+  "is_admin": false
 }
 ```
 

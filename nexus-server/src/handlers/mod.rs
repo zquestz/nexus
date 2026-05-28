@@ -413,6 +413,7 @@ pub(crate) async fn broadcast_chat_user_renamed(
     sessions: &[UserSession],
     old_nickname: &str,
     new_nickname: &str,
+    is_admin: bool,
 ) {
     // Union of channels across the user's sessions (small N).
     let mut channels: Vec<String> = Vec::new();
@@ -432,6 +433,7 @@ pub(crate) async fn broadcast_chat_user_renamed(
                 channel,
                 old_nickname: old_nickname.to_string(),
                 new_nickname: new_nickname.to_string(),
+                is_admin,
             };
             for member_session_id in members {
                 user_manager
