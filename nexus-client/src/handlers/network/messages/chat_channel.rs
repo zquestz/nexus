@@ -289,7 +289,7 @@ impl NexusApp {
 
         // Rename effects outside this connection's own state (shared with the
         // UserUpdated path); the `conn` borrow has ended.
-        self.apply_rename_side_effects(connection_id, &old_nickname, &new_nickname);
+        self.apply_rename_side_effects(connection_id, &old_nickname, &new_nickname, false);
 
         // Notice in the channel so members (including those without `user_list`) see
         // the continuity. Gated like join/leave events; the member-list re-key above

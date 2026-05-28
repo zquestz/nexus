@@ -510,7 +510,12 @@ impl NexusApp {
         // Rename effects that live outside this connection's own state (voice audio
         // thread, chat history). The `conn` borrow has ended, so this takes `&mut self`.
         if username_changed {
-            self.apply_rename_side_effects(connection_id, &previous_username, &new_username);
+            self.apply_rename_side_effects(
+                connection_id,
+                &previous_username,
+                &new_username,
+                user.is_shared,
+            );
         }
 
         Task::none()
@@ -521,7 +526,13 @@ impl NexusApp {
     /// `ServerConnection::apply_user_rename`. Called from both rename paths
     /// (`handle_user_updated` and `handle_chat_user_renamed`) right after that
     /// method, once the `conn` borrow has been released.
-    pub(crate) fn apply_rename_side_effects(&mut self, connection_id: usize, old: &str, new: &str) {
+    pub(crate) fn apply_rename_side_effects(
+        &mut self,
+        connection_id: usize,
+        old: &str,
+        new: &str,
+        is_shared: bool,
+    ) {
         let connection_info = self
             .connections
             .get(&connection_id)
@@ -553,17 +564,33 @@ impl NexusApp {
             let _ = manager.rename_conversation(old, new);
         }
 
-        // Transfer resume opens a new transfer-port login from the persisted
-        // transfer row. When this connection's own account was renamed, refresh
-        // those saved credentials too; otherwise pause/resume would retry the old
-        // username. Shared-account nicknames are preserved by the manager.
-        if let Some(connection_info) = connection_info
-            && fold_name(&connection_info.username) == fold_name(new)
-            && self
-                .transfer_manager
-                .update_username_for_connection(&connection_info, old, new)
-        {
-            let _ = self.transfer_manager.save();
+        if let Some(connection_info) = connection_info {
+            // Saved bookmarks can point at any account on this server, not just the
+            // active connection's own account. Keep matching bookmark usernames in
+            // step so quick-connect/auto-connect survive a rename.
+            if self.config.update_bookmark_usernames_for_server_rename(
+                &connection_info.address,
+                connection_info.port,
+                &connection_info.certificate_fingerprint,
+                old,
+                new,
+                is_shared,
+            ) > 0
+            {
+                let _ = self.config.save();
+            }
+
+            // Transfer resume opens a new transfer-port login from the persisted
+            // transfer row. When this connection's own account was renamed, refresh
+            // those saved credentials too; otherwise pause/resume would retry the old
+            // username. Shared-account nicknames are preserved by the manager.
+            if fold_name(&connection_info.username) == fold_name(new)
+                && self
+                    .transfer_manager
+                    .update_username_for_connection(&connection_info, old, new)
+            {
+                let _ = self.transfer_manager.save();
+            }
         }
     }
 }

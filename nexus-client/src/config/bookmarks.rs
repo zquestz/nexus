@@ -43,6 +43,62 @@ impl Config {
         }
     }
 
+    /// Update stored account usernames for bookmarks that point at a renamed
+    /// account on the current server.
+    ///
+    /// Returns the number of bookmarks changed. Empty nicknames and shared-account
+    /// nicknames are preserved; for regular-account renames, an explicit nickname
+    /// that matched the old username follows the new username.
+    pub fn update_bookmark_usernames_for_server_rename(
+        &mut self,
+        address: &str,
+        port: u16,
+        certificate_fingerprint: &str,
+        old_username: &str,
+        new_username: &str,
+        is_shared: bool,
+    ) -> usize {
+        let address_lc = address.to_lowercase();
+        let old_folded = fold_name(old_username);
+        let mut changed_count = 0;
+
+        for bookmark in &mut self.bookmarks {
+            if bookmark.address.to_lowercase() != address_lc
+                || bookmark.port != port
+                || fold_name(&bookmark.username) != old_folded
+            {
+                continue;
+            }
+
+            if let Some(stored_fingerprint) = &bookmark.certificate_fingerprint
+                && stored_fingerprint != certificate_fingerprint
+            {
+                continue;
+            }
+
+            let mut changed = false;
+            if bookmark.username != new_username {
+                bookmark.username = new_username.to_string();
+                changed = true;
+            }
+
+            if !is_shared
+                && !bookmark.nickname.is_empty()
+                && fold_name(&bookmark.nickname) == old_folded
+                && bookmark.nickname != new_username
+            {
+                bookmark.nickname = new_username.to_string();
+                changed = true;
+            }
+
+            if changed {
+                changed_count += 1;
+            }
+        }
+
+        changed_count
+    }
+
     /// Find a bookmark whose connection params match the given values.
     ///
     /// String fields (`address`, `username`, `nickname`) are compared
@@ -248,6 +304,120 @@ mod tests {
 
         assert_eq!(config.bookmarks.len(), 1);
         assert_eq!(config.bookmarks[0].name, "Server 1");
+    }
+
+    #[test]
+    fn test_update_bookmark_usernames_for_server_rename_updates_matching_regular_bookmarks() {
+        let mut config = Config::default();
+        let first = bookmark_with_params("First", "server.example", 7500, "alice", "Alice");
+        let second = bookmark_with_params("Second", "SERVER.EXAMPLE", 7500, "alice", "");
+        let other_user = bookmark_with_params("Other", "server.example", 7500, "bob", "bob");
+        let first_id = first.id;
+        let second_id = second.id;
+        let other_id = other_user.id;
+        config.add_bookmark(first);
+        config.add_bookmark(second);
+        config.add_bookmark(other_user);
+
+        assert_eq!(
+            config.update_bookmark_usernames_for_server_rename(
+                "server.example",
+                7500,
+                "fp-current",
+                "alice",
+                "alicia",
+                false,
+            ),
+            2
+        );
+
+        let first = config.get_bookmark(first_id).unwrap();
+        assert_eq!(first.username, "alicia");
+        assert_eq!(first.nickname, "alicia");
+
+        let second = config.get_bookmark(second_id).unwrap();
+        assert_eq!(second.username, "alicia");
+        assert_eq!(second.nickname, "");
+
+        let other_user = config.get_bookmark(other_id).unwrap();
+        assert_eq!(other_user.username, "bob");
+        assert_eq!(other_user.nickname, "bob");
+    }
+
+    #[test]
+    fn test_update_bookmark_usernames_for_server_rename_preserves_shared_nickname() {
+        let mut config = Config::default();
+        let bm = bookmark_with_params("Test", "server.example", 7500, "shared", "Member1");
+        let id = bm.id;
+        config.add_bookmark(bm);
+
+        assert_eq!(
+            config.update_bookmark_usernames_for_server_rename(
+                "server.example",
+                7500,
+                "fp-current",
+                "shared",
+                "shared2",
+                true,
+            ),
+            1
+        );
+
+        let bookmark = config.get_bookmark(id).unwrap();
+        assert_eq!(bookmark.username, "shared2");
+        assert_eq!(bookmark.nickname, "Member1");
+    }
+
+    #[test]
+    fn test_update_bookmark_usernames_for_server_rename_respects_stored_fingerprint() {
+        let mut config = Config::default();
+        let mut matching = bookmark_with_params("Matching", "server.example", 7500, "alice", "");
+        matching.certificate_fingerprint = Some("fp-current".to_string());
+        let mut mismatch = bookmark_with_params("Mismatch", "server.example", 7500, "alice", "");
+        mismatch.certificate_fingerprint = Some("fp-other".to_string());
+        let matching_id = matching.id;
+        let mismatch_id = mismatch.id;
+        config.add_bookmark(matching);
+        config.add_bookmark(mismatch);
+
+        assert_eq!(
+            config.update_bookmark_usernames_for_server_rename(
+                "server.example",
+                7500,
+                "fp-current",
+                "alice",
+                "alicia",
+                false,
+            ),
+            1
+        );
+
+        assert_eq!(config.get_bookmark(matching_id).unwrap().username, "alicia");
+        assert_eq!(config.get_bookmark(mismatch_id).unwrap().username, "alice");
+    }
+
+    #[test]
+    fn test_update_bookmark_usernames_for_server_rename_ignores_other_endpoint() {
+        let mut config = Config::default();
+        let bm = bookmark_with_params("Test", "other.example", 7500, "alice", "alice");
+        let id = bm.id;
+        config.add_bookmark(bm);
+
+        assert_eq!(
+            config.update_bookmark_usernames_for_server_rename(
+                "server.example",
+                7500,
+                "fp-current",
+                "alice",
+                "alicia",
+                false,
+            ),
+            0
+        );
+
+        let bookmark = config.get_bookmark(id).unwrap();
+        assert_eq!(bookmark.username, "alice");
+        assert_eq!(bookmark.nickname, "alice");
     }
 
     /// Helper to build a bookmark with full connection params for matching tests.
