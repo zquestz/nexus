@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::db::{Database, Permission};
 use crate::files::{FileIndex, PathLockMap};
 use crate::ip_rule_cache::IpRuleState;
+use crate::users::UserManager;
 
 use super::registry::TransferRegistry;
 
@@ -21,6 +22,7 @@ pub struct TransferParams {
     pub file_mutation_locks: Arc<PathLockMap>,
     pub transfer_registry: Arc<TransferRegistry>,
     pub ip_rule_cache: Arc<IpRuleState>,
+    pub user_manager: UserManager,
     /// Sent in HandshakeResponse so the client can detect TLS interception
     /// before sending credentials.
     pub fingerprint: &'static str,
@@ -36,6 +38,7 @@ pub(crate) struct FileInfo {
 
 /// Minimal authenticated user for the transfer port.
 pub(crate) struct AuthenticatedUser {
+    pub user_id: i64,
     pub nickname: String,
     pub username: String,
     pub is_admin: bool,

@@ -363,6 +363,7 @@ pub const LOG_TRANSFER_HANDSHAKE_FAILED: &str = "Transfer: handshake failed";
 pub const LOG_TRANSFER_LOGIN_FAILED: &str = "Transfer: login failed";
 pub const LOG_TRANSFER_AUTHENTICATED: &str = "Transfer: authenticated";
 pub const LOG_TRANSFER_REQUEST_FAILED: &str = "Transfer: request failed";
+pub const LOG_TRANSFER_REGISTRATION_DB_ERROR: &str = "Transfer: registration database error";
 pub const LOG_TRANSFER_COMPLETE: &str = "Transfer: complete";
 
 pub const LOG_DOWNLOAD_SCAN_FAILED: &str = "Download: failed to scan files";

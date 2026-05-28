@@ -9,11 +9,13 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 
+use nexus_common::names::fold_name;
 use uuid::Uuid;
 
 use super::types::{Transfer, TransferError, TransferStatus};
 use crate::constants::{APP_DIR_NAME, TRANSFERS_FILE_NAME};
 use crate::i18n::{t, t_args};
+use crate::types::ConnectionInfo;
 
 /// File permissions for transfers file on Unix (owner read/write only)
 #[cfg(unix)]
@@ -496,6 +498,58 @@ impl TransferManager {
             }
         }
     }
+
+    /// Update saved transfer credentials after the connected account is renamed.
+    ///
+    /// Resume opens a fresh transfer-port login using the transfer's persisted
+    /// `ConnectionInfo`, so records that can still be retried must follow a self
+    /// rename. Active records are included because a later pause turns the same
+    /// persisted row into a resumable transfer.
+    pub fn update_username_for_connection(
+        &mut self,
+        connection: &ConnectionInfo,
+        old_username: &str,
+        new_username: &str,
+    ) -> bool {
+        let old_folded = fold_name(old_username);
+        let mut changed = false;
+
+        for transfer in self.transfers.values_mut() {
+            if !transfer_status_can_reconnect(transfer.status) {
+                continue;
+            }
+
+            let transfer_info = &mut transfer.connection_info;
+            if transfer_info.address == connection.address
+                && transfer_info.port == connection.port
+                && transfer_info.transfer_port == connection.transfer_port
+                && transfer_info.certificate_fingerprint == connection.certificate_fingerprint
+                && fold_name(&transfer_info.username) == old_folded
+            {
+                transfer_info.username = new_username.to_string();
+                if fold_name(&transfer_info.nickname) == old_folded {
+                    transfer_info.nickname = new_username.to_string();
+                }
+                changed = true;
+            }
+        }
+
+        if changed {
+            self.dirty = true;
+        }
+        changed
+    }
+}
+
+fn transfer_status_can_reconnect(status: TransferStatus) -> bool {
+    matches!(
+        status,
+        TransferStatus::Queued
+            | TransferStatus::Connecting
+            | TransferStatus::Transferring
+            | TransferStatus::Paused
+            | TransferStatus::Failed
+    )
 }
 
 impl Default for TransferManager {
@@ -1072,6 +1126,103 @@ mod tests {
         );
 
         // Should be marked dirty
+        assert!(manager.is_dirty());
+    }
+
+    #[test]
+    fn test_update_username_for_connection_updates_resume_eligible_transfers() {
+        let mut manager = TransferManager::new();
+        let mut current_connection = test_connection_info();
+        current_connection.username = "alicia".to_string();
+
+        let mut queued = test_transfer();
+        queued.status = TransferStatus::Queued;
+        queued.connection_info.username = "alice".to_string();
+        queued.connection_info.nickname = "alice".to_string();
+        let queued_id = queued.id;
+
+        let mut paused_shared = test_transfer();
+        paused_shared.status = TransferStatus::Paused;
+        paused_shared.connection_info.username = "alice".to_string();
+        paused_shared.connection_info.nickname = "Visitor".to_string();
+        let paused_shared_id = paused_shared.id;
+
+        let mut connecting = test_transfer();
+        connecting.status = TransferStatus::Connecting;
+        let connecting_id = connecting.id;
+
+        let mut transferring = test_transfer();
+        transferring.status = TransferStatus::Transferring;
+        let transferring_id = transferring.id;
+
+        let mut failed = test_transfer();
+        failed.status = TransferStatus::Failed;
+        let failed_id = failed.id;
+
+        let mut completed = test_transfer();
+        completed.status = TransferStatus::Completed;
+        let completed_id = completed.id;
+
+        let mut other_server = test_transfer();
+        other_server.connection_info.address = "192.168.1.101".to_string();
+        let other_server_id = other_server.id;
+
+        let mut other_user = test_transfer();
+        other_user.connection_info.username = "bob".to_string();
+        let other_user_id = other_user.id;
+
+        manager.add(queued);
+        manager.add(paused_shared);
+        manager.add(connecting);
+        manager.add(transferring);
+        manager.add(failed);
+        manager.add(completed);
+        manager.add(other_server);
+        manager.add(other_user);
+        manager.dirty = false;
+
+        assert!(manager.update_username_for_connection(&current_connection, "alice", "alicia"));
+
+        let queued = manager.get(queued_id).unwrap();
+        assert_eq!(queued.connection_info.username, "alicia");
+        assert_eq!(queued.connection_info.nickname, "alicia");
+
+        let paused_shared = manager.get(paused_shared_id).unwrap();
+        assert_eq!(paused_shared.connection_info.username, "alicia");
+        assert_eq!(paused_shared.connection_info.nickname, "Visitor");
+
+        assert_eq!(
+            manager.get(connecting_id).unwrap().connection_info.username,
+            "alicia"
+        );
+        assert_eq!(
+            manager
+                .get(transferring_id)
+                .unwrap()
+                .connection_info
+                .username,
+            "alicia"
+        );
+        assert_eq!(
+            manager.get(failed_id).unwrap().connection_info.username,
+            "alicia"
+        );
+        assert_eq!(
+            manager.get(completed_id).unwrap().connection_info.username,
+            "alice"
+        );
+        assert_eq!(
+            manager
+                .get(other_server_id)
+                .unwrap()
+                .connection_info
+                .username,
+            "alice"
+        );
+        assert_eq!(
+            manager.get(other_user_id).unwrap().connection_info.username,
+            "bob"
+        );
         assert!(manager.is_dirty());
     }
 }

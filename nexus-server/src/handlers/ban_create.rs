@@ -1306,6 +1306,7 @@ mod tests {
         let banned_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 100));
         let banned_addr = SocketAddr::new(banned_ip, 12345);
         let (info, mut ban_rx) = test_ctx.transfer_registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: banned_addr,
             nickname: "banned_user".to_string(),
             username: "banned_user".to_string(),
@@ -1320,6 +1321,7 @@ mod tests {
         let safe_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 200));
         let safe_addr = SocketAddr::new(safe_ip, 12346);
         let (_safe_info, mut safe_rx) = test_ctx.transfer_registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: safe_addr,
             nickname: "safe_user".to_string(),
             username: "safe_user".to_string(),
@@ -1370,6 +1372,7 @@ mod tests {
         let ip_outside_range = IpAddr::V4(Ipv4Addr::new(10, 0, 2, 50));
 
         let (_info1, mut rx1) = test_ctx.transfer_registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: SocketAddr::new(ip_in_range_1, 12345),
             nickname: "user1".to_string(),
             username: "user1".to_string(),
@@ -1380,6 +1383,7 @@ mod tests {
             total_size: 0,
         });
         let (_info2, mut rx2) = test_ctx.transfer_registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: SocketAddr::new(ip_in_range_2, 12346),
             nickname: "user2".to_string(),
             username: "user2".to_string(),
@@ -1390,6 +1394,7 @@ mod tests {
             total_size: 0,
         });
         let (_info3, mut rx3) = test_ctx.transfer_registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: SocketAddr::new(ip_outside_range, 12347),
             nickname: "user3".to_string(),
             username: "user3".to_string(),

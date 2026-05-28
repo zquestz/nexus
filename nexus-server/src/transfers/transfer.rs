@@ -402,6 +402,7 @@ mod tests {
 
     fn make_test_user() -> AuthenticatedUser {
         AuthenticatedUser {
+            user_id: 1,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
             is_admin: false,
@@ -445,6 +446,7 @@ mod tests {
 
         let peer_addr = make_test_addr();
         let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
@@ -492,6 +494,7 @@ mod tests {
 
         let peer_addr = make_test_addr();
         let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
@@ -541,6 +544,7 @@ mod tests {
 
         let peer_addr = make_test_addr();
         let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
@@ -592,6 +596,7 @@ mod tests {
 
         let peer_addr = make_test_addr();
         let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
@@ -642,6 +647,7 @@ mod tests {
 
         let peer_addr = make_test_addr();
         let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
@@ -690,6 +696,7 @@ mod tests {
 
         let peer_addr = make_test_addr();
         let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
@@ -740,6 +747,7 @@ mod tests {
 
         let peer_addr = make_test_addr();
         let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),

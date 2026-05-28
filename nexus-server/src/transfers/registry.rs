@@ -8,7 +8,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use nexus_common::names::fold_name;
 use nexus_common::protocol::TransferInfo;
 use tokio::sync::oneshot;
 
@@ -47,6 +46,7 @@ impl std::fmt::Display for TransferDirection {
 
 /// Parameters for [`TransferRegistry::register`] / [`ActiveTransfer::new`].
 pub struct TransferRegistration {
+    pub user_id: i64,
     pub peer_addr: SocketAddr,
     /// Display name (equals username for regular accounts).
     pub nickname: String,
@@ -76,6 +76,8 @@ struct TransferIdentity {
 /// the serializable wire form `nexus_common::protocol::TransferInfo`.
 pub struct ActiveTransfer {
     pub id: TransferId,
+    /// Immutable account identity. Shared-account sessions share one user id.
+    pub user_id: i64,
     /// Port distinguishes WebSocket vs TCP.
     pub peer_addr: SocketAddr,
     /// Owner display identity (name + admin flag), lockable so a rename or
@@ -101,6 +103,7 @@ impl ActiveTransfer {
     fn new(id: TransferId, params: TransferRegistration, ban_tx: oneshot::Sender<()>) -> Self {
         Self {
             id,
+            user_id: params.user_id,
             peer_addr: params.peer_addr,
             identity: Mutex::new(TransferIdentity {
                 nickname: params.nickname,
@@ -270,25 +273,24 @@ impl TransferRegistry {
         count
     }
 
-    /// Refresh the cached display identity of every active transfer owned by the
-    /// account `old_username` after a `UserUpdate`, so the connection monitor shows
+    /// Refresh the cached display identity of every active transfer owned by
+    /// `user_id` after a `UserUpdate`, so the connection monitor shows
     /// the current name and admin color without waiting for the transfer to end.
     /// Always updates the username and admin flag; the display nickname only moves
     /// for non-shared accounts (a shared account keeps its per-session nickname,
     /// which a username change doesn't touch). `is_shared` is read from the
     /// transfer itself, since it's immutable for an account.
-    pub fn update_user(&self, old_username: &str, new_username: &str, is_admin: bool) {
-        let old_lower = fold_name(old_username);
+    pub fn update_user(&self, user_id: i64, new_username: &str, is_admin: bool) {
         let transfers = self
             .transfers
             .lock()
             .expect(ERR_TRANSFER_REGISTRY_LOCK_POISONED);
         for info in transfers.values() {
-            let mut identity = info
-                .identity
-                .lock()
-                .expect(ERR_TRANSFER_IDENTITY_LOCK_POISONED);
-            if fold_name(&identity.username) == old_lower {
+            if info.user_id == user_id {
+                let mut identity = info
+                    .identity
+                    .lock()
+                    .expect(ERR_TRANSFER_IDENTITY_LOCK_POISONED);
                 identity.username = new_username.to_string();
                 identity.is_admin = is_admin;
                 if !info.is_shared {
@@ -357,6 +359,7 @@ mod tests {
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
         let (info, _rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
@@ -383,6 +386,7 @@ mod tests {
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
         let (alice, _a) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "alice".to_string(),
             username: "alice".to_string(),
@@ -393,6 +397,7 @@ mod tests {
             total_size: 1024,
         });
         let (bob, _b) = registry.register(TransferRegistration {
+            user_id: 2,
             peer_addr: addr,
             nickname: "bob".to_string(),
             username: "bob".to_string(),
@@ -404,7 +409,7 @@ mod tests {
         });
 
         // Regular rename that also promotes to admin.
-        registry.update_user("alice", "alice2", true);
+        registry.update_user(1, "alice2", true);
 
         // Matched transfer: nickname == username for regular accounts, both move,
         // and the admin flag (used to colorize the monitor) follows.
@@ -428,6 +433,7 @@ mod tests {
         // Shared account "guests": the transfer's nickname is the per-session
         // name "Alice", distinct from the account username.
         let (transfer, _rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "Alice".to_string(),
             username: "guests".to_string(),
@@ -439,7 +445,7 @@ mod tests {
         });
 
         // Rename the shared account "guests" -> "visitors".
-        registry.update_user("guests", "visitors", false);
+        registry.update_user(1, "visitors", false);
 
         let info = transfer.to_transfer_info();
         assert_eq!(info.username, "visitors", "account username must follow");
@@ -455,6 +461,7 @@ mod tests {
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
         let (transfer, _rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "carol".to_string(),
             username: "carol".to_string(),
@@ -466,7 +473,7 @@ mod tests {
         });
 
         // Demote without a rename (old username == new username).
-        registry.update_user("carol", "carol", false);
+        registry.update_user(1, "carol", false);
 
         let info = transfer.to_transfer_info();
         assert!(!info.is_admin, "demotion must clear the admin flag");
@@ -475,11 +482,53 @@ mod tests {
     }
 
     #[test]
+    fn test_update_user_matches_user_id_not_reused_username() {
+        let registry = TransferRegistry::new();
+        let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
+
+        let (old_alice, _old) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr: addr,
+            nickname: "alice".to_string(),
+            username: "alice".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/files/old.zip".to_string(),
+            total_size: 1024,
+        });
+        let (new_alice, _new) = registry.register(TransferRegistration {
+            user_id: 2,
+            peer_addr: addr,
+            nickname: "alice".to_string(),
+            username: "alice".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Upload,
+            path: "/files/new.zip".to_string(),
+            total_size: 1024,
+        });
+
+        registry.update_user(2, "alice2", true);
+
+        let old_info = old_alice.to_transfer_info();
+        assert_eq!(old_info.nickname, "alice");
+        assert_eq!(old_info.username, "alice");
+        assert!(!old_info.is_admin);
+
+        let new_info = new_alice.to_transfer_info();
+        assert_eq!(new_info.nickname, "alice2");
+        assert_eq!(new_info.username, "alice2");
+        assert!(new_info.is_admin);
+    }
+
+    #[test]
     fn test_unique_ids() {
         let registry = TransferRegistry::new();
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
         let (info1, _rx1) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "user1".to_string(),
             username: "user1".to_string(),
@@ -490,6 +539,7 @@ mod tests {
             total_size: 0,
         });
         let (info2, _rx2) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "user2".to_string(),
             username: "user2".to_string(),
@@ -500,6 +550,7 @@ mod tests {
             total_size: 0,
         });
         let (info3, _rx3) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "user3".to_string(),
             username: "user3".to_string(),
@@ -522,6 +573,7 @@ mod tests {
         let safe_ip = IpAddr::V4(Ipv4Addr::new(192, 168, 1, 200));
 
         let (_, mut rx1) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: make_test_addr(banned_ip),
             nickname: "banned1".to_string(),
             username: "banned1".to_string(),
@@ -532,6 +584,7 @@ mod tests {
             total_size: 0,
         });
         let (_, mut rx2) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: make_test_addr(safe_ip),
             nickname: "safe".to_string(),
             username: "safe".to_string(),
@@ -542,6 +595,7 @@ mod tests {
             total_size: 0,
         });
         let (_, mut rx3) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: make_test_addr(banned_ip),
             nickname: "banned2".to_string(),
             username: "banned2".to_string(),
@@ -574,6 +628,7 @@ mod tests {
         let ip3 = IpAddr::V4(Ipv4Addr::new(10, 0, 2, 1)); // Different subnet
 
         let (_, _rx1) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: make_test_addr(ip1),
             nickname: "user1".to_string(),
             username: "user1".to_string(),
@@ -584,6 +639,7 @@ mod tests {
             total_size: 0,
         });
         let (_, _rx2) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: make_test_addr(ip2),
             nickname: "user2".to_string(),
             username: "user2".to_string(),
@@ -594,6 +650,7 @@ mod tests {
             total_size: 0,
         });
         let (_, _rx3) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: make_test_addr(ip3),
             nickname: "user3".to_string(),
             username: "user3".to_string(),
@@ -624,6 +681,7 @@ mod tests {
         let ipv6 = IpAddr::V6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1));
 
         let (_, _rx1) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: make_test_addr(ipv4),
             nickname: "user1".to_string(),
             username: "user1".to_string(),
@@ -634,6 +692,7 @@ mod tests {
             total_size: 0,
         });
         let (_, mut rx2) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: make_test_addr(ipv6),
             nickname: "user2".to_string(),
             username: "user2".to_string(),
@@ -656,6 +715,7 @@ mod tests {
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
         let (info, _rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
@@ -681,6 +741,7 @@ mod tests {
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
         let (info, _rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
@@ -702,6 +763,7 @@ mod tests {
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
         let (_, rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
@@ -726,6 +788,7 @@ mod tests {
         let addr2 = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 2)));
 
         let (_, _rx1) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr1,
             nickname: "user1".to_string(),
             username: "user1".to_string(),
@@ -736,6 +799,7 @@ mod tests {
             total_size: 1000,
         });
         let (_, _rx2) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr2,
             nickname: "user2".to_string(),
             username: "user2".to_string(),
@@ -763,6 +827,7 @@ mod tests {
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
         let (info, _rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
@@ -788,6 +853,7 @@ mod tests {
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
         let (info, _rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),
@@ -822,6 +888,7 @@ mod tests {
         let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
 
         let (_, _rx) = registry.register(TransferRegistration {
+            user_id: 1,
             peer_addr: addr,
             nickname: "testuser".to_string(),
             username: "testuser".to_string(),

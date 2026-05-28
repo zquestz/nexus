@@ -38,47 +38,6 @@ Features intentionally excluded with rationale.
 
 ## Deferred Correctness Work
 
-### Transfer Registration Identity Refresh
-
-Transfer-port authentication currently snapshots `username` / `nickname` before the
-client sends its file request. A username rename can commit during that request-read
-window; the rename updates already-registered transfers, but this not-yet-registered
-transfer can later enter `TransferRegistry` with the stale auth-time username. This
-only affects connection-monitor display while the transfer is active.
-
-Fix direction:
-
-- Add immutable `user_id` to transfer authentication state.
-- At transfer registration time, acquire `UserManager::read_user_state()` only as the
-  rename serialization guard; do not require an online BBS session.
-- Re-read the current account identity from the DB by `user_id` under that guard, then
-  register the transfer before dropping the guard.
-- Regular accounts register with the current DB username as both username and
-  nickname. Shared accounts register with the current DB username but keep the
-  transfer auth-time shared nickname.
-- Transfers must continue to work when the user is offline from the BBS port, including
-  pause/resume flows.
-
-**Code anchors:** `transfers/auth.rs::handle_transfer_login` builds `AuthenticatedUser`
-(today has no `user_id`); the register call site is `transfer_registry.register(...)` in
-`transfers/mod.rs` (after `handle_transfer_request`); `transfers/registry.rs::update_user`
-matches active transfers by *folded username*; the rename calls
-`transfer_registry.update_user` in `handlers/user_update.rs` under the write
-`lock_user_state`. `TransferParams` (in `transfers/mod.rs`) carries no `user_manager` — it
-must be plumbed through the transfer accept loop to acquire the guard, which is the main
-implementation cost.
-
-**Why the re-read is essential (not just the lock):** if the rename fully precedes
-registration, its `update_user` already ran against a transfer that didn't exist yet and
-the DB now holds the new name — locking alone would still register the stale auth-time
-snapshot. Registration must re-read current identity by `user_id`, never reuse the auth
-snapshot.
-
-**Alternative considered:** store only `user_id` (+ `is_shared` + shared nickname) in the
-registry and resolve the regular username live in the connection-monitor handler, so no
-mutable name is cached. Viable; not chosen here only to keep the `read_user_state`
-serialization pattern uniform with the BBS port.
-
 ### Voice Stable Sender Identity
 
 Relayed voice packets carry the sender nickname. During a username rename, TCP

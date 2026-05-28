@@ -445,6 +445,7 @@ async fn main() {
                             file_mutation_locks: file_mutation_locks.clone(),
                             transfer_registry: transfer_registry.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
+                            user_manager: user_manager.clone(),
                             fingerprint,
                         };
                         let tls_acceptor = tls_acceptor.clone();
@@ -573,6 +574,7 @@ async fn main() {
                             file_mutation_locks: file_mutation_locks.clone(),
                             transfer_registry: transfer_registry.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
+                            user_manager: user_manager.clone(),
                             fingerprint,
                         };
                         let tls_acceptor = tls_acceptor.clone();

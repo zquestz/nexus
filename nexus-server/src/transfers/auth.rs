@@ -281,7 +281,11 @@ where
     } else {
         match db.users.get_user_permissions(account.id).await {
             Ok(perms) => perms.permissions,
-            Err(_) => HashSet::new(),
+            Err(e) => {
+                let response = login_error_response(err_database(locale));
+                send_server_message_with_id(frame_writer, &response, received.message_id).await?;
+                return Err(io::Error::other(format!("{}{}", ERR_TRANSFER_DB_ERROR, e)));
+            }
         }
     };
 
@@ -309,6 +313,7 @@ where
     send_server_message_with_id(frame_writer, &response, received.message_id).await?;
 
     Ok(AuthenticatedUser {
+        user_id: account.id,
         nickname,
         username: account.username,
         is_admin: account.is_admin,

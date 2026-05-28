@@ -18,27 +18,35 @@ mod transfer;
 mod types;
 mod upload;
 
-use std::io;
+use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};
 
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
+use tokio::sync::oneshot;
 use tokio_rustls::TlsAcceptor;
-use tracing::debug;
+use tracing::{debug, error};
 
 use nexus_common::framing::{FrameReader, FrameWriter};
+use nexus_common::names::fold_name;
 use nexus_common::tls::accept_tls_with_timeout;
 
 use crate::constants::*;
+use crate::db::sql::GUEST_USERNAME;
+use crate::db::{Database, Permission};
 use crate::handlers::duration::format_duration_remaining;
-use crate::handlers::{err_banned_permanent, err_banned_with_expiry, err_file_area_not_configured};
+use crate::handlers::{
+    err_account_disabled, err_authentication, err_banned_permanent, err_banned_with_expiry,
+    err_database, err_file_area_not_configured, err_guest_disabled,
+};
 use crate::ip_rule_cache::IpAdmission;
+use crate::users::UserManager;
 
 use auth::{handle_transfer_handshake, handle_transfer_login, handle_transfer_request};
 use download::handle_download;
 use helpers::send_error_and_close;
-use registry::{TransferDirection, TransferRegistration};
+use registry::{ActiveTransfer, TransferDirection, TransferRegistration};
 use transfer::{Transfer, TransferContext};
-use types::TransferRequest;
+use types::{AuthenticatedUser, TransferRequest};
 use upload::handle_upload;
 
 pub use registry::TransferRegistry;
@@ -72,6 +80,7 @@ where
         file_mutation_locks,
         transfer_registry,
         ip_rule_cache,
+        user_manager,
         fingerprint,
     } = params;
 
@@ -135,17 +144,27 @@ where
         ),
     };
 
-    // Register after auth so the user's locale is available for error messages.
-    let (info, ban_rx) = transfer_registry.register(TransferRegistration {
-        peer_addr,
-        nickname: user.nickname.clone(),
-        username: user.username.clone(),
-        is_admin: user.is_admin,
-        is_shared: user.is_shared,
-        direction,
-        path,
-        total_size,
-    });
+    // Register after reading the request so the connection monitor can show
+    // direction/path, but refresh identity by immutable user id under the same
+    // rename-serialization guard used by BBS login.
+    let (user, info, ban_rx) = match register_transfer_with_current_identity(
+        &db,
+        &user_manager,
+        &transfer_registry,
+        user,
+        PendingTransferRegistration {
+            peer_addr,
+            direction,
+            path,
+            total_size,
+        },
+        &locale,
+    )
+    .await
+    {
+        Ok(registered) => registered,
+        Err(error) => return send_error_and_close(&mut frame_writer, &error).await,
+    };
 
     if let IpAdmission::Banned { expires_at } = ip_rule_cache.check_admission(peer_addr.ip()).await
     {
@@ -154,6 +173,8 @@ where
     }
 
     // Owns the connection and ban handling; unregisters on drop via RAII guard.
+    // The user snapshot below is post-refresh. Later identity/permission changes
+    // update connection-monitor display, but do not re-authorize an in-flight transfer.
     let mut transfer = Transfer::new(
         frame_reader,
         frame_writer,
@@ -192,5 +213,344 @@ fn late_ban_error(locale: &str, expires_at: Option<i64>) -> String {
     match expires_at {
         Some(expiry) => err_banned_with_expiry(locale, &format_duration_remaining(expiry)),
         None => err_banned_permanent(locale),
+    }
+}
+
+struct PendingTransferRegistration {
+    peer_addr: SocketAddr,
+    direction: TransferDirection,
+    path: String,
+    total_size: u64,
+}
+
+async fn register_transfer_with_current_identity(
+    db: &Database,
+    user_manager: &UserManager,
+    transfer_registry: &TransferRegistry,
+    mut user: AuthenticatedUser,
+    pending: PendingTransferRegistration,
+    locale: &str,
+) -> Result<
+    (
+        AuthenticatedUser,
+        Arc<ActiveTransfer>,
+        oneshot::Receiver<()>,
+    ),
+    String,
+> {
+    let _user_state = user_manager.read_user_state().await;
+
+    let account = db
+        .users
+        .get_user_by_id(user.user_id)
+        .await
+        .map_err(|e| {
+            error!(user_id = user.user_id, err = %e, "{}", LOG_TRANSFER_REGISTRATION_DB_ERROR);
+            err_database(locale)
+        })?
+        .ok_or_else(|| err_authentication(locale))?;
+
+    if !account.enabled {
+        return Err(if fold_name(&account.username) == GUEST_USERNAME {
+            err_guest_disabled(locale)
+        } else {
+            err_account_disabled(locale, &account.username)
+        });
+    }
+
+    user.username = account.username.clone();
+    user.is_admin = account.is_admin;
+    user.is_shared = account.is_shared;
+    user.permissions =
+        current_transfer_permissions(db, account.id, account.is_admin, locale).await?;
+    if !account.is_shared {
+        user.nickname = account.username;
+    }
+
+    let (info, ban_rx) = transfer_registry.register(TransferRegistration {
+        user_id: user.user_id,
+        peer_addr: pending.peer_addr,
+        nickname: user.nickname.clone(),
+        username: user.username.clone(),
+        is_admin: user.is_admin,
+        is_shared: user.is_shared,
+        direction: pending.direction,
+        path: pending.path,
+        total_size: pending.total_size,
+    });
+
+    Ok((user, info, ban_rx))
+}
+
+async fn current_transfer_permissions(
+    db: &Database,
+    user_id: i64,
+    is_admin: bool,
+    locale: &str,
+) -> Result<HashSet<Permission>, String> {
+    if is_admin {
+        Ok(HashSet::new())
+    } else {
+        db.users
+            .get_user_permissions(user_id)
+            .await
+            .map(|perms| perms.permissions)
+            .map_err(|e| {
+                error!(user_id, err = %e, "{}", LOG_TRANSFER_REGISTRATION_DB_ERROR);
+                err_database(locale)
+            })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+    use std::net::SocketAddr;
+
+    use crate::db::testing::create_test_db;
+    use crate::db::{
+        CreateUserParams, Database, Permission, PermissionWriteScope, Permissions,
+        UpdateUserParams, UserAccount,
+    };
+    use crate::users::UserManager;
+
+    use super::*;
+
+    async fn create_transfer_user(
+        db: &Database,
+        username: &str,
+        is_shared: bool,
+        permissions: &Permissions,
+    ) -> UserAccount {
+        create_transfer_user_with_enabled(db, username, is_shared, true, permissions).await
+    }
+
+    async fn create_transfer_user_with_enabled(
+        db: &Database,
+        username: &str,
+        is_shared: bool,
+        enabled: bool,
+        permissions: &Permissions,
+    ) -> UserAccount {
+        db.users
+            .create_user(CreateUserParams {
+                username,
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared,
+                enabled,
+                permissions,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap()
+    }
+
+    async fn disable_user(db: &Database, username: &str) {
+        db.users
+            .update_user(UpdateUserParams {
+                username,
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: Some(false),
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
+            })
+            .await
+            .unwrap();
+    }
+
+    fn stale_auth_user(
+        user_id: i64,
+        username: &str,
+        nickname: &str,
+        is_shared: bool,
+    ) -> AuthenticatedUser {
+        AuthenticatedUser {
+            user_id,
+            nickname: nickname.to_string(),
+            username: username.to_string(),
+            is_admin: false,
+            is_shared,
+            permissions: HashSet::new(),
+        }
+    }
+
+    fn pending_registration() -> PendingTransferRegistration {
+        PendingTransferRegistration {
+            peer_addr: SocketAddr::from(([127, 0, 0, 1], 7501)),
+            direction: TransferDirection::Download,
+            path: "file.bin".to_string(),
+            total_size: 0,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_register_transfer_refreshes_regular_identity_by_user_id() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let registry = TransferRegistry::new();
+        let permissions = Permissions::from(&[Permission::FileDownload]);
+        let account = create_transfer_user(&db, "alicia", false, &permissions).await;
+
+        let stale_user = stale_auth_user(account.id, "alice", "alice", false);
+
+        let (registered_user, info, _ban_rx) = register_transfer_with_current_identity(
+            &db,
+            &user_manager,
+            &registry,
+            stale_user,
+            pending_registration(),
+            "en",
+        )
+        .await
+        .unwrap();
+
+        let transfer_info = info.to_transfer_info();
+        assert_eq!(transfer_info.username, "alicia");
+        assert_eq!(transfer_info.nickname, "alicia");
+        assert_eq!(registered_user.username, "alicia");
+        assert_eq!(registered_user.nickname, "alicia");
+        assert!(
+            registered_user
+                .permissions
+                .contains(&Permission::FileDownload)
+        );
+        assert_eq!(registry.active_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_register_transfer_shared_identity_keeps_auth_time_nickname() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let registry = TransferRegistry::new();
+        let permissions = Permissions::new();
+        let account = create_transfer_user(&db, "shared2", true, &permissions).await;
+
+        let stale_user = stale_auth_user(account.id, "shared", "GuestOne", true);
+
+        let (registered_user, info, _ban_rx) = register_transfer_with_current_identity(
+            &db,
+            &user_manager,
+            &registry,
+            stale_user,
+            pending_registration(),
+            "en",
+        )
+        .await
+        .unwrap();
+
+        let transfer_info = info.to_transfer_info();
+        assert_eq!(transfer_info.username, "shared2");
+        assert_eq!(transfer_info.nickname, "GuestOne");
+        assert_eq!(registered_user.username, "shared2");
+        assert_eq!(registered_user.nickname, "GuestOne");
+        assert!(registered_user.is_shared);
+    }
+
+    #[tokio::test]
+    async fn test_register_transfer_rejects_deleted_account_by_user_id() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let registry = TransferRegistry::new();
+        let permissions = Permissions::new();
+        let account = create_transfer_user(&db, "alice", false, &permissions).await;
+        assert!(db.users.delete_user(account.id, true).await.unwrap());
+
+        let stale_user = stale_auth_user(account.id, "alice", "alice", false);
+
+        let error = match register_transfer_with_current_identity(
+            &db,
+            &user_manager,
+            &registry,
+            stale_user,
+            pending_registration(),
+            "en",
+        )
+        .await
+        {
+            Ok(_) => panic!("deleted account must not register a transfer"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error, err_authentication("en"));
+        assert_eq!(registry.active_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_register_transfer_rejects_disabled_regular_account() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let registry = TransferRegistry::new();
+        let permissions = Permissions::new();
+        let account =
+            create_transfer_user_with_enabled(&db, "alice", false, false, &permissions).await;
+
+        let stale_user = stale_auth_user(account.id, "alice", "alice", false);
+
+        let error = match register_transfer_with_current_identity(
+            &db,
+            &user_manager,
+            &registry,
+            stale_user,
+            pending_registration(),
+            "en",
+        )
+        .await
+        {
+            Ok(_) => panic!("disabled regular account must not register a transfer"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error, err_account_disabled("en", "alice"));
+        assert_eq!(registry.active_count(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_register_transfer_rejects_disabled_guest_account() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let registry = TransferRegistry::new();
+        disable_user(&db, GUEST_USERNAME).await;
+        let guest = db
+            .users
+            .get_user_by_username(GUEST_USERNAME)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let stale_user = stale_auth_user(guest.id, GUEST_USERNAME, "Visitor", true);
+
+        let error = match register_transfer_with_current_identity(
+            &db,
+            &user_manager,
+            &registry,
+            stale_user,
+            pending_registration(),
+            "en",
+        )
+        .await
+        {
+            Ok(_) => panic!("disabled guest account must not register a transfer"),
+            Err(error) => error,
+        };
+
+        assert_eq!(error, err_guest_disabled("en"));
+        assert_eq!(registry.active_count(), 0);
     }
 }

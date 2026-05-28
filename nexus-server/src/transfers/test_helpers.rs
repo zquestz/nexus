@@ -12,6 +12,7 @@ pub(crate) fn make_authenticated_user(is_admin: bool, perms: &[Permission]) -> A
         permissions.insert(*p);
     }
     AuthenticatedUser {
+        user_id: 1,
         nickname: "tester".to_string(),
         username: "tester".to_string(),
         is_admin,

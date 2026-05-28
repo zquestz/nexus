@@ -522,6 +522,11 @@ impl NexusApp {
     /// (`handle_user_updated` and `handle_chat_user_renamed`) right after that
     /// method, once the `conn` borrow has been released.
     pub(crate) fn apply_rename_side_effects(&mut self, connection_id: usize, old: &str, new: &str) {
+        let connection_info = self
+            .connections
+            .get(&connection_id)
+            .map(|conn| conn.connection_info.clone());
+
         // The audio thread keeps its own mute set, separate from the UI `muted_users`
         // that `apply_user_rename` already re-keyed, and only mutable via voice
         // commands. Re-sync it when this connection owns the active voice session and
@@ -546,6 +551,19 @@ impl NexusApp {
             && let Some(manager) = self.history_managers.get_mut(&base_dir)
         {
             let _ = manager.rename_conversation(old, new);
+        }
+
+        // Transfer resume opens a new transfer-port login from the persisted
+        // transfer row. When this connection's own account was renamed, refresh
+        // those saved credentials too; otherwise pause/resume would retry the old
+        // username. Shared-account nicknames are preserved by the manager.
+        if let Some(connection_info) = connection_info
+            && fold_name(&connection_info.username) == fold_name(new)
+            && self
+                .transfer_manager
+                .update_username_for_connection(&connection_info, old, new)
+        {
+            let _ = self.transfer_manager.save();
         }
     }
 }

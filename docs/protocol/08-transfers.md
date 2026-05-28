@@ -487,6 +487,11 @@ The login flow on port 7501 is identical to port 7500, but `LoginResponse` only 
 
 No `session_id`, `permissions`, `server_info`, or `chat_info` is returned on the transfer port.
 
+When the transfer is registered, the server resolves the current account identity
+by the stable account id from login. Regular accounts use the current username as
+both `username` and `nickname`; shared accounts use the current account username
+but keep the nickname supplied at transfer login.
+
 ## Path Handling
 
 ### Downloads

@@ -1027,7 +1027,7 @@ where
                 // immutable is_shared from the transfer.
                 if username_changed || admin_status_changed {
                     ctx.transfer_registry.update_user(
-                        &old_username,
+                        updated_account.id,
                         &updated_account.username,
                         updated_account.is_admin,
                     );
