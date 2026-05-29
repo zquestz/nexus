@@ -41,6 +41,7 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
     // Port is always valid since it's a u16
     let can_save = !state.bookmark.name.trim().is_empty()
         && !state.bookmark.address.trim().is_empty()
+        && !state.edit_stale
         && !state.is_submitting;
 
     // Per-input on_submit: complete form submits; incomplete dispatches
@@ -54,8 +55,14 @@ pub fn bookmark_edit_view(state: &BookmarkEditState) -> Element<'_, Message> {
 
     let mut column_items: Vec<Element<'_, Message>> = vec![panel_title(dialog_title).into()];
 
-    // Show error if present
-    if let Some(error) = &state.error {
+    let edit_banner = if state.edit_stale {
+        Some(t("err-bookmark-edit-stale"))
+    } else {
+        state.error.clone()
+    };
+
+    // Show stale-edit notice or validation error if present.
+    if let Some(error) = edit_banner {
         column_items.push(
             shaped_text_wrapped(error)
                 .size(TEXT_SIZE)

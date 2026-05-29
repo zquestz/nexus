@@ -46,7 +46,7 @@ impl Config {
     /// Update stored account usernames for bookmarks that point at a renamed
     /// account on the current server.
     ///
-    /// Returns the number of bookmarks changed. Empty nicknames and shared-account
+    /// Returns the IDs of bookmarks changed. Empty nicknames and shared-account
     /// nicknames are preserved; for regular-account renames, an explicit nickname
     /// that matched the old username follows the new username.
     pub fn update_bookmark_usernames_for_server_rename(
@@ -57,10 +57,10 @@ impl Config {
         old_username: &str,
         new_username: &str,
         is_shared: bool,
-    ) -> usize {
+    ) -> Vec<Uuid> {
         let address_lc = address.to_lowercase();
         let old_folded = fold_name(old_username);
-        let mut changed_count = 0;
+        let mut changed_ids = Vec::new();
 
         for bookmark in &mut self.bookmarks {
             if bookmark.address.to_lowercase() != address_lc
@@ -92,11 +92,11 @@ impl Config {
             }
 
             if changed {
-                changed_count += 1;
+                changed_ids.push(bookmark.id);
             }
         }
 
-        changed_count
+        changed_ids
     }
 
     /// Find a bookmark whose connection params match the given values.
@@ -319,17 +319,17 @@ mod tests {
         config.add_bookmark(second);
         config.add_bookmark(other_user);
 
-        assert_eq!(
-            config.update_bookmark_usernames_for_server_rename(
-                "server.example",
-                7500,
-                "fp-current",
-                "alice",
-                "alicia",
-                false,
-            ),
-            2
+        let changed_ids = config.update_bookmark_usernames_for_server_rename(
+            "server.example",
+            7500,
+            "fp-current",
+            "alice",
+            "alicia",
+            false,
         );
+        assert_eq!(changed_ids.len(), 2);
+        assert!(changed_ids.contains(&first_id));
+        assert!(changed_ids.contains(&second_id));
 
         let first = config.get_bookmark(first_id).unwrap();
         assert_eq!(first.username, "alicia");
@@ -351,17 +351,15 @@ mod tests {
         let id = bm.id;
         config.add_bookmark(bm);
 
-        assert_eq!(
-            config.update_bookmark_usernames_for_server_rename(
-                "server.example",
-                7500,
-                "fp-current",
-                "shared",
-                "shared2",
-                true,
-            ),
-            1
+        let changed_ids = config.update_bookmark_usernames_for_server_rename(
+            "server.example",
+            7500,
+            "fp-current",
+            "shared",
+            "shared2",
+            true,
         );
+        assert_eq!(changed_ids, vec![id]);
 
         let bookmark = config.get_bookmark(id).unwrap();
         assert_eq!(bookmark.username, "shared2");
@@ -380,17 +378,15 @@ mod tests {
         config.add_bookmark(matching);
         config.add_bookmark(mismatch);
 
-        assert_eq!(
-            config.update_bookmark_usernames_for_server_rename(
-                "server.example",
-                7500,
-                "fp-current",
-                "alice",
-                "alicia",
-                false,
-            ),
-            1
+        let changed_ids = config.update_bookmark_usernames_for_server_rename(
+            "server.example",
+            7500,
+            "fp-current",
+            "alice",
+            "alicia",
+            false,
         );
+        assert_eq!(changed_ids, vec![matching_id]);
 
         assert_eq!(config.get_bookmark(matching_id).unwrap().username, "alicia");
         assert_eq!(config.get_bookmark(mismatch_id).unwrap().username, "alice");
@@ -403,17 +399,15 @@ mod tests {
         let id = bm.id;
         config.add_bookmark(bm);
 
-        assert_eq!(
-            config.update_bookmark_usernames_for_server_rename(
-                "server.example",
-                7500,
-                "fp-current",
-                "alice",
-                "alicia",
-                false,
-            ),
-            0
+        let changed_ids = config.update_bookmark_usernames_for_server_rename(
+            "server.example",
+            7500,
+            "fp-current",
+            "alice",
+            "alicia",
+            false,
         );
+        assert!(changed_ids.is_empty());
 
         let bookmark = config.get_bookmark(id).unwrap();
         assert_eq!(bookmark.username, "alice");

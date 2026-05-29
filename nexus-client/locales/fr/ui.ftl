@@ -534,6 +534,7 @@ err-address-required = L'adresse du serveur est requise
 err-fingerprint-invalid = Format d'empreinte invalide. 95 caractères hexadécimaux majuscules séparés par des deux-points attendus.
 err-bookmark-name-duplicate = Un signet nommé « { $name } » existe déjà.
 err-bookmark-endpoint-duplicate = Un signet avec cette adresse, ce port, ce nom d'utilisateur et ce surnom existe déjà.
+err-bookmark-edit-stale = Ce signet a été modifié par un renommage sur le serveur. Rouvrez le formulaire de modification pour charger les derniers détails avant d’enregistrer.
 err-port-required = Le port est requis
 err-username-required = Le nom d'utilisateur est requis
 err-password-required = Le mot de passe est requis

@@ -540,6 +540,7 @@ err-address-required = O endereço do servidor é obrigatório
 err-fingerprint-invalid = Formato de impressão digital inválido. São esperados 95 caracteres hexadecimais maiúsculos separados por dois-pontos.
 err-bookmark-name-duplicate = Já existe um favorito chamado "{ $name }".
 err-bookmark-endpoint-duplicate = Já existe um favorito com este endereço, porta, nome de usuário e apelido.
+err-bookmark-edit-stale = Este favorito foi alterado por uma renomeação no servidor. Reabra o formulário de edição para carregar os detalhes mais recentes antes de salvar.
 err-port-required = A porta é obrigatória
 err-username-required = O nome de usuário é obrigatório
 err-password-required = A senha é obrigatória

@@ -3207,6 +3207,220 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_userupdate_rename_and_userdelete_serialize_cleanly() {
+        let mut test_ctx = create_test_context().await;
+
+        let update_admin_session =
+            login_user(&mut test_ctx, "update_admin", "password", &[], true).await;
+        let delete_admin_session =
+            login_user(&mut test_ctx, "delete_admin", "password", &[], true).await;
+        let bob_session = login_user(&mut test_ctx, "bob", "password", &[], false).await;
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let (update_server, update_client) = tokio::io::duplex(4096);
+        let (delete_server, delete_client) = tokio::io::duplex(4096);
+        let mut update_writer = nexus_common::framing::FrameWriter::new(update_server);
+        let mut delete_writer = nexus_common::framing::FrameWriter::new(delete_server);
+        let mut update_reader =
+            nexus_common::framing::FrameReader::new(tokio::io::BufReader::new(update_client));
+        let mut delete_reader =
+            nexus_common::framing::FrameReader::new(tokio::io::BufReader::new(delete_client));
+
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: Some("robert".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(update_admin_session),
+        };
+
+        let (update_result, delete_result) = {
+            let mut update_ctx = HandlerContext {
+                writer: &mut update_writer,
+                peer_addr: test_ctx.peer_addr,
+                user_manager: &test_ctx.user_manager,
+                db: &test_ctx.db,
+                tx: &test_ctx.tx,
+                locale: DEFAULT_TEST_LOCALE,
+                message_id: test_ctx.message_id,
+                file_root: test_ctx.file_root,
+                transfer_port: nexus_common::DEFAULT_TRANSFER_PORT,
+                transfer_websocket_port: Some(nexus_common::DEFAULT_TRANSFER_WEBSOCKET_PORT),
+                connection_tracker: test_ctx.connection_tracker.clone(),
+                ip_rule_cache: test_ctx.ip_rule_cache.clone(),
+                file_index: test_ctx.file_index.clone(),
+                file_mutation_locks: test_ctx.file_mutation_locks.clone(),
+                personal_area_locks: test_ctx.personal_area_locks.clone(),
+                channel_manager: &test_ctx.channel_manager,
+                transfer_registry: test_ctx.transfer_registry.clone(),
+                voice_registry: &test_ctx.voice_registry,
+                tracker_manager: &test_ctx.tracker_manager,
+                fingerprint: TEST_FINGERPRINT,
+                flood_config: test_ctx.flood_config.clone(),
+            };
+            let mut delete_ctx = HandlerContext {
+                writer: &mut delete_writer,
+                peer_addr: test_ctx.peer_addr,
+                user_manager: &test_ctx.user_manager,
+                db: &test_ctx.db,
+                tx: &test_ctx.tx,
+                locale: DEFAULT_TEST_LOCALE,
+                message_id: test_ctx.message_id,
+                file_root: test_ctx.file_root,
+                transfer_port: nexus_common::DEFAULT_TRANSFER_PORT,
+                transfer_websocket_port: Some(nexus_common::DEFAULT_TRANSFER_WEBSOCKET_PORT),
+                connection_tracker: test_ctx.connection_tracker.clone(),
+                ip_rule_cache: test_ctx.ip_rule_cache.clone(),
+                file_index: test_ctx.file_index.clone(),
+                file_mutation_locks: test_ctx.file_mutation_locks.clone(),
+                personal_area_locks: test_ctx.personal_area_locks.clone(),
+                channel_manager: &test_ctx.channel_manager,
+                transfer_registry: test_ctx.transfer_registry.clone(),
+                voice_registry: &test_ctx.voice_registry,
+                tracker_manager: &test_ctx.tracker_manager,
+                fingerprint: TEST_FINGERPRINT,
+                flood_config: test_ctx.flood_config.clone(),
+            };
+
+            tokio::join!(
+                handle_user_update(request, &mut update_ctx),
+                crate::handlers::user_delete::handle_user_delete(
+                    bob.id,
+                    Some(delete_admin_session),
+                    &mut delete_ctx,
+                )
+            )
+        };
+
+        update_result.unwrap();
+        delete_result.unwrap();
+
+        let update_message = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            nexus_common::io::read_server_message(&mut update_reader),
+        )
+        .await
+        .expect("timed out waiting for user update response")
+        .unwrap()
+        .expect("user update connection closed")
+        .message;
+        let delete_message = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            nexus_common::io::read_server_message(&mut delete_reader),
+        )
+        .await
+        .expect("timed out waiting for user delete response")
+        .unwrap()
+        .expect("user delete connection closed")
+        .message;
+
+        let update_success = match update_message {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                id,
+                username,
+            } => {
+                if success {
+                    assert!(error.is_none());
+                    assert_eq!(id, Some(bob.id));
+                    assert_eq!(username, Some("robert".to_string()));
+                } else {
+                    assert_eq!(
+                        error,
+                        Some(err_user_not_found(DEFAULT_TEST_LOCALE, &bob.id.to_string()))
+                    );
+                    assert!(id.is_none());
+                    assert!(username.is_none());
+                }
+                success
+            }
+            other => panic!("Expected UserUpdateResponse, got {other:?}"),
+        };
+
+        match delete_message {
+            ServerMessage::UserDeleteResponse {
+                success,
+                error,
+                username,
+            } => {
+                assert!(success, "delete should win or clean up after the rename");
+                assert!(error.is_none());
+                assert_eq!(
+                    username,
+                    Some(if update_success { "robert" } else { "bob" }.to_string())
+                );
+            }
+            other => panic!("Expected UserDeleteResponse, got {other:?}"),
+        }
+
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_id(bob.id)
+                .await
+                .unwrap()
+                .is_none(),
+            "target row must be gone after delete"
+        );
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_username("bob")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_username("robert")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            test_ctx
+                .user_manager
+                .get_user_by_session_id(bob_session)
+                .await
+                .is_none(),
+            "deleted target session must be removed from the cache"
+        );
+        assert!(
+            test_ctx
+                .user_manager
+                .get_sessions_by_username("bob")
+                .await
+                .is_empty()
+        );
+        assert!(
+            test_ctx
+                .user_manager
+                .get_sessions_by_username("robert")
+                .await
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
     async fn test_userupdate_cannot_demote_last_admin() {
         let mut test_ctx = create_test_context().await;
 

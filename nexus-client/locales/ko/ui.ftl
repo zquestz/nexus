@@ -522,6 +522,7 @@ err-address-required = 서버 주소는 필수입니다
 err-fingerprint-invalid = 지문 형식이 올바르지 않습니다. 콜론으로 구분된 95자의 대문자 16진수 문자가 필요합니다.
 err-bookmark-name-duplicate = "{ $name }" 이름의 북마크가 이미 존재합니다.
 err-bookmark-endpoint-duplicate = 이 주소, 포트, 사용자 이름, 닉네임으로 된 북마크가 이미 존재합니다.
+err-bookmark-edit-stale = 이 북마크는 서버의 이름 변경으로 업데이트되었습니다. 저장하기 전에 편집 양식을 다시 열어 최신 세부 정보를 불러오세요.
 err-port-required = 포트는 필수입니다
 err-username-required = 사용자 이름은 필수입니다
 err-password-required = 비밀번호는 필수입니다

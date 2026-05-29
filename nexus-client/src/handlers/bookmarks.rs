@@ -117,7 +117,7 @@ impl NexusApp {
 
     /// Save the current bookmark (add or update)
     pub fn handle_save_bookmark(&mut self) -> Task<Message> {
-        if self.bookmark_edit.is_submitting {
+        if self.bookmark_edit.is_submitting || self.bookmark_edit.edit_stale {
             return Task::none();
         }
 
@@ -234,6 +234,7 @@ impl NexusApp {
             // Close the connection form if it was summoned — the
             // user picked a different overlay.
             self.dismiss_connection_form();
+            self.bookmark_edit = BookmarkEditState::default();
             self.bookmark_edit.mode = BookmarkEditMode::Edit(id);
             self.bookmark_edit.bookmark = bookmark;
 

@@ -535,6 +535,7 @@ err-address-required = Serveradres is vereist
 err-fingerprint-invalid = Ongeldig vingerafdruk-formaat. 95 hoofdletter-hexadecimale tekens gescheiden door dubbele punten verwacht.
 err-bookmark-name-duplicate = Er bestaat al een bladwijzer met de naam "{ $name }".
 err-bookmark-endpoint-duplicate = Er bestaat al een bladwijzer met dit adres, deze poort, gebruikersnaam en bijnaam.
+err-bookmark-edit-stale = Deze bladwijzer is gewijzigd door een naamswijziging op de server. Open het bewerkingsformulier opnieuw om de nieuwste details te laden voordat u opslaat.
 err-port-required = Poort is vereist
 err-username-required = Gebruikersnaam is vereist
 err-password-required = Wachtwoord is vereist

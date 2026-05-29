@@ -597,14 +597,18 @@ impl NexusApp {
             // Saved bookmarks can point at any account on this server, not just the
             // active connection's own account. Keep matching bookmark usernames in
             // step so quick-connect/auto-connect survive a rename.
-            if self.config.update_bookmark_usernames_for_server_rename(
+            let updated_bookmark_ids = self.config.update_bookmark_usernames_for_server_rename(
                 &connection_info.address,
                 connection_info.port,
                 &connection_info.certificate_fingerprint,
                 old,
                 new,
                 is_shared,
-            ) > 0
+            );
+            for id in &updated_bookmark_ids {
+                self.bookmark_edit.mark_edit_stale_if_bookmark_id(*id);
+            }
+            if !updated_bookmark_ids.is_empty()
                 && let Err(e) = self.config.save()
             {
                 tasks.push(self.add_background_error_message(

@@ -534,6 +534,7 @@ err-address-required = Serveradresse ist erforderlich
 err-fingerprint-invalid = Ungültiges Fingerabdruck-Format. Erwartet werden 95 großgeschriebene Hexadezimalzeichen, durch Doppelpunkte getrennt.
 err-bookmark-name-duplicate = Ein Lesezeichen mit dem Namen „{ $name }" existiert bereits.
 err-bookmark-endpoint-duplicate = Ein Lesezeichen mit dieser Adresse, diesem Port, Benutzernamen und Spitznamen existiert bereits.
+err-bookmark-edit-stale = Dieses Lesezeichen wurde durch eine Server-Umbenennung geändert. Öffnen Sie das Bearbeitungsformular erneut, um vor dem Speichern die neuesten Details zu laden.
 err-port-required = Port ist erforderlich
 err-username-required = Benutzername ist erforderlich
 err-password-required = Passwort ist erforderlich

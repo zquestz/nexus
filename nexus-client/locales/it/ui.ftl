@@ -538,6 +538,7 @@ err-address-required = L'indirizzo del server è obbligatorio
 err-fingerprint-invalid = Formato impronta non valido. Sono attesi 95 caratteri esadecimali maiuscoli separati da due punti.
 err-bookmark-name-duplicate = Esiste già un segnalibro chiamato "{ $name }".
 err-bookmark-endpoint-duplicate = Esiste già un segnalibro con questo indirizzo, porta, nome utente e soprannome.
+err-bookmark-edit-stale = Questo segnalibro è stato modificato da una rinomina sul server. Riapri il modulo di modifica per caricare i dettagli più recenti prima di salvare.
 err-port-required = La porta è obbligatoria
 err-username-required = Il nome utente è obbligatorio
 err-password-required = La password è obbligatoria

@@ -522,6 +522,7 @@ err-address-required = 伺服器位址為必填
 err-fingerprint-invalid = 指紋格式無效。需為95個大寫十六進位字元並以冒號分隔。
 err-bookmark-name-duplicate = 名稱為「{ $name }」的書籤已存在。
 err-bookmark-endpoint-duplicate = 具有此位址、連接埠、使用者名稱和暱稱的書籤已存在。
+err-bookmark-edit-stale = 此書籤已因伺服器上的重新命名而變更。儲存前請重新開啟編輯表單以載入最新詳細資料。
 err-port-required = 連接埠為必填
 err-username-required = 使用者名稱為必填
 err-password-required = 密碼為必填

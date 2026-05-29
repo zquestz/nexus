@@ -523,6 +523,7 @@ err-address-required = 服务器地址为必填项
 err-fingerprint-invalid = 指纹格式无效。需为95个大写十六进制字符并以冒号分隔。
 err-bookmark-name-duplicate = 名为"{ $name }"的书签已存在。
 err-bookmark-endpoint-duplicate = 具有此地址、端口、用户名和昵称的书签已存在。
+err-bookmark-edit-stale = 此书签已因服务器上的重命名而更改。保存前请重新打开编辑表单以加载最新详情。
 err-port-required = 端口为必填项
 err-username-required = 用户名为必填项
 err-password-required = 密码为必填项

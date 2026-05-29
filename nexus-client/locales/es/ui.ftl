@@ -536,6 +536,7 @@ err-address-required = La dirección del servidor es requerida
 err-fingerprint-invalid = Formato de huella no válido. Se esperan 95 caracteres hexadecimales en mayúsculas separados por dos puntos.
 err-bookmark-name-duplicate = Ya existe un marcador llamado "{ $name }".
 err-bookmark-endpoint-duplicate = Ya existe un marcador con esta dirección, puerto, nombre de usuario y apodo.
+err-bookmark-edit-stale = Este marcador cambió debido a un cambio de nombre en el servidor. Vuelve a abrir el formulario de edición para cargar los datos más recientes antes de guardar.
 err-port-required = El puerto es requerido
 err-username-required = El nombre de usuario es requerido
 err-password-required = La contraseña es requerida

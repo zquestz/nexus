@@ -273,6 +273,7 @@ impl NexusApp {
                 // silently no-op'ing.
                 let can_save = !self.bookmark_edit.bookmark.name.trim().is_empty()
                     && !self.bookmark_edit.bookmark.address.trim().is_empty()
+                    && !self.bookmark_edit.edit_stale
                     && !self.bookmark_edit.is_submitting;
                 let msg = if can_save {
                     Message::SaveBookmark

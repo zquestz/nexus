@@ -546,6 +546,7 @@ err-address-required = Server address is required
 err-fingerprint-invalid = Invalid fingerprint format. Expected 95 uppercase hex characters separated by colons.
 err-bookmark-name-duplicate = A bookmark named "{ $name }" already exists.
 err-bookmark-endpoint-duplicate = A bookmark with this address, port, username, and nickname already exists.
+err-bookmark-edit-stale = This bookmark was changed by a server rename. Reopen the edit form to load the latest details before saving.
 err-port-required = Port is required
 err-username-required = Username is required
 err-password-required = Password is required

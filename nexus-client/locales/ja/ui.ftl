@@ -522,6 +522,7 @@ err-address-required = サーバーアドレスは必須です
 err-fingerprint-invalid = フィンガープリントの形式が正しくありません。コロンで区切られた95文字の大文字16進文字が必要です。
 err-bookmark-name-duplicate = 「{ $name }」という名前のブックマークは既に存在します。
 err-bookmark-endpoint-duplicate = このアドレス、ポート、ユーザー名、ニックネームのブックマークは既に存在します。
+err-bookmark-edit-stale = このブックマークはサーバー上の名前変更で更新されました。保存する前に編集フォームを開き直して最新の詳細を読み込んでください。
 err-port-required = ポートは必須です
 err-username-required = ユーザー名は必須です
 err-password-required = パスワードは必須です

@@ -121,6 +121,8 @@ pub struct BookmarkEditState {
     pub bookmark: ServerBookmark,
     /// Error message for bookmark operations
     pub error: Option<String>,
+    /// Whether the edit form has been invalidated by an external bookmark update.
+    pub edit_stale: bool,
     /// Whether a save operation is in progress (double-submit prevention)
     pub is_submitting: bool,
     /// Whether the delete confirmation modal is shown
@@ -133,9 +135,25 @@ impl Default for BookmarkEditState {
             mode: BookmarkEditMode::None,
             bookmark: ServerBookmark::default(),
             error: None,
+            edit_stale: false,
             is_submitting: false,
             confirm_delete: false,
         }
+    }
+}
+
+impl BookmarkEditState {
+    /// Mark the active edit form stale if it is editing the updated bookmark.
+    pub fn mark_edit_stale_if_bookmark_id(&mut self, updated_bookmark_id: Uuid) -> bool {
+        let is_editing_updated_bookmark = matches!(
+            &self.mode,
+            BookmarkEditMode::Edit(id) if *id == updated_bookmark_id
+        );
+        if is_editing_updated_bookmark {
+            self.edit_stale = true;
+            self.is_submitting = false;
+        }
+        is_editing_updated_bookmark
     }
 }
 
@@ -148,4 +166,44 @@ pub enum BookmarkEditMode {
     Add,
     /// Editing bookmark with this ID
     Edit(Uuid),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mark_edit_stale_if_bookmark_id_invalidates_active_edit_only() {
+        let edited_id = Uuid::new_v4();
+        let other_id = Uuid::new_v4();
+        let mut state = BookmarkEditState {
+            mode: BookmarkEditMode::Edit(edited_id),
+            is_submitting: true,
+            ..BookmarkEditState::default()
+        };
+
+        assert!(!state.mark_edit_stale_if_bookmark_id(other_id));
+        assert!(!state.edit_stale);
+        assert!(state.is_submitting);
+
+        assert!(state.mark_edit_stale_if_bookmark_id(edited_id));
+        assert!(state.edit_stale);
+        assert!(!state.is_submitting);
+    }
+
+    #[test]
+    fn mark_edit_stale_if_bookmark_id_ignores_add_and_none_modes() {
+        let id = Uuid::new_v4();
+        let mut state = BookmarkEditState {
+            mode: BookmarkEditMode::Add,
+            ..BookmarkEditState::default()
+        };
+
+        assert!(!state.mark_edit_stale_if_bookmark_id(id));
+        assert!(!state.edit_stale);
+
+        state.mode = BookmarkEditMode::None;
+        assert!(!state.mark_edit_stale_if_bookmark_id(id));
+        assert!(!state.edit_stale);
+    }
 }
