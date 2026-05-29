@@ -71,9 +71,10 @@ personal area:
   personal areas.
 - If the old personal-area directory does not exist, the server leaves the
   filesystem alone. This allows admins to pre-create `files/users/{new_username}/`
-  before renaming an account.
-- If the old or new personal area is busy because a file operation or transfer
-  is active there, the account rename fails immediately instead of waiting.
+  before renaming an account, even if that pre-created area is currently busy.
+- If the old directory exists and a move is needed, the account rename fails
+  immediately instead of waiting when the old or new personal area is busy
+  because a file operation or transfer is active there.
 - This applies to both regular accounts and shared accounts.
 
 User drop boxes (`[NEXUS-DB-username]`) are an admin-managed naming convention.

@@ -463,11 +463,12 @@ server has a configured file area, the server checks
 of the account rename. If both directories exist as distinct filesystem entries,
 `UserUpdate` fails and the account username is left unchanged. If the old
 directory does not exist, no filesystem migration is attempted; an admin may
-pre-create the new personal-area directory before renaming. If either personal
-area is busy due to an active file operation or transfer, `UserUpdate` fails
-immediately instead of waiting. This applies to both regular and shared
-accounts. User drop-box suffixes (`[NEXUS-DB-username]`) are not renamed
-automatically.
+pre-create the new personal-area directory before renaming, and a busy
+pre-created target does not block the account rename because nothing is moved.
+If the old directory exists and a move is needed, `UserUpdate` fails immediately
+instead of waiting when the old or new personal area is busy due to an active
+file operation or transfer. This applies to both regular and shared accounts.
+User drop-box suffixes (`[NEXUS-DB-username]`) are not renamed automatically.
 
 **Self-edit semantics.** A request whose `id` resolves to the
 requesting user is treated as a self-edit, and the accepted field

@@ -21,6 +21,12 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::flood::{FloodCheck, FloodTracker};
 
+enum ChatSendOutcome {
+    Disconnect,
+    SendError(String),
+    Sent,
+}
+
 pub async fn handle_chat_send<W>(
     message: String,
     action: ChatAction,
@@ -121,53 +127,65 @@ where
             .await;
     }
 
-    // Non-members get "not found" so secret channels' existence isn't leaked.
-    if !ctx.channel_manager.is_member(&channel, id).await {
-        return ctx
-            .send_error(
-                &err_channel_not_found(ctx.locale, &channel),
-                Some(HANDLER_CHAT_SEND),
-            )
-            .await;
-    }
+    let outcome = 'locked: {
+        let _user_state = ctx.user_manager.read_user_state().await;
 
-    let members = ctx
-        .channel_manager
-        .get_members(&channel)
-        .await
-        .unwrap_or_default();
+        let Some(current) = ctx.user_manager.get_user_by_session_id(id).await else {
+            break 'locked ChatSendOutcome::Disconnect;
+        };
 
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let chat_message = ServerMessage::ChatMessage {
-        session_id: id,
-        nickname: user.nickname.clone(),
-        is_admin: user.is_admin,
-        is_shared: user.is_shared,
-        message,
-        action,
-        channel,
-        timestamp,
+        // Non-members get "not found" so secret channels' existence isn't leaked.
+        if !ctx.channel_manager.is_member(&channel, id).await {
+            break 'locked ChatSendOutcome::SendError(err_channel_not_found(ctx.locale, &channel));
+        }
+
+        let members = ctx
+            .channel_manager
+            .get_members(&channel)
+            .await
+            .unwrap_or_default();
+
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let chat_message = ServerMessage::ChatMessage {
+            session_id: id,
+            nickname: current.nickname.clone(),
+            is_admin: current.is_admin,
+            is_shared: current.is_shared,
+            message,
+            action,
+            channel,
+            timestamp,
+        };
+
+        // Route only to members with the chat feature and ChatReceive permission.
+        for member_session_id in members {
+            if let Some(member) = ctx
+                .user_manager
+                .get_user_by_session_id(member_session_id)
+                .await
+                && member.has_feature(FEATURE_CHAT)
+                && member.has_permission(Permission::ChatReceive)
+            {
+                ctx.user_manager
+                    .send_to_session(member_session_id, chat_message.clone())
+                    .await;
+            }
+        }
+
+        ChatSendOutcome::Sent
     };
 
-    // Route only to members with the chat feature and ChatReceive permission.
-    for member_session_id in members {
-        if let Some(member) = ctx
-            .user_manager
-            .get_user_by_session_id(member_session_id)
-            .await
-            && member.has_feature(FEATURE_CHAT)
-            && member.has_permission(Permission::ChatReceive)
-        {
-            ctx.user_manager
-                .send_to_session(member_session_id, chat_message.clone())
-                .await;
+    match outcome {
+        ChatSendOutcome::Disconnect => {
+            ctx.send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_SEND))
+                .await
         }
+        ChatSendOutcome::SendError(error) => ctx.send_error(&error, Some(HANDLER_CHAT_SEND)).await,
+        ChatSendOutcome::Sent => Ok(()),
     }
-
-    Ok(())
 }
 
 #[cfg(test)]
@@ -481,6 +499,79 @@ mod tests {
         .await;
 
         assert!(result.is_ok(), "Valid chat message should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_chat_send_uses_renamed_nickname_after_final_state_gate() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::ChatReceive, db::Permission::ChatSend],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        test_ctx
+            .channel_manager
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+
+        let alice = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let gate_manager = test_ctx.user_manager.clone();
+        let update_manager = test_ctx.user_manager.clone();
+        let user_state = gate_manager.lock_user_state().await;
+        let mut flood_tracker = FloodTracker::new();
+
+        {
+            let mut ctx = test_ctx.handler_context();
+            let handler = handle_chat_send(
+                "hello after rename".to_string(),
+                ChatAction::Normal,
+                "#general".to_string(),
+                Some(session_id),
+                &mut flood_tracker,
+                &mut ctx,
+            );
+            tokio::pin!(handler);
+
+            tokio::select! {
+                biased;
+                result = &mut handler => panic!("handler finished before rename gate: {result:?}"),
+                _ = tokio::task::yield_now() => {}
+            }
+
+            update_manager
+                .update_username(alice.id, "alicia".to_string())
+                .await;
+            drop(user_state);
+
+            handler.await.unwrap();
+        }
+
+        match test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("should receive chat message")
+            .0
+        {
+            ServerMessage::ChatMessage { nickname, .. } => {
+                assert_eq!(nickname, "alicia");
+            }
+            other => panic!("Expected ChatMessage, got {other:?}"),
+        }
     }
 
     #[tokio::test]

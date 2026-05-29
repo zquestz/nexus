@@ -37,6 +37,12 @@ fn error_response(error_msg: String) -> ServerMessage {
     }
 }
 
+enum JoinOutcome {
+    Disconnect,
+    Send(ServerMessage),
+    Queued,
+}
+
 pub async fn handle_chat_join<W>(
     channel: String,
     session_id: Option<u32>,
@@ -52,134 +58,120 @@ where
             .await;
     };
 
-    let user = match ctx.user_manager.get_user_by_session_id(session_id).await {
-        Some(u) => u,
-        None => {
-            return ctx
-                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_JOIN))
-                .await;
+    let outcome = 'locked: {
+        let _user_state = ctx.user_manager.read_user_state().await;
+
+        let Some(user) = ctx.user_manager.get_user_by_session_id(session_id).await else {
+            break 'locked JoinOutcome::Disconnect;
+        };
+
+        if !user.has_feature(FEATURE_CHAT) {
+            break 'locked JoinOutcome::Send(error_response(err_permission_denied(ctx.locale)));
         }
-    };
 
-    if !user.has_feature(FEATURE_CHAT) {
-        return ctx
-            .send_message(&error_response(err_permission_denied(ctx.locale)))
-            .await;
-    }
+        if !user.has_permission(Permission::ChatJoin) {
+            warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_PERMISSION_DENIED);
+            break 'locked JoinOutcome::Send(error_response(err_permission_denied(ctx.locale)));
+        }
 
-    if !user.has_permission(Permission::ChatJoin) {
-        warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_PERMISSION_DENIED);
-        return ctx
-            .send_message(&error_response(err_permission_denied(ctx.locale)))
-            .await;
-    }
+        if let Err(e) = validators::validate_channel(&channel) {
+            break 'locked JoinOutcome::Send(error_response(channel_error_to_message(
+                e, ctx.locale,
+            )));
+        }
 
-    if let Err(e) = validators::validate_channel(&channel) {
-        return ctx
-            .send_message(&error_response(channel_error_to_message(e, ctx.locale)))
-            .await;
-    }
+        let policy = if user.has_permission(Permission::ChatCreate) {
+            JoinPolicy::CreateIfMissing
+        } else {
+            JoinPolicy::ExistingOnly
+        };
 
-    let policy = if user.has_permission(Permission::ChatCreate) {
-        JoinPolicy::CreateIfMissing
-    } else {
-        JoinPolicy::ExistingOnly
-    };
-
-    let result = match ctx.channel_manager.join(&channel, session_id, policy).await {
-        Ok(result) => {
-            if result.already_member {
-                return ctx
-                    .send_message(&error_response(err_channel_already_member(
-                        ctx.locale, &channel,
-                    )))
-                    .await;
+        let result = match ctx.channel_manager.join(&channel, session_id, policy).await {
+            Ok(result) if result.already_member => {
+                break 'locked JoinOutcome::Send(error_response(err_channel_already_member(
+                    ctx.locale, &channel,
+                )));
             }
-            result
-        }
-        Err(JoinError::TooManyChannels) => {
-            return ctx
-                .send_message(&error_response(err_channel_limit_exceeded(
+            Ok(result) => result,
+            Err(JoinError::TooManyChannels) => {
+                break 'locked JoinOutcome::Send(error_response(err_channel_limit_exceeded(
                     ctx.locale,
                     MAX_CHANNELS_PER_USER,
-                )))
-                .await;
-        }
-        Err(JoinError::ChannelDoesNotExist) => {
-            warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_CREATE_DENIED);
-            return ctx
-                .send_message(&error_response(err_permission_denied_chat_create(
-                    ctx.locale,
-                )))
-                .await;
-        }
-    };
+                )));
+            }
+            Err(JoinError::ChannelDoesNotExist) => {
+                warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_CREATE_DENIED);
+                break 'locked JoinOutcome::Send(error_response(
+                    err_permission_denied_chat_create(ctx.locale),
+                ));
+            }
+        };
 
-    // Membership is by nickname, not session — multiple sessions can share one.
-    let member_nicknames = ctx
-        .user_manager
-        .get_unique_nicknames_for_sessions(&result.member_session_ids)
-        .await;
+        let member_nicknames = ctx
+            .user_manager
+            .get_unique_nicknames_for_sessions(&result.member_session_ids)
+            .await;
 
-    // Broadcast ChatUserJoined only when this nickname first becomes present.
-    // Re-fetch under read_user_state so a concurrent rename can't make the broadcast
-    // nickname stale: ChatUserJoined is nickname-keyed with no id-reconciliation on the
-    // client, so a stale nickname would be a permanent ghost member. Holding the read
-    // lock across the re-fetch + broadcast forces a rename to fully precede (we send the
-    // new nick) or fully follow (its ChatUserRenamed is ordered after our ChatUserJoined).
-    {
-        let _user_state = ctx.user_manager.read_user_state().await;
-        if let Some(current) = ctx.user_manager.get_user_by_session_id(session_id).await {
-            let nickname_present_elsewhere = ctx
-                .user_manager
-                .sessions_contain_nickname(
-                    &result.member_session_ids,
-                    &current.nickname,
-                    Some(session_id),
-                )
-                .await;
+        let voiced = if user.has_permission(Permission::VoiceListen) {
+            let participants = ctx.voice_registry.get_participants(&channel).await;
+            if participants.is_empty() {
+                None
+            } else {
+                Some(participants)
+            }
+        } else {
+            None
+        };
 
-            if !nickname_present_elsewhere {
-                let join_broadcast = ServerMessage::ChatUserJoined {
-                    channel: channel.clone(),
-                    nickname: current.nickname.clone(),
-                    is_admin: current.is_admin,
-                    is_shared: current.is_shared,
-                };
+        let response = ServerMessage::ChatJoinResponse {
+            success: true,
+            error: None,
+            channel: Some(channel.clone()),
+            topic: result.topic,
+            topic_set_by: result.topic_set_by,
+            secret: Some(result.secret),
+            members: Some(member_nicknames),
+            voiced,
+        };
 
-                for member_session_id in &result.member_session_ids {
-                    if *member_session_id != session_id {
-                        ctx.user_manager
-                            .send_to_session(*member_session_id, join_broadcast.clone())
-                            .await;
-                    }
+        // Queue the initial channel state before any later rename can queue a
+        // ChatUserRenamed delta to this session. This is in-memory channel I/O,
+        // not direct socket I/O, so it is safe under user_state_lock.
+        ctx.send_message_via_channel(&response)?;
+
+        let nickname_present_elsewhere = ctx
+            .user_manager
+            .sessions_contain_nickname(&result.member_session_ids, &user.nickname, Some(session_id))
+            .await;
+
+        if !nickname_present_elsewhere {
+            let join_broadcast = ServerMessage::ChatUserJoined {
+                channel: channel.clone(),
+                nickname: user.nickname.clone(),
+                is_admin: user.is_admin,
+                is_shared: user.is_shared,
+            };
+
+            for member_session_id in &result.member_session_ids {
+                if *member_session_id != session_id {
+                    ctx.user_manager
+                        .send_to_session(*member_session_id, join_broadcast.clone())
+                        .await;
                 }
             }
         }
-    }
 
-    let voiced = if user.has_permission(Permission::VoiceListen) {
-        let participants = ctx.voice_registry.get_participants(&channel).await;
-        if participants.is_empty() {
-            None
-        } else {
-            Some(participants)
+        JoinOutcome::Queued
+    };
+
+    match outcome {
+        JoinOutcome::Disconnect => {
+            ctx.send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_JOIN))
+                .await
         }
-    } else {
-        None
-    };
-
-    let response = ServerMessage::ChatJoinResponse {
-        success: true,
-        error: None,
-        channel: Some(channel),
-        topic: result.topic,
-        topic_set_by: result.topic_set_by,
-        secret: Some(result.secret),
-        members: Some(member_nicknames),
-        voiced,
-    };
-    ctx.send_message(&response).await
+        JoinOutcome::Queued => Ok(()),
+        JoinOutcome::Send(response) => ctx.send_message(&response).await,
+    }
 }
 
 #[cfg(test)]
@@ -192,6 +184,15 @@ mod tests {
     /// Dummy session ID used when creating channels directly via channel_manager
     /// for test setup (e.g., to pre-populate a channel with a topic)
     const DUMMY_SESSION_ID: u32 = 999;
+
+    async fn read_queued_server_message(test_ctx: &mut TestContext) -> ServerMessage {
+        test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("should receive queued server message")
+            .0
+    }
 
     #[tokio::test]
     async fn test_chat_join_requires_login() {
@@ -263,7 +264,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success,
@@ -292,6 +293,78 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_chat_join_response_queues_before_later_rename_delta() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::ChatJoin, Permission::ChatCreate],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+        let alice = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+
+        handle_chat_join(
+            "#general".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        test_ctx
+            .user_manager
+            .update_username(alice.id, "alicia".to_string())
+            .await;
+        let sessions = test_ctx
+            .user_manager
+            .get_sessions_by_user_id(alice.id)
+            .await;
+        crate::handlers::broadcast_chat_user_renamed(
+            &test_ctx.user_manager,
+            &test_ctx.channel_manager,
+            &sessions,
+            "alice",
+            "alicia",
+            false,
+        )
+        .await;
+
+        match read_queued_server_message(&mut test_ctx).await {
+            ServerMessage::ChatJoinResponse {
+                success, members, ..
+            } => {
+                assert!(success);
+                assert_eq!(members, Some(vec!["alice".to_string()]));
+            }
+            other => panic!("Expected ChatJoinResponse, got {other:?}"),
+        }
+
+        match read_queued_server_message(&mut test_ctx).await {
+            ServerMessage::ChatUserRenamed {
+                channel,
+                old_nickname,
+                new_nickname,
+                ..
+            } => {
+                assert_eq!(channel, "#general");
+                assert_eq!(old_nickname, "alice");
+                assert_eq!(new_nickname, "alicia");
+            }
+            other => panic!("Expected ChatUserRenamed, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_chat_join_already_member_is_error() {
         let mut test_ctx = create_test_context().await;
 
@@ -311,7 +384,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let result = handle_chat_join(
             "#general".to_string(),
@@ -447,7 +520,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success,
@@ -539,7 +612,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success,
@@ -713,7 +786,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let bob_session = login_user_with_features(
             &mut test_ctx,
@@ -732,7 +805,7 @@ mod tests {
         )
         .await;
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success, members, ..
@@ -786,7 +859,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let alice_session2 = add_second_session(
             &mut test_ctx,
@@ -805,7 +878,7 @@ mod tests {
         )
         .await;
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success, members, ..
@@ -847,7 +920,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let guest2_session = add_shared_session(
             &mut test_ctx,
@@ -868,7 +941,7 @@ mod tests {
         .await;
 
         // Read Guest2's ChatJoinResponse
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success, members, ..
@@ -957,7 +1030,7 @@ mod tests {
         )
         .await;
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success, members, ..
@@ -995,7 +1068,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Login alice session 1 with chat permissions (only ChatJoin needed to join existing)
         let alice_session1 = login_user_with_features(
@@ -1015,7 +1088,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Verify bob received ChatUserJoined for alice
         let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
@@ -1042,7 +1115,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Verify no additional ChatUserJoined was sent
         let result = test_ctx.rx.try_recv();

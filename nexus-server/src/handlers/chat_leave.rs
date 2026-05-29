@@ -18,6 +18,12 @@ use crate::voice::send_voice_leave_notifications;
 
 use crate::constants::FEATURE_CHAT;
 
+enum LeaveOutcome {
+    Disconnect,
+    Queued,
+    Send(ServerMessage),
+}
+
 pub async fn handle_chat_leave<W>(
     channel: String,
     session_id: Option<u32>,
@@ -33,108 +39,95 @@ where
             .await;
     };
 
-    if let Err(e) = validators::validate_channel(&channel) {
-        let response = ServerMessage::ChatLeaveResponse {
-            success: false,
-            error: Some(channel_error_to_message(e, ctx.locale)),
-            channel: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    let user = match ctx.user_manager.get_user_by_session_id(session_id).await {
-        Some(u) => u,
-        None => {
-            return ctx
-                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_LEAVE))
-                .await;
-        }
-    };
-
-    if !user.has_feature(FEATURE_CHAT) {
-        let response = ServerMessage::ChatLeaveResponse {
-            success: false,
-            error: Some(err_chat_feature_not_enabled(ctx.locale)),
-            channel: None,
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Hold read_user_state across the voice cleanup + channel leave + ChatUserLeft
-    // broadcast so both nickname-keyed broadcasts (VoiceUserLeft, ChatUserLeft) are
-    // captured atomically with the state change and order consistently with a concurrent
-    // rename — re-read under the lock to match whatever channel members currently hold
-    // for this user (a stale snapshot or post-leave re-fetch would broadcast a nickname
-    // that no longer matches their member-list entry, leaving a ghost). All sends here
-    // are in-memory, so no socket I/O happens under the lock; the response is sent after
-    // the guard drops.
-    let left = {
+    let outcome = 'locked: {
         let _user_state = ctx.user_manager.read_user_state().await;
 
-        // Pull the user out of this channel's voice before leaving the channel, so
-        // membership and voice state stay consistent.
-        if let Some(voice_session) = ctx.voice_registry.get_by_session_id(session_id).await
-            && voice_session.is_channel()
-            && voice_session.target_matches_channel(&channel)
-            && let Some(info) = ctx.voice_registry.remove_by_session_id(session_id).await
-        {
-            send_voice_leave_notifications(
-                &info,
-                Some(&user.tx),
-                ctx.user_manager,
-                ctx.channel_manager,
-            )
-            .await;
+        let Some(user) = ctx.user_manager.get_user_by_session_id(session_id).await else {
+            break 'locked LeaveOutcome::Disconnect;
+        };
+
+        if let Err(e) = validators::validate_channel(&channel) {
+            break 'locked LeaveOutcome::Send(ServerMessage::ChatLeaveResponse {
+                success: false,
+                error: Some(channel_error_to_message(e, ctx.locale)),
+                channel: None,
+            });
+        }
+
+        if !user.has_feature(FEATURE_CHAT) {
+            break 'locked LeaveOutcome::Send(ServerMessage::ChatLeaveResponse {
+                success: false,
+                error: Some(err_chat_feature_not_enabled(ctx.locale)),
+                channel: None,
+            });
         }
 
         // Non-members get "not found" so secret channels' existence isn't leaked.
         match ctx.channel_manager.leave(&channel, session_id).await {
-            None => false,
+            None => {
+                break 'locked LeaveOutcome::Send(ServerMessage::ChatLeaveResponse {
+                    success: false,
+                    error: Some(err_channel_not_found(ctx.locale, &channel)),
+                    channel: None,
+                });
+            }
             Some(result) => {
+                ctx.send_message_via_channel(&ServerMessage::ChatLeaveResponse {
+                    success: true,
+                    error: None,
+                    channel: Some(channel.clone()),
+                })?;
+
+                if let Some(voice_session) = ctx.voice_registry.get_by_session_id(session_id).await
+                    && voice_session.is_channel()
+                    && voice_session.target_matches_channel(&channel)
+                    && let Some(info) = ctx.voice_registry.remove_by_session_id(session_id).await
+                {
+                    send_voice_leave_notifications(
+                        &info,
+                        Some(&user.tx),
+                        ctx.user_manager,
+                        ctx.channel_manager,
+                    )
+                    .await;
+                }
+
                 // Broadcast ChatUserLeft only when this nickname becomes absent from
                 // the channel (nickname-based membership; multiple sessions may map to
                 // the same nickname).
-                if let Some(current) = ctx.user_manager.get_user_by_session_id(session_id).await {
-                    let nickname_present_elsewhere = ctx
-                        .user_manager
-                        .sessions_contain_nickname(
-                            &result.remaining_member_session_ids,
-                            &current.nickname,
-                            None,
-                        )
-                        .await;
-                    if !nickname_present_elsewhere {
-                        let leave_broadcast = ServerMessage::ChatUserLeft {
-                            channel: channel.clone(),
-                            nickname: current.nickname.clone(),
-                        };
-                        for member_session_id in &result.remaining_member_session_ids {
-                            ctx.user_manager
-                                .send_to_session(*member_session_id, leave_broadcast.clone())
-                                .await;
-                        }
+                let nickname_present_elsewhere = ctx
+                    .user_manager
+                    .sessions_contain_nickname(
+                        &result.remaining_member_session_ids,
+                        &user.nickname,
+                        None,
+                    )
+                    .await;
+                if !nickname_present_elsewhere {
+                    let leave_broadcast = ServerMessage::ChatUserLeft {
+                        channel: channel.clone(),
+                        nickname: user.nickname.clone(),
+                    };
+                    for member_session_id in &result.remaining_member_session_ids {
+                        ctx.user_manager
+                            .send_to_session(*member_session_id, leave_broadcast.clone())
+                            .await;
                     }
                 }
-                true
             }
-        }
-    };
-
-    if !left {
-        let response = ServerMessage::ChatLeaveResponse {
-            success: false,
-            error: Some(err_channel_not_found(ctx.locale, &channel)),
-            channel: None,
         };
-        return ctx.send_message(&response).await;
-    }
 
-    let response = ServerMessage::ChatLeaveResponse {
-        success: true,
-        error: None,
-        channel: Some(channel),
+        LeaveOutcome::Queued
     };
-    ctx.send_message(&response).await
+
+    match outcome {
+        LeaveOutcome::Disconnect => {
+            ctx.send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_LEAVE))
+                .await
+        }
+        LeaveOutcome::Queued => Ok(()),
+        LeaveOutcome::Send(response) => ctx.send_message(&response).await,
+    }
 }
 
 #[cfg(test)]
@@ -146,6 +139,15 @@ mod tests {
     use crate::handlers::testing::{
         TestContext, create_test_context, login_user_with_features, read_server_message,
     };
+
+    async fn read_queued_server_message(test_ctx: &mut TestContext) -> ServerMessage {
+        test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("should receive queued server message")
+            .0
+    }
 
     #[tokio::test]
     async fn test_chat_leave_requires_login() {
@@ -215,7 +217,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let result = handle_chat_leave(
             "#general".to_string(),
@@ -226,7 +228,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatLeaveResponse {
                 success,
@@ -389,7 +391,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let bob_session = login_user_with_features(
             &mut test_ctx,
@@ -407,7 +409,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let _ = test_ctx.rx.recv().await; // drain bob's ChatUserJoined
 
@@ -418,7 +420,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
         let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
         match msg {
@@ -451,7 +453,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let alice_session2 = add_second_session(
             &mut test_ctx,
@@ -467,7 +469,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let bob_session = login_user_with_features(
             &mut test_ctx,
@@ -485,7 +487,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         while test_ctx.rx.try_recv().is_ok() {} // drain pending
 
@@ -496,7 +498,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
         let result = test_ctx.rx.try_recv();
         assert!(
@@ -526,7 +528,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Alice has two sessions sharing one nickname.
         let alice_session1 = login_user_with_features(
@@ -565,7 +567,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
         assert!(
             test_ctx.rx.try_recv().is_err(),
@@ -579,7 +581,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
         let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
         match msg {
@@ -612,7 +614,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Two shared-account sessions with distinct nicknames.
         let guest1_session = add_shared_session(
@@ -651,7 +653,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
         // Same message reaches both remaining members via one tx, so recv once then drain.
         let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
@@ -671,7 +673,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
         let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
         match msg {
@@ -704,7 +706,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Regular user, two sessions sharing one nickname: no broadcast until the last leaves.
         let alice_session1 = login_user_with_features(
@@ -743,7 +745,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
         assert!(
             test_ctx.rx.try_recv().is_err(),
@@ -757,7 +759,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
         let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
         match msg {

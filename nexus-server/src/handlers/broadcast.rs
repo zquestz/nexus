@@ -17,6 +17,12 @@ use crate::constants::{
 };
 use crate::db::Permission;
 
+enum BroadcastOutcome {
+    Disconnect,
+    Queued,
+    Send(ServerMessage),
+}
+
 /// Broadcasts a message to all connected users (including the sender) and
 /// replies to the sender with a UserBroadcastResponse.
 pub async fn handle_user_broadcast<W>(
@@ -34,58 +40,65 @@ where
             .await;
     };
 
-    let user = match ctx.user_manager.get_user_by_session_id(id).await {
-        Some(u) => u,
-        None => {
-            return ctx
-                .send_error_and_disconnect(
-                    &err_not_logged_in(ctx.locale),
-                    Some(HANDLER_USER_BROADCAST),
-                )
-                .await;
+    let outcome = 'locked: {
+        let _user_state = ctx.user_manager.read_user_state().await;
+
+        let Some(user) = ctx.user_manager.get_user_by_session_id(id).await else {
+            break 'locked BroadcastOutcome::Disconnect;
+        };
+
+        if !user.has_permission(Permission::UserBroadcast) {
+            warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_USER_BROADCAST_PERMISSION_DENIED);
+            break 'locked BroadcastOutcome::Send(ServerMessage::UserBroadcastResponse {
+                success: false,
+                error: Some(err_permission_denied(ctx.locale)),
+            });
         }
+
+        // Content rules (empty / over the char cap / newlines / invalid chars) —
+        // the framing layer already rejected oversized payloads.
+        if let Err(e) = validators::validate_message(&message) {
+            let error_msg = match e {
+                MessageError::Empty => err_message_empty(ctx.locale),
+                MessageError::TooLong => {
+                    err_broadcast_too_long(ctx.locale, validators::MAX_MESSAGE_LENGTH)
+                }
+                MessageError::ContainsNewlines => err_message_contains_newlines(ctx.locale),
+                MessageError::InvalidCharacters => err_message_invalid_characters(ctx.locale),
+            };
+            break 'locked BroadcastOutcome::Send(ServerMessage::UserBroadcastResponse {
+                success: false,
+                error: Some(error_msg),
+            });
+        }
+
+        ctx.send_message_via_channel(&ServerMessage::UserBroadcastResponse {
+            success: true,
+            error: None,
+        })?;
+
+        ctx.user_manager
+            .broadcast(ServerMessage::ServerBroadcast {
+                session_id: id,
+                username: user.username.clone(),
+                message,
+            })
+            .await;
+
+        BroadcastOutcome::Queued
     };
 
-    if !user.has_permission(Permission::UserBroadcast) {
-        warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_USER_BROADCAST_PERMISSION_DENIED);
-        let response = ServerMessage::UserBroadcastResponse {
-            success: false,
-            error: Some(err_permission_denied(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
+    match outcome {
+        BroadcastOutcome::Disconnect => {
+            ctx.send_error_and_disconnect(
+                &err_not_logged_in(ctx.locale),
+                Some(HANDLER_USER_BROADCAST),
+            )
+            .await
+        }
+        BroadcastOutcome::Queued => Ok(()),
+        BroadcastOutcome::Send(response) => ctx.send_message(&response).await,
     }
-
-    // Content rules (empty / over the char cap / newlines / invalid chars) —
-    // the framing layer already rejected oversized payloads.
-    if let Err(e) = validators::validate_message(&message) {
-        let error_msg = match e {
-            MessageError::Empty => err_message_empty(ctx.locale),
-            MessageError::TooLong => {
-                err_broadcast_too_long(ctx.locale, validators::MAX_MESSAGE_LENGTH)
-            }
-            MessageError::ContainsNewlines => err_message_contains_newlines(ctx.locale),
-            MessageError::InvalidCharacters => err_message_invalid_characters(ctx.locale),
-        };
-        let response = ServerMessage::UserBroadcastResponse {
-            success: false,
-            error: Some(error_msg),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    ctx.user_manager
-        .broadcast(ServerMessage::ServerBroadcast {
-            session_id: id,
-            username: user.username.clone(),
-            message,
-        })
-        .await;
-
-    ctx.send_message(&ServerMessage::UserBroadcastResponse {
-        success: true,
-        error: None,
-    })
-    .await
 }
 
 #[cfg(test)]
@@ -257,6 +270,78 @@ mod tests {
 
         // Should succeed
         assert!(result.is_ok(), "Valid broadcast message should succeed");
+    }
+
+    #[tokio::test]
+    async fn test_broadcast_uses_renamed_username_after_final_state_gate() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::UserBroadcast],
+            false,
+        )
+        .await;
+        let alice = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let gate_manager = test_ctx.user_manager.clone();
+        let update_manager = test_ctx.user_manager.clone();
+        let user_state = gate_manager.lock_user_state().await;
+
+        {
+            let mut ctx = test_ctx.handler_context();
+            let handler =
+                handle_user_broadcast("renamed broadcast".to_string(), Some(session_id), &mut ctx);
+            tokio::pin!(handler);
+
+            tokio::select! {
+                biased;
+                result = &mut handler => panic!("handler finished before rename gate: {result:?}"),
+                _ = tokio::task::yield_now() => {}
+            }
+
+            update_manager
+                .update_username(alice.id, "alicia".to_string())
+                .await;
+            drop(user_state);
+
+            handler.await.unwrap();
+        }
+
+        match test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("should receive broadcast response")
+            .0
+        {
+            ServerMessage::UserBroadcastResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            other => panic!("Expected UserBroadcastResponse, got {other:?}"),
+        }
+
+        match test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("should receive broadcast")
+            .0
+        {
+            ServerMessage::ServerBroadcast { username, .. } => {
+                assert_eq!(username, "alicia");
+            }
+            other => panic!("Expected ServerBroadcast, got {other:?}"),
+        }
     }
 
     #[tokio::test]

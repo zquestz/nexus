@@ -18,6 +18,12 @@ use crate::constants::{
 };
 use crate::db::Permission;
 
+enum SecretOutcome {
+    Disconnect,
+    Queued,
+    Send(ServerMessage),
+}
+
 pub async fn handle_chat_secret<W>(
     channel: String,
     secret: bool,
@@ -71,70 +77,84 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Non-members get "not found" so secret-channel existence isn't leaked.
-    if !ctx.channel_manager.is_member(&channel, session_id).await {
-        let response = ServerMessage::ChatSecretResponse {
-            success: false,
-            error: Some(err_channel_not_found(ctx.locale, &channel)),
-        };
-        return ctx.send_message(&response).await;
-    }
+    let outcome = 'locked: {
+        let _user_state = ctx.user_manager.read_user_state().await;
 
-    // ChannelManager handles persistence for persistent channels.
-    match ctx.channel_manager.set_secret(&channel, secret).await {
-        Ok(true) => {}
-        Ok(false) => {
-            // Channel deleted between the membership check and here.
-            let response = ServerMessage::ChatSecretResponse {
+        let Some(current) = ctx.user_manager.get_user_by_session_id(session_id).await else {
+            break 'locked SecretOutcome::Disconnect;
+        };
+
+        // Non-members get "not found" so secret-channel existence isn't leaked.
+        if !ctx.channel_manager.is_member(&channel, session_id).await {
+            break 'locked SecretOutcome::Send(ServerMessage::ChatSecretResponse {
                 success: false,
                 error: Some(err_channel_not_found(ctx.locale, &channel)),
-            };
-            return ctx.send_message(&response).await;
+            });
         }
-        Err(e) => {
-            error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_CHAT_SECRET_DB_ERROR);
-            let response = ServerMessage::ChatSecretResponse {
-                success: false,
-                error: Some(err_database(ctx.locale)),
-            };
-            return ctx.send_message(&response).await;
+
+        // ChannelManager handles persistence for persistent channels.
+        match ctx.channel_manager.set_secret(&channel, secret).await {
+            Ok(true) => {}
+            Ok(false) => {
+                // Channel deleted between the membership check and here.
+                break 'locked SecretOutcome::Send(ServerMessage::ChatSecretResponse {
+                    success: false,
+                    error: Some(err_channel_not_found(ctx.locale, &channel)),
+                });
+            }
+            Err(e) => {
+                error!(user = %current.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_CHAT_SECRET_DB_ERROR);
+                break 'locked SecretOutcome::Send(ServerMessage::ChatSecretResponse {
+                    success: false,
+                    error: Some(err_database(ctx.locale)),
+                });
+            }
         }
-    }
 
-    let response = ServerMessage::ChatSecretResponse {
-        success: true,
-        error: None,
-    };
-    ctx.send_message(&response).await?;
+        let response = ServerMessage::ChatSecretResponse {
+            success: true,
+            error: None,
+        };
+        ctx.send_message_via_channel(&response)?;
 
-    let members = ctx
-        .channel_manager
-        .get_members(&channel)
-        .await
-        .unwrap_or_default();
-
-    let update_message = ServerMessage::ChatUpdated {
-        channel: channel.clone(),
-        topic: None,
-        topic_set_by: None,
-        secret: Some(secret),
-        secret_set_by: Some(user.nickname.clone()),
-    };
-
-    for member_session_id in members {
-        if let Some(member) = ctx
-            .user_manager
-            .get_user_by_session_id(member_session_id)
+        let members = ctx
+            .channel_manager
+            .get_members(&channel)
             .await
-            && member.has_feature(FEATURE_CHAT)
-        {
-            ctx.user_manager
-                .send_to_session(member_session_id, update_message.clone())
-                .await;
-        }
-    }
+            .unwrap_or_default();
 
-    Ok(())
+        let update_message = ServerMessage::ChatUpdated {
+            channel: channel.clone(),
+            topic: None,
+            topic_set_by: None,
+            secret: Some(secret),
+            secret_set_by: Some(current.nickname.clone()),
+        };
+
+        for member_session_id in members {
+            if let Some(member) = ctx
+                .user_manager
+                .get_user_by_session_id(member_session_id)
+                .await
+                && member.has_feature(FEATURE_CHAT)
+            {
+                ctx.user_manager
+                    .send_to_session(member_session_id, update_message.clone())
+                    .await;
+            }
+        }
+
+        SecretOutcome::Queued
+    };
+
+    match outcome {
+        SecretOutcome::Disconnect => {
+            ctx.send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_SECRET))
+                .await
+        }
+        SecretOutcome::Queued => Ok(()),
+        SecretOutcome::Send(response) => ctx.send_message(&response).await,
+    }
 }
 
 #[cfg(test)]
@@ -143,8 +163,17 @@ mod tests {
     use crate::channels::JoinPolicy;
     use crate::handlers::chat_join::handle_chat_join;
     use crate::handlers::testing::{
-        create_test_context, login_user, login_user_with_features, read_server_message,
+        TestContext, create_test_context, login_user, login_user_with_features, read_server_message,
     };
+
+    async fn read_queued_server_message(test_ctx: &mut TestContext) -> ServerMessage {
+        test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("should receive queued server message")
+            .0
+    }
 
     #[tokio::test]
     async fn test_chat_secret_requires_login() {
@@ -292,7 +321,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse (includes channel data)
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse (includes channel data)
 
         // Set channel to secret
         let result = handle_chat_secret(
@@ -305,7 +334,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatSecretResponse { success, error } => {
                 assert!(success);
@@ -321,6 +350,74 @@ mod tests {
             .await
             .unwrap();
         assert!(channel.secret);
+    }
+
+    #[tokio::test]
+    async fn test_chat_secret_uses_renamed_nickname_after_final_state_gate() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::ChatSecret],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        test_ctx
+            .channel_manager
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+
+        let alice = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let gate_manager = test_ctx.user_manager.clone();
+        let update_manager = test_ctx.user_manager.clone();
+        let user_state = gate_manager.lock_user_state().await;
+
+        {
+            let mut ctx = test_ctx.handler_context();
+            let handler =
+                handle_chat_secret("#general".to_string(), true, Some(session_id), &mut ctx);
+            tokio::pin!(handler);
+
+            tokio::select! {
+                biased;
+                result = &mut handler => panic!("handler finished before rename gate: {result:?}"),
+                _ = tokio::task::yield_now() => {}
+            }
+
+            update_manager
+                .update_username(alice.id, "alicia".to_string())
+                .await;
+            drop(user_state);
+
+            handler.await.unwrap();
+        }
+
+        match read_queued_server_message(&mut test_ctx).await {
+            ServerMessage::ChatSecretResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            other => panic!("Expected ChatSecretResponse, got {other:?}"),
+        }
+
+        match read_queued_server_message(&mut test_ctx).await {
+            ServerMessage::ChatUpdated { secret_set_by, .. } => {
+                assert_eq!(secret_set_by, Some("alicia".to_string()));
+            }
+            other => panic!("Expected ChatUpdated, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -451,7 +548,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatSecretResponse { success, error } => {
                 assert!(success);
@@ -505,7 +602,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Set channel to secret
         let result = handle_chat_secret(
@@ -518,7 +615,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatSecretResponse { success, error } => {
                 assert!(success);

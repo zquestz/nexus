@@ -874,11 +874,9 @@ impl NexusApp {
             None
         };
 
-        // Self-edit (only admins can reach the Edit form on self) strips
-        // fields the server rejects defensively: is_admin, enabled,
-        // permissions, revokes, remove_group. Server treats group_id as a
-        // no-op for admin self (admins don't store a group), so we pass it
-        // through to match the user's selection visually.
+        // Self-edit is identity-based: this request targets the logged-in
+        // account. Strip fields the server rejects on any self-edit:
+        // is_admin, enabled, permissions, revokes, remove_group, and group_id.
         let is_self_edit =
             fold_name(&original_username) == fold_name(&conn.connection_info.username);
 
@@ -912,10 +910,11 @@ impl NexusApp {
             )
         };
 
-        // Compute group assignment and revokes. For self-edits we strip
-        // revokes and remove_group (server rejects); group_id passes through.
+        // Compute group assignment and revokes. Self-edit never sends group
+        // fields: admin self-edit rejects group_id via admin-XOR-group, and
+        // non-admin self-edit is password-only.
         let (requested_group_id, requested_remove_group, requested_revokes) = if is_self_edit {
-            (edit_group_id, None, None)
+            (None, None, None)
         } else if let Some(gid) = edit_group_id {
             // User has a group selected — compute revokes (group perms that are unchecked)
             let revoke_list: Vec<String> = edit_group_permissions

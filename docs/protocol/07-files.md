@@ -769,9 +769,11 @@ when `{file_root}/users/{old_username}/` exists. The rename fails if
 `{file_root}/users/{new_username}/` also exists as a distinct filesystem entry;
 the server never merges or overwrites personal areas. If the old directory does
 not exist, the filesystem is left untouched, so an admin-prepared new personal
-area is allowed. If the old or new personal area is busy because a file
-operation or transfer is active there, the account rename fails immediately
-instead of waiting. This behavior applies to regular and shared accounts.
+area is allowed, even if that pre-created target is currently busy. If the old
+directory exists and a move is needed, the account rename fails immediately
+instead of waiting when the old or new personal area is busy because a file
+operation or transfer is active there. This behavior applies to regular and
+shared accounts.
 
 `[NEXUS-DB-username]` user drop-box suffixes are not renamed automatically.
 They remain an admin-managed naming convention and must be updated manually if

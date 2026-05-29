@@ -21,6 +21,12 @@ use super::{
 use crate::constants::FEATURE_CHAT;
 use crate::db::Permission;
 
+enum TopicUpdateOutcome {
+    Disconnect,
+    Queued,
+    Send(ServerMessage),
+}
+
 pub async fn handle_chat_topic_update<W>(
     topic: String,
     channel: String,
@@ -92,80 +98,98 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Non-members get "not found" so secret-channel existence isn't leaked.
-    if !ctx.channel_manager.is_member(&channel, id).await {
-        let response = ServerMessage::ChatTopicUpdateResponse {
-            success: false,
-            error: Some(err_channel_not_found(ctx.locale, &channel)),
+    let outcome = 'locked: {
+        let _user_state = ctx.user_manager.read_user_state().await;
+
+        let Some(current) = ctx.user_manager.get_user_by_session_id(id).await else {
+            break 'locked TopicUpdateOutcome::Disconnect;
         };
-        return ctx.send_message(&response).await;
-    }
 
-    // Channel manager handles persistence for persistent channels.
-    let (topic_value, set_by) = if topic.is_empty() {
-        (None, None)
-    } else {
-        (Some(topic.clone()), Some(user.username.clone()))
-    };
-
-    match ctx
-        .channel_manager
-        .set_topic(&channel, topic_value, set_by)
-        .await
-    {
-        Ok(true) => {}
-        Ok(false) => {
-            // Channel deleted between the membership check and here.
-            let response = ServerMessage::ChatTopicUpdateResponse {
+        // Non-members get "not found" so secret-channel existence isn't leaked.
+        if !ctx.channel_manager.is_member(&channel, id).await {
+            break 'locked TopicUpdateOutcome::Send(ServerMessage::ChatTopicUpdateResponse {
                 success: false,
                 error: Some(err_channel_not_found(ctx.locale, &channel)),
-            };
-            return ctx.send_message(&response).await;
+            });
         }
-        Err(e) => {
-            error!(user = %user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_CHAT_TOPIC_DB_ERROR);
-            let response = ServerMessage::ChatTopicUpdateResponse {
-                success: false,
-                error: Some(err_database(ctx.locale)),
-            };
-            return ctx.send_message(&response).await;
+
+        // Channel manager handles persistence for persistent channels.
+        let (topic_value, set_by) = if topic.is_empty() {
+            (None, None)
+        } else {
+            (Some(topic.clone()), Some(current.username.clone()))
+        };
+
+        match ctx
+            .channel_manager
+            .set_topic(&channel, topic_value, set_by)
+            .await
+        {
+            Ok(true) => {}
+            Ok(false) => {
+                // Channel deleted between the membership check and here.
+                break 'locked TopicUpdateOutcome::Send(ServerMessage::ChatTopicUpdateResponse {
+                    success: false,
+                    error: Some(err_channel_not_found(ctx.locale, &channel)),
+                });
+            }
+            Err(e) => {
+                error!(user = %current.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_CHAT_TOPIC_DB_ERROR);
+                break 'locked TopicUpdateOutcome::Send(ServerMessage::ChatTopicUpdateResponse {
+                    success: false,
+                    error: Some(err_database(ctx.locale)),
+                });
+            }
         }
-    }
 
-    let members = ctx
-        .channel_manager
-        .get_members(&channel)
-        .await
-        .unwrap_or_default();
+        let members = ctx
+            .channel_manager
+            .get_members(&channel)
+            .await
+            .unwrap_or_default();
 
-    let topic_message = ServerMessage::ChatUpdated {
-        channel,
-        topic: Some(topic.clone()),
-        topic_set_by: Some(user.nickname.clone()),
-        secret: None,
-        secret_set_by: None,
+        let topic_message = ServerMessage::ChatUpdated {
+            channel,
+            topic: Some(topic.clone()),
+            topic_set_by: Some(current.nickname.clone()),
+            secret: None,
+            secret_set_by: None,
+        };
+
+        ctx.send_message_via_channel(&ServerMessage::ChatTopicUpdateResponse {
+            success: true,
+            error: None,
+        })?;
+
+        // Broadcast only to members with the chat feature and ChatTopic permission.
+        for member_session_id in members {
+            if let Some(member) = ctx
+                .user_manager
+                .get_user_by_session_id(member_session_id)
+                .await
+                && member.has_feature(FEATURE_CHAT)
+                && member.has_permission(Permission::ChatTopic)
+            {
+                ctx.user_manager
+                    .send_to_session(member_session_id, topic_message.clone())
+                    .await;
+            }
+        }
+
+        TopicUpdateOutcome::Queued
     };
 
-    // Broadcast only to members with the chat feature and ChatTopic permission.
-    for member_session_id in members {
-        if let Some(member) = ctx
-            .user_manager
-            .get_user_by_session_id(member_session_id)
+    match outcome {
+        TopicUpdateOutcome::Disconnect => {
+            ctx.send_error_and_disconnect(
+                &err_not_logged_in(ctx.locale),
+                Some(HANDLER_CHAT_TOPIC_UPDATE),
+            )
             .await
-            && member.has_feature(FEATURE_CHAT)
-            && member.has_permission(Permission::ChatTopic)
-        {
-            ctx.user_manager
-                .send_to_session(member_session_id, topic_message.clone())
-                .await;
         }
+        TopicUpdateOutcome::Queued => Ok(()),
+        TopicUpdateOutcome::Send(response) => ctx.send_message(&response).await,
     }
-
-    ctx.send_message(&ServerMessage::ChatTopicUpdateResponse {
-        success: true,
-        error: None,
-    })
-    .await
 }
 
 #[cfg(test)]
@@ -175,10 +199,19 @@ mod tests {
     use crate::channels::JoinPolicy;
     use crate::db::Permission;
     use crate::handlers::testing::{
-        DEFAULT_TEST_LOCALE, create_test_context, login_user, login_user_with_features,
-        read_server_message,
+        DEFAULT_TEST_LOCALE, TestContext, create_test_context, login_user,
+        login_user_with_features, read_server_message,
     };
     use nexus_common::validators::DEFAULT_CHANNEL;
+
+    async fn read_queued_server_message(test_ctx: &mut TestContext) -> ServerMessage {
+        test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("should receive queued server message")
+            .0
+    }
 
     #[tokio::test]
     async fn test_chattopic_requires_login() {
@@ -413,7 +446,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 assert!(success);
@@ -455,13 +488,85 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 assert!(success);
                 assert!(error.is_none());
             }
             _ => panic!("Expected ChatTopicUpdateResponse, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_chattopic_uses_renamed_nickname_after_final_state_gate() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::ChatTopic, Permission::ChatTopicEdit],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+
+        test_ctx
+            .channel_manager
+            .join("#general", session_id, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+
+        let alice = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let gate_manager = test_ctx.user_manager.clone();
+        let update_manager = test_ctx.user_manager.clone();
+        let user_state = gate_manager.lock_user_state().await;
+
+        {
+            let mut ctx = test_ctx.handler_context();
+            let handler = handle_chat_topic_update(
+                "renamed topic".to_string(),
+                "#general".to_string(),
+                Some(session_id),
+                &mut ctx,
+            );
+            tokio::pin!(handler);
+
+            tokio::select! {
+                biased;
+                result = &mut handler => panic!("handler finished before rename gate: {result:?}"),
+                _ = tokio::task::yield_now() => {}
+            }
+
+            update_manager
+                .update_username(alice.id, "alicia".to_string())
+                .await;
+            drop(user_state);
+
+            handler.await.unwrap();
+        }
+
+        match read_queued_server_message(&mut test_ctx).await {
+            ServerMessage::ChatTopicUpdateResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            other => panic!("Expected ChatTopicUpdateResponse, got {other:?}"),
+        }
+
+        match read_queued_server_message(&mut test_ctx).await {
+            ServerMessage::ChatUpdated { topic_set_by, .. } => {
+                assert_eq!(topic_set_by, Some("alicia".to_string()));
+            }
+            other => panic!("Expected ChatUpdated, got {other:?}"),
         }
     }
 
@@ -544,7 +649,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 assert!(success);
@@ -670,7 +775,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 assert!(success);
@@ -726,7 +831,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_server_message(&mut test_ctx).await;
+        let response = read_queued_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 assert!(success);
