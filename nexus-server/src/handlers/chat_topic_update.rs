@@ -24,7 +24,7 @@ use crate::db::Permission;
 enum TopicUpdateOutcome {
     Disconnect,
     Queued,
-    Send(ServerMessage),
+    Send(Box<ServerMessage>),
 }
 
 pub async fn handle_chat_topic_update<W>(
@@ -107,10 +107,12 @@ where
 
         // Non-members get "not found" so secret-channel existence isn't leaked.
         if !ctx.channel_manager.is_member(&channel, id).await {
-            break 'locked TopicUpdateOutcome::Send(ServerMessage::ChatTopicUpdateResponse {
-                success: false,
-                error: Some(err_channel_not_found(ctx.locale, &channel)),
-            });
+            break 'locked TopicUpdateOutcome::Send(Box::new(
+                ServerMessage::ChatTopicUpdateResponse {
+                    success: false,
+                    error: Some(err_channel_not_found(ctx.locale, &channel)),
+                },
+            ));
         }
 
         // Channel manager handles persistence for persistent channels.
@@ -128,17 +130,21 @@ where
             Ok(true) => {}
             Ok(false) => {
                 // Channel deleted between the membership check and here.
-                break 'locked TopicUpdateOutcome::Send(ServerMessage::ChatTopicUpdateResponse {
-                    success: false,
-                    error: Some(err_channel_not_found(ctx.locale, &channel)),
-                });
+                break 'locked TopicUpdateOutcome::Send(Box::new(
+                    ServerMessage::ChatTopicUpdateResponse {
+                        success: false,
+                        error: Some(err_channel_not_found(ctx.locale, &channel)),
+                    },
+                ));
             }
             Err(e) => {
                 error!(user = %current.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_CHAT_TOPIC_DB_ERROR);
-                break 'locked TopicUpdateOutcome::Send(ServerMessage::ChatTopicUpdateResponse {
-                    success: false,
-                    error: Some(err_database(ctx.locale)),
-                });
+                break 'locked TopicUpdateOutcome::Send(Box::new(
+                    ServerMessage::ChatTopicUpdateResponse {
+                        success: false,
+                        error: Some(err_database(ctx.locale)),
+                    },
+                ));
             }
         }
 

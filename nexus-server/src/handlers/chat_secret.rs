@@ -21,7 +21,7 @@ use crate::db::Permission;
 enum SecretOutcome {
     Disconnect,
     Queued,
-    Send(ServerMessage),
+    Send(Box<ServerMessage>),
 }
 
 pub async fn handle_chat_secret<W>(
@@ -86,10 +86,10 @@ where
 
         // Non-members get "not found" so secret-channel existence isn't leaked.
         if !ctx.channel_manager.is_member(&channel, session_id).await {
-            break 'locked SecretOutcome::Send(ServerMessage::ChatSecretResponse {
+            break 'locked SecretOutcome::Send(Box::new(ServerMessage::ChatSecretResponse {
                 success: false,
                 error: Some(err_channel_not_found(ctx.locale, &channel)),
-            });
+            }));
         }
 
         // ChannelManager handles persistence for persistent channels.
@@ -97,17 +97,17 @@ where
             Ok(true) => {}
             Ok(false) => {
                 // Channel deleted between the membership check and here.
-                break 'locked SecretOutcome::Send(ServerMessage::ChatSecretResponse {
+                break 'locked SecretOutcome::Send(Box::new(ServerMessage::ChatSecretResponse {
                     success: false,
                     error: Some(err_channel_not_found(ctx.locale, &channel)),
-                });
+                }));
             }
             Err(e) => {
                 error!(user = %current.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_CHAT_SECRET_DB_ERROR);
-                break 'locked SecretOutcome::Send(ServerMessage::ChatSecretResponse {
+                break 'locked SecretOutcome::Send(Box::new(ServerMessage::ChatSecretResponse {
                     success: false,
                     error: Some(err_database(ctx.locale)),
-                });
+                }));
             }
         }
 

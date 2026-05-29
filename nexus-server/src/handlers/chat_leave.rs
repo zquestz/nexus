@@ -21,7 +21,7 @@ use crate::constants::FEATURE_CHAT;
 enum LeaveOutcome {
     Disconnect,
     Queued,
-    Send(ServerMessage),
+    Send(Box<ServerMessage>),
 }
 
 pub async fn handle_chat_leave<W>(
@@ -47,29 +47,29 @@ where
         };
 
         if let Err(e) = validators::validate_channel(&channel) {
-            break 'locked LeaveOutcome::Send(ServerMessage::ChatLeaveResponse {
+            break 'locked LeaveOutcome::Send(Box::new(ServerMessage::ChatLeaveResponse {
                 success: false,
                 error: Some(channel_error_to_message(e, ctx.locale)),
                 channel: None,
-            });
+            }));
         }
 
         if !user.has_feature(FEATURE_CHAT) {
-            break 'locked LeaveOutcome::Send(ServerMessage::ChatLeaveResponse {
+            break 'locked LeaveOutcome::Send(Box::new(ServerMessage::ChatLeaveResponse {
                 success: false,
                 error: Some(err_chat_feature_not_enabled(ctx.locale)),
                 channel: None,
-            });
+            }));
         }
 
         // Non-members get "not found" so secret channels' existence isn't leaked.
         match ctx.channel_manager.leave(&channel, session_id).await {
             None => {
-                break 'locked LeaveOutcome::Send(ServerMessage::ChatLeaveResponse {
+                break 'locked LeaveOutcome::Send(Box::new(ServerMessage::ChatLeaveResponse {
                     success: false,
                     error: Some(err_channel_not_found(ctx.locale, &channel)),
                     channel: None,
-                });
+                }));
             }
             Some(result) => {
                 ctx.send_message_via_channel(&ServerMessage::ChatLeaveResponse {

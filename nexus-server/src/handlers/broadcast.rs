@@ -20,7 +20,7 @@ use crate::db::Permission;
 enum BroadcastOutcome {
     Disconnect,
     Queued,
-    Send(ServerMessage),
+    Send(Box<ServerMessage>),
 }
 
 /// Broadcasts a message to all connected users (including the sender) and
@@ -49,10 +49,10 @@ where
 
         if !user.has_permission(Permission::UserBroadcast) {
             warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_USER_BROADCAST_PERMISSION_DENIED);
-            break 'locked BroadcastOutcome::Send(ServerMessage::UserBroadcastResponse {
+            break 'locked BroadcastOutcome::Send(Box::new(ServerMessage::UserBroadcastResponse {
                 success: false,
                 error: Some(err_permission_denied(ctx.locale)),
-            });
+            }));
         }
 
         // Content rules (empty / over the char cap / newlines / invalid chars) —
@@ -66,10 +66,10 @@ where
                 MessageError::ContainsNewlines => err_message_contains_newlines(ctx.locale),
                 MessageError::InvalidCharacters => err_message_invalid_characters(ctx.locale),
             };
-            break 'locked BroadcastOutcome::Send(ServerMessage::UserBroadcastResponse {
+            break 'locked BroadcastOutcome::Send(Box::new(ServerMessage::UserBroadcastResponse {
                 success: false,
                 error: Some(error_msg),
-            });
+            }));
         }
 
         ctx.send_message_via_channel(&ServerMessage::UserBroadcastResponse {

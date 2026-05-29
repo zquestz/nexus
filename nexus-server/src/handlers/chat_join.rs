@@ -39,7 +39,7 @@ fn error_response(error_msg: String) -> ServerMessage {
 
 enum JoinOutcome {
     Disconnect,
-    Send(ServerMessage),
+    Send(Box<ServerMessage>),
     Queued,
 }
 
@@ -66,18 +66,22 @@ where
         };
 
         if !user.has_feature(FEATURE_CHAT) {
-            break 'locked JoinOutcome::Send(error_response(err_permission_denied(ctx.locale)));
+            break 'locked JoinOutcome::Send(Box::new(error_response(err_permission_denied(
+                ctx.locale,
+            ))));
         }
 
         if !user.has_permission(Permission::ChatJoin) {
             warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_PERMISSION_DENIED);
-            break 'locked JoinOutcome::Send(error_response(err_permission_denied(ctx.locale)));
+            break 'locked JoinOutcome::Send(Box::new(error_response(err_permission_denied(
+                ctx.locale,
+            ))));
         }
 
         if let Err(e) = validators::validate_channel(&channel) {
-            break 'locked JoinOutcome::Send(error_response(channel_error_to_message(
+            break 'locked JoinOutcome::Send(Box::new(error_response(channel_error_to_message(
                 e, ctx.locale,
-            )));
+            ))));
         }
 
         let policy = if user.has_permission(Permission::ChatCreate) {
@@ -88,22 +92,21 @@ where
 
         let result = match ctx.channel_manager.join(&channel, session_id, policy).await {
             Ok(result) if result.already_member => {
-                break 'locked JoinOutcome::Send(error_response(err_channel_already_member(
-                    ctx.locale, &channel,
+                break 'locked JoinOutcome::Send(Box::new(error_response(
+                    err_channel_already_member(ctx.locale, &channel),
                 )));
             }
             Ok(result) => result,
             Err(JoinError::TooManyChannels) => {
-                break 'locked JoinOutcome::Send(error_response(err_channel_limit_exceeded(
-                    ctx.locale,
-                    MAX_CHANNELS_PER_USER,
+                break 'locked JoinOutcome::Send(Box::new(error_response(
+                    err_channel_limit_exceeded(ctx.locale, MAX_CHANNELS_PER_USER),
                 )));
             }
             Err(JoinError::ChannelDoesNotExist) => {
                 warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_CHAT_JOIN_CREATE_DENIED);
-                break 'locked JoinOutcome::Send(error_response(
+                break 'locked JoinOutcome::Send(Box::new(error_response(
                     err_permission_denied_chat_create(ctx.locale),
-                ));
+                )));
             }
         };
 

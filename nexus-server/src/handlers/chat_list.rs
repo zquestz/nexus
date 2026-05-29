@@ -84,7 +84,8 @@ mod tests {
     use super::*;
     use crate::db::Permission;
     use crate::handlers::testing::{
-        create_test_context, login_user_with_features, read_server_message,
+        create_test_context, login_user_with_features, read_queued_server_message,
+        read_server_message,
     };
 
     #[tokio::test]
@@ -226,7 +227,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse (includes channel data)
+        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse (includes channel data)
 
         test_ctx
             .channel_manager
