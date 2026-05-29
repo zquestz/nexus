@@ -634,3 +634,126 @@ impl NexusApp {
         Task::batch(tasks)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use nexus_common::protocol::{NewsItem, UserInfo as ProtocolUserInfo};
+    use nexus_common::validators::{DEFAULT_BANDWIDTH_WEIGHT, PasswordStrength};
+    use tokio::sync::{Mutex, mpsc};
+
+    use super::*;
+    use crate::config::Config;
+    use crate::transfers::TransferManager;
+    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
+
+    fn test_connection(connection_id: usize) -> ServerConnection {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        ServerConnection::new(ServerConnectionParams {
+            bookmark_id: None,
+            user_id: Some(1),
+            nickname: "me".to_string(),
+            connection_info: ConnectionInfo {
+                server_name: String::new(),
+                address: "server.example".to_string(),
+                port: 7500,
+                transfer_port: 7501,
+                certificate_fingerprint: "fingerprint".to_string(),
+                username: "me".to_string(),
+                password: String::new(),
+                nickname: String::new(),
+            },
+            display_name: String::new(),
+            connection_id,
+            is_admin: false,
+            permissions: Vec::new(),
+            locale: "en".to_string(),
+            server_name: None,
+            server_description: None,
+            public_address: None,
+            server_version: None,
+            server_image: String::new(),
+            cached_server_image: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            max_connections_per_ip: None,
+            max_outbound_rate: None,
+            max_transfers_per_ip: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Weak,
+            log_level: None,
+            scheduler_chunk_size: None,
+            tx,
+            shutdown_handle: Arc::new(Mutex::new(None)),
+        })
+    }
+
+    fn news_item(id: i64, author: &str, author_is_admin: bool) -> NewsItem {
+        NewsItem {
+            id,
+            body: Some("body".to_string()),
+            image: None,
+            author: author.to_string(),
+            author_is_admin,
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+            updated_at: None,
+        }
+    }
+
+    fn user_update(id: i64, username: &str, is_admin: bool) -> ProtocolUserInfo {
+        ProtocolUserInfo {
+            id,
+            username: username.to_string(),
+            nickname: username.to_string(),
+            login_time: 0,
+            is_admin,
+            is_shared: false,
+            session_ids: vec![10],
+            locale: "en".to_string(),
+            avatar: None,
+            is_away: false,
+            status: None,
+            group_id: None,
+            group_name: None,
+            bandwidth_weight: Some(DEFAULT_BANDWIDTH_WEIGHT),
+        }
+    }
+
+    #[test]
+    fn test_handle_user_updated_renames_cached_news_author() {
+        let mut app = NexusApp {
+            config: Config::default(),
+            transfer_manager: TransferManager::default(),
+            ..Default::default()
+        };
+
+        let connection_id = 7;
+        let mut conn = test_connection(connection_id);
+        conn.news_management.news_items = Some(Ok(vec![
+            news_item(1, "Alice", false),
+            news_item(2, "bob", true),
+        ]));
+        app.connections.insert(connection_id, conn);
+
+        let _task = app.handle_user_updated(
+            connection_id,
+            "alice".to_string(),
+            user_update(42, "alicia", true),
+        );
+
+        let items = app.connections[&connection_id]
+            .news_management
+            .news_items
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unwrap();
+        assert_eq!(items[0].author, "alicia");
+        assert!(items[0].author_is_admin);
+        assert_eq!(items[1].author, "bob");
+        assert!(items[1].author_is_admin);
+    }
+}

@@ -1913,6 +1913,115 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_userupdate_can_rename_to_deleted_account_old_username() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let deleted_user = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "retired",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        assert!(
+            test_ctx
+                .db
+                .users
+                .delete_user(deleted_user.id, true)
+                .await
+                .unwrap(),
+            "setup should delete the old account"
+        );
+
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+        let request = UserUpdateRequest {
+            id: admin_user.id,
+            current_password: None,
+            username: Some("retired".to_string()),
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id: Some(session_id),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                id,
+                username,
+            } => {
+                assert!(success, "rename should succeed: {:?}", error);
+                assert_eq!(id, Some(admin_user.id));
+                assert_eq!(username, Some("retired".to_string()));
+            }
+            other => panic!("Expected UserUpdateResponse, got {other:?}"),
+        }
+
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_username("admin")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        let renamed_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("retired")
+            .await
+            .unwrap()
+            .expect("renamed account should own the old deleted username");
+        assert_eq!(renamed_user.id, admin_user.id);
+        assert_eq!(renamed_user.username, "retired");
+        assert!(
+            test_ctx
+                .db
+                .users
+                .get_user_by_id(deleted_user.id)
+                .await
+                .unwrap()
+                .is_none(),
+            "deleted account must not be resurrected"
+        );
+
+        let session = test_ctx
+            .user_manager
+            .get_user_by_session_id(session_id)
+            .await
+            .expect("renamed admin session should remain online");
+        assert_eq!(session.username, "retired");
+        assert_eq!(session.nickname, "retired");
+    }
+
+    #[tokio::test]
     async fn test_userupdate_case_only_self_rename_succeeds() {
         let mut test_ctx = create_test_context().await;
 
