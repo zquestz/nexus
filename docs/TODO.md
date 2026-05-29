@@ -36,6 +36,42 @@ Features intentionally excluded with rationale.
 | DCC                  | Peer-to-peer adds complexity; server-mediated transfers work well                          |
 | Remote desktop       | Most servers are headless; out of scope for BBS software                                   |
 
+## Handler Ordering
+
+Future handler cleanup should make response/fanout ordering explicit and
+consistent. The default command pattern should be:
+
+`validate -> commit state -> enqueue requester success response -> enqueue fanouts`
+
+"Response first" means queueing the response before observer events, not blocking
+the server until the requester physically reads from the socket. Slow requesters
+must not stall fanout delivery to other sessions.
+
+`UserMessage` is the known semantic exception: the `UserMessage` event is the
+delivery/echo itself, and `UserMessageResponse` behaves like a delivery receipt
+with away/status metadata. That handler may keep
+`deliver/echo UserMessage -> UserMessageResponse` unless the protocol semantics
+are redesigned.
+
+Admin teardown handlers may still need to perform internal cleanup before the
+success response so state is genuinely committed, but user-visible fanouts and
+disconnect notifications should be queued after the requester ACK where
+practical.
+
+Handlers that need `read_user_state()` for rename/nickname ordering should take
+it early, before the first session lookup, and carry one authoritative session
+snapshot through the identity-sensitive work. Avoid the pattern of doing an
+unlocked pre-lookup and then re-looking-up the same session under the lock unless
+there is a concrete reason. The lock is for identity/key ordering, not permission
+revocation races.
+
+Local SQLite reads/writes are acceptable inside this locked section when that
+keeps DB/cache/session/fanout ordering simple and correct. Avoid holding the
+lock across filesystem operations, transfers, awaited network/socket writes, or
+anything that can stall on a client or the OS. Queueing messages through a
+session channel while locked is acceptable when the enqueue order is part of the
+rename-safety guarantee.
+
 ## Feature Specs
 
 ### File Previews
@@ -112,7 +148,7 @@ Weighted fair share of server outbound bandwidth per user, enforced via a single
 - **The scheduler task does zero I/O.** It is a pure dispatch engine: it maintains WF2Q+ state, rate-limits, and dispatches packets to per-connection bounded channels. It never calls `write_all` on a socket.
 - **Per-connection writer tasks.** Each WAN connection gets a dedicated writer task (`tokio::spawn`) that owns the `WriteHalf` and drains its bounded channel. Writer tasks write to their own socket independently — a slow client's socket blocking its writer task cannot stall any other connection or the scheduler itself. This eliminates head-of-line blocking.
 - The scheduler uses `try_send()` when dispatching to a connection's channel. If the channel is full (slow client), the packet stays in **that connection's queue** and **only that connection is skipped** (its writer channel is at the `WRITER_CHANNEL_BYTE_CAP` in-flight limit — a derived state, see Lifecycle) — the scheduler moves on and keeps dispatching the flow's other connections. The flow itself stays eligible as long as at least one of its member connections is dispatchable. No blocking, no waiting. Blocking is per-connection, not per-flow: a frozen session never stalls a sibling session of the same user. The flow remains the WF2Q+ scheduling unit (one weighted share per user flow), so cross-flow fairness is unchanged — isolation is purely about which of a flow's own connections gets serviced.
-- **Drain notifications (wakeup path).** The scheduler must wake when a blocked connection's writer channel drains below `WRITER_CHANNEL_BYTE_CAP` — without busy-polling full channels or oversleeping. **Preferred model:** each connection keeps an atomic in-flight-byte counter (decremented as the writer completes each buffer); a writer that drops below the cap calls `notify_one()` on a single shared `tokio::Notify`. The scheduler's main loop `select!`s over the rate-budget timer, new submissions, and that `Notify`; on wake it rescans its flows' connections, deriving each connection's *blocked* state from its counter (queued data + writer alive + `in_flight_bytes ≥ WRITER_CHANNEL_BYTE_CAP`). No stored `blocked` flag, no per-connection edge detection, no `ConnectionId` in the wakeup — at small connection counts the rescan is free. **Surgical fallback** (only if rescans ever prove too coarse): per-connection `Drained(ConnectionId)` sent on the full→available edge, which re-marks exactly that connection dispatchable; correctness (never leaving a drainable connection blocked) outranks minimizing notifications, so over-sending `Drained` is acceptable.
+- **Drain notifications (wakeup path).** The scheduler must wake when a blocked connection's writer channel drains below `WRITER_CHANNEL_BYTE_CAP` — without busy-polling full channels or oversleeping. **Preferred model:** each connection keeps an atomic in-flight-byte counter (decremented as the writer completes each buffer); a writer that drops below the cap calls `notify_one()` on a single shared `tokio::Notify`. The scheduler's main loop `select!`s over the rate-budget timer, new submissions, and that `Notify`; on wake it rescans its flows' connections, deriving each connection's _blocked_ state from its counter (queued data + writer alive + `in_flight_bytes ≥ WRITER_CHANNEL_BYTE_CAP`). No stored `blocked` flag, no per-connection edge detection, no `ConnectionId` in the wakeup — at small connection counts the rescan is free. **Surgical fallback** (only if rescans ever prove too coarse): per-connection `Drained(ConnectionId)` sent on the full→available edge, which re-marks exactly that connection dispatchable; correctness (never leaving a drainable connection blocked) outranks minimizing notifications, so over-sending `Drained` is acceptable.
 - LAN connections bypass the scheduler entirely and write directly (see "Scope of cap" below).
 - **Outbound only.** Inbound shaping is wasteful (TCP + kernel handle it).
 - **`TCP_NODELAY` set on every accepted TCP socket.** Without it, Nagle's algorithm coalesces small writes downstream of the application — defeating WF2Q+'s latency bounds for WAN connections and hurting chat latency on LAN too. Set at accept time regardless of LAN/WAN classification. WebSocket sockets inherit from the underlying TCP socket. UDP voice is unaffected (different protocol).
@@ -126,7 +162,7 @@ Weighted fair share of server outbound bandwidth per user, enforced via a single
 
 **Flow model**
 
-- Flow = authenticated `user_id`. **All** of a user's sessions — BBS and transfer, regular or shared account — share one flow and one weighted share; sessions split it via the intra-flow rule below. The weight bounds the *account's* total outbound share regardless of session count. This is deliberately per-account, not per-nickname: per-nickname flows would let anyone multiply their share by opening more sessions under distinct nicknames (a shared account permits many logins). Nicknames are display-only and never key a flow. To give a busy shared/guest login more aggregate bandwidth, an operator raises that account's weight. Consequence: a shared/guest login pools all its sessions into one share, so one heavy session starves its siblings — intended, and tunable via the account's weight.
+- Flow = authenticated `user_id`. **All** of a user's sessions — BBS and transfer, regular or shared account — share one flow and one weighted share; sessions split it via the intra-flow rule below. The weight bounds the _account's_ total outbound share regardless of session count. This is deliberately per-account, not per-nickname: per-nickname flows would let anyone multiply their share by opening more sessions under distinct nicknames (a shared account permits many logins). Nicknames are display-only and never key a flow. To give a busy shared/guest login more aggregate bandwidth, an operator raises that account's weight. Consequence: a shared/guest login pools all its sessions into one share, so one heavy session starves its siblings — intended, and tunable via the account's weight.
 - Pre-login traffic (WAN only): one **single global pre-login flow** (`FlowId::Anon`, no per-IP split), weight = `ANON_FLOW_WEIGHT` (50). The flow is permanent — connections join its member set at register and leave on graduation/disconnect, so there's no per-IP refcount or reaping. The elevated weight is a latency knob, not a bandwidth grant: pre-login egress is tiny (a `HandshakeResponse`, maybe an error frame) and WF2Q+ is work-conserving, so the weight just keeps handshakes/logins responsive when the cap is saturated, then yields the unused share back. LAN connections bypass the scheduler from accept onward and never enter it.
 - **Trust does NOT bypass cap.** Speed and ban are orthogonal concerns.
 - **Admins skip group lookup.** Admins don't belong to groups; if they have no explicit per-user weight, they resolve to `DEFAULT_ADMIN_BANDWIDTH_WEIGHT` (50). They participate in fair scheduling like everyone else — the elevated default just reflects that admins typically warrant a larger share than guests.
@@ -156,7 +192,7 @@ Cached on `UserSession.bandwidth_weight` at login as an `AtomicU16`. The handler
 - `update_user_weight(user_id, weight)` — updates the weight of the user's flow. One flow per `user_id`, so this is a single-flow update; it reaches transfer-only users (not in `UserManager`'s session map) because the flow is keyed by `user_id`, not by session presence. Primary API for user/group weight changes; for a group cascade, call once per affected `user_id`.
 - `transition_to_user(conn_id, user_id, weight)` — graduates a connection from its anon flow to its user flow at login, carrying the initial weight (see Lifecycle).
 
-The flow key is `FlowId::User(user_id)` for authenticated traffic and `FlowId::Anon` pre-login (a single global flow) — `user_id` *is* the scheduling identity, no separate metadata needed. A username rename never touches the scheduler: the flow is keyed on the immutable `user_id`, so the key is stable across renames (no `rename_flow`).
+The flow key is `FlowId::User(user_id)` for authenticated traffic and `FlowId::Anon` pre-login (a single global flow) — `user_id` _is_ the scheduling identity, no separate metadata needed. A username rename never touches the scheduler: the flow is keyed on the immutable `user_id`, so the key is stable across renames (no `rename_flow`).
 
 **Cache invalidation.** Two updates fire when a user's effective weight changes:
 
@@ -175,7 +211,7 @@ When a flow's turn comes up, the scheduler dispatches the highest-priority class
 
 Priority is evaluated over _dispatchable_ packets only. If the flow's Protocol-class connection is **blocked** (frozen client, channel full), its pending data does **not** hold back the flow's Bulk-class connections — the scheduler falls through and dispatches Bulk. This is what keeps a frozen BBS session from freezing the same user's downloads; the priority rule serves interactive latency, and a connection that can't receive anyway forfeits its precedence until it drains.
 
-Within a user's own flow, this bounds the worst-case delay for that user's chat behind their *own* already-dispatched Bulk chunk = one chunk transmission time (`chunk_size / cap_rate`). Across users it does not apply: inter-flow service is governed by WF2Q+ weights, so a user's Protocol packet still waits for their flow's weighted turn relative to other flows.
+Within a user's own flow, this bounds the worst-case delay for that user's chat behind their _own_ already-dispatched Bulk chunk = one chunk transmission time (`chunk_size / cap_rate`). Across users it does not apply: inter-flow service is governed by WF2Q+ weights, so a user's Protocol packet still waits for their flow's weighted turn relative to other flows.
 
 WF2Q+ virtual-time accounting is unaffected — a packet is a packet regardless of class or which connection it came from. Per-user-flow fairness vs other flows is preserved.
 
@@ -194,7 +230,7 @@ The scheduler chunks every enqueued payload into `scheduler_chunk_size`-byte WF2
 
 Worst-case added latency for a small message behind one already-dispatched chunk on the same flow = `chunk_size / cap_rate` (the non-preemptible transmission). This is the intra-flow bound only; WF2Q+ weights govern when the message's flow is served relative to other flows.
 
-**Optimization: when `max_outbound_rate = 0` (unlimited), chunking is skipped.** The whole reason to chunk is bounding the `chunk_size / cap_rate` latency for small messages competing with bulk transfers — at cap=0, the kernel drains the socket at line rate (microseconds per packet), so the bound isn't needed. **Chunking is a dispatch-time decision, not enqueue-time:** the payload is retained as `Bytes` and the dispatcher slices it by the *current* `scheduler_chunk_size` when cap > 0, or hands it over whole when cap = 0. So a payload enqueued while cap = 0 is sliced lazily if `set_rate` raises the cap before it finishes draining — no oversized packet escapes the new bound and no burst exceeds one chunk. This also reduces scheduler ops by ~8× at 100 MB/s outbound (one slice per 64 KB transfer chunk instead of one per 8 KB sub-chunk); WAN egress still flows through the scheduler so live cap changes take effect immediately.
+**Optimization: when `max_outbound_rate = 0` (unlimited), chunking is skipped.** The whole reason to chunk is bounding the `chunk_size / cap_rate` latency for small messages competing with bulk transfers — at cap=0, the kernel drains the socket at line rate (microseconds per packet), so the bound isn't needed. **Chunking is a dispatch-time decision, not enqueue-time:** the payload is retained as `Bytes` and the dispatcher slices it by the _current_ `scheduler_chunk_size` when cap > 0, or hands it over whole when cap = 0. So a payload enqueued while cap = 0 is sliced lazily if `set_rate` raises the cap before it finishes draining — no oversized packet escapes the new bound and no burst exceeds one chunk. This also reduces scheduler ops by ~8× at 100 MB/s outbound (one slice per 64 KB transfer chunk instead of one per 8 KB sub-chunk); WAN egress still flows through the scheduler so live cap changes take effect immediately.
 
 **Rate bucket.** The rate limiter is a token bucket whose capacity is one `scheduler_chunk_size` of bytes (cap > 0). Tokens accumulate only up to one chunk, so idle time cannot bank into a burst — maximum burst is one chunk, consistent with "no burst budgets beyond chunk size" (Out of scope). At cap = 0 there is no bucket (no rate limiting).
 
@@ -292,7 +328,7 @@ Per-connection backpressure and the scheduler-registry semantics described next 
 
 The scheduler maintains two internal registries:
 
-- `connections: HashMap<ConnectionId, ConnectionEntry>` — per-connection state. `ConnectionEntry` holds the bounded channel sender (to the writer task), `ConnectionClass`, the current `FlowId` (an enum: `FlowId::Anon` or `FlowId::User(i64)`), **this connection's own queue**, its pending-byte counter (against `PER_CONNECTION_PROTOCOL_CAP` / `PER_CONNECTION_BULK_CAP` per class), and its writer-channel in-flight-byte counter. *Blocked* is **derived** from that counter — queued data present, writer alive, and `in_flight_bytes ≥ WRITER_CHANNEL_BYTE_CAP` — evaluated at dispatch, not a stored flag. The `WriteHalf` itself is owned by the per-connection writer task, not stored here. `send_*(conn_id, …)` enqueues into **that connection's own queue**; the `FlowId` resolves which flow's weighted rate budget governs when the queue is dispatched.
+- `connections: HashMap<ConnectionId, ConnectionEntry>` — per-connection state. `ConnectionEntry` holds the bounded channel sender (to the writer task), `ConnectionClass`, the current `FlowId` (an enum: `FlowId::Anon` or `FlowId::User(i64)`), **this connection's own queue**, its pending-byte counter (against `PER_CONNECTION_PROTOCOL_CAP` / `PER_CONNECTION_BULK_CAP` per class), and its writer-channel in-flight-byte counter. _Blocked_ is **derived** from that counter — queued data present, writer alive, and `in_flight_bytes ≥ WRITER_CHANNEL_BYTE_CAP` — evaluated at dispatch, not a stored flag. The `WriteHalf` itself is owned by the per-connection writer task, not stored here. `send_*(conn_id, …)` enqueues into **that connection's own queue**; the `FlowId` resolves which flow's weighted rate budget governs when the queue is dispatched.
 - `flows: HashMap<FlowId, FlowState>` — per-flow **scheduling** state: weight, WF2Q+ virtual time, and the set of member `ConnectionId`s. No queue lives here — queues are per-connection (above); the flow only arbitrates which of its member connections to service next (Protocol-class before Bulk-class, skipping blocked connections, round-robin within a class). At dequeue the flow selects its next dispatchable packet from its member connections by that rule, then advances the flow's virtual finish time by **that packet's** length / weight — so per-connection queues stay consistent with flow-granular WF2Q+ accounting. The single pre-login flow (`FlowId::Anon`) is created at startup and never reaped; only user flows are created on first session and reaped on last disconnect.
 - **Flow idle/reactivation (no phantom reservation).** A flow with no dispatchable connection (all members blocked or empty) is treated as **inactive** — removed from the eligible set, reserving no rate, so other flows receive the full cap. When a member becomes dispatchable again the flow re-enters with its virtual start tag clamped to `max(its last virtual finish, current system V(t))` — standard WFQ idle handling. Without the clamp, a stale head tag from before the idle gap would grant catch-up service, violating the no-phantom-reservation property the work-conservation test asserts. Concretely, assign WF2Q+ start/finish tags when a packet becomes **dispatchable**, not at enqueue — otherwise a head packet queued before the idle gap carries a stale tag and reproduces the catch-up burst the flow-level clamp was meant to prevent.
 
