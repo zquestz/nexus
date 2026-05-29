@@ -611,6 +611,10 @@ err-failed-send-update = Falha ao enviar atualização: { $error }
 
 err-failed-save-config = Falha ao salvar configuração: { $error }
 err-failed-save-settings = Falha ao salvar configurações: { $error }
+err-chat-history-save = Falha ao salvar o histórico de chat de { $nickname }: { $error }
+err-chat-history-clear = Falha ao limpar o histórico de chat de { $nickname }: { $error }
+err-chat-history-rename = Falha ao atualizar o histórico de chat depois que { $old } foi renomeado para { $new }: { $error }
+err-news-refresh-failed = Falha ao atualizar a notícia { $id }: { $error }
 err-invalid-port-bookmark = Porta inválida no favorito: { $name }
 err-failed-send-broadcast = Falha ao enviar difusão: { $error }
 err-failed-send-message = Falha ao enviar mensagem: { $error }

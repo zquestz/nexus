@@ -9,7 +9,7 @@ use nexus_common::protocol::{NewsAction, NewsItem};
 use crate::NexusApp;
 use crate::config::events::EventType;
 use crate::events::{EventContext, emit_event};
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::image::decode_data_uri_max_width;
 use crate::style::NEWS_IMAGE_MAX_CACHE_WIDTH;
 use crate::types::{ChatMessage, Message, NewsManagementMode, PendingRequests, ResponseRouting};
@@ -157,9 +157,16 @@ impl NexusApp {
                     }
                 }
             }
-        } else {
-            // Silently ignore errors for refresh requests
-            let _ = error;
+        } else if let Some(ResponseRouting::NewsShowForRefresh { id, .. }) = routing {
+            let id_string = id.to_string();
+            let error_msg = error.unwrap_or_else(|| t("err-unknown"));
+            return self.add_background_error_message(
+                connection_id,
+                t_args(
+                    "err-news-refresh-failed",
+                    &[("id", &id_string), ("error", &error_msg)],
+                ),
+            );
         }
 
         Task::none()
@@ -491,8 +498,15 @@ impl NexusApp {
                             ResponseRouting::NewsShowForRefresh { id, is_new },
                         );
                     }
-                    Err(_) => {
-                        // Silently fail - it's just a refresh
+                    Err(e) => {
+                        let id_string = id.to_string();
+                        return self.add_background_error_message(
+                            connection_id,
+                            t_args(
+                                "err-news-refresh-failed",
+                                &[("id", &id_string), ("error", &e.to_string())],
+                            ),
+                        );
                     }
                 }
             }

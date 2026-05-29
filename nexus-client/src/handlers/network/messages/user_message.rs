@@ -76,6 +76,7 @@ impl NexusApp {
         }
 
         // Save to history (keyed by nickname)
+        let mut history_error = None;
         if let Some(base_dir) = self.connection_history_keys.get(&connection_id)
             && let Some(history_manager) = self.history_managers.get_mut(base_dir)
         {
@@ -88,8 +89,12 @@ impl NexusApp {
                 action,
                 timestamp,
             };
-            // Silently ignore save failures - history is non-critical
-            let _ = history_manager.add_message(&other_nickname, server_msg);
+            if let Err(e) = history_manager.add_message(&other_nickname, server_msg) {
+                history_error = Some(t_args(
+                    "err-chat-history-save",
+                    &[("nickname", &other_nickname), ("error", &e.to_string())],
+                ));
+            }
         }
 
         // Second pass: mutate state
@@ -124,7 +129,7 @@ impl NexusApp {
 
         // Mark as unread if not currently viewing this tab
         let pm_tab = ChatTab::UserMessage(key);
-        if conn.active_chat_tab != pm_tab {
+        let display_task = if conn.active_chat_tab != pm_tab {
             conn.unread_tabs.insert(pm_tab);
 
             // Update tray icon state (Windows/Linux only)
@@ -134,6 +139,15 @@ impl NexusApp {
             Task::none()
         } else {
             self.scroll_chat_if_visible(true)
+        };
+
+        if let Some(error) = history_error {
+            Task::batch([
+                display_task,
+                self.add_background_error_message(connection_id, error),
+            ])
+        } else {
+            display_task
         }
     }
 

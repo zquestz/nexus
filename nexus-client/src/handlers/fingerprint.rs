@@ -4,7 +4,7 @@ use iced::Task;
 
 use crate::NexusApp;
 use crate::history::rotate_fingerprint;
-use crate::i18n::t;
+use crate::i18n::{t, t_args};
 use crate::transfers::update_registry_fingerprint;
 use crate::types::{Message, ReconnectAction, normalize_certificate_fingerprint};
 
@@ -29,21 +29,29 @@ impl NexusApp {
 
         // Update the stored bookmark fingerprint (handle case where the
         // bookmark was deleted between mismatch and accept).
+        let mut tasks = Vec::new();
         if let Some(bookmark) = self.config.get_bookmark_mut(mismatch.bookmark_id) {
             bookmark.certificate_fingerprint =
                 normalize_certificate_fingerprint(Some(new_fingerprint.clone()));
-            let _ = self.config.save();
+            if let Err(e) = self.config.save() {
+                tasks.push(self.add_active_background_error_message(t_args(
+                    "err-failed-save-config",
+                    &[("error", &e)],
+                )));
+            }
         }
 
         // Update queued/paused transfers and the in-flight transfer registry.
         self.transfer_manager
             .update_fingerprint_for_bookmark(mismatch.bookmark_id, &new_fingerprint);
-        let _ = self.transfer_manager.save();
+        if let Err(e) = self.transfer_manager.save() {
+            tasks.push(self.add_active_background_error_message(e));
+        }
         update_registry_fingerprint(mismatch.bookmark_id, &new_fingerprint);
 
         // Replay the original connect attempt. Allocate a fresh connection_id
         // and refresh the expected_fingerprint so stage 1 passes on retry.
-        match mismatch.retry_action {
+        let retry_task = match mismatch.retry_action {
             ReconnectAction::Manual { mut params } => {
                 params.connection_id = self.next_connection_id;
                 self.next_connection_id += 1;
@@ -99,7 +107,9 @@ impl NexusApp {
                     },
                 )
             }
-        }
+        };
+        tasks.push(retry_task);
+        Task::batch(tasks)
     }
 
     /// Reject new certificate fingerprint (cancel connection)

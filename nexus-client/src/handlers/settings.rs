@@ -922,12 +922,18 @@ impl NexusApp {
         delay: PttReleaseDelay,
     ) -> Task<Message> {
         self.config.settings.audio.ptt_release_delay = delay;
-        let _ = self.config.save();
+        let save_task = match self.config.save() {
+            Ok(()) => Task::none(),
+            Err(e) => self.add_active_background_error_message(t_args(
+                "err-failed-save-config",
+                &[("error", &e)],
+            )),
+        };
 
         // No need to update anything else - the delay is read from config
         // each time PTT is released in handle_voice_ptt_state_changed()
 
-        Task::none()
+        save_task
     }
 
     /// Handle microphone test start

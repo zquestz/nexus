@@ -290,7 +290,7 @@ impl NexusApp {
 
         // Rename effects outside this connection's own state (shared with the
         // UserUpdated path); the `conn` borrow has ended.
-        self.apply_rename_side_effects(
+        let side_effect_task = self.apply_rename_side_effects(
             connection_id,
             &old_nickname,
             &new_nickname,
@@ -302,7 +302,7 @@ impl NexusApp {
         // Notice in the channel so members (including those without `user_list`) see
         // the continuity. Gated like join/leave events; the member-list re-key above
         // runs regardless of the setting.
-        if self.config.settings.show_join_leave_events {
+        let notice_task = if self.config.settings.show_join_leave_events {
             let message = ChatMessage::system(t_args(
                 "msg-chat-renamed",
                 &[("old", &old_nickname), ("new", &new_nickname)],
@@ -310,7 +310,9 @@ impl NexusApp {
             self.add_channel_message(connection_id, &channel, message)
         } else {
             Task::none()
-        }
+        };
+
+        Task::batch([side_effect_task, notice_task])
     }
 
     /// Handle ChatListResponse - response to /channels command

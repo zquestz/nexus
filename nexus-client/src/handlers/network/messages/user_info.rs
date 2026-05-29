@@ -514,7 +514,7 @@ impl NexusApp {
         // thread, chat history, news cache, saved bookmarks, persisted transfers).
         // The `conn` borrow has ended, so this takes `&mut self`.
         if username_changed {
-            self.apply_rename_side_effects(
+            return self.apply_rename_side_effects(
                 connection_id,
                 &previous_username,
                 &new_username,
@@ -540,7 +540,8 @@ impl NexusApp {
         is_shared: bool,
         is_admin: bool,
         renamed_self_nickname: bool,
-    ) {
+    ) -> Task<Message> {
+        let mut tasks = Vec::new();
         let connection_info = self
             .connections
             .get(&connection_id)
@@ -576,8 +577,15 @@ impl NexusApp {
         // directory is keyed by the immutable user id, so it never moves on a rename).
         if let Some(base_dir) = self.connection_history_keys.get(&connection_id).cloned()
             && let Some(manager) = self.history_managers.get_mut(&base_dir)
+            && let Err(e) = manager.rename_conversation(old, new)
         {
-            let _ = manager.rename_conversation(old, new);
+            tasks.push(self.add_background_error_message(
+                connection_id,
+                t_args(
+                    "err-chat-history-rename",
+                    &[("old", old), ("new", new), ("error", &e.to_string())],
+                ),
+            ));
         }
 
         if let Some(conn) = self.connections.get_mut(&connection_id) {
@@ -597,8 +605,12 @@ impl NexusApp {
                 new,
                 is_shared,
             ) > 0
+                && let Err(e) = self.config.save()
             {
-                let _ = self.config.save();
+                tasks.push(self.add_background_error_message(
+                    connection_id,
+                    t_args("err-failed-save-config", &[("error", &e)]),
+                ));
             }
 
             // Transfer resume opens a new transfer-port login from the persisted
@@ -609,9 +621,12 @@ impl NexusApp {
                 && self
                     .transfer_manager
                     .update_username_for_connection(&connection_info, old, new)
+                && let Err(e) = self.transfer_manager.save()
             {
-                let _ = self.transfer_manager.save();
+                tasks.push(self.add_background_error_message(connection_id, e));
             }
         }
+
+        Task::batch(tasks)
     }
 }

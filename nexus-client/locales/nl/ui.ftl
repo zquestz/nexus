@@ -606,6 +606,10 @@ err-failed-send-update = Kan update niet verzenden: { $error }
 
 err-failed-save-config = Kan configuratie niet opslaan: { $error }
 err-failed-save-settings = Kan instellingen niet opslaan: { $error }
+err-chat-history-save = Kan chatgeschiedenis voor { $nickname } niet opslaan: { $error }
+err-chat-history-clear = Kan chatgeschiedenis voor { $nickname } niet wissen: { $error }
+err-chat-history-rename = Kan chatgeschiedenis niet bijwerken nadat { $old } is hernoemd naar { $new }: { $error }
+err-news-refresh-failed = Kan nieuwsitem { $id } niet vernieuwen: { $error }
 err-invalid-port-bookmark = Ongeldige poort in bladwijzer: { $name }
 err-failed-send-broadcast = Kan broadcast niet verzenden: { $error }
 err-failed-send-message = Kan bericht niet verzenden: { $error }
@@ -1392,4 +1396,3 @@ label-inherit-bandwidth-weight = Bandbreedtegewicht overerven
 label-max-outbound-rate = Max. uitgaand (Mbps):
 label-unlimited = Onbeperkt
 label-scheduler-chunk-size = Schedulerblokgrootte (bytes):
-

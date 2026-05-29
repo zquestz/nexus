@@ -589,6 +589,10 @@ err-failed-send-update = 更新の送信に失敗しました: { $error }
 
 err-failed-save-config = 設定の保存に失敗しました: { $error }
 err-failed-save-settings = 設定の保存に失敗しました: { $error }
+err-chat-history-save = { $nickname } のチャット履歴を保存できませんでした: { $error }
+err-chat-history-clear = { $nickname } のチャット履歴を消去できませんでした: { $error }
+err-chat-history-rename = { $old } から { $new } への名前変更後にチャット履歴を更新できませんでした: { $error }
+err-news-refresh-failed = ニュース項目 { $id } を更新できませんでした: { $error }
 err-invalid-port-bookmark = ブックマークのポートが無効です: { $name }
 err-failed-send-broadcast = ブロードキャストの送信に失敗しました: { $error }
 err-failed-send-message = メッセージの送信に失敗しました: { $error }

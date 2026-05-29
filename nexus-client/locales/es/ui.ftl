@@ -607,6 +607,10 @@ err-failed-send-update = Error al enviar actualización: { $error }
 
 err-failed-save-config = Error al guardar configuración: { $error }
 err-failed-save-settings = Error al guardar configuración: { $error }
+err-chat-history-save = No se pudo guardar el historial de chat de { $nickname }: { $error }
+err-chat-history-clear = No se pudo borrar el historial de chat de { $nickname }: { $error }
+err-chat-history-rename = No se pudo actualizar el historial de chat después de renombrar { $old } a { $new }: { $error }
+err-news-refresh-failed = No se pudo actualizar la noticia { $id }: { $error }
 err-invalid-port-bookmark = Puerto inválido en marcador: { $name }
 err-failed-send-broadcast = Error al enviar difusión: { $error }
 err-failed-send-message = Error al enviar mensaje: { $error }
@@ -1393,4 +1397,3 @@ label-inherit-bandwidth-weight = Heredar peso de ancho de banda
 label-max-outbound-rate = Salida máx. (Mbps):
 label-unlimited = Ilimitado
 label-scheduler-chunk-size = Tamaño de bloque del planificador (bytes):
-

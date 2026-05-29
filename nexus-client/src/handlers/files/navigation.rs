@@ -187,14 +187,21 @@ impl NexusApp {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
-        let Some(conn) = self.connections.get_mut(&conn_id) else {
-            return Task::none();
-        };
 
         // Toggle the show_hidden state in config
         let show_hidden = !self.config.settings.show_hidden_files;
         self.config.settings.show_hidden_files = show_hidden;
-        let _ = self.config.save();
+        let save_task = match self.config.save() {
+            Ok(()) => Task::none(),
+            Err(e) => self.add_background_error_message(
+                conn_id,
+                crate::i18n::t_args("err-failed-save-config", &[("error", &e)]),
+            ),
+        };
+
+        let Some(conn) = self.connections.get_mut(&conn_id) else {
+            return save_task;
+        };
 
         // Get current path and root state from active tab
         let tab = conn.files_management.active_tab_mut();
@@ -206,6 +213,9 @@ impl NexusApp {
         tab.error = None;
 
         // Refresh the file list with new show_hidden setting
-        self.send_file_list_request(conn_id, current_path, viewing_root, show_hidden)
+        Task::batch([
+            save_task,
+            self.send_file_list_request(conn_id, current_path, viewing_root, show_hidden),
+        ])
     }
 }

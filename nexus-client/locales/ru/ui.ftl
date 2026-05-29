@@ -616,6 +616,10 @@ err-failed-send-update = Не удалось отправить обновлен
 
 err-failed-save-config = Не удалось сохранить конфигурацию: { $error }
 err-failed-save-settings = Не удалось сохранить настройки: { $error }
+err-chat-history-save = Не удалось сохранить историю чата для { $nickname }: { $error }
+err-chat-history-clear = Не удалось очистить историю чата для { $nickname }: { $error }
+err-chat-history-rename = Не удалось обновить историю чата после переименования { $old } в { $new }: { $error }
+err-news-refresh-failed = Не удалось обновить новость { $id }: { $error }
 err-invalid-port-bookmark = Недопустимый порт в закладке: { $name }
 err-failed-send-broadcast = Не удалось отправить рассылку: { $error }
 err-failed-send-message = Не удалось отправить сообщение: { $error }

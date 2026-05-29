@@ -590,6 +590,10 @@ err-failed-send-update = 发送更新失败：{ $error }
 
 err-failed-save-config = 保存配置失败：{ $error }
 err-failed-save-settings = 保存设置失败：{ $error }
+err-chat-history-save = 无法保存 { $nickname } 的聊天记录：{ $error }
+err-chat-history-clear = 无法清除 { $nickname } 的聊天记录：{ $error }
+err-chat-history-rename = { $old } 重命名为 { $new } 后无法更新聊天记录：{ $error }
+err-news-refresh-failed = 无法刷新新闻条目 { $id }：{ $error }
 err-invalid-port-bookmark = 书签中的端口无效：{ $name }
 err-failed-send-broadcast = 发送广播失败：{ $error }
 err-failed-send-message = 发送消息失败：{ $error }

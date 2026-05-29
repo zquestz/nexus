@@ -669,6 +669,10 @@ err-news-image-unsupported-type = Unsupported image type (PNG, WebP, JPEG, or SV
 
 err-failed-save-config = Failed to save config: { $error }
 err-failed-save-settings = Failed to save settings: { $error }
+err-chat-history-save = Failed to save chat history for { $nickname }: { $error }
+err-chat-history-clear = Failed to clear chat history for { $nickname }: { $error }
+err-chat-history-rename = Failed to update chat history after { $old } was renamed to { $new }: { $error }
+err-news-refresh-failed = Failed to refresh news item { $id }: { $error }
 err-invalid-port-bookmark = Invalid port in bookmark: { $name }
 err-failed-send-broadcast = Failed to send broadcast: { $error }
 err-failed-send-message = Failed to send message: { $error }

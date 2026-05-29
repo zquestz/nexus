@@ -609,6 +609,10 @@ err-failed-send-update = Impossibile inviare l'aggiornamento: { $error }
 
 err-failed-save-config = Impossibile salvare la configurazione: { $error }
 err-failed-save-settings = Impossibile salvare le impostazioni: { $error }
+err-chat-history-save = Impossibile salvare la cronologia chat per { $nickname }: { $error }
+err-chat-history-clear = Impossibile cancellare la cronologia chat per { $nickname }: { $error }
+err-chat-history-rename = Impossibile aggiornare la cronologia chat dopo la rinomina di { $old } in { $new }: { $error }
+err-news-refresh-failed = Impossibile aggiornare la notizia { $id }: { $error }
 err-invalid-port-bookmark = Porta non valida nel segnalibro: { $name }
 err-failed-send-broadcast = Impossibile inviare il broadcast: { $error }
 err-failed-send-message = Impossibile inviare il messaggio: { $error }
@@ -1395,4 +1399,3 @@ label-inherit-bandwidth-weight = Eredita peso larghezza di banda
 label-max-outbound-rate = Uscita max (Mbps):
 label-unlimited = Illimitata
 label-scheduler-chunk-size = Dimensione blocco scheduler (byte):
-

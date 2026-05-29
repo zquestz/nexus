@@ -589,6 +589,10 @@ err-failed-send-update = 업데이트 전송 실패: { $error }
 
 err-failed-save-config = 설정 저장 실패: { $error }
 err-failed-save-settings = 설정 저장 실패: { $error }
+err-chat-history-save = { $nickname }의 채팅 기록을 저장하지 못했습니다: { $error }
+err-chat-history-clear = { $nickname }의 채팅 기록을 지우지 못했습니다: { $error }
+err-chat-history-rename = { $old }에서 { $new }(으)로 이름이 변경된 후 채팅 기록을 업데이트하지 못했습니다: { $error }
+err-news-refresh-failed = 뉴스 항목 { $id }을(를) 새로 고치지 못했습니다: { $error }
 err-invalid-port-bookmark = 북마크의 포트가 잘못되었습니다: { $name }
 err-failed-send-broadcast = 브로드캐스트 전송 실패: { $error }
 err-failed-send-message = 메시지 전송 실패: { $error }

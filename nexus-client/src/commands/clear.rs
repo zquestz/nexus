@@ -54,12 +54,18 @@ pub fn execute(
     }
 
     // Clear history file for user message tabs (keyed by nickname)
-    // Silently ignore failures - history is non-critical
     if let ChatTab::UserMessage(nickname) = &active_tab
         && let Some(base_dir) = app.connection_history_keys.get(&connection_id)
         && let Some(history_manager) = app.history_managers.get_mut(base_dir)
+        && let Err(e) = history_manager.clear_conversation(nickname)
     {
-        let _ = history_manager.clear_conversation(nickname);
+        return app.add_background_error_message(
+            connection_id,
+            t_args(
+                "err-chat-history-clear",
+                &[("nickname", nickname), ("error", &e.to_string())],
+            ),
+        );
     }
 
     Task::none()

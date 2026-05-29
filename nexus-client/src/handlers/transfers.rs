@@ -13,10 +13,12 @@ use crate::types::{ActivePanel, Message};
 impl NexusApp {
     /// Handle transfer progress event from executor
     pub fn handle_transfer_progress(&mut self, event: TransferEvent) -> Task<Message> {
+        let mut tasks = Vec::new();
+
         match event {
             TransferEvent::Connecting { id } => {
                 self.transfer_manager.set_connecting(id);
-                self.save_transfers();
+                tasks.push(self.save_transfers());
             }
 
             TransferEvent::Started {
@@ -31,7 +33,7 @@ impl NexusApp {
                     file_count,
                     Some(server_transfer_id),
                 );
-                self.save_transfers();
+                tasks.push(self.save_transfers());
             }
 
             TransferEvent::Progress {
@@ -64,7 +66,7 @@ impl NexusApp {
                 let should_refresh = self.should_refresh_after_upload(id);
 
                 self.transfer_manager.complete(id);
-                self.save_transfers();
+                tasks.push(self.save_transfers());
 
                 // Emit transfer complete notification
                 if let Some((direction, path)) = transfer_info {
@@ -79,7 +81,7 @@ impl NexusApp {
 
                 // Refresh file list if upload completed to current directory
                 if should_refresh {
-                    return self.update(Message::FileRefresh);
+                    tasks.push(self.update(Message::FileRefresh));
                 }
             }
 
@@ -95,7 +97,7 @@ impl NexusApp {
                     .map(|t| (t.direction, t.remote_path.clone()));
 
                 self.transfer_manager.fail(id, error.clone(), error_kind);
-                self.save_transfers();
+                tasks.push(self.save_transfers());
 
                 // Emit transfer failed notification
                 if let Some((direction, path)) = transfer_info {
@@ -116,12 +118,12 @@ impl NexusApp {
                     && !transfer.status.is_failed()
                 {
                     self.transfer_manager.pause(id);
-                    self.save_transfers();
+                    tasks.push(self.save_transfers());
                 }
             }
         }
 
-        Task::none()
+        Task::batch(tasks)
     }
 
     /// Check if we should refresh the file list after an upload completes
@@ -207,7 +209,7 @@ impl NexusApp {
                 || transfer.status == TransferStatus::Failed)
         {
             self.transfer_manager.queue(id);
-            self.save_transfers();
+            return self.save_transfers();
         }
         Task::none()
     }
@@ -231,11 +233,11 @@ impl NexusApp {
             // Mark as failed
             self.transfer_manager
                 .fail(id, t("transfer-cancelled"), None);
-            self.save_transfers();
+            return self.save_transfers();
         } else if is_queued || is_paused {
             // Not started yet - just remove it
             self.transfer_manager.remove(id);
-            self.save_transfers();
+            return self.save_transfers();
         }
         Task::none()
     }
@@ -247,7 +249,7 @@ impl NexusApp {
             && (transfer.status.is_completed() || transfer.status.is_failed())
         {
             self.transfer_manager.remove(id);
-            self.save_transfers();
+            return self.save_transfers();
         }
         Task::none()
     }
@@ -267,14 +269,13 @@ impl NexusApp {
     pub fn handle_transfer_clear_inactive(&mut self) -> Task<Message> {
         self.transfer_manager.clear_completed();
         self.transfer_manager.clear_failed();
-        self.save_transfers();
-        Task::none()
+        self.save_transfers()
     }
 
     /// Handle request to move a queued transfer up (higher priority)
     pub fn handle_transfer_move_up(&mut self, id: Uuid) -> Task<Message> {
         if self.transfer_manager.move_up(id) {
-            self.save_transfers();
+            return self.save_transfers();
         }
         Task::none()
     }
@@ -282,7 +283,7 @@ impl NexusApp {
     /// Handle request to move a queued transfer down (lower priority)
     pub fn handle_transfer_move_down(&mut self, id: Uuid) -> Task<Message> {
         if self.transfer_manager.move_down(id) {
-            self.save_transfers();
+            return self.save_transfers();
         }
         Task::none()
     }
@@ -294,13 +295,16 @@ impl NexusApp {
             && transfer.status.is_failed()
         {
             self.transfer_manager.queue(id);
-            self.save_transfers();
+            return self.save_transfers();
         }
         Task::none()
     }
 
     /// Save transfers to disk (helper to reduce repetition)
-    fn save_transfers(&mut self) {
-        let _ = self.transfer_manager.save();
+    fn save_transfers(&mut self) -> Task<Message> {
+        match self.transfer_manager.save() {
+            Ok(()) => Task::none(),
+            Err(e) => self.add_active_background_error_message(e),
+        }
     }
 }

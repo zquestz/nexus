@@ -605,6 +605,10 @@ err-failed-send-update = Aktualisierung konnte nicht gesendet werden: { $error }
 
 err-failed-save-config = Konfiguration konnte nicht gespeichert werden: { $error }
 err-failed-save-settings = Einstellungen konnten nicht gespeichert werden: { $error }
+err-chat-history-save = Chatverlauf für { $nickname } konnte nicht gespeichert werden: { $error }
+err-chat-history-clear = Chatverlauf für { $nickname } konnte nicht gelöscht werden: { $error }
+err-chat-history-rename = Chatverlauf konnte nach der Umbenennung von { $old } zu { $new } nicht aktualisiert werden: { $error }
+err-news-refresh-failed = News-Eintrag { $id } konnte nicht aktualisiert werden: { $error }
 err-invalid-port-bookmark = Ungültiger Port im Lesezeichen: { $name }
 err-failed-send-broadcast = Rundnachricht konnte nicht gesendet werden: { $error }
 err-failed-send-message = Nachricht konnte nicht gesendet werden: { $error }
@@ -1395,4 +1399,3 @@ label-inherit-bandwidth-weight = Bandbreitengewicht erben
 label-max-outbound-rate = Max. ausgehend (Mbit/s):
 label-unlimited = Unbegrenzt
 label-scheduler-chunk-size = Scheduler-Blockgröße (Bytes):
-

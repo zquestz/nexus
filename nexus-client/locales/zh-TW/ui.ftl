@@ -589,6 +589,10 @@ err-failed-send-update = 傳送更新失敗：{ $error }
 
 err-failed-save-config = 儲存設定失敗：{ $error }
 err-failed-save-settings = 儲存設定失敗：{ $error }
+err-chat-history-save = 無法儲存 { $nickname } 的聊天記錄：{ $error }
+err-chat-history-clear = 無法清除 { $nickname } 的聊天記錄：{ $error }
+err-chat-history-rename = { $old } 重新命名為 { $new } 後無法更新聊天記錄：{ $error }
+err-news-refresh-failed = 無法重新整理新聞項目 { $id }：{ $error }
 err-invalid-port-bookmark = 書籤中的連接埠無效：{ $name }
 err-failed-send-broadcast = 傳送廣播失敗：{ $error }
 err-failed-send-message = 傳送訊息失敗：{ $error }

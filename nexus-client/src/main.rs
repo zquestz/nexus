@@ -57,6 +57,7 @@ use types::{
 };
 
 use crate::constants::{ERR_IPC_PREFIX, ERR_RUSTLS_PROVIDER, ERR_STARTUP_URI_LOCK_POISONED};
+use crate::i18n::t_args;
 
 /// Startup URI passed via command line (consumed by NexusApp::new)
 static STARTUP_URI: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
@@ -1331,33 +1332,63 @@ impl NexusApp {
             Message::AudioNoiseSuppressionLevel(level) => {
                 self.config.settings.audio.noise_suppression_level = level;
                 self.config.settings.audio.noise_suppression = level.is_enabled();
-                let _ = self.config.save();
+                let save_task = match self.config.save() {
+                    Ok(()) => Task::none(),
+                    Err(e) => self.add_active_background_error_message(t_args(
+                        "err-failed-save-config",
+                        &[("error", &e)],
+                    )),
+                };
                 self.update_voice_processor_settings();
-                Task::none()
+                save_task
             }
             Message::AudioEchoCancellation(enabled) => {
                 self.config.settings.audio.echo_cancellation = enabled;
-                let _ = self.config.save();
+                let save_task = match self.config.save() {
+                    Ok(()) => Task::none(),
+                    Err(e) => self.add_active_background_error_message(t_args(
+                        "err-failed-save-config",
+                        &[("error", &e)],
+                    )),
+                };
                 self.update_voice_processor_settings();
-                Task::none()
+                save_task
             }
             Message::AudioAgc(enabled) => {
                 self.config.settings.audio.agc = enabled;
-                let _ = self.config.save();
+                let save_task = match self.config.save() {
+                    Ok(()) => Task::none(),
+                    Err(e) => self.add_active_background_error_message(t_args(
+                        "err-failed-save-config",
+                        &[("error", &e)],
+                    )),
+                };
                 self.update_voice_processor_settings();
-                Task::none()
+                save_task
             }
             Message::AudioTransientSuppression(enabled) => {
                 self.config.settings.audio.transient_suppression = enabled;
-                let _ = self.config.save();
+                let save_task = match self.config.save() {
+                    Ok(()) => Task::none(),
+                    Err(e) => self.add_active_background_error_message(t_args(
+                        "err-failed-save-config",
+                        &[("error", &e)],
+                    )),
+                };
                 self.update_voice_processor_settings();
-                Task::none()
+                save_task
             }
             Message::AudioMicBoost(level) => {
                 self.config.settings.audio.mic_boost = level;
-                let _ = self.config.save();
+                let save_task = match self.config.save() {
+                    Ok(()) => Task::none(),
+                    Err(e) => self.add_active_background_error_message(t_args(
+                        "err-failed-save-config",
+                        &[("error", &e)],
+                    )),
+                };
                 self.update_voice_processor_settings();
-                Task::none()
+                save_task
             }
 
             // Toasts

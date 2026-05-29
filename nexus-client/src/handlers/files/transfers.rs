@@ -152,7 +152,10 @@ impl NexusApp {
         self.transfer_manager.add(transfer);
 
         // Save transfers to disk
-        let _ = self.transfer_manager.save();
+        let save_task = match self.transfer_manager.save() {
+            Ok(()) => Task::none(),
+            Err(e) => self.add_background_error_message(conn_id, e),
+        };
 
         // Show toast feedback
         let toast_text = if self.config.settings.queue_transfers {
@@ -163,7 +166,7 @@ impl NexusApp {
         self.toasts
             .push(toast(&toast_text).level(ToastLevel::Success));
 
-        Task::none()
+        save_task
     }
 
     // ==================== Uploads ====================
@@ -267,7 +270,10 @@ impl NexusApp {
         }
 
         // Save transfers to disk
-        let _ = self.transfer_manager.save();
+        let save_task = match self.transfer_manager.save() {
+            Ok(()) => Task::none(),
+            Err(e) => self.add_background_error_message(conn_id, e),
+        };
 
         // Show toast feedback (single file: show name, multiple: show count)
         let toast_text = if upload_count == 1 {
@@ -287,7 +293,7 @@ impl NexusApp {
         self.toasts
             .push(toast(&toast_text).level(ToastLevel::Success));
 
-        Task::none()
+        save_task
     }
 
     // ==================== Drag and Drop ====================
@@ -389,7 +395,10 @@ impl NexusApp {
         self.transfer_manager.add(transfer);
 
         // Save transfers to disk
-        let _ = self.transfer_manager.save();
+        let save_task = match self.transfer_manager.save() {
+            Ok(()) => Task::none(),
+            Err(e) => self.add_background_error_message(conn_id, e),
+        };
 
         // Show toast feedback
         let filename = path_filename.as_deref().unwrap_or("file");
@@ -401,7 +410,7 @@ impl NexusApp {
         self.toasts
             .push(toast(&toast_text).level(ToastLevel::Success));
 
-        Task::none()
+        save_task
     }
 
     /// Handle drag leaving window

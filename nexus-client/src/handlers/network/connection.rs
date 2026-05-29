@@ -263,13 +263,17 @@ impl NexusApp {
         // TOFU save: existing bookmark with no stored fingerprint commits now.
         // (Brand-new bookmarks created via "save as bookmark" are handled below
         // in `save_new_bookmark`, which already records the fingerprint.)
+        let mut background_tasks = Vec::new();
+        let mut tofu_save_error = None;
         if let Some(id) = ctx.bookmark_id
             && let Some(bookmark) = self.config.get_bookmark_mut(id)
             && bookmark.certificate_fingerprint.is_none()
         {
             bookmark.certificate_fingerprint =
                 normalize_certificate_fingerprint(Some(ctx.certificate_fingerprint.clone()));
-            let _ = self.config.save();
+            if let Err(e) = self.config.save() {
+                tofu_save_error = Some(t_args("err-failed-save-config", &[("error", &e)]));
+            }
         }
 
         // Create and register connection
@@ -396,12 +400,17 @@ impl NexusApp {
             );
         }
 
+        if let Some(error) = tofu_save_error {
+            background_tasks.push(self.add_background_error_message(ctx.connection_id, error));
+        }
+
         // Save as bookmark if checkbox was enabled (form connections only, not already a bookmark)
         if matches!(source, ConnectionSource::Manual)
             && self.connection_form.add_bookmark
             && ctx.bookmark_id.is_none()
         {
-            self.save_new_bookmark(ctx.connection_id, ctx.certificate_fingerprint);
+            background_tasks
+                .push(self.save_new_bookmark(ctx.connection_id, ctx.certificate_fingerprint));
         }
 
         // Connection succeeded — dismiss both layout-level overlays
@@ -418,7 +427,8 @@ impl NexusApp {
         #[cfg(not(target_os = "macos"))]
         self.update_tray_state();
 
-        self.focus_field(InputId::ChatInput)
+        background_tasks.push(self.focus_field(InputId::ChatInput));
+        Task::batch(background_tasks)
     }
 
     /// Report a connection error to the appropriate place based on source
@@ -691,7 +701,11 @@ impl NexusApp {
     }
 
     /// Save a new bookmark from the current connection form
-    fn save_new_bookmark(&mut self, connection_id: usize, certificate_fingerprint: String) {
+    fn save_new_bookmark(
+        &mut self,
+        connection_id: usize,
+        certificate_fingerprint: String,
+    ) -> Task<Message> {
         let new_bookmark = ServerBookmark {
             id: Uuid::new_v4(),
             name: self.connection_form.server_name.clone(),
@@ -708,11 +722,19 @@ impl NexusApp {
         let bookmark_id = new_bookmark.id;
         self.config.add_bookmark(new_bookmark);
 
-        let _ = self.config.save();
+        let task = match self.config.save() {
+            Ok(()) => Task::none(),
+            Err(e) => self.add_background_error_message(
+                connection_id,
+                t_args("err-failed-save-config", &[("error", &e)]),
+            ),
+        };
 
         // Update the connection's bookmark_id to point to the new bookmark
         if let Some(server_conn) = self.connections.get_mut(&connection_id) {
             server_conn.bookmark_id = Some(bookmark_id);
         }
+
+        task
     }
 }

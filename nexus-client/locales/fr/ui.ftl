@@ -605,6 +605,10 @@ err-failed-send-update = Échec de l'envoi de la mise à jour : { $error }
 
 err-failed-save-config = Échec de l'enregistrement de la configuration : { $error }
 err-failed-save-settings = Échec de l'enregistrement des paramètres : { $error }
+err-chat-history-save = Impossible d'enregistrer l'historique de discussion pour { $nickname } : { $error }
+err-chat-history-clear = Impossible d'effacer l'historique de discussion pour { $nickname } : { $error }
+err-chat-history-rename = Impossible de mettre à jour l'historique de discussion après le renommage de { $old } en { $new } : { $error }
+err-news-refresh-failed = Impossible d'actualiser l'article d'actualité { $id } : { $error }
 err-invalid-port-bookmark = Port invalide dans le signet : { $name }
 err-failed-send-broadcast = Échec de l'envoi de la diffusion : { $error }
 err-failed-send-message = Échec de l'envoi du message : { $error }
@@ -1391,4 +1395,3 @@ label-inherit-bandwidth-weight = Hériter du poids de bande passante
 label-max-outbound-rate = Sortie max. (Mbit/s) :
 label-unlimited = Illimité
 label-scheduler-chunk-size = Taille de bloc du planificateur (octets) :
-

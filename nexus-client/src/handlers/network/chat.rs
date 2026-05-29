@@ -43,6 +43,30 @@ impl NexusApp {
         }
     }
 
+    /// Add a background-operation error to the active chat tab.
+    ///
+    /// The GUI client does not have an operator-visible log, so recoverable
+    /// background failures are surfaced where the user is currently looking.
+    pub fn add_background_error_message(
+        &mut self,
+        connection_id: usize,
+        message: impl Into<String>,
+    ) -> Task<Message> {
+        self.add_active_tab_message(connection_id, ChatMessage::error(message))
+    }
+
+    /// Add a background-operation error for the active connection, if any.
+    pub fn add_active_background_error_message(
+        &mut self,
+        message: impl Into<String>,
+    ) -> Task<Message> {
+        let Some(connection_id) = self.active_connection else {
+            return Task::none();
+        };
+
+        self.add_background_error_message(connection_id, message)
+    }
+
     /// Add a message to the console and auto-scroll if this is the active connection
     ///
     /// Used for server-initiated events like broadcasts, permission changes, and
