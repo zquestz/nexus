@@ -341,9 +341,12 @@ impl ServerConnection {
     /// renamed), the DM conversation tab (visible tab, messages, scroll, unread,
     /// active), and the active voice session. Shared by both `handle_user_updated`
     /// (UserList-gated) and `handle_chat_user_renamed` (channel-scoped) so a rename
-    /// lands regardless of which signal the viewer receives. Idempotent: once `old`
-    /// is gone, repeat calls (e.g. one ChatUserRenamed per shared channel) no-op.
-    pub fn apply_user_rename(&mut self, old_username: &str, new_username: &str) {
+    /// lands regardless of which signal the viewer receives. Returns true when this
+    /// connection's own session nickname was re-keyed. Idempotent: once `old` is gone,
+    /// repeat calls (e.g. one ChatUserRenamed per shared channel) no-op.
+    pub fn apply_user_rename(&mut self, old_username: &str, new_username: &str) -> bool {
+        let renamed_self_nickname = fold_name(&self.nickname) == fold_name(old_username);
+
         // Our own identity. Each guard is independent: a shared login — whose
         // session nickname differs from the renamed account username — updates only
         // its stored auth username, never its session nickname.
@@ -379,7 +382,8 @@ impl ServerConnection {
             }
         }
 
-        // Active voice session: DM peer / participant / speaking / muted state.
+        // Active voice session: DM peer / participant / muted state; speaking is
+        // cleared and rebuilt from fresh voice packets/events.
         if let Some(voice_session) = &mut self.voice_session {
             voice_session.rename_user(old_username, new_username);
         }
@@ -392,6 +396,8 @@ impl ServerConnection {
         {
             dialog.nickname = new_username.to_string();
         }
+
+        renamed_self_nickname
     }
 
     /// Find-or-create the DM tab for `nickname`, identifying conversations by folded
@@ -943,6 +949,17 @@ mod tests {
         assert!(conn.user_messages.contains_key("charlie"));
         assert!(!conn.user_messages.contains_key("bob"));
         assert_eq!(conn.active_chat_tab, dm("charlie"));
+    }
+
+    #[test]
+    fn apply_user_rename_reports_self_nickname_rename_once() {
+        let mut conn = test_connection();
+
+        assert!(conn.apply_user_rename("me", "myself"));
+        assert!(!conn.apply_user_rename("me", "myself"));
+        assert_eq!(conn.nickname, "myself");
+        assert_eq!(conn.connection_info.username, "myself");
+        assert_eq!(conn.connection_info.nickname, "myself");
     }
 
     #[test]

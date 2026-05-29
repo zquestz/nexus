@@ -59,31 +59,42 @@ impl VoiceState {
         // from the stored entry — e.g. an order-edge "alice" against "Alice" — still
         // clears it instead of leaving a ghost participant.
         self.participants.retain(|n| fold_name(n) != nickname_lower);
-        // Clear speaking state for the removed user (but keep muted state
-        // in case they rejoin - user's mute preference should persist)
+        // Clear transient per-nickname state. A later shared-account session may
+        // reuse the same nickname, so mute state cannot safely outlive a leave.
         self.speaking_users.remove(&nickname_lower);
+        self.muted_users.remove(&nickname_lower);
     }
 
     /// Re-key this session's per-user state when a participant — or the DM peer —
     /// changes nickname. `target` is rewritten only when it equals `old` (so a
-    /// `#channel` target is left alone); `speaking_users`/`muted_users` hold folded
-    /// names, so a muted user stays muted across a rename.
+    /// `#channel` target is left alone); `muted_users` holds folded names, so a
+    /// muted user stays muted across a rename. Speaking state is intentionally
+    /// cleared because voice data and rename notices have no cross-transport
+    /// ordering guarantee; fresh voice packets/events will rebuild it.
     pub fn rename_user(&mut self, old: &str, new: &str) {
         let old_lower = fold_name(old);
+        let new_lower = fold_name(new);
         if fold_name(&self.target) == old_lower {
             self.target = new.to_string();
         }
-        for participant in &mut self.participants {
-            if fold_name(participant) == old_lower {
-                *participant = new.to_string();
+        let had_old_participant = self.participants.iter().any(|n| fold_name(n) == old_lower);
+        if had_old_participant {
+            self.participants.retain(|n| fold_name(n) != old_lower);
+            if !self.participants.iter().any(|n| fold_name(n) == new_lower) {
+                self.participants.push(new.to_string());
             }
+            self.participants.sort_by_key(|a| fold_name(a));
         }
-        self.participants.sort_by_key(|a| fold_name(a));
-        if self.speaking_users.remove(&old_lower) {
-            self.speaking_users.insert(fold_name(new));
+        self.speaking_users.remove(&old_lower);
+        if had_old_participant {
+            self.speaking_users.remove(&new_lower);
         }
-        if self.muted_users.remove(&old_lower) {
-            self.muted_users.insert(fold_name(new));
+        let had_old_mute = self.muted_users.remove(&old_lower);
+        if had_old_mute
+            && had_old_participant
+            && self.participants.iter().any(|n| fold_name(n) == new_lower)
+        {
+            self.muted_users.insert(new_lower);
         }
     }
 
@@ -114,7 +125,12 @@ impl VoiceState {
 
     /// Mute a user (client-side, stops playing their audio)
     pub fn mute_user(&mut self, nickname: &str) {
-        self.muted_users.insert(fold_name(nickname));
+        let key = fold_name(nickname);
+        if self.participants.iter().any(|n| fold_name(n) == key) {
+            self.muted_users.insert(key);
+        } else {
+            self.muted_users.remove(&key);
+        }
     }
 
     /// Unmute a user
@@ -152,5 +168,80 @@ mod tests {
         // A removal that matches no one (already gone) is a no-op.
         state.remove_participant("ALICE");
         assert_eq!(state.participants, vec!["Bob".to_string()]);
+    }
+
+    #[test]
+    fn remove_participant_clears_mute_state() {
+        let mut state = VoiceState::new("#general".to_string(), vec!["Alice".to_string()]);
+        state.mute_user("Alice");
+
+        state.remove_participant("alice");
+
+        assert!(!state.is_muted("Alice"));
+    }
+
+    #[test]
+    fn mute_user_ignores_unknown_participant() {
+        let mut state = VoiceState::new("#general".to_string(), vec!["Alice".to_string()]);
+        state.muted_users.insert(fold_name("Bob"));
+
+        state.mute_user("Bob");
+
+        assert!(!state.is_muted("Bob"));
+    }
+
+    #[test]
+    fn rename_user_rekeys_participant_and_mute_but_clears_speaking() {
+        let mut state = VoiceState::new(
+            "Alice".to_string(),
+            vec!["Alice".to_string(), "Bob".to_string()],
+        );
+        state.set_speaking("Alice");
+        state.set_speaking("Alicia");
+        state.mute_user("Alice");
+
+        state.rename_user("Alice", "Alicia");
+
+        assert_eq!(state.target, "Alicia");
+        assert_eq!(
+            state.participants,
+            vec!["Alicia".to_string(), "Bob".to_string()]
+        );
+        assert!(!state.is_speaking("Alice"));
+        assert!(!state.is_speaking("Alicia"));
+        assert!(state.is_muted("Alicia"));
+    }
+
+    #[test]
+    fn rename_user_deduplicates_participant_collision() {
+        let mut state = VoiceState::new(
+            "#general".to_string(),
+            vec!["Alice".to_string(), "Alicia".to_string()],
+        );
+
+        state.rename_user("Alice", "Alicia");
+
+        assert_eq!(state.participants, vec!["Alicia".to_string()]);
+    }
+
+    #[test]
+    fn duplicate_rename_does_not_clear_rebuilt_new_speaking() {
+        let mut state = VoiceState::new("#general".to_string(), vec!["Alicia".to_string()]);
+        state.set_speaking("Alicia");
+
+        state.rename_user("Alice", "Alicia");
+
+        assert!(state.is_speaking("Alicia"));
+    }
+
+    #[test]
+    fn duplicate_rename_does_not_inherit_stale_old_mute() {
+        let mut state = VoiceState::new("#general".to_string(), vec!["Alicia".to_string()]);
+        state.muted_users.insert(fold_name("Alice"));
+
+        state.rename_user("Alice", "Alicia");
+
+        assert!(!state.is_muted("Alice"));
+        assert!(!state.is_muted("Alicia"));
     }
 }

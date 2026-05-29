@@ -489,12 +489,13 @@ impl NexusApp {
         // re-key merges any fold-equal conversation onto the new name. Regular accounts
         // (nickname == username) move the tab; a shared account's per-session nickname is
         // unaffected by a username change, so it's a no-op — both correct.
+        let mut renamed_self_nickname = false;
         if username_changed {
             // DM tab, our own identity, and active voice session (shared with
             // ChatUserRenamed; idempotent). Channel member lists and voiced sets are
             // re-keyed by ChatUserRenamed instead, so they reach channel members who
             // lack `user_list` and never receive this UserUpdated.
-            conn.apply_user_rename(&previous_username, &new_username);
+            renamed_self_nickname = conn.apply_user_rename(&previous_username, &new_username);
 
             // expanded_user is a user-list detail, so it stays here (UserUpdated is
             // itself UserList-gated). Regular accounts have nickname == username so
@@ -519,6 +520,7 @@ impl NexusApp {
                 &new_username,
                 user.is_shared,
                 user.is_admin,
+                renamed_self_nickname,
             );
         }
 
@@ -537,27 +539,36 @@ impl NexusApp {
         new: &str,
         is_shared: bool,
         is_admin: bool,
+        renamed_self_nickname: bool,
     ) {
         let connection_info = self
             .connections
             .get(&connection_id)
             .map(|conn| conn.connection_info.clone());
 
-        // The audio thread keeps its own mute set, separate from the UI `muted_users`
-        // that `apply_user_rename` already re-keyed, and only mutable via voice
-        // commands. Re-sync it when this connection owns the active voice session and
-        // `old` was muted (post-rekey, `new` is the muted entry). speaking_users and
-        // per-user buffers self-heal from incoming packets, so they need no re-key.
+        // The audio thread keeps its own participant, speaking, buffer, and mute
+        // state. When this connection owns the active voice session, re-key that
+        // state too: already-accepted audio remains valid, stale old-name packets
+        // are rejected after the command lands, and speaking is rebuilt by fresh
+        // packets/events.
         if self.active_voice_connection == Some(connection_id)
             && let Some(handle) = &self.voice_session_handle
-            && self
+            && let Some(muted) = self
                 .connections
                 .get(&connection_id)
                 .and_then(|c| c.voice_session.as_ref())
-                .is_some_and(|vs| vs.muted_users.contains(&fold_name(new)))
+                .map(|vs| vs.muted_users.contains(&fold_name(new)))
         {
-            handle.unmute_user(old);
-            handle.mute_user(new);
+            handle.user_renamed(old, new, muted);
+        }
+
+        if renamed_self_nickname
+            && self.is_local_speaking
+            && self.active_voice_connection == Some(connection_id)
+            && let Some(conn) = self.connections.get_mut(&connection_id)
+            && let Some(voice_session) = conn.voice_session.as_mut()
+        {
+            voice_session.set_speaking(new);
         }
 
         // Chat history: re-key the renamed party's DM conversation. A self-rename is

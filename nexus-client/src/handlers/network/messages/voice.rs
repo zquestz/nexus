@@ -89,7 +89,7 @@ impl NexusApp {
 
         // Create the voice session
         let participants = participants.unwrap_or_default();
-        conn.voice_session = Some(VoiceState::new(target.clone(), participants));
+        conn.voice_session = Some(VoiceState::new(target.clone(), participants.clone()));
 
         // Track that this connection has the active voice session
         self.active_voice_connection = Some(connection_id);
@@ -122,6 +122,7 @@ impl NexusApp {
         let (handle, event_rx) = VoiceSessionHandle::start(VoiceSessionConfig {
             server_addr: socket_addr,
             token,
+            participants,
             input_device: self.config.settings.audio.input_device.clone(),
             output_device: self.config.settings.audio.output_device.clone(),
             quality: self.config.settings.audio.voice_quality,
@@ -241,6 +242,8 @@ impl NexusApp {
         nickname: String,
         target: String,
     ) -> Task<Message> {
+        let mut joined_active_voice_session = false;
+
         // Scope conn borrow so it's dropped before emit_event
         {
             let Some(conn) = self.connections.get_mut(&connection_id) else {
@@ -261,7 +264,15 @@ impl NexusApp {
                 && fold_name(&session.target) == fold_name(&target)
             {
                 session.add_participant(nickname.clone());
+                joined_active_voice_session = true;
             }
+        }
+
+        if joined_active_voice_session
+            && self.active_voice_connection == Some(connection_id)
+            && let Some(ref handle) = self.voice_session_handle
+        {
+            handle.user_joined(&nickname);
         }
 
         // Emit VoiceJoined event for notifications
@@ -331,6 +342,8 @@ impl NexusApp {
             }
         }
 
+        let mut left_active_voice_session = false;
+
         // Scope conn borrow so it's dropped before emit_event
         {
             let Some(conn) = self.connections.get_mut(&connection_id) else {
@@ -349,11 +362,15 @@ impl NexusApp {
                 && fold_name(&session.target) == fold_name(&target)
             {
                 session.remove_participant(&nickname);
+                left_active_voice_session = true;
             }
         }
 
-        // Clean up decoder and jitter buffer for the user who left
-        if let Some(ref handle) = self.voice_session_handle {
+        // Clean up audio state only when the leave applies to our active voice session.
+        if left_active_voice_session
+            && self.active_voice_connection == Some(connection_id)
+            && let Some(ref handle) = self.voice_session_handle
+        {
             handle.user_left(&nickname);
         }
 
@@ -381,5 +398,97 @@ impl NexusApp {
         }
 
         Task::none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use nexus_common::validators::PasswordStrength;
+    use tokio::sync::{Mutex, mpsc};
+
+    use super::*;
+    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams, VoiceState};
+    use crate::voice::manager::{VoiceCommand, VoiceSessionHandle};
+
+    fn test_connection(connection_id: usize, nickname: &str, target: &str) -> ServerConnection {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut conn = ServerConnection::new(ServerConnectionParams {
+            bookmark_id: None,
+            user_id: None,
+            nickname: nickname.to_string(),
+            connection_info: ConnectionInfo {
+                server_name: String::new(),
+                address: String::new(),
+                port: 0,
+                transfer_port: 0,
+                certificate_fingerprint: String::new(),
+                username: nickname.to_string(),
+                password: String::new(),
+                nickname: nickname.to_string(),
+            },
+            display_name: String::new(),
+            connection_id,
+            is_admin: false,
+            permissions: Vec::new(),
+            locale: String::new(),
+            server_name: None,
+            server_description: None,
+            public_address: None,
+            server_version: None,
+            server_image: String::new(),
+            cached_server_image: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            max_connections_per_ip: None,
+            max_outbound_rate: None,
+            max_transfers_per_ip: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Weak,
+            log_level: None,
+            scheduler_chunk_size: None,
+            tx,
+            shutdown_handle: Arc::new(Mutex::new(None)),
+        });
+        conn.voice_session = Some(VoiceState::new(
+            target.to_string(),
+            vec![nickname.to_string()],
+        ));
+        conn
+    }
+
+    #[test]
+    fn voice_joined_left_only_notifies_active_connection_handle() {
+        let mut app = NexusApp::default();
+        app.config.settings.show_join_leave_events = false;
+        app.connections
+            .insert(1, test_connection(1, "me", "#general"));
+        app.connections
+            .insert(2, test_connection(2, "also-me", "#general"));
+        app.active_voice_connection = Some(1);
+
+        let (handle, mut commands) = VoiceSessionHandle::test_handle();
+        app.voice_session_handle = Some(handle);
+
+        let _ = app.handle_voice_user_joined(1, "Alice".to_string(), "#general".to_string());
+        match commands.try_recv() {
+            Ok(VoiceCommand::UserJoined(nickname)) => assert_eq!(nickname, "Alice"),
+            other => panic!("expected active UserJoined command, got {other:?}"),
+        }
+
+        let _ = app.handle_voice_user_joined(2, "Bob".to_string(), "#general".to_string());
+        assert!(commands.try_recv().is_err());
+
+        let _ = app.handle_voice_user_left(1, "Alice".to_string(), "#general".to_string());
+        match commands.try_recv() {
+            Ok(VoiceCommand::UserLeft(nickname)) => assert_eq!(nickname, "Alice"),
+            other => panic!("expected active UserLeft command, got {other:?}"),
+        }
+
+        let _ = app.handle_voice_user_left(2, "Bob".to_string(), "#general".to_string());
+        assert!(commands.try_recv().is_err());
     }
 }

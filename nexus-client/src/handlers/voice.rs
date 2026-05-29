@@ -212,8 +212,15 @@ impl NexusApp {
 
             VoiceEvent::SpeakingStarted(nickname) => {
                 // A user started speaking - update speaking set
+                let folded_nickname = fold_name(&nickname);
                 if let Some(conn) = self.connections.get_mut(&connection_id)
                     && let Some(ref mut session) = conn.voice_session
+                    // The audio thread also gates unknown speakers; this UI-side
+                    // gate keeps queued events from reintroducing stale rename state.
+                    && session
+                        .participants
+                        .iter()
+                        .any(|n| fold_name(n) == folded_nickname)
                 {
                     session.set_speaking(&nickname);
                 }

@@ -260,6 +260,21 @@ impl DecoderPool {
     pub fn remove(&mut self, sender: &str) {
         self.decoders.remove(&fold_name(sender));
     }
+
+    /// Re-key a sender's decoder after a nickname rename.
+    ///
+    /// If the new key already exists, keep that active decoder and drop the old one;
+    /// decoder state from two streams cannot be safely merged.
+    pub fn rename_user(&mut self, old: &str, new: &str) {
+        let old_key = fold_name(old);
+        let new_key = fold_name(new);
+        if old_key == new_key {
+            return;
+        }
+        if let Some(decoder) = self.decoders.remove(&old_key) {
+            self.decoders.entry(new_key).or_insert(decoder);
+        }
+    }
 }
 
 impl Default for DecoderPool {
@@ -393,6 +408,30 @@ mod tests {
         // Clear all
         pool.clear();
         assert!(pool.is_empty());
+    }
+
+    #[test]
+    fn test_decoder_pool_rename_user_rekeys_decoder() {
+        let mut pool = DecoderPool::new();
+        let _ = pool.decode("Alice", &[]);
+
+        pool.rename_user("Alice", "Alicia");
+
+        assert_eq!(pool.len(), 1);
+        assert!(pool.decoders.contains_key(&fold_name("Alicia")));
+        assert!(!pool.decoders.contains_key(&fold_name("Alice")));
+    }
+
+    #[test]
+    fn test_decoder_pool_rename_user_keeps_existing_new_on_collision() {
+        let mut pool = DecoderPool::new();
+        let _ = pool.decode("Alice", &[]);
+        let _ = pool.decode("Alicia", &[]);
+
+        pool.rename_user("Alice", "Alicia");
+
+        assert_eq!(pool.len(), 1);
+        assert!(pool.decoders.contains_key(&fold_name("Alicia")));
     }
 
     #[test]

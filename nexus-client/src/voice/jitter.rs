@@ -291,6 +291,21 @@ impl JitterBufferPool {
         self.buffers.remove(&fold_name(sender));
     }
 
+    /// Re-key a sender's jitter buffer after a nickname rename.
+    ///
+    /// If the new key already exists, keep that active buffer and drop the old one;
+    /// jitter timelines from two streams cannot be safely merged.
+    pub fn rename_user(&mut self, old: &str, new: &str) {
+        let old_key = fold_name(old);
+        let new_key = fold_name(new);
+        if old_key == new_key {
+            return;
+        }
+        if let Some(buffer) = self.buffers.remove(&old_key) {
+            self.buffers.entry(new_key).or_insert(buffer);
+        }
+    }
+
     /// Iterate over all buffers mutably
     ///
     /// Returns an iterator of (sender_key, &mut JitterBuffer) pairs.
@@ -469,6 +484,30 @@ mod tests {
         // Remove one
         pool.remove("Alice");
         assert_eq!(pool.buffers.len(), 1);
+    }
+
+    #[test]
+    fn test_jitter_buffer_pool_rename_user_rekeys_buffer() {
+        let mut pool = JitterBufferPool::new();
+        pool.push("Alice", 0, 0, make_samples());
+
+        pool.rename_user("Alice", "Alicia");
+
+        assert_eq!(pool.buffers.len(), 1);
+        assert!(pool.buffers.contains_key(&fold_name("Alicia")));
+        assert!(!pool.buffers.contains_key(&fold_name("Alice")));
+    }
+
+    #[test]
+    fn test_jitter_buffer_pool_rename_user_keeps_existing_new_on_collision() {
+        let mut pool = JitterBufferPool::new();
+        pool.push("Alice", 0, 0, make_samples());
+        pool.push("Alicia", 0, 0, make_samples());
+
+        pool.rename_user("Alice", "Alicia");
+
+        assert_eq!(pool.buffers.len(), 1);
+        assert!(pool.buffers.contains_key(&fold_name("Alicia")));
     }
 
     #[test]

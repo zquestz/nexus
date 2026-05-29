@@ -837,6 +837,38 @@ impl MixerState {
 
         has_audio
     }
+
+    fn remove_user_state(&mut self, nickname: &str) {
+        let key = fold_name(nickname);
+        self.user_buffers.remove(&key);
+        self.muted.remove(&key);
+    }
+
+    fn mute_user_and_clear(&mut self, nickname: &str) {
+        let key = fold_name(nickname);
+        self.muted.insert(key.clone());
+        self.user_buffers.remove(&key);
+    }
+
+    fn rename_user(&mut self, old: &str, new: &str, muted: bool) {
+        let old_key = fold_name(old);
+        let new_key = fold_name(new);
+        let should_mute_new =
+            muted || self.muted.contains(&old_key) || self.muted.contains(&new_key);
+
+        if old_key != new_key
+            && let Some(buffer) = self.user_buffers.remove(&old_key)
+        {
+            self.user_buffers.entry(new_key.clone()).or_insert(buffer);
+        }
+
+        self.muted.remove(&old_key);
+        if should_mute_new {
+            self.muted.insert(new_key);
+        } else {
+            self.muted.remove(&new_key);
+        }
+    }
 }
 
 /// Mixes multiple audio streams into one output
@@ -986,6 +1018,27 @@ impl AudioMixer {
     pub fn unmute_user(&mut self, nickname: &str) {
         if let Ok(mut state) = self.state.lock() {
             state.muted.remove(&fold_name(nickname));
+        }
+    }
+
+    /// Clear queued audio and mute state for a user by nickname.
+    pub fn remove_user_state(&mut self, nickname: &str) {
+        if let Ok(mut state) = self.state.lock() {
+            state.remove_user_state(nickname);
+        }
+    }
+
+    /// Mute a user and clear queued audio under one mixer lock.
+    pub fn mute_user_and_clear(&mut self, nickname: &str) {
+        if let Ok(mut state) = self.state.lock() {
+            state.mute_user_and_clear(nickname);
+        }
+    }
+
+    /// Re-key queued audio and mute state after a nickname rename.
+    pub fn rename_user(&mut self, old: &str, new: &str, muted: bool) {
+        if let Ok(mut state) = self.state.lock() {
+            state.rename_user(old, new, muted);
         }
     }
 
@@ -1338,6 +1391,76 @@ mod tests {
         let output_neg = soft_clip(-2.0);
         assert!(output_neg > -1.5);
         assert!(output_neg < 0.0);
+    }
+
+    #[test]
+    fn test_mixer_state_rename_user_rekeys_buffer_and_mute() {
+        let mut state = MixerState::new(0.0);
+        let mut buffer = UserAudioBuffer::new();
+        buffer.samples.extend_from_slice(&[0.25, 0.5]);
+        state.user_buffers.insert(fold_name("Alice"), buffer);
+        state.muted.insert(fold_name("Alice"));
+
+        state.rename_user("Alice", "Alicia", true);
+
+        assert!(!state.user_buffers.contains_key(&fold_name("Alice")));
+        assert!(state.user_buffers.contains_key(&fold_name("Alicia")));
+        assert!(!state.muted.contains(&fold_name("Alice")));
+        assert!(state.muted.contains(&fold_name("Alicia")));
+    }
+
+    #[test]
+    fn test_mixer_state_rename_user_keeps_existing_new_buffer_on_collision() {
+        let mut state = MixerState::new(0.0);
+        let mut old_buffer = UserAudioBuffer::new();
+        old_buffer.samples.push(0.25);
+        let mut new_buffer = UserAudioBuffer::new();
+        new_buffer.samples.push(0.75);
+        state.user_buffers.insert(fold_name("Alice"), old_buffer);
+        state.user_buffers.insert(fold_name("Alicia"), new_buffer);
+
+        state.rename_user("Alice", "Alicia", false);
+
+        assert_eq!(state.user_buffers.len(), 1);
+        assert_eq!(state.user_buffers[&fold_name("Alicia")].samples, vec![0.75]);
+    }
+
+    #[test]
+    fn test_mixer_state_rename_user_preserves_existing_new_mute() {
+        let mut state = MixerState::new(0.0);
+        state.muted.insert(fold_name("Alicia"));
+
+        state.rename_user("Alice", "Alicia", false);
+
+        assert!(state.muted.contains(&fold_name("Alicia")));
+        assert!(!state.muted.contains(&fold_name("Alice")));
+    }
+
+    #[test]
+    fn test_mixer_state_remove_user_state_clears_audio_and_mute() {
+        let mut state = MixerState::new(0.0);
+        state
+            .user_buffers
+            .insert(fold_name("Alice"), UserAudioBuffer::new());
+        state.muted.insert(fold_name("Alice"));
+
+        state.remove_user_state("Alice");
+
+        assert!(!state.user_buffers.contains_key(&fold_name("Alice")));
+        assert!(!state.muted.contains(&fold_name("Alice")));
+    }
+
+    #[test]
+    fn test_mixer_state_mute_user_and_clear_mutes_and_clears_audio() {
+        let mut state = MixerState::new(0.0);
+        state
+            .user_buffers
+            .insert(fold_name("Alice"), UserAudioBuffer::new());
+
+        state.mute_user_and_clear("Alice");
+
+        assert!(!state.user_buffers.contains_key(&fold_name("Alice")));
+        assert!(state.muted.contains(&fold_name("Alice")));
     }
 
     // =========================================================================

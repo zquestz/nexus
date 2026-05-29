@@ -36,41 +36,6 @@ Features intentionally excluded with rationale.
 | DCC                  | Peer-to-peer adds complexity; server-mediated transfers work well                          |
 | Remote desktop       | Most servers are headless; out of scope for BBS software                                   |
 
-## Deferred Correctness Work
-
-### Voice Stable Sender Identity
-
-Relayed voice packets carry the sender nickname. During a username rename, TCP
-`ChatUserRenamed` and UDP voice packets have no cross-transport ordering guarantee, so
-clients can receive `SpeakingStarted` / `SpeakingStopped` around the rename in an order
-that leaves a stale speaking key or briefly misses mute/decoder state.
-
-Fix direction:
-
-- Add a stable sender id to voice wire messages. Prefer `session_id` over `user_id`
-  because shared-account sessions have distinct nicknames under one account id.
-- Include the same stable id in voice participant messages (`VoiceJoinResponse`
-  participants / `VoiceUserJoined`) so the client can maintain id-to-current-nickname
-  mappings locally.
-- Key client voice state that must survive renames (`participants`, `speaking_users`,
-  mute/decoder/jitter state) by the stable id and render the current nickname from the
-  mapping.
-- A server-side `read_user_state()` wrapper around UDP relay is only a partial
-  mitigation and should not be treated as the fix; it cannot solve UDP/TCP ordering.
-- Consider a small server hardening while doing the protocol work: make relay self-skip
-  compare stable sender identity (`token` or `session_id`) instead of nickname.
-
-**Code anchors:** `voice/udp.rs::handle_packet` captures `sender_nickname` from the
-registry session and `relay_packet` stamps it into `RelayedVoicePacket` (defined in
-`nexus-common`) — the wire type to extend. Client re-key sites are
-`handlers/network/messages/chat_channel.rs::handle_chat_user_renamed` and
-`types/voice.rs::VoiceState::rename_user`.
-
-**Severity:** transient and minor — the participant roster is still re-keyed by
-`ChatUserRenamed`, so there's no permanent visible ghost; a stuck `speaking_users` entry
-has no matching participant to render, and the mute/decoder miss is momentary at the
-rename instant. Low priority.
-
 ## Feature Specs
 
 ### File Previews

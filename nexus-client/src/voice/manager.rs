@@ -35,6 +35,8 @@ pub struct VoiceSessionConfig {
     pub server_addr: SocketAddr,
     /// Voice session token from VoiceJoinResponse
     pub token: Uuid,
+    /// Nicknames currently in the voice session when the DTLS client starts
+    pub participants: Vec<String>,
     /// Input device name (empty for default)
     pub input_device: String,
     /// Output device name (empty for default)
@@ -76,6 +78,114 @@ fn calculate_rms_level(samples: &[f32]) -> f32 {
 
     // Convert to 0-1 range with some headroom
     (rms * RMS_DISPLAY_SCALE).min(1.0) as f32
+}
+
+#[derive(Debug)]
+struct VoiceParticipantState {
+    known_participants: HashSet<String>,
+    speaking_users: HashSet<String>,
+    muted_users: HashSet<String>,
+}
+
+impl VoiceParticipantState {
+    fn new(participants: Vec<String>) -> Self {
+        Self {
+            known_participants: participants.into_iter().map(|n| fold_name(&n)).collect(),
+            speaking_users: HashSet::new(),
+            muted_users: HashSet::new(),
+        }
+    }
+
+    fn is_known(&self, nickname: &str) -> bool {
+        self.known_participants.contains(&fold_name(nickname))
+    }
+
+    fn is_known_key(&self, key: &str) -> bool {
+        self.known_participants.contains(key)
+    }
+
+    fn is_muted_key(&self, key: &str) -> bool {
+        self.muted_users.contains(key)
+    }
+
+    fn add_user(&mut self, nickname: &str) {
+        self.known_participants.insert(fold_name(nickname));
+    }
+
+    fn remove_user(&mut self, nickname: &str) {
+        let key = fold_name(nickname);
+        self.known_participants.remove(&key);
+        self.muted_users.remove(&key);
+    }
+
+    fn set_muted(&mut self, nickname: &str, muted: bool) -> bool {
+        let key = fold_name(nickname);
+        let is_known = self.known_participants.contains(&key);
+        if muted && is_known {
+            self.muted_users.insert(key);
+        } else {
+            self.muted_users.remove(&key);
+        }
+        is_known
+    }
+
+    // Speaking state is cleared by the command handler so it can emit UI events.
+    fn rename_user(&mut self, old: &str, new: &str, muted: bool) -> bool {
+        let old_key = fold_name(old);
+        let new_key = fold_name(new);
+        let old_was_known = if old_key == new_key {
+            self.known_participants.contains(&old_key)
+        } else {
+            self.known_participants.remove(&old_key)
+        };
+
+        if old_was_known {
+            self.known_participants.insert(new_key.clone());
+        }
+
+        // Only inherit the old mute when the old participant was actually known;
+        // duplicate rename signals must not resurrect stale old-name mutes.
+        let should_mute_new = muted
+            || self.muted_users.contains(&new_key)
+            || (old_was_known && self.muted_users.contains(&old_key));
+        let new_is_known = self.known_participants.contains(&new_key);
+        self.muted_users.remove(&old_key);
+        if should_mute_new && new_is_known {
+            self.muted_users.insert(new_key);
+        } else {
+            self.muted_users.remove(&new_key);
+        }
+
+        old_was_known
+    }
+
+    fn mark_speaking(&mut self, nickname: &str) -> bool {
+        self.speaking_users.insert(fold_name(nickname))
+    }
+
+    fn clear_speaking(&mut self, nickname: &str) -> bool {
+        self.speaking_users.remove(&fold_name(nickname))
+    }
+}
+
+fn emit_speaking_started(
+    state: &mut VoiceParticipantState,
+    nickname: &str,
+    event_tx: &mpsc::UnboundedSender<VoiceEvent>,
+) {
+    if state.mark_speaking(nickname) {
+        let _ = event_tx.send(VoiceEvent::SpeakingStarted(nickname.to_string()));
+    }
+}
+
+fn emit_speaking_stopped(
+    state: &mut VoiceParticipantState,
+    nickname: &str,
+    event_tx: &mpsc::UnboundedSender<VoiceEvent>,
+) {
+    if state.clear_speaking(nickname) {
+        let _ = event_tx.send(VoiceEvent::SpeakingStopped(nickname.to_string()));
+    }
 }
 
 // =============================================================================
@@ -122,8 +232,16 @@ pub enum VoiceCommand {
     SetQuality(VoiceQuality),
     /// Update audio processor settings
     SetProcessorSettings(AudioProcessorSettings),
+    /// Track a user who joined the active voice session
+    UserJoined(String),
     /// Clean up resources for a user who left voice
     UserLeft(String),
+    /// Re-key a user after a nickname rename
+    UserRenamed {
+        old: String,
+        new: String,
+        muted: bool,
+    },
     /// Stop voice session
     Stop,
 }
@@ -257,7 +375,7 @@ async fn run_voice_session(
     // State tracking
     let mut transmitting = false;
     let mut deafened = false;
-    let mut muted_users: HashSet<String> = HashSet::new();
+    let mut participants = VoiceParticipantState::new(config.participants);
     let ptt_mode = config.ptt_mode;
 
     // Pre-allocated buffer for mixing render audio (AEC reference).
@@ -292,8 +410,9 @@ async fn run_voice_session(
                 render_mix.fill(0.0);
 
                 for (sender, buffer) in jitter_pool.iter_mut() {
-                    // Skip muted users
-                    if muted_users.contains(sender) {
+                    // Skip stale or muted users. Unknown buffers should only be a
+                    // transient defensive state after membership/rename races.
+                    if !participants.is_known_key(sender) || participants.is_muted_key(sender) {
                         continue;
                     }
 
@@ -360,16 +479,27 @@ async fn run_voice_session(
             event = dtls_event_rx.recv() => {
                 match event {
                     Some(VoiceDtlsEvent::VoiceReceived { sender, sequence, timestamp, payload }) => {
+                        if !participants.is_known(&sender) {
+                            decoder_pool.remove(&sender);
+                            jitter_pool.remove(&sender);
+                            continue;
+                        }
                         // Decode and buffer the audio
-                        if let Ok(samples) = decoder_pool.decode(&sender, &payload) {
-                            jitter_pool.push(&sender, sequence, timestamp, samples);
+                        if let Ok(samples) = decoder_pool.decode(&sender, &payload)
+                            && jitter_pool.push(&sender, sequence, timestamp, samples)
+                        {
+                            emit_speaking_started(&mut participants, &sender, &event_tx);
                         }
                     }
                     Some(VoiceDtlsEvent::SpeakingStarted { sender }) => {
-                        let _ = event_tx.send(VoiceEvent::SpeakingStarted(sender));
+                        if participants.is_known(&sender) {
+                            emit_speaking_started(&mut participants, &sender, &event_tx);
+                        }
                     }
                     Some(VoiceDtlsEvent::SpeakingStopped { sender }) => {
-                        let _ = event_tx.send(VoiceEvent::SpeakingStopped(sender));
+                        if participants.is_known(&sender) {
+                            emit_speaking_stopped(&mut participants, &sender, &event_tx);
+                        }
                     }
                     Some(VoiceDtlsEvent::Error(e)) => {
                         let _ = event_tx.send(VoiceEvent::Disconnected(Some(e)));
@@ -422,22 +552,54 @@ async fn run_voice_session(
                         }
                     }
                     Some(VoiceCommand::MuteUser(nickname)) => {
-                        let key = fold_name(&nickname);
-                        muted_users.insert(key.clone());
-                        mixer.mute_user(&nickname);
-                        // Clear their jitter buffer
+                        // Stop any already queued or codec-buffered audio immediately.
+                        if participants.set_muted(&nickname, true) {
+                            mixer.mute_user_and_clear(&nickname);
+                        } else {
+                            mixer.remove_user_state(&nickname);
+                        }
                         jitter_pool.remove(&nickname);
                         decoder_pool.remove(&nickname);
                     }
                     Some(VoiceCommand::UnmuteUser(nickname)) => {
-                        let key = fold_name(&nickname);
-                        muted_users.remove(&key);
+                        participants.set_muted(&nickname, false);
                         mixer.unmute_user(&nickname);
                     }
+                    Some(VoiceCommand::UserJoined(nickname)) => {
+                        participants.add_user(&nickname);
+                    }
                     Some(VoiceCommand::UserLeft(nickname)) => {
-                        // Clean up decoder and jitter buffer for the user who left
+                        participants.remove_user(&nickname);
+                        emit_speaking_stopped(&mut participants, &nickname, &event_tx);
+                        // Clean up decoder, jitter, and queued mixer buffers for the user who left.
+                        mixer.remove_user_state(&nickname);
                         jitter_pool.remove(&nickname);
                         decoder_pool.remove(&nickname);
+                    }
+                    Some(VoiceCommand::UserRenamed { old, new, muted }) => {
+                        let old_was_known = participants.rename_user(&old, &new, muted);
+                        emit_speaking_stopped(&mut participants, &old, &event_tx);
+                        if old_was_known && fold_name(&old) != fold_name(&new) {
+                            emit_speaking_stopped(&mut participants, &new, &event_tx);
+                        }
+
+                        if old_was_known {
+                            decoder_pool.rename_user(&old, &new);
+                            jitter_pool.rename_user(&old, &new);
+                            mixer.rename_user(&old, &new, muted);
+                        } else {
+                            decoder_pool.remove(&old);
+                            jitter_pool.remove(&old);
+                            mixer.remove_user_state(&old);
+                            let new_key = fold_name(&new);
+                            if participants.is_known_key(&new_key)
+                                && participants.is_muted_key(&new_key)
+                            {
+                                mixer.mute_user(&new);
+                            } else {
+                                mixer.unmute_user(&new);
+                            }
+                        }
                     }
                     Some(VoiceCommand::SetDeafened(is_deafened)) => {
                         deafened = is_deafened;
@@ -491,6 +653,18 @@ pub struct VoiceSessionHandle {
 }
 
 impl VoiceSessionHandle {
+    #[cfg(test)]
+    pub(crate) fn test_handle() -> (Self, mpsc::UnboundedReceiver<VoiceCommand>) {
+        let (command_tx, command_rx) = mpsc::unbounded_channel();
+        (
+            Self {
+                command_tx,
+                handle: None,
+            },
+            command_rx,
+        )
+    }
+
     /// Start a new voice session
     ///
     /// Returns a handle for controlling the session and a receiver for events.
@@ -569,6 +743,13 @@ impl VoiceSessionHandle {
             .send(VoiceCommand::SetProcessorSettings(settings));
     }
 
+    /// Track a user who joined the active voice session.
+    pub fn user_joined(&self, nickname: &str) {
+        let _ = self
+            .command_tx
+            .send(VoiceCommand::UserJoined(nickname.to_string()));
+    }
+
     /// Clean up resources for a user who left voice
     ///
     /// Removes the user's decoder and jitter buffer to free memory.
@@ -576,6 +757,15 @@ impl VoiceSessionHandle {
         let _ = self
             .command_tx
             .send(VoiceCommand::UserLeft(nickname.to_string()));
+    }
+
+    /// Re-key voice state after a nickname rename.
+    pub fn user_renamed(&self, old: &str, new: &str, muted: bool) {
+        let _ = self.command_tx.send(VoiceCommand::UserRenamed {
+            old: old.to_string(),
+            new: new.to_string(),
+            muted,
+        });
     }
 
     /// Stop the voice session
@@ -628,7 +818,95 @@ mod tests {
         let _ = VoiceCommand::StopTransmitting;
         let _ = VoiceCommand::MuteUser("Alice".to_string());
         let _ = VoiceCommand::UnmuteUser("Alice".to_string());
+        let _ = VoiceCommand::UserJoined("Alice".to_string());
         let _ = VoiceCommand::UserLeft("Alice".to_string());
+        let _ = VoiceCommand::UserRenamed {
+            old: "Alice".to_string(),
+            new: "Alicia".to_string(),
+            muted: false,
+        };
         let _ = VoiceCommand::Stop;
+    }
+
+    #[test]
+    fn participant_state_gates_and_rekeys_voice_rename() {
+        let mut state = VoiceParticipantState::new(vec!["Alice".to_string()]);
+
+        assert!(state.is_known("alice"));
+        assert!(!state.is_known("Bob"));
+
+        assert!(state.mark_speaking("Alice"));
+        state.set_muted("Alice", true);
+
+        assert!(state.rename_user("Alice", "Alicia", true));
+
+        assert!(!state.is_known("Alice"));
+        assert!(state.is_known("Alicia"));
+        assert!(state.is_muted_key(&fold_name("Alicia")));
+        assert!(!state.is_muted_key(&fold_name("Alice")));
+        assert!(state.clear_speaking("Alice"));
+        assert!(!state.clear_speaking("Alicia"));
+    }
+
+    #[test]
+    fn participant_state_rename_collision_keeps_new_known_and_unions_mute() {
+        let mut state = VoiceParticipantState::new(vec!["Alice".to_string(), "Alicia".to_string()]);
+        state.set_muted("Alice", true);
+
+        assert!(state.rename_user("Alice", "Alicia", true));
+
+        assert!(!state.is_known("Alice"));
+        assert!(state.is_known("Alicia"));
+        assert_eq!(state.known_participants.len(), 1);
+        assert!(state.is_muted_key(&fold_name("Alicia")));
+    }
+
+    #[test]
+    fn participant_state_rename_preserves_existing_new_mute() {
+        let mut state = VoiceParticipantState::new(vec!["Alicia".to_string()]);
+        state.set_muted("Alicia", true);
+
+        assert!(!state.rename_user("Alice", "Alicia", false));
+
+        assert!(state.is_muted_key(&fold_name("Alicia")));
+        assert!(!state.is_muted_key(&fold_name("Alice")));
+    }
+
+    #[test]
+    fn participant_state_remove_user_clears_stale_mute() {
+        let mut state = VoiceParticipantState::new(vec!["Alice".to_string()]);
+        state.set_muted("Alice", true);
+
+        state.remove_user("Alice");
+
+        assert!(!state.is_known("Alice"));
+        assert!(!state.is_muted_key(&fold_name("Alice")));
+    }
+
+    #[test]
+    fn participant_state_mute_unknown_user_does_not_persist() {
+        let mut state = VoiceParticipantState::new(vec!["Alice".to_string()]);
+        state.muted_users.insert(fold_name("Bob"));
+
+        assert!(!state.set_muted("Bob", true));
+
+        assert!(!state.is_muted_key(&fold_name("Bob")));
+    }
+
+    #[test]
+    fn duplicate_rename_does_not_clear_rebuilt_new_speaking() {
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let mut state = VoiceParticipantState::new(vec!["Alicia".to_string()]);
+        assert!(state.mark_speaking("Alicia"));
+
+        let old_was_known = state.rename_user("Alice", "Alicia", false);
+        emit_speaking_stopped(&mut state, "Alice", &event_tx);
+        if old_was_known && fold_name("Alice") != fold_name("Alicia") {
+            emit_speaking_stopped(&mut state, "Alicia", &event_tx);
+        }
+
+        assert!(!old_was_known);
+        assert!(state.speaking_users.contains(&fold_name("Alicia")));
+        assert!(event_rx.try_recv().is_err());
     }
 }

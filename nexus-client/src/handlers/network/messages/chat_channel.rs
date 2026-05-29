@@ -270,7 +270,7 @@ impl NexusApp {
         new_nickname: String,
         is_admin: bool,
     ) -> Task<Message> {
-        {
+        let renamed_self_nickname = {
             let Some(conn) = self.connections.get_mut(&connection_id) else {
                 return Task::none();
             };
@@ -285,8 +285,8 @@ impl NexusApp {
                 voiced_set.insert(fold_name(&new_nickname));
             }
 
-            conn.apply_user_rename(&old_nickname, &new_nickname);
-        }
+            conn.apply_user_rename(&old_nickname, &new_nickname)
+        };
 
         // Rename effects outside this connection's own state (shared with the
         // UserUpdated path); the `conn` borrow has ended.
@@ -296,6 +296,7 @@ impl NexusApp {
             &new_nickname,
             false,
             is_admin,
+            renamed_self_nickname,
         );
 
         // Notice in the channel so members (including those without `user_list`) see
