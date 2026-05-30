@@ -110,8 +110,6 @@ where
             .await
         {
             Ok(true) => {
-                info!(user = %requesting_user_session.username, ip = %ctx.peer_addr, target = %target_user.username, "{}", LOG_USER_DELETE_SUCCESS);
-
                 let online_users = ctx
                     .user_manager
                     .get_sessions_by_user_id(target_user.id)
@@ -131,6 +129,7 @@ where
                 )
                 .await;
 
+                info!(user = %requesting_user_session.username, ip = %ctx.peer_addr, target = %target_user.username, "{}", LOG_USER_DELETE_SUCCESS);
                 Outcome::Send(Box::new(ServerMessage::UserDeleteResponse {
                     success: true,
                     error: None,

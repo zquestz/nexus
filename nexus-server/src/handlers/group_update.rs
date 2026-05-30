@@ -341,7 +341,6 @@ where
                 // Diffs below use the in-tx `updated_group` /
                 // `previous_permissions` / `final_permissions`, not the
                 // requested values or pre-tx snapshot.
-                info!(user = %requesting_user.username, ip = %ctx.peer_addr, group = %updated_group.name, "{}", LOG_GROUP_UPDATE_SUCCESS);
                 let response = ServerMessage::GroupUpdateResponse {
                     success: true,
                     id: Some(updated_group.id),
@@ -502,6 +501,7 @@ where
                     }
                 }
 
+                info!(user = %requesting_user.username, ip = %ctx.peer_addr, group = %updated_group.name, "{}", LOG_GROUP_UPDATE_SUCCESS);
                 Outcome::Send(Box::new(response))
             }
             Ok(None) => {

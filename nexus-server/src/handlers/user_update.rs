@@ -1103,13 +1103,6 @@ where
                 resolved_bandwidth_weight,
                 permissions: final_permissions,
             }) => {
-                info!(
-                    user = %requesting_user.username,
-                    ip = %ctx.peer_addr,
-                    target = %updated_account.username,
-                    is_admin = updated_account.is_admin,
-                    "{}", LOG_USER_UPDATE_SUCCESS
-                );
                 // Sent in the tail dispatch after the block exits, so a slow admin
                 // socket can't stall the security-relevant cascades below.
                 let response = ServerMessage::UserUpdateResponse {
@@ -1470,6 +1463,13 @@ where
                     }
                 }
 
+                info!(
+                    user = %requesting_user.username,
+                    ip = %ctx.peer_addr,
+                    target = %updated_account.username,
+                    is_admin = updated_account.is_admin,
+                    "{}", LOG_USER_UPDATE_SUCCESS
+                );
                 Outcome::Send(Box::new(response))
             }
             Ok(crate::db::UpdateUserResult::BlockedForGroupAuth) => {

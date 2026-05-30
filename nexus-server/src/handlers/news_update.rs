@@ -189,14 +189,6 @@ where
         updated_at: news_record.updated_at,
     };
 
-    info!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %id, "{}", LOG_NEWS_UPDATE_SUCCESS);
-    let response = ServerMessage::NewsUpdateResponse {
-        success: true,
-        error: None,
-        news: Some(news.clone()),
-    };
-    ctx.send_message(&response).await?;
-
     // Broadcast to users with the news feature and NewsList permission.
     let broadcast = ServerMessage::NewsUpdated {
         action: NewsAction::Updated,
@@ -211,7 +203,13 @@ where
         )
         .await;
 
-    Ok(())
+    let response = ServerMessage::NewsUpdateResponse {
+        success: true,
+        error: None,
+        news: Some(news),
+    };
+    info!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %id, "{}", LOG_NEWS_UPDATE_SUCCESS);
+    ctx.send_message(&response).await
 }
 
 #[cfg(test)]

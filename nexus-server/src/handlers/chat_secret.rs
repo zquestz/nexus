@@ -20,7 +20,6 @@ use crate::db::Permission;
 
 enum SecretOutcome {
     Disconnect,
-    Queued,
     Send(Box<ServerMessage>),
 }
 
@@ -111,12 +110,6 @@ where
             }
         }
 
-        let response = ServerMessage::ChatSecretResponse {
-            success: true,
-            error: None,
-        };
-        ctx.send_message_via_channel(&response)?;
-
         let members = ctx
             .channel_manager
             .get_members(&channel)
@@ -144,7 +137,10 @@ where
             }
         }
 
-        SecretOutcome::Queued
+        SecretOutcome::Send(Box::new(ServerMessage::ChatSecretResponse {
+            success: true,
+            error: None,
+        }))
     };
 
     match outcome {
@@ -152,7 +148,6 @@ where
             ctx.send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_SECRET))
                 .await
         }
-        SecretOutcome::Queued => Ok(()),
         SecretOutcome::Send(response) => ctx.send_message(&response).await,
     }
 }
@@ -321,7 +316,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse (includes channel data)
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse (includes channel data)
 
         // Set channel to secret
         let result = handle_chat_secret(
@@ -334,7 +329,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatSecretResponse { success, error } => {
                 assert!(success);
@@ -404,7 +399,7 @@ mod tests {
             handler.await.unwrap();
         }
 
-        match read_queued_server_message(&mut test_ctx).await {
+        match read_server_message(&mut test_ctx).await {
             ServerMessage::ChatSecretResponse { success, error } => {
                 assert!(success);
                 assert!(error.is_none());
@@ -548,7 +543,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatSecretResponse { success, error } => {
                 assert!(success);
@@ -602,7 +597,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Set channel to secret
         let result = handle_chat_secret(
@@ -615,7 +610,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatSecretResponse { success, error } => {
                 assert!(success);

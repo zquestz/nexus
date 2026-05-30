@@ -19,7 +19,6 @@ use crate::db::Permission;
 
 enum BroadcastOutcome {
     Disconnect,
-    Queued,
     Send(Box<ServerMessage>),
 }
 
@@ -72,11 +71,6 @@ where
             }));
         }
 
-        ctx.send_message_via_channel(&ServerMessage::UserBroadcastResponse {
-            success: true,
-            error: None,
-        })?;
-
         ctx.user_manager
             .broadcast(ServerMessage::ServerBroadcast {
                 session_id: id,
@@ -85,7 +79,10 @@ where
             })
             .await;
 
-        BroadcastOutcome::Queued
+        BroadcastOutcome::Send(Box::new(ServerMessage::UserBroadcastResponse {
+            success: true,
+            error: None,
+        }))
     };
 
     match outcome {
@@ -96,7 +93,6 @@ where
             )
             .await
         }
-        BroadcastOutcome::Queued => Ok(()),
         BroadcastOutcome::Send(response) => ctx.send_message(&response).await,
     }
 }
@@ -320,20 +316,6 @@ mod tests {
             .rx
             .recv()
             .await
-            .expect("should receive broadcast response")
-            .0
-        {
-            ServerMessage::UserBroadcastResponse { success, error } => {
-                assert!(success);
-                assert!(error.is_none());
-            }
-            other => panic!("Expected UserBroadcastResponse, got {other:?}"),
-        }
-
-        match test_ctx
-            .rx
-            .recv()
-            .await
             .expect("should receive broadcast")
             .0
         {
@@ -341,6 +323,14 @@ mod tests {
                 assert_eq!(username, "alicia");
             }
             other => panic!("Expected ServerBroadcast, got {other:?}"),
+        }
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserBroadcastResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            other => panic!("Expected UserBroadcastResponse, got {other:?}"),
         }
     }
 

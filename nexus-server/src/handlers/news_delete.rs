@@ -123,14 +123,6 @@ where
         }
     };
 
-    info!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %id, "{}", LOG_NEWS_DELETE_SUCCESS);
-    let response = ServerMessage::NewsDeleteResponse {
-        success: true,
-        error: None,
-        id: Some(id),
-    };
-    ctx.send_message(&response).await?;
-
     // Broadcast to users with the news feature and NewsList permission.
     let broadcast = ServerMessage::NewsUpdated {
         action: NewsAction::Deleted,
@@ -145,7 +137,13 @@ where
         )
         .await;
 
-    Ok(())
+    let response = ServerMessage::NewsDeleteResponse {
+        success: true,
+        error: None,
+        id: Some(id),
+    };
+    info!(user = %requesting_user.username, ip = %ctx.peer_addr, id = %id, "{}", LOG_NEWS_DELETE_SUCCESS);
+    ctx.send_message(&response).await
 }
 
 #[cfg(test)]

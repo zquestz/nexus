@@ -11,6 +11,11 @@ use super::{HandlerContext, err_not_logged_in};
 use crate::constants::{HANDLER_USER_BACK, LOG_USER_BACK_NOT_LOGGED_IN};
 use crate::users::manager::UserManager;
 
+enum BackOutcome {
+    Disconnect,
+    Send(Box<ServerMessage>),
+}
+
 /// Clear away status for this session.
 pub async fn handle_user_back<W>(
     session_id: Option<u32>,
@@ -26,51 +31,53 @@ where
             .await;
     };
 
-    let Some(_) = ctx.user_manager.set_status(session_id, false, None).await else {
-        return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_BACK))
-            .await;
-    };
+    let outcome = 'locked: {
+        let _user_state = ctx.user_manager.read_user_state().await;
 
-    let response = ServerMessage::UserBackResponse {
-        success: true,
-        error: None,
-    };
-    ctx.send_message(&response).await?;
-
-    // Re-fetch under user-state read lock so a concurrent rename cannot cause us
-    // to broadcast stale identity fields after it has committed. The lock is acquired
-    // after the socket write so no slow-client back-pressure holds the lock.
-    let _user_state = ctx.user_manager.read_user_state().await;
-    let Some(session) = ctx.user_manager.get_user_by_session_id(session_id).await else {
-        return Ok(()); // concurrent disconnect
-    };
-
-    // Broadcast UserUpdated. Shared accounts broadcast this session directly;
-    // regular accounts aggregate across all their sessions.
-    let user_info = if session.is_shared {
-        UserManager::build_user_info_from_session(&session)
-    } else {
-        let all_sessions = ctx
-            .user_manager
-            .get_sessions_by_username(&session.username)
-            .await;
-        let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) else {
-            return Ok(());
+        let Some(session) = ctx.user_manager.set_status(session_id, false, None).await else {
+            break 'locked BackOutcome::Disconnect;
         };
-        user_info
+
+        // Broadcast UserUpdated. Shared accounts broadcast this session directly;
+        // regular accounts aggregate across all their sessions.
+        let user_info = if session.is_shared {
+            UserManager::build_user_info_from_session(&session)
+        } else {
+            let all_sessions = ctx
+                .user_manager
+                .get_sessions_by_username(&session.username)
+                .await;
+            let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) else {
+                break 'locked BackOutcome::Send(Box::new(ServerMessage::UserBackResponse {
+                    success: true,
+                    error: None,
+                }));
+            };
+            user_info
+        };
+
+        let user_updated = ServerMessage::UserUpdated {
+            previous_username: session.username.clone(),
+            user: user_info,
+        };
+
+        ctx.user_manager
+            .broadcast_user_event(user_updated, None)
+            .await;
+
+        BackOutcome::Send(Box::new(ServerMessage::UserBackResponse {
+            success: true,
+            error: None,
+        }))
     };
 
-    let user_updated = ServerMessage::UserUpdated {
-        previous_username: session.username.clone(),
-        user: user_info,
-    };
-
-    ctx.user_manager
-        .broadcast_user_event(user_updated, None)
-        .await;
-
-    Ok(())
+    match outcome {
+        BackOutcome::Disconnect => {
+            ctx.send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_BACK))
+                .await
+        }
+        BackOutcome::Send(response) => ctx.send_message(&response).await,
+    }
 }
 
 #[cfg(test)]

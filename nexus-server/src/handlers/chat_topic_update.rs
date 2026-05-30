@@ -23,7 +23,6 @@ use crate::db::Permission;
 
 enum TopicUpdateOutcome {
     Disconnect,
-    Queued,
     Send(Box<ServerMessage>),
 }
 
@@ -162,11 +161,6 @@ where
             secret_set_by: None,
         };
 
-        ctx.send_message_via_channel(&ServerMessage::ChatTopicUpdateResponse {
-            success: true,
-            error: None,
-        })?;
-
         // Broadcast only to members with the chat feature and ChatTopic permission.
         for member_session_id in members {
             if let Some(member) = ctx
@@ -182,7 +176,10 @@ where
             }
         }
 
-        TopicUpdateOutcome::Queued
+        TopicUpdateOutcome::Send(Box::new(ServerMessage::ChatTopicUpdateResponse {
+            success: true,
+            error: None,
+        }))
     };
 
     match outcome {
@@ -193,7 +190,6 @@ where
             )
             .await
         }
-        TopicUpdateOutcome::Queued => Ok(()),
         TopicUpdateOutcome::Send(response) => ctx.send_message(&response).await,
     }
 }
@@ -452,7 +448,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 assert!(success);
@@ -494,7 +490,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 assert!(success);
@@ -560,7 +556,7 @@ mod tests {
             handler.await.unwrap();
         }
 
-        match read_queued_server_message(&mut test_ctx).await {
+        match read_server_message(&mut test_ctx).await {
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 assert!(success);
                 assert!(error.is_none());
@@ -655,7 +651,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 assert!(success);
@@ -781,7 +777,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 assert!(success);
@@ -837,7 +833,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatTopicUpdateResponse { success, error } => {
                 assert!(success);

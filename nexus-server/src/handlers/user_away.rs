@@ -15,6 +15,11 @@ use super::{
 use crate::constants::{HANDLER_USER_AWAY, LOG_USER_AWAY_NOT_LOGGED_IN};
 use crate::users::manager::UserManager;
 
+enum AwayOutcome {
+    Disconnect,
+    Send(Box<ServerMessage>),
+}
+
 /// Set away status for this session.
 pub async fn handle_user_away<W>(
     message: Option<String>,
@@ -46,56 +51,57 @@ where
         return ctx.send_message(&response).await;
     }
 
-    let status = message.clone();
-    let Some(_) = ctx
-        .user_manager
-        .set_status(session_id, true, status.clone())
-        .await
-    else {
-        return ctx
-            .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_AWAY))
-            .await;
-    };
+    let outcome = 'locked: {
+        let _user_state = ctx.user_manager.read_user_state().await;
 
-    let response = ServerMessage::UserAwayResponse {
-        success: true,
-        error: None,
-    };
-    ctx.send_message(&response).await?;
-
-    // Re-fetch under user-state read lock so a concurrent rename cannot cause us
-    // to broadcast stale identity fields after it has committed. The lock is acquired
-    // after the socket write so no slow-client back-pressure holds the lock.
-    let _user_state = ctx.user_manager.read_user_state().await;
-    let Some(session) = ctx.user_manager.get_user_by_session_id(session_id).await else {
-        return Ok(()); // concurrent disconnect
-    };
-
-    // Broadcast UserUpdated. Shared accounts broadcast this session directly;
-    // regular accounts aggregate across all their sessions.
-    let user_info = if session.is_shared {
-        UserManager::build_user_info_from_session(&session)
-    } else {
-        let all_sessions = ctx
+        let Some(session) = ctx
             .user_manager
-            .get_sessions_by_username(&session.username)
-            .await;
-        let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) else {
-            return Ok(());
+            .set_status(session_id, true, message.clone())
+            .await
+        else {
+            break 'locked AwayOutcome::Disconnect;
         };
-        user_info
+
+        // Broadcast UserUpdated. Shared accounts broadcast this session directly;
+        // regular accounts aggregate across all their sessions.
+        let user_info = if session.is_shared {
+            UserManager::build_user_info_from_session(&session)
+        } else {
+            let all_sessions = ctx
+                .user_manager
+                .get_sessions_by_username(&session.username)
+                .await;
+            let Some(user_info) = UserManager::build_aggregated_user_info(&all_sessions) else {
+                break 'locked AwayOutcome::Send(Box::new(ServerMessage::UserAwayResponse {
+                    success: true,
+                    error: None,
+                }));
+            };
+            user_info
+        };
+
+        let user_updated = ServerMessage::UserUpdated {
+            previous_username: session.username.clone(),
+            user: user_info,
+        };
+
+        ctx.user_manager
+            .broadcast_user_event(user_updated, None)
+            .await;
+
+        AwayOutcome::Send(Box::new(ServerMessage::UserAwayResponse {
+            success: true,
+            error: None,
+        }))
     };
 
-    let user_updated = ServerMessage::UserUpdated {
-        previous_username: session.username.clone(),
-        user: user_info,
-    };
-
-    ctx.user_manager
-        .broadcast_user_event(user_updated, None)
-        .await;
-
-    Ok(())
+    match outcome {
+        AwayOutcome::Disconnect => {
+            ctx.send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_USER_AWAY))
+                .await
+        }
+        AwayOutcome::Send(response) => ctx.send_message(&response).await,
+    }
 }
 
 #[cfg(test)]

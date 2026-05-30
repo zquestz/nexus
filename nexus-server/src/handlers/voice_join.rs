@@ -259,8 +259,7 @@ mod tests {
     use crate::db::Permission;
     use crate::handlers::chat_join::handle_chat_join;
     use crate::handlers::testing::{
-        create_test_context, login_user, login_user_with_features, read_queued_server_message,
-        read_server_message,
+        create_test_context, login_user, login_user_with_features, read_server_message,
     };
 
     #[tokio::test]
@@ -391,7 +390,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let _ = read_queued_server_message(&mut test_ctx).await; // consume ChatJoinResponse
+        let _ = read_server_message(&mut test_ctx).await; // consume ChatJoinResponse
 
         let result = handle_voice_join(
             "#general".to_string(),
@@ -449,7 +448,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let _ = read_queued_server_message(&mut test_ctx).await;
+        let _ = read_server_message(&mut test_ctx).await;
 
         handle_voice_join(
             "#general".to_string(),

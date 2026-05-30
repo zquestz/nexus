@@ -40,7 +40,6 @@ fn error_response(error_msg: String) -> ServerMessage {
 enum JoinOutcome {
     Disconnect,
     Send(Box<ServerMessage>),
-    Queued,
 }
 
 pub async fn handle_chat_join<W>(
@@ -137,11 +136,6 @@ where
             voiced,
         };
 
-        // Queue the initial channel state before any later rename can queue a
-        // ChatUserRenamed delta to this session. This is in-memory channel I/O,
-        // not direct socket I/O, so it is safe under user_state_lock.
-        ctx.send_message_via_channel(&response)?;
-
         let nickname_present_elsewhere = ctx
             .user_manager
             .sessions_contain_nickname(&result.member_session_ids, &user.nickname, Some(session_id))
@@ -164,7 +158,7 @@ where
             }
         }
 
-        JoinOutcome::Queued
+        JoinOutcome::Send(Box::new(response))
     };
 
     match outcome {
@@ -172,7 +166,6 @@ where
             ctx.send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_CHAT_JOIN))
                 .await
         }
-        JoinOutcome::Queued => Ok(()),
         JoinOutcome::Send(response) => ctx.send_message(&response).await,
     }
 }
@@ -267,7 +260,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success,
@@ -342,7 +335,7 @@ mod tests {
         )
         .await;
 
-        match read_queued_server_message(&mut test_ctx).await {
+        match read_server_message(&mut test_ctx).await {
             ServerMessage::ChatJoinResponse {
                 success, members, ..
             } => {
@@ -387,7 +380,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let result = handle_chat_join(
             "#general".to_string(),
@@ -523,7 +516,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success,
@@ -615,7 +608,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success,
@@ -789,7 +782,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let bob_session = login_user_with_features(
             &mut test_ctx,
@@ -808,7 +801,7 @@ mod tests {
         )
         .await;
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success, members, ..
@@ -862,7 +855,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let alice_session2 = add_second_session(
             &mut test_ctx,
@@ -881,7 +874,7 @@ mod tests {
         )
         .await;
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success, members, ..
@@ -923,7 +916,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         let guest2_session = add_shared_session(
             &mut test_ctx,
@@ -944,7 +937,7 @@ mod tests {
         .await;
 
         // Read Guest2's ChatJoinResponse
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success, members, ..
@@ -1033,7 +1026,7 @@ mod tests {
         )
         .await;
 
-        let response = read_queued_server_message(&mut test_ctx).await;
+        let response = read_server_message(&mut test_ctx).await;
         match response {
             ServerMessage::ChatJoinResponse {
                 success, members, ..
@@ -1071,7 +1064,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Login alice session 1 with chat permissions (only ChatJoin needed to join existing)
         let alice_session1 = login_user_with_features(
@@ -1091,7 +1084,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Verify bob received ChatUserJoined for alice
         let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
@@ -1118,7 +1111,7 @@ mod tests {
             &mut test_ctx.handler_context(),
         )
         .await;
-        let _ = read_queued_server_message(&mut test_ctx).await; // ChatJoinResponse
+        let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Verify no additional ChatUserJoined was sent
         let result = test_ctx.rx.try_recv();

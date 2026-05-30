@@ -562,16 +562,6 @@ pub async fn read_server_message(test_ctx: &mut TestContext) -> ServerMessage {
         .message
 }
 
-/// Read one `ServerMessage` from the session delivery channel.
-pub async fn read_queued_server_message(test_ctx: &mut TestContext) -> ServerMessage {
-    test_ctx
-        .rx
-        .recv()
-        .await
-        .expect("should receive queued server message")
-        .0
-}
-
 /// Read until the first `LoginResponse` (5s timeout panic).
 pub async fn read_login_response(test_ctx: &mut TestContext) -> ServerMessage {
     read_server_message_matching(test_ctx, |msg| {
