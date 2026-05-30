@@ -36,7 +36,7 @@ use channels::{Channel, ChannelManager};
 use connection::ConnectionParams;
 use connection_tracker::ConnectionTracker;
 use constants::*;
-use files::{FileIndex, PathLockMap, PersonalAreaLockMap};
+use files::{FileActivityMap, FileIndex};
 use flood::FloodConfig;
 use ip_rule_cache::{IpRuleCache, IpRuleState};
 use nexus_common::address::normalize_socket_addr;
@@ -227,9 +227,7 @@ async fn main() {
     let file_index = Arc::new(FileIndex::new(&data_dir, file_root));
     file_index.trigger_reindex();
 
-    // Shared between BBS handlers and transfer-port upload finalization.
-    let file_mutation_locks = Arc::new(PathLockMap::new());
-    let personal_area_locks = Arc::new(PersonalAreaLockMap::new());
+    let file_activity = Arc::new(FileActivityMap::new());
 
     let transfer_registry = Arc::new(TransferRegistry::new());
     let voice_registry = VoiceRegistry::new();
@@ -385,8 +383,7 @@ async fn main() {
                             connection_tracker: connection_tracker.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
                             file_index: file_index.clone(),
-                            file_mutation_locks: file_mutation_locks.clone(),
-                            personal_area_locks: personal_area_locks.clone(),
+                            file_activity: file_activity.clone(),
                             channel_manager: channel_manager.clone(),
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: voice_registry.clone(),
@@ -444,8 +441,7 @@ async fn main() {
                             db: database.clone(),
                             file_root: Some(file_root),
                             file_index: file_index.clone(),
-                            file_mutation_locks: file_mutation_locks.clone(),
-                            personal_area_locks: personal_area_locks.clone(),
+                            file_activity: file_activity.clone(),
                             transfer_registry: transfer_registry.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
                             user_manager: user_manager.clone(),
@@ -511,8 +507,7 @@ async fn main() {
                             connection_tracker: connection_tracker.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
                             file_index: file_index.clone(),
-                            file_mutation_locks: file_mutation_locks.clone(),
-                            personal_area_locks: personal_area_locks.clone(),
+                            file_activity: file_activity.clone(),
                             channel_manager: channel_manager.clone(),
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: voice_registry.clone(),
@@ -575,8 +570,7 @@ async fn main() {
                             db: database.clone(),
                             file_root: Some(file_root),
                             file_index: file_index.clone(),
-                            file_mutation_locks: file_mutation_locks.clone(),
-                            personal_area_locks: personal_area_locks.clone(),
+                            file_activity: file_activity.clone(),
                             transfer_registry: transfer_registry.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
                             user_manager: user_manager.clone(),

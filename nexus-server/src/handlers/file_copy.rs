@@ -10,10 +10,11 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, FilePathError};
 
 use super::{
-    HandlerContext, err_cannot_copy_into_itself, err_copy_failed, err_destination_busy,
-    err_destination_exists, err_destination_not_directory, err_file_area_not_accessible,
-    err_file_area_not_configured, err_file_not_found, err_file_path_invalid,
-    err_file_path_too_long, err_not_logged_in, err_permission_denied, err_source_busy,
+    HandlerContext, activity_busy_is_source_side, err_cannot_copy_into_itself, err_copy_failed,
+    err_destination_busy, err_destination_exists, err_destination_not_directory,
+    err_file_area_not_accessible, err_file_area_not_configured, err_file_not_found,
+    err_file_path_invalid, err_file_path_too_long, err_not_logged_in, err_permission_denied,
+    err_source_busy,
 };
 use crate::constants::{
     HANDLER_FILE_COPY, LOG_FILE_COPY_DELETE_DENIED, LOG_FILE_COPY_DESTINATION_BUSY,
@@ -22,10 +23,10 @@ use crate::constants::{
     LOG_FILE_COPY_SUCCESS,
 };
 use crate::db::Permission;
+use crate::files::activity::FileActivityGuard;
 use crate::files::{
-    PathLockMode, build_and_validate_candidate_path, copy_path_recursive_async, is_subpath,
-    lock_key, personal_area_names_for_root_destination, personal_area_names_for_root_path,
-    remove_path_async, resolve_path, resolve_user_area_with_read_lock,
+    activity_key, build_and_validate_candidate_path, copy_path_recursive_async, is_subpath,
+    remove_path_async, resolve_path, resolve_user_area,
 };
 
 pub async fn handle_file_copy<W>(
@@ -142,66 +143,26 @@ where
             break 'user_area Err(response);
         }
 
-        let source_basename_for_lock = source_path
-            .trim_end_matches(['/', '\\'])
-            .rsplit(['/', '\\'])
-            .find(|segment| !segment.is_empty())
-            .unwrap_or("");
-        let mut personal_area_guards = Vec::new();
-
         let source_area_root_path = if source_root {
-            personal_area_guards.extend(
-                ctx.personal_area_locks
-                    .read_many(personal_area_names_for_root_path(&source_path))
-                    .await,
-            );
             file_root.to_path_buf()
         } else {
-            let (area_root, guards) = resolve_user_area_with_read_lock(
-                file_root,
-                ctx.personal_area_locks.as_ref(),
-                &requesting_user.username,
-            )
-            .await;
-            personal_area_guards.extend(guards);
-            area_root
+            resolve_user_area(file_root, &requesting_user.username).await
         };
 
         let dest_area_root_path = if destination_root {
-            personal_area_guards.extend(
-                ctx.personal_area_locks
-                    .read_many(personal_area_names_for_root_destination(
-                        &destination_dir,
-                        source_basename_for_lock,
-                    ))
-                    .await,
-            );
             file_root.to_path_buf()
         } else if source_root {
-            let (area_root, guards) = resolve_user_area_with_read_lock(
-                file_root,
-                ctx.personal_area_locks.as_ref(),
-                &requesting_user.username,
-            )
-            .await;
-            personal_area_guards.extend(guards);
-            area_root
+            resolve_user_area(file_root, &requesting_user.username).await
         } else {
             source_area_root_path.clone()
         };
 
-        Ok((
-            requesting_user,
-            source_area_root_path,
-            dest_area_root_path,
-            personal_area_guards,
-        ))
+        Ok((requesting_user, source_area_root_path, dest_area_root_path))
     };
-    let (requesting_user, source_area_root_path, dest_area_root_path, _personal_area_guards) =
-        match user_area_result {
-            Ok(user_area) => user_area,
-            Err(response) => return ctx.send_message(&response).await,
-        };
+    let (requesting_user, source_area_root_path, dest_area_root_path) = match user_area_result {
+        Ok(user_area) => user_area,
+        Err(response) => return ctx.send_message(&response).await,
+    };
 
     let source_area_root = match tokio::fs::canonicalize(&source_area_root_path).await {
         Ok(p) => p,
@@ -265,10 +226,8 @@ where
             }
         };
 
-    // Derive lock keys from candidates (pure path math) so source validation
-    // runs AFTER acquisition, closing the resolve-then-mutate race. Locking
-    // source alongside target stops a concurrent rename/delete/overwrite from
-    // racing the recursive walk; per-child subtree races remain out of scope.
+    // Enter activity from candidates (pure path math) so source validation
+    // runs after reservation, closing the resolve-then-mutate race.
     let source_basename = match source_candidate.file_name() {
         Some(name) => name.to_owned(),
         None => {
@@ -280,8 +239,24 @@ where
             return ctx.send_message(&response).await;
         }
     };
-    let target_path_for_lock = dest_candidate.join(&source_basename);
-    let source_lock_key = match lock_key(&source_candidate).await {
+    let target_path_for_activity = dest_candidate.join(&source_basename);
+    let source_is_dir_for_activity = tokio::fs::symlink_metadata(&source_candidate)
+        .await
+        .map(|m| m.is_dir())
+        .unwrap_or(false);
+    if source_is_dir_for_activity
+        && source_candidate != source_area_root
+        && target_path_for_activity != source_candidate
+        && is_subpath(&target_path_for_activity, &source_candidate)
+    {
+        let response = ServerMessage::FileCopyResponse {
+            success: false,
+            error: Some(err_cannot_copy_into_itself(ctx.locale)),
+            error_kind: Some(ErrorKind::InvalidPath.into()),
+        };
+        return ctx.send_message(&response).await;
+    }
+    let source_activity_key = match activity_key(&source_candidate).await {
         Ok(k) => k,
         Err(_) => {
             let response = ServerMessage::FileCopyResponse {
@@ -292,7 +267,7 @@ where
             return ctx.send_message(&response).await;
         }
     };
-    let target_lock_key = match lock_key(&target_path_for_lock).await {
+    let target_activity_key = match activity_key(&target_path_for_activity).await {
         Ok(k) => k,
         Err(_) => {
             let response = ServerMessage::FileCopyResponse {
@@ -303,39 +278,107 @@ where
             return ctx.send_message(&response).await;
         }
     };
-    // Clone before moving into `acquire_many` so we can identify which side
-    // (source vs target) the busy lock was on, and report a meaningful error.
-    let busy_source_key = source_lock_key.clone();
 
     // Guards live only inside this block; all socket sends happen after it.
-    let response = 'locked: {
-        let _lock_guards = match ctx
-            .file_mutation_locks
-            .acquire_many(vec![source_lock_key, target_lock_key], PathLockMode::Wait)
-            .await
-        {
-            Ok(g) => g,
-            Err(e) if e.key() == busy_source_key.as_path() => {
-                // Source path held by a `Fail`-mode lock.
-                debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_SOURCE_BUSY);
-                break 'locked ServerMessage::FileCopyResponse {
-                    success: false,
-                    error: Some(err_source_busy(ctx.locale)),
-                    error_kind: Some(ErrorKind::Conflict.into()),
-                };
-            }
-            Err(_) => {
-                // Destination path held by a `Fail`-mode lock.
-                debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_DESTINATION_BUSY);
-                break 'locked ServerMessage::FileCopyResponse {
-                    success: false,
-                    error: Some(err_destination_busy(ctx.locale)),
-                    error_kind: Some(ErrorKind::Conflict.into()),
-                };
-            }
+    let response = 'active: {
+        let (_source_read_activity_guard, _directory_activity_guard): (
+            Option<FileActivityGuard>,
+            Option<FileActivityGuard>,
+        ) = if source_is_dir_for_activity || source_activity_key == target_activity_key {
+            // Directory copies are intentionally exclusive so active descendants
+            // block the recursive walk. Equal source/target keys route here too,
+            // avoiding a read/write self-conflict for no-op self-copy.
+            let guard = match ctx
+                .file_activity
+                .try_enter_directory_keys(
+                    file_root,
+                    vec![source_activity_key.clone(), target_activity_key.clone()],
+                )
+                .await
+            {
+                Ok(Ok(g)) => g,
+                Ok(Err(e))
+                    if activity_busy_is_source_side(
+                        &source_activity_key,
+                        &target_activity_key,
+                        e.path(),
+                    ) =>
+                {
+                    debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_SOURCE_BUSY);
+                    break 'active ServerMessage::FileCopyResponse {
+                        success: false,
+                        error: Some(err_source_busy(ctx.locale)),
+                        error_kind: Some(ErrorKind::Conflict.into()),
+                    };
+                }
+                Ok(Err(_)) => {
+                    debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_DESTINATION_BUSY);
+                    break 'active ServerMessage::FileCopyResponse {
+                        success: false,
+                        error: Some(err_destination_busy(ctx.locale)),
+                        error_kind: Some(ErrorKind::Conflict.into()),
+                    };
+                }
+                Err(_) => {
+                    break 'active ServerMessage::FileCopyResponse {
+                        success: false,
+                        error: Some(err_file_path_invalid(ctx.locale)),
+                        error_kind: Some(ErrorKind::InvalidPath.into()),
+                    };
+                }
+            };
+            (None, Some(guard))
+        } else {
+            let source_guard = match ctx
+                .file_activity
+                .try_enter_read_keys(file_root, vec![source_activity_key.clone()])
+                .await
+            {
+                Ok(Ok(g)) => g,
+                Ok(Err(_)) => {
+                    debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_SOURCE_BUSY);
+                    break 'active ServerMessage::FileCopyResponse {
+                        success: false,
+                        error: Some(err_source_busy(ctx.locale)),
+                        error_kind: Some(ErrorKind::Conflict.into()),
+                    };
+                }
+                Err(_) => {
+                    break 'active ServerMessage::FileCopyResponse {
+                        success: false,
+                        error: Some(err_file_path_invalid(ctx.locale)),
+                        error_kind: Some(ErrorKind::InvalidPath.into()),
+                    };
+                }
+            };
+
+            let target_guard = match ctx
+                .file_activity
+                .try_enter_directory_keys(file_root, vec![target_activity_key.clone()])
+                .await
+            {
+                Ok(Ok(g)) => g,
+                Ok(Err(_)) => {
+                    debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_COPY_DESTINATION_BUSY);
+                    break 'active ServerMessage::FileCopyResponse {
+                        success: false,
+                        error: Some(err_destination_busy(ctx.locale)),
+                        error_kind: Some(ErrorKind::Conflict.into()),
+                    };
+                }
+                Err(_) => {
+                    break 'active ServerMessage::FileCopyResponse {
+                        success: false,
+                        error: Some(err_file_path_invalid(ctx.locale)),
+                        error_kind: Some(ErrorKind::InvalidPath.into()),
+                    };
+                }
+            };
+
+            (Some(source_guard), Some(target_guard))
         };
 
-        // Under lock: resolve source from the authoritative filesystem state.
+        // Under activity: resolve source from the authoritative filesystem state.
         let source_symlink_meta = tokio::fs::symlink_metadata(&source_candidate).await;
         let resolved_source = match &source_symlink_meta {
             Ok(meta) if meta.file_type().is_symlink() => {
@@ -345,7 +388,7 @@ where
             Ok(_) => match resolve_path(&source_area_root, &source_candidate).await {
                 Ok(p) => p,
                 Err(_) => {
-                    break 'locked ServerMessage::FileCopyResponse {
+                    break 'active ServerMessage::FileCopyResponse {
                         success: false,
                         error: Some(err_file_not_found(ctx.locale)),
                         error_kind: Some(ErrorKind::NotFound.into()),
@@ -353,14 +396,14 @@ where
                 }
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                break 'locked ServerMessage::FileCopyResponse {
+                break 'active ServerMessage::FileCopyResponse {
                     success: false,
                     error: Some(err_file_not_found(ctx.locale)),
                     error_kind: Some(ErrorKind::NotFound.into()),
                 };
             }
             Err(_) => {
-                break 'locked ServerMessage::FileCopyResponse {
+                break 'active ServerMessage::FileCopyResponse {
                     success: false,
                     error: Some(err_file_path_invalid(ctx.locale)),
                     error_kind: Some(ErrorKind::InvalidPath.into()),
@@ -369,7 +412,7 @@ where
         };
 
         if resolved_source == source_area_root || source_candidate == source_area_root {
-            break 'locked ServerMessage::FileCopyResponse {
+            break 'active ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_permission_denied(ctx.locale)),
                 error_kind: Some(ErrorKind::Permission.into()),
@@ -379,7 +422,7 @@ where
         let resolved_dest_dir = match resolve_path(&dest_area_root, &dest_candidate).await {
             Ok(p) => p,
             Err(_) => {
-                break 'locked ServerMessage::FileCopyResponse {
+                break 'active ServerMessage::FileCopyResponse {
                     success: false,
                     error: Some(err_file_not_found(ctx.locale)),
                     error_kind: Some(ErrorKind::NotFound.into()),
@@ -392,7 +435,7 @@ where
             .map(|m| m.is_dir())
             .unwrap_or(false);
         if !dest_is_dir {
-            break 'locked ServerMessage::FileCopyResponse {
+            break 'active ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_destination_not_directory(ctx.locale)),
                 error_kind: Some(ErrorKind::InvalidPath.into()),
@@ -402,7 +445,7 @@ where
         let source_filename = match resolved_source.file_name() {
             Some(name) => name,
             None => {
-                break 'locked ServerMessage::FileCopyResponse {
+                break 'active ServerMessage::FileCopyResponse {
                     success: false,
                     error: Some(err_file_path_invalid(ctx.locale)),
                     error_kind: Some(ErrorKind::InvalidPath.into()),
@@ -414,19 +457,26 @@ where
 
         // No-op self-copy.
         if resolved_source == target_path {
-            break 'locked ServerMessage::FileCopyResponse {
+            break 'active ServerMessage::FileCopyResponse {
                 success: true,
                 error: None,
                 error_kind: None,
             };
         }
 
-        let source_is_dir = tokio::fs::metadata(&resolved_source)
+        let source_is_dir = tokio::fs::symlink_metadata(&resolved_source)
             .await
             .map(|m| m.is_dir())
             .unwrap_or(false);
+        if source_is_dir && !source_is_dir_for_activity {
+            break 'active ServerMessage::FileCopyResponse {
+                success: false,
+                error: Some(err_source_busy(ctx.locale)),
+                error_kind: Some(ErrorKind::Conflict.into()),
+            };
+        }
         if source_is_dir && is_subpath(&resolved_dest_dir, &resolved_source) {
-            break 'locked ServerMessage::FileCopyResponse {
+            break 'active ServerMessage::FileCopyResponse {
                 success: false,
                 error: Some(err_cannot_copy_into_itself(ctx.locale)),
                 error_kind: Some(ErrorKind::InvalidPath.into()),
@@ -437,7 +487,7 @@ where
             || tokio::fs::symlink_metadata(&target_path).await.is_ok()
         {
             if !overwrite {
-                break 'locked ServerMessage::FileCopyResponse {
+                break 'active ServerMessage::FileCopyResponse {
                     success: false,
                     error: Some(err_destination_exists(ctx.locale)),
                     error_kind: Some(ErrorKind::Exists.into()),
@@ -446,7 +496,7 @@ where
 
             if let Err(e) = remove_path_async(&target_path).await {
                 error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_FILE_COPY_REMOVE_FAILED);
-                break 'locked ServerMessage::FileCopyResponse {
+                break 'active ServerMessage::FileCopyResponse {
                     success: false,
                     error: Some(err_copy_failed(ctx.locale)),
                     error_kind: None,
@@ -588,6 +638,114 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_copy_file_allows_active_source_read() {
+        let mut test_ctx = create_test_context().await;
+        let temp_dir = setup_file_area_basic(&mut test_ctx);
+
+        let shared_dir = temp_dir.path().join("shared");
+        let source = shared_dir.join("test.txt");
+        fs::write(&source, "content").unwrap();
+        fs::create_dir(shared_dir.join("dest")).unwrap();
+
+        let _source_read_guard = test_ctx
+            .file_activity
+            .try_enter_read_paths(temp_dir.path(), std::slice::from_ref(&source))
+            .await
+            .unwrap()
+            .unwrap();
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileCopy],
+            false,
+        )
+        .await;
+
+        let mut ctx = test_ctx.handler_context();
+        handle_file_copy(
+            "test.txt".to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(session_id),
+            &mut ctx,
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileCopyResponse { success, .. } => {
+                assert!(success);
+            }
+            _ => panic!("Expected FileCopyResponse"),
+        }
+
+        assert_eq!(
+            fs::read_to_string(shared_dir.join("dest/test.txt")).unwrap(),
+            "content"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_copy_file_conflicts_when_source_mutating() {
+        let mut test_ctx = create_test_context().await;
+        let temp_dir = setup_file_area_basic(&mut test_ctx);
+
+        let shared_dir = temp_dir.path().join("shared");
+        let source = shared_dir.join("test.txt");
+        fs::write(&source, "content").unwrap();
+        fs::create_dir(shared_dir.join("dest")).unwrap();
+
+        let _source_guard = test_ctx
+            .file_activity
+            .try_enter_child_path(temp_dir.path(), &source)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileCopy],
+            false,
+        )
+        .await;
+
+        let mut ctx = test_ctx.handler_context();
+        handle_file_copy(
+            "test.txt".to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(session_id),
+            &mut ctx,
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileCopyResponse {
+                success,
+                error_kind,
+                ..
+            } => {
+                assert!(!success);
+                assert_eq!(error_kind, Some(ErrorKind::Conflict.into()));
+            }
+            _ => panic!("Expected FileCopyResponse"),
+        }
+
+        assert!(!shared_dir.join("dest/test.txt").exists());
+    }
+
+    #[tokio::test]
     async fn test_copy_directory_success() {
         let mut test_ctx = create_test_context().await;
         let temp_dir = setup_file_area_basic(&mut test_ctx);
@@ -631,6 +789,63 @@ mod tests {
         assert!(source_dir.exists());
         assert!(source_dir.join("file.txt").exists());
         assert!(shared_dir.join("dest/source/file.txt").exists());
+    }
+
+    #[tokio::test]
+    async fn test_copy_directory_conflicts_when_source_descendant_active() {
+        let mut test_ctx = create_test_context().await;
+        let temp_dir = setup_file_area_basic(&mut test_ctx);
+
+        let shared_dir = temp_dir.path().join("shared");
+        let source_dir = shared_dir.join("source");
+        fs::create_dir(&source_dir).unwrap();
+        let source_file = source_dir.join("file.txt");
+        fs::write(&source_file, "content").unwrap();
+        fs::create_dir(shared_dir.join("dest")).unwrap();
+
+        let _source_guard = test_ctx
+            .file_activity
+            .try_enter_child_path(temp_dir.path(), &source_file)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileCopy],
+            false,
+        )
+        .await;
+
+        let mut ctx = test_ctx.handler_context();
+        handle_file_copy(
+            "source".to_string(),
+            "dest".to_string(),
+            false,
+            false,
+            false,
+            Some(session_id),
+            &mut ctx,
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileCopyResponse {
+                success,
+                error_kind,
+                ..
+            } => {
+                assert!(!success);
+                assert_eq!(error_kind, Some(ErrorKind::Conflict.into()));
+            }
+            _ => panic!("Expected FileCopyResponse"),
+        }
+
+        assert!(!shared_dir.join("dest/source").exists());
     }
 
     #[tokio::test]
@@ -1148,6 +1363,66 @@ mod tests {
         assert!(shared_dir.join("link.txt").symlink_metadata().is_ok()); // Original symlink still exists
         assert!(shared_dir.join("dest/link.txt").symlink_metadata().is_ok()); // Copy is also a symlink
         assert!(shared_dir.join("target.txt").exists()); // Original target still exists
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn test_copy_directory_symlink_into_target_subdirectory() {
+        let mut test_ctx = create_test_context().await;
+        let temp_dir = setup_file_area_basic(&mut test_ctx);
+
+        let shared_dir = temp_dir.path().join("shared");
+        let target_dir = shared_dir.join("target");
+        fs::create_dir(&target_dir).unwrap();
+        fs::create_dir(target_dir.join("sub")).unwrap();
+        std::os::unix::fs::symlink(&target_dir, shared_dir.join("link")).unwrap();
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::FileCopy],
+            false,
+        )
+        .await;
+
+        let mut ctx = test_ctx.handler_context();
+        handle_file_copy(
+            "link".to_string(),
+            "link/sub".to_string(),
+            false,
+            false,
+            false,
+            Some(session_id),
+            &mut ctx,
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileCopyResponse { success, .. } => {
+                assert!(success);
+            }
+            _ => panic!("Expected FileCopyResponse"),
+        }
+
+        assert!(
+            shared_dir
+                .join("link")
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert!(
+            target_dir
+                .join("sub/link")
+                .symlink_metadata()
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
     }
 
     #[tokio::test]

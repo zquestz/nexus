@@ -153,7 +153,7 @@ The `error_kind` field provides machine-readable error classification for progra
 | `io_error`            | File I/O error                 | Show error, retry later      |
 | `protocol_error`      | Invalid/unexpected data        | Reconnect                    |
 | `exists`              | File already exists (upload)   | Admin must delete existing   |
-| `conflict`            | Concurrent upload in progress  | Wait and retry               |
+| `conflict`            | Active file operation          | Retry later                  |
 
 ### Tracker Errors
 
@@ -307,18 +307,18 @@ locales fall back to English.
 
 ### Resource Errors
 
-| Error                   | Cause                     | Connection      |
-| ----------------------- | ------------------------- | --------------- |
-| User not found          | Account doesn't exist     | Stays connected |
-| User is not online      | Nickname not found online | Stays connected |
-| Username already exists | Name conflict             | Stays connected |
-| Personal file area already exists | Rename target personal area exists | Stays connected |
-| Personal file area is busy | Rename target/source personal area has an active file operation or transfer | Stays connected |
-| Failed to migrate personal file area | Filesystem error during personal-area rename | Stays connected |
-| News item not found     | Invalid news ID           | Stays connected |
-| File not found          | Path doesn't exist        | Stays connected |
-| Directory not found     | Parent directory missing  | Stays connected |
-| Directory is not empty  | Delete on non-empty dir   | Stays connected |
+| Error                                | Cause                                                                       | Connection      |
+| ------------------------------------ | --------------------------------------------------------------------------- | --------------- |
+| User not found                       | Account doesn't exist                                                       | Stays connected |
+| User is not online                   | Nickname not found online                                                   | Stays connected |
+| Username already exists              | Name conflict                                                               | Stays connected |
+| Personal file area already exists    | Rename target personal area exists                                          | Stays connected |
+| Personal file area is busy           | Rename target/source personal area has an active file operation or transfer | Stays connected |
+| Failed to migrate personal file area | Filesystem error during personal-area rename                                | Stays connected |
+| News item not found                  | Invalid news ID                                                             | Stays connected |
+| File not found                       | Path doesn't exist                                                          | Stays connected |
+| Directory not found                  | Parent directory missing                                                    | Stays connected |
+| Directory is not empty               | Delete on non-empty dir                                                     | Stays connected |
 
 ### Self-Operation Errors
 

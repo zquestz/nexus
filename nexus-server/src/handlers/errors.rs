@@ -868,14 +868,14 @@ pub fn err_destination_not_directory(locale: &str) -> String {
     t(locale, "err-destination-not-directory")
 }
 
-/// Fires when a BBS mutation (copy/move/rename source, or delete target)
-/// collides with a `Fail`-mode lock on the same path.
+/// Fires when a source-side BBS file operation collides with active
+/// filesystem activity on the same path or a protected related path.
 pub fn err_source_busy(locale: &str) -> String {
     t(locale, "err-source-busy")
 }
 
-/// Fires when a BBS mutation (copy/move/rename target, or create-dir target)
-/// collides with a `Fail`-mode lock on the same destination path.
+/// Fires when a destination-side BBS file operation collides with active
+/// filesystem activity on the same path or a protected related path.
 pub fn err_destination_busy(locale: &str) -> String {
     t(locale, "err-destination-busy")
 }

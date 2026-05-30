@@ -33,7 +33,7 @@ use nexus_common::tls::accept_tls_with_timeout;
 use crate::constants::*;
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{Database, Permission};
-use crate::files::{personal_area_names_for_root_path, resolve_user_area_with_read_lock};
+use crate::files::resolve_user_area;
 use crate::handlers::duration::format_duration_remaining;
 use crate::handlers::{
     err_account_disabled, err_authentication, err_banned_permanent, err_banned_with_expiry,
@@ -78,8 +78,7 @@ where
         db,
         file_root,
         file_index,
-        file_mutation_locks,
-        personal_area_locks,
+        file_activity,
         transfer_registry,
         ip_rule_cache,
         user_manager,
@@ -146,40 +145,31 @@ where
             p.root,
         ),
     };
-    let root_personal_areas = if use_root {
-        personal_area_names_for_root_path(&path)
-    } else {
-        Vec::new()
-    };
-
     // Register after reading the request so the connection monitor can show
     // direction/path, but refresh identity by immutable user id under the same
     // rename-serialization guard used by BBS login.
-    let (user, info, ban_rx, personal_area_guards, user_area_root) =
-        match register_transfer_with_current_identity(
-            TransferRegistrationContext {
-                db: &db,
-                user_manager: &user_manager,
-                transfer_registry: &transfer_registry,
-                locale: &locale,
-                file_root,
-                personal_area_locks: &personal_area_locks,
-            },
-            user,
-            PendingTransferRegistration {
-                peer_addr,
-                direction,
-                path,
-                total_size,
-                use_root,
-                root_personal_areas,
-            },
-        )
-        .await
-        {
-            Ok(registered) => registered,
-            Err(error) => return send_error_and_close(&mut frame_writer, &error).await,
-        };
+    let (user, info, ban_rx, user_area_root) = match register_transfer_with_current_identity(
+        TransferRegistrationContext {
+            db: &db,
+            user_manager: &user_manager,
+            transfer_registry: &transfer_registry,
+            locale: &locale,
+            file_root,
+        },
+        user,
+        PendingTransferRegistration {
+            peer_addr,
+            direction,
+            path,
+            total_size,
+            use_root,
+        },
+    )
+    .await
+    {
+        Ok(registered) => registered,
+        Err(error) => return send_error_and_close(&mut frame_writer, &error).await,
+    };
 
     if let IpAdmission::Banned { expires_at } = ip_rule_cache.check_admission(peer_addr.ip()).await
     {
@@ -200,9 +190,7 @@ where
             locale,
             file_root,
             file_index: &file_index,
-            file_mutation_locks: &file_mutation_locks,
-            personal_area_locks: &personal_area_locks,
-            personal_area_guards,
+            file_activity: &file_activity,
             user_area_root,
             registry: &transfer_registry,
         },
@@ -240,7 +228,6 @@ struct TransferRegistrationContext<'a> {
     transfer_registry: &'a TransferRegistry,
     locale: &'a str,
     file_root: &'a std::path::Path,
-    personal_area_locks: &'a crate::files::PersonalAreaLockMap,
 }
 
 struct PendingTransferRegistration {
@@ -249,7 +236,6 @@ struct PendingTransferRegistration {
     path: String,
     total_size: u64,
     use_root: bool,
-    root_personal_areas: Vec<String>,
 }
 
 async fn register_transfer_with_current_identity(
@@ -261,7 +247,6 @@ async fn register_transfer_with_current_identity(
         AuthenticatedUser,
         Arc<ActiveTransfer>,
         oneshot::Receiver<()>,
-        Vec<crate::files::PersonalAreaReadGuard>,
         Option<std::path::PathBuf>,
     ),
     String,
@@ -296,21 +281,10 @@ async fn register_transfer_with_current_identity(
         user.nickname = account.username;
     }
 
-    let (personal_area_guards, user_area_root) = if pending.use_root {
-        (
-            ctx.personal_area_locks
-                .read_many(pending.root_personal_areas)
-                .await,
-            None,
-        )
+    let user_area_root = if pending.use_root {
+        None
     } else {
-        let (area_root, guards) = resolve_user_area_with_read_lock(
-            ctx.file_root,
-            ctx.personal_area_locks,
-            &user.username,
-        )
-        .await;
-        (guards, Some(area_root))
+        Some(resolve_user_area(ctx.file_root, &user.username).await)
     };
 
     let (info, ban_rx) = ctx.transfer_registry.register(TransferRegistration {
@@ -325,7 +299,7 @@ async fn register_transfer_with_current_identity(
         total_size: pending.total_size,
     });
 
-    Ok((user, info, ban_rx, personal_area_guards, user_area_root))
+    Ok((user, info, ban_rx, user_area_root))
 }
 
 async fn current_transfer_permissions(
@@ -358,7 +332,6 @@ mod tests {
         CreateUserParams, Database, Permission, PermissionWriteScope, Permissions,
         UpdateUserParams, UserAccount,
     };
-    use crate::files::PersonalAreaLockMap;
     use crate::users::UserManager;
     use tempfile::TempDir;
 
@@ -441,7 +414,6 @@ mod tests {
             path: "file.bin".to_string(),
             total_size: 0,
             use_root: false,
-            root_personal_areas: Vec::new(),
         }
     }
 
@@ -452,13 +424,12 @@ mod tests {
         let user_manager = UserManager::new();
         let registry = TransferRegistry::new();
         let file_root = TempDir::new().unwrap();
-        let personal_area_locks = PersonalAreaLockMap::new();
         let permissions = Permissions::from(&[Permission::FileDownload]);
         let account = create_transfer_user(&db, "alicia", false, &permissions).await;
 
         let stale_user = stale_auth_user(account.id, "alice", "alice", false);
 
-        let (registered_user, info, _ban_rx, _area_guards, _user_area_root) =
+        let (registered_user, info, _ban_rx, _user_area_root) =
             register_transfer_with_current_identity(
                 TransferRegistrationContext {
                     db: &db,
@@ -466,7 +437,6 @@ mod tests {
                     transfer_registry: &registry,
                     locale: "en",
                     file_root: file_root.path(),
-                    personal_area_locks: &personal_area_locks,
                 },
                 stale_user,
                 pending_registration(),
@@ -494,13 +464,12 @@ mod tests {
         let user_manager = UserManager::new();
         let registry = TransferRegistry::new();
         let file_root = TempDir::new().unwrap();
-        let personal_area_locks = PersonalAreaLockMap::new();
         let permissions = Permissions::new();
         let account = create_transfer_user(&db, "shared2", true, &permissions).await;
 
         let stale_user = stale_auth_user(account.id, "shared", "GuestOne", true);
 
-        let (registered_user, info, _ban_rx, _area_guards, _user_area_root) =
+        let (registered_user, info, _ban_rx, _user_area_root) =
             register_transfer_with_current_identity(
                 TransferRegistrationContext {
                     db: &db,
@@ -508,7 +477,6 @@ mod tests {
                     transfer_registry: &registry,
                     locale: "en",
                     file_root: file_root.path(),
-                    personal_area_locks: &personal_area_locks,
                 },
                 stale_user,
                 pending_registration(),
@@ -525,66 +493,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_register_transfer_keeps_personal_area_read_guard_alive() {
-        let pool = create_test_db().await;
-        let db = Database::new(pool);
-        let user_manager = UserManager::new();
-        let registry = TransferRegistry::new();
-        let file_root = TempDir::new().unwrap();
-        let personal_area_locks = PersonalAreaLockMap::new();
-        let permissions = Permissions::from(&[Permission::FileDownload]);
-        let account = create_transfer_user(&db, "alice", false, &permissions).await;
-        tokio::fs::create_dir(file_root.path().join("users"))
-            .await
-            .unwrap();
-        tokio::fs::create_dir(file_root.path().join("users").join("alice"))
-            .await
-            .unwrap();
-
-        let user = stale_auth_user(account.id, "alice", "alice", false);
-        let (_registered_user, _info, _ban_rx, area_guards, _user_area_root) =
-            register_transfer_with_current_identity(
-                TransferRegistrationContext {
-                    db: &db,
-                    user_manager: &user_manager,
-                    transfer_registry: &registry,
-                    locale: "en",
-                    file_root: file_root.path(),
-                    personal_area_locks: &personal_area_locks,
-                },
-                user,
-                pending_registration(),
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(area_guards.len(), 1);
-        assert!(
-            personal_area_locks
-                .try_write_many(["alice".to_string()])
-                .await
-                .is_err(),
-            "registered transfer must keep the source personal area read-locked"
-        );
-
-        drop(area_guards);
-        assert!(
-            personal_area_locks
-                .try_write_many(["alice".to_string()])
-                .await
-                .is_ok(),
-            "personal area write lock should succeed after transfer guards drop"
-        );
-    }
-
-    #[tokio::test]
     async fn test_register_transfer_rejects_deleted_account_by_user_id() {
         let pool = create_test_db().await;
         let db = Database::new(pool);
         let user_manager = UserManager::new();
         let registry = TransferRegistry::new();
         let file_root = TempDir::new().unwrap();
-        let personal_area_locks = PersonalAreaLockMap::new();
         let permissions = Permissions::new();
         let account = create_transfer_user(&db, "alice", false, &permissions).await;
         assert!(db.users.delete_user(account.id, true).await.unwrap());
@@ -598,7 +512,6 @@ mod tests {
                 transfer_registry: &registry,
                 locale: "en",
                 file_root: file_root.path(),
-                personal_area_locks: &personal_area_locks,
             },
             stale_user,
             pending_registration(),
@@ -620,7 +533,6 @@ mod tests {
         let user_manager = UserManager::new();
         let registry = TransferRegistry::new();
         let file_root = TempDir::new().unwrap();
-        let personal_area_locks = PersonalAreaLockMap::new();
         let permissions = Permissions::new();
         let account =
             create_transfer_user_with_enabled(&db, "alice", false, false, &permissions).await;
@@ -634,7 +546,6 @@ mod tests {
                 transfer_registry: &registry,
                 locale: "en",
                 file_root: file_root.path(),
-                personal_area_locks: &personal_area_locks,
             },
             stale_user,
             pending_registration(),
@@ -656,7 +567,6 @@ mod tests {
         let user_manager = UserManager::new();
         let registry = TransferRegistry::new();
         let file_root = TempDir::new().unwrap();
-        let personal_area_locks = PersonalAreaLockMap::new();
         disable_user(&db, GUEST_USERNAME).await;
         let guest = db
             .users
@@ -674,7 +584,6 @@ mod tests {
                 transfer_registry: &registry,
                 locale: "en",
                 file_root: file_root.path(),
-                personal_area_locks: &personal_area_locks,
             },
             stale_user,
             pending_registration(),

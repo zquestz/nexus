@@ -59,7 +59,7 @@ use crate::db::{
     Permission, Permissions, UpdateUserParams, hash_password_async, verify_password_async,
 };
 use crate::files::{
-    PersonalAreaMigration, PersonalAreaMigrationError, migrate_personal_area_on_rename_with_locks,
+    UserAreaMigration, UserAreaMigrationError, migrate_user_area_on_username_change,
 };
 use crate::users::manager::UserManager;
 use crate::voice::send_voice_leave_notifications;
@@ -978,34 +978,32 @@ where
             }
         }
 
-        let personal_area_migration = if let Some(new_username) = request.username.as_deref() {
+        let mut user_area_migration = if let Some(new_username) = request.username.as_deref() {
             if old_username != new_username {
                 match ctx.file_root {
                     Some(file_root) => {
-                        match migrate_personal_area_on_rename_with_locks(
+                        match migrate_user_area_on_username_change(
                             file_root,
-                            ctx.personal_area_locks.as_ref(),
-                            ctx.file_mutation_locks.as_ref(),
+                            ctx.file_activity.as_ref(),
                             &old_username,
                             new_username,
                         )
                         .await
                         {
-                            Ok(PersonalAreaMigration::Migrated) => {
-                                info!(
-                                    user = %requesting_user.username,
-                                    ip = %ctx.peer_addr,
-                                    old_username = %old_username,
-                                    new_username = %new_username,
-                                    "{}",
-                                    LOG_USER_UPDATE_FILE_AREA_MIGRATED
-                                );
-                                PersonalAreaMigration::Migrated
+                            Ok(migration) => {
+                                if migration.was_migrated() {
+                                    info!(
+                                        user = %requesting_user.username,
+                                        ip = %ctx.peer_addr,
+                                        old_username = %old_username,
+                                        new_username = %new_username,
+                                        "{}",
+                                        LOG_USER_UPDATE_FILE_AREA_MIGRATED
+                                    );
+                                }
+                                migration
                             }
-                            Ok(PersonalAreaMigration::NotNeeded) => {
-                                PersonalAreaMigration::NotNeeded
-                            }
-                            Err(PersonalAreaMigrationError::TargetExists) => {
+                            Err(UserAreaMigrationError::TargetExists) => {
                                 warn!(
                                     user = %requesting_user.username,
                                     ip = %ctx.peer_addr,
@@ -1026,7 +1024,7 @@ where
                                     },
                                 ));
                             }
-                            Err(PersonalAreaMigrationError::Busy) => {
+                            Err(UserAreaMigrationError::Busy) => {
                                 warn!(
                                     user = %requesting_user.username,
                                     ip = %ctx.peer_addr,
@@ -1044,7 +1042,7 @@ where
                                     },
                                 ));
                             }
-                            Err(PersonalAreaMigrationError::Io(e)) => {
+                            Err(UserAreaMigrationError::Io(e)) => {
                                 error!(
                                     user = %requesting_user.username,
                                     ip = %ctx.peer_addr,
@@ -1067,13 +1065,13 @@ where
                             }
                         }
                     }
-                    None => PersonalAreaMigration::NotNeeded,
+                    None => UserAreaMigration::not_needed(),
                 }
             } else {
-                PersonalAreaMigration::NotNeeded
+                UserAreaMigration::not_needed()
             }
         } else {
-            PersonalAreaMigration::NotNeeded
+            UserAreaMigration::not_needed()
         };
 
         // Update (atomic last-admin protection lives in the SQL).
@@ -1111,7 +1109,7 @@ where
                     id: Some(request.id),
                     username: Some(updated_account.username.clone()),
                 };
-                if personal_area_migration == PersonalAreaMigration::Migrated {
+                if user_area_migration.was_migrated() {
                     ctx.file_index.mark_dirty();
                 }
 
@@ -1476,9 +1474,8 @@ where
                 let rollback_failed = if let Some(new_username) = request.username.as_deref() {
                     rollback_personal_area_migration_if_needed(
                         ctx.file_root,
-                        ctx.personal_area_locks.as_ref(),
-                        ctx.file_mutation_locks.as_ref(),
-                        personal_area_migration,
+                        ctx.file_activity.as_ref(),
+                        &mut user_area_migration,
                         &old_username,
                         new_username,
                     )
@@ -1510,9 +1507,8 @@ where
                 let rollback_failed = if let Some(new_username) = request.username.as_deref() {
                     rollback_personal_area_migration_if_needed(
                         ctx.file_root,
-                        ctx.personal_area_locks.as_ref(),
-                        ctx.file_mutation_locks.as_ref(),
-                        personal_area_migration,
+                        ctx.file_activity.as_ref(),
+                        &mut user_area_migration,
                         &old_username,
                         new_username,
                     )
@@ -1612,9 +1608,8 @@ where
                 let rollback_failed = if let Some(new_username) = request.username.as_deref() {
                     rollback_personal_area_migration_if_needed(
                         ctx.file_root,
-                        ctx.personal_area_locks.as_ref(),
-                        ctx.file_mutation_locks.as_ref(),
-                        personal_area_migration,
+                        ctx.file_activity.as_ref(),
+                        &mut user_area_migration,
                         &old_username,
                         new_username,
                     )
@@ -1664,28 +1659,24 @@ fn append_personal_area_rollback_warning_if_needed(
 
 async fn rollback_personal_area_migration_if_needed(
     file_root: Option<&std::path::Path>,
-    personal_area_locks: &crate::files::PersonalAreaLockMap,
-    file_mutation_locks: &crate::files::PathLockMap,
-    migration: PersonalAreaMigration,
+    file_activity: &crate::files::FileActivityMap,
+    migration: &mut UserAreaMigration,
     old_username: &str,
     new_username: &str,
 ) -> bool {
-    if migration != PersonalAreaMigration::Migrated {
+    if !migration.was_migrated() {
         return false;
     }
+
+    migration.release_activity();
 
     let Some(file_root) = file_root else {
         return false;
     };
 
-    if let Err(e) = migrate_personal_area_on_rename_with_locks(
-        file_root,
-        personal_area_locks,
-        file_mutation_locks,
-        new_username,
-        old_username,
-    )
-    .await
+    if let Err(e) =
+        migrate_user_area_on_username_change(file_root, file_activity, new_username, old_username)
+            .await
     {
         error!(
             old_username,
@@ -1739,6 +1730,52 @@ mod tests {
         );
 
         assert_eq!(message, "Primary failure.");
+    }
+
+    #[tokio::test]
+    async fn test_rollback_personal_area_migration_reverses_rename_and_releases_activity() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let root = temp.path();
+        let users_dir = root.join("users");
+        let old_dir = users_dir.join("alice");
+        let new_dir = users_dir.join("alicia");
+        fs::create_dir_all(&old_dir).unwrap();
+        fs::write(old_dir.join("note.txt"), "personal").unwrap();
+
+        let activity = crate::files::FileActivityMap::new();
+        let mut migration =
+            migrate_user_area_on_username_change(root, &activity, "alice", "alicia")
+                .await
+                .unwrap();
+
+        assert!(migration.was_migrated());
+        assert!(!old_dir.exists());
+        assert_eq!(
+            fs::read_to_string(new_dir.join("note.txt")).unwrap(),
+            "personal"
+        );
+
+        let rollback_failed = rollback_personal_area_migration_if_needed(
+            Some(root),
+            &activity,
+            &mut migration,
+            "alice",
+            "alicia",
+        )
+        .await;
+
+        assert!(!rollback_failed);
+        assert!(!new_dir.exists());
+        assert_eq!(
+            fs::read_to_string(old_dir.join("note.txt")).unwrap(),
+            "personal"
+        );
+
+        let post_rollback_guard = activity
+            .try_enter_directory_paths(root, &[old_dir, new_dir])
+            .await
+            .unwrap();
+        assert!(post_rollback_guard.is_ok());
     }
 
     #[tokio::test]
@@ -2377,7 +2414,12 @@ mod tests {
         fs::create_dir(&old_dir).unwrap();
         fs::write(old_dir.join("note.txt"), "personal").unwrap();
 
-        let _active_file_operation = test_ctx.personal_area_locks.read("alice").await;
+        let _active_file_operation = test_ctx
+            .file_activity
+            .try_enter_child_path(file_root, &old_dir.join("note.txt"))
+            .await
+            .unwrap()
+            .unwrap();
         let request = UserUpdateRequest {
             id: alice.id,
             current_password: None,
@@ -3372,8 +3414,7 @@ mod tests {
                 connection_tracker: test_ctx.connection_tracker.clone(),
                 ip_rule_cache: test_ctx.ip_rule_cache.clone(),
                 file_index: test_ctx.file_index.clone(),
-                file_mutation_locks: test_ctx.file_mutation_locks.clone(),
-                personal_area_locks: test_ctx.personal_area_locks.clone(),
+                file_activity: test_ctx.file_activity.clone(),
                 channel_manager: &test_ctx.channel_manager,
                 transfer_registry: test_ctx.transfer_registry.clone(),
                 voice_registry: &test_ctx.voice_registry,
@@ -3395,8 +3436,7 @@ mod tests {
                 connection_tracker: test_ctx.connection_tracker.clone(),
                 ip_rule_cache: test_ctx.ip_rule_cache.clone(),
                 file_index: test_ctx.file_index.clone(),
-                file_mutation_locks: test_ctx.file_mutation_locks.clone(),
-                personal_area_locks: test_ctx.personal_area_locks.clone(),
+                file_activity: test_ctx.file_activity.clone(),
                 channel_manager: &test_ctx.channel_manager,
                 transfer_registry: test_ctx.transfer_registry.clone(),
                 voice_registry: &test_ctx.voice_registry,

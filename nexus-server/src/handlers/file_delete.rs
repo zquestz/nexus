@@ -20,8 +20,7 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::files::path::PathError;
 use crate::files::{
-    PathLockMode, build_and_validate_candidate_path, in_owned_dropbox, lock_key,
-    personal_area_names_for_root_path, resolve_path, resolve_user_area_with_read_lock,
+    build_and_validate_candidate_path, in_owned_dropbox, resolve_path, resolve_user_area,
 };
 
 pub async fn handle_file_delete<W>(
@@ -91,24 +90,14 @@ where
             break 'user_area Err(response);
         }
 
-        let (area_root_path, personal_area_guards) = if root {
-            (
-                file_root.to_path_buf(),
-                ctx.personal_area_locks
-                    .read_many(personal_area_names_for_root_path(&path))
-                    .await,
-            )
+        let area_root_path = if root {
+            file_root.to_path_buf()
         } else {
-            resolve_user_area_with_read_lock(
-                file_root,
-                ctx.personal_area_locks.as_ref(),
-                &requesting_user.username,
-            )
-            .await
+            resolve_user_area(file_root, &requesting_user.username).await
         };
-        Ok((requesting_user, area_root_path, personal_area_guards))
+        Ok((requesting_user, area_root_path))
     };
-    let (requesting_user, area_root_path, _personal_area_guards) = match user_area_result {
+    let (requesting_user, area_root_path) = match user_area_result {
         Ok(user_area) => user_area,
         Err(response) => return ctx.send_message(&response).await,
     };
@@ -155,31 +144,25 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Acquire before any metadata/resolve/type check so a concurrent locked
-    // rename/move/copy can't replace the target between inspection and removal;
-    // a path still held by an upload reports as busy. Guards live only inside
-    // this block; all socket sends happen after it.
-    let response = 'locked: {
-        let target_key = match lock_key(&candidate).await {
-            Ok(k) => k,
-            Err(_) => {
-                break 'locked ServerMessage::FileDeleteResponse {
-                    success: false,
-                    error: Some(err_file_path_invalid(ctx.locale)),
-                };
-            }
-        };
-        let _lock_guard = match ctx
-            .file_mutation_locks
-            .acquire(target_key, PathLockMode::Wait)
+    // Activity guards are fail-fast. File deletes reserve the exact path;
+    // directory deletes also reject active descendants before removal.
+    let response = 'active: {
+        let _activity_guard = match ctx
+            .file_activity
+            .try_enter_directory_path(file_root, &candidate)
             .await
         {
-            Ok(g) => g,
-            Err(_) => {
-                // Path held by a `Fail`-mode lock.
-                break 'locked ServerMessage::FileDeleteResponse {
+            Ok(Ok(g)) => g,
+            Ok(Err(_)) => {
+                break 'active ServerMessage::FileDeleteResponse {
                     success: false,
                     error: Some(err_source_busy(ctx.locale)),
+                };
+            }
+            Err(_) => {
+                break 'active ServerMessage::FileDeleteResponse {
+                    success: false,
+                    error: Some(err_file_path_invalid(ctx.locale)),
                 };
             }
         };
@@ -195,13 +178,13 @@ where
                 let resolved = match resolve_path(&area_root, &candidate).await {
                     Ok(p) => p,
                     Err(PathError::NotFound) => {
-                        break 'locked ServerMessage::FileDeleteResponse {
+                        break 'active ServerMessage::FileDeleteResponse {
                             success: false,
                             error: Some(err_file_not_found(ctx.locale)),
                         };
                     }
                     Err(_) => {
-                        break 'locked ServerMessage::FileDeleteResponse {
+                        break 'active ServerMessage::FileDeleteResponse {
                             success: false,
                             error: Some(err_file_path_invalid(ctx.locale)),
                         };
@@ -209,7 +192,7 @@ where
                 };
 
                 if resolved == area_root {
-                    break 'locked ServerMessage::FileDeleteResponse {
+                    break 'active ServerMessage::FileDeleteResponse {
                         success: false,
                         error: Some(err_permission_denied(ctx.locale)),
                     };
@@ -222,13 +205,13 @@ where
                 (resolved, is_dir)
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                break 'locked ServerMessage::FileDeleteResponse {
+                break 'active ServerMessage::FileDeleteResponse {
                     success: false,
                     error: Some(err_file_not_found(ctx.locale)),
                 };
             }
             Err(_) => {
-                break 'locked ServerMessage::FileDeleteResponse {
+                break 'active ServerMessage::FileDeleteResponse {
                     success: false,
                     error: Some(err_file_path_invalid(ctx.locale)),
                 };
@@ -237,7 +220,7 @@ where
 
         // Symlink branch also checks the virtual candidate against area_root.
         if candidate == area_root {
-            break 'locked ServerMessage::FileDeleteResponse {
+            break 'active ServerMessage::FileDeleteResponse {
                 success: false,
                 error: Some(err_permission_denied(ctx.locale)),
             };
@@ -380,6 +363,97 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_delete_file_source_busy_when_target_active() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let target = file_area.path().join("shared/test.txt");
+        fs::write(&target, "content").expect("Failed to create file");
+        let _activity_guard = test_ctx
+            .file_activity
+            .try_enter_child_path(file_area.path(), &target)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::FileList, Permission::FileDelete],
+            false,
+        )
+        .await;
+
+        handle_file_delete(
+            "test.txt".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileDeleteResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_source_busy(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected FileDeleteResponse"),
+        }
+
+        assert!(target.exists());
+    }
+
+    #[tokio::test]
+    async fn test_delete_file_allows_sibling_activity() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        fs::create_dir(file_area.path().join("shared/music")).expect("Failed to create dir");
+        let target = file_area.path().join("shared/music/a.txt");
+        let sibling = file_area.path().join("shared/music/b.txt");
+        fs::write(&target, "a").expect("Failed to create target");
+        fs::write(&sibling, "b").expect("Failed to create sibling");
+        let _activity_guard = test_ctx
+            .file_activity
+            .try_enter_child_path(file_area.path(), &sibling)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::FileList, Permission::FileDelete],
+            false,
+        )
+        .await;
+
+        handle_file_delete(
+            "music/a.txt".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileDeleteResponse { success, error } => {
+                assert!(success, "Sibling activity should not block: {:?}", error);
+            }
+            _ => panic!("Expected FileDeleteResponse"),
+        }
+
+        assert!(!target.exists());
+        assert!(sibling.exists());
+    }
+
+    #[tokio::test]
     async fn test_delete_empty_directory_success() {
         let mut test_ctx = create_test_context().await;
         let file_area = setup_file_area_basic(&mut test_ctx);
@@ -415,6 +489,95 @@ mod tests {
         }
 
         assert!(!file_area.path().join("shared/empty_dir").exists());
+    }
+
+    #[tokio::test]
+    async fn test_delete_directory_source_busy_when_descendant_active() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let dir = file_area.path().join("shared/empty_dir");
+        fs::create_dir(&dir).expect("Failed to create dir");
+        let descendant = dir.join("uploading.txt");
+        let _activity_guard = test_ctx
+            .file_activity
+            .try_enter_child_path(file_area.path(), &descendant)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::FileList, Permission::FileDelete],
+            false,
+        )
+        .await;
+
+        handle_file_delete(
+            "empty_dir".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileDeleteResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_source_busy(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected FileDeleteResponse"),
+        }
+
+        assert!(dir.exists());
+    }
+
+    #[tokio::test]
+    async fn test_delete_directory_source_busy_when_upload_active() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let dir = file_area.path().join("shared/uploads");
+        fs::create_dir(&dir).expect("Failed to create dir");
+        let _activity_guard = test_ctx
+            .file_activity
+            .try_enter_descendant_path(file_area.path(), &dir)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::FileList, Permission::FileDelete],
+            false,
+        )
+        .await;
+
+        handle_file_delete(
+            "uploads".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileDeleteResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_source_busy(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected FileDeleteResponse"),
+        }
+
+        assert!(dir.exists());
     }
 
     #[tokio::test]

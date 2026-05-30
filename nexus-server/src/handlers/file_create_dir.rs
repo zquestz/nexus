@@ -22,9 +22,8 @@ use crate::constants::{
 use crate::db::Permission;
 use crate::files::path::PathError;
 use crate::files::{
-    PathLockMode, allows_upload, build_and_validate_candidate_path, lock_key,
-    normalize_client_path, personal_area_names_for_root_child, resolve_new_path, resolve_path,
-    resolve_user_area_with_read_lock,
+    allows_upload, build_and_validate_candidate_path, normalize_client_path, resolve_new_path,
+    resolve_path, resolve_user_area,
 };
 
 pub async fn handle_file_create_dir<W>(
@@ -121,24 +120,14 @@ where
             break 'user_area Err(response);
         }
 
-        let (area_root_path, personal_area_guards) = if root {
-            (
-                file_root.to_path_buf(),
-                ctx.personal_area_locks
-                    .read_many(personal_area_names_for_root_child(&path, &name))
-                    .await,
-            )
+        let area_root_path = if root {
+            file_root.to_path_buf()
         } else {
-            resolve_user_area_with_read_lock(
-                file_root,
-                ctx.personal_area_locks.as_ref(),
-                &requesting_user.username,
-            )
-            .await
+            resolve_user_area(file_root, &requesting_user.username).await
         };
-        Ok((requesting_user, area_root_path, personal_area_guards))
+        Ok((requesting_user, area_root_path))
     };
-    let (requesting_user, area_root_path, _personal_area_guards) = match user_area_result {
+    let (requesting_user, area_root_path) = match user_area_result {
         Ok(user_area) => user_area,
         Err(response) => return ctx.send_message(&response).await,
     };
@@ -249,38 +238,33 @@ where
         }
     };
 
-    // Lock for serialization parity; `create_dir` is itself atomic-fails-if-exists.
-    // Guards live only inside this block; all socket sends happen after it.
-    let response = 'locked: {
-        let target_key = match lock_key(&new_dir_path).await {
-            Ok(k) => k,
+    // Activity guard is fail-fast. `create_dir` still provides the atomic
+    // exists check; the guard only rejects known in-server path activity.
+    let response = 'active: {
+        let _activity_guard = match ctx
+            .file_activity
+            .try_enter_child_path(file_root, &new_dir_path)
+            .await
+        {
+            Ok(Ok(g)) => g,
+            Ok(Err(_)) => {
+                break 'active ServerMessage::FileCreateDirResponse {
+                    success: false,
+                    error: Some(err_destination_busy(ctx.locale)),
+                    path: None,
+                };
+            }
             Err(_) => {
-                break 'locked ServerMessage::FileCreateDirResponse {
+                break 'active ServerMessage::FileCreateDirResponse {
                     success: false,
                     error: Some(err_file_path_invalid(ctx.locale)),
                     path: None,
                 };
             }
         };
-        let _lock_guard = match ctx
-            .file_mutation_locks
-            .acquire(target_key, PathLockMode::Wait)
-            .await
-        {
-            Ok(g) => g,
-            Err(_) => {
-                // Destination path held by a `Fail`-mode lock.
-                break 'locked ServerMessage::FileCreateDirResponse {
-                    success: false,
-                    error: Some(err_destination_busy(ctx.locale)),
-                    path: None,
-                };
-            }
-        };
 
         if let Err(e) = tokio::fs::create_dir(&new_dir_path).await {
-            // Race-tight: `create_dir` is atomic-fails-if-exists under the lock.
-            break 'locked if e.kind() == std::io::ErrorKind::AlreadyExists {
+            break 'active if e.kind() == std::io::ErrorKind::AlreadyExists {
                 ServerMessage::FileCreateDirResponse {
                     success: false,
                     error: Some(err_dir_already_exists(ctx.locale)),
@@ -505,6 +489,93 @@ mod tests {
                 assert!(success, "Should succeed with permission: {:?}", error);
                 assert!(error.is_none());
                 assert_eq!(path, Some("MyNewFolder".to_string()));
+            }
+            _ => panic!("Expected FileCreateDirResponse"),
+        }
+
+        assert!(file_area.path().join("shared/MyNewFolder").exists());
+    }
+
+    #[tokio::test]
+    async fn test_create_dir_destination_busy_when_target_active() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_full(&mut test_ctx);
+
+        let target = file_area.path().join("shared/MyNewFolder");
+        let _activity_guard = test_ctx
+            .file_activity
+            .try_enter_child_path(file_area.path(), &target)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::FileList, Permission::FileCreateDir],
+            false,
+        )
+        .await;
+
+        handle_file_create_dir(
+            String::new(),
+            "MyNewFolder".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileCreateDirResponse { success, error, .. } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_destination_busy(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected FileCreateDirResponse"),
+        }
+
+        assert!(!target.exists());
+    }
+
+    #[tokio::test]
+    async fn test_create_dir_allows_sibling_activity() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_full(&mut test_ctx);
+
+        let sibling = file_area.path().join("shared/OtherFolder");
+        let _activity_guard = test_ctx
+            .file_activity
+            .try_enter_child_path(file_area.path(), &sibling)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::FileList, Permission::FileCreateDir],
+            false,
+        )
+        .await;
+
+        handle_file_create_dir(
+            String::new(),
+            "MyNewFolder".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileCreateDirResponse { success, error, .. } => {
+                assert!(success, "Sibling activity should not block: {:?}", error);
             }
             _ => panic!("Expected FileCreateDirResponse"),
         }

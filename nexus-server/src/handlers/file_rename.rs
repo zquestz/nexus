@@ -9,10 +9,11 @@ use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::{self, DirNameError, FilePathError};
 
 use super::{
-    HandlerContext, err_destination_busy, err_dir_name_empty, err_dir_name_invalid,
-    err_dir_name_too_long, err_file_area_not_accessible, err_file_area_not_configured,
-    err_file_not_found, err_file_path_invalid, err_file_path_too_long, err_not_logged_in,
-    err_permission_denied, err_rename_failed, err_rename_target_exists, err_source_busy,
+    HandlerContext, activity_busy_is_source_side, err_destination_busy, err_dir_name_empty,
+    err_dir_name_invalid, err_dir_name_too_long, err_file_area_not_accessible,
+    err_file_area_not_configured, err_file_not_found, err_file_path_invalid,
+    err_file_path_too_long, err_not_logged_in, err_permission_denied, err_rename_failed,
+    err_rename_target_exists, err_source_busy,
 };
 use crate::constants::{
     HANDLER_FILE_RENAME, LOG_FILE_RENAME_DESTINATION_BUSY, LOG_FILE_RENAME_FAILED,
@@ -21,9 +22,8 @@ use crate::constants::{
 };
 use crate::db::Permission;
 use crate::files::{
-    PathLockMode, build_and_validate_candidate_path, in_owned_dropbox, lock_key,
-    personal_area_names_for_root_rename, rename_path_async, resolve_path,
-    resolve_user_area_with_read_lock,
+    activity_key, build_and_validate_candidate_path, in_owned_dropbox, rename_path_async,
+    resolve_path, resolve_user_area,
 };
 
 pub async fn handle_file_rename<W>(
@@ -113,24 +113,14 @@ where
             break 'user_area Err(response);
         }
 
-        let (area_root_path, personal_area_guards) = if root {
-            (
-                file_root.to_path_buf(),
-                ctx.personal_area_locks
-                    .read_many(personal_area_names_for_root_rename(&path, &new_name))
-                    .await,
-            )
+        let area_root_path = if root {
+            file_root.to_path_buf()
         } else {
-            resolve_user_area_with_read_lock(
-                file_root,
-                ctx.personal_area_locks.as_ref(),
-                &requesting_user.username,
-            )
-            .await
+            resolve_user_area(file_root, &requesting_user.username).await
         };
-        Ok((requesting_user, area_root_path, personal_area_guards))
+        Ok((requesting_user, area_root_path))
     };
-    let (requesting_user, area_root_path, _personal_area_guards) = match user_area_result {
+    let (requesting_user, area_root_path) = match user_area_result {
         Ok(user_area) => user_area,
         Err(response) => return ctx.send_message(&response).await,
     };
@@ -179,8 +169,8 @@ where
         return ctx.send_message(&response).await;
     }
 
-    // Derive lock keys from `candidate` + `new_name` (pure path arithmetic) so
-    // source validation can run AFTER acquisition, closing the resolve-then-mutate race.
+    // Enter activity from `candidate` + `new_name` (pure path arithmetic) so
+    // source validation can run after the reservation, closing the resolve-then-mutate race.
     let candidate_parent = match candidate.parent() {
         Some(p) => p,
         None => {
@@ -191,8 +181,8 @@ where
             return ctx.send_message(&response).await;
         }
     };
-    let target_path_for_lock = candidate_parent.join(&new_name);
-    let source_lock_key = match lock_key(&candidate).await {
+    let target_path_for_activity = candidate_parent.join(&new_name);
+    let source_activity_key = match activity_key(&candidate).await {
         Ok(k) => k,
         Err(_) => {
             let response = ServerMessage::FileRenameResponse {
@@ -202,7 +192,7 @@ where
             return ctx.send_message(&response).await;
         }
     };
-    let target_lock_key = match lock_key(&target_path_for_lock).await {
+    let target_activity_key = match activity_key(&target_path_for_activity).await {
         Ok(k) => k,
         Err(_) => {
             let response = ServerMessage::FileRenameResponse {
@@ -212,32 +202,42 @@ where
             return ctx.send_message(&response).await;
         }
     };
-    // Clone before moving into `acquire_many` so we can identify which side
-    // (source vs target) the busy lock was on, and report a meaningful error.
-    let busy_source_key = source_lock_key.clone();
 
     // Guards live only inside this block; all socket sends happen after it.
-    let response = 'locked: {
-        let _lock_guards = match ctx
-            .file_mutation_locks
-            .acquire_many(vec![source_lock_key, target_lock_key], PathLockMode::Wait)
+    let response = 'active: {
+        let _activity_guard = match ctx
+            .file_activity
+            .try_enter_directory_keys(
+                file_root,
+                vec![source_activity_key.clone(), target_activity_key.clone()],
+            )
             .await
         {
-            Ok(g) => g,
-            Err(e) if e.key() == busy_source_key.as_path() => {
-                // Source path held by a `Fail`-mode lock.
+            Ok(Ok(g)) => g,
+            Ok(Err(e))
+                if activity_busy_is_source_side(
+                    &source_activity_key,
+                    &target_activity_key,
+                    e.path(),
+                ) =>
+            {
                 debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_SOURCE_BUSY);
-                break 'locked ServerMessage::FileRenameResponse {
+                break 'active ServerMessage::FileRenameResponse {
                     success: false,
                     error: Some(err_source_busy(ctx.locale)),
                 };
             }
-            Err(_) => {
-                // Destination path held by a `Fail`-mode lock.
+            Ok(Err(_)) => {
                 debug!(user = %requesting_user.username, ip = %ctx.peer_addr, "{}", LOG_FILE_RENAME_DESTINATION_BUSY);
-                break 'locked ServerMessage::FileRenameResponse {
+                break 'active ServerMessage::FileRenameResponse {
                     success: false,
                     error: Some(err_destination_busy(ctx.locale)),
+                };
+            }
+            Err(_) => {
+                break 'active ServerMessage::FileRenameResponse {
+                    success: false,
+                    error: Some(err_file_path_invalid(ctx.locale)),
                 };
             }
         };
@@ -252,20 +252,20 @@ where
             Ok(_) => match resolve_path(&area_root, &candidate).await {
                 Ok(p) => p,
                 Err(_) => {
-                    break 'locked ServerMessage::FileRenameResponse {
+                    break 'active ServerMessage::FileRenameResponse {
                         success: false,
                         error: Some(err_file_not_found(ctx.locale)),
                     };
                 }
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                break 'locked ServerMessage::FileRenameResponse {
+                break 'active ServerMessage::FileRenameResponse {
                     success: false,
                     error: Some(err_file_not_found(ctx.locale)),
                 };
             }
             Err(_) => {
-                break 'locked ServerMessage::FileRenameResponse {
+                break 'active ServerMessage::FileRenameResponse {
                     success: false,
                     error: Some(err_file_path_invalid(ctx.locale)),
                 };
@@ -273,7 +273,7 @@ where
         };
 
         if source_path == area_root || candidate == area_root {
-            break 'locked ServerMessage::FileRenameResponse {
+            break 'active ServerMessage::FileRenameResponse {
                 success: false,
                 error: Some(err_permission_denied(ctx.locale)),
             };
@@ -282,7 +282,7 @@ where
         let parent_dir = match source_path.parent() {
             Some(p) => p,
             None => {
-                break 'locked ServerMessage::FileRenameResponse {
+                break 'active ServerMessage::FileRenameResponse {
                     success: false,
                     error: Some(err_file_path_invalid(ctx.locale)),
                 };
@@ -293,7 +293,7 @@ where
         if tokio::fs::try_exists(&target_path).await.unwrap_or(false)
             || tokio::fs::symlink_metadata(&target_path).await.is_ok()
         {
-            break 'locked ServerMessage::FileRenameResponse {
+            break 'active ServerMessage::FileRenameResponse {
                 success: false,
                 error: Some(err_rename_target_exists(ctx.locale)),
             };
@@ -465,6 +465,52 @@ mod tests {
 
         assert!(!file_area.path().join("shared/original_dir").exists());
         assert!(file_area.path().join("shared/renamed_dir").exists());
+    }
+
+    #[tokio::test]
+    async fn test_rename_directory_source_busy_when_upload_active() {
+        let mut test_ctx = create_test_context().await;
+        let file_area = setup_file_area_basic(&mut test_ctx);
+
+        let dir = file_area.path().join("shared/uploads");
+        fs::create_dir(&dir).expect("Failed to create dir");
+        let _activity_guard = test_ctx
+            .file_activity
+            .try_enter_descendant_path(file_area.path(), &dir)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let session_id = login_user(
+            &mut test_ctx,
+            "testuser",
+            "password",
+            &[Permission::FileList, Permission::FileRename],
+            false,
+        )
+        .await;
+
+        handle_file_rename(
+            "uploads".to_string(),
+            "renamed_uploads".to_string(),
+            false,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::FileRenameResponse { success, error } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_source_busy(DEFAULT_TEST_LOCALE)));
+            }
+            _ => panic!("Expected FileRenameResponse"),
+        }
+
+        assert!(dir.exists());
+        assert!(!file_area.path().join("shared/renamed_uploads").exists());
     }
 
     #[tokio::test]

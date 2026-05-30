@@ -13,7 +13,7 @@ use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::send_server_message_with_id;
 use nexus_common::protocol::ServerMessage;
 
-use crate::files::{FileIndex, PathLockMap, PersonalAreaLockMap, PersonalAreaReadGuard};
+use crate::files::{FileActivityMap, FileIndex};
 
 #[cfg(test)]
 use super::registry::TransferRegistration;
@@ -62,9 +62,7 @@ pub struct TransferContext<'a> {
     pub locale: String,
     pub file_root: &'a Path,
     pub file_index: &'a Arc<FileIndex>,
-    pub file_mutation_locks: &'a Arc<PathLockMap>,
-    pub personal_area_locks: &'a Arc<PersonalAreaLockMap>,
-    pub personal_area_guards: Vec<PersonalAreaReadGuard>,
+    pub file_activity: &'a Arc<FileActivityMap>,
     pub user_area_root: Option<PathBuf>,
     pub registry: &'a TransferRegistry,
 }
@@ -87,9 +85,7 @@ pub struct Transfer<'a, R, W> {
     locale: String,
     file_root: &'a Path,
     file_index: &'a Arc<FileIndex>,
-    file_mutation_locks: &'a Arc<PathLockMap>,
-    personal_area_locks: &'a Arc<PersonalAreaLockMap>,
-    _personal_area_guards: Vec<PersonalAreaReadGuard>,
+    file_activity: &'a Arc<FileActivityMap>,
     user_area_root: Option<PathBuf>,
 
     // Must be last so it drops after the other fields
@@ -121,9 +117,7 @@ where
             locale: ctx.locale,
             file_root: ctx.file_root,
             file_index: ctx.file_index,
-            file_mutation_locks: ctx.file_mutation_locks,
-            personal_area_locks: ctx.personal_area_locks,
-            _personal_area_guards: ctx.personal_area_guards,
+            file_activity: ctx.file_activity,
             user_area_root: ctx.user_area_root,
             _guard: TransferRegistryGuard::new(ctx.registry, id),
         }
@@ -166,12 +160,8 @@ where
         self.file_index
     }
 
-    pub fn file_mutation_locks(&self) -> &Arc<PathLockMap> {
-        self.file_mutation_locks
-    }
-
-    pub fn personal_area_locks(&self) -> &Arc<PersonalAreaLockMap> {
-        self.personal_area_locks
+    pub fn file_activity(&self) -> &Arc<FileActivityMap> {
+        self.file_activity
     }
 
     pub fn user_area_root(&self) -> Option<&Path> {
@@ -410,7 +400,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::files::{FileIndex, PersonalAreaLockMap};
+    use crate::files::{FileActivityMap, FileIndex};
     use crate::transfers::registry::{TransferDirection, TransferRegistry};
     use std::collections::HashSet;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -477,8 +467,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
         let file_index = make_test_file_index(&temp_dir);
-        let file_mutation_locks = Arc::new(PathLockMap::new());
-        let personal_area_locks = Arc::new(PersonalAreaLockMap::new());
+        let file_activity = Arc::new(FileActivityMap::new());
 
         let transfer = Transfer::new(
             FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -490,9 +479,7 @@ mod tests {
                 locale: "en".to_string(),
                 file_root,
                 file_index: &file_index,
-                file_mutation_locks: &file_mutation_locks,
-                personal_area_locks: &personal_area_locks,
-                personal_area_guards: Vec::new(),
+                file_activity: &file_activity,
                 user_area_root: None,
                 registry: &registry,
             },
@@ -529,8 +516,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
         let file_index = make_test_file_index(&temp_dir);
-        let file_mutation_locks = Arc::new(PathLockMap::new());
-        let personal_area_locks = Arc::new(PersonalAreaLockMap::new());
+        let file_activity = Arc::new(FileActivityMap::new());
 
         let mut transfer = Transfer::new(
             FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -542,9 +528,7 @@ mod tests {
                 locale: "en".to_string(),
                 file_root,
                 file_index: &file_index,
-                file_mutation_locks: &file_mutation_locks,
-                personal_area_locks: &personal_area_locks,
-                personal_area_guards: Vec::new(),
+                file_activity: &file_activity,
                 user_area_root: None,
                 registry: &registry,
             },
@@ -583,8 +567,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
         let file_index = make_test_file_index(&temp_dir);
-        let file_mutation_locks = Arc::new(PathLockMap::new());
-        let personal_area_locks = Arc::new(PersonalAreaLockMap::new());
+        let file_activity = Arc::new(FileActivityMap::new());
 
         let mut transfer = Transfer::new(
             FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -596,9 +579,7 @@ mod tests {
                 locale: "en".to_string(),
                 file_root,
                 file_index: &file_index,
-                file_mutation_locks: &file_mutation_locks,
-                personal_area_locks: &personal_area_locks,
-                personal_area_guards: Vec::new(),
+                file_activity: &file_activity,
                 user_area_root: None,
                 registry: &registry,
             },
@@ -639,8 +620,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
         let file_index = make_test_file_index(&temp_dir);
-        let file_mutation_locks = Arc::new(PathLockMap::new());
-        let personal_area_locks = Arc::new(PersonalAreaLockMap::new());
+        let file_activity = Arc::new(FileActivityMap::new());
 
         let mut transfer = Transfer::new(
             FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -652,9 +632,7 @@ mod tests {
                 locale: "en".to_string(),
                 file_root,
                 file_index: &file_index,
-                file_mutation_locks: &file_mutation_locks,
-                personal_area_locks: &personal_area_locks,
-                personal_area_guards: Vec::new(),
+                file_activity: &file_activity,
                 user_area_root: None,
                 registry: &registry,
             },
@@ -694,8 +672,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
         let file_index = make_test_file_index(&temp_dir);
-        let file_mutation_locks = Arc::new(PathLockMap::new());
-        let personal_area_locks = Arc::new(PersonalAreaLockMap::new());
+        let file_activity = Arc::new(FileActivityMap::new());
 
         let mut transfer = Transfer::new(
             FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -707,9 +684,7 @@ mod tests {
                 locale: "en".to_string(),
                 file_root,
                 file_index: &file_index,
-                file_mutation_locks: &file_mutation_locks,
-                personal_area_locks: &personal_area_locks,
-                personal_area_guards: Vec::new(),
+                file_activity: &file_activity,
                 user_area_root: None,
                 registry: &registry,
             },
@@ -753,8 +728,7 @@ mod tests {
             let temp_dir = TempDir::new().unwrap();
             let file_root = temp_dir.path();
             let file_index = make_test_file_index(&temp_dir);
-            let file_mutation_locks = Arc::new(PathLockMap::new());
-            let personal_area_locks = Arc::new(PersonalAreaLockMap::new());
+            let file_activity = Arc::new(FileActivityMap::new());
 
             let _transfer = Transfer::new(
                 FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -766,9 +740,7 @@ mod tests {
                     locale: "en".to_string(),
                     file_root,
                     file_index: &file_index,
-                    file_mutation_locks: &file_mutation_locks,
-                    personal_area_locks: &personal_area_locks,
-                    personal_area_guards: Vec::new(),
+                    file_activity: &file_activity,
                     user_area_root: None,
                     registry: &registry,
                 },
@@ -802,8 +774,7 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path();
         let file_index = make_test_file_index(&temp_dir);
-        let file_mutation_locks = Arc::new(PathLockMap::new());
-        let personal_area_locks = Arc::new(PersonalAreaLockMap::new());
+        let file_activity = Arc::new(FileActivityMap::new());
 
         let mut transfer = Transfer::new(
             FrameReader::new(tokio::io::BufReader::new(server_read)),
@@ -815,9 +786,7 @@ mod tests {
                 locale: "en".to_string(),
                 file_root,
                 file_index: &file_index,
-                file_mutation_locks: &file_mutation_locks,
-                personal_area_locks: &personal_area_locks,
-                personal_area_guards: Vec::new(),
+                file_activity: &file_activity,
                 user_area_root: None,
                 registry: &registry,
             },

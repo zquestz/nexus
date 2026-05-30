@@ -3,6 +3,7 @@
 //! The server independently verifies uploaded data via its own StreamingHasher,
 //! fed with existing .part content + received FileData chunks.
 
+use std::collections::HashSet;
 use std::io;
 use std::path::{Path, PathBuf};
 
@@ -21,8 +22,8 @@ use nexus_common::validators;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 use crate::db::Permission;
+use crate::files::activity_key;
 use crate::files::path::{allows_upload, validate_and_build_candidate_path};
-use crate::files::{self, PathLockMode, personal_area_names_for_root_filesystem_path};
 use crate::handlers::{
     err_upload_conflict, err_upload_connection_lost, err_upload_destination_not_allowed,
     err_upload_empty, err_upload_file_exists, err_upload_hash_mismatch, err_upload_path_invalid,
@@ -66,15 +67,45 @@ where
         return send_upload_transfer_error(transfer.writer(), &err).await;
     }
 
-    let (area_root, resolved_destination) =
+    let upload_destination =
         match validate_and_resolve_upload_destination(transfer, &destination, use_root, &locale)
             .await
         {
             Ok(result) => result,
             Err(e) => return send_upload_transfer_error(transfer.writer(), &e).await,
         };
+    let area_root = upload_destination.area_root;
+    let resolved_destination = upload_destination.destination;
+    let create_destination = upload_destination.create_destination;
 
     let log_transfer_id = generate_transfer_id();
+
+    // Whole-upload descendant activity prevents the destination directory from
+    // being renamed or deleted between files, without blocking sibling uploads.
+    let _upload_activity_guard = match transfer
+        .file_activity()
+        .try_enter_descendant_path(transfer.file_root(), &resolved_destination)
+        .await
+    {
+        Ok(Ok(g)) => g,
+        Ok(Err(_)) => {
+            let err = TransferError::conflict(err_upload_conflict(&locale));
+            return send_upload_transfer_error(transfer.writer(), &err).await;
+        }
+        Err(_) => {
+            let err = TransferError::invalid(err_upload_path_invalid(&locale));
+            return send_upload_transfer_error(transfer.writer(), &err).await;
+        }
+    };
+
+    if create_destination
+        && tokio::fs::create_dir_all(&resolved_destination)
+            .await
+            .is_err()
+    {
+        let err = TransferError::io_error(err_upload_write_failed(&locale));
+        return send_upload_transfer_error(transfer.writer(), &err).await;
+    }
 
     debug!(
         id = %log_transfer_id,
@@ -101,11 +132,13 @@ where
     let mut transfer_error: Option<String> = None;
     let mut transfer_error_kind: Option<String> = None;
     let mut uploaded_files: Vec<String> = Vec::new();
+    let mut upload_targets = HashSet::new();
 
     for file_index in 0..file_count {
         let params = ReceiveFileParams {
             area_root: &area_root,
             destination: &resolved_destination,
+            upload_targets: &mut upload_targets,
             locale: &locale,
             transfer_id: &log_transfer_id,
             file_index,
@@ -200,6 +233,7 @@ where
         locale,
         transfer_id,
         file_index,
+        upload_targets,
     } = params;
 
     // sha256 arrives later in a separate FileHash frame.
@@ -215,27 +249,34 @@ where
 
     let (target_path, part_path) =
         validate_and_build_upload_paths(&relative_path, destination, area_root, locale)?;
-    let _personal_area_guards = transfer
-        .personal_area_locks()
-        .read_many(personal_area_names_for_root_filesystem_path(
-            transfer.file_root(),
-            &target_path,
-        ))
-        .await;
 
-    // `Fail` mode: other uploads bounce immediately rather than block on a
-    // multi-hour transfer. Lock both target AND `.part` so a `.part` rename
-    // can't be promoted to the final target mid-upload.
-    let target_key = files::lock_key(&target_path).await.map_err(|_| {
+    let target_activity_key = activity_key(&target_path).await.map_err(|_| {
         ReceiveFileError::Transfer(TransferError::invalid(err_upload_path_invalid(locale)))
     })?;
-    let part_key = files::lock_key(&part_path).await.map_err(|_| {
+    let part_activity_key = activity_key(&part_path).await.map_err(|_| {
         ReceiveFileError::Transfer(TransferError::invalid(err_upload_path_invalid(locale)))
     })?;
-    let _lock_guards = transfer
-        .file_mutation_locks()
-        .acquire_many(vec![target_key, part_key], PathLockMode::Fail)
+
+    // Claim before reserving. If reservation or later upload work fails, the
+    // transfer aborts, so this per-transfer set does not need rollback.
+    if !upload_targets.insert(target_activity_key.clone()) {
+        return Err(ReceiveFileError::Transfer(TransferError::conflict(
+            err_upload_conflict(locale),
+        )));
+    }
+
+    // Long uploads reserve both target AND `.part` so a `.part` rename can't
+    // be promoted to the final target mid-upload.
+    let _activity_guard = transfer
+        .file_activity()
+        .try_enter_child_keys(
+            transfer.file_root(),
+            vec![target_activity_key, part_activity_key],
+        )
         .await
+        .map_err(|_| {
+            ReceiveFileError::Transfer(TransferError::invalid(err_upload_path_invalid(locale)))
+        })?
         .map_err(|_| {
             ReceiveFileError::Transfer(TransferError::conflict(err_upload_conflict(locale)))
         })?;
@@ -372,6 +413,12 @@ enum UploadAccess {
     Denied,
 }
 
+struct UploadDestinationResolution {
+    area_root: PathBuf,
+    destination: PathBuf,
+    create_destination: bool,
+}
+
 /// Upload-folder gate: under an upload/dropbox folder → `Allowed`; else admins
 /// and `FileUploadAnywhere` holders get `Bypassed` (callers log for audit),
 /// everyone else `Denied`.
@@ -390,7 +437,7 @@ async fn validate_and_resolve_upload_destination<R, W>(
     destination: &str,
     use_root: bool,
     locale: &str,
-) -> Result<(PathBuf, PathBuf), TransferError>
+) -> Result<UploadDestinationResolution, TransferError>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
@@ -421,7 +468,9 @@ where
     let candidate = build_validated_path(&area_root, destination, locale).await?;
 
     // Destination may not exist yet.
-    let resolved_destination = match resolve_path(&area_root, &candidate).await {
+    let (resolved_destination, create_destination) = match resolve_path(&area_root, &candidate)
+        .await
+    {
         Ok(path) => {
             let path_is_dir = tokio::fs::metadata(&path)
                 .await
@@ -444,7 +493,7 @@ where
                 }
             }
 
-            path
+            (path, false)
         }
         Err(crate::files::path::PathError::NotFound) => {
             // Walk up to the nearest existing ancestor; new dirs inherit its upload-allowed status.
@@ -481,18 +530,18 @@ where
                 }
             }
 
-            tokio::fs::create_dir_all(&candidate)
-                .await
-                .map_err(|_| TransferError::io_error(err_upload_write_failed(locale)))?;
-
-            candidate
+            (candidate, true)
         }
         Err(e) => {
             return Err(path_error_to_transfer_error(e, locale));
         }
     };
 
-    Ok((area_root, resolved_destination))
+    Ok(UploadDestinationResolution {
+        area_root,
+        destination: resolved_destination,
+        create_destination,
+    })
 }
 
 fn validate_and_build_upload_paths(
@@ -837,14 +886,407 @@ where
 mod tests {
     use super::super::test_helpers::make_authenticated_user;
     use super::*;
-    use nexus_common::ERROR_KIND_INVALID;
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::sync::Arc;
+
+    use nexus_common::io::{read_server_message, send_client_message};
+    use nexus_common::{ERROR_KIND_CONFLICT, ERROR_KIND_INVALID};
     use tempfile::TempDir;
     use tokio::fs;
+    use tokio::io::{BufReader, DuplexStream, ReadHalf, WriteHalf, duplex};
+
+    use crate::files::{FileActivityMap, FileIndex};
+    use crate::transfers::registry::{TransferDirection, TransferRegistration, TransferRegistry};
+    use crate::transfers::transfer::TransferContext;
 
     const TEST_LOCALE: &str = "en";
 
     fn mock_writer() -> FrameWriter<Vec<u8>> {
         FrameWriter::new(Vec::new())
+    }
+
+    fn test_addr() -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 7501)
+    }
+
+    fn make_upload_transfer<'a>(
+        server_read: ReadHalf<DuplexStream>,
+        server_write: WriteHalf<DuplexStream>,
+        file_root: &'a Path,
+        shared_root: &'a Path,
+        file_index: &'a Arc<FileIndex>,
+        file_activity: &'a Arc<FileActivityMap>,
+        registry: &'a TransferRegistry,
+    ) -> Transfer<'a, BufReader<ReadHalf<DuplexStream>>, WriteHalf<DuplexStream>> {
+        let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr: test_addr(),
+            nickname: "tester".to_string(),
+            username: "tester".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Upload,
+            path: "uploads [NEXUS-UL]".to_string(),
+            total_size: 0,
+        });
+
+        Transfer::new(
+            FrameReader::new(BufReader::new(server_read)),
+            FrameWriter::new(server_write),
+            ban_rx,
+            info,
+            TransferContext {
+                user: make_authenticated_user(false, &[Permission::FileUpload]),
+                locale: TEST_LOCALE.to_string(),
+                file_root,
+                file_index,
+                file_activity,
+                user_area_root: Some(shared_root.to_path_buf()),
+                registry,
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn test_upload_destination_activity_conflict() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let destination = shared_root.join("uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+        let _directory_guard = file_activity
+            .try_enter_directory_path(&file_root, &destination)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let (client, server) = duplex(8192);
+        let (client_read, _client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut transfer = make_upload_transfer(
+            server_read,
+            server_write,
+            &file_root,
+            &shared_root,
+            &file_index,
+            &file_activity,
+            &registry,
+        );
+
+        handle_upload(
+            &mut transfer,
+            UploadParams {
+                destination: "uploads [NEXUS-UL]".to_string(),
+                file_count: 1,
+                total_size: 1,
+                root: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        let response = read_server_message(&mut reader)
+            .await
+            .unwrap()
+            .unwrap()
+            .message;
+        match response {
+            ServerMessage::FileUploadResponse {
+                success,
+                error_kind,
+                ..
+            } => {
+                assert!(!success);
+                assert_eq!(error_kind.as_deref(), Some(ERROR_KIND_CONFLICT));
+            }
+            _ => panic!("Expected FileUploadResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_upload_missing_destination_conflict_does_not_create_directory() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let upload_parent = shared_root.join("uploads [NEXUS-UL]");
+        let destination = upload_parent.join("new");
+        fs::create_dir_all(&upload_parent).await.unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+        let _directory_guard = file_activity
+            .try_enter_directory_path(&file_root, &upload_parent)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let (client, server) = duplex(8192);
+        let (client_read, _client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut transfer = make_upload_transfer(
+            server_read,
+            server_write,
+            &file_root,
+            &shared_root,
+            &file_index,
+            &file_activity,
+            &registry,
+        );
+
+        handle_upload(
+            &mut transfer,
+            UploadParams {
+                destination: "uploads [NEXUS-UL]/new".to_string(),
+                file_count: 1,
+                total_size: 1,
+                root: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        let response = read_server_message(&mut reader)
+            .await
+            .unwrap()
+            .unwrap()
+            .message;
+        match response {
+            ServerMessage::FileUploadResponse {
+                success,
+                error_kind,
+                ..
+            } => {
+                assert!(!success);
+                assert_eq!(error_kind.as_deref(), Some(ERROR_KIND_CONFLICT));
+            }
+            _ => panic!("Expected FileUploadResponse"),
+        }
+        assert!(!destination.exists());
+    }
+
+    #[tokio::test]
+    async fn test_receive_file_conflicts_when_target_active() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let destination = shared_root.join("uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+        let target = destination.join("file.txt");
+        let _target_guard = file_activity
+            .try_enter_child_path(&file_root, &target)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let (client, server) = duplex(8192);
+        let (_client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_writer = FrameWriter::new(client_write);
+        send_client_message(
+            &mut client_writer,
+            &ClientMessage::FileStart {
+                path: "file.txt".to_string(),
+                size: 1,
+            },
+        )
+        .await
+        .unwrap();
+
+        let mut transfer = make_upload_transfer(
+            server_read,
+            server_write,
+            &file_root,
+            &shared_root,
+            &file_index,
+            &file_activity,
+            &registry,
+        );
+        let mut upload_targets = HashSet::new();
+        let result = receive_file(
+            &mut transfer,
+            ReceiveFileParams {
+                area_root: &shared_root,
+                destination: &destination,
+                upload_targets: &mut upload_targets,
+                locale: TEST_LOCALE,
+                transfer_id: "test",
+                file_index: 0,
+            },
+        )
+        .await;
+
+        match result {
+            Err(ReceiveFileError::Transfer(err)) => {
+                assert_eq!(err.kind, ERROR_KIND_CONFLICT);
+            }
+            _ => panic!("Expected upload conflict"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_receive_file_conflicts_when_part_active() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let destination = shared_root.join("uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+        let part = destination.join("file.txt.part");
+        let _part_guard = file_activity
+            .try_enter_child_path(&file_root, &part)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let (client, server) = duplex(8192);
+        let (_client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_writer = FrameWriter::new(client_write);
+        send_client_message(
+            &mut client_writer,
+            &ClientMessage::FileStart {
+                path: "file.txt".to_string(),
+                size: 1,
+            },
+        )
+        .await
+        .unwrap();
+
+        let mut transfer = make_upload_transfer(
+            server_read,
+            server_write,
+            &file_root,
+            &shared_root,
+            &file_index,
+            &file_activity,
+            &registry,
+        );
+        let mut upload_targets = HashSet::new();
+        let result = receive_file(
+            &mut transfer,
+            ReceiveFileParams {
+                area_root: &shared_root,
+                destination: &destination,
+                upload_targets: &mut upload_targets,
+                locale: TEST_LOCALE,
+                transfer_id: "test",
+                file_index: 0,
+            },
+        )
+        .await;
+
+        match result {
+            Err(ReceiveFileError::Transfer(err)) => {
+                assert_eq!(err.kind, ERROR_KIND_CONFLICT);
+            }
+            _ => panic!("Expected upload conflict"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_receive_file_conflicts_when_transfer_reuses_target() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let destination = shared_root.join("uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+
+        let (client, server) = duplex(8192);
+        let (_client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_writer = FrameWriter::new(client_write);
+        send_client_message(
+            &mut client_writer,
+            &ClientMessage::FileStart {
+                path: "file.txt".to_string(),
+                size: 0,
+            },
+        )
+        .await
+        .unwrap();
+        send_client_message(
+            &mut client_writer,
+            &ClientMessage::FileHash {
+                sha256: String::new(),
+            },
+        )
+        .await
+        .unwrap();
+        send_client_message(
+            &mut client_writer,
+            &ClientMessage::FileStart {
+                path: "file.txt".to_string(),
+                size: 0,
+            },
+        )
+        .await
+        .unwrap();
+
+        let mut transfer = make_upload_transfer(
+            server_read,
+            server_write,
+            &file_root,
+            &shared_root,
+            &file_index,
+            &file_activity,
+            &registry,
+        );
+        let mut upload_targets = HashSet::new();
+
+        let first = receive_file(
+            &mut transfer,
+            ReceiveFileParams {
+                area_root: &shared_root,
+                destination: &destination,
+                upload_targets: &mut upload_targets,
+                locale: TEST_LOCALE,
+                transfer_id: "test",
+                file_index: 0,
+            },
+        )
+        .await;
+        match first {
+            Ok(path) => assert_eq!(path, "file.txt"),
+            Err(_) => panic!("Expected first upload to succeed"),
+        }
+
+        let second = receive_file(
+            &mut transfer,
+            ReceiveFileParams {
+                area_root: &shared_root,
+                destination: &destination,
+                upload_targets: &mut upload_targets,
+                locale: TEST_LOCALE,
+                transfer_id: "test",
+                file_index: 1,
+            },
+        )
+        .await;
+
+        match second {
+            Err(ReceiveFileError::Transfer(err)) => {
+                assert_eq!(err.kind, ERROR_KIND_CONFLICT);
+            }
+            _ => panic!("Expected duplicate target upload conflict"),
+        }
     }
 
     #[test]

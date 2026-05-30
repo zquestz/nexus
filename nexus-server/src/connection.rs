@@ -23,7 +23,7 @@ use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
-use crate::files::{FileIndex, PathLockMap, PersonalAreaLockMap};
+use crate::files::{FileActivityMap, FileIndex};
 use crate::flood::{FloodConfig, FloodTracker};
 use crate::handlers::{
     self, HandlerContext, err_invalid_message_format, err_message_not_supported,
@@ -45,8 +45,7 @@ pub struct ConnectionParams {
     pub connection_tracker: Arc<ConnectionTracker>,
     pub ip_rule_cache: Arc<IpRuleState>,
     pub file_index: Arc<FileIndex>,
-    pub file_mutation_locks: Arc<PathLockMap>,
-    pub personal_area_locks: Arc<PersonalAreaLockMap>,
+    pub file_activity: Arc<FileActivityMap>,
     pub channel_manager: ChannelManager,
     pub transfer_registry: Arc<TransferRegistry>,
     pub voice_registry: VoiceRegistry,
@@ -101,8 +100,7 @@ where
         connection_tracker,
         ip_rule_cache,
         file_index,
-        file_mutation_locks,
-        personal_area_locks,
+        file_activity,
         channel_manager,
         transfer_registry,
         voice_registry,
@@ -154,8 +152,7 @@ where
                             connection_tracker: connection_tracker.clone(),
                             ip_rule_cache: ip_rule_cache.clone(),
                             file_index: file_index.clone(),
-                            file_mutation_locks: file_mutation_locks.clone(),
-                            personal_area_locks: personal_area_locks.clone(),
+                            file_activity: file_activity.clone(),
                             channel_manager: &channel_manager,
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: &voice_registry,

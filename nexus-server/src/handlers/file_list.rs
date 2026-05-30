@@ -22,8 +22,7 @@ use crate::db::Permission;
 use crate::files::path::PathError;
 use crate::files::{
     FolderType, allows_upload, build_and_validate_candidate_path, is_hidden_name,
-    parse_folder_type, personal_area_names_for_root_path, resolve_path,
-    resolve_user_area_with_read_lock,
+    parse_folder_type, resolve_path, resolve_user_area,
 };
 
 /// Read directory entries (sorted dirs-first, then by name). None if unreadable.
@@ -205,24 +204,14 @@ where
             break 'user_area Err(response);
         }
 
-        let (area_root_path, personal_area_guards) = if root {
-            (
-                file_root.to_path_buf(),
-                ctx.personal_area_locks
-                    .read_many(personal_area_names_for_root_path(&path))
-                    .await,
-            )
+        let area_root_path = if root {
+            file_root.to_path_buf()
         } else {
-            resolve_user_area_with_read_lock(
-                file_root,
-                ctx.personal_area_locks.as_ref(),
-                &requesting_user.username,
-            )
-            .await
+            resolve_user_area(file_root, &requesting_user.username).await
         };
-        Ok((requesting_user, area_root_path, personal_area_guards))
+        Ok((requesting_user, area_root_path))
     };
-    let (requesting_user, area_root_path, _personal_area_guards) = match user_area_result {
+    let (requesting_user, area_root_path) = match user_area_result {
         Ok(user_area) => user_area,
         Err(response) => return ctx.send_message(&response).await,
     };

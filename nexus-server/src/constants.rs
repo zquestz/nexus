@@ -280,8 +280,9 @@ pub const ERR_FILE_OP_REMOVE_TASK: &str = "remove task failed: ";
 pub const ERR_FILE_OP_COPY_TASK: &str = "copy task failed: ";
 pub const ERR_FILE_OP_RENAME_TASK: &str = "rename task failed: ";
 
-// `files::path_lock`: `lock_key()` got a path lacking a parent or filename.
-pub const ERR_FILE_LOCK_INVALID_PATH: &str = "lock key requires a path with parent and filename";
+// `files::activity`: activity keys require a path with parent and filename.
+pub const ERR_FILE_ACTIVITY_INVALID_PATH: &str =
+    "activity key requires a path with parent and filename";
 
 // Transfer-port auth flow (port 7501 / WS 7503). Not localized — the transfer
 // port has no locale negotiation before auth completes. Pure-static below;

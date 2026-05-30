@@ -9,19 +9,17 @@ use std::path::{Path, PathBuf};
 
 use crate::constants::{FILES_DIR_NAME, FILES_SHARED_DIR, FILES_USERS_DIR};
 
+pub mod activity;
 pub mod area;
 pub mod folder_type;
 pub mod index;
 pub mod operations;
 pub mod path;
-pub mod path_lock;
 
+pub use activity::{FileActivityMap, activity_key};
 pub use area::{
-    PersonalAreaLockMap, PersonalAreaMigration, PersonalAreaMigrationError, PersonalAreaReadGuard,
-    migrate_personal_area_on_rename_with_locks, personal_area_names_for_root_child,
-    personal_area_names_for_root_destination, personal_area_names_for_root_filesystem_path,
-    personal_area_names_for_root_path, personal_area_names_for_root_rename,
-    resolve_user_area_with_read_lock,
+    UserAreaMigration, UserAreaMigrationError, migrate_user_area_on_username_change,
+    resolve_user_area,
 };
 pub use folder_type::{FolderType, in_owned_dropbox, parse_folder_type};
 pub use index::FileIndex;
@@ -30,7 +28,6 @@ pub use path::{
     allows_upload, build_and_validate_candidate_path, is_hidden_name, normalize_client_path,
     resolve_new_path, resolve_path,
 };
-pub use path_lock::{PathLockMap, PathLockMode, lock_key};
 
 /// Get the default file root path under the given server data directory
 /// (`<data_dir>/files/`).

@@ -444,7 +444,7 @@ Both sides use a `StreamingHasher` that supports clone-and-finalize (`partial_ha
 | `io_error`            | File I/O error                    |
 | `protocol_error`      | Invalid/unexpected data           |
 | `exists`              | File already exists (upload only) |
-| `conflict`            | Concurrent upload in progress     |
+| `conflict`            | Source or target path busy        |
 
 ## Timeouts
 

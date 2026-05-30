@@ -20,7 +20,7 @@ use super::{
     err_search_query_too_short,
 };
 use crate::db::Permission;
-use crate::files::resolve_user_area_with_read_lock;
+use crate::files::resolve_user_area;
 
 pub async fn handle_file_search<W>(
     query: String,
@@ -93,7 +93,7 @@ where
         }
 
         if root {
-            Ok((None, Vec::new(), requesting_user.username))
+            Ok((None, requesting_user.username))
         } else {
             let Some(file_root) = ctx.file_root else {
                 let response = ServerMessage::FileSearchResponse {
@@ -105,25 +105,16 @@ where
             };
 
             // Relative area path, e.g. "/shared" or "/users/alice".
-            let (area_root, personal_area_guards) = resolve_user_area_with_read_lock(
-                file_root,
-                ctx.personal_area_locks.as_ref(),
-                &requesting_user.username,
-            )
-            .await;
+            let area_root = resolve_user_area(file_root, &requesting_user.username).await;
             let relative_area = area_root
                 .strip_prefix(file_root)
                 .map(|p| format!("/{}", p.to_string_lossy().replace('\\', "/")))
                 .unwrap_or_else(|_| "/".to_string());
 
-            Ok((
-                Some(relative_area),
-                personal_area_guards,
-                requesting_user.username,
-            ))
+            Ok((Some(relative_area), requesting_user.username))
         }
     };
-    let (area_prefix, _personal_area_guards, username) = match user_area_result {
+    let (area_prefix, username) = match user_area_result {
         Ok(user_area) => user_area,
         Err(ServerMessage::Error { message, command }) => {
             return ctx

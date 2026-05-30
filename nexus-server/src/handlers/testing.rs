@@ -31,7 +31,7 @@ use super::HandlerContext;
 use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::{CreateUserParams, Database, Permissions};
-use crate::files::{FileIndex, PathLockMap, PersonalAreaLockMap};
+use crate::files::{FileActivityMap, FileIndex};
 use crate::ip_rule_cache::{IpRuleCache, IpRuleState};
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
@@ -87,8 +87,7 @@ pub struct TestContext {
     pub connection_tracker: Arc<ConnectionTracker>,
     pub ip_rule_cache: Arc<IpRuleState>,
     pub file_index: Arc<FileIndex>,
-    pub file_mutation_locks: Arc<PathLockMap>,
-    pub personal_area_locks: Arc<PersonalAreaLockMap>,
+    pub file_activity: Arc<FileActivityMap>,
     pub channel_manager: ChannelManager,
     pub transfer_registry: Arc<TransferRegistry>,
     pub voice_registry: VoiceRegistry,
@@ -114,8 +113,7 @@ impl TestContext {
             connection_tracker: self.connection_tracker.clone(),
             ip_rule_cache: self.ip_rule_cache.clone(),
             file_index: self.file_index.clone(),
-            file_mutation_locks: self.file_mutation_locks.clone(),
-            personal_area_locks: self.personal_area_locks.clone(),
+            file_activity: self.file_activity.clone(),
             channel_manager: &self.channel_manager,
             transfer_registry: self.transfer_registry.clone(),
             voice_registry: &self.voice_registry,
@@ -180,8 +178,7 @@ pub async fn create_test_context() -> TestContext {
 
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let file_index = Arc::new(FileIndex::new(temp_dir.path(), temp_dir.path()));
-    let file_mutation_locks = Arc::new(PathLockMap::new());
-    let personal_area_locks = Arc::new(PersonalAreaLockMap::new());
+    let file_activity = Arc::new(FileActivityMap::new());
 
     let channel_manager = ChannelManager::new(db.channels.clone(), user_manager.clone());
 
@@ -215,8 +212,7 @@ pub async fn create_test_context() -> TestContext {
         connection_tracker,
         ip_rule_cache,
         file_index,
-        file_mutation_locks,
-        personal_area_locks,
+        file_activity,
         channel_manager,
         transfer_registry,
         voice_registry,
@@ -520,8 +516,7 @@ pub fn concurrent_handler_context<'a>(
         connection_tracker: test_ctx.connection_tracker.clone(),
         ip_rule_cache: test_ctx.ip_rule_cache.clone(),
         file_index: test_ctx.file_index.clone(),
-        file_mutation_locks: test_ctx.file_mutation_locks.clone(),
-        personal_area_locks: test_ctx.personal_area_locks.clone(),
+        file_activity: test_ctx.file_activity.clone(),
         channel_manager: &test_ctx.channel_manager,
         transfer_registry: test_ctx.transfer_registry.clone(),
         voice_registry: &test_ctx.voice_registry,

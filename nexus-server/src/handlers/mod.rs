@@ -143,7 +143,7 @@ use nexus_common::protocol::ServerMessage;
 use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::{Database, Permission};
-use crate::files::{FileIndex, PathLockMap, PersonalAreaLockMap};
+use crate::files::{FileActivityMap, FileIndex};
 use crate::flood::FloodConfig;
 use crate::ip_rule_cache::IpRuleState;
 use crate::tracker::TrackerManager;
@@ -171,10 +171,8 @@ pub struct HandlerContext<'a, W> {
     /// In-memory ban/trust lookup cache plus mutation gate.
     pub ip_rule_cache: Arc<IpRuleState>,
     pub file_index: Arc<FileIndex>,
-    /// See `files::path_lock`.
-    pub file_mutation_locks: Arc<PathLockMap>,
-    /// Serializes account personal-area renames against file operations.
-    pub personal_area_locks: Arc<PersonalAreaLockMap>,
+    /// See `files::activity`.
+    pub file_activity: Arc<FileActivityMap>,
     pub channel_manager: &'a ChannelManager,
     /// Used to disconnect active transfers on ban.
     pub transfer_registry: Arc<TransferRegistry>,
@@ -184,6 +182,15 @@ pub struct HandlerContext<'a, W> {
     /// Server certificate fingerprint (SHA-256, colon-separated).
     pub fingerprint: &'static str,
     pub flood_config: Arc<FloodConfig>,
+}
+
+fn activity_busy_is_source_side(source_key: &Path, target_key: &Path, busy_path: &Path) -> bool {
+    let source_side = source_key.starts_with(busy_path);
+    let target_side = target_key.starts_with(busy_path);
+
+    // A common ancestor blocks both sides; report it as source-busy because the
+    // source cannot be safely inspected or mutated either.
+    source_side || !target_side
 }
 
 impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {
@@ -479,6 +486,33 @@ mod tests {
             last_activity: std::time::Instant::now(),
             bandwidth_weight: 1,
         }
+    }
+
+    #[test]
+    fn activity_busy_classifies_source_ancestor_as_source() {
+        assert!(activity_busy_is_source_side(
+            Path::new("/files/shared/music/song.mp3"),
+            Path::new("/files/shared/archive/song.mp3"),
+            Path::new("/files/shared/music"),
+        ));
+    }
+
+    #[test]
+    fn activity_busy_classifies_target_ancestor_as_destination() {
+        assert!(!activity_busy_is_source_side(
+            Path::new("/files/shared/music/song.mp3"),
+            Path::new("/files/shared/archive/song.mp3"),
+            Path::new("/files/shared/archive"),
+        ));
+    }
+
+    #[test]
+    fn activity_busy_classifies_common_ancestor_as_source() {
+        assert!(activity_busy_is_source_side(
+            Path::new("/files/media/in/song.mp3"),
+            Path::new("/files/media/out/song.mp3"),
+            Path::new("/files/media"),
+        ));
     }
 
     /// Regression for the forced-removal channel-cleanup gap: tearing a session
