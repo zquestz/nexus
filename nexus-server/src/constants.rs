@@ -93,10 +93,6 @@ pub const CONFIG_KEY_PUBLIC_ADDRESS: &str = "public_address";
 pub const FEATURE_CHAT: &str = "chat";
 pub const FEATURE_NEWS: &str = "news";
 
-/// Currently unused — reserved for future file-transfer broadcasts.
-#[allow(dead_code)]
-pub const FEATURE_FILES: &str = "files";
-
 /// Space-separated list; these channels survive restart and can't be deleted when empty.
 pub const CONFIG_KEY_PERSISTENT_CHANNELS: &str = "persistent_channels";
 pub const DEFAULT_PERSISTENT_CHANNELS: &str = nexus_common::validators::DEFAULT_CHANNEL;

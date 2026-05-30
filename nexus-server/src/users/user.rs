@@ -53,7 +53,6 @@ pub struct UserSession {
     pub permissions: HashSet<Permission>,
     pub address: SocketAddr,
     /// Account creation timestamp; reserved for future account-age/audit use.
-    #[allow(dead_code)]
     pub created_at: i64,
     pub login_time: i64,
     pub tx: mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,

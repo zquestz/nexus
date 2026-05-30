@@ -20,7 +20,7 @@ pub async fn create_test_db() -> SqlitePool {
 
 /// Count admin users in the database.
 pub async fn count_admins(pool: &SqlitePool) -> i64 {
-    let (count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_ADMINS)
+    let (count,): (i64,) = sqlx::query_as(sql::test_sql::SQL_COUNT_ADMINS)
         .fetch_one(pool)
         .await
         .unwrap();

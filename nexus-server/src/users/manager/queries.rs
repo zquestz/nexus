@@ -46,13 +46,6 @@ impl UserManager {
         users.get(&session_id).map(|u| u.has_permission(permission))
     }
 
-    /// Check if a user session exists, without cloning it.
-    #[allow(dead_code)] // Useful helper for future use
-    pub async fn session_exists(&self, session_id: u32) -> bool {
-        let users = self.users.read().await;
-        users.contains_key(&session_id)
-    }
-
     /// All sessions for a username (case-insensitive); a user may be logged in
     /// from multiple devices.
     pub async fn get_sessions_by_username(&self, username: &str) -> Vec<UserSession> {

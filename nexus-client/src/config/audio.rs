@@ -78,7 +78,6 @@ pub enum PttMode {
 
 impl PttMode {
     /// All PTT modes for the picker
-    #[allow(dead_code)]
     pub const ALL: &'static [PttMode] = &[PttMode::Hold, PttMode::Toggle];
 
     /// Get the translation key for this mode
@@ -351,20 +350,6 @@ fn default_ptt_key() -> String {
     DEFAULT_PTT_KEY.to_string()
 }
 
-impl AudioSettings {
-    /// Check if using system default output device
-    #[allow(dead_code)]
-    pub fn is_default_output(&self) -> bool {
-        self.output_device.is_empty()
-    }
-
-    /// Check if using system default input device
-    #[allow(dead_code)]
-    pub fn is_default_input(&self) -> bool {
-        self.input_device.is_empty()
-    }
-}
-
 // =============================================================================
 // Tests
 // =============================================================================
@@ -372,6 +357,16 @@ impl AudioSettings {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl AudioSettings {
+        fn is_default_output(&self) -> bool {
+            self.output_device.is_empty()
+        }
+
+        fn is_default_input(&self) -> bool {
+            self.input_device.is_empty()
+        }
+    }
 
     #[test]
     fn test_default_audio_settings() {

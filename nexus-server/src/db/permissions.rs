@@ -150,7 +150,6 @@ impl Permissions {
         self.permissions.iter()
     }
 
-    #[cfg_attr(not(test), allow(dead_code))]
     pub fn add(&mut self, permission: Permission) {
         self.permissions.insert(permission);
     }

@@ -115,8 +115,6 @@ pub struct ServerConnectionParams {
     pub is_admin: bool,
     /// User's permissions on this server
     pub permissions: Vec<String>,
-    /// Locale for this connection
-    pub locale: String,
     /// Server name (from ServerInfo)
     pub server_name: Option<String>,
     /// Server description (from ServerInfo)
@@ -190,12 +188,6 @@ pub struct ServerConnection {
     pub is_admin: bool,
     /// User's permissions on this server
     pub permissions: Vec<String>,
-    /// Locale for this connection (what the server accepted)
-    ///
-    /// Not yet used - waiting for translation infrastructure.
-    /// Stored for future use when Fluent translations are implemented.
-    #[allow(dead_code)]
-    pub locale: String,
     /// Server name (from ServerInfo)
     pub server_name: Option<String>,
     /// Server description (from ServerInfo)
@@ -617,7 +609,6 @@ impl ServerConnection {
             connection_id: params.connection_id,
             is_admin: params.is_admin,
             permissions: params.permissions,
-            locale: params.locale,
             server_name: params.server_name,
             server_description: params.server_description,
             public_address: params.public_address,
@@ -739,8 +730,6 @@ pub struct NetworkConnection {
     pub log_level: Option<String>,
     /// WF2Q+ scheduler chunk size in bytes (admin-only).
     pub scheduler_chunk_size: Option<u32>,
-    /// Locale accepted by the server
-    pub locale: String,
     /// Connection info (address, port, auth info)
     pub connection_info: ConnectionInfo,
 }
@@ -784,7 +773,6 @@ mod tests {
             connection_id: 0,
             is_admin: false,
             permissions: Vec::new(),
-            locale: String::new(),
             server_name: None,
             server_description: None,
             public_address: None,

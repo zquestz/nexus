@@ -1766,7 +1766,6 @@ mod tests {
             "voicebob".to_string(),
             vec!["#general".to_string()],
             bob_session,
-            test_ctx.peer_addr.ip(),
         );
         test_ctx
             .voice_registry

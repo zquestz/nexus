@@ -101,7 +101,6 @@ pub(super) async fn setup_communication_channels(
         min_password_strength: login_info.min_password_strength,
         log_level: login_info.log_level,
         scheduler_chunk_size: login_info.scheduler_chunk_size,
-        locale: login_info.locale,
         connection_info,
     })
 }

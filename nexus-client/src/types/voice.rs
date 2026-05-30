@@ -33,12 +33,6 @@ impl VoiceState {
         }
     }
 
-    /// Check if the target is a channel (starts with #)
-    #[allow(dead_code)] // Available for UI logic
-    pub fn is_channel(&self) -> bool {
-        self.target.starts_with('#')
-    }
-
     /// Add a participant to the session
     pub fn add_participant(&mut self, nickname: String) {
         let nickname_lower = fold_name(&nickname);

@@ -68,35 +68,6 @@ impl BanDb {
             .as_secs() as i64
     }
 
-    /// Create or update one ban target (upsert).
-    ///
-    /// If the target already exists, all fields are updated. The `nickname`
-    /// annotation is stored in display case; its folded form is written to
-    /// `nickname_lower` so case-insensitive deletes by nickname match.
-    /// `created_by` and `reason` are preserved as-typed since they're
-    /// display-only fields.
-    #[cfg(test)]
-    pub async fn create_or_update_ban(
-        &self,
-        target: &str,
-        nickname: Option<&str>,
-        reason: Option<&str>,
-        created_by: &str,
-        expires_at: Option<i64>,
-    ) -> Result<BanRecord, sqlx::Error> {
-        self.create_or_update_ban_targets(
-            std::iter::once(target),
-            nickname,
-            reason,
-            created_by,
-            expires_at,
-        )
-        .await?
-        .into_iter()
-        .next()
-        .ok_or(sqlx::Error::RowNotFound)
-    }
-
     /// Create or update multiple ban targets atomically.
     ///
     /// A target is a canonical single IP or CIDR range. Used when a nickname
@@ -149,58 +120,6 @@ impl BanDb {
         Ok(records)
     }
 
-    /// Get a ban by IP/CIDR target regardless of expiry status.
-    #[cfg(test)]
-    async fn get_ban_by_ip_unfiltered(
-        &self,
-        ip_address: &str,
-    ) -> Result<Option<BanRecord>, sqlx::Error> {
-        let row: Option<BanRow> = sqlx::query_as(sql::SQL_SELECT_BAN_BY_IP_UNFILTERED)
-            .bind(ip_address)
-            .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(row.map(BanRecord::from))
-    }
-
-    /// Check if a ban exists for a given IP/CIDR (regardless of expiry).
-    #[cfg(test)]
-    pub async fn ban_exists(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
-        Ok(self.get_ban_by_ip_unfiltered(ip_address).await?.is_some())
-    }
-
-    /// Check if an IP is currently banned (not expired).
-    #[cfg(test)]
-    pub async fn is_ip_banned(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
-        use crate::db::sql;
-
-        let now = Self::now();
-
-        let row: Option<BanRow> = sqlx::query_as(sql::SQL_SELECT_BAN_BY_IP)
-            .bind(ip_address)
-            .bind(now)
-            .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(row.is_some())
-    }
-
-    /// Get a ban by IP address (only if not expired).
-    #[cfg(test)]
-    pub async fn get_ban_by_ip(&self, ip_address: &str) -> Result<Option<BanRecord>, sqlx::Error> {
-        use crate::db::sql;
-
-        let now = Self::now();
-
-        let row: Option<BanRow> = sqlx::query_as(sql::SQL_SELECT_BAN_BY_IP)
-            .bind(ip_address)
-            .bind(now)
-            .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(row.map(BanRecord::from))
-    }
-
     /// Returns true if a ban was deleted, false if no ban existed.
     pub async fn delete_ban_by_ip(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(sql::SQL_DELETE_BAN_BY_IP)
@@ -228,20 +147,6 @@ impl BanDb {
             .await?;
 
         Ok(rows.into_iter().map(|(ip,)| ip).collect())
-    }
-
-    /// Check if any bans exist with a given nickname annotation.
-    ///
-    /// Lookup is case-insensitive: the supplied nickname is folded and matched
-    /// against the `nickname_lower` column.
-    #[cfg(test)]
-    pub async fn has_bans_for_nickname(&self, nickname: &str) -> Result<bool, sqlx::Error> {
-        let row: (i64,) = sqlx::query_as(sql::SQL_COUNT_BANS_BY_NICKNAME)
-            .bind(fold_name(nickname))
-            .fetch_one(&self.pool)
-            .await?;
-
-        Ok(row.0 > 0)
     }
 
     /// List all active (non-expired) bans, sorted by creation time (newest first).
@@ -325,6 +230,85 @@ fn target_is_contained_by_range(target: &str, range: &IpNet) -> bool {
             range_v6.contains(&ban_v6.network()) && ban_v6.prefix_len() >= range_v6.prefix_len()
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+impl BanDb {
+    /// Create or update one ban target (upsert).
+    pub async fn create_or_update_ban(
+        &self,
+        target: &str,
+        nickname: Option<&str>,
+        reason: Option<&str>,
+        created_by: &str,
+        expires_at: Option<i64>,
+    ) -> Result<BanRecord, sqlx::Error> {
+        self.create_or_update_ban_targets(
+            std::iter::once(target),
+            nickname,
+            reason,
+            created_by,
+            expires_at,
+        )
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(sqlx::Error::RowNotFound)
+    }
+
+    /// Get a ban by IP/CIDR target regardless of expiry status.
+    async fn get_ban_by_ip_unfiltered(
+        &self,
+        ip_address: &str,
+    ) -> Result<Option<BanRecord>, sqlx::Error> {
+        let row: Option<BanRow> = sqlx::query_as(sql::test_sql::SQL_SELECT_BAN_BY_IP_UNFILTERED)
+            .bind(ip_address)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(row.map(BanRecord::from))
+    }
+
+    /// Check if a ban exists for a given IP/CIDR regardless of expiry.
+    pub async fn ban_exists(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
+        Ok(self.get_ban_by_ip_unfiltered(ip_address).await?.is_some())
+    }
+
+    /// Check if an IP is currently banned.
+    pub async fn is_ip_banned(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
+        let now = Self::now();
+
+        let row: Option<BanRow> = sqlx::query_as(sql::test_sql::SQL_SELECT_BAN_BY_IP)
+            .bind(ip_address)
+            .bind(now)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(row.is_some())
+    }
+
+    /// Get a ban by IP address if it has not expired.
+    pub async fn get_ban_by_ip(&self, ip_address: &str) -> Result<Option<BanRecord>, sqlx::Error> {
+        let now = Self::now();
+
+        let row: Option<BanRow> = sqlx::query_as(sql::test_sql::SQL_SELECT_BAN_BY_IP)
+            .bind(ip_address)
+            .bind(now)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(row.map(BanRecord::from))
+    }
+
+    /// Check if any bans exist with a given nickname annotation.
+    pub async fn has_bans_for_nickname(&self, nickname: &str) -> Result<bool, sqlx::Error> {
+        let row: (i64,) = sqlx::query_as(sql::test_sql::SQL_COUNT_BANS_BY_NICKNAME)
+            .bind(fold_name(nickname))
+            .fetch_one(&self.pool)
+            .await?;
+
+        Ok(row.0 > 0)
     }
 }
 

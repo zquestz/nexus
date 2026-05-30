@@ -81,11 +81,6 @@ impl FileIndex {
         self.reindexing.load(Ordering::SeqCst)
     }
 
-    #[cfg(test)]
-    pub fn exists(&self) -> bool {
-        self.index_path.exists()
-    }
-
     /// Whether more than `max_age` has passed since the last successful rebuild.
     /// Catches external filesystem changes that never went through a handler.
     pub fn is_stale(&self, max_age: Duration) -> bool {
@@ -389,7 +384,7 @@ mod tests {
 
         assert!(!index.is_dirty());
         assert!(!index.is_reindexing());
-        assert!(!index.exists());
+        assert!(!index.index_path.exists());
     }
 
     #[test]
@@ -437,7 +432,7 @@ mod tests {
         let count = index.build_index().unwrap();
 
         assert_eq!(count, 0);
-        assert!(index.exists());
+        assert!(index.index_path.exists());
     }
 
     #[test]
@@ -458,7 +453,7 @@ mod tests {
 
         // Should have: shared, shared/docs, shared/docs/report.pdf, shared/readme.txt
         assert_eq!(count, 4);
-        assert!(index.exists());
+        assert!(index.index_path.exists());
     }
 
     #[test]

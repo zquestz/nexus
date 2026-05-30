@@ -21,8 +21,6 @@ pub struct UserEditResponseData {
     pub enabled: Option<bool>,
     pub permissions: Option<Vec<String>>,
     pub group_id: Option<i64>,
-    #[allow(dead_code)] // Informational — client looks up name from available_groups
-    pub group_name: Option<String>,
     pub group_permissions: Option<Vec<String>>,
     pub revoked_permissions: Option<Vec<String>>,
     pub available_groups: Option<Vec<nexus_common::protocol::GroupInfo>>,

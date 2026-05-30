@@ -191,12 +191,6 @@ impl AudioProcessor {
         }
     }
 
-    /// Get current settings
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub fn settings(&self) -> AudioProcessorSettings {
-        self.settings
-    }
-
     /// Hint to AEC/AGC that output audio is muted (e.g., user is deafened).
     ///
     /// When muted, there is no speaker output and thus no echo to cancel.
@@ -285,6 +279,12 @@ impl AudioProcessor {
 mod tests {
     use super::*;
     use serial_test::serial;
+
+    impl AudioProcessor {
+        fn settings(&self) -> AudioProcessorSettings {
+            self.settings
+        }
+    }
 
     #[test]
     fn test_default_settings() {

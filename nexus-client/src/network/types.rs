@@ -371,7 +371,6 @@ pub struct LoginInfo {
     /// WF2Q+ scheduler chunk size in bytes (admin-only).
     pub scheduler_chunk_size: Option<u32>,
     pub transfer_port: u16,
-    pub locale: String,
 }
 
 /// Caller-built parameters for a one-shot tracker query.

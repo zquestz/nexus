@@ -7,7 +7,7 @@ use nexus_common::io::{read_server_message, send_client_message};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::{DEFAULT_TRANSFER_PORT, PROTOCOL_VERSION};
 
-use crate::i18n::{DEFAULT_LOCALE, t, t_args};
+use crate::i18n::{t, t_args};
 use crate::types::{ConnectionInfo, NetworkConnection};
 
 use super::constants::{BBS_RESPONSE_TIMEOUT, DEFAULT_FEATURES};
@@ -248,7 +248,7 @@ async fn perform_login(
             permissions,
             server_info,
             channels,
-            locale,
+            locale: _,
             nickname,
             ..
         } => Ok(LoginInfo {
@@ -304,7 +304,6 @@ async fn perform_login(
             transfer_port: server_info
                 .map(|info| info.transfer_port)
                 .unwrap_or(DEFAULT_TRANSFER_PORT),
-            locale: locale.unwrap_or_else(|| DEFAULT_LOCALE.to_string()),
         }),
         ServerMessage::LoginResponse {
             success: true,

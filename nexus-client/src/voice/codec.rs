@@ -283,25 +283,6 @@ impl Default for DecoderPool {
     }
 }
 
-// Test-only methods
-#[cfg(test)]
-impl DecoderPool {
-    /// Check if the pool is empty (test-only)
-    pub fn is_empty(&self) -> bool {
-        self.decoders.is_empty()
-    }
-
-    /// Get the number of decoders in the pool (test-only)
-    pub fn len(&self) -> usize {
-        self.decoders.len()
-    }
-
-    /// Clear all decoders from the pool (test-only)
-    pub fn clear(&mut self) {
-        self.decoders.clear();
-    }
-}
-
 // =============================================================================
 // Tests
 // =============================================================================
@@ -380,7 +361,7 @@ mod tests {
     #[test]
     fn test_decoder_pool() {
         let mut pool = DecoderPool::new();
-        assert!(pool.is_empty());
+        assert!(pool.decoders.is_empty());
 
         // Create encoder and encode a frame
         let mut encoder = VoiceEncoder::new(VoiceQuality::High).unwrap();
@@ -390,24 +371,24 @@ mod tests {
         // Decode from two different senders
         let decoded1 = pool.decode("Alice", &encoded);
         assert!(decoded1.is_ok());
-        assert_eq!(pool.len(), 1);
+        assert_eq!(pool.decoders.len(), 1);
 
         let decoded2 = pool.decode("Bob", &encoded);
         assert!(decoded2.is_ok());
-        assert_eq!(pool.len(), 2);
+        assert_eq!(pool.decoders.len(), 2);
 
         // Same sender reuses decoder
         let decoded3 = pool.decode("alice", &encoded); // lowercase
         assert!(decoded3.is_ok());
-        assert_eq!(pool.len(), 2); // Still 2, not 3
+        assert_eq!(pool.decoders.len(), 2); // Still 2, not 3
 
         // Remove a sender
         pool.remove("Alice");
-        assert_eq!(pool.len(), 1);
+        assert_eq!(pool.decoders.len(), 1);
 
         // Clear all
-        pool.clear();
-        assert!(pool.is_empty());
+        pool.decoders.clear();
+        assert!(pool.decoders.is_empty());
     }
 
     #[test]
@@ -417,7 +398,7 @@ mod tests {
 
         pool.rename_user("Alice", "Alicia");
 
-        assert_eq!(pool.len(), 1);
+        assert_eq!(pool.decoders.len(), 1);
         assert!(pool.decoders.contains_key(&fold_name("Alicia")));
         assert!(!pool.decoders.contains_key(&fold_name("Alice")));
     }
@@ -430,7 +411,7 @@ mod tests {
 
         pool.rename_user("Alice", "Alicia");
 
-        assert_eq!(pool.len(), 1);
+        assert_eq!(pool.decoders.len(), 1);
         assert!(pool.decoders.contains_key(&fold_name("Alicia")));
     }
 

@@ -668,7 +668,6 @@ mod tests {
             connection_id,
             is_admin: false,
             permissions: Vec::new(),
-            locale: "en".to_string(),
             server_name: None,
             server_description: None,
             public_address: None,

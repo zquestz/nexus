@@ -1,6 +1,6 @@
 //! A single user's participation in a voice channel or user-message conversation.
 
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 
 use nexus_common::names::fold_name;
 
@@ -21,16 +21,12 @@ pub struct VoiceSession {
     pub udp_addr: Option<SocketAddr>,
     /// Correlates with the BBS connection for permission checks.
     pub session_id: u32,
-    /// TCP peer IP at join. Retained for future connection tracking /
-    /// admin visibility; not currently read.
-    #[allow(dead_code)]
-    pub ip: IpAddr,
 }
 
 impl VoiceSession {
     /// Permissions aren't cached here — they're resolved dynamically by
     /// session_id via UserManager so permission changes take effect at once.
-    pub fn new(nickname: String, target: Vec<String>, session_id: u32, ip: IpAddr) -> Self {
+    pub fn new(nickname: String, target: Vec<String>, session_id: u32) -> Self {
         Self {
             token: Uuid::new_v4(),
             nickname,
@@ -41,18 +37,12 @@ impl VoiceSession {
                 .as_secs() as i64,
             udp_addr: None,
             session_id,
-            ip,
         }
     }
 
     /// Single element starting with `#`.
     pub fn is_channel(&self) -> bool {
         self.target.len() == 1 && self.target[0].starts_with('#')
-    }
-
-    #[allow(dead_code)] // API completeness, complement to is_channel()
-    pub fn is_user_message(&self) -> bool {
-        self.target.len() == 2
     }
 
     /// Colon-joined target, the key used for registry lookups.
@@ -82,51 +72,42 @@ mod tests {
 
     #[test]
     fn test_new_session_generates_token() {
-        let ip: std::net::IpAddr = "192.168.1.1".parse().unwrap();
-        let session = VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1, ip);
+        let session = VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1);
 
         assert_eq!(session.token.get_version_num(), 4);
     }
 
     #[test]
     fn test_is_channel() {
-        let ip: std::net::IpAddr = "192.168.1.1".parse().unwrap();
         let channel_session =
-            VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1, ip);
+            VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1);
         assert!(channel_session.is_channel());
-        assert!(!channel_session.is_user_message());
 
         let user_msg_session = VoiceSession::new(
             "alice".to_string(),
             vec!["alice".to_string(), "bob".to_string()],
             1,
-            ip,
         );
         assert!(!user_msg_session.is_channel());
-        assert!(user_msg_session.is_user_message());
     }
 
     #[test]
     fn test_target_key() {
-        let ip: std::net::IpAddr = "192.168.1.1".parse().unwrap();
         let channel_session =
-            VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1, ip);
+            VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1);
         assert_eq!(channel_session.target_key(), "#general");
 
         let user_msg_session = VoiceSession::new(
             "alice".to_string(),
             vec!["alice".to_string(), "bob".to_string()],
             1,
-            ip,
         );
         assert_eq!(user_msg_session.target_key(), "alice:bob");
     }
 
     #[test]
     fn test_set_udp_addr() {
-        let ip: std::net::IpAddr = "192.168.1.1".parse().unwrap();
-        let mut session =
-            VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1, ip);
+        let mut session = VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1);
 
         assert!(session.udp_addr.is_none());
 
@@ -143,8 +124,7 @@ mod tests {
             .unwrap()
             .as_secs() as i64;
 
-        let ip: std::net::IpAddr = "192.168.1.1".parse().unwrap();
-        let session = VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1, ip);
+        let session = VoiceSession::new("alice".to_string(), vec!["#general".to_string()], 1);
 
         let after = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)

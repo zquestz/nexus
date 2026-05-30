@@ -1042,15 +1042,6 @@ impl AudioMixer {
         }
     }
 
-    /// Check if a user is muted
-    #[allow(dead_code)]
-    pub fn is_muted(&self, nickname: &str) -> bool {
-        self.state
-            .lock()
-            .map(|state| state.muted.contains(&fold_name(nickname)))
-            .unwrap_or(false)
-    }
-
     /// Set deafened state (mute all incoming audio)
     pub fn set_deafened(&mut self, deafened: bool) {
         if let Ok(mut state) = self.state.lock() {

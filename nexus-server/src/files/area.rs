@@ -17,42 +17,6 @@ use crate::constants::{
 };
 use crate::files::path_lock::{PathLockMap, PathLockMode, lock_key};
 
-/// Resolve the file area root for a specific user.
-///
-/// Returns `{root}/users/{username}/` if it exists as a directory, otherwise
-/// `{root}/shared/`. The user sees their area as `/` (transparent to them).
-/// For shared accounts, pass the account username (not the nickname). Does not
-/// create directories — directory creation is the admin's responsibility.
-///
-/// The returned path is **not** canonicalized — the caller should canonicalize
-/// it before passing to `resolve_path()` for security checks.
-///
-/// # Security Notes
-///
-/// - This function performs a TOCTOU-vulnerable `is_dir()` check. The caller
-///   should use `resolve_path()` on any user-provided paths within the returned
-///   area to enforce security at access time.
-/// - Username validation (blocking path-sensitive characters like `/`, `..`)
-///   is handled by the username validator, not this function.
-/// - If an attacker somehow creates a file (not directory) named after a user,
-///   that user falls back to the shared folder (safe behavior).
-#[must_use]
-#[allow(dead_code)]
-pub async fn resolve_user_area(root: &Path, username: &str) -> PathBuf {
-    let user_dir = root.join(FILES_USERS_DIR).join(username);
-
-    let is_dir = tokio::fs::metadata(&user_dir)
-        .await
-        .map(|m| m.is_dir())
-        .unwrap_or(false);
-
-    if is_dir {
-        user_dir
-    } else {
-        root.join(FILES_SHARED_DIR)
-    }
-}
-
 #[derive(Default)]
 pub struct PersonalAreaLockMap {
     inner: AsyncMutex<HashMap<String, Weak<RwLock<()>>>>,
@@ -373,6 +337,12 @@ mod tests {
 
     use super::*;
 
+    async fn resolve_test_user_area(root: &Path, username: &str) -> PathBuf {
+        let locks = PersonalAreaLockMap::new();
+        let (area, _guards) = resolve_user_area_with_read_lock(root, &locks, username).await;
+        area
+    }
+
     fn setup_test_root() -> TempDir {
         let temp = TempDir::new().expect("Failed to create temp dir");
         let root = temp.path();
@@ -388,7 +358,7 @@ mod tests {
         let temp = setup_test_root();
         let root = temp.path();
 
-        let area = resolve_user_area(root, "alice").await;
+        let area = resolve_test_user_area(root, "alice").await;
 
         assert_eq!(area, root.join(FILES_SHARED_DIR));
     }
@@ -401,7 +371,7 @@ mod tests {
         let alice_dir = root.join(FILES_USERS_DIR).join("alice");
         fs::create_dir(&alice_dir).expect("Failed to create alice dir");
 
-        let area = resolve_user_area(root, "alice").await;
+        let area = resolve_test_user_area(root, "alice").await;
 
         assert_eq!(area, alice_dir);
     }
@@ -415,7 +385,7 @@ mod tests {
         let bob_file = root.join(FILES_USERS_DIR).join("bob");
         fs::write(&bob_file, "not a directory").expect("Failed to create bob file");
 
-        let area = resolve_user_area(root, "bob").await;
+        let area = resolve_test_user_area(root, "bob").await;
 
         assert_eq!(area, root.join(FILES_SHARED_DIR));
     }
@@ -429,7 +399,7 @@ mod tests {
         fs::create_dir(&guest_dir).expect("Failed to create guest dir");
 
         // Shared account users resolve by account username, not nickname.
-        let area = resolve_user_area(root, "guest").await;
+        let area = resolve_test_user_area(root, "guest").await;
 
         assert_eq!(area, guest_dir);
     }
@@ -442,7 +412,7 @@ mod tests {
         let unicode_dir = root.join(FILES_USERS_DIR).join("用户");
         fs::create_dir(&unicode_dir).expect("Failed to create unicode dir");
 
-        let area = resolve_user_area(root, "用户").await;
+        let area = resolve_test_user_area(root, "用户").await;
 
         assert_eq!(area, unicode_dir);
     }

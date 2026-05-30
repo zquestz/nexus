@@ -14,7 +14,7 @@ use crate::types::Message;
 use crate::widgets::{MenuButtonStatus, MenuButtonStyle};
 use std::rc::Rc;
 
-use iced::widget::{Container, button, container, rule, text};
+use iced::widget::{Container, button, container, text};
 use iced::{Background, Border, Center, Color, Fill, Shadow, Theme};
 
 // ============================================================================
@@ -350,33 +350,6 @@ pub fn drop_overlay_style(theme: &Theme) -> container::Style {
         })),
         text_color: Some(ext.background.base.text),
         ..Default::default()
-    }
-}
-
-/// Subheading text style - for section headers within panels
-///
-/// Uses muted color to create visual hierarchy below the main title.
-#[allow(dead_code)]
-pub fn subheading_text_style(theme: &Theme) -> text::Style {
-    text::Style {
-        color: Some(ui::muted_text_color(theme)),
-    }
-}
-
-// ============================================================================
-// Rule Styles
-// ============================================================================
-
-/// Horizontal rule separator style - for dividing sections in panels
-///
-/// Uses the same color as sidebar borders for consistency.
-#[allow(dead_code)]
-pub fn rule_separator_style(theme: &Theme) -> rule::Style {
-    rule::Style {
-        color: ui::sidebar_border(theme),
-        radius: 0.0.into(),
-        fill_mode: rule::FillMode::Full,
-        snap: true,
     }
 }
 

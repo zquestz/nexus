@@ -85,13 +85,6 @@ impl ChannelManager {
         }
     }
 
-    #[cfg(test)]
-    pub async fn is_persistent(&self, channel_name: &str) -> bool {
-        let key = fold_name(channel_name);
-        let persistent = self.persistent_channels.read().await;
-        persistent.contains(&key)
-    }
-
     /// Join a channel under the channel-map write lock so policy
     /// enforcement is atomic with the existence check.
     pub async fn join(
@@ -365,8 +358,16 @@ impl ChannelManager {
             .map(|ch| ch.name.clone())
             .collect()
     }
+}
 
-    #[cfg(test)]
+#[cfg(test)]
+impl ChannelManager {
+    pub async fn is_persistent(&self, channel_name: &str) -> bool {
+        let key = fold_name(channel_name);
+        let persistent = self.persistent_channels.read().await;
+        persistent.contains(&key)
+    }
+
     pub async fn get_channel(&self, channel_name: &str) -> Option<Channel> {
         let key = fold_name(channel_name);
         let channels = self.channels.read().await;

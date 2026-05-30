@@ -51,10 +51,6 @@ impl NexusApp {
                 // Don't save on every progress update - too expensive
             }
 
-            TransferEvent::FileCompleted { id: _, path: _ } => {
-                // File completion is already tracked via Progress events
-            }
-
             TransferEvent::Completed { id } => {
                 // Get transfer info before marking complete for notification
                 let transfer_info = self

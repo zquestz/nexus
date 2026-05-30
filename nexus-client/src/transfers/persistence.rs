@@ -442,22 +442,6 @@ impl TransferManager {
         }
     }
 
-    // =========================================================================
-    // Test-only helpers
-    // =========================================================================
-
-    /// Get the number of transfers
-    #[cfg(test)]
-    pub fn count(&self) -> usize {
-        self.transfers.len()
-    }
-
-    /// Check if there are unsaved changes
-    #[cfg(test)]
-    pub fn is_dirty(&self) -> bool {
-        self.dirty
-    }
-
     /// Get all queued transfers
     pub fn queued(&self) -> impl Iterator<Item = &Transfer> {
         self.transfers
@@ -468,14 +452,6 @@ impl TransferManager {
     /// Get all active transfers (connecting or transferring)
     pub fn active(&self) -> impl Iterator<Item = &Transfer> {
         self.transfers.values().filter(|t| t.status.is_active())
-    }
-
-    /// Get all paused transfers
-    #[cfg(test)]
-    pub fn paused(&self) -> impl Iterator<Item = &Transfer> {
-        self.transfers
-            .values()
-            .filter(|t| t.status == TransferStatus::Paused)
     }
 
     /// Update certificate fingerprint for resume-eligible transfers belonging to a bookmark.
@@ -609,8 +585,8 @@ mod tests {
     #[test]
     fn test_transfer_manager_new() {
         let manager = TransferManager::new();
-        assert_eq!(manager.count(), 0);
-        assert!(!manager.is_dirty());
+        assert_eq!(manager.transfers.len(), 0);
+        assert!(!manager.dirty);
     }
 
     #[test]
@@ -622,8 +598,8 @@ mod tests {
         let returned_id = manager.add(transfer);
 
         assert_eq!(returned_id, id);
-        assert_eq!(manager.count(), 1);
-        assert!(manager.is_dirty());
+        assert_eq!(manager.transfers.len(), 1);
+        assert!(manager.dirty);
         assert!(manager.get(id).is_some());
     }
 
@@ -637,7 +613,7 @@ mod tests {
         let removed = manager.remove(id);
 
         assert!(removed.is_some());
-        assert_eq!(manager.count(), 0);
+        assert_eq!(manager.transfers.len(), 0);
         assert!(manager.get(id).is_none());
     }
 
@@ -765,12 +741,19 @@ mod tests {
         t5.status = TransferStatus::Paused;
         manager.add(t5);
 
-        assert_eq!(manager.count(), 5);
+        assert_eq!(manager.transfers.len(), 5);
         assert_eq!(manager.queued().count(), 1);
         assert_eq!(manager.active().count(), 1);
         assert_eq!(manager.completed().count(), 1);
         assert_eq!(manager.failed().count(), 1);
-        assert_eq!(manager.paused().count(), 1);
+        assert_eq!(
+            manager
+                .transfers
+                .values()
+                .filter(|t| t.status == TransferStatus::Paused)
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -789,11 +772,11 @@ mod tests {
         t3.status = TransferStatus::Transferring;
         manager.add(t3);
 
-        assert_eq!(manager.count(), 3);
+        assert_eq!(manager.transfers.len(), 3);
 
         manager.clear_completed();
 
-        assert_eq!(manager.count(), 1);
+        assert_eq!(manager.transfers.len(), 1);
         assert_eq!(manager.completed().count(), 0);
         assert_eq!(manager.active().count(), 1);
     }
@@ -812,7 +795,7 @@ mod tests {
 
         manager.clear_failed();
 
-        assert_eq!(manager.count(), 1);
+        assert_eq!(manager.transfers.len(), 1);
         assert_eq!(manager.failed().count(), 0);
     }
 
@@ -849,20 +832,20 @@ mod tests {
     #[test]
     fn test_transfer_manager_dirty_flag() {
         let mut manager = TransferManager::new();
-        assert!(!manager.is_dirty());
+        assert!(!manager.dirty);
 
         let transfer = test_transfer();
         let id = transfer.id;
         manager.add(transfer);
-        assert!(manager.is_dirty());
+        assert!(manager.dirty);
 
         // Manually reset dirty flag to simulate save
         manager.dirty = false;
-        assert!(!manager.is_dirty());
+        assert!(!manager.dirty);
 
         // Updating progress marks dirty
         manager.update_progress(id, 100, 0, None);
-        assert!(manager.is_dirty());
+        assert!(manager.dirty);
     }
 
     #[test]
@@ -1126,7 +1109,7 @@ mod tests {
         );
 
         // Should be marked dirty
-        assert!(manager.is_dirty());
+        assert!(manager.dirty);
     }
 
     #[test]
@@ -1223,6 +1206,6 @@ mod tests {
             manager.get(other_user_id).unwrap().connection_info.username,
             "bob"
         );
-        assert!(manager.is_dirty());
+        assert!(manager.dirty);
     }
 }

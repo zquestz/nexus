@@ -153,12 +153,8 @@ where
 
         // Atomic guard: registry.add rejects duplicate session_id and reports
         // `broadcast_joined` so concurrent same-nickname joins can't both broadcast.
-        let voice_session = VoiceSession::new(
-            current.nickname.clone(),
-            internal_target,
-            session_id,
-            ctx.peer_addr.ip(),
-        );
+        let voice_session =
+            VoiceSession::new(current.nickname.clone(), internal_target, session_id);
         let (token, broadcast_joined) = match ctx.voice_registry.add(voice_session).await {
             Some(add_outcome) => (add_outcome.token, add_outcome.broadcast_joined),
             None => break 'locked VoiceJoinOutcome::Error(err_voice_already_joined(ctx.locale)),

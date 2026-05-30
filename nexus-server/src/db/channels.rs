@@ -183,17 +183,6 @@ impl ChannelDb {
 
         Ok(())
     }
-
-    #[cfg(test)]
-    pub async fn channel_exists(&self, name: &str) -> io::Result<bool> {
-        let count: i32 = sqlx::query_scalar(sql::SQL_COUNT_CHANNEL_SETTINGS)
-            .bind(fold_name(name))
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-
-        Ok(count > 0)
-    }
 }
 
 #[cfg(test)]
@@ -226,7 +215,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_get_channel_settings_case_insensitive() {
+    async fn test_default_channel_settings_lookup_case_insensitive() {
         let pool = create_test_db().await;
         let db = ChannelDb::new(pool);
 
@@ -259,7 +248,7 @@ mod tests {
         let found = db.get_channel_settings("#café").await.unwrap().unwrap();
         assert_eq!(found.name, "#Café");
         assert_eq!(found.topic, "first");
-        assert!(db.channel_exists("#CAFÉ").await.unwrap());
+        assert!(db.get_channel_settings("#CAFÉ").await.unwrap().is_some());
 
         let before = db.get_all_channel_settings().await.unwrap().len();
 
@@ -385,13 +374,23 @@ mod tests {
         db.upsert_channel_settings(&settings).await.unwrap();
 
         // Verify it exists
-        assert!(db.channel_exists("#deleteme").await.unwrap());
+        assert!(
+            db.get_channel_settings("#deleteme")
+                .await
+                .unwrap()
+                .is_some()
+        );
 
         // Delete it
         db.delete_channel_settings("#deleteme").await.unwrap();
 
         // Verify it's gone
-        assert!(!db.channel_exists("#deleteme").await.unwrap());
+        assert!(
+            db.get_channel_settings("#deleteme")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -417,16 +416,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_channel_exists() {
+    async fn test_get_channel_settings_case_insensitive() {
         let pool = create_test_db().await;
         let db = ChannelDb::new(pool);
 
-        assert!(db.channel_exists(DEFAULT_CHANNEL).await.unwrap());
         assert!(
-            db.channel_exists(&DEFAULT_CHANNEL.to_uppercase())
+            db.get_channel_settings(DEFAULT_CHANNEL)
                 .await
                 .unwrap()
+                .is_some()
+        );
+        assert!(
+            db.get_channel_settings(&DEFAULT_CHANNEL.to_uppercase())
+                .await
+                .unwrap()
+                .is_some()
         ); // case-insensitive
-        assert!(!db.channel_exists("#nonexistent").await.unwrap());
+        assert!(
+            db.get_channel_settings("#nonexistent")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 }

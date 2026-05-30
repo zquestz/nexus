@@ -162,24 +162,6 @@ impl IpRuleCache {
         cache
     }
 
-    /// Allow iff trusted (bypasses ban check) or not banned. Lazily rebuilds
-    /// on expiry first.
-    #[cfg(test)]
-    pub fn should_allow(&mut self, ip: IpAddr) -> bool {
-        self.maybe_rebuild_on_expiry();
-        self.should_allow_read_only(ip)
-    }
-
-    /// Allow iff trusted (bypasses ban check) or not banned. Does not rebuild
-    /// on expiry — caller must check `needs_rebuild()`.
-    #[cfg(test)]
-    pub fn should_allow_read_only(&self, ip: IpAddr) -> bool {
-        if self.is_trusted_read_only(ip) {
-            return true;
-        }
-        !self.is_banned_read_only(ip)
-    }
-
     /// Admission decision with ban expiry metadata for user-facing late rejects.
     pub fn admission_read_only(&self, ip: IpAddr) -> IpAdmission {
         if self.is_trusted_read_only(ip) {
@@ -192,13 +174,6 @@ impl IpRuleCache {
         }
     }
 
-    /// True if `ip` matches a non-expired trust. Lazily rebuilds on expiry.
-    #[cfg(test)]
-    pub fn is_trusted(&mut self, ip: IpAddr) -> bool {
-        self.maybe_rebuild_on_expiry();
-        self.is_trusted_read_only(ip)
-    }
-
     /// True if `ip` matches a non-expired trust. Does not rebuild on expiry.
     ///
     /// Re-folds IPv4-mapped IPv6 to IPv4 as defense-in-depth; the accept path
@@ -209,27 +184,6 @@ impl IpRuleCache {
         match ip {
             IpAddr::V4(v4) => self.trust_ipv4.contains(&v4),
             IpAddr::V6(v6) => self.trust_ipv6.contains(&v6),
-        }
-    }
-
-    /// True if `ip` matches a non-expired ban. Lazily rebuilds on expiry.
-    #[cfg(test)]
-    pub fn is_banned(&mut self, ip: IpAddr) -> bool {
-        self.maybe_rebuild_on_expiry();
-        self.is_banned_read_only(ip)
-    }
-
-    /// True if `ip` matches a non-expired ban. Does not rebuild on expiry.
-    ///
-    /// Re-folds IPv4-mapped IPv6 to IPv4 as defense-in-depth; the accept path
-    /// (`normalize_socket_addr` in `main.rs`) is the primary funnel.
-    #[cfg(test)]
-    pub fn is_banned_read_only(&self, ip: IpAddr) -> bool {
-        let ip = normalize_ip(ip);
-
-        match ip {
-            IpAddr::V4(v4) => self.ban_ipv4.contains(&v4),
-            IpAddr::V6(v6) => self.ban_ipv6.contains(&v6),
         }
     }
 
@@ -301,34 +255,6 @@ impl IpRuleCache {
         removed
     }
 
-    /// Remove all trusts contained by `cidr` (e.g. single IPs inside an
-    /// untrusted range). Returns the removed IP/CIDR strings.
-    #[cfg(test)]
-    pub fn remove_trusts_contained_by(&mut self, cidr: &str) -> Vec<String> {
-        let Some(range_net) = parse_ip_or_cidr(cidr) else {
-            return Vec::new();
-        };
-
-        let mut removed = Vec::new();
-
-        self.trust_entries.retain(|entry| {
-            let is_contained = is_contained_by(&entry.net, &range_net);
-
-            if is_contained {
-                removed.push(entry.ip_address.clone());
-                false
-            } else {
-                true
-            }
-        });
-
-        if !removed.is_empty() {
-            self.rebuild_tries();
-        }
-
-        removed
-    }
-
     /// Upsert a ban (replacing any exact-match). False if unparseable.
     pub fn add_ban(&mut self, ip_or_cidr: &str, expires_at: Option<i64>) -> bool {
         assert_canonical_target(ip_or_cidr);
@@ -355,34 +281,6 @@ impl IpRuleCache {
         let removed = self.ban_entries.len() < before;
 
         if removed {
-            self.rebuild_tries();
-        }
-
-        removed
-    }
-
-    /// Remove all bans contained by `cidr` (e.g. single IPs inside an unbanned
-    /// range). Returns the removed IP/CIDR strings.
-    #[cfg(test)]
-    pub fn remove_bans_contained_by(&mut self, cidr: &str) -> Vec<String> {
-        let Some(range_net) = parse_ip_or_cidr(cidr) else {
-            return Vec::new();
-        };
-
-        let mut removed = Vec::new();
-
-        self.ban_entries.retain(|entry| {
-            let is_contained = is_contained_by(&entry.net, &range_net);
-
-            if is_contained {
-                removed.push(entry.ip_address.clone());
-                false
-            } else {
-                true
-            }
-        });
-
-        if !removed.is_empty() {
             self.rebuild_tries();
         }
 
@@ -445,16 +343,6 @@ impl IpRuleCache {
             (None, None) => None,
         };
     }
-
-    #[cfg(test)]
-    pub fn trust_count(&self) -> usize {
-        self.trust_entries.len()
-    }
-
-    #[cfg(test)]
-    pub fn ban_count(&self) -> usize {
-        self.ban_entries.len()
-    }
 }
 
 impl Default for IpRuleCache {
@@ -463,20 +351,118 @@ impl Default for IpRuleCache {
     }
 }
 
-/// True if `entry_net` is fully contained within `range_net` (same family,
-/// network covered, and prefix at least as specific).
 #[cfg(test)]
-fn is_contained_by(entry_net: &IpNet, range_net: &IpNet) -> bool {
-    match (entry_net, range_net) {
-        (IpNet::V4(entry_net), IpNet::V4(range_net)) => {
-            range_net.contains(&entry_net.network())
-                && entry_net.prefix_len() >= range_net.prefix_len()
+impl IpRuleCache {
+    /// Allow iff trusted or not banned. Lazily rebuilds on expiry first.
+    pub fn should_allow(&mut self, ip: IpAddr) -> bool {
+        self.maybe_rebuild_on_expiry();
+        self.should_allow_read_only(ip)
+    }
+
+    /// Allow iff trusted or not banned. Does not rebuild on expiry.
+    pub fn should_allow_read_only(&self, ip: IpAddr) -> bool {
+        if self.is_trusted_read_only(ip) {
+            return true;
         }
-        (IpNet::V6(entry_net), IpNet::V6(range_net)) => {
-            range_net.contains(&entry_net.network())
-                && entry_net.prefix_len() >= range_net.prefix_len()
+        !self.is_banned_read_only(ip)
+    }
+
+    /// True if `ip` matches a non-expired trust. Lazily rebuilds on expiry.
+    pub fn is_trusted(&mut self, ip: IpAddr) -> bool {
+        self.maybe_rebuild_on_expiry();
+        self.is_trusted_read_only(ip)
+    }
+
+    /// True if `ip` matches a non-expired ban. Lazily rebuilds on expiry.
+    pub fn is_banned(&mut self, ip: IpAddr) -> bool {
+        self.maybe_rebuild_on_expiry();
+        self.is_banned_read_only(ip)
+    }
+
+    /// True if `ip` matches a non-expired ban. Does not rebuild on expiry.
+    pub fn is_banned_read_only(&self, ip: IpAddr) -> bool {
+        let ip = normalize_ip(ip);
+
+        match ip {
+            IpAddr::V4(v4) => self.ban_ipv4.contains(&v4),
+            IpAddr::V6(v6) => self.ban_ipv6.contains(&v6),
         }
-        _ => false, // IPv4/IPv6 mismatch
+    }
+
+    /// Remove all trusts contained by `cidr`. Returns removed IP/CIDR strings.
+    pub fn remove_trusts_contained_by(&mut self, cidr: &str) -> Vec<String> {
+        let Some(range_net) = parse_ip_or_cidr(cidr) else {
+            return Vec::new();
+        };
+
+        let mut removed = Vec::new();
+
+        self.trust_entries.retain(|entry| {
+            let is_contained = Self::is_contained_by(&entry.net, &range_net);
+
+            if is_contained {
+                removed.push(entry.ip_address.clone());
+                false
+            } else {
+                true
+            }
+        });
+
+        if !removed.is_empty() {
+            self.rebuild_tries();
+        }
+
+        removed
+    }
+
+    /// Remove all bans contained by `cidr`. Returns removed IP/CIDR strings.
+    pub fn remove_bans_contained_by(&mut self, cidr: &str) -> Vec<String> {
+        let Some(range_net) = parse_ip_or_cidr(cidr) else {
+            return Vec::new();
+        };
+
+        let mut removed = Vec::new();
+
+        self.ban_entries.retain(|entry| {
+            let is_contained = Self::is_contained_by(&entry.net, &range_net);
+
+            if is_contained {
+                removed.push(entry.ip_address.clone());
+                false
+            } else {
+                true
+            }
+        });
+
+        if !removed.is_empty() {
+            self.rebuild_tries();
+        }
+
+        removed
+    }
+
+    pub fn trust_count(&self) -> usize {
+        self.trust_entries.len()
+    }
+
+    pub fn ban_count(&self) -> usize {
+        self.ban_entries.len()
+    }
+
+    /// True if `entry_net` is fully contained within `range_net` (same family,
+    /// network covered, and prefix at least as specific).
+    fn is_contained_by(entry_net: &IpNet, range_net: &IpNet) -> bool {
+        match (entry_net, range_net) {
+            (IpNet::V4(entry_net), IpNet::V4(range_net)) => {
+                range_net.contains(&entry_net.network())
+                    && entry_net.prefix_len() >= range_net.prefix_len()
+            }
+            (IpNet::V6(entry_net), IpNet::V6(range_net)) => {
+                range_net.contains(&entry_net.network())
+                    && entry_net.prefix_len() >= range_net.prefix_len()
+            }
+            _ => false, // IPv4/IPv6 mismatch
+        }
     }
 }
 

@@ -229,19 +229,6 @@ pub fn play_sound_on_device(sound: &SoundChoice, volume: f32, device_name: &str)
     }
 }
 
-/// Play a sound at the given volume (0.0 - 1.0) on the system default device
-///
-/// This is a convenience wrapper around `play_sound_on_device` for cases
-/// where device selection is not needed.
-///
-/// # Arguments
-/// * `sound` - Which sound to play
-/// * `volume` - Volume level (0.0 - 1.0)
-#[allow(dead_code)]
-pub fn play_sound(sound: &SoundChoice, volume: f32) {
-    play_sound_on_device(sound, volume, "");
-}
-
 // =============================================================================
 // Internal Helpers
 // =============================================================================

@@ -26,7 +26,6 @@ pub enum SettingsTab {
     /// Event notification settings
     Events,
     /// Audio settings for voice chat
-    #[allow(dead_code)]
     Audio,
 }
 

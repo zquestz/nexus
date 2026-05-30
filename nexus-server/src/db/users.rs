@@ -273,12 +273,6 @@ impl UserDb {
     /// Returns `DEFAULT_BANDWIDTH_WEIGHT` for unknown users (intended for
     /// scheduler hot path — caller does not need to handle "user gone" as an
     /// error case).
-    #[cfg(test)]
-    pub async fn get_resolved_bandwidth_weight(&self, user_id: i64) -> Result<u16, sqlx::Error> {
-        let mut conn = self.pool.acquire().await?;
-        Self::get_resolved_bandwidth_weight_in_tx(&mut conn, user_id).await
-    }
-
     pub async fn get_resolved_bandwidth_weight_in_tx(
         conn: &mut SqliteConnection,
         user_id: i64,
@@ -415,34 +409,6 @@ impl UserDb {
         }
 
         Ok(permissions)
-    }
-
-    /// Check if user has a specific permission (with admin override and group resolution)
-    ///
-    /// Note: This method is only used in tests. Production code uses cached
-    /// permissions in the User struct via `User::has_permission()`.
-    #[cfg(test)]
-    pub async fn has_permission(
-        &self,
-        user_id: i64,
-        permission: Permission,
-    ) -> Result<bool, sqlx::Error> {
-        let is_admin: Option<(bool,)> = sqlx::query_as(sql::SQL_CHECK_IS_ADMIN)
-            .bind(user_id)
-            .fetch_optional(&self.pool)
-            .await?;
-
-        let Some((is_admin,)) = is_admin else {
-            return Ok(false);
-        };
-
-        if is_admin {
-            return Ok(true);
-        }
-
-        // Resolves group + overrides: (group_perms ∪ grants) - revokes
-        let permissions = self.get_user_permissions(user_id).await?;
-        Ok(permissions.permissions.contains(&permission))
     }
 
     /// Set permissions within an existing transaction
@@ -1184,31 +1150,38 @@ impl UserDb {
             .filter_map(|(p,)| Permission::parse(&p))
             .collect())
     }
+}
 
-    /// Replaces all revoke overrides with the given list.
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub async fn set_revoke_permissions(
+#[cfg(test)]
+impl UserDb {
+    pub async fn get_resolved_bandwidth_weight(&self, user_id: i64) -> Result<u16, sqlx::Error> {
+        let mut conn = self.pool.acquire().await?;
+        Self::get_resolved_bandwidth_weight_in_tx(&mut conn, user_id).await
+    }
+
+    /// Check if user has a specific permission with admin override and group
+    /// resolution. Production code uses cached permissions on `User`.
+    pub async fn has_permission(
         &self,
         user_id: i64,
-        revokes: &[Permission],
-    ) -> Result<(), sqlx::Error> {
-        let mut tx = self.pool.begin().await?;
-
-        sqlx::query(sql::SQL_DELETE_REVOKE_PERMISSIONS)
+        permission: Permission,
+    ) -> Result<bool, sqlx::Error> {
+        let is_admin: Option<(bool,)> = sqlx::query_as(sql::test_sql::SQL_CHECK_IS_ADMIN)
             .bind(user_id)
-            .execute(&mut *tx)
+            .fetch_optional(&self.pool)
             .await?;
-        for perm in revokes {
-            sqlx::query(sql::SQL_INSERT_PERMISSION_OVERRIDE)
-                .bind(user_id)
-                .bind(perm.as_str())
-                .bind("revoke")
-                .execute(&mut *tx)
-                .await?;
+
+        let Some((is_admin,)) = is_admin else {
+            return Ok(false);
+        };
+
+        if is_admin {
+            return Ok(true);
         }
 
-        tx.commit().await?;
-        Ok(())
+        // Resolves group + overrides: (group_perms ∪ grants) - revokes
+        let permissions = self.get_user_permissions(user_id).await?;
+        Ok(permissions.permissions.contains(&permission))
     }
 }
 
@@ -1218,6 +1191,33 @@ mod tests {
     use super::*;
     use crate::db::testing::*;
     use nexus_common::validators::DEFAULT_ADMIN_BANDWIDTH_WEIGHT;
+
+    impl UserDb {
+        /// Test helper: replace all revoke overrides with the given list.
+        async fn set_revoke_permissions(
+            &self,
+            user_id: i64,
+            revokes: &[Permission],
+        ) -> Result<(), sqlx::Error> {
+            let mut tx = self.pool.begin().await?;
+
+            sqlx::query(sql::SQL_DELETE_REVOKE_PERMISSIONS)
+                .bind(user_id)
+                .execute(&mut *tx)
+                .await?;
+            for perm in revokes {
+                sqlx::query(sql::SQL_INSERT_PERMISSION_OVERRIDE)
+                    .bind(user_id)
+                    .bind(perm.as_str())
+                    .bind("revoke")
+                    .execute(&mut *tx)
+                    .await?;
+            }
+
+            tx.commit().await?;
+            Ok(())
+        }
+    }
 
     #[tokio::test]
     async fn test_get_user_by_username() {
@@ -1410,7 +1410,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USER_PERMISSIONS)
+        let (count,): (i64,) = sqlx::query_as(sql::test_sql::SQL_COUNT_USER_PERMISSIONS)
             .bind(user.id)
             .fetch_one(&pool)
             .await
@@ -1441,7 +1441,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USER_PERMISSIONS)
+        let (count,): (i64,) = sqlx::query_as(sql::test_sql::SQL_COUNT_USER_PERMISSIONS)
             .bind(admin.id)
             .fetch_one(&pool)
             .await
@@ -1668,7 +1668,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (perm_count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USER_PERMISSIONS)
+        let (perm_count,): (i64,) = sqlx::query_as(sql::test_sql::SQL_COUNT_USER_PERMISSIONS)
             .bind(user.id)
             .fetch_one(&pool)
             .await
@@ -1678,7 +1678,7 @@ mod tests {
         let deleted = db.delete_user(user.id, true).await.unwrap();
         assert!(deleted, "User should be deleted");
 
-        let (perm_count_after,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USER_PERMISSIONS)
+        let (perm_count_after,): (i64,) = sqlx::query_as(sql::test_sql::SQL_COUNT_USER_PERMISSIONS)
             .bind(user.id)
             .fetch_one(&pool)
             .await
@@ -2021,7 +2021,7 @@ mod tests {
         let pool = create_test_db().await;
         let db = UserDb::new(pool.clone());
 
-        let (count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USERS)
+        let (count,): (i64,) = sqlx::query_as(sql::test_sql::SQL_COUNT_USERS)
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -2039,7 +2039,7 @@ mod tests {
         assert!(user.is_admin, "First user should be admin");
         assert!(user.enabled, "First user should be enabled");
 
-        let (count_after,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USERS)
+        let (count_after,): (i64,) = sqlx::query_as(sql::test_sql::SQL_COUNT_USERS)
             .fetch_one(&pool)
             .await
             .unwrap();
@@ -2072,7 +2072,7 @@ mod tests {
 
         assert!(result.is_none(), "Should return None when users exist");
 
-        let (count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_USERS)
+        let (count,): (i64,) = sqlx::query_as(sql::test_sql::SQL_COUNT_USERS)
             .fetch_one(&pool)
             .await
             .unwrap();

@@ -22,7 +22,6 @@ use crate::transfers::TransferEvent;
 use crate::uri::NexusUri;
 use crate::voice::audio::AudioDevice;
 use crate::voice::manager::VoiceEvent;
-use crate::voice::ptt::PttState;
 use global_hotkey::GlobalHotKeyEvent;
 
 /// Messages that drive the application state machine
@@ -879,9 +878,6 @@ pub enum Message {
     VoiceLeavePressed,
     /// Voice: Event from voice session (DTLS connected, speaking, etc.)
     VoiceSessionEvent(usize, VoiceEvent),
-    /// Voice: PTT state changed (called internally from VoicePttEvent handler)
-    #[allow(dead_code)] // Constructed indirectly via handle_voice_ptt_state_changed
-    VoicePttStateChanged(PttState),
     /// Voice: Raw PTT hotkey event (forwarded from global hotkey subscription)
     VoicePttEvent(GlobalHotKeyEvent),
     /// Voice: PTT release delay timer expired (time to actually stop transmitting)
@@ -908,7 +904,6 @@ pub enum Message {
     /// Audio: Enter PTT key capture mode
     AudioPttKeyCapture,
     /// Audio: PTT key captured
-    #[allow(dead_code)] // Will be emitted by keyboard event handler
     AudioPttKeyCaptured(String),
     /// Audio: PTT mode selected
     AudioPttModeSelected(PttMode),
@@ -919,10 +914,8 @@ pub enum Message {
     /// Audio: Stop microphone test
     AudioTestMicStop,
     /// Audio: Microphone level update (0.0 - 1.0)
-    #[allow(dead_code)] // Will be emitted by mic test subscription
     AudioMicLevel(f32),
     /// Audio: Microphone test error
-    #[allow(dead_code)] // Will be emitted by mic test subscription
     AudioMicError(String),
     /// Audio: Change noise suppression level
     AudioNoiseSuppressionLevel(crate::config::audio::NoiseSuppressionLevel),

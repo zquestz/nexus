@@ -251,21 +251,10 @@ pub const SQL_UPSERT_BAN: &str = "
         created_at = excluded.created_at,
         expires_at = excluded.expires_at";
 
-/// Returns the ban even if expired. Used internally after upsert.
-#[cfg(test)]
-pub const SQL_SELECT_BAN_BY_IP_UNFILTERED: &str = "
-    SELECT ip_address, nickname, reason, created_by, created_at, expires_at
-    FROM ip_bans
-    WHERE ip_address = ?";
-
 pub const SQL_DELETE_BAN_BY_IP: &str = "DELETE FROM ip_bans WHERE ip_address = ?";
 
 pub const SQL_DELETE_BANS_BY_NICKNAME_RETURNING: &str =
     "DELETE FROM ip_bans WHERE nickname_lower = ? RETURNING ip_address";
-
-#[cfg(test)]
-pub const SQL_COUNT_BANS_BY_NICKNAME: &str =
-    "SELECT COUNT(*) FROM ip_bans WHERE nickname_lower = ?";
 
 pub const SQL_SELECT_ALL_BAN_TARGETS: &str = "SELECT ip_address FROM ip_bans";
 
@@ -294,21 +283,10 @@ pub const SQL_UPSERT_TRUST: &str = "
         created_at = excluded.created_at,
         expires_at = excluded.expires_at";
 
-/// Returns the entry even if expired.
-#[cfg(test)]
-pub const SQL_SELECT_TRUST_BY_IP_UNFILTERED: &str = "
-    SELECT ip_address, nickname, reason, created_by, created_at, expires_at
-    FROM ip_trusted
-    WHERE ip_address = ?";
-
 pub const SQL_DELETE_TRUST_BY_IP: &str = "DELETE FROM ip_trusted WHERE ip_address = ?";
 
 pub const SQL_DELETE_TRUSTS_BY_NICKNAME_RETURNING: &str =
     "DELETE FROM ip_trusted WHERE nickname_lower = ? RETURNING ip_address";
-
-#[cfg(test)]
-pub const SQL_COUNT_TRUSTS_BY_NICKNAME: &str =
-    "SELECT COUNT(*) FROM ip_trusted WHERE nickname_lower = ?";
 
 pub const SQL_SELECT_ALL_TRUST_TARGETS: &str = "SELECT ip_address FROM ip_trusted";
 
@@ -413,42 +391,47 @@ pub const SQL_DELETE_CHANNEL_SETTINGS: &str = "DELETE FROM channel_settings WHER
 
 pub const SQL_SELECT_USER_BY_ID: &str = "SELECT id, username, password_hash, is_admin, is_shared, enabled, created_at, group_id, bandwidth_weight FROM users WHERE id = ?";
 
-/// Only used in tests. Production code uses cached permissions.
 #[cfg(test)]
-pub const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
+pub mod test_sql {
+    /// Returns the ban even if expired.
+    pub const SQL_SELECT_BAN_BY_IP_UNFILTERED: &str = "
+        SELECT ip_address, nickname, reason, created_by, created_at, expires_at
+        FROM ip_bans
+        WHERE ip_address = ?";
 
-/// Returns only permanent (expires_at IS NULL) or not-yet-expired entries.
-/// Used in tests only — production code uses the in-memory BanCache.
-#[cfg(test)]
-pub const SQL_SELECT_BAN_BY_IP: &str = "
-    SELECT ip_address, nickname, reason, created_by, created_at, expires_at
-    FROM ip_bans
-    WHERE ip_address = ?
-    AND (expires_at IS NULL OR expires_at > ?)";
+    pub const SQL_COUNT_BANS_BY_NICKNAME: &str =
+        "SELECT COUNT(*) FROM ip_bans WHERE nickname_lower = ?";
 
-/// Used in tests only — production code uses the in-memory TrustCache.
-#[cfg(test)]
-pub const SQL_SELECT_TRUST_BY_IP: &str = "
-    SELECT ip_address, nickname, reason, created_by, created_at, expires_at
-    FROM ip_trusted
-    WHERE ip_address = ?
-    AND (expires_at IS NULL OR expires_at > ?)";
+    /// Returns the trust entry even if expired.
+    pub const SQL_SELECT_TRUST_BY_IP_UNFILTERED: &str = "
+        SELECT ip_address, nickname, reason, created_by, created_at, expires_at
+        FROM ip_trusted
+        WHERE ip_address = ?";
 
-/// Used in test utilities to verify admin count in race condition tests.
-#[cfg(test)]
-pub const SQL_COUNT_ADMINS: &str = "SELECT COUNT(*) FROM users WHERE is_admin = 1";
+    pub const SQL_COUNT_TRUSTS_BY_NICKNAME: &str =
+        "SELECT COUNT(*) FROM ip_trusted WHERE nickname_lower = ?";
 
-/// Used in tests only — production code does not need this check.
-/// Matches on the folded `name_lower`; bind `fold_name(name)`.
-#[cfg(test)]
-pub const SQL_COUNT_CHANNEL_SETTINGS: &str =
-    "SELECT COUNT(*) FROM channel_settings WHERE name_lower = ?";
+    /// Production code uses cached permissions.
+    pub const SQL_CHECK_IS_ADMIN: &str = "SELECT is_admin FROM users WHERE id = ?";
 
-/// Used in tests to verify permission insertion and cascade deletion.
-#[cfg(test)]
-pub const SQL_COUNT_USER_PERMISSIONS: &str =
-    "SELECT COUNT(*) FROM user_permissions WHERE user_id = ?";
+    /// Returns only permanent or not-yet-expired bans.
+    pub const SQL_SELECT_BAN_BY_IP: &str = "
+        SELECT ip_address, nickname, reason, created_by, created_at, expires_at
+        FROM ip_bans
+        WHERE ip_address = ?
+        AND (expires_at IS NULL OR expires_at > ?)";
 
-/// Used in tests to verify user creation and first-user logic.
-#[cfg(test)]
-pub const SQL_COUNT_USERS: &str = "SELECT COUNT(*) FROM users";
+    /// Returns only permanent or not-yet-expired trusts.
+    pub const SQL_SELECT_TRUST_BY_IP: &str = "
+        SELECT ip_address, nickname, reason, created_by, created_at, expires_at
+        FROM ip_trusted
+        WHERE ip_address = ?
+        AND (expires_at IS NULL OR expires_at > ?)";
+
+    pub const SQL_COUNT_ADMINS: &str = "SELECT COUNT(*) FROM users WHERE is_admin = 1";
+
+    pub const SQL_COUNT_USER_PERMISSIONS: &str =
+        "SELECT COUNT(*) FROM user_permissions WHERE user_id = ?";
+
+    pub const SQL_COUNT_USERS: &str = "SELECT COUNT(*) FROM users";
+}

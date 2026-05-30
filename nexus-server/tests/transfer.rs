@@ -96,16 +96,18 @@ fn test_dropbox_path_parsing() {
 
 #[tokio::test]
 async fn test_resolve_user_area_with_personal_folder() {
-    use nexus_server::files::area::resolve_user_area;
+    use nexus_server::files::area::{PersonalAreaLockMap, resolve_user_area_with_read_lock};
 
     let temp_dir = create_test_file_area().await;
     let root = temp_dir.path();
+    let locks = PersonalAreaLockMap::new();
 
     // Alice has a personal folder; charlie falls back to shared.
-    let alice_area = resolve_user_area(root, "alice").await;
+    let (alice_area, _alice_guards) = resolve_user_area_with_read_lock(root, &locks, "alice").await;
     assert!(alice_area.ends_with("users/alice"));
 
-    let charlie_area = resolve_user_area(root, "charlie").await;
+    let (charlie_area, _charlie_guards) =
+        resolve_user_area_with_read_lock(root, &locks, "charlie").await;
     assert!(charlie_area.ends_with("shared"));
 }
 

@@ -68,35 +68,6 @@ impl TrustDb {
             .as_secs() as i64
     }
 
-    /// Create or update one trusted target (upsert).
-    ///
-    /// If the target already exists, all fields are updated. The `nickname`
-    /// annotation is stored in display case; its folded form is written to
-    /// `nickname_lower` so case-insensitive deletes by nickname match.
-    /// `created_by` and `reason` are preserved as-typed since they're
-    /// display-only fields.
-    #[cfg(test)]
-    pub async fn create_or_update_trust(
-        &self,
-        target: &str,
-        nickname: Option<&str>,
-        reason: Option<&str>,
-        created_by: &str,
-        expires_at: Option<i64>,
-    ) -> Result<TrustRecord, sqlx::Error> {
-        self.create_or_update_trust_targets(
-            std::iter::once(target),
-            nickname,
-            reason,
-            created_by,
-            expires_at,
-        )
-        .await?
-        .into_iter()
-        .next()
-        .ok_or(sqlx::Error::RowNotFound)
-    }
-
     /// Create or update multiple trusted targets atomically.
     ///
     /// A target is a canonical single IP or CIDR range. Used when a nickname
@@ -149,57 +120,6 @@ impl TrustDb {
         Ok(records)
     }
 
-    /// Get a trust entry by IP/CIDR target regardless of expiry status.
-    #[cfg(test)]
-    async fn get_trust_by_ip_unfiltered(
-        &self,
-        ip_address: &str,
-    ) -> Result<Option<TrustRecord>, sqlx::Error> {
-        let row: Option<TrustRow> = sqlx::query_as(sql::SQL_SELECT_TRUST_BY_IP_UNFILTERED)
-            .bind(ip_address)
-            .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(row.map(TrustRecord::from))
-    }
-
-    /// Check if a trust entry exists for a given IP/CIDR (regardless of expiry).
-    #[cfg(test)]
-    pub async fn trust_exists(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
-        Ok(self.get_trust_by_ip_unfiltered(ip_address).await?.is_some())
-    }
-
-    /// Check if an IP is currently trusted (not expired).
-    #[cfg(test)]
-    pub async fn is_ip_trusted(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
-        let now = Self::now();
-
-        let row: Option<TrustRow> = sqlx::query_as(sql::SQL_SELECT_TRUST_BY_IP)
-            .bind(ip_address)
-            .bind(now)
-            .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(row.is_some())
-    }
-
-    /// Get a trust entry by IP address (only if not expired).
-    #[cfg(test)]
-    pub async fn get_trust_by_ip(
-        &self,
-        ip_address: &str,
-    ) -> Result<Option<TrustRecord>, sqlx::Error> {
-        let now = Self::now();
-
-        let row: Option<TrustRow> = sqlx::query_as(sql::SQL_SELECT_TRUST_BY_IP)
-            .bind(ip_address)
-            .bind(now)
-            .fetch_optional(&self.pool)
-            .await?;
-
-        Ok(row.map(TrustRecord::from))
-    }
-
     /// Returns true if a trust was deleted, false if no trust existed.
     pub async fn delete_trust_by_ip(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
         let result = sqlx::query(sql::SQL_DELETE_TRUST_BY_IP)
@@ -227,20 +147,6 @@ impl TrustDb {
             .await?;
 
         Ok(rows.into_iter().map(|(ip,)| ip).collect())
-    }
-
-    /// Check if any trusts exist with a given nickname annotation.
-    ///
-    /// Lookup is case-insensitive: the supplied nickname is folded and matched
-    /// against the `nickname_lower` column.
-    #[cfg(test)]
-    pub async fn has_trusts_for_nickname(&self, nickname: &str) -> Result<bool, sqlx::Error> {
-        let row: (i64,) = sqlx::query_as(sql::SQL_COUNT_TRUSTS_BY_NICKNAME)
-            .bind(fold_name(nickname))
-            .fetch_one(&self.pool)
-            .await?;
-
-        Ok(row.0 > 0)
     }
 
     /// List all active (non-expired) trusts, sorted by creation time (newest first).
@@ -324,6 +230,89 @@ fn target_is_contained_by_range(target: &str, range: &IpNet) -> bool {
             range_v6.contains(&rule_v6.network()) && rule_v6.prefix_len() >= range_v6.prefix_len()
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+impl TrustDb {
+    /// Create or update one trust target (upsert).
+    pub async fn create_or_update_trust(
+        &self,
+        target: &str,
+        nickname: Option<&str>,
+        reason: Option<&str>,
+        created_by: &str,
+        expires_at: Option<i64>,
+    ) -> Result<TrustRecord, sqlx::Error> {
+        self.create_or_update_trust_targets(
+            std::iter::once(target),
+            nickname,
+            reason,
+            created_by,
+            expires_at,
+        )
+        .await?
+        .into_iter()
+        .next()
+        .ok_or(sqlx::Error::RowNotFound)
+    }
+
+    /// Get a trust entry by IP/CIDR target regardless of expiry status.
+    async fn get_trust_by_ip_unfiltered(
+        &self,
+        ip_address: &str,
+    ) -> Result<Option<TrustRecord>, sqlx::Error> {
+        let row: Option<TrustRow> =
+            sqlx::query_as(sql::test_sql::SQL_SELECT_TRUST_BY_IP_UNFILTERED)
+                .bind(ip_address)
+                .fetch_optional(&self.pool)
+                .await?;
+
+        Ok(row.map(TrustRecord::from))
+    }
+
+    /// Check if a trust entry exists for a given IP/CIDR regardless of expiry.
+    pub async fn trust_exists(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
+        Ok(self.get_trust_by_ip_unfiltered(ip_address).await?.is_some())
+    }
+
+    /// Check if an IP is currently trusted.
+    pub async fn is_ip_trusted(&self, ip_address: &str) -> Result<bool, sqlx::Error> {
+        let now = Self::now();
+
+        let row: Option<TrustRow> = sqlx::query_as(sql::test_sql::SQL_SELECT_TRUST_BY_IP)
+            .bind(ip_address)
+            .bind(now)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(row.is_some())
+    }
+
+    /// Get a trust entry by IP address if it has not expired.
+    pub async fn get_trust_by_ip(
+        &self,
+        ip_address: &str,
+    ) -> Result<Option<TrustRecord>, sqlx::Error> {
+        let now = Self::now();
+
+        let row: Option<TrustRow> = sqlx::query_as(sql::test_sql::SQL_SELECT_TRUST_BY_IP)
+            .bind(ip_address)
+            .bind(now)
+            .fetch_optional(&self.pool)
+            .await?;
+
+        Ok(row.map(TrustRecord::from))
+    }
+
+    /// Check if any trusts exist with a given nickname annotation.
+    pub async fn has_trusts_for_nickname(&self, nickname: &str) -> Result<bool, sqlx::Error> {
+        let row: (i64,) = sqlx::query_as(sql::test_sql::SQL_COUNT_TRUSTS_BY_NICKNAME)
+            .bind(fold_name(nickname))
+            .fetch_one(&self.pool)
+            .await?;
+
+        Ok(row.0 > 0)
     }
 }
 

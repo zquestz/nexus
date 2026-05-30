@@ -744,7 +744,7 @@ mod tests {
             total_size: 0,
         });
 
-        assert_eq!(registry.active_count(), 1);
+        assert_eq!(registry.snapshot().len(), 1);
 
         {
             let (_client, server) = duplex(1024);
@@ -774,10 +774,10 @@ mod tests {
                 },
             );
 
-            assert_eq!(registry.active_count(), 1);
+            assert_eq!(registry.snapshot().len(), 1);
         } // transfer dropped here
 
-        assert_eq!(registry.active_count(), 0);
+        assert_eq!(registry.snapshot().len(), 0);
     }
 
     #[tokio::test]

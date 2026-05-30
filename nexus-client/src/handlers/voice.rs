@@ -4,7 +4,7 @@
 //! - VoiceJoinPressed - User clicks to join voice for a channel or user message
 //! - VoiceLeavePressed - User clicks to leave current voice session
 //! - VoiceSessionEvent - Events from the voice session (connected, speaking, etc.)
-//! - VoicePttStateChanged - PTT hotkey pressed/released
+//! - VoicePttEvent - Raw PTT hotkey events
 //! - VoicePttReleaseDelayExpired - PTT release delay timer expired
 //! - VoiceUserMute/VoiceUserUnmute - Mute/unmute a user (client-side)
 
@@ -143,29 +143,6 @@ impl NexusApp {
             ChatTab::Channel(channel) => Some(channel.clone()),
             ChatTab::UserMessage(nickname) => Some(nickname.clone()),
             ChatTab::Console => None,
-        }
-    }
-
-    /// Check if the current tab matches the active voice session target
-    #[allow(dead_code)] // Available for UI state checks
-    pub fn is_voice_target_current_tab(&self) -> bool {
-        let Some(connection_id) = self.active_connection else {
-            return false;
-        };
-
-        let Some(conn) = self.connections.get(&connection_id) else {
-            return false;
-        };
-
-        let Some(ref session) = conn.voice_session else {
-            return false;
-        };
-
-        match &conn.active_chat_tab {
-            // Channel name already includes the # prefix
-            ChatTab::Channel(channel) => fold_name(&session.target) == fold_name(channel),
-            ChatTab::UserMessage(nickname) => fold_name(&session.target) == fold_name(nickname),
-            ChatTab::Console => false,
         }
     }
 

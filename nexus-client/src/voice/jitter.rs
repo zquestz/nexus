@@ -237,18 +237,6 @@ impl JitterBuffer {
         self.last_sequence = None;
         // Keep avg_jitter_ms and target_frames - they're still useful estimates
     }
-
-    /// Get the current target buffer size in frames
-    #[cfg(test)]
-    pub fn target_frames(&self) -> usize {
-        self.target_frames
-    }
-
-    /// Get the current average jitter estimate in milliseconds
-    #[cfg(test)]
-    pub fn avg_jitter_ms(&self) -> f64 {
-        self.avg_jitter_ms
-    }
 }
 
 impl Default for JitterBuffer {
@@ -357,7 +345,7 @@ mod tests {
     fn test_jitter_buffer_new() {
         let buffer = JitterBuffer::new();
         assert_eq!(buffer.packets.len(), 0);
-        assert_eq!(buffer.target_frames(), INITIAL_BUFFER_FRAMES);
+        assert_eq!(buffer.target_frames, INITIAL_BUFFER_FRAMES);
     }
 
     #[test]
@@ -393,7 +381,7 @@ mod tests {
 
         // Buffer has 6 packets, target should still be minimum (2)
         assert_eq!(buffer.packets.len(), 6);
-        assert_eq!(buffer.target_frames(), MIN_BUFFER_FRAMES);
+        assert_eq!(buffer.target_frames, MIN_BUFFER_FRAMES);
 
         // Should be able to pop in order (packets were reordered internally)
         assert!(buffer.pop().is_some()); // seq 0
@@ -525,11 +513,11 @@ mod tests {
 
         // Buffer should have grown above minimum
         assert!(
-            buffer.target_frames() >= MIN_BUFFER_FRAMES,
+            buffer.target_frames >= MIN_BUFFER_FRAMES,
             "Buffer should be at least minimum size"
         );
         assert!(
-            buffer.avg_jitter_ms() > 0.0,
+            buffer.avg_jitter_ms > 0.0,
             "Should have measured some jitter"
         );
     }
@@ -546,7 +534,7 @@ mod tests {
 
         // Should be clamped to max
         assert!(
-            buffer.target_frames() <= MAX_BUFFER_FRAMES,
+            buffer.target_frames <= MAX_BUFFER_FRAMES,
             "Buffer should not exceed maximum"
         );
     }

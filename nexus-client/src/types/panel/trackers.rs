@@ -336,14 +336,4 @@ impl TrackerManagementState {
         self.accept_fingerprint_error = None;
         self.is_accept_fingerprint_submitting = false;
     }
-
-    /// Returns the cached tracker list on success, or `None` while loading
-    /// or after a failed fetch.
-    #[allow(dead_code)] // Public accessor reserved for future call sites.
-    pub fn loaded_trackers(&self) -> Option<&[TrackerInfo]> {
-        self.all_trackers
-            .as_ref()
-            .and_then(|r| r.as_ref().ok())
-            .map(Vec::as_slice)
-    }
 }

@@ -872,7 +872,7 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        let saved_name = test_ctx.db.config.get_server_name().await;
+        let saved_name = test_ctx.db.config.get_all().await.server_name;
         assert_eq!(saved_name, "My Custom Server");
     }
 
@@ -914,7 +914,7 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        let saved_name = test_ctx.db.config.get_server_name().await;
+        let saved_name = test_ctx.db.config.get_all().await.server_name;
         assert_eq!(saved_name, unicode_name);
     }
 
@@ -997,7 +997,7 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        let saved_desc = test_ctx.db.config.get_server_description().await;
+        let saved_desc = test_ctx.db.config.get_all().await.server_description;
         assert_eq!(saved_desc, "Welcome to my server!");
     }
 
@@ -1077,10 +1077,10 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        let saved_name = test_ctx.db.config.get_server_name().await;
+        let saved_name = test_ctx.db.config.get_all().await.server_name;
         assert_eq!(saved_name, "Full Update Server");
 
-        let saved_desc = test_ctx.db.config.get_server_description().await;
+        let saved_desc = test_ctx.db.config.get_all().await.server_description;
         assert_eq!(saved_desc, "All fields updated");
 
         let saved_max = test_ctx.db.config.get_max_connections_per_ip().await;
@@ -1131,7 +1131,7 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        let saved_desc = test_ctx.db.config.get_server_description().await;
+        let saved_desc = test_ctx.db.config.get_all().await.server_description;
         assert_eq!(saved_desc, "");
     }
 
@@ -1182,7 +1182,7 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        let saved = test_ctx.db.config.get_public_address().await;
+        let saved = test_ctx.db.config.get_all().await.public_address;
         assert_eq!(saved, "bbs.example.com");
     }
 
@@ -1237,7 +1237,7 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        let saved = test_ctx.db.config.get_public_address().await;
+        let saved = test_ctx.db.config.get_all().await.public_address;
         assert_eq!(saved, "");
     }
 
@@ -1251,7 +1251,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Baseline: public_address is unset (migration seeds empty).
-        assert_eq!(test_ctx.db.config.get_public_address().await, "");
+        assert_eq!(test_ctx.db.config.get_all().await.public_address, "");
 
         let request = ServerInfoUpdateRequest {
             name: None,
@@ -1291,7 +1291,7 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        assert_eq!(test_ctx.db.config.get_public_address().await, "");
+        assert_eq!(test_ctx.db.config.get_all().await.public_address, "");
     }
 
     #[tokio::test]
@@ -1412,7 +1412,7 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        let saved_image = test_ctx.db.config.get_server_image().await;
+        let saved_image = test_ctx.db.config.get_all().await.server_image;
         assert_eq!(saved_image, test_image);
     }
 
@@ -1460,7 +1460,7 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        let saved_image = test_ctx.db.config.get_server_image().await;
+        let saved_image = test_ctx.db.config.get_all().await.server_image;
         assert_eq!(saved_image, "");
     }
 
@@ -1792,7 +1792,7 @@ mod tests {
             _ => panic!("Expected ServerInfoUpdateResponse, got {:?}", response),
         }
 
-        let saved = test_ctx.db.config.get_auto_join_channels().await;
+        let saved = test_ctx.db.config.get_all().await.auto_join_channels;
         assert_eq!(saved, "#nexus #welcome");
     }
 
@@ -1918,7 +1918,7 @@ mod tests {
         }
 
         let saved_persistent = test_ctx.db.config.get_persistent_channels().await;
-        let saved_auto_join = test_ctx.db.config.get_auto_join_channels().await;
+        let saved_auto_join = test_ctx.db.config.get_all().await.auto_join_channels;
         assert_eq!(saved_persistent, "");
         assert_eq!(saved_auto_join, "");
     }
@@ -2341,7 +2341,7 @@ mod tests {
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Capture pre-request state for the fields we're about to "set".
-        let initial_name = test_ctx.db.config.get_server_name().await;
+        let initial_name = test_ctx.db.config.get_all().await.server_name;
         let initial_max_conn = test_ctx.db.config.get_max_connections_per_ip().await;
         let initial_burst = test_ctx.db.config.get_chat_burst_limit().await;
         let initial_runtime_burst = test_ctx.flood_config.burst();
@@ -2384,7 +2384,7 @@ mod tests {
 
         // Writes staged before the failure point must have rolled back.
         assert_eq!(
-            test_ctx.db.config.get_server_name().await,
+            test_ctx.db.config.get_all().await.server_name,
             initial_name,
             "server_name must roll back",
         );

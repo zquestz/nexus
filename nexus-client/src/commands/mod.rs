@@ -1163,17 +1163,13 @@ mod tests {
     fn test_complete_nickname_with_struct() {
         struct User {
             nickname: String,
-            #[allow(dead_code)]
-            id: u32,
         }
         let users = vec![
             User {
                 nickname: "alice".to_string(),
-                id: 1,
             },
             User {
                 nickname: "bob".to_string(),
-                id: 2,
             },
         ];
         let result = complete_nickname("ali", &users, |u| &u.nickname);

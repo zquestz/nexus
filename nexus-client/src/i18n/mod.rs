@@ -27,7 +27,6 @@ mod mappings;
 mod permissions;
 mod translate;
 
-pub use constants::DEFAULT_LOCALE;
 pub use locale::get_locale;
 pub use mappings::{log_level_translation_key, strength_translation_key};
 pub use permissions::translate_permission;

@@ -169,17 +169,6 @@ impl PathLockMap {
         }
         Ok(guards)
     }
-
-    #[cfg(test)]
-    pub async fn live_keys(&self) -> usize {
-        let map = self.inner.lock().await;
-        map.values().filter(|w| w.strong_count() > 0).count()
-    }
-
-    #[cfg(test)]
-    pub async fn total_keys(&self) -> usize {
-        self.inner.lock().await.len()
-    }
 }
 
 /// Canonical lock key for a target path. Walks up to the deepest existing
@@ -326,6 +315,15 @@ mod tests {
 
     fn k(s: &str) -> PathBuf {
         PathBuf::from(s)
+    }
+
+    async fn live_keys(locks: &PathLockMap) -> usize {
+        let map = locks.inner.lock().await;
+        map.values().filter(|w| w.strong_count() > 0).count()
+    }
+
+    async fn total_keys(locks: &PathLockMap) -> usize {
+        locks.inner.lock().await.len()
     }
 
     /// Two `Wait` callers on the same key serialize.
@@ -602,14 +600,14 @@ mod tests {
         let locks = PathLockMap::new();
         {
             let _g = locks.acquire(k("/a"), PathLockMode::Wait).await.unwrap();
-            assert_eq!(locks.live_keys().await, 1);
-            assert_eq!(locks.total_keys().await, 1);
+            assert_eq!(live_keys(&locks).await, 1);
+            assert_eq!(total_keys(&locks).await, 1);
         }
-        assert_eq!(locks.live_keys().await, 0);
-        assert_eq!(locks.total_keys().await, 1);
+        assert_eq!(live_keys(&locks).await, 0);
+        assert_eq!(total_keys(&locks).await, 1);
 
         let _g = locks.acquire(k("/b"), PathLockMode::Wait).await.unwrap();
-        assert_eq!(locks.live_keys().await, 1);
-        assert_eq!(locks.total_keys().await, 1);
+        assert_eq!(live_keys(&locks).await, 1);
+        assert_eq!(total_keys(&locks).await, 1);
     }
 }

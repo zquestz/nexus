@@ -484,7 +484,7 @@ mod tests {
                 .permissions
                 .contains(&Permission::FileDownload)
         );
-        assert_eq!(registry.active_count(), 1);
+        assert_eq!(registry.snapshot().len(), 1);
     }
 
     #[tokio::test]
@@ -610,7 +610,7 @@ mod tests {
         };
 
         assert_eq!(error, err_authentication("en"));
-        assert_eq!(registry.active_count(), 0);
+        assert_eq!(registry.snapshot().len(), 0);
     }
 
     #[tokio::test]
@@ -646,7 +646,7 @@ mod tests {
         };
 
         assert_eq!(error, err_account_disabled("en", "alice"));
-        assert_eq!(registry.active_count(), 0);
+        assert_eq!(registry.snapshot().len(), 0);
     }
 
     #[tokio::test]
@@ -686,6 +686,6 @@ mod tests {
         };
 
         assert_eq!(error, err_guest_disabled("en"));
-        assert_eq!(registry.active_count(), 0);
+        assert_eq!(registry.snapshot().len(), 0);
     }
 }

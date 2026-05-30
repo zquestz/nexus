@@ -227,7 +227,8 @@ impl Drop for PttManager {
 /// Subscription for receiving global hotkey events
 ///
 /// This subscription listens for global hotkey events and emits
-/// `Message::VoicePttStateChanged` when the PTT key is pressed or released.
+/// raw `Message::VoicePttEvent` values. The voice handler resolves whether
+/// each event matches the configured PTT key.
 ///
 /// Note: The PttManager must be created and have a hotkey registered
 /// before events will be received. The subscription itself doesn't
@@ -675,12 +676,6 @@ fn code_to_string_internal(code: Code) -> String {
     }
 }
 
-/// Convert a Code enum to a display string (used in tests)
-#[cfg(test)]
-pub fn code_to_string(code: Code) -> String {
-    code_to_string_internal(code)
-}
-
 // =============================================================================
 // Tests
 // =============================================================================
@@ -750,7 +745,7 @@ mod tests {
         ];
 
         for code in codes {
-            let s = code_to_string(code);
+            let s = code_to_string_internal(code);
             let parsed = parse_key_code(&s).unwrap();
             assert_eq!(code, parsed, "Roundtrip failed for {:?}", code);
         }
@@ -923,7 +918,7 @@ mod tests {
         ];
 
         for code in numpad_codes {
-            let s = code_to_string(code);
+            let s = code_to_string_internal(code);
             let parsed = parse_key_code(&s).unwrap();
             assert_eq!(code, parsed, "Roundtrip failed for {:?} -> {}", code, s);
 

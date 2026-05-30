@@ -43,13 +43,6 @@ impl Config {
     pub fn get_tracker(&self, id: Uuid) -> Option<&ClientTracker> {
         self.client_trackers.iter().find(|t| t.id == id)
     }
-
-    /// Mutably borrow a tracker by id. Reserved for the TOFU-pin commit
-    /// path that lands with the network layer.
-    #[allow(dead_code)]
-    pub fn get_tracker_mut(&mut self, id: Uuid) -> Option<&mut ClientTracker> {
-        self.client_trackers.iter_mut().find(|t| t.id == id)
-    }
 }
 
 // =============================================================================
@@ -159,28 +152,6 @@ mod tests {
     fn test_get_tracker_nonexistent() {
         let config = Config::default();
         assert!(config.get_tracker(Uuid::new_v4()).is_none());
-    }
-
-    #[test]
-    fn test_get_tracker_mut_allows_pin_commit() {
-        // The TOFU-pin commit path goes through `get_tracker_mut` to write
-        // the observed fingerprint into the row in place. Pin the contract.
-        let mut config = Config::default();
-        let t = tracker("A");
-        let id = t.id;
-        config.add_tracker(t);
-
-        let row = config
-            .get_tracker_mut(id)
-            .expect("tracker should exist after add");
-        row.certificate_fingerprint = Some("AA:BB".to_string());
-
-        assert_eq!(
-            config
-                .get_tracker(id)
-                .and_then(|t| t.certificate_fingerprint.as_deref()),
-            Some("AA:BB")
-        );
     }
 
     // ========================================================================

@@ -1300,7 +1300,6 @@ impl NexusApp {
             Message::VoiceSessionEvent(connection_id, event) => {
                 self.handle_voice_session_event(connection_id, event)
             }
-            Message::VoicePttStateChanged(state) => self.handle_voice_ptt_state_changed(state),
             Message::VoicePttEvent(event) => self.handle_voice_ptt_event(event),
             Message::VoicePttReleaseDelayExpired(generation) => {
                 self.handle_voice_ptt_release_delay_expired(generation)

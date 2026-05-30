@@ -147,19 +147,6 @@ impl ConfigDb {
         }
     }
 
-    #[cfg(test)]
-    pub async fn set_max_outbound_rate(&self, value: u64) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_max_outbound_rate_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
-    }
-
     pub async fn set_max_outbound_rate_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: u64,
@@ -171,19 +158,6 @@ impl ConfigDb {
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub async fn set_scheduler_chunk_size(&self, value: u32) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_scheduler_chunk_size_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
     }
 
     pub async fn set_scheduler_chunk_size_in_tx(
@@ -252,20 +226,6 @@ impl ConfigDb {
             .unwrap_or(DEFAULT_MAX_CONNECTIONS_PER_IP)
     }
 
-    /// A value of 0 means unlimited connections are allowed.
-    #[cfg(test)]
-    pub async fn set_max_connections_per_ip(&self, value: u32) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_max_connections_per_ip_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
-    }
-
     pub async fn set_max_connections_per_ip_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: u32,
@@ -290,20 +250,6 @@ impl ConfigDb {
             .unwrap_or(DEFAULT_MAX_TRANSFERS_PER_IP)
     }
 
-    /// A value of 0 means unlimited transfers are allowed.
-    #[cfg(test)]
-    pub async fn set_max_transfers_per_ip(&self, value: u32) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_max_transfers_per_ip_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
-    }
-
     pub async fn set_max_transfers_per_ip_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: u32,
@@ -316,28 +262,6 @@ impl ConfigDb {
             .map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub async fn get_server_name(&self) -> String {
-        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
-            .bind(CONFIG_KEY_SERVER_NAME)
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or_else(|_| DEFAULT_SERVER_NAME.to_string())
-    }
-
-    #[cfg(test)]
-    pub async fn set_server_name(&self, name: &str) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_server_name_in_tx(&mut tx, name).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
     }
 
     pub async fn set_server_name_in_tx(
@@ -365,28 +289,6 @@ impl ConfigDb {
         Ok(())
     }
 
-    #[cfg(test)]
-    pub async fn get_server_description(&self) -> String {
-        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
-            .bind(CONFIG_KEY_SERVER_DESCRIPTION)
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or_else(|_| DEFAULT_SERVER_DESCRIPTION.to_string())
-    }
-
-    #[cfg(test)]
-    pub async fn set_server_description(&self, description: &str) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_server_description_in_tx(&mut tx, description).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
-    }
-
     pub async fn set_server_description_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         description: &str,
@@ -409,29 +311,6 @@ impl ConfigDb {
             .map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub async fn get_server_image(&self) -> String {
-        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
-            .bind(CONFIG_KEY_SERVER_IMAGE)
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or_else(|_| DEFAULT_SERVER_IMAGE.to_string())
-    }
-
-    /// An empty string is allowed to clear the image.
-    #[cfg(test)]
-    pub async fn set_server_image(&self, image: &str) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_server_image_in_tx(&mut tx, image).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
     }
 
     pub async fn set_server_image_in_tx(
@@ -458,29 +337,6 @@ impl ConfigDb {
             .map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub async fn get_public_address(&self) -> String {
-        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
-            .bind(CONFIG_KEY_PUBLIC_ADDRESS)
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or_else(|_| DEFAULT_PUBLIC_ADDRESS.to_string())
-    }
-
-    /// An empty string is allowed to clear the advertised address.
-    #[cfg(test)]
-    pub async fn set_public_address(&self, value: &str) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_public_address_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
     }
 
     pub async fn set_public_address_in_tx(
@@ -524,20 +380,6 @@ impl ConfigDb {
             .unwrap_or(DEFAULT_FILE_REINDEX_INTERVAL)
     }
 
-    /// A value of 0 disables automatic reindexing.
-    #[cfg(test)]
-    pub async fn set_file_reindex_interval(&self, value: u32) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_file_reindex_interval_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
-    }
-
     pub async fn set_file_reindex_interval_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: u32,
@@ -559,20 +401,6 @@ impl ConfigDb {
             .fetch_one(&self.pool)
             .await
             .unwrap_or_else(|_| DEFAULT_PERSISTENT_CHANNELS.to_string())
-    }
-
-    /// These channels survive restart and can't be deleted when empty.
-    #[cfg(test)]
-    pub async fn set_persistent_channels(&self, value: &str) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_persistent_channels_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
     }
 
     pub async fn set_persistent_channels_in_tx(
@@ -599,29 +427,6 @@ impl ConfigDb {
             .map_err(|e| io::Error::other(e.to_string()))?;
 
         Ok(())
-    }
-
-    /// Space-separated string of channel names users auto-join on login.
-    #[cfg(test)]
-    pub async fn get_auto_join_channels(&self) -> String {
-        sqlx::query_scalar::<_, String>(sql::SQL_GET_CONFIG)
-            .bind(CONFIG_KEY_AUTO_JOIN_CHANNELS)
-            .fetch_one(&self.pool)
-            .await
-            .unwrap_or_else(|_| DEFAULT_AUTO_JOIN_CHANNELS.to_string())
-    }
-
-    #[cfg(test)]
-    pub async fn set_auto_join_channels(&self, value: &str) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_auto_join_channels_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
     }
 
     pub async fn set_auto_join_channels_in_tx(
@@ -661,19 +466,6 @@ impl ConfigDb {
             .unwrap_or(DEFAULT_MIN_PASSWORD_STRENGTH)
     }
 
-    #[cfg(test)]
-    pub async fn set_min_password_strength(&self, value: PasswordStrength) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_min_password_strength_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
-    }
-
     pub async fn set_min_password_strength_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: PasswordStrength,
@@ -697,19 +489,6 @@ impl ConfigDb {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(DEFAULT_CHAT_BURST_LIMIT)
-    }
-
-    #[cfg(test)]
-    pub async fn set_chat_burst_limit(&self, value: u32) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_chat_burst_limit_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
     }
 
     pub async fn set_chat_burst_limit_in_tx(
@@ -736,19 +515,6 @@ impl ConfigDb {
             .unwrap_or(DEFAULT_CHAT_RATE_LIMIT)
     }
 
-    #[cfg(test)]
-    pub async fn set_chat_rate_limit(&self, value: u32) -> io::Result<()> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        Self::set_chat_rate_limit_in_tx(&mut tx, value).await?;
-        tx.commit()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))
-    }
-
     pub async fn set_chat_rate_limit_in_tx(
         tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
         value: u32,
@@ -764,6 +530,134 @@ impl ConfigDb {
 
     pub fn parse_channel_list(value: &str) -> Vec<String> {
         value.split_whitespace().map(|s| s.to_string()).collect()
+    }
+}
+
+#[cfg(test)]
+impl ConfigDb {
+    async fn begin_test_tx(&self) -> io::Result<sqlx::Transaction<'_, sqlx::Sqlite>> {
+        self.pool
+            .begin()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_max_outbound_rate(&self, value: u64) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_max_outbound_rate_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_scheduler_chunk_size(&self, value: u32) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_scheduler_chunk_size_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    /// A value of 0 means unlimited connections are allowed.
+    pub async fn set_max_connections_per_ip(&self, value: u32) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_max_connections_per_ip_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    /// A value of 0 means unlimited transfers are allowed.
+    pub async fn set_max_transfers_per_ip(&self, value: u32) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_max_transfers_per_ip_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_server_name(&self, name: &str) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_server_name_in_tx(&mut tx, name).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_server_description(&self, description: &str) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_server_description_in_tx(&mut tx, description).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    /// An empty string is allowed to clear the image.
+    pub async fn set_server_image(&self, image: &str) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_server_image_in_tx(&mut tx, image).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    /// An empty string is allowed to clear the advertised address.
+    pub async fn set_public_address(&self, value: &str) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_public_address_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    /// A value of 0 disables automatic reindexing.
+    pub async fn set_file_reindex_interval(&self, value: u32) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_file_reindex_interval_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    /// These channels survive restart and can't be deleted when empty.
+    pub async fn set_persistent_channels(&self, value: &str) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_persistent_channels_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_auto_join_channels(&self, value: &str) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_auto_join_channels_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_min_password_strength(&self, value: PasswordStrength) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_min_password_strength_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_chat_burst_limit(&self, value: u32) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_chat_burst_limit_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    pub async fn set_chat_rate_limit(&self, value: u32) -> io::Result<()> {
+        let mut tx = self.begin_test_tx().await?;
+        Self::set_chat_rate_limit_in_tx(&mut tx, value).await?;
+        tx.commit()
+            .await
+            .map_err(|e| io::Error::other(e.to_string()))
     }
 }
 
@@ -839,7 +733,7 @@ mod tests {
         let config_db = ConfigDb::new(pool);
 
         // Migration sets default to "Nexus BBS"
-        let name = config_db.get_server_name().await;
+        let name = config_db.get_all().await.server_name;
         assert_eq!(name, "Nexus BBS");
     }
 
@@ -849,7 +743,7 @@ mod tests {
         let config_db = ConfigDb::new(pool);
 
         config_db.set_server_name("My Server").await.unwrap();
-        let name = config_db.get_server_name().await;
+        let name = config_db.get_all().await.server_name;
         assert_eq!(name, "My Server");
     }
 
@@ -880,7 +774,7 @@ mod tests {
         let config_db = ConfigDb::new(pool);
 
         // Migration sets default to empty string
-        let description = config_db.get_server_description().await;
+        let description = config_db.get_all().await.server_description;
         assert_eq!(description, "");
     }
 
@@ -893,7 +787,7 @@ mod tests {
             .set_server_description("Welcome to the server!")
             .await
             .unwrap();
-        let description = config_db.get_server_description().await;
+        let description = config_db.get_all().await.server_description;
         assert_eq!(description, "Welcome to the server!");
     }
 
@@ -908,7 +802,7 @@ mod tests {
             .unwrap();
 
         config_db.set_server_description("").await.unwrap();
-        let description = config_db.get_server_description().await;
+        let description = config_db.get_all().await.server_description;
         assert_eq!(description, "");
     }
 
@@ -929,7 +823,7 @@ mod tests {
         let config_db = ConfigDb::new(pool);
 
         // Migration sets default to empty string
-        let image = config_db.get_server_image().await;
+        let image = config_db.get_all().await.server_image;
         assert_eq!(image, "");
     }
 
@@ -940,7 +834,7 @@ mod tests {
 
         let image = "data:image/png;base64,iVBORw0KGgo=";
         config_db.set_server_image(image).await.unwrap();
-        let result = config_db.get_server_image().await;
+        let result = config_db.get_all().await.server_image;
         assert_eq!(result, image);
     }
 
@@ -955,7 +849,7 @@ mod tests {
             .unwrap();
 
         config_db.set_server_image("").await.unwrap();
-        let image = config_db.get_server_image().await;
+        let image = config_db.get_all().await.server_image;
         assert_eq!(image, "");
     }
 
@@ -999,7 +893,7 @@ mod tests {
     async fn test_get_public_address_default() {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
-        let value = config_db.get_public_address().await;
+        let value = config_db.get_all().await.public_address;
         assert_eq!(value, "");
     }
 
@@ -1011,7 +905,7 @@ mod tests {
             .set_public_address("bbs.example.com")
             .await
             .unwrap();
-        assert_eq!(config_db.get_public_address().await, "bbs.example.com");
+        assert_eq!(config_db.get_all().await.public_address, "bbs.example.com");
     }
 
     #[tokio::test]
@@ -1019,7 +913,7 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
         config_db.set_public_address("203.0.113.5").await.unwrap();
-        assert_eq!(config_db.get_public_address().await, "203.0.113.5");
+        assert_eq!(config_db.get_all().await.public_address, "203.0.113.5");
     }
 
     #[tokio::test]
@@ -1027,7 +921,7 @@ mod tests {
         let pool = create_test_db().await;
         let config_db = ConfigDb::new(pool);
         config_db.set_public_address("2001:db8::1").await.unwrap();
-        assert_eq!(config_db.get_public_address().await, "2001:db8::1");
+        assert_eq!(config_db.get_all().await.public_address, "2001:db8::1");
     }
 
     #[tokio::test]
@@ -1036,7 +930,7 @@ mod tests {
         let config_db = ConfigDb::new(pool);
         config_db.set_public_address("münchen.de").await.unwrap();
         // Option C: stored as-typed, not normalized
-        assert_eq!(config_db.get_public_address().await, "münchen.de");
+        assert_eq!(config_db.get_all().await.public_address, "münchen.de");
     }
 
     #[tokio::test]
@@ -1048,7 +942,7 @@ mod tests {
             .await
             .unwrap();
         config_db.set_public_address("").await.unwrap();
-        assert_eq!(config_db.get_public_address().await, "");
+        assert_eq!(config_db.get_all().await.public_address, "");
     }
 
     #[tokio::test]

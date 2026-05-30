@@ -309,14 +309,6 @@ impl TransferRegistry {
             .cloned()
             .collect()
     }
-
-    #[cfg(test)]
-    pub fn active_count(&self) -> usize {
-        self.transfers
-            .lock()
-            .expect(ERR_TRANSFER_REGISTRY_LOCK_POISONED)
-            .len()
-    }
 }
 
 impl Default for TransferRegistry {
@@ -370,14 +362,14 @@ mod tests {
             total_size: 1024,
         });
 
-        assert_eq!(registry.active_count(), 1);
+        assert_eq!(registry.snapshot().len(), 1);
         assert_eq!(info.to_transfer_info().username, "testuser");
         assert_eq!(info.direction, TransferDirection::Download);
         assert_eq!(info.path, "/files/test.zip");
         assert_eq!(info.get_total_size(), 1024);
 
         registry.unregister(info.id);
-        assert_eq!(registry.active_count(), 0);
+        assert_eq!(registry.snapshot().len(), 0);
     }
 
     #[test]
@@ -606,13 +598,13 @@ mod tests {
             total_size: 0,
         });
 
-        assert_eq!(registry.active_count(), 3);
+        assert_eq!(registry.snapshot().len(), 3);
 
         let disconnected = registry.disconnect_matching(|ip| ip == banned_ip);
 
         assert_eq!(disconnected, 2);
         // Entries remain registered until explicitly unregistered.
-        assert_eq!(registry.active_count(), 3);
+        assert_eq!(registry.snapshot().len(), 3);
 
         assert!(rx1.try_recv().is_ok());
         assert!(rx3.try_recv().is_ok());
@@ -725,14 +717,14 @@ mod tests {
             path: "/file".to_string(),
             total_size: 0,
         });
-        assert_eq!(registry.active_count(), 1);
+        assert_eq!(registry.snapshot().len(), 1);
 
         {
             let _guard = TransferRegistryGuard::new(&registry, info.id);
-            assert_eq!(registry.active_count(), 1);
+            assert_eq!(registry.snapshot().len(), 1);
         }
 
-        assert_eq!(registry.active_count(), 0);
+        assert_eq!(registry.snapshot().len(), 0);
     }
 
     #[test]

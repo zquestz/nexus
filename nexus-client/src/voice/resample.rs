@@ -7,8 +7,6 @@
 use audioadapter_buffers::direct::SequentialSliceOfVecs;
 use rubato::{Fft, FixedSync, Resampler};
 
-#[cfg(test)]
-use nexus_common::voice::STEREO_CHANNELS;
 use nexus_common::voice::{MONO_CHANNELS, VOICE_SAMPLE_RATE, VOICE_SAMPLES_PER_FRAME};
 
 // =============================================================================
@@ -23,10 +21,6 @@ const CHUNK_SIZE: usize = VOICE_SAMPLES_PER_FRAME as usize;
 
 /// Number of channels for mono audio
 const MONO: usize = MONO_CHANNELS as usize;
-
-/// Number of channels for stereo audio (used in tests)
-#[cfg(test)]
-const STEREO: usize = STEREO_CHANNELS as usize;
 
 /// Number of sub-chunks for FFT resampler (1 = lowest latency)
 const RESAMPLER_SUB_CHUNKS: usize = 1;
@@ -160,9 +154,6 @@ impl InputResampler {
 pub struct OutputResampler {
     /// The rubato resampler instance
     resampler: Fft<f32>,
-    /// Device sample rate (stored for potential future use)
-    #[allow(dead_code)]
-    device_rate: u32,
     /// Number of output channels
     channels: usize,
     /// Input buffer for accumulating 48kHz samples
@@ -203,19 +194,12 @@ impl OutputResampler {
 
         Ok(Self {
             resampler,
-            device_rate,
             channels,
             input_buffer: Vec::new(),
             output_buffer: Vec::new(),
             work_in: vec![vec![0.0; input_frames_max]],
             work_out: vec![vec![0.0; output_frames_max]],
         })
-    }
-
-    /// Get the device sample rate this resampler was created for
-    #[allow(dead_code)]
-    pub fn device_rate(&self) -> u32 {
-        self.device_rate
     }
 
     /// Process 48kHz mono samples and return samples at device rate
@@ -283,6 +267,9 @@ impl OutputResampler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nexus_common::voice::STEREO_CHANNELS;
+
+    const STEREO: usize = STEREO_CHANNELS as usize;
 
     #[test]
     fn test_needs_resampling() {
@@ -404,12 +391,6 @@ mod tests {
             0,
             "Stereo output should have even number of samples"
         );
-    }
-
-    #[test]
-    fn test_output_device_rate_getter() {
-        let output = OutputResampler::new(96000, STEREO).unwrap();
-        assert_eq!(output.device_rate(), 96000);
     }
 
     // =========================================================================

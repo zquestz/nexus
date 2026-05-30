@@ -3985,7 +3985,6 @@ mod tests {
                 "alice".to_string(),
                 vec!["#general".to_string()],
                 alice_session,
-                test_ctx.peer_addr.ip(),
             ))
             .await
             .expect("add voice session");
@@ -5813,7 +5812,6 @@ mod tests {
             "voiceadmin".to_string(),
             vec!["#general".to_string()],
             voiceadmin_session,
-            test_ctx.peer_addr.ip(),
         );
         test_ctx
             .voice_registry
@@ -5945,7 +5943,6 @@ mod tests {
             "vibes".to_string(),
             vec!["#general".to_string()],
             lounge_session,
-            test_ctx.peer_addr.ip(),
         );
         test_ctx
             .voice_registry
@@ -7437,7 +7434,6 @@ mod tests {
             "voiceuser".to_string(),
             vec!["#general".to_string()],
             voice_user_session,
-            test_ctx.peer_addr.ip(),
         );
         test_ctx
             .voice_registry
@@ -7565,7 +7561,6 @@ mod tests {
             "voiceuser".to_string(),
             vec!["#general".to_string()],
             voice_user_session,
-            test_ctx.peer_addr.ip(),
         );
         test_ctx
             .voice_registry

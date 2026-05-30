@@ -98,10 +98,6 @@ pub enum TransferEvent {
         current_file: Option<String>,
     },
 
-    /// File completed (fields used for logging/debugging, not currently read by handler)
-    #[allow(dead_code)]
-    FileCompleted { id: Uuid, path: String },
-
     /// Transfer completed successfully
     Completed { id: Uuid },
 
@@ -645,11 +641,6 @@ where
             }
         }
 
-        let _ = event_tx.send(TransferEvent::FileCompleted {
-            id,
-            path: file_path,
-        });
-
         let _ = event_tx.send(TransferEvent::Progress {
             id,
             transferred_bytes,
@@ -847,11 +838,6 @@ where
                     transferred_bytes += file_info.size;
                     files_completed += 1;
 
-                    let _ = event_tx.send(TransferEvent::FileCompleted {
-                        id,
-                        path: file_info.relative_path.clone(),
-                    });
-
                     let _ = event_tx.send(TransferEvent::Progress {
                         id,
                         transferred_bytes,
@@ -981,11 +967,6 @@ where
             .map_err(|_| TransferError::ConnectionError)?;
 
         files_completed += 1;
-
-        let _ = event_tx.send(TransferEvent::FileCompleted {
-            id,
-            path: file_info.relative_path.clone(),
-        });
 
         let _ = event_tx.send(TransferEvent::Progress {
             id,

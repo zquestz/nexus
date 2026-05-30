@@ -283,15 +283,12 @@ impl Default for VoiceRegistry {
 }
 
 #[cfg(test)]
-impl VoiceRegistry {
-    pub async fn session_count(&self) -> usize {
-        self.sessions.read().await.len()
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
+
+    async fn session_count(registry: &VoiceRegistry) -> usize {
+        registry.sessions.read().await.len()
+    }
 
     fn create_test_session(nickname: &str, target: &str, session_id: u32) -> VoiceSession {
         // `#name` → channel; `a:b` → user-message key; bare name → pair with nickname.
@@ -302,8 +299,7 @@ mod tests {
         } else {
             vec![nickname.to_string(), target.to_string()]
         };
-        let ip: std::net::IpAddr = "192.168.1.1".parse().unwrap();
-        VoiceSession::new(nickname.to_string(), target_vec, session_id, ip)
+        VoiceSession::new(nickname.to_string(), target_vec, session_id)
     }
 
     #[tokio::test]
@@ -529,22 +525,22 @@ mod tests {
     async fn test_session_count() {
         let registry = VoiceRegistry::new();
 
-        assert_eq!(registry.session_count().await, 0);
+        assert_eq!(session_count(&registry).await, 0);
 
         registry
             .add(create_test_session("alice", "#general", 1))
             .await
             .expect("test setup: session_id is unique");
-        assert_eq!(registry.session_count().await, 1);
+        assert_eq!(session_count(&registry).await, 1);
 
         registry
             .add(create_test_session("bob", "#general", 2))
             .await
             .expect("test setup: session_id is unique");
-        assert_eq!(registry.session_count().await, 2);
+        assert_eq!(session_count(&registry).await, 2);
 
         registry.remove_by_session_id(1).await;
-        assert_eq!(registry.session_count().await, 1);
+        assert_eq!(session_count(&registry).await, 1);
     }
 
     #[tokio::test]
@@ -552,18 +548,15 @@ mod tests {
         let registry = VoiceRegistry::new();
 
         // Both users share the canonical sorted target ["alice", "bob"].
-        let ip: std::net::IpAddr = "192.168.1.1".parse().unwrap();
         let alice_session = VoiceSession::new(
             "alice".to_string(),
             vec!["alice".to_string(), "bob".to_string()],
             1,
-            ip,
         );
         let bob_session = VoiceSession::new(
             "bob".to_string(),
             vec!["alice".to_string(), "bob".to_string()],
             2,
-            ip,
         );
         registry
             .add(alice_session)
@@ -583,7 +576,7 @@ mod tests {
     #[tokio::test]
     async fn test_default() {
         let registry = VoiceRegistry::default();
-        assert_eq!(registry.session_count().await, 0);
+        assert_eq!(session_count(&registry).await, 0);
     }
 
     #[tokio::test]
@@ -720,7 +713,7 @@ mod tests {
 
         let winners = [r1.is_some(), r2.is_some()].iter().filter(|x| **x).count();
         assert_eq!(winners, 1, "exactly one concurrent add must win");
-        assert_eq!(registry.session_count().await, 1);
+        assert_eq!(session_count(&registry).await, 1);
     }
 
     /// Two concurrent same-nickname joins to the same target (with

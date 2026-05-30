@@ -95,8 +95,7 @@ pub struct TestContext {
     pub tracker_manager: crate::tracker::TrackerManager,
     pub flood_config: Arc<crate::flood::FloodConfig>,
     /// Keep temp dir alive for tests that use file areas
-    #[allow(dead_code)]
-    temp_dir: TempDir,
+    _temp_dir: TempDir,
 }
 
 impl TestContext {
@@ -223,7 +222,7 @@ pub async fn create_test_context() -> TestContext {
         voice_registry,
         tracker_manager,
         flood_config,
-        temp_dir,
+        _temp_dir: temp_dir,
     }
 }
 
