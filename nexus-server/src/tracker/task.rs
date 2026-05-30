@@ -77,7 +77,10 @@ const TRACKER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Ceiling on a single `lookup_host`. Defends against a wedged/hostile
 /// resolver hanging the task (the frame-completion timeout is pre-frame here).
+#[cfg(not(test))]
 const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(15);
+#[cfg(test)]
+const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Floor for the tracker-supplied `refresh_interval`, against a buggy
 /// or hostile tracker asking for `0` and driving a tight refresh loop.
