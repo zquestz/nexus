@@ -260,6 +260,9 @@ impl ChannelManager {
         // Holding the lock across the DB await serializes concurrent updates on the same
         // channel (lock order = DB write order = final memory state) and ensures a DB
         // failure can't leave memory ahead of disk.
+        // `reinitialize_persistent_channels` takes this same channels lock before
+        // mutating `persistent_channels`, so the snapshot below is serialized with
+        // persistent-set reinitialization.
         let is_persistent = self.persistent_channels.read().await.contains(&key);
         if is_persistent {
             self.db.set_secret(channel_name, secret).await?;
@@ -291,6 +294,9 @@ impl ChannelManager {
         // Holding the lock across the DB await serializes concurrent updates on the same
         // channel (lock order = DB write order = final memory state) and ensures a DB
         // failure can't leave memory ahead of disk.
+        // `reinitialize_persistent_channels` takes this same channels lock before
+        // mutating `persistent_channels`, so the snapshot below is serialized with
+        // persistent-set reinitialization.
         let is_persistent = self.persistent_channels.read().await.contains(&key);
         if is_persistent {
             let topic_str = topic.as_deref().unwrap_or("");

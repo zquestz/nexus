@@ -21,6 +21,14 @@ use crate::db::Permission;
 use crate::users::manager::UserManager;
 use crate::users::user::UserSession;
 
+fn reject_user_list(error: String) -> ServerMessage {
+    ServerMessage::UserListResponse {
+        success: false,
+        error: Some(error),
+        users: None,
+    }
+}
+
 /// `all=false`: online sessions only (requires `user_list`).
 /// `all=true`: all DB accounts for the management panel (requires
 /// `user_create` OR `user_edit` OR `user_delete`).
@@ -59,7 +67,7 @@ where
     if !has_permission {
         warn!(user = %requesting_user.username, ip = %ctx.peer_addr, all = all, "{}", LOG_USER_LIST_PERMISSION_DENIED);
         return ctx
-            .send_error(&err_permission_denied(ctx.locale), Some(HANDLER_USER_LIST))
+            .send_message(&reject_user_list(err_permission_denied(ctx.locale)))
             .await;
     }
 
@@ -69,7 +77,7 @@ where
             Err(e) => {
                 error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_USER_LIST_DB_ERROR);
                 return ctx
-                    .send_error(&err_database(ctx.locale), Some(HANDLER_USER_LIST))
+                    .send_message(&reject_user_list(err_database(ctx.locale)))
                     .await;
             }
         };
@@ -177,6 +185,7 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::handlers::testing::{create_test_context, get_cached_password_hash, login_user};
+    use crate::handlers::{err_permission_denied, testing::DEFAULT_TEST_LOCALE};
 
     #[tokio::test]
     async fn test_userlist_requires_login() {
@@ -216,6 +225,20 @@ mod tests {
             result.is_ok(),
             "Should send error message but not disconnect"
         );
+
+        use crate::handlers::testing::read_server_message;
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserListResponse {
+                success,
+                error,
+                users,
+            } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
+                assert!(users.is_none());
+            }
+            other => panic!("Expected UserListResponse, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -609,6 +632,20 @@ mod tests {
             result.is_ok(),
             "Should send error message but not disconnect"
         );
+
+        use crate::handlers::testing::read_server_message;
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserListResponse {
+                success,
+                error,
+                users,
+            } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_permission_denied(DEFAULT_TEST_LOCALE)));
+                assert!(users.is_none());
+            }
+            other => panic!("Expected UserListResponse, got {other:?}"),
+        }
     }
 
     #[tokio::test]

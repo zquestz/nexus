@@ -2344,6 +2344,7 @@ mod tests {
         let initial_name = test_ctx.db.config.get_server_name().await;
         let initial_max_conn = test_ctx.db.config.get_max_connections_per_ip().await;
         let initial_burst = test_ctx.db.config.get_chat_burst_limit().await;
+        let initial_runtime_burst = test_ctx.flood_config.burst();
 
         // Build a channel list where each individual name validates
         // but the joined string exceeds MAX_CHANNEL_LIST_LENGTH (512).
@@ -2396,6 +2397,34 @@ mod tests {
             test_ctx.db.config.get_chat_burst_limit().await,
             initial_burst,
             "chat_burst_limit must not be written when the tx aborts",
+        );
+
+        // Runtime side effects and fanouts are post-commit only, so a mid-tx
+        // failure must not update in-memory limits or queue ServerInfoUpdated.
+        assert_eq!(
+            test_ctx.flood_config.burst(),
+            initial_runtime_burst,
+            "runtime chat burst limit must not update when the tx aborts",
+        );
+
+        let mut guards = Vec::with_capacity(100);
+        for slot in 0..100 {
+            let guard = test_ctx
+                .connection_tracker
+                .try_acquire(test_ctx.peer_addr.ip())
+                .unwrap_or_else(|| {
+                    panic!("runtime connection limit changed after {slot} acquisitions")
+                });
+            guards.push(guard);
+        }
+        drop(guards);
+
+        assert!(
+            matches!(
+                test_ctx.rx.try_recv(),
+                Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+            ),
+            "failed update must not broadcast ServerInfoUpdated",
         );
     }
 }
