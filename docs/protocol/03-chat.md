@@ -133,7 +133,7 @@ Response to join request with full channel data on success.
 | `error`        | string  | If failure | Error message                                                  |
 | `channel`      | string  | If success | Channel name                                                   |
 | `topic`        | string  | If success | Current topic (null if none)                                   |
-| `topic_set_by` | string  | If success | Who set the topic (null if none)                               |
+| `topic_set_by` | string  | If success | Point-in-time nickname that set the topic (null if none)       |
 | `secret`       | boolean | If success | Whether channel is secret                                      |
 | `members`      | array   | If success | List of member nicknames                                       |
 | `voiced`       | array   | If success | Nicknames in voice chat (only if requester has `voice_listen`) |
@@ -508,9 +508,9 @@ Broadcast to channel members when channel properties change (topic, secret mode)
 | --------------- | ------- | -------- | ------------------------------------------------------ |
 | `channel`       | string  | Yes      | Channel whose properties changed                       |
 | `topic`         | string  | No       | New topic (empty string = cleared, absent = no change) |
-| `topic_set_by`  | string  | No       | Nickname of user who set the topic                     |
+| `topic_set_by`  | string  | No       | Point-in-time nickname that set the topic              |
 | `secret`        | boolean | No       | New secret mode (absent = no change)                   |
-| `secret_set_by` | string  | No       | Nickname of user who changed secret mode               |
+| `secret_set_by` | string  | No       | Point-in-time nickname that changed secret mode        |
 
 **Topic change example:**
 

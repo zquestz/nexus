@@ -227,9 +227,9 @@ Response with the list of active bans.
 | Field        | Type     | Description                                        |
 | ------------ | -------- | -------------------------------------------------- |
 | `ip_address` | string   | IP or CIDR (e.g., "192.168.1.0/24")                |
-| `nickname`   | string?  | Nickname annotation (if banned by nickname)        |
+| `nickname`   | string?  | Point-in-time nickname annotation                  |
 | `reason`     | string?  | Ban reason                                         |
-| `created_by` | string   | Username of admin who created ban                  |
+| `created_by` | string   | Point-in-time username of admin who created ban    |
 | `created_at` | integer  | Unix timestamp when ban was created                |
 | `expires_at` | integer? | Unix timestamp when ban expires (null = permanent) |
 

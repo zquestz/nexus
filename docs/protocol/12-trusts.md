@@ -239,9 +239,9 @@ Response with the list of trusted IPs.
 | Field        | Type     | Description                                          |
 | ------------ | -------- | ---------------------------------------------------- |
 | `ip_address` | string   | IP or CIDR (e.g., "192.168.1.0/24")                  |
-| `nickname`   | string?  | Nickname annotation (if trusted by nickname)         |
+| `nickname`   | string?  | Point-in-time nickname annotation                    |
 | `reason`     | string?  | Trust reason/note                                    |
-| `created_by` | string   | Username of admin who created trust entry            |
+| `created_by` | string   | Point-in-time username of admin who created trust    |
 | `created_at` | integer  | Unix timestamp when trust was created                |
 | `expires_at` | integer? | Unix timestamp when trust expires (null = permanent) |
 

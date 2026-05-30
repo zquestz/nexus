@@ -41,22 +41,21 @@ Features intentionally excluded with rationale.
 Future handler cleanup should make response/fanout ordering explicit and
 consistent. The default command pattern should be:
 
-`validate -> commit state -> enqueue requester success response -> enqueue fanouts`
+`validate -> commit state -> enqueue fanouts -> release locks -> write requester response`
 
-"Response first" means queueing the response before observer events, not blocking
-the server until the requester physically reads from the socket. Slow requesters
-must not stall fanout delivery to other sessions.
+Fanouts should be queued before the direct requester response is written. A
+success response means the handler's state change is committed and all related
+fanouts have already been queued. Release ordering locks before the direct write
+unless the handler has a specific protocol-ordering reason to keep using a
+session channel.
 
-`UserMessage` is the known semantic exception: the `UserMessage` event is the
-delivery/echo itself, and `UserMessageResponse` behaves like a delivery receipt
-with away/status metadata. That handler may keep
-`deliver/echo UserMessage -> UserMessageResponse` unless the protocol semantics
-are redesigned.
+`UserMessage` follows this shape naturally: the `UserMessage` event is the
+delivery/echo fanout, and `UserMessageResponse` behaves like a delivery receipt
+with away/status metadata.
 
 Admin teardown handlers may still need to perform internal cleanup before the
-success response so state is genuinely committed, but user-visible fanouts and
-disconnect notifications should be queued after the requester ACK where
-practical.
+success response so state is genuinely committed, and user-visible fanouts and
+disconnect notifications should already be queued before the response is written.
 
 Handlers that need `read_user_state()` for rename/nickname ordering should take
 it early, before the first session lookup, and carry one authoritative session
