@@ -18,7 +18,8 @@ use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, Outcome, dispatch_outcome, err_account_deleted, err_cannot_delete_admin,
     err_cannot_delete_guest, err_cannot_delete_last_admin, err_cannot_delete_self, err_database,
-    err_not_logged_in, err_permission_denied, err_user_not_found, remove_users_with_cleanup,
+    err_not_logged_in, err_permission_denied, err_user_not_found, remove_users_with_cleanup_locked,
+    send_reason_and_disconnect,
 };
 use crate::db::Permission;
 use crate::db::sql::GUEST_USERNAME;
@@ -119,13 +120,14 @@ where
                         message: err_account_deleted(&online_user.locale),
                         command: None,
                     };
-                    let _ = online_user.tx.send((disconnect_msg, None));
+                    send_reason_and_disconnect(online_user, disconnect_msg);
                 }
-                remove_users_with_cleanup(
+                remove_users_with_cleanup_locked(
                     ctx.user_manager,
                     ctx.voice_registry,
                     ctx.channel_manager,
                     &online_users,
+                    false,
                 )
                 .await;
 

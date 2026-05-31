@@ -15,7 +15,7 @@ use super::{
     HandlerContext, Outcome, dispatch_outcome, err_ban_admin_by_ip, err_ban_admin_by_nickname,
     err_ban_invalid_duration, err_ban_invalid_target, err_ban_self, err_database,
     err_not_logged_in, err_permission_denied, err_reason_invalid, err_reason_too_long,
-    err_target_too_long, remove_users_with_cleanup,
+    err_target_too_long, remove_users_with_cleanup_locked, send_reason_and_disconnect,
 };
 use crate::constants::*;
 use crate::db::Permission;
@@ -170,22 +170,23 @@ where
         };
 
         // Disconnect banned sessions + transfers. Each banned session gets its reason
-        // while still live, then `remove_users_with_cleanup` tears down voice
+        // while still live, then `remove_users_with_cleanup_locked` tears down voice
         // (notifying other participants) and removes them — emitting one
         // UserDisconnected per session plus a re-aggregated UserUpdated for any
         // surviving session of a partially-banned account. Trusted IPs are left
         // connected: trust bypasses ban checks, so disconnecting them would just churn.
         for session in &sessions {
-            let _ = session.tx.send((
+            send_reason_and_disconnect(
+                session,
                 build_ban_disconnect_message(&session.locale, expires_at),
-                None,
-            ));
+            );
         }
-        remove_users_with_cleanup(
+        remove_users_with_cleanup_locked(
             ctx.user_manager,
             ctx.voice_registry,
             ctx.channel_manager,
             &sessions,
+            false,
         )
         .await;
 

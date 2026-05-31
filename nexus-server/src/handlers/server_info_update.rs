@@ -1161,7 +1161,12 @@ mod tests {
         assert!(result.is_ok());
 
         // Broadcast travels through the mpsc channel (test_ctx.rx), not the socket.
-        let (broadcast, _) = test_ctx.rx.recv().await.expect("broadcast delivered");
+        let (broadcast, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("broadcast delivered")
+            .expect_message();
         match broadcast {
             ServerMessage::ServerInfoUpdated { server_info } => {
                 assert_eq!(
@@ -1220,7 +1225,12 @@ mod tests {
         assert!(result.is_ok());
 
         // Empty stored value maps to None on the wire.
-        let (broadcast, _) = test_ctx.rx.recv().await.expect("broadcast delivered");
+        let (broadcast, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("broadcast delivered")
+            .expect_message();
         match broadcast {
             ServerMessage::ServerInfoUpdated { server_info } => {
                 assert_eq!(server_info.public_address, None);
@@ -1274,7 +1284,12 @@ mod tests {
         assert!(result.is_ok());
 
         // Broadcast still fires; empty stored value maps to None on the wire.
-        let (broadcast, _) = test_ctx.rx.recv().await.expect("broadcast delivered");
+        let (broadcast, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("broadcast delivered")
+            .expect_message();
         match broadcast {
             ServerMessage::ServerInfoUpdated { server_info } => {
                 assert_eq!(server_info.public_address, None);
@@ -2236,7 +2251,12 @@ mod tests {
         assert!(result.is_ok());
 
         // Broadcast travels through the mpsc channel (test_ctx.rx).
-        let (broadcast, _) = test_ctx.rx.recv().await.expect("broadcast delivered");
+        let (broadcast, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("broadcast delivered")
+            .expect_message();
         match broadcast {
             ServerMessage::ServerInfoUpdated { server_info } => {
                 assert_eq!(server_info.max_outbound_rate, Some(12_500_000));

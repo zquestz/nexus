@@ -565,6 +565,7 @@ mod tests {
             .recv()
             .await
             .expect("should receive chat message")
+            .expect_message()
             .0
         {
             ServerMessage::ChatMessage { nickname, .. } => {

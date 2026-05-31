@@ -317,6 +317,7 @@ mod tests {
             .recv()
             .await
             .expect("should receive broadcast")
+            .expect_message()
             .0
         {
             ServerMessage::ServerBroadcast { username, .. } => {

@@ -284,7 +284,7 @@ impl UserManager {
     /// Full sessions connected from `ip`, for the ban system. `skip_ip` returning
     /// true exempts an IP (e.g. trusted), in which case the result is empty. Pure
     /// lookup: the caller sends each session its localized goodbye (while still
-    /// live) and then removes them via `remove_users_with_cleanup`.
+    /// live) and then removes them via `remove_users_with_cleanup_locked`.
     pub async fn sessions_by_ip<S>(&self, ip: &str, skip_ip: S) -> Vec<UserSession>
     where
         S: Fn(&IpAddr) -> bool,
@@ -329,6 +329,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::*;
+    use crate::users::user::SessionTx;
 
     fn shared_session_params(
         user_id: i64,
@@ -647,7 +648,7 @@ mod tests {
         is_shared: bool,
         is_admin: bool,
         avatar: Option<String>,
-        tx: mpsc::UnboundedSender<(ServerMessage, Option<nexus_common::framing::MessageId>)>,
+        tx: SessionTx,
     ) -> NewSessionParams {
         NewSessionParams {
             session_id: 0,
@@ -717,7 +718,8 @@ mod tests {
 
         let (msg1, _) = obs_rx
             .try_recv()
-            .expect("observer should receive UserDisconnected");
+            .expect("observer should receive UserDisconnected")
+            .expect_message();
         match msg1 {
             ServerMessage::UserDisconnected {
                 session_id,
@@ -731,7 +733,8 @@ mod tests {
 
         let (msg2, _) = obs_rx
             .try_recv()
-            .expect("observer should receive re-aggregated UserUpdated");
+            .expect("observer should receive re-aggregated UserUpdated")
+            .expect_message();
         match msg2 {
             ServerMessage::UserUpdated {
                 previous_username,
@@ -791,7 +794,8 @@ mod tests {
         manager.broadcast_disconnections(&removed).await;
 
         let mut disconnected = Vec::new();
-        while let Ok((msg, _)) = obs_rx.try_recv() {
+        while let Ok(event) = obs_rx.try_recv() {
+            let (msg, _) = event.expect_message();
             match msg {
                 ServerMessage::UserDisconnected { session_id, .. } => disconnected.push(session_id),
                 ServerMessage::UserUpdated { .. } => {
@@ -854,7 +858,8 @@ mod tests {
 
         let (msg, _) = obs_rx
             .try_recv()
-            .expect("observer should receive UserDisconnected");
+            .expect("observer should receive UserDisconnected")
+            .expect_message();
         match msg {
             ServerMessage::UserDisconnected {
                 session_id,
@@ -913,7 +918,8 @@ mod tests {
 
         let (msg1, _) = obs_rx
             .try_recv()
-            .expect("observer should receive UserDisconnected");
+            .expect("observer should receive UserDisconnected")
+            .expect_message();
         match msg1 {
             ServerMessage::UserDisconnected { session_id, .. } => assert_eq!(session_id, s2),
             other => panic!("expected UserDisconnected, got {other:?}"),
@@ -921,7 +927,8 @@ mod tests {
 
         let (msg2, _) = obs_rx
             .try_recv()
-            .expect("observer should receive UserUpdated");
+            .expect("observer should receive UserUpdated")
+            .expect_message();
         match msg2 {
             ServerMessage::UserUpdated {
                 previous_username,
@@ -1004,7 +1011,8 @@ mod tests {
         // Two UserDisconnected, and exactly one UserUpdated per account.
         let mut disconnected = Vec::new();
         let mut updated: HashMap<String, Option<String>> = HashMap::new();
-        while let Ok((msg, _)) = obs_rx.try_recv() {
+        while let Ok(event) = obs_rx.try_recv() {
+            let (msg, _) = event.expect_message();
             match msg {
                 ServerMessage::UserDisconnected { session_id, .. } => disconnected.push(session_id),
                 ServerMessage::UserUpdated {

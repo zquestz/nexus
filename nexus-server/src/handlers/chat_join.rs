@@ -187,6 +187,7 @@ mod tests {
             .recv()
             .await
             .expect("should receive queued server message")
+            .expect_message()
             .0
     }
 
@@ -818,7 +819,12 @@ mod tests {
         // Check that alice received ChatUserJoined (via her tx channel)
         // Note: In real scenario, alice's session would receive this via her channel
         // Here we verify the message was sent by checking the rx channel
-        let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
+        let (msg, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("Should receive message")
+            .expect_message();
         match msg {
             ServerMessage::ChatUserJoined {
                 channel,
@@ -952,7 +958,12 @@ mod tests {
         }
 
         // Verify ChatUserJoined was sent for Guest2
-        let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
+        let (msg, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("Should receive message")
+            .expect_message();
         match msg {
             ServerMessage::ChatUserJoined {
                 channel,
@@ -1087,7 +1098,12 @@ mod tests {
         let _ = read_server_message(&mut test_ctx).await; // ChatJoinResponse
 
         // Verify bob received ChatUserJoined for alice
-        let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
+        let (msg, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("Should receive message")
+            .expect_message();
         match msg {
             ServerMessage::ChatUserJoined { nickname, .. } => {
                 assert_eq!(nickname, "alice");

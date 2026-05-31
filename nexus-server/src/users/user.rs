@@ -11,6 +11,30 @@ use tokio::sync::mpsc;
 use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
 use crate::db::Permission;
 
+/// Event delivered from server-side producers to a connection task.
+#[derive(Debug)]
+pub enum SessionEvent {
+    Message(Box<ServerMessage>, Option<MessageId>),
+    Disconnect,
+}
+
+impl SessionEvent {
+    pub fn message(message: ServerMessage, message_id: Option<MessageId>) -> Self {
+        Self::Message(Box::new(message), message_id)
+    }
+
+    #[allow(dead_code)]
+    pub fn expect_message(self) -> (ServerMessage, Option<MessageId>) {
+        match self {
+            Self::Message(message, message_id) => (*message, message_id),
+            Self::Disconnect => panic!("expected session message, got disconnect event"),
+        }
+    }
+}
+
+pub type SessionTx = mpsc::UnboundedSender<SessionEvent>;
+pub type SessionRx = mpsc::UnboundedReceiver<SessionEvent>;
+
 /// Parameters for creating a new user session
 pub struct NewSessionParams {
     pub session_id: u32,
@@ -21,7 +45,7 @@ pub struct NewSessionParams {
     pub permissions: HashSet<Permission>,
     pub address: SocketAddr,
     pub created_at: i64,
-    pub tx: mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
+    pub tx: SessionTx,
     pub features: Vec<String>,
     pub locale: String,
     /// User's avatar as a data URI (ephemeral, not stored in DB)
@@ -55,7 +79,7 @@ pub struct UserSession {
     /// Account creation timestamp; reserved for future account-age/audit use.
     pub created_at: i64,
     pub login_time: i64,
-    pub tx: mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
+    pub tx: SessionTx,
     pub features: Vec<String>,
     pub locale: String,
     /// User's avatar as a data URI (ephemeral, not stored in DB)

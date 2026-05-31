@@ -7,7 +7,6 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, warn};
 
@@ -32,6 +31,7 @@ use crate::ip_rule_cache::IpRuleState;
 use crate::tracker::TrackerManager;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
+use crate::users::user::{SessionEvent, SessionRx, SessionTx};
 use crate::voice::VoiceRegistry;
 
 /// Parameters for handling a connection
@@ -115,7 +115,7 @@ where
     let mut frame_writer = FrameWriter::new(writer);
 
     // Channel for server messages destined to this client.
-    let (tx, mut rx) = mpsc::unbounded_channel::<(ServerMessage, Option<MessageId>)>();
+    let (tx, mut rx): (SessionTx, SessionRx) = tokio::sync::mpsc::unbounded_channel();
 
     let mut conn_state = ConnectionState::new();
 
@@ -204,13 +204,16 @@ where
             }
 
             // Outgoing server messages/events.
-            msg = rx.recv() => {
-                match msg {
-                    Some((msg, msg_id)) => {
+            event = rx.recv() => {
+                match event {
+                    Some(SessionEvent::Message(msg, msg_id)) => {
                         let id = msg_id.unwrap_or_else(MessageId::new);
                         if send_server_message_with_id(&mut frame_writer, &msg, id).await.is_err() {
                             break;
                         }
+                    }
+                    Some(SessionEvent::Disconnect) => {
+                        break;
                     }
                     None => {
                         // Channel closed (user removed from manager) — disconnect.
@@ -230,26 +233,17 @@ where
     // ChatUserLeft / VoiceUserLeft precede UserDisconnected. `notify_leaving_user`
     // is false: the user is already gone, there's nothing to tell them.
     if let Some(id) = conn_state.session_id {
-        // Hold read_user_state across the snapshot → cleanup → disconnect broadcasts so a
-        // concurrent rename can't make the nickname-keyed ChatUserLeft / VoiceUserLeft /
-        // UserDisconnected stale (no client-side id reconciliation → permanent ghost).
-        // Every forced teardown (kick/ban/delete/disable) already holds this lock via its
-        // handler; the graceful path must match. All sends here are in-memory; the socket
-        // shutdown above already happened outside the lock.
-        let _user_state = user_manager.read_user_state().await;
-        let removed = user_manager.remove_users(&[id]).await;
-        handlers::cleanup_resources(
+        let removed = handlers::remove_user_sessions_with_cleanup(
             &user_manager,
             &voice_registry,
             &channel_manager,
-            &removed,
+            &[id],
             false,
         )
         .await;
         for user in &removed {
             debug!(user = %user.username, ip = %peer_addr, "{}", LOG_DISCONNECTED);
         }
-        user_manager.broadcast_disconnections(&removed).await;
     }
 
     Ok(())

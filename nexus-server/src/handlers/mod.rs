@@ -133,6 +133,7 @@ use std::sync::Arc;
 use crate::constants::ERR_CHANNEL_CLOSED;
 
 use tokio::io::AsyncWrite;
+#[cfg(test)]
 use tokio::sync::mpsc;
 
 use nexus_common::framing::{FrameWriter, MessageId};
@@ -149,7 +150,7 @@ use crate::ip_rule_cache::IpRuleState;
 use crate::tracker::TrackerManager;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
-use crate::users::user::UserSession;
+use crate::users::user::{SessionEvent, SessionTx, UserSession};
 use crate::voice::{VoiceRegistry, send_voice_leave_notifications};
 
 /// Shared resources passed to every handler.
@@ -158,7 +159,7 @@ pub struct HandlerContext<'a, W> {
     pub peer_addr: SocketAddr,
     pub user_manager: &'a UserManager,
     pub db: &'a Database,
-    pub tx: &'a mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
+    pub tx: &'a SessionTx,
     pub locale: &'a str,
     /// Echoed back on responses for request correlation.
     pub message_id: MessageId,
@@ -204,7 +205,10 @@ impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {
     /// broadcasts in the client's receive order.
     pub fn send_message_via_channel(&self, message: &ServerMessage) -> io::Result<()> {
         self.tx
-            .send((message.clone(), Some(self.message_id)))
+            .send(SessionEvent::message(
+                message.clone(),
+                Some(self.message_id),
+            ))
             .map_err(|_| io::Error::other(ERR_CHANNEL_CLOSED))
     }
 
@@ -254,31 +258,84 @@ where
     }
 }
 
-/// Remove a batch of sessions and run the full disconnect teardown for each:
-/// remove them from the map (the serialization point — only sessions this call
-/// actually removes are torn down), release their channel + voice resources, then
-/// announce the disconnects. Used by kick, account deletion, disable, and ban;
-/// each caller sends its own per-session reason while the sessions are still live,
-/// so `cleanup_resources` also notifies each leaver (`notify_leaving_user = true`).
-/// The forced/batch counterpart to the graceful single-session teardown in
-/// `connection.rs`; both share `cleanup_resources` so they clean up identically.
-pub async fn remove_users_with_cleanup(
+/// Acquire the user-state read lock, remove the listed sessions, and run the
+/// common disconnect teardown. This is the entry point for callers that are not
+/// already inside `read_user_state`/`lock_user_state`.
+pub async fn remove_user_sessions_with_cleanup(
     user_manager: &UserManager,
     voice_registry: &VoiceRegistry,
     channel_manager: &ChannelManager,
-    sessions: &[UserSession],
-) {
-    let session_ids: Vec<u32> = sessions.iter().map(|u| u.session_id).collect();
-    let removed = user_manager.remove_users(&session_ids).await;
+    session_ids: &[u32],
+    notify_leaving_user: bool,
+) -> Vec<UserSession> {
+    let _user_state = user_manager.read_user_state().await;
+    remove_user_sessions_with_cleanup_locked(
+        user_manager,
+        voice_registry,
+        channel_manager,
+        session_ids,
+        notify_leaving_user,
+    )
+    .await
+}
+
+/// Remove the listed sessions and run the full disconnect teardown for the
+/// sessions that were actually still present: remove them from the map (the
+/// serialization point), release channel + voice resources, then announce the
+/// disconnects. The session ids are resolved under the caller's user-state lock,
+/// so cleanup uses fresh `UserSession` state instead of a pre-lock snapshot.
+pub async fn remove_user_sessions_with_cleanup_locked(
+    user_manager: &UserManager,
+    voice_registry: &VoiceRegistry,
+    channel_manager: &ChannelManager,
+    session_ids: &[u32],
+    notify_leaving_user: bool,
+) -> Vec<UserSession> {
+    let removed = user_manager.remove_users(session_ids).await;
     cleanup_resources(
         user_manager,
         voice_registry,
         channel_manager,
         &removed,
-        true,
+        notify_leaving_user,
     )
     .await;
     user_manager.broadcast_disconnections(&removed).await;
+    removed
+}
+
+/// Compatibility wrapper for forced paths that still collect sessions so they
+/// can send each leaver a localized reason while the session is live. Caller
+/// must already hold `read_user_state` or `lock_user_state`; otherwise use
+/// `remove_user_sessions_with_cleanup`. The actual teardown is session-id based
+/// and re-reads current session state from `remove_users`. Pass
+/// `notify_leaving_user = false` when the caller has already queued
+/// `SessionEvent::Disconnect`; post-disconnect cleanup messages to that same
+/// connection are not deliverable.
+pub async fn remove_users_with_cleanup_locked(
+    user_manager: &UserManager,
+    voice_registry: &VoiceRegistry,
+    channel_manager: &ChannelManager,
+    sessions: &[UserSession],
+    notify_leaving_user: bool,
+) -> Vec<UserSession> {
+    let session_ids: Vec<u32> = sessions.iter().map(|u| u.session_id).collect();
+    remove_user_sessions_with_cleanup_locked(
+        user_manager,
+        voice_registry,
+        channel_manager,
+        &session_ids,
+        notify_leaving_user,
+    )
+    .await
+}
+
+/// Queue a final reason message followed by a connection-task shutdown event.
+/// The session may already be removed before the connection task observes these;
+/// the post-loop teardown remains idempotent by session id.
+pub fn send_reason_and_disconnect(session: &UserSession, reason: ServerMessage) {
+    let _ = session.tx.send(SessionEvent::message(reason, None));
+    let _ = session.tx.send(SessionEvent::Disconnect);
 }
 
 /// Release the per-session resources a disconnect must free, identically for
@@ -461,7 +518,7 @@ mod tests {
     use crate::db::testing::create_test_db;
     use crate::users::user::NewSessionParams;
 
-    type TestTx = mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>;
+    type TestTx = SessionTx;
 
     fn regular_session(user_id: i64, nickname: &str, tx: TestTx) -> NewSessionParams {
         NewSessionParams {
@@ -486,6 +543,33 @@ mod tests {
             last_activity: std::time::Instant::now(),
             bandwidth_weight: 1,
         }
+    }
+
+    #[tokio::test]
+    async fn test_send_reason_and_disconnect_queues_reason_then_disconnect() {
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let session = UserSession::new(regular_session(1, "alice", tx));
+        let reason = ServerMessage::Error {
+            message: "forced disconnect".to_string(),
+            command: Some("TestDisconnect".to_string()),
+        };
+
+        send_reason_and_disconnect(&session, reason);
+
+        let (message, message_id) = rx.recv().await.expect("reason event").expect_message();
+        assert!(message_id.is_none());
+        match message {
+            ServerMessage::Error { message, command } => {
+                assert_eq!(message, "forced disconnect");
+                assert_eq!(command, Some("TestDisconnect".to_string()));
+            }
+            other => panic!("expected Error reason, got {other:?}"),
+        }
+
+        assert!(matches!(
+            rx.recv().await.expect("disconnect event"),
+            SessionEvent::Disconnect
+        ));
     }
 
     #[test]
@@ -568,7 +652,8 @@ mod tests {
         // The surviving member is told the victim left #general (last-leave rule);
         // #solo emptied, so it's reaped before it could emit a leave.
         let mut left_channels: Vec<String> = Vec::new();
-        while let Ok((msg, _)) = obs_rx.try_recv() {
+        while let Ok(event) = obs_rx.try_recv() {
+            let (msg, _) = event.expect_message();
             if let ServerMessage::ChatUserLeft { channel, nickname } = msg {
                 assert_eq!(nickname, "victim");
                 left_channels.push(channel);
@@ -589,6 +674,288 @@ mod tests {
         assert!(
             channel_manager.get_members("#solo").await.is_none(),
             "an emptied ephemeral channel must be removed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_remove_users_with_cleanup_locked_uses_current_session_state() {
+        let user_manager = UserManager::new();
+        let voice_registry = VoiceRegistry::new();
+        let channel_manager =
+            ChannelManager::new(ChannelDb::new(create_test_db().await), UserManager::new());
+
+        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let observer = user_manager
+            .add_user(regular_session(1, "observer", obs_tx))
+            .await
+            .unwrap();
+        let (victim_tx, _victim_rx) = mpsc::unbounded_channel();
+        let victim = user_manager
+            .add_user(regular_session(2, "victim", victim_tx))
+            .await
+            .unwrap();
+
+        channel_manager
+            .join("#general", observer, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        channel_manager
+            .join("#general", victim, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+
+        let stale_snapshot = user_manager
+            .get_user_by_session_id(victim)
+            .await
+            .expect("victim exists before rename");
+        user_manager
+            .update_username(stale_snapshot.user_id, "renamed".to_string())
+            .await;
+
+        let removed = remove_users_with_cleanup_locked(
+            &user_manager,
+            &voice_registry,
+            &channel_manager,
+            &[stale_snapshot],
+            true,
+        )
+        .await;
+
+        assert_eq!(removed.len(), 1);
+        assert_eq!(removed[0].nickname, "renamed");
+
+        let mut left_nickname = None;
+        while let Ok(event) = obs_rx.try_recv() {
+            let (msg, _) = event.expect_message();
+            if let ServerMessage::ChatUserLeft { nickname, .. } = msg {
+                left_nickname = Some(nickname);
+            }
+        }
+        assert_eq!(
+            left_nickname,
+            Some("renamed".to_string()),
+            "cleanup must use the current removed session state, not the caller's stale snapshot"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_remove_user_sessions_with_cleanup_chat_left_only_on_last_session() {
+        let user_manager = UserManager::new();
+        let voice_registry = VoiceRegistry::new();
+        let channel_manager =
+            ChannelManager::new(ChannelDb::new(create_test_db().await), UserManager::new());
+
+        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let observer = user_manager
+            .add_user(regular_session(1, "observer", obs_tx))
+            .await
+            .unwrap();
+        let (alice1_tx, _alice1_rx) = mpsc::unbounded_channel();
+        let alice1 = user_manager
+            .add_user(regular_session(2, "alice", alice1_tx))
+            .await
+            .unwrap();
+        let (alice2_tx, _alice2_rx) = mpsc::unbounded_channel();
+        let alice2 = user_manager
+            .add_user(regular_session(2, "alice", alice2_tx))
+            .await
+            .unwrap();
+
+        for session_id in [observer, alice1, alice2] {
+            channel_manager
+                .join("#general", session_id, JoinPolicy::CreateIfMissing)
+                .await
+                .unwrap();
+        }
+
+        remove_user_sessions_with_cleanup(
+            &user_manager,
+            &voice_registry,
+            &channel_manager,
+            &[alice1],
+            true,
+        )
+        .await;
+        assert!(
+            obs_rx.try_recv().is_err(),
+            "first removed session must not emit ChatUserLeft while the nickname remains"
+        );
+
+        remove_user_sessions_with_cleanup(
+            &user_manager,
+            &voice_registry,
+            &channel_manager,
+            &[alice2],
+            true,
+        )
+        .await;
+
+        let mut left_nickname = None;
+        while let Ok(event) = obs_rx.try_recv() {
+            let (msg, _) = event.expect_message();
+            if let ServerMessage::ChatUserLeft { nickname, .. } = msg {
+                left_nickname = Some(nickname);
+            }
+        }
+        assert_eq!(left_nickname, Some("alice".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_remove_user_sessions_with_cleanup_voice_left_only_on_last_session() {
+        let user_manager = UserManager::new();
+        let voice_registry = VoiceRegistry::new();
+        let channel_manager =
+            ChannelManager::new(ChannelDb::new(create_test_db().await), UserManager::new());
+
+        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let mut observer_params = regular_session(1, "observer", obs_tx);
+        observer_params.permissions.insert(Permission::VoiceListen);
+        let observer = user_manager.add_user(observer_params).await.unwrap();
+
+        let (alice1_tx, _alice1_rx) = mpsc::unbounded_channel();
+        let mut alice1_params = regular_session(2, "alice", alice1_tx);
+        alice1_params.permissions.insert(Permission::VoiceListen);
+        let alice1 = user_manager.add_user(alice1_params).await.unwrap();
+
+        let (alice2_tx, _alice2_rx) = mpsc::unbounded_channel();
+        let mut alice2_params = regular_session(2, "alice", alice2_tx);
+        alice2_params.permissions.insert(Permission::VoiceListen);
+        let alice2 = user_manager.add_user(alice2_params).await.unwrap();
+
+        for session_id in [observer, alice1, alice2] {
+            channel_manager
+                .join("#general", session_id, JoinPolicy::CreateIfMissing)
+                .await
+                .unwrap();
+        }
+
+        voice_registry
+            .add(crate::voice::VoiceSession::new(
+                "alice".to_string(),
+                vec!["#general".to_string()],
+                alice1,
+            ))
+            .await
+            .expect("add first voice session");
+        voice_registry
+            .add(crate::voice::VoiceSession::new(
+                "alice".to_string(),
+                vec!["#general".to_string()],
+                alice2,
+            ))
+            .await
+            .expect("add second voice session");
+
+        remove_user_sessions_with_cleanup(
+            &user_manager,
+            &voice_registry,
+            &channel_manager,
+            &[alice1],
+            true,
+        )
+        .await;
+        assert!(
+            obs_rx.try_recv().is_err(),
+            "first removed voice session must not emit VoiceUserLeft while the nickname remains"
+        );
+
+        remove_user_sessions_with_cleanup(
+            &user_manager,
+            &voice_registry,
+            &channel_manager,
+            &[alice2],
+            true,
+        )
+        .await;
+
+        let mut voice_left_nickname = None;
+        while let Ok(event) = obs_rx.try_recv() {
+            let (msg, _) = event.expect_message();
+            if let ServerMessage::VoiceUserLeft { nickname, .. } = msg {
+                voice_left_nickname = Some(nickname);
+            }
+        }
+        assert_eq!(voice_left_nickname, Some("alice".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_forced_disconnect_skips_undeliverable_self_voice_left() {
+        let user_manager = UserManager::new();
+        let voice_registry = VoiceRegistry::new();
+        let channel_manager =
+            ChannelManager::new(ChannelDb::new(create_test_db().await), UserManager::new());
+
+        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let mut observer_params = regular_session(1, "observer", obs_tx);
+        observer_params.permissions.insert(Permission::VoiceListen);
+        let observer = user_manager.add_user(observer_params).await.unwrap();
+
+        let (victim_tx, mut victim_rx) = mpsc::unbounded_channel();
+        let mut victim_params = regular_session(2, "victim", victim_tx);
+        victim_params.permissions.insert(Permission::VoiceListen);
+        let victim = user_manager.add_user(victim_params).await.unwrap();
+
+        for session_id in [observer, victim] {
+            channel_manager
+                .join("#general", session_id, JoinPolicy::CreateIfMissing)
+                .await
+                .unwrap();
+        }
+
+        voice_registry
+            .add(crate::voice::VoiceSession::new(
+                "victim".to_string(),
+                vec!["#general".to_string()],
+                victim,
+            ))
+            .await
+            .expect("add victim voice session");
+
+        let victim_session = user_manager
+            .get_user_by_session_id(victim)
+            .await
+            .expect("victim session exists");
+        let reason = ServerMessage::Error {
+            message: "forced disconnect".to_string(),
+            command: Some("TestDisconnect".to_string()),
+        };
+        send_reason_and_disconnect(&victim_session, reason);
+
+        remove_users_with_cleanup_locked(
+            &user_manager,
+            &voice_registry,
+            &channel_manager,
+            &[victim_session],
+            false,
+        )
+        .await;
+
+        let (message, _) = victim_rx
+            .recv()
+            .await
+            .expect("victim receives reason")
+            .expect_message();
+        assert!(matches!(message, ServerMessage::Error { .. }));
+        assert!(matches!(
+            victim_rx.recv().await.expect("victim receives disconnect"),
+            SessionEvent::Disconnect
+        ));
+        assert!(
+            victim_rx.try_recv().is_err(),
+            "forced disconnect should not queue an undeliverable self VoiceUserLeft after Disconnect"
+        );
+
+        let mut observer_saw_voice_left = false;
+        while let Ok(event) = obs_rx.try_recv() {
+            let (msg, _) = event.expect_message();
+            if let ServerMessage::VoiceUserLeft { nickname, .. } = msg {
+                assert_eq!(nickname, "victim");
+                observer_saw_voice_left = true;
+            }
+        }
+        assert!(
+            observer_saw_voice_left,
+            "other voice participants must still receive VoiceUserLeft"
         );
     }
 }

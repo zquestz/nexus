@@ -104,7 +104,7 @@ async fn test_multi_session_partial_disconnect() {
     // Sessions 1 and 3 receive UserDisconnected; session 2's channel is closed.
     let msg1 = rx1.try_recv();
     assert!(msg1.is_ok(), "Session 1 should receive disconnect message");
-    match msg1.unwrap().0 {
+    match msg1.unwrap().expect_message().0 {
         ServerMessage::UserDisconnected {
             session_id,
             nickname,
@@ -248,7 +248,7 @@ async fn test_broadcast_respects_user_list_permission() {
         "Admin should receive UserConnected message"
     );
     assert!(matches!(
-        msg_admin.unwrap().0,
+        msg_admin.unwrap().expect_message().0,
         ServerMessage::UserConnected { .. }
     ));
 
@@ -258,7 +258,7 @@ async fn test_broadcast_respects_user_list_permission() {
         "User with user_list permission should receive message"
     );
     assert!(matches!(
-        msg_with.unwrap().0,
+        msg_with.unwrap().expect_message().0,
         ServerMessage::UserConnected { .. }
     ));
 
@@ -359,7 +359,7 @@ async fn test_broadcast_excludes_specified_session() {
 
     let msg2 = rx2.try_recv();
     assert!(msg2.is_ok(), "Session 2 should receive message");
-    match msg2.unwrap().0 {
+    match msg2.unwrap().expect_message().0 {
         ServerMessage::UserConnected { .. } => {}
         _ => panic!("Expected UserConnected"),
     }
@@ -446,7 +446,7 @@ async fn test_broadcast_to_feature_excludes_specified_session() {
 
     let msg2 = rx2.try_recv();
     assert!(msg2.is_ok(), "Observer should receive NewsUpdated");
-    match msg2.unwrap().0 {
+    match msg2.unwrap().expect_message().0 {
         ServerMessage::NewsUpdated { action, id } => {
             assert_eq!(action, NewsAction::Created);
             assert_eq!(id, post_id);

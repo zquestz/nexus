@@ -3,11 +3,9 @@
 use std::collections::HashSet;
 use std::net::SocketAddr;
 
-use nexus_common::framing::MessageId;
-use nexus_common::protocol::ServerMessage;
 use nexus_server::db::{Database, Permission};
 use nexus_server::users::UserManager;
-use nexus_server::users::user::NewSessionParams;
+use nexus_server::users::user::{NewSessionParams, SessionRx};
 use tokio::sync::mpsc;
 
 #[allow(unused)] // Not all test files use this
@@ -36,10 +34,7 @@ pub async fn add_test_user(
     username: &str,
     is_admin: bool,
     permissions: HashSet<Permission>,
-) -> (
-    u32,
-    mpsc::UnboundedReceiver<(ServerMessage, Option<MessageId>)>,
-) {
+) -> (u32, SessionRx) {
     let (tx, rx) = mpsc::unbounded_channel();
     let addr: SocketAddr = "127.0.0.1:8000".parse().unwrap();
     let created_at = chrono::Utc::now().timestamp();

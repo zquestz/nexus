@@ -8,7 +8,7 @@ use nexus_common::protocol::{ServerMessage, UserInfo};
 use super::UserManager;
 use crate::constants::ERR_SESSIONS_NOT_EMPTY;
 use crate::db::Permission;
-use crate::users::user::UserSession;
+use crate::users::user::{SessionEvent, UserSession};
 
 impl UserManager {
     /// Remove sessions whose channels have closed, then notify remaining
@@ -79,7 +79,9 @@ impl UserManager {
             if user_session.has_permission(Permission::UserList) {
                 // Ignore send errors: a closed channel here is cleaned up on the
                 // next broadcast. We don't recurse.
-                let _ = user_session.tx.send((message.clone(), None));
+                let _ = user_session
+                    .tx
+                    .send(SessionEvent::message(message.clone(), None));
             }
         }
     }
@@ -220,7 +222,7 @@ mod tests {
     use tokio::sync::mpsc;
 
     use super::*;
-    use crate::users::user::NewSessionParams;
+    use crate::users::user::{NewSessionParams, SessionTx};
 
     fn session_params(
         user_id: i64,
@@ -229,7 +231,7 @@ mod tests {
         is_shared: bool,
         is_admin: bool,
         avatar: Option<String>,
-        tx: mpsc::UnboundedSender<(ServerMessage, Option<nexus_common::framing::MessageId>)>,
+        tx: SessionTx,
     ) -> NewSessionParams {
         NewSessionParams {
             session_id: 0,
@@ -297,7 +299,8 @@ mod tests {
 
         let (msg1, _) = obs_rx
             .try_recv()
-            .expect("observer should receive UserDisconnected");
+            .expect("observer should receive UserDisconnected")
+            .expect_message();
         match msg1 {
             ServerMessage::UserDisconnected { session_id, .. } => assert_eq!(session_id, s1),
             other => panic!("expected UserDisconnected, got {other:?}"),
@@ -305,7 +308,8 @@ mod tests {
 
         let (msg2, _) = obs_rx
             .try_recv()
-            .expect("observer should receive re-aggregated UserUpdated");
+            .expect("observer should receive re-aggregated UserUpdated")
+            .expect_message();
         match msg2 {
             ServerMessage::UserUpdated {
                 previous_username,
@@ -367,7 +371,8 @@ mod tests {
 
         let (msg, _) = obs_rx
             .try_recv()
-            .expect("observer should receive UserDisconnected");
+            .expect("observer should receive UserDisconnected")
+            .expect_message();
         match msg {
             ServerMessage::UserDisconnected {
                 session_id,

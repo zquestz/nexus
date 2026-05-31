@@ -19,6 +19,7 @@ use super::{
     err_voice_listen_required, err_voice_not_channel_member, err_voice_target_not_online,
 };
 use crate::db::Permission;
+use crate::users::user::SessionEvent;
 use crate::voice::VoiceSession;
 
 /// Outcome of the lock-serialized join section, dispatched to a `VoiceJoinResponse`
@@ -188,7 +189,9 @@ where
                             nickname: current.nickname.clone(),
                             target: client_target.clone(),
                         };
-                        let _ = member.tx.send((join_notification, None));
+                        let _ = member
+                            .tx
+                            .send(SessionEvent::message(join_notification, None));
                     }
                 }
             } else {
@@ -208,7 +211,9 @@ where
                         .get_session_by_nickname(participant_nickname)
                         .await
                     {
-                        let _ = participant_user.tx.send((join_notification, None));
+                        let _ = participant_user
+                            .tx
+                            .send(SessionEvent::message(join_notification, None));
                     }
                 }
             }

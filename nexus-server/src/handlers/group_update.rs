@@ -1464,7 +1464,8 @@ mod tests {
             .rx
             .recv()
             .await
-            .expect("Should receive PermissionsUpdated");
+            .expect("Should receive PermissionsUpdated")
+            .expect_message();
         match msg {
             ServerMessage::PermissionsUpdated {
                 is_admin,
@@ -1600,7 +1601,8 @@ mod tests {
             .rx
             .recv()
             .await
-            .expect("Should receive UserUpdated");
+            .expect("Should receive UserUpdated")
+            .expect_message();
         match msg {
             ServerMessage::UserUpdated {
                 previous_username,
@@ -1897,7 +1899,8 @@ mod tests {
             .rx
             .recv()
             .await
-            .expect("Should receive PermissionsUpdated");
+            .expect("Should receive PermissionsUpdated")
+            .expect_message();
         match msg {
             ServerMessage::PermissionsUpdated { permissions, .. } => {
                 assert!(permissions.contains(&"chat_send".to_string()));
@@ -2119,7 +2122,8 @@ mod tests {
         let mut got_user_updated = false;
         let mut got_permissions_updated = false;
 
-        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+        while let Ok(event) = test_ctx.rx.try_recv() {
+            let (msg, _) = event.expect_message();
             match msg {
                 ServerMessage::UserUpdated {
                     ref previous_username,
@@ -2346,7 +2350,8 @@ mod tests {
         }
 
         let mut saw_kiosk_broadcast = false;
-        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+        while let Ok(event) = test_ctx.rx.try_recv() {
+            let (msg, _) = event.expect_message();
             if let ServerMessage::UserUpdated {
                 previous_username,
                 user,
@@ -2640,7 +2645,8 @@ mod tests {
             .rx
             .recv()
             .await
-            .expect("Should receive UserUpdated broadcast");
+            .expect("Should receive UserUpdated broadcast")
+            .expect_message();
         match msg {
             ServerMessage::UserUpdated {
                 previous_username,
@@ -2765,7 +2771,8 @@ mod tests {
         // A single consolidated broadcast → 2 messages (admin via admin bypass,
         // bob via explicit UserList). The pre-fix two-loop version sent 4.
         let mut user_updated_count = 0;
-        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+        while let Ok(event) = test_ctx.rx.try_recv() {
+            let (msg, _) = event.expect_message();
             match msg {
                 ServerMessage::UserUpdated { user, .. } if user.username == "bob" => {
                     assert_eq!(user.group_name, Some("Moderators".to_string()));

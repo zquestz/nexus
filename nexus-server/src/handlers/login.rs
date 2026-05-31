@@ -3491,7 +3491,8 @@ mod tests {
 
         // All test sessions share one tx/rx channel, so scan rx for Bob's ChatUserJoined.
         let mut found_chat_user_joined = false;
-        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+        while let Ok(event) = test_ctx.rx.try_recv() {
+            let (msg, _) = event.expect_message();
             if matches!(
                 &msg,
                 ServerMessage::ChatUserJoined { channel, nickname, .. }

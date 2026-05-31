@@ -167,6 +167,7 @@ mod tests {
             .recv()
             .await
             .expect("should receive queued server message")
+            .expect_message()
             .0
     }
 

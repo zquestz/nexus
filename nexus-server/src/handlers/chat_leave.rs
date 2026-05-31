@@ -409,7 +409,12 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
-        let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
+        let (msg, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("Should receive message")
+            .expect_message();
         match msg {
             ServerMessage::ChatUserLeft { channel, nickname } => {
                 assert_eq!(channel, "#general");
@@ -570,7 +575,12 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
-        let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
+        let (msg, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("Should receive message")
+            .expect_message();
         match msg {
             ServerMessage::ChatUserLeft { channel, nickname } => {
                 assert_eq!(channel, "#general");
@@ -643,7 +653,12 @@ mod tests {
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
         // Same message reaches both remaining members via one tx, so recv once then drain.
-        let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
+        let (msg, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("Should receive message")
+            .expect_message();
         match msg {
             ServerMessage::ChatUserLeft { channel, nickname } => {
                 assert_eq!(channel, "#general");
@@ -662,7 +677,12 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
-        let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
+        let (msg, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("Should receive message")
+            .expect_message();
         match msg {
             ServerMessage::ChatUserLeft { channel, nickname } => {
                 assert_eq!(channel, "#general");
@@ -748,7 +768,12 @@ mod tests {
         .await;
         let _ = read_server_message(&mut test_ctx).await; // ChatLeaveResponse
 
-        let (msg, _) = test_ctx.rx.recv().await.expect("Should receive message");
+        let (msg, _) = test_ctx
+            .rx
+            .recv()
+            .await
+            .expect("Should receive message")
+            .expect_message();
         match msg {
             ServerMessage::ChatUserLeft { channel, nickname } => {
                 assert_eq!(channel, "#general");

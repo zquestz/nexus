@@ -35,7 +35,7 @@ use crate::files::{FileActivityMap, FileIndex};
 use crate::ip_rule_cache::{IpRuleCache, IpRuleState};
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
-use crate::users::user::NewSessionParams;
+use crate::users::user::{NewSessionParams, SessionRx, SessionTx};
 use crate::voice::VoiceRegistry;
 use nexus_common::address::normalize_socket_addr;
 
@@ -79,9 +79,9 @@ pub struct TestContext {
     pub frame_writer: FrameWriter<TestWriteHalf>,
     pub user_manager: UserManager,
     pub db: Database,
-    pub tx: mpsc::UnboundedSender<(ServerMessage, Option<MessageId>)>,
+    pub tx: SessionTx,
     pub peer_addr: SocketAddr,
-    pub rx: mpsc::UnboundedReceiver<(ServerMessage, Option<MessageId>)>,
+    pub rx: SessionRx,
     pub message_id: MessageId,
     pub file_root: Option<&'static Path>,
     pub connection_tracker: Arc<ConnectionTracker>,
@@ -371,10 +371,7 @@ pub async fn login_observer_user(
     password: &str,
     permissions: &[crate::db::Permission],
     features: Vec<String>,
-) -> (
-    u32,
-    mpsc::UnboundedReceiver<(ServerMessage, Option<MessageId>)>,
-) {
+) -> (u32, SessionRx) {
     let hashed = get_cached_password_hash(password);
 
     let mut perms = Permissions::new();
@@ -594,11 +591,11 @@ where
     F: Fn(&ServerMessage) -> bool,
 {
     loop {
-        let msg = test_ctx
+        let (msg, _) = test_ctx
             .rx
             .try_recv()
             .expect("No response message found in channel")
-            .0;
+            .expect_message();
         if is_response(&msg) {
             return msg;
         }

@@ -587,6 +587,7 @@ mod tests {
         let broadcast = bob_rx
             .try_recv()
             .expect("Observer should receive NewsUpdated broadcast")
+            .expect_message()
             .0;
         match broadcast {
             ServerMessage::NewsUpdated { action, .. } => {

@@ -11,7 +11,8 @@ use super::{
     HandlerContext, err_cannot_kick_admin, err_cannot_kick_self, err_database,
     err_kick_reason_invalid_characters, err_kick_reason_too_long, err_kicked_by,
     err_kicked_by_with_reason, err_nickname_empty, err_nickname_invalid, err_nickname_not_online,
-    err_nickname_too_long, err_not_logged_in, err_permission_denied, remove_users_with_cleanup,
+    err_nickname_too_long, err_not_logged_in, err_permission_denied,
+    remove_users_with_cleanup_locked, send_reason_and_disconnect,
 };
 use crate::constants::{
     HANDLER_USER_KICK, LOG_USER_KICK_DB_ERROR, LOG_USER_KICK_NOT_LOGGED_IN,
@@ -190,16 +191,17 @@ where
                                     message: kick_message,
                                     command: Some("UserKick".to_string()),
                                 };
-                                let _ = user.tx.send((kick_msg, None));
+                                send_reason_and_disconnect(user, kick_msg);
                             }
 
                             // Remove the batch: per-session UserDisconnected, no
                             // intermediate UserUpdated (the account fully leaves).
-                            remove_users_with_cleanup(
+                            remove_users_with_cleanup_locked(
                                 ctx.user_manager,
                                 ctx.voice_registry,
                                 ctx.channel_manager,
                                 &sessions_to_kick,
+                                false,
                             )
                             .await;
 

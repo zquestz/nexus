@@ -46,7 +46,7 @@ use super::{
     err_shared_cannot_self_edit, err_shared_invalid_permissions, err_unknown_permission,
     err_update_failed, err_user_not_found, err_username_empty, err_username_exists,
     err_username_invalid, err_username_is_active_nickname, err_username_too_long,
-    remove_users_with_cleanup,
+    remove_users_with_cleanup_locked, send_reason_and_disconnect,
 };
 use super::{
     ServerInfoOptions, ServerInfoValues, broadcast_chat_user_renamed,
@@ -62,6 +62,7 @@ use crate::files::{
     UserAreaMigration, UserAreaMigrationError, migrate_user_area_on_username_change,
 };
 use crate::users::manager::UserManager;
+use crate::users::user::SessionEvent;
 use crate::voice::send_voice_leave_notifications;
 
 pub struct UserUpdateRequest {
@@ -1259,8 +1260,8 @@ where
                     }
                 }
 
-                // Send a disabled-by-admin Error, then drop the tx so the connection
-                // loop's rx.recv() returns None and the TCP connection closes.
+                // Send a disabled-by-admin Error followed by Disconnect so the
+                // connection task exits after writing the reason.
                 // connection.rs won't re-broadcast UserDisconnected — already removed.
                 if let Some(false) = request.enabled {
                     let sessions = ctx
@@ -1272,13 +1273,14 @@ where
                             message: err_account_disabled_by_admin(&user.locale),
                             command: None,
                         };
-                        let _ = user.tx.send((disconnect_msg, None));
+                        send_reason_and_disconnect(user, disconnect_msg);
                     }
-                    remove_users_with_cleanup(
+                    remove_users_with_cleanup_locked(
                         ctx.user_manager,
                         ctx.voice_registry,
                         ctx.channel_manager,
                         &sessions,
+                        false,
                     )
                     .await;
                 }
@@ -1413,7 +1415,9 @@ where
                                                 session,
                                             ),
                                         };
-                                        let _ = session.tx.send((self_update, None));
+                                        let _ = session
+                                            .tx
+                                            .send(SessionEvent::message(self_update, None));
                                     }
                                 }
                             } else {
@@ -1452,7 +1456,10 @@ where
                                     };
                                     for session in &online_sessions {
                                         if !session.has_permission(Permission::UserList) {
-                                            let _ = session.tx.send((self_update.clone(), None));
+                                            let _ = session.tx.send(SessionEvent::message(
+                                                self_update.clone(),
+                                                None,
+                                            ));
                                         }
                                     }
                                 }
@@ -1701,7 +1708,7 @@ mod tests {
     #[allow(unused_imports)]
     use crate::handlers::testing::read_login_response;
     use crate::handlers::testing::*;
-    use crate::users::user::NewSessionParams;
+    use crate::users::user::{NewSessionParams, SessionRx};
 
     #[test]
     fn test_personal_area_rollback_warning_appends_to_primary_error() {
@@ -3790,13 +3797,7 @@ mod tests {
         user_id: i64,
         username: &str,
         permissions: std::collections::HashSet<Permission>,
-    ) -> (
-        u32,
-        tokio::sync::mpsc::UnboundedReceiver<(
-            ServerMessage,
-            Option<nexus_common::framing::MessageId>,
-        )>,
-    ) {
+    ) -> (u32, SessionRx) {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         let session_id = test_ctx
             .user_manager
@@ -3880,7 +3881,8 @@ mod tests {
             .unwrap();
 
         let mut found = false;
-        while let Ok((msg, _)) = observer_rx.try_recv() {
+        while let Ok(event) = observer_rx.try_recv() {
+            let (msg, _) = event.expect_message();
             if let ServerMessage::ChatUserRenamed {
                 channel,
                 old_nickname,
@@ -3968,7 +3970,8 @@ mod tests {
         // The disable teardown fires before clients learn of the rename, so its
         // ChatUserLeft must carry the pre-rename nickname the observer still holds.
         let mut left = None;
-        while let Ok((msg, _)) = obs_rx.try_recv() {
+        while let Ok(event) = obs_rx.try_recv() {
+            let (msg, _) = event.expect_message();
             if let ServerMessage::ChatUserLeft { nickname, .. } = msg {
                 left = Some(nickname);
             }
@@ -4052,7 +4055,8 @@ mod tests {
         // The voice teardown fires before the rename broadcast, so VoiceUserLeft must
         // carry the pre-rename nickname.
         let mut left = None;
-        while let Ok((msg, _)) = obs_rx.try_recv() {
+        while let Ok(event) = obs_rx.try_recv() {
+            let (msg, _) = event.expect_message();
             if let ServerMessage::VoiceUserLeft { nickname, .. } = msg {
                 left = Some(nickname);
             }
@@ -7016,7 +7020,8 @@ mod tests {
             .rx
             .recv()
             .await
-            .expect("Should receive PermissionsUpdated");
+            .expect("Should receive PermissionsUpdated")
+            .expect_message();
         match msg {
             ServerMessage::PermissionsUpdated {
                 is_admin,
@@ -7206,7 +7211,8 @@ mod tests {
             .rx
             .recv()
             .await
-            .expect("Should receive PermissionsUpdated when admin status changes");
+            .expect("Should receive PermissionsUpdated when admin status changes")
+            .expect_message();
         match msg {
             ServerMessage::PermissionsUpdated {
                 is_admin,
@@ -7307,7 +7313,8 @@ mod tests {
             .rx
             .recv()
             .await
-            .expect("Should receive PermissionsUpdated when enabled status changes");
+            .expect("Should receive PermissionsUpdated when enabled status changes")
+            .expect_message();
         match msg {
             ServerMessage::PermissionsUpdated { is_admin, .. } => {
                 assert!(!is_admin);
@@ -9440,7 +9447,8 @@ mod tests {
 
         let mut user_updated_count = 0;
         let mut other_msgs = Vec::new();
-        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+        while let Ok(event) = test_ctx.rx.try_recv() {
+            let (msg, _) = event.expect_message();
             match msg {
                 ServerMessage::UserUpdated { user, .. } if user.username == "robert" => {
                     assert_eq!(user.bandwidth_weight, Some(100));
@@ -9538,7 +9546,8 @@ mod tests {
         // Alice's own session — lacking user_list and channels — must still receive a
         // UserUpdated carrying the rename. Without the direct-send it gets nothing.
         let mut found = false;
-        while let Ok((msg, _)) = alice_rx.try_recv() {
+        while let Ok(event) = alice_rx.try_recv() {
+            let (msg, _) = event.expect_message();
             if let ServerMessage::UserUpdated {
                 previous_username,
                 user,
@@ -9638,7 +9647,8 @@ mod tests {
         // The shared session — lacking user_list — must receive a per-session UserUpdated
         // carrying the new account username while keeping its own nickname.
         let mut found = false;
-        while let Ok((msg, _)) = member_rx.try_recv() {
+        while let Ok(event) = member_rx.try_recv() {
+            let (msg, _) = event.expect_message();
             if let ServerMessage::UserUpdated {
                 previous_username,
                 user,
@@ -9754,7 +9764,8 @@ mod tests {
         let _response = read_server_message(&mut test_ctx).await;
 
         let mut nicknames = Vec::new();
-        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+        while let Ok(event) = test_ctx.rx.try_recv() {
+            let (msg, _) = event.expect_message();
             if let ServerMessage::UserUpdated { user, .. } = msg
                 && user.id == shared.id
             {
@@ -9866,7 +9877,8 @@ mod tests {
 
         // Expect a UserUpdated for bob at the new effective weight (DEFAULT = 1).
         let mut saw_broadcast = false;
-        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+        while let Ok(event) = test_ctx.rx.try_recv() {
+            let (msg, _) = event.expect_message();
             if let ServerMessage::UserUpdated { user, .. } = msg
                 && user.username == "bob"
             {
@@ -10332,7 +10344,8 @@ mod tests {
         let _response = read_server_message(&mut test_ctx).await;
 
         let mut saw_broadcast = false;
-        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+        while let Ok(event) = test_ctx.rx.try_recv() {
+            let (msg, _) = event.expect_message();
             if let ServerMessage::UserUpdated { user, .. } = msg
                 && user.username == "bob"
             {
@@ -10435,7 +10448,8 @@ mod tests {
 
         let mut user_updated_count = 0;
         let mut other_msgs = Vec::new();
-        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+        while let Ok(event) = test_ctx.rx.try_recv() {
+            let (msg, _) = event.expect_message();
             match msg {
                 ServerMessage::UserUpdated { user, .. } if user.username == "bob" => {
                     user_updated_count += 1;
@@ -10538,7 +10552,8 @@ mod tests {
         let _response = read_server_message(&mut test_ctx).await;
 
         let mut saw_broadcast_for_robert = false;
-        while let Ok((msg, _)) = test_ctx.rx.try_recv() {
+        while let Ok(event) = test_ctx.rx.try_recv() {
+            let (msg, _) = event.expect_message();
             if let ServerMessage::UserUpdated { user, .. } = msg
                 && user.username == "robert"
             {
