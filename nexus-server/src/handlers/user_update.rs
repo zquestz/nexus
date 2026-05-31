@@ -1272,6 +1272,7 @@ where
                         let disconnect_msg = ServerMessage::Error {
                             message: err_account_disabled_by_admin(&user.locale),
                             command: None,
+                            disconnect: false,
                         };
                         send_reason_and_disconnect(user, disconnect_msg);
                     }

@@ -190,6 +190,7 @@ where
                                 let kick_msg = ServerMessage::Error {
                                     message: kick_message,
                                     command: Some("UserKick".to_string()),
+                                    disconnect: false,
                                 };
                                 send_reason_and_disconnect(user, kick_msg);
                             }

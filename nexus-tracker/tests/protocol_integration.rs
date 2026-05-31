@@ -285,7 +285,9 @@ async fn test_non_handshake_first_message_yields_error() {
         .expect("frame");
 
     match received.message {
-        ServerMessage::Error { message, command } => {
+        ServerMessage::Error {
+            message, command, ..
+        } => {
             assert!(
                 message.contains("Handshake required"),
                 "expected handshake-required message, got: {message}"

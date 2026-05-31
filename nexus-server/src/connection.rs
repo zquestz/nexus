@@ -192,6 +192,7 @@ where
                         let error_msg = ServerMessage::Error {
                             message: err_invalid_message_format(&conn_state.locale),
                             command: None,
+                            disconnect: true,
                         };
                         let _ = send_server_message_with_id(
                             &mut frame_writer,

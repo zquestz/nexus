@@ -677,6 +677,7 @@ mod tests {
             server_message_type(&ServerMessage::Error {
                 message: "error".to_string(),
                 command: None,
+                disconnect: false,
             }),
             "Error"
         );

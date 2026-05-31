@@ -119,6 +119,7 @@ where
                     let disconnect_msg = ServerMessage::Error {
                         message: err_account_deleted(&online_user.locale),
                         command: None,
+                        disconnect: false,
                     };
                     send_reason_and_disconnect(online_user, disconnect_msg);
                 }

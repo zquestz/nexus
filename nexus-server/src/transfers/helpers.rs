@@ -267,6 +267,7 @@ where
     let response = ServerMessage::Error {
         message: error.to_string(),
         command: None,
+        disconnect: true,
     };
     let _ = send_server_message_with_id(frame_writer, &response, MessageId::new()).await;
     let _ = frame_writer.get_mut().shutdown().await;

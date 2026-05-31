@@ -217,6 +217,7 @@ impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {
         let error_msg = ServerMessage::Error {
             message: message.to_string(),
             command: command.map(|s| s.to_string()),
+            disconnect: false,
         };
         self.send_message(&error_msg).await
     }
@@ -227,7 +228,12 @@ impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {
         message: &str,
         command: Option<&str>,
     ) -> io::Result<()> {
-        self.send_error(message, command).await?;
+        let error_msg = ServerMessage::Error {
+            message: message.to_string(),
+            command: command.map(|s| s.to_string()),
+            disconnect: true,
+        };
+        self.send_message(&error_msg).await?;
         Err(io::Error::other(message))
     }
 }
@@ -333,7 +339,10 @@ pub async fn remove_users_with_cleanup_locked(
 /// Queue a final reason message followed by a connection-task shutdown event.
 /// The session may already be removed before the connection task observes these;
 /// the post-loop teardown remains idempotent by session id.
-pub fn send_reason_and_disconnect(session: &UserSession, reason: ServerMessage) {
+pub fn send_reason_and_disconnect(session: &UserSession, mut reason: ServerMessage) {
+    if let ServerMessage::Error { disconnect, .. } = &mut reason {
+        *disconnect = true;
+    }
     let _ = session.tx.send(SessionEvent::message(reason, None));
     let _ = session.tx.send(SessionEvent::Disconnect);
 }
@@ -552,6 +561,7 @@ mod tests {
         let reason = ServerMessage::Error {
             message: "forced disconnect".to_string(),
             command: Some("TestDisconnect".to_string()),
+            disconnect: false,
         };
 
         send_reason_and_disconnect(&session, reason);
@@ -559,9 +569,14 @@ mod tests {
         let (message, message_id) = rx.recv().await.expect("reason event").expect_message();
         assert!(message_id.is_none());
         match message {
-            ServerMessage::Error { message, command } => {
+            ServerMessage::Error {
+                message,
+                command,
+                disconnect,
+            } => {
                 assert_eq!(message, "forced disconnect");
                 assert_eq!(command, Some("TestDisconnect".to_string()));
+                assert!(disconnect);
             }
             other => panic!("expected Error reason, got {other:?}"),
         }
@@ -918,6 +933,7 @@ mod tests {
         let reason = ServerMessage::Error {
             message: "forced disconnect".to_string(),
             command: Some("TestDisconnect".to_string()),
+            disconnect: false,
         };
         send_reason_and_disconnect(&victim_session, reason);
 

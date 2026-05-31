@@ -182,9 +182,9 @@ impl NexusApp {
                 self.handle_chat_secret_response(connection_id, message_id, success, error)
             }
 
-            ServerMessage::Error { message, command } => {
-                self.handle_error(connection_id, message, command)
-            }
+            ServerMessage::Error {
+                message, command, ..
+            } => self.handle_error(connection_id, message, command),
 
             ServerMessage::GroupCreateResponse {
                 success,

@@ -758,10 +758,11 @@ const USER_MESSAGE_RESPONSE_SIZE: usize = json_type_base("UserMessageResponse")
     + json_bool_field("is_away")
     + json_string_chars_field("status", MAX_STATUS_LENGTH);
 
-/// Error: {"type":"Error","message":"...2048...","command":"...32..."}
+/// Error: {"type":"Error","message":"...2048...","command":"...32...","disconnect":false}
 const ERROR_SIZE: usize = json_type_base("Error")
     + json_string_field("message", MAX_ERROR_LENGTH)
-    + json_string_field("command", MAX_COMMAND_LENGTH);
+    + json_string_field("command", MAX_COMMAND_LENGTH)
+    + json_bool_field("disconnect");
 
 /// ServerBroadcast: {"type":"ServerBroadcast","session_id":4294967295,"username":"...32...","message":"...1024..."}
 const SERVER_BROADCAST_SIZE: usize = json_type_base("ServerBroadcast")
@@ -2922,6 +2923,7 @@ mod tests {
         let msg = ServerMessage::Error {
             message: str_of_len(2048),
             command: Some(str_of_len(64)),
+            disconnect: false,
         };
         assert!(
             json_size(&msg) <= max_payload_for_type("Error") as usize,

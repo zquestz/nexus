@@ -412,6 +412,7 @@ fn build_ban_disconnect_message(locale: &str, expires_at: Option<i64>) -> Server
     ServerMessage::Error {
         message,
         command: Some("BanCreate".to_string()),
+        disconnect: false,
     }
 }
 

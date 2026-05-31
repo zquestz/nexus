@@ -720,6 +720,8 @@ pub enum ServerMessage {
         message: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         command: Option<String>,
+        #[serde(default)]
+        disconnect: bool,
     },
     FileCopyResponse {
         success: bool,
@@ -790,7 +792,7 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         entries: Option<Vec<FileEntry>>,
         /// Whether the current directory allows uploads (for UI to enable "New Directory" button)
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[serde(default)]
         can_upload: bool,
         /// Username that owns the `[NEXUS-DB-username]` folder enclosing the
         /// listed directory (or the listed directory itself, if it is the
@@ -2334,6 +2336,64 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"success\":false"));
         assert!(json.contains("\"error\""));
+    }
+
+    #[test]
+    fn test_serialize_error_includes_disconnect_false() {
+        let msg = ServerMessage::Error {
+            message: "oops".to_string(),
+            command: None,
+            disconnect: false,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"Error\""));
+        assert!(json.contains("\"disconnect\":false"));
+    }
+
+    #[test]
+    fn test_serialize_error_includes_disconnect_true() {
+        let msg = ServerMessage::Error {
+            message: "bye".to_string(),
+            command: Some("UserKick".to_string()),
+            disconnect: true,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"Error\""));
+        assert!(json.contains("\"command\":\"UserKick\""));
+        assert!(json.contains("\"disconnect\":true"));
+    }
+
+    #[test]
+    fn test_deserialize_error_defaults_disconnect_false() {
+        let json = r#"{"type":"Error","message":"oops","command":null}"#;
+        let msg: ServerMessage = serde_json::from_str(json).unwrap();
+        match msg {
+            ServerMessage::Error {
+                message,
+                command,
+                disconnect,
+            } => {
+                assert_eq!(message, "oops");
+                assert_eq!(command, None);
+                assert!(!disconnect);
+            }
+            other => panic!("Expected Error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_serialize_file_list_response_includes_can_upload_false() {
+        let msg = ServerMessage::FileListResponse {
+            success: true,
+            error: None,
+            path: Some("/".to_string()),
+            entries: Some(vec![]),
+            can_upload: false,
+            dropbox_owner: None,
+        };
+        let json = serde_json::to_string(&msg).unwrap();
+        assert!(json.contains("\"type\":\"FileListResponse\""));
+        assert!(json.contains("\"can_upload\":false"));
     }
 
     #[test]

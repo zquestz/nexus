@@ -757,7 +757,9 @@ mod tests {
 
         let response = read_server_message(&mut test_ctx).await;
         match response {
-            ServerMessage::Error { message, command } => {
+            ServerMessage::Error {
+                message, command, ..
+            } => {
                 assert!(message.to_lowercase().contains("channel"));
                 assert_eq!(command, Some("ChatSend".to_string()));
             }

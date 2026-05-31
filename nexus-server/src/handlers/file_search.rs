@@ -66,6 +66,7 @@ where
                 let response = ServerMessage::Error {
                     message: err_not_logged_in(ctx.locale),
                     command: Some(HANDLER_FILE_SEARCH.to_string()),
+                    disconnect: false,
                 };
                 break 'user_area Err(response);
             }
@@ -116,7 +117,9 @@ where
     };
     let (area_prefix, username) = match user_area_result {
         Ok(user_area) => user_area,
-        Err(ServerMessage::Error { message, command }) => {
+        Err(ServerMessage::Error {
+            message, command, ..
+        }) => {
             return ctx
                 .send_error_and_disconnect(&message, command.as_deref())
                 .await;

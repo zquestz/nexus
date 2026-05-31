@@ -387,7 +387,11 @@ async fn send_handshake_error<W>(
 ) where
     W: AsyncWrite + Unpin,
 {
-    let response = ServerMessage::Error { message, command };
+    let response = ServerMessage::Error {
+        message,
+        command,
+        disconnect: true,
+    };
     let _ = send_server_message(writer, &response).await;
 }
 

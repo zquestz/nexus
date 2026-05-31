@@ -592,6 +592,7 @@ mod tests {
         let msg = ServerMessage::Error {
             message: "Test".to_string(),
             command: None,
+            disconnect: false,
         };
         let result = transfer.send(&msg).await;
         assert!(result.is_ok());
