@@ -22,10 +22,10 @@ pub enum EventType {
     ChatJoin,
     /// A user left a channel you're in
     ChatLeave,
-    /// Chat message received
-    ChatMessage,
     /// Nickname mentioned in chat
     ChatMention,
+    /// Chat message received
+    ChatMessage,
     /// Connection lost unexpectedly
     ConnectionLost,
     /// New news post created
@@ -36,6 +36,8 @@ pub enum EventType {
     TransferComplete,
     /// File transfer failed
     TransferFailed,
+    /// You were banned from the server
+    UserBanned,
     /// A user connected to the server
     UserConnected,
     /// A user disconnected from the server
@@ -57,13 +59,14 @@ impl EventType {
             EventType::Broadcast,
             EventType::ChatJoin,
             EventType::ChatLeave,
-            EventType::ChatMessage,
             EventType::ChatMention,
+            EventType::ChatMessage,
             EventType::ConnectionLost,
             EventType::NewsPost,
             EventType::PermissionsChanged,
             EventType::TransferComplete,
             EventType::TransferFailed,
+            EventType::UserBanned,
             EventType::UserConnected,
             EventType::UserDisconnected,
             EventType::UserKicked,
@@ -79,13 +82,14 @@ impl EventType {
             EventType::Broadcast => "event-broadcast",
             EventType::ChatJoin => "event-chat-join",
             EventType::ChatLeave => "event-chat-leave",
-            EventType::ChatMessage => "event-chat-message",
             EventType::ChatMention => "event-chat-mention",
+            EventType::ChatMessage => "event-chat-message",
             EventType::ConnectionLost => "event-connection-lost",
             EventType::NewsPost => "event-news-post",
             EventType::PermissionsChanged => "event-permissions-changed",
             EventType::TransferComplete => "event-transfer-complete",
             EventType::TransferFailed => "event-transfer-failed",
+            EventType::UserBanned => "event-user-banned",
             EventType::UserConnected => "event-user-connected",
             EventType::UserDisconnected => "event-user-disconnected",
             EventType::UserKicked => "event-user-kicked",
@@ -340,11 +344,11 @@ fn default_event_configs() -> HashMap<EventType, EventConfig> {
     // Chat leave: disabled by default (can be noisy)
     events.insert(EventType::ChatLeave, EventConfig::default());
 
-    // Chat messages: disabled by default (can be noisy)
-    events.insert(EventType::ChatMessage, EventConfig::default());
-
     // Chat mentions: enabled by default
     events.insert(EventType::ChatMention, EventConfig::with_notification());
+
+    // Chat messages: disabled by default (can be noisy)
+    events.insert(EventType::ChatMessage, EventConfig::default());
 
     // Connection lost: enabled by default
     events.insert(EventType::ConnectionLost, EventConfig::with_notification());
@@ -366,6 +370,9 @@ fn default_event_configs() -> HashMap<EventType, EventConfig> {
 
     // Transfer failed: enabled by default
     events.insert(EventType::TransferFailed, EventConfig::with_notification());
+
+    // User banned: enabled by default
+    events.insert(EventType::UserBanned, EventConfig::with_notification());
 
     // User connected: disabled by default (can be noisy on busy servers)
     events.insert(EventType::UserConnected, EventConfig::default());
@@ -399,23 +406,28 @@ mod tests {
     #[test]
     fn test_event_type_all() {
         let all = EventType::all();
-        assert_eq!(all.len(), 16);
-        assert!(all.contains(&EventType::Broadcast));
-        assert!(all.contains(&EventType::ChatJoin));
-        assert!(all.contains(&EventType::ChatLeave));
-        assert!(all.contains(&EventType::ChatMessage));
-        assert!(all.contains(&EventType::ChatMention));
-        assert!(all.contains(&EventType::ConnectionLost));
-        assert!(all.contains(&EventType::NewsPost));
-        assert!(all.contains(&EventType::PermissionsChanged));
-        assert!(all.contains(&EventType::TransferComplete));
-        assert!(all.contains(&EventType::TransferFailed));
-        assert!(all.contains(&EventType::UserConnected));
-        assert!(all.contains(&EventType::UserDisconnected));
-        assert!(all.contains(&EventType::UserKicked));
-        assert!(all.contains(&EventType::UserMessage));
-        assert!(all.contains(&EventType::VoiceJoined));
-        assert!(all.contains(&EventType::VoiceLeft));
+        assert_eq!(
+            all,
+            &[
+                EventType::Broadcast,
+                EventType::ChatJoin,
+                EventType::ChatLeave,
+                EventType::ChatMention,
+                EventType::ChatMessage,
+                EventType::ConnectionLost,
+                EventType::NewsPost,
+                EventType::PermissionsChanged,
+                EventType::TransferComplete,
+                EventType::TransferFailed,
+                EventType::UserBanned,
+                EventType::UserConnected,
+                EventType::UserDisconnected,
+                EventType::UserKicked,
+                EventType::UserMessage,
+                EventType::VoiceJoined,
+                EventType::VoiceLeft,
+            ]
+        );
     }
 
     #[test]
@@ -450,6 +462,18 @@ mod tests {
         assert!(!user_msg_config.play_sound);
         assert_eq!(user_msg_config.sound, SoundChoice::Alert);
         assert!(!user_msg_config.always_play_sound);
+
+        // Terminal self-disconnect reasons should be visible by default.
+        let kicked_config = settings.get(EventType::UserKicked);
+        let banned_config = settings.get(EventType::UserBanned);
+        assert_eq!(
+            banned_config.show_notification,
+            kicked_config.show_notification
+        );
+        assert_eq!(
+            banned_config.notification_content,
+            kicked_config.notification_content
+        );
     }
 
     #[test]

@@ -491,7 +491,6 @@ confirm-delete-group = Gruppe "{ $name }" löschen?
 confirm-delete-news = Möchten Sie diesen Beitrag wirklich löschen?
 msg-user-connected = { $nickname } hat sich verbunden
 msg-user-disconnected = { $nickname } hat sich getrennt
-msg-disconnected = Getrennt: { $error }
 msg-connection-cancelled = Verbindung abgebrochen wegen Zertifikat-Nichtübereinstimmung
 
 # =============================================================================
@@ -961,6 +960,7 @@ event-transfer-complete = Übertragung abgeschlossen
 event-transfer-failed = Übertragung fehlgeschlagen
 event-user-connected = Benutzer verbunden
 event-user-disconnected = Benutzer getrennt
+event-user-banned = Benutzer gebannt
 event-user-kicked = Benutzer gekickt
 event-user-message = Benutzernachricht
 event-voice-joined = Sprachchat beigetreten
@@ -1021,6 +1021,8 @@ notification-user-connected = Benutzer verbunden
 notification-user-connected-name = {$username} verbunden
 notification-user-disconnected = Benutzer getrennt
 notification-user-disconnected-name = {$username} getrennt
+notification-user-banned = Sie wurden gebannt
+notification-user-banned-from = Von {$server} gebannt
 notification-user-kicked = Sie wurden gekickt
 notification-user-kicked-from = Von {$server} gekickt
 notification-user-message = Neue Benutzernachricht

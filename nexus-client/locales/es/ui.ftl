@@ -493,7 +493,6 @@ confirm-delete-group = ¿Eliminar grupo "{ $name }"?
 confirm-delete-news = ¿Estás seguro de que deseas eliminar esta publicación?
 msg-user-connected = { $nickname } conectado
 msg-user-disconnected = { $nickname } se desconectó
-msg-disconnected = Desconectado: { $error }
 msg-connection-cancelled = Conexión cancelada debido a certificado no coincidente
 
 # =============================================================================
@@ -959,6 +958,7 @@ event-transfer-complete = Transferencia completada
 event-transfer-failed = Transferencia fallida
 event-user-connected = Usuario conectado
 event-user-disconnected = Usuario desconectado
+event-user-banned = Usuario baneado
 event-user-kicked = Usuario expulsado
 event-user-message = Mensaje de usuario
 event-voice-joined = Usuario entró al chat de voz
@@ -1019,6 +1019,8 @@ notification-user-connected = Usuario conectado
 notification-user-connected-name = {$username} conectado
 notification-user-disconnected = Usuario desconectado
 notification-user-disconnected-name = {$username} desconectado
+notification-user-banned = Has sido baneado
+notification-user-banned-from = Baneado de {$server}
 notification-user-kicked = Has sido expulsado
 notification-user-kicked-from = Expulsado de {$server}
 notification-user-message = Nuevo mensaje de usuario

@@ -183,8 +183,10 @@ impl NexusApp {
             }
 
             ServerMessage::Error {
-                message, command, ..
-            } => self.handle_error(connection_id, message, command),
+                message,
+                command,
+                disconnect,
+            } => self.handle_error(connection_id, message, command, disconnect),
 
             ServerMessage::GroupCreateResponse {
                 success,

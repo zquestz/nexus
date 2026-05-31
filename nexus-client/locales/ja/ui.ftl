@@ -487,7 +487,6 @@ confirm-delete-group = グループ「{ $name }」を削除しますか？
 confirm-delete-news = この投稿を削除してもよろしいですか？
 msg-user-connected = { $nickname } が接続しました
 msg-user-disconnected = { $nickname } が切断しました
-msg-disconnected = 切断されました: { $error }
 msg-connection-cancelled = 証明書の不一致のため接続がキャンセルされました
 
 # =============================================================================
@@ -907,6 +906,7 @@ event-transfer-complete = 転送完了
 event-transfer-failed = 転送失敗
 event-user-connected = ユーザー接続
 event-user-disconnected = ユーザー切断
+event-user-banned = ユーザーBAN
 event-user-kicked = ユーザーキック
 event-user-message = ユーザーメッセージ
 event-voice-joined = ボイスチャット参加
@@ -967,6 +967,8 @@ notification-user-connected = ユーザーが接続しました
 notification-user-connected-name = {$username}が接続しました
 notification-user-disconnected = ユーザーが切断しました
 notification-user-disconnected-name = {$username}が切断しました
+notification-user-banned = BANされました
+notification-user-banned-from = {$server}からBANされました
 notification-user-kicked = キックされました
 notification-user-kicked-from = {$server}からキックされました
 notification-user-message = 新しいユーザーメッセージ

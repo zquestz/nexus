@@ -488,7 +488,6 @@ confirm-delete-group = 删除群组"{ $name }"？
 confirm-delete-news = 确定要删除此帖子吗？
 msg-user-connected = { $nickname } 已连接
 msg-user-disconnected = { $nickname } 已断开连接
-msg-disconnected = 已断开连接：{ $error }
 msg-connection-cancelled = 由于证书不匹配，连接已取消
 
 # =============================================================================
@@ -908,6 +907,7 @@ event-transfer-complete = 传输完成
 event-transfer-failed = 传输失败
 event-user-connected = 用户已连接
 event-user-disconnected = 用户断开连接
+event-user-banned = 用户被封禁
 event-user-kicked = 用户被踢出
 event-user-message = 用户消息
 event-voice-joined = 语音加入
@@ -968,6 +968,8 @@ notification-user-connected = 用户已连接
 notification-user-connected-name = {$username}已连接
 notification-user-disconnected = 用户已断开
 notification-user-disconnected-name = {$username}已断开
+notification-user-banned = 您被封禁了
+notification-user-banned-from = 被{$server}封禁
 notification-user-kicked = 您被踢出了
 notification-user-kicked-from = 被踢出{$server}
 notification-user-message = 新用户消息

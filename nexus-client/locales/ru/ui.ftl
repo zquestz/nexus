@@ -499,7 +499,6 @@ confirm-delete-group = Удалить группу "{ $name }"?
 confirm-delete-news = Вы уверены, что хотите удалить эту публикацию?
 msg-user-connected = { $nickname } подключился
 msg-user-disconnected = { $nickname } отключился
-msg-disconnected = Отключено: { $error }
 msg-connection-cancelled = Подключение отменено из-за несоответствия сертификата
 
 # =============================================================================
@@ -979,6 +978,7 @@ event-transfer-complete = Передача завершена
 event-transfer-failed = Передача не удалась
 event-user-connected = Пользователь подключился
 event-user-disconnected = Пользователь отключился
+event-user-banned = Пользователь забанен
 event-user-kicked = Пользователь исключён
 event-user-message = Сообщение пользователя
 event-voice-joined = Присоединился к голосовому чату
@@ -1039,6 +1039,8 @@ notification-user-connected = Пользователь подключился
 notification-user-connected-name = {$username} подключился
 notification-user-disconnected = Пользователь отключился
 notification-user-disconnected-name = {$username} отключился
+notification-user-banned = Вас забанили
+notification-user-banned-from = Забанены на {$server}
 notification-user-kicked = Вас кикнули
 notification-user-kicked-from = Кик с {$server}
 notification-user-message = Новое сообщение пользователя

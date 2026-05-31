@@ -487,7 +487,6 @@ confirm-delete-group = 刪除群組「{ $name }」？
 confirm-delete-news = 確定要刪除此貼文嗎？
 msg-user-connected = { $nickname } 已連線
 msg-user-disconnected = { $nickname } 已中斷連線
-msg-disconnected = 已中斷連線：{ $error }
 msg-connection-cancelled = 由於憑證不符，連線已取消
 
 # =============================================================================
@@ -907,6 +906,7 @@ event-transfer-complete = 傳輸完成
 event-transfer-failed = 傳輸失敗
 event-user-connected = 使用者已連線
 event-user-disconnected = 使用者斷開連線
+event-user-banned = 使用者被封鎖
 event-user-kicked = 使用者被踢出
 event-user-message = 使用者訊息
 event-voice-joined = 使用者加入語音
@@ -967,6 +967,8 @@ notification-user-connected = 使用者已連線
 notification-user-connected-name = {$username}已連線
 notification-user-disconnected = 使用者已斷線
 notification-user-disconnected-name = {$username}已斷線
+notification-user-banned = 您被封鎖了
+notification-user-banned-from = 被{$server}封鎖
 notification-user-kicked = 您被踢出了
 notification-user-kicked-from = 被踢出{$server}
 notification-user-message = 新使用者訊息

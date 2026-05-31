@@ -492,7 +492,6 @@ confirm-delete-group = Groep "{ $name }" verwijderen?
 confirm-delete-news = Weet je zeker dat je dit bericht wilt verwijderen?
 msg-user-connected = { $nickname } is verbonden
 msg-user-disconnected = { $nickname } is losgekoppeld
-msg-disconnected = Verbinding verbroken: { $error }
 msg-connection-cancelled = Verbinding geannuleerd vanwege niet-overeenkomend certificaat
 
 # =============================================================================
@@ -958,6 +957,7 @@ event-transfer-complete = Overdracht voltooid
 event-transfer-failed = Overdracht mislukt
 event-user-connected = Gebruiker verbonden
 event-user-disconnected = Gebruiker verbroken
+event-user-banned = Gebruiker verbannen
 event-user-kicked = Gebruiker verwijderd
 event-user-message = Gebruikersbericht
 event-voice-joined = Spraakchat gestart
@@ -1018,6 +1018,8 @@ notification-user-connected = Gebruiker verbonden
 notification-user-connected-name = {$username} verbonden
 notification-user-disconnected = Gebruiker verbroken
 notification-user-disconnected-name = {$username} verbroken
+notification-user-banned = Je bent verbannen
+notification-user-banned-from = Verbannen van {$server}
 notification-user-kicked = Je bent verwijderd
 notification-user-kicked-from = Verwijderd van {$server}
 notification-user-message = Nieuw gebruikersbericht

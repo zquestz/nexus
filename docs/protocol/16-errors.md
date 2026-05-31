@@ -12,7 +12,7 @@ Client                                        Server
    │  [Any Request]                              │
    │ ───────────────────────────────────────►    │
    │                                             │
-   │         Error { message, command }          │
+   │  Error { message, command, disconnect }     │
    │ ◄───────────────────────────────────────    │
    │                                             │
 ```
@@ -21,34 +21,41 @@ Client                                        Server
 
 ### Error (Server → Client)
 
-Generic error message sent when a request fails.
+Generic error message sent when a request fails or when the server is
+about to close the connection with a final reason.
 
-| Field     | Type   | Required | Description                                                                                       |
-| --------- | ------ | -------- | ------------------------------------------------------------------------------------------------- |
-| `message` | string | Yes      | Human-readable error message (pre-localized to the client's locale; see Error Localization below) |
-| `command` | string | No       | Command that caused the error                                                                     |
+| Field        | Type    | Required | Description                                                                                       |
+| ------------ | ------- | -------- | ------------------------------------------------------------------------------------------------- |
+| `message`    | string  | Yes      | Human-readable error message (pre-localized to the client's locale; see Error Localization below) |
+| `command`    | string  | No       | Command that caused the error                                                                     |
+| `disconnect` | boolean | Yes      | Whether this error is a terminal disconnect reason                                                |
+
+Current servers always send `disconnect`. Clients should treat a
+missing `disconnect` field from older peers as `false`.
 
 **Example:**
 
 ```json
 {
   "message": "Permission denied",
-  "command": "ChatSend"
+  "command": "ChatSend",
+  "disconnect": false
 }
 ```
 
-**Without command:**
+**Terminal error without command:**
 
 ```json
 {
-  "message": "Connection timed out"
+  "message": "Connection timed out",
+  "disconnect": true
 }
 ```
 
 **Full frame:**
 
 ```
-NX|5|Error|a1b2c3d4e5f6|45|{"message":"Permission denied","command":"ChatSend"}
+NX|5|Error|a1b2c3d4e5f6|71|{"message":"Permission denied","command":"ChatSend","disconnect":false}
 ```
 
 ## Error Types
@@ -125,7 +132,8 @@ The `Error` message type is used for:
 - Protocol violations (invalid frames, unknown message types)
 - Authentication failures during message handling
 - Critical errors that should disconnect the client
-- Kick notifications (with `command: "UserKick"`)
+- Terminal moderation reasons, such as kicks (`command: "UserKick"`)
+  and bans (`command: "BanCreate"`)
 
 ## Error Kind Values
 
@@ -183,7 +191,13 @@ Error Kinds](09-admin.md#tracker-error-kinds).
 
 ## Connection Behavior
 
-Errors can either keep the connection open or disconnect the client:
+Errors can either keep the connection open or disconnect the client.
+`Error.disconnect` is the authoritative protocol hint for generic
+`Error` messages:
+
+- `disconnect: false`: handle as a normal in-session error.
+- `disconnect: true`: store the reason and expect the server to close
+  the connection.
 
 ### Disconnect Errors
 
@@ -220,8 +234,12 @@ applies to:
 - The `error` field of every `*Response` type (e.g.,
   `UserCreateResponse.error`).
 
-Clients SHOULD display these strings directly. Unrecognized or unknown
-locales fall back to English.
+Clients SHOULD display non-terminal errors directly in the appropriate
+request context. For `Error { disconnect: true }`, clients SHOULD carry
+the localized `message` into their disconnect handling and surface it
+through the configured disconnect event path rather than displaying it
+as a normal chat or form error. Unrecognized or unknown locales fall
+back to English.
 
 **Example:** A client with `locale: "de"` receives German error messages:
 
@@ -230,7 +248,8 @@ locales fall back to English.
 ```json
 {
   "message": "Permission denied",
-  "command": "ChatSend"
+  "command": "ChatSend",
+  "disconnect": false
 }
 ```
 
@@ -239,7 +258,8 @@ locales fall back to English.
 ```json
 {
   "message": "Zugriff verweigert",
-  "command": "ChatSend"
+  "command": "ChatSend",
+  "disconnect": false
 }
 ```
 
@@ -248,7 +268,8 @@ locales fall back to English.
 ```json
 {
   "message": "権限がありません",
-  "command": "ChatSend"
+  "command": "ChatSend",
+  "disconnect": false
 }
 ```
 
@@ -357,12 +378,21 @@ else:
 For `Error` messages:
 
 ```
-if error.command == "UserKick":
-    show_kick_notification(error.message)
+if error.disconnect:
+    pending_disconnect_error = (error.message, error.command)
     expect_disconnect()
 else:
     show_error(error.message)
 ```
+
+When the connection closes after a terminal `Error`, clients can use
+`command` to choose the user-facing event:
+
+| `command`    | Client event    |
+| ------------ | --------------- |
+| `UserKick`   | User kicked     |
+| `BanCreate`  | User banned     |
+| Other / none | Connection lost |
 
 ## Error Logging
 
@@ -371,7 +401,8 @@ The `command` field helps with debugging:
 ```json
 {
   "message": "Message too long (max 1024 characters)",
-  "command": "ChatSend"
+  "command": "ChatSend",
+  "disconnect": false
 }
 ```
 
@@ -385,9 +416,10 @@ Servers log security-relevant errors:
 ## Notes
 
 - Error messages are always in the user's preferred locale
-- The `command` field matches the original request message type
+- The `command` field usually matches the original request message type;
+  terminal account-disable and account-delete reasons use no command
 - `error_kind` is only present in specific response types (file operations, transfers)
-- Connection behavior depends on error severity and type
+- Generic `Error` connection behavior is declared by `disconnect`
 - Protocol errors (invalid frames) may not result in any error message before disconnect
 - Some validation errors in broadcast/chat disconnect to prevent spam
 - Flood protection sends a warning with the wait time before disconnecting; the 3rd consecutive violation disconnects

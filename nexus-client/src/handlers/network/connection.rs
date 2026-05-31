@@ -21,6 +21,10 @@ use crate::types::{
 };
 use crate::views::constants::PERMISSION_USER_LIST;
 
+// Protocol command names (must match server exactly)
+const CMD_BAN_CREATE: &str = "BanCreate";
+const CMD_USER_KICK: &str = "UserKick";
+
 /// Result of creating and registering a connection
 struct ConnectionRegistration {
     /// Channels the user was auto-joined to on login
@@ -161,43 +165,43 @@ impl NexusApp {
         // Clean up voice session first (before removing connection)
         self.cleanup_voice_session(connection_id);
 
-        // Get server name and pending kick message before removing connection
-        let (server_name, pending_kick) = self
+        // Get server name and pending terminal error before removing connection
+        let (server_name, pending_disconnect) = self
             .connections
             .get(&connection_id)
             .map(|c| {
                 (
                     c.connection_info.server_name.clone(),
-                    c.pending_kick_message.clone(),
+                    c.pending_disconnect_error.clone(),
                 )
             })
             .unwrap_or((String::new(), None));
 
-        // Emit UserKicked if we received a kick error, otherwise ConnectionLost
-        if let Some(kick_message) = pending_kick {
-            emit_event(
-                self,
-                EventType::UserKicked,
-                EventContext::new()
-                    .with_connection_id(connection_id)
-                    .with_server_name(&server_name)
-                    .with_message(&kick_message),
-            );
+        let display_name = if server_name.is_empty() {
+            t("unknown-server")
         } else {
-            let display_name = if server_name.is_empty() {
-                t("unknown-server")
-            } else {
-                server_name.clone()
-            };
-            emit_event(
-                self,
-                EventType::ConnectionLost,
-                EventContext::new()
-                    .with_connection_id(connection_id)
-                    .with_server_name(&display_name)
-                    .with_message(&error),
-            );
-        }
+            server_name.clone()
+        };
+        let (event_type, disconnect_message) = match pending_disconnect {
+            Some(pending) => {
+                let event_type = match pending.command.as_deref() {
+                    Some(CMD_USER_KICK) => EventType::UserKicked,
+                    Some(CMD_BAN_CREATE) => EventType::UserBanned,
+                    _ => EventType::ConnectionLost,
+                };
+                (event_type, pending.message)
+            }
+            None => (EventType::ConnectionLost, error),
+        };
+
+        emit_event(
+            self,
+            event_type,
+            EventContext::new()
+                .with_connection_id(connection_id)
+                .with_server_name(&display_name)
+                .with_message(&disconnect_message),
+        );
 
         if let Some(conn) = self.connections.remove(&connection_id) {
             // Clean up receiver and signal shutdown in a single spawn
@@ -224,7 +228,6 @@ impl NexusApp {
             // If this was the active connection, clear it
             if self.active_connection == Some(connection_id) {
                 self.active_connection = None;
-                self.connection_form.error = Some(t_args("msg-disconnected", &[("error", &error)]));
             }
 
             // Update tray icon state (Windows/Linux only)

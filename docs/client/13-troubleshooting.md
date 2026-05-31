@@ -62,7 +62,7 @@ In both cases, no login credentials were sent — both stages run before authent
 
 **Solutions:**
 
-1. Check if you received an error message before disconnect
+1. Check your notifications/events for the disconnect reason
 2. Contact the server administrator
 3. Try a different account if available
 

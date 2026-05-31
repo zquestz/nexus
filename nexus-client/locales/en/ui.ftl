@@ -504,7 +504,6 @@ confirm-delete-group = Delete group "{ $name }"?
 confirm-delete-news = Are you sure you want to delete this news post?
 msg-user-connected = { $nickname } connected
 msg-user-disconnected = { $nickname } disconnected
-msg-disconnected = Disconnected: { $error }
 msg-connection-cancelled = Connection cancelled due to certificate mismatch
 
 # =============================================================================
@@ -967,6 +966,7 @@ event-transfer-complete = Transfer Complete
 event-transfer-failed = Transfer Failed
 event-user-connected = User Connected
 event-user-disconnected = User Disconnected
+event-user-banned = User Banned
 event-user-kicked = User Kicked
 event-user-message = User Message
 event-voice-joined = Voice Joined
@@ -1029,6 +1029,8 @@ notification-chat-join = User joined channel
 notification-chat-join-details = {$username} joined {$channel}
 notification-chat-leave = User left channel
 notification-chat-leave-details = {$username} left {$channel}
+notification-user-banned = You were banned
+notification-user-banned-from = Banned from {$server}
 notification-user-kicked = You were kicked
 notification-user-kicked-from = Kicked from {$server}
 notification-user-message = New user message

@@ -242,13 +242,13 @@ Set limits to 0 for unlimited concurrent transfers.
 
 Route connections through a SOCKS5 proxy (e.g., Tor).
 
-| Setting              | Description                               |
-| -------------------- | ----------------------------------------- |
-| **Use SOCKS5 proxy** | Enable proxy routing                      |
-| **Address**          | Proxy server address (default: 127.0.0.1) |
-| **Port**             | Proxy server port (default: 9050 for Tor) |
-| **Username**         | Optional authentication username          |
-| **Password**         | Optional authentication password          |
+| Setting                | Description                                                                                                                                              |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Use SOCKS5 proxy**   | Enable proxy routing                                                                                                                                     |
+| **Address**            | Proxy server address (default: 127.0.0.1)                                                                                                                |
+| **Port**               | Proxy server port (default: 9050 for Tor)                                                                                                                |
+| **Username**           | Optional authentication username                                                                                                                         |
+| **Password**           | Optional authentication password                                                                                                                         |
 | **Allow Voice Bypass** | Let voice connect directly when a proxy is active. Off by default; voice can't traverse SOCKS5, so enabling this **exposes your real IP** to the server. |
 
 **Automatic Bypass:** The proxy is automatically bypassed for:
@@ -393,13 +393,14 @@ Select an event type from the dropdown to configure its notifications:
 | **Broadcast**           | Server-wide broadcast messages    |
 | **Chat Join**           | User joined a channel you're in   |
 | **Chat Leave**          | User left a channel you're in     |
-| **Chat Message**        | Regular chat messages             |
 | **Chat Mention**        | Messages mentioning your nickname |
+| **Chat Message**        | Regular chat messages             |
 | **Connection Lost**     | Disconnected from server          |
 | **News Post**           | New news posts published          |
 | **Permissions Changed** | Your permissions were modified    |
 | **Transfer Complete**   | Download/upload finished          |
 | **Transfer Failed**     | Download/upload error             |
+| **User Banned**         | You were banned from the server   |
 | **User Connected**      | User joined the server            |
 | **User Disconnected**   | User left the server              |
 | **User Kicked**         | You were kicked from the server   |
@@ -439,7 +440,7 @@ For each event type:
 - Broadcast, Chat Mention, Connection Lost
 - News Post, Permissions Changed
 - Transfer Complete, Transfer Failed
-- User Kicked, User Message
+- User Banned, User Kicked, User Message
 
 **Notifications disabled by default** (can be noisy):
 
@@ -458,6 +459,10 @@ Notifications and toasts are automatically suppressed when:
 - The application window is focused for certain events
 
 **Always play sound** bypasses this suppression for sounds only. Toasts follow the same suppression rules as desktop notifications.
+
+Self-disconnect events (`Connection Lost`, `User Banned`, and `User
+Kicked`) are not suppressed just because the window is focused. These
+events are the display path for terminal server disconnect reasons.
 
 ## Saving Settings
 

@@ -487,7 +487,6 @@ confirm-delete-group = 그룹 "{ $name }"을(를) 삭제하시겠습니까?
 confirm-delete-news = 이 게시물을 삭제하시겠습니까?
 msg-user-connected = { $nickname }님이 연결되었습니다
 msg-user-disconnected = { $nickname }님의 연결이 해제되었습니다
-msg-disconnected = 연결 해제됨: { $error }
 msg-connection-cancelled = 인증서 불일치로 연결이 취소되었습니다
 
 # =============================================================================
@@ -907,6 +906,7 @@ event-transfer-complete = 전송 완료
 event-transfer-failed = 전송 실패
 event-user-connected = 사용자 연결
 event-user-disconnected = 사용자 연결 끊김
+event-user-banned = 사용자 차단됨
 event-user-kicked = 사용자 추방됨
 event-user-message = 사용자 메시지
 event-voice-joined = 음성 채팅 참여
@@ -967,6 +967,8 @@ notification-user-connected = 사용자가 연결되었습니다
 notification-user-connected-name = {$username} 연결됨
 notification-user-disconnected = 사용자가 연결 해제되었습니다
 notification-user-disconnected-name = {$username} 연결 해제됨
+notification-user-banned = 차단되었습니다
+notification-user-banned-from = {$server}에서 차단되었습니다
 notification-user-kicked = 추방되었습니다
 notification-user-kicked-from = {$server}에서 추방되었습니다
 notification-user-message = 새 사용자 메시지

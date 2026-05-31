@@ -3,13 +3,12 @@
 use iced::Task;
 
 use crate::NexusApp;
-use crate::types::{ActivePanel, ChatMessage, Message, UserManagementMode};
+use crate::types::{ActivePanel, ChatMessage, Message, PendingDisconnectError, UserManagementMode};
 
 // Protocol command names (must match server exactly)
 const CMD_USER_EDIT: &str = "UserEdit";
 const CMD_USER_UPDATE: &str = "UserUpdate";
 const CMD_SERVER_INFO_UPDATE: &str = "ServerInfoUpdate";
-const CMD_USER_KICK: &str = "UserKick";
 
 impl NexusApp {
     /// Handle error message from server
@@ -18,7 +17,15 @@ impl NexusApp {
         connection_id: usize,
         message: String,
         command: Option<String>,
+        disconnect: bool,
     ) -> Task<Message> {
+        if disconnect {
+            if let Some(conn) = self.connections.get_mut(&connection_id) {
+                conn.pending_disconnect_error = Some(PendingDisconnectError { message, command });
+            }
+            return Task::none();
+        }
+
         // Show error in edit user form if it's for user management commands
         if self.is_user_edit_error(&command, connection_id) {
             let Some(conn) = self.connections.get_mut(&connection_id) else {
@@ -44,13 +51,6 @@ impl NexusApp {
                 edit_state.error = Some(message);
                 return Task::none();
             }
-        }
-
-        // Check if this is a kick notification - store for use on disconnect
-        if command.as_deref() == Some(CMD_USER_KICK)
-            && let Some(conn) = self.connections.get_mut(&connection_id)
-        {
-            conn.pending_kick_message = Some(message.clone());
         }
 
         // For other errors (including UserDelete), show in chat

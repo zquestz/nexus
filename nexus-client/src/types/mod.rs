@@ -17,7 +17,8 @@ mod voice;
 pub use bookmark::{BookmarkEditMode, BookmarkEditState, ServerBookmark};
 pub use channel::ChannelState;
 pub use connection::{
-    ConnectionInfo, NetworkConnection, ServerConnection, ServerConnectionParams, TabCompletionState,
+    ConnectionInfo, NetworkConnection, PendingDisconnectError, ServerConnection,
+    ServerConnectionParams, TabCompletionState,
 };
 pub use display::{ChatMessage, ChatTab, MessageType, ScrollState, UserInfo};
 pub use fingerprint::normalize_certificate_fingerprint;

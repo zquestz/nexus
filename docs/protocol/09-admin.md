@@ -531,6 +531,12 @@ set narrows:
 }
 ```
 
+If disabling succeeds and the account has active sessions, each
+session receives a terminal [`Error`](16-errors.md#error-server--client)
+with `disconnect: true` and no `command`, then the server closes that
+session. Clients should surface the localized reason through their
+connection-lost event path.
+
 ### UserUpdateResponse (Server → Client)
 
 Response after updating a user.
@@ -604,6 +610,12 @@ Response after deleting a user.
   "error": "Cannot delete your own account"
 }
 ```
+
+If deletion succeeds and the account has active sessions, each session
+receives a terminal [`Error`](16-errors.md#error-server--client) with
+`disconnect: true` and no `command`, then the server closes that
+session. Clients should surface the localized reason through their
+connection-lost event path.
 
 ### UserKick (Client → Server)
 
@@ -1718,7 +1730,8 @@ the first failing rule.
 
 When a user is kicked:
 
-1. Server sends an `Error` message (with `command: "UserKick"`) to each of the kicked user's sessions
+1. Server sends a terminal `Error` message with `command: "UserKick"`
+   and `disconnect: true` to each of the kicked user's sessions
 2. Server disconnects those sessions
 3. Server broadcasts a `UserDisconnected` per disconnected session to all users with `user_list`
 4. Kicker receives `UserKickResponse` with success

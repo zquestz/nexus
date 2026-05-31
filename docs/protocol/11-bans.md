@@ -295,6 +295,9 @@ When a ban is created, affected sessions are immediately disconnected:
 
 - For single IPs: disconnect sessions from those IPs
 - For CIDR ranges: disconnect all sessions whose IP falls within the range
+- Each affected session receives a terminal
+  [`Error`](16-errors.md#error-server--client) with
+  `command: "BanCreate"` and `disconnect: true`
 - Disconnect message uses the **banned user's locale**
 - Each disconnected session is announced with its own `UserDisconnected`; if a multi-session regular account keeps some sessions (e.g. only one of its IPs is in range), the survivors get a re-aggregated `UserUpdated` (see [Multi-Session Handling](04-users.md#multi-session-handling))
 

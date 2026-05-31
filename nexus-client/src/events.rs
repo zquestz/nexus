@@ -300,10 +300,7 @@ fn should_show_event(app: &NexusApp, event_type: EventType, context: &EventConte
             }
             true
         }
-        EventType::ConnectionLost => {
-            // Don't notify if window is focused - user will see the disconnection
-            !app.window_focused
-        }
+        EventType::ConnectionLost | EventType::UserBanned | EventType::UserKicked => true,
         EventType::PermissionsChanged => {
             // Don't notify if window is focused - user will see the change
             !app.window_focused
@@ -328,10 +325,6 @@ fn should_show_event(app: &NexusApp, event_type: EventType, context: &EventConte
         }
         EventType::UserDisconnected => {
             // Don't notify if window is focused - user will see in the user list
-            !app.window_focused
-        }
-        EventType::UserKicked => {
-            // Don't notify if window is focused - user will see the kick message
             !app.window_focused
         }
         EventType::ChatJoin | EventType::ChatLeave => {
@@ -394,6 +387,7 @@ fn build_event_content(
         EventType::TransferFailed => build_transfer_failed_notification(context, content_level),
         EventType::UserConnected => build_user_connected_notification(context, content_level),
         EventType::UserDisconnected => build_user_disconnected_notification(context, content_level),
+        EventType::UserBanned => build_user_banned_notification(context, content_level),
         EventType::UserKicked => build_user_kicked_notification(context, content_level),
         EventType::UserMessage => build_user_message_notification(context, content_level),
         EventType::VoiceJoined => build_voice_joined_notification(context, content_level),
@@ -754,6 +748,33 @@ fn build_user_disconnected_notification(
                 t("notification-user-disconnected")
             };
             (summary, None)
+        }
+    }
+}
+
+/// Build notification content for user banned events
+fn build_user_banned_notification(
+    context: &EventContext,
+    content_level: NotificationContent,
+) -> (String, Option<String>) {
+    match content_level {
+        NotificationContent::EventOnly => (t("notification-user-banned"), None),
+        NotificationContent::WithContext => {
+            let summary = if let Some(ref server_name) = context.server_name {
+                t_args("notification-user-banned-from", &[("server", server_name)])
+            } else {
+                t("notification-user-banned")
+            };
+            (summary, None)
+        }
+        NotificationContent::WithPreview => {
+            let summary = if let Some(ref server_name) = context.server_name {
+                t_args("notification-user-banned-from", &[("server", server_name)])
+            } else {
+                t("notification-user-banned")
+            };
+            let body = context.message.clone();
+            (summary, body)
         }
     }
 }

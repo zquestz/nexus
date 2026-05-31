@@ -167,6 +167,14 @@ pub type CommandSender = mpsc::UnboundedSender<(MessageId, ClientMessage)>;
 // Server Connection
 // =============================================================================
 
+/// Terminal server error received immediately before the server closes this
+/// connection. Consumed by close handling to choose the notification event.
+#[derive(Debug, Clone)]
+pub struct PendingDisconnectError {
+    pub message: String,
+    pub command: Option<String>,
+}
+
 /// Active connection to a server
 ///
 /// Contains connection state, chat history, user list, and UI state.
@@ -291,8 +299,8 @@ pub struct ServerConnection {
     pub files_management: FilesManagementState,
     /// Connection monitor panel state
     pub connection_monitor: ConnectionMonitorState,
-    /// Pending kick message (set when we receive a kick error, used on disconnect)
-    pub pending_kick_message: Option<String>,
+    /// Pending server-provided terminal error, used when this connection closes
+    pub pending_disconnect_error: Option<PendingDisconnectError>,
     /// Disconnect dialog state (Some when dialog is open)
     pub disconnect_dialog: Option<DisconnectDialogState>,
     /// Active voice session (None if not in voice)
@@ -660,7 +668,7 @@ impl ServerConnection {
             tab_completion: None,
             files_management: FilesManagementState::default(),
             connection_monitor: ConnectionMonitorState::default(),
-            pending_kick_message: None,
+            pending_disconnect_error: None,
             disconnect_dialog: None,
             voice_session: None,
             channel_voiced: HashMap::new(),
