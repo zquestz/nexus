@@ -26,7 +26,7 @@ use nexus_common::io::read_server_message as io_read_server_message;
 use nexus_common::protocol::ServerMessage;
 use nexus_common::validators::resolve_bandwidth_weight;
 
-use super::HandlerContext;
+use super::{DirectWriter, HandlerContext};
 use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::{CreateUserParams, Database, Permissions};
@@ -99,7 +99,7 @@ pub struct TestContext {
 impl TestContext {
     pub fn handler_context(&mut self) -> HandlerContext<'_, TestWriteHalf> {
         HandlerContext {
-            writer: &mut self.frame_writer,
+            writer: DirectWriter::new(&mut self.frame_writer),
             peer_addr: self.peer_addr,
             user_manager: &self.user_manager,
             db: &self.db,
@@ -499,7 +499,7 @@ pub fn concurrent_handler_context<'a>(
     writer: &'a mut nexus_common::framing::FrameWriter<Sink>,
 ) -> HandlerContext<'a, Sink> {
     HandlerContext {
-        writer,
+        writer: DirectWriter::new(writer),
         peer_addr: test_ctx.peer_addr,
         user_manager: &test_ctx.user_manager,
         db: &test_ctx.db,

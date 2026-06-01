@@ -28,6 +28,8 @@ use crate::constants::{
 };
 
 #[cfg(test)]
+use super::DirectWriter;
+#[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 use super::{
     HandlerContext, Outcome, dispatch_outcome, err_account_disabled_by_admin,
@@ -3404,7 +3406,7 @@ mod tests {
 
         let (update_result, delete_result) = {
             let mut update_ctx = HandlerContext {
-                writer: &mut update_writer,
+                writer: DirectWriter::new(&mut update_writer),
                 peer_addr: test_ctx.peer_addr,
                 user_manager: &test_ctx.user_manager,
                 db: &test_ctx.db,
@@ -3426,7 +3428,7 @@ mod tests {
                 flood_config: test_ctx.flood_config.clone(),
             };
             let mut delete_ctx = HandlerContext {
-                writer: &mut delete_writer,
+                writer: DirectWriter::new(&mut delete_writer),
                 peer_addr: test_ctx.peer_addr,
                 user_manager: &test_ctx.user_manager,
                 db: &test_ctx.db,

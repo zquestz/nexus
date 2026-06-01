@@ -25,7 +25,7 @@ use crate::db::Database;
 use crate::files::{FileActivityMap, FileIndex};
 use crate::flood::{FloodConfig, FloodTracker};
 use crate::handlers::{
-    self, HandlerContext, err_invalid_message_format, err_message_not_supported,
+    self, DirectWriter, HandlerContext, err_invalid_message_format, err_message_not_supported,
 };
 use crate::ip_rule_cache::IpRuleState;
 use crate::tracker::TrackerManager;
@@ -139,7 +139,7 @@ where
                         let locale = conn_state.locale.clone();
 
                         let mut ctx = HandlerContext {
-                            writer: &mut frame_writer,
+                            writer: DirectWriter::new(&mut frame_writer),
                             peer_addr,
                             user_manager: &user_manager,
                             db: &db,

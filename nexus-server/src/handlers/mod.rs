@@ -151,9 +151,30 @@ use crate::users::UserManager;
 use crate::users::user::{ConnectionWriter, UserSession};
 use crate::voice::{VoiceRegistry, send_voice_leave_notifications};
 
+/// Direct socket writer for messages sent by the active connection task.
+pub struct DirectWriter<'a, W> {
+    frame_writer: &'a mut FrameWriter<W>,
+}
+
+impl<'a, W> DirectWriter<'a, W> {
+    pub fn new(frame_writer: &'a mut FrameWriter<W>) -> Self {
+        Self { frame_writer }
+    }
+}
+
+impl<W: AsyncWrite + Unpin> DirectWriter<'_, W> {
+    pub async fn send_message(
+        &mut self,
+        message: &ServerMessage,
+        message_id: MessageId,
+    ) -> io::Result<()> {
+        send_server_message_with_id(self.frame_writer, message, message_id).await
+    }
+}
+
 /// Shared resources passed to every handler.
 pub struct HandlerContext<'a, W> {
-    pub writer: &'a mut FrameWriter<W>,
+    pub writer: DirectWriter<'a, W>,
     pub peer_addr: SocketAddr,
     pub user_manager: &'a UserManager,
     pub db: &'a Database,
@@ -195,7 +216,7 @@ fn activity_busy_is_source_side(source_key: &Path, target_key: &Path, busy_path:
 impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {
     /// Send to the client, echoing the request's message ID.
     pub async fn send_message(&mut self, message: &ServerMessage) -> io::Result<()> {
-        send_server_message_with_id(self.writer, message, self.message_id).await
+        self.writer.send_message(message, self.message_id).await
     }
 
     /// Send via the channel rather than the socket, so the message queues after
