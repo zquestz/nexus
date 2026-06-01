@@ -19,7 +19,6 @@ use tempfile::TempDir;
 
 use tokio::io::{BufReader, Sink};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc;
 use tokio::time::timeout;
 
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
@@ -35,7 +34,7 @@ use crate::files::{FileActivityMap, FileIndex};
 use crate::ip_rule_cache::{IpRuleCache, IpRuleState};
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
-use crate::users::user::{NewSessionParams, SessionRx, SessionTx};
+use crate::users::user::{ConnectionWriter, NewSessionParams, SessionRx};
 use crate::voice::VoiceRegistry;
 use nexus_common::address::normalize_socket_addr;
 
@@ -79,7 +78,7 @@ pub struct TestContext {
     pub frame_writer: FrameWriter<TestWriteHalf>,
     pub user_manager: UserManager,
     pub db: Database,
-    pub tx: SessionTx,
+    pub tx: ConnectionWriter,
     pub peer_addr: SocketAddr,
     pub rx: SessionRx,
     pub message_id: MessageId,
@@ -167,7 +166,7 @@ pub async fn create_test_context() -> TestContext {
     let frame_reader = FrameReader::new(buf_reader);
 
     // Keep rx alive to prevent channel closure.
-    let (tx, rx) = mpsc::unbounded_channel();
+    let (tx, rx) = ConnectionWriter::channel();
 
     let message_id = MessageId::from_bytes(b"000000000000").expect("valid hex test message ID");
 
@@ -396,7 +395,7 @@ pub async fn login_observer_user(
         .await
         .unwrap();
 
-    let (tx, rx) = mpsc::unbounded_channel();
+    let (tx, rx) = ConnectionWriter::channel();
 
     let session_id = test_ctx
         .user_manager

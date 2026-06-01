@@ -32,7 +32,31 @@ impl SessionEvent {
     }
 }
 
-pub type SessionTx = mpsc::UnboundedSender<SessionEvent>;
+/// Writer handle for events destined to a connection task.
+#[derive(Clone, Debug)]
+pub struct ConnectionWriter {
+    tx: mpsc::UnboundedSender<SessionEvent>,
+}
+
+impl ConnectionWriter {
+    pub fn channel() -> (Self, SessionRx) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (Self { tx }, rx)
+    }
+
+    pub fn send_message(
+        &self,
+        message: ServerMessage,
+        message_id: Option<MessageId>,
+    ) -> Result<(), mpsc::error::SendError<SessionEvent>> {
+        self.tx.send(SessionEvent::message(message, message_id))
+    }
+
+    pub fn disconnect(&self) -> Result<(), mpsc::error::SendError<SessionEvent>> {
+        self.tx.send(SessionEvent::Disconnect)
+    }
+}
+
 pub type SessionRx = mpsc::UnboundedReceiver<SessionEvent>;
 
 /// Parameters for creating a new user session
@@ -45,7 +69,7 @@ pub struct NewSessionParams {
     pub permissions: HashSet<Permission>,
     pub address: SocketAddr,
     pub created_at: i64,
-    pub tx: SessionTx,
+    pub tx: ConnectionWriter,
     pub features: Vec<String>,
     pub locale: String,
     /// User's avatar as a data URI (ephemeral, not stored in DB)
@@ -79,7 +103,7 @@ pub struct UserSession {
     /// Account creation timestamp; reserved for future account-age/audit use.
     pub created_at: i64,
     pub login_time: i64,
-    pub tx: SessionTx,
+    pub tx: ConnectionWriter,
     pub features: Vec<String>,
     pub locale: String,
     /// User's avatar as a data URI (ephemeral, not stored in DB)

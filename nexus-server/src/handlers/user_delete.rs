@@ -188,9 +188,7 @@ mod tests {
     use super::*;
     use crate::db;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
-    use crate::users::user::NewSessionParams;
-
-    use tokio::sync::mpsc;
+    use crate::users::user::{ConnectionWriter, NewSessionParams};
 
     #[tokio::test]
     async fn test_userdelete_requires_login() {
@@ -535,7 +533,7 @@ mod tests {
             .unwrap();
 
         // Add online_user to UserManager (they're online)
-        let (online_tx, _online_rx) = mpsc::unbounded_channel();
+        let (online_tx, _online_rx) = ConnectionWriter::channel();
         let online_session_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {

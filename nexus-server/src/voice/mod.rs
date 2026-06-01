@@ -14,7 +14,7 @@ use nexus_common::protocol::ServerMessage;
 use crate::channels::ChannelManager;
 use crate::db::Permission;
 use crate::users::UserManager;
-use crate::users::user::{SessionEvent, SessionTx};
+use crate::users::user::ConnectionWriter;
 
 pub use registry::{VoiceLeaveInfo, VoiceRegistry};
 pub use session::VoiceSession;
@@ -24,7 +24,7 @@ pub use udp::{VoiceUdpServer, create_voice_listener};
 /// cleanup path (normal disconnect, kick/delete/disable/ban, DTLS timeout).
 pub async fn send_voice_leave_notifications(
     info: &VoiceLeaveInfo,
-    leaving_user_tx: Option<&SessionTx>,
+    leaving_user_tx: Option<&ConnectionWriter>,
     user_manager: &UserManager,
     channel_manager: &ChannelManager,
 ) {
@@ -33,7 +33,7 @@ pub async fn send_voice_leave_notifications(
             nickname: info.session.nickname.clone(),
             target: info.self_target.clone(),
         };
-        let _ = tx.send(SessionEvent::message(self_notification, None));
+        let _ = tx.send_message(self_notification, None);
     }
 
     // Only the last session of a nickname broadcasts a leave.
@@ -59,9 +59,7 @@ pub async fn send_voice_leave_notifications(
                         nickname: info.session.nickname.clone(),
                         target: channel_name.clone(),
                     };
-                    let _ = member
-                        .tx
-                        .send(SessionEvent::message(leave_notification, None));
+                    let _ = member.tx.send_message(leave_notification, None);
                 }
             }
         } else {
@@ -76,9 +74,7 @@ pub async fn send_voice_leave_notifications(
                     .get_session_by_nickname(participant_nickname)
                     .await
                 {
-                    let _ = participant
-                        .tx
-                        .send(SessionEvent::message(leave_notification, None));
+                    let _ = participant.tx.send_message(leave_notification, None);
                 }
             }
         }

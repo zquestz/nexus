@@ -8,7 +8,7 @@ use nexus_common::protocol::{ServerMessage, UserInfo};
 use super::UserManager;
 use crate::constants::ERR_SESSIONS_NOT_EMPTY;
 use crate::db::Permission;
-use crate::users::user::{SessionEvent, UserSession};
+use crate::users::user::UserSession;
 
 impl UserManager {
     /// Remove sessions whose channels have closed, then notify remaining
@@ -79,9 +79,7 @@ impl UserManager {
             if user_session.has_permission(Permission::UserList) {
                 // Ignore send errors: a closed channel here is cleaned up on the
                 // next broadcast. We don't recurse.
-                let _ = user_session
-                    .tx
-                    .send(SessionEvent::message(message.clone(), None));
+                let _ = user_session.tx.send_message(message.clone(), None);
             }
         }
     }
@@ -219,10 +217,8 @@ mod tests {
     use std::collections::HashSet;
     use std::net::SocketAddr;
 
-    use tokio::sync::mpsc;
-
     use super::*;
-    use crate::users::user::{NewSessionParams, SessionTx};
+    use crate::users::user::{ConnectionWriter, NewSessionParams};
 
     fn session_params(
         user_id: i64,
@@ -231,7 +227,7 @@ mod tests {
         is_shared: bool,
         is_admin: bool,
         avatar: Option<String>,
-        tx: SessionTx,
+        tx: ConnectionWriter,
     ) -> NewSessionParams {
         NewSessionParams {
             session_id: 0,
@@ -265,7 +261,7 @@ mod tests {
         let manager = UserManager::new();
 
         // Observer (admin → has user_list) to capture the direct sends.
-        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         manager
             .add_user(session_params(
                 100, "observer", "observer", false, true, None, obs_tx,
@@ -274,7 +270,7 @@ mod tests {
             .unwrap();
 
         // alice: s1 carries the avatar and is swept; s2 (no avatar) survives.
-        let (a1_tx, _a1_rx) = mpsc::unbounded_channel();
+        let (a1_tx, _a1_rx) = ConnectionWriter::channel();
         let s1 = manager
             .add_user(session_params(
                 1,
@@ -287,7 +283,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        let (a2_tx, _a2_rx) = mpsc::unbounded_channel();
+        let (a2_tx, _a2_rx) = ConnectionWriter::channel();
         let s2 = manager
             .add_user(session_params(
                 1, "alice", "alice", false, false, None, a2_tx,
@@ -331,7 +327,7 @@ mod tests {
     async fn test_remove_disconnected_shared_no_user_updated() {
         let manager = UserManager::new();
 
-        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         manager
             .add_user(session_params(
                 100, "observer", "observer", false, true, None, obs_tx,
@@ -340,7 +336,7 @@ mod tests {
             .unwrap();
 
         // Shared account: two sessions, distinct nicknames, one bears an avatar.
-        let (g1_tx, _g1_rx) = mpsc::unbounded_channel();
+        let (g1_tx, _g1_rx) = ConnectionWriter::channel();
         let g1 = manager
             .add_user(session_params(
                 2,
@@ -353,7 +349,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        let (g2_tx, _g2_rx) = mpsc::unbounded_channel();
+        let (g2_tx, _g2_rx) = ConnectionWriter::channel();
         manager
             .add_user(session_params(
                 2,
@@ -396,7 +392,7 @@ mod tests {
     async fn test_aggregate_avatar_breaks_login_time_ties_by_session_id() {
         use crate::users::user::UserSession;
 
-        let (tx_a, _rx_a) = mpsc::unbounded_channel();
+        let (tx_a, _rx_a) = ConnectionWriter::channel();
         let mut lower = UserSession::new(session_params(
             1,
             "alice",
@@ -409,7 +405,7 @@ mod tests {
         lower.session_id = 10;
         lower.login_time = 100;
 
-        let (tx_b, _rx_b) = mpsc::unbounded_channel();
+        let (tx_b, _rx_b) = ConnectionWriter::channel();
         let mut higher = UserSession::new(session_params(
             1,
             "alice",

@@ -326,17 +326,15 @@ impl UserManager {
 mod tests {
     use std::net::SocketAddr;
 
-    use tokio::sync::mpsc;
-
     use super::*;
-    use crate::users::user::SessionTx;
+    use crate::users::user::ConnectionWriter;
 
     fn shared_session_params(
         user_id: i64,
         nickname: &str,
         initial_weight: u16,
     ) -> NewSessionParams {
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, _rx) = ConnectionWriter::channel();
         NewSessionParams {
             session_id: 0,
             user_id,
@@ -411,7 +409,7 @@ mod tests {
             .add_user(shared_session_params(1, "alice", 1))
             .await
             .unwrap();
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, _rx) = ConnectionWriter::channel();
         manager
             .add_user(NewSessionParams {
                 session_id: 0,
@@ -466,7 +464,7 @@ mod tests {
         bandwidth_weight_override: Option<u16>,
         resolved_weight: u16,
     ) -> NewSessionParams {
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, _rx) = ConnectionWriter::channel();
         NewSessionParams {
             session_id: 0,
             user_id,
@@ -607,7 +605,7 @@ mod tests {
             .add_user(shared_session_params(1, "alice2", 1))
             .await
             .unwrap();
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, _rx) = ConnectionWriter::channel();
         manager
             .add_user(NewSessionParams {
                 session_id: 0,
@@ -648,7 +646,7 @@ mod tests {
         is_shared: bool,
         is_admin: bool,
         avatar: Option<String>,
-        tx: SessionTx,
+        tx: ConnectionWriter,
     ) -> NewSessionParams {
         NewSessionParams {
             session_id: 0,
@@ -683,7 +681,7 @@ mod tests {
         let manager = UserManager::new();
 
         // Observer (admin → has user_list) to capture broadcasts.
-        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         manager
             .add_user(broadcast_session_params(
                 100, "observer", "observer", false, true, None, obs_tx,
@@ -692,7 +690,7 @@ mod tests {
             .unwrap();
 
         // alice: two regular sessions; only the first carries an avatar.
-        let (a1_tx, _a1_rx) = mpsc::unbounded_channel();
+        let (a1_tx, _a1_rx) = ConnectionWriter::channel();
         let s1 = manager
             .add_user(broadcast_session_params(
                 1,
@@ -705,7 +703,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        let (a2_tx, _a2_rx) = mpsc::unbounded_channel();
+        let (a2_tx, _a2_rx) = ConnectionWriter::channel();
         let s2 = manager
             .add_user(broadcast_session_params(
                 1, "alice", "alice", false, false, None, a2_tx,
@@ -761,7 +759,7 @@ mod tests {
     async fn test_broadcast_disconnections_full_removal_emits_no_user_updated() {
         let manager = UserManager::new();
 
-        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         manager
             .add_user(broadcast_session_params(
                 100, "observer", "observer", false, true, None, obs_tx,
@@ -769,7 +767,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (a1_tx, _a1_rx) = mpsc::unbounded_channel();
+        let (a1_tx, _a1_rx) = ConnectionWriter::channel();
         let s1 = manager
             .add_user(broadcast_session_params(
                 1,
@@ -782,7 +780,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        let (a2_tx, _a2_rx) = mpsc::unbounded_channel();
+        let (a2_tx, _a2_rx) = ConnectionWriter::channel();
         let s2 = manager
             .add_user(broadcast_session_params(
                 1, "alice", "alice", false, false, None, a2_tx,
@@ -817,7 +815,7 @@ mod tests {
     async fn test_broadcast_disconnections_shared_never_reaggregates() {
         let manager = UserManager::new();
 
-        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         manager
             .add_user(broadcast_session_params(
                 100, "observer", "observer", false, true, None, obs_tx,
@@ -826,7 +824,7 @@ mod tests {
             .unwrap();
 
         // Shared account: two sessions, distinct nicknames, one bears an avatar.
-        let (g1_tx, _g1_rx) = mpsc::unbounded_channel();
+        let (g1_tx, _g1_rx) = ConnectionWriter::channel();
         let g1 = manager
             .add_user(broadcast_session_params(
                 2,
@@ -839,7 +837,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        let (g2_tx, _g2_rx) = mpsc::unbounded_channel();
+        let (g2_tx, _g2_rx) = ConnectionWriter::channel();
         manager
             .add_user(broadcast_session_params(
                 2,
@@ -883,7 +881,7 @@ mod tests {
     async fn test_broadcast_disconnections_keeps_avatar_when_source_remains() {
         let manager = UserManager::new();
 
-        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         manager
             .add_user(broadcast_session_params(
                 100, "observer", "observer", false, true, None, obs_tx,
@@ -892,7 +890,7 @@ mod tests {
             .unwrap();
 
         // alice: s1 carries the avatar and stays; s2 (no avatar) is removed.
-        let (a1_tx, _a1_rx) = mpsc::unbounded_channel();
+        let (a1_tx, _a1_rx) = ConnectionWriter::channel();
         let s1 = manager
             .add_user(broadcast_session_params(
                 1,
@@ -905,7 +903,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        let (a2_tx, _a2_rx) = mpsc::unbounded_channel();
+        let (a2_tx, _a2_rx) = ConnectionWriter::channel();
         let s2 = manager
             .add_user(broadcast_session_params(
                 1, "alice", "alice", false, false, None, a2_tx,
@@ -953,7 +951,7 @@ mod tests {
     async fn test_broadcast_disconnections_reaggregates_each_account_once() {
         let manager = UserManager::new();
 
-        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         manager
             .add_user(broadcast_session_params(
                 100, "observer", "observer", false, true, None, obs_tx,
@@ -963,7 +961,7 @@ mod tests {
 
         // Two accounts, each with an avatar-bearing session (removed) and a
         // surviving no-avatar session.
-        let (a1_tx, _a1_rx) = mpsc::unbounded_channel();
+        let (a1_tx, _a1_rx) = ConnectionWriter::channel();
         let alice_avatar = manager
             .add_user(broadcast_session_params(
                 1,
@@ -976,7 +974,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        let (a2_tx, _a2_rx) = mpsc::unbounded_channel();
+        let (a2_tx, _a2_rx) = ConnectionWriter::channel();
         manager
             .add_user(broadcast_session_params(
                 1, "alice", "alice", false, false, None, a2_tx,
@@ -984,7 +982,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (b1_tx, _b1_rx) = mpsc::unbounded_channel();
+        let (b1_tx, _b1_rx) = ConnectionWriter::channel();
         let bob_avatar = manager
             .add_user(broadcast_session_params(
                 2,
@@ -997,7 +995,7 @@ mod tests {
             ))
             .await
             .unwrap();
-        let (b2_tx, _b2_rx) = mpsc::unbounded_channel();
+        let (b2_tx, _b2_rx) = ConnectionWriter::channel();
         manager
             .add_user(broadcast_session_params(
                 2, "bob", "bob", false, false, None, b2_tx,

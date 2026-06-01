@@ -133,8 +133,6 @@ use std::sync::Arc;
 use crate::constants::ERR_CHANNEL_CLOSED;
 
 use tokio::io::AsyncWrite;
-#[cfg(test)]
-use tokio::sync::mpsc;
 
 use nexus_common::framing::{FrameWriter, MessageId};
 use nexus_common::io::send_server_message_with_id;
@@ -150,7 +148,7 @@ use crate::ip_rule_cache::IpRuleState;
 use crate::tracker::TrackerManager;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
-use crate::users::user::{SessionEvent, SessionTx, UserSession};
+use crate::users::user::{ConnectionWriter, UserSession};
 use crate::voice::{VoiceRegistry, send_voice_leave_notifications};
 
 /// Shared resources passed to every handler.
@@ -159,7 +157,7 @@ pub struct HandlerContext<'a, W> {
     pub peer_addr: SocketAddr,
     pub user_manager: &'a UserManager,
     pub db: &'a Database,
-    pub tx: &'a SessionTx,
+    pub tx: &'a ConnectionWriter,
     pub locale: &'a str,
     /// Echoed back on responses for request correlation.
     pub message_id: MessageId,
@@ -205,10 +203,7 @@ impl<'a, W: AsyncWrite + Unpin> HandlerContext<'a, W> {
     /// broadcasts in the client's receive order.
     pub fn send_message_via_channel(&self, message: &ServerMessage) -> io::Result<()> {
         self.tx
-            .send(SessionEvent::message(
-                message.clone(),
-                Some(self.message_id),
-            ))
+            .send_message(message.clone(), Some(self.message_id))
             .map_err(|_| io::Error::other(ERR_CHANNEL_CLOSED))
     }
 
@@ -343,8 +338,8 @@ pub fn send_reason_and_disconnect(session: &UserSession, mut reason: ServerMessa
     if let ServerMessage::Error { disconnect, .. } = &mut reason {
         *disconnect = true;
     }
-    let _ = session.tx.send(SessionEvent::message(reason, None));
-    let _ = session.tx.send(SessionEvent::Disconnect);
+    let _ = session.tx.send_message(reason, None);
+    let _ = session.tx.disconnect();
 }
 
 /// Release the per-session resources a disconnect must free, identically for
@@ -525,11 +520,9 @@ mod tests {
     use crate::channels::JoinPolicy;
     use crate::db::ChannelDb;
     use crate::db::testing::create_test_db;
-    use crate::users::user::NewSessionParams;
+    use crate::users::user::{NewSessionParams, SessionEvent};
 
-    type TestTx = SessionTx;
-
-    fn regular_session(user_id: i64, nickname: &str, tx: TestTx) -> NewSessionParams {
+    fn regular_session(user_id: i64, nickname: &str, tx: ConnectionWriter) -> NewSessionParams {
         NewSessionParams {
             session_id: 0,
             user_id,
@@ -556,7 +549,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_send_reason_and_disconnect_queues_reason_then_disconnect() {
-        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (tx, mut rx) = ConnectionWriter::channel();
         let session = UserSession::new(regular_session(1, "alice", tx));
         let reason = ServerMessage::Error {
             message: "forced disconnect".to_string(),
@@ -627,12 +620,12 @@ mod tests {
             ChannelManager::new(ChannelDb::new(create_test_db().await), UserManager::new());
 
         // observer survives; victim is the one being torn down.
-        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         let observer = user_manager
             .add_user(regular_session(1, "observer", obs_tx))
             .await
             .unwrap();
-        let (victim_tx, _victim_rx) = mpsc::unbounded_channel();
+        let (victim_tx, _victim_rx) = ConnectionWriter::channel();
         let victim = user_manager
             .add_user(regular_session(2, "victim", victim_tx))
             .await
@@ -699,12 +692,12 @@ mod tests {
         let channel_manager =
             ChannelManager::new(ChannelDb::new(create_test_db().await), UserManager::new());
 
-        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         let observer = user_manager
             .add_user(regular_session(1, "observer", obs_tx))
             .await
             .unwrap();
-        let (victim_tx, _victim_rx) = mpsc::unbounded_channel();
+        let (victim_tx, _victim_rx) = ConnectionWriter::channel();
         let victim = user_manager
             .add_user(regular_session(2, "victim", victim_tx))
             .await
@@ -760,17 +753,17 @@ mod tests {
         let channel_manager =
             ChannelManager::new(ChannelDb::new(create_test_db().await), UserManager::new());
 
-        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         let observer = user_manager
             .add_user(regular_session(1, "observer", obs_tx))
             .await
             .unwrap();
-        let (alice1_tx, _alice1_rx) = mpsc::unbounded_channel();
+        let (alice1_tx, _alice1_rx) = ConnectionWriter::channel();
         let alice1 = user_manager
             .add_user(regular_session(2, "alice", alice1_tx))
             .await
             .unwrap();
-        let (alice2_tx, _alice2_rx) = mpsc::unbounded_channel();
+        let (alice2_tx, _alice2_rx) = ConnectionWriter::channel();
         let alice2 = user_manager
             .add_user(regular_session(2, "alice", alice2_tx))
             .await
@@ -822,17 +815,17 @@ mod tests {
         let channel_manager =
             ChannelManager::new(ChannelDb::new(create_test_db().await), UserManager::new());
 
-        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         let mut observer_params = regular_session(1, "observer", obs_tx);
         observer_params.permissions.insert(Permission::VoiceListen);
         let observer = user_manager.add_user(observer_params).await.unwrap();
 
-        let (alice1_tx, _alice1_rx) = mpsc::unbounded_channel();
+        let (alice1_tx, _alice1_rx) = ConnectionWriter::channel();
         let mut alice1_params = regular_session(2, "alice", alice1_tx);
         alice1_params.permissions.insert(Permission::VoiceListen);
         let alice1 = user_manager.add_user(alice1_params).await.unwrap();
 
-        let (alice2_tx, _alice2_rx) = mpsc::unbounded_channel();
+        let (alice2_tx, _alice2_rx) = ConnectionWriter::channel();
         let mut alice2_params = regular_session(2, "alice", alice2_tx);
         alice2_params.permissions.insert(Permission::VoiceListen);
         let alice2 = user_manager.add_user(alice2_params).await.unwrap();
@@ -900,12 +893,12 @@ mod tests {
         let channel_manager =
             ChannelManager::new(ChannelDb::new(create_test_db().await), UserManager::new());
 
-        let (obs_tx, mut obs_rx) = mpsc::unbounded_channel();
+        let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         let mut observer_params = regular_session(1, "observer", obs_tx);
         observer_params.permissions.insert(Permission::VoiceListen);
         let observer = user_manager.add_user(observer_params).await.unwrap();
 
-        let (victim_tx, mut victim_rx) = mpsc::unbounded_channel();
+        let (victim_tx, mut victim_rx) = ConnectionWriter::channel();
         let mut victim_params = regular_session(2, "victim", victim_tx);
         victim_params.permissions.insert(Permission::VoiceListen);
         let victim = user_manager.add_user(victim_params).await.unwrap();

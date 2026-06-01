@@ -7,7 +7,6 @@ use crate::handlers::{ServerInfoOptions, ServerInfoValues, build_server_info};
 
 use super::UserManager;
 use crate::db::Permission;
-use crate::users::user::SessionEvent;
 
 impl UserManager {
     /// Send a message to a specific session. Returns false if the session
@@ -15,7 +14,7 @@ impl UserManager {
     pub async fn send_to_session(&self, session_id: u32, message: ServerMessage) -> bool {
         let users = self.users.read().await;
         if let Some(user) = users.get(&session_id) {
-            user.tx.send(SessionEvent::message(message, None)).is_ok()
+            user.tx.send_message(message, None).is_ok()
         } else {
             false
         }
@@ -29,11 +28,7 @@ impl UserManager {
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if user
-                    .tx
-                    .send(SessionEvent::message(message.clone(), None))
-                    .is_err()
-                {
+                if user.tx.send_message(message.clone(), None).is_err() {
                     disconnected.push(user.session_id);
                 }
             }
@@ -72,11 +67,7 @@ impl UserManager {
                     continue;
                 }
 
-                if user
-                    .tx
-                    .send(SessionEvent::message(message.clone(), None))
-                    .is_err()
-                {
+                if user.tx.send_message(message.clone(), None).is_err() {
                     disconnected.push(user.session_id);
                 }
             }
@@ -93,12 +84,7 @@ impl UserManager {
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if user.user_id == user_id
-                    && user
-                        .tx
-                        .send(SessionEvent::message(message.clone(), None))
-                        .is_err()
-                {
+                if user.user_id == user_id && user.tx.send_message(message.clone(), None).is_err() {
                     disconnected.push(user.session_id);
                 }
             }
@@ -119,10 +105,7 @@ impl UserManager {
             let users = self.users.read().await;
             for user in users.values() {
                 if fold_name(&user.nickname) == nickname_lower
-                    && user
-                        .tx
-                        .send(SessionEvent::message(message.clone(), None))
-                        .is_err()
+                    && user.tx.send_message(message.clone(), None).is_err()
                 {
                     disconnected.push(user.session_id);
                 }
@@ -149,11 +132,7 @@ impl UserManager {
                     continue;
                 }
 
-                if user
-                    .tx
-                    .send(SessionEvent::message(message.clone(), None))
-                    .is_err()
-                {
+                if user.tx.send_message(message.clone(), None).is_err() {
                     disconnected.push(user.session_id);
                 }
             }
@@ -185,11 +164,7 @@ impl UserManager {
                     continue;
                 }
 
-                if user
-                    .tx
-                    .send(SessionEvent::message(message.clone(), None))
-                    .is_err()
-                {
+                if user.tx.send_message(message.clone(), None).is_err() {
                     disconnected.push(user.session_id);
                 }
             }
@@ -216,7 +191,7 @@ impl UserManager {
                 let server_info = build_server_info(&values, &options);
                 let message = ServerMessage::ServerInfoUpdated { server_info };
 
-                if user.tx.send(SessionEvent::message(message, None)).is_err() {
+                if user.tx.send_message(message, None).is_err() {
                     disconnected.push(user.session_id);
                 }
             }
@@ -231,12 +206,10 @@ mod tests {
     use std::collections::HashSet;
     use std::net::SocketAddr;
 
-    use tokio::sync::mpsc;
-
     use super::*;
-    use crate::users::user::{NewSessionParams, SessionTx};
+    use crate::users::user::{ConnectionWriter, NewSessionParams};
 
-    fn session_params(user_id: i64, username: &str, tx: SessionTx) -> NewSessionParams {
+    fn session_params(user_id: i64, username: &str, tx: ConnectionWriter) -> NewSessionParams {
         NewSessionParams {
             session_id: 0,
             user_id,
@@ -269,9 +242,9 @@ mod tests {
 
         // user_id=1 has two sessions (fixture-only multi-session fan-out, not a
         // production state for a regular account); user_id=2 has one.
-        let (tx_a1, mut rx_a1) = mpsc::unbounded_channel();
-        let (tx_a2, mut rx_a2) = mpsc::unbounded_channel();
-        let (tx_b, mut rx_b) = mpsc::unbounded_channel();
+        let (tx_a1, mut rx_a1) = ConnectionWriter::channel();
+        let (tx_a2, mut rx_a2) = ConnectionWriter::channel();
+        let (tx_b, mut rx_b) = ConnectionWriter::channel();
         manager
             .add_user(session_params(1, "alice_one", tx_a1))
             .await

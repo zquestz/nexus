@@ -62,7 +62,6 @@ use crate::files::{
     UserAreaMigration, UserAreaMigrationError, migrate_user_area_on_username_change,
 };
 use crate::users::manager::UserManager;
-use crate::users::user::SessionEvent;
 use crate::voice::send_voice_leave_notifications;
 
 pub struct UserUpdateRequest {
@@ -1416,9 +1415,7 @@ where
                                                 session,
                                             ),
                                         };
-                                        let _ = session
-                                            .tx
-                                            .send(SessionEvent::message(self_update, None));
+                                        let _ = session.tx.send_message(self_update, None);
                                     }
                                 }
                             } else {
@@ -1457,10 +1454,8 @@ where
                                     };
                                     for session in &online_sessions {
                                         if !session.has_permission(Permission::UserList) {
-                                            let _ = session.tx.send(SessionEvent::message(
-                                                self_update.clone(),
-                                                None,
-                                            ));
+                                            let _ =
+                                                session.tx.send_message(self_update.clone(), None);
                                         }
                                     }
                                 }
@@ -1709,7 +1704,7 @@ mod tests {
     #[allow(unused_imports)]
     use crate::handlers::testing::read_login_response;
     use crate::handlers::testing::*;
-    use crate::users::user::{NewSessionParams, SessionRx};
+    use crate::users::user::{ConnectionWriter, NewSessionParams, SessionRx};
 
     #[test]
     fn test_personal_area_rollback_warning_appends_to_primary_error() {
@@ -3799,7 +3794,7 @@ mod tests {
         username: &str,
         permissions: std::collections::HashSet<Permission>,
     ) -> (u32, SessionRx) {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, rx) = ConnectionWriter::channel();
         let session_id = test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -9497,7 +9492,7 @@ mod tests {
             .unwrap();
 
         // Alice's session on its OWN channel so we can assert exactly what she gets.
-        let (alice_tx, mut alice_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (alice_tx, mut alice_rx) = ConnectionWriter::channel();
         test_ctx
             .user_manager
             .add_user(NewSessionParams {
@@ -9598,7 +9593,7 @@ mod tests {
             .unwrap();
 
         // The shared session on its OWN channel so we can assert exactly what it gets.
-        let (member_tx, mut member_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (member_tx, mut member_rx) = ConnectionWriter::channel();
         test_ctx
             .user_manager
             .add_user(NewSessionParams {

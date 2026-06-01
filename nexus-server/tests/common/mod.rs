@@ -5,8 +5,7 @@ use std::net::SocketAddr;
 
 use nexus_server::db::{Database, Permission};
 use nexus_server::users::UserManager;
-use nexus_server::users::user::{NewSessionParams, SessionRx};
-use tokio::sync::mpsc;
+use nexus_server::users::user::{ConnectionWriter, NewSessionParams, SessionRx};
 
 #[allow(unused)] // Not all test files use this
 pub const DEFAULT_TEST_LOCALE: &str = "en";
@@ -35,7 +34,7 @@ pub async fn add_test_user(
     is_admin: bool,
     permissions: HashSet<Permission>,
 ) -> (u32, SessionRx) {
-    let (tx, rx) = mpsc::unbounded_channel();
+    let (tx, rx) = ConnectionWriter::channel();
     let addr: SocketAddr = "127.0.0.1:8000".parse().unwrap();
     let created_at = chrono::Utc::now().timestamp();
 

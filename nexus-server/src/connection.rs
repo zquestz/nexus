@@ -31,7 +31,7 @@ use crate::ip_rule_cache::IpRuleState;
 use crate::tracker::TrackerManager;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
-use crate::users::user::{SessionEvent, SessionRx, SessionTx};
+use crate::users::user::{ConnectionWriter, SessionEvent, SessionRx};
 use crate::voice::VoiceRegistry;
 
 /// Parameters for handling a connection
@@ -115,7 +115,7 @@ where
     let mut frame_writer = FrameWriter::new(writer);
 
     // Channel for server messages destined to this client.
-    let (tx, mut rx): (SessionTx, SessionRx) = tokio::sync::mpsc::unbounded_channel();
+    let (tx, mut rx): (ConnectionWriter, SessionRx) = ConnectionWriter::channel();
 
     let mut conn_state = ConnectionState::new();
 

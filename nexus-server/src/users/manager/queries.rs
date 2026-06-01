@@ -11,8 +11,6 @@ use crate::users::user::UserSession;
 use std::collections::HashSet;
 #[cfg(test)]
 use std::net::SocketAddr;
-#[cfg(test)]
-use tokio::sync::mpsc;
 
 impl UserManager {
     pub async fn get_all_users(&self) -> Vec<UserSession> {
@@ -220,10 +218,10 @@ impl UserManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::users::user::NewSessionParams;
+    use crate::users::user::{ConnectionWriter, NewSessionParams};
 
     fn test_session_params(username: &str, nickname: &str, is_shared: bool) -> NewSessionParams {
-        let (tx, _rx) = mpsc::unbounded_channel();
+        let (tx, _rx) = ConnectionWriter::channel();
         NewSessionParams {
             session_id: 0, // Will be assigned by add_user
             user_id: 1,
