@@ -9,48 +9,93 @@ use std::collections::HashMap;
 use std::fs;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use tracing::{debug, error, warn};
 
 use dtls::config::Config as DtlsConfig;
+use dtls::conn::DTLSConn;
 use dtls::crypto::Certificate;
-use dtls::listener::listen;
 use tokio::sync::RwLock;
 
-use webrtc_util::conn::{Conn, Listener};
+use webrtc_util::conn::Conn;
 
 use nexus_common::address::normalize_socket_addr;
 use nexus_common::names::fold_name;
 use nexus_common::voice::{
     MAX_VOICE_PACKET_SIZE, RelayedVoicePacket, VOICE_SESSION_TIMEOUT_SECS, VoiceMessageType,
-    VoicePacket,
+    VoicePacketRef,
 };
 
 const STALE_CLIENT_CHECK_INTERVAL_SECS: u64 = 30;
+const DTLS_HANDSHAKE_TIMEOUT_SECS: u64 = 30;
+const MILLIS_PER_SECOND: u64 = 1_000;
+
+static VOICE_IDLE_CLOCK_START: OnceLock<Instant> = OnceLock::new();
 
 use crate::channels::ChannelManager;
-use crate::connection_tracker::ConnectionTracker;
+use crate::connection_tracker::{ConnectionTracker, VoiceGuard};
 use crate::constants::*;
 use crate::db::Permission;
 use crate::ip_rule_cache::IpRuleState;
 use crate::users::UserManager;
 
+use super::demux::{PendingVoiceConnection, VoiceUdpConnHandle, VoiceUdpListener};
 use super::{VoiceRegistry, send_voice_leave_notifications};
 
 struct DtlsClient {
     conn: Arc<dyn Conn + Send + Sync>,
-    addr: SocketAddr,
-    /// Last packet received; drives the idle timeout.
-    last_packet: Instant,
+    raw_conn: VoiceUdpConnHandle,
+    /// Last packet received in milliseconds since `VOICE_IDLE_CLOCK_START`.
+    last_packet_millis: AtomicU64,
+}
+
+impl DtlsClient {
+    fn new(conn: Arc<dyn Conn + Send + Sync>, raw_conn: VoiceUdpConnHandle) -> Self {
+        Self {
+            conn,
+            raw_conn,
+            last_packet_millis: AtomicU64::new(voice_idle_now_millis()),
+        }
+    }
+
+    fn connection_handles(&self) -> (Arc<dyn Conn + Send + Sync>, VoiceUdpConnHandle) {
+        (self.conn.clone(), self.raw_conn.clone())
+    }
+
+    fn mark_packet_received(&self) {
+        self.last_packet_millis
+            .store(voice_idle_now_millis(), Ordering::Relaxed);
+    }
+
+    fn is_idle(&self, now_millis: u64, timeout_millis: u64) -> bool {
+        let last_packet_millis = self.last_packet_millis.load(Ordering::Relaxed);
+        now_millis.saturating_sub(last_packet_millis) > timeout_millis
+    }
+}
+
+pub struct VoiceListener {
+    demux: VoiceUdpListener,
+    dtls_config: DtlsConfig,
+}
+
+impl VoiceListener {
+    async fn accept(&self) -> webrtc_util::Result<PendingVoiceConnection> {
+        self.demux.accept().await
+    }
+
+    fn dtls_config(&self) -> DtlsConfig {
+        self.dtls_config.clone()
+    }
 }
 
 pub struct VoiceUdpServer {
-    listener: Arc<dyn Listener + Send + Sync>,
+    listener: VoiceListener,
     registry: VoiceRegistry,
     /// Active DTLS clients, keyed by remote address.
-    clients: Arc<RwLock<HashMap<SocketAddr, Arc<RwLock<DtlsClient>>>>>,
+    clients: Arc<RwLock<HashMap<SocketAddr, Arc<DtlsClient>>>>,
     ip_rule_cache: Arc<IpRuleState>,
     user_manager: UserManager,
     channel_manager: ChannelManager,
@@ -59,7 +104,7 @@ pub struct VoiceUdpServer {
 
 impl VoiceUdpServer {
     pub fn new(
-        listener: Arc<dyn Listener + Send + Sync>,
+        listener: VoiceListener,
         registry: VoiceRegistry,
         ip_rule_cache: Arc<IpRuleState>,
         user_manager: UserManager,
@@ -86,50 +131,7 @@ impl VoiceUdpServer {
 
         loop {
             match self.listener.accept().await {
-                Ok((conn, remote_addr)) => {
-                    // Fold IPv4-mapped IPv6 to IPv4 so lookup keys match the
-                    // form the TCP path registered (it normalizes at accept too).
-                    let remote_addr = normalize_socket_addr(remote_addr);
-                    // Ban check before processing; trust bypasses ban.
-                    let should_allow = self.ip_rule_cache.should_allow(remote_addr.ip()).await;
-
-                    if !should_allow {
-                        debug!(ip = %remote_addr.ip(), "{}", LOG_VOICE_REJECTED_BANNED);
-                        let _ = conn.close().await;
-                        continue;
-                    }
-
-                    // Per-IP voice connection cap (shares the BBS limit value,
-                    // counted separately). Authorization is the per-packet
-                    // token check; this just bounds concurrent connections.
-                    let Some(voice_guard) =
-                        self.connection_tracker.try_acquire_voice(remote_addr.ip())
-                    else {
-                        debug!(ip = %remote_addr.ip(), "{}", LOG_VOICE_REJECTED_LIMIT);
-                        let _ = conn.close().await;
-                        continue;
-                    };
-
-                    debug!(ip = %remote_addr, "{}", LOG_VOICE_NEW_CONNECTION);
-
-                    let client = Arc::new(RwLock::new(DtlsClient {
-                        conn: conn.clone(),
-                        addr: remote_addr,
-                        last_packet: Instant::now(),
-                    }));
-
-                    {
-                        let mut clients = self.clients.write().await;
-                        clients.insert(remote_addr, client.clone());
-                    }
-
-                    let server = self.clone();
-                    tokio::spawn(async move {
-                        // Held for the connection's lifetime; releases the slot on drop.
-                        let _voice_guard = voice_guard;
-                        server.handle_connection(client, remote_addr).await;
-                    });
-                }
+                Ok(pending) => self.handle_pending_connection(pending).await,
                 Err(e) => {
                     warn!(err = %e, "{}", LOG_VOICE_ACCEPT_ERROR);
                 }
@@ -137,74 +139,155 @@ impl VoiceUdpServer {
         }
     }
 
-    async fn handle_connection(&self, client: Arc<RwLock<DtlsClient>>, remote_addr: SocketAddr) {
+    async fn handle_pending_connection(self: &Arc<Self>, pending: PendingVoiceConnection) {
+        // Fold IPv4-mapped IPv6 to IPv4 so lookup keys match the form the TCP
+        // path registered (it normalizes at accept too).
+        let remote_addr = normalize_socket_addr(pending.remote_addr());
+        let should_allow = self.ip_rule_cache.should_allow(remote_addr.ip()).await;
+
+        if !should_allow {
+            debug!(ip = %remote_addr.ip(), "{}", LOG_VOICE_REJECTED_BANNED);
+            pending.close().await;
+            return;
+        }
+
+        // Count pending handshakes against the voice per-IP cap so a peer
+        // cannot bypass the limit by never completing DTLS.
+        let Some(voice_guard) = self.connection_tracker.try_acquire_voice(remote_addr.ip()) else {
+            debug!(ip = %remote_addr.ip(), "{}", LOG_VOICE_REJECTED_LIMIT);
+            pending.close().await;
+            return;
+        };
+
+        let server = self.clone();
+        let dtls_config = self.listener.dtls_config();
+        tokio::spawn(async move {
+            server
+                .complete_pending_handshake(pending, remote_addr, voice_guard, dtls_config)
+                .await;
+        });
+    }
+
+    async fn complete_pending_handshake(
+        self: Arc<Self>,
+        pending: PendingVoiceConnection,
+        remote_addr: SocketAddr,
+        voice_guard: VoiceGuard,
+        dtls_config: DtlsConfig,
+    ) {
+        let (dtls_raw_conn, raw_conn, pending_permit) = pending.into_parts();
+
+        let handshake_result = tokio::time::timeout(
+            Duration::from_secs(DTLS_HANDSHAKE_TIMEOUT_SECS),
+            DTLSConn::new(dtls_raw_conn, dtls_config, false, None),
+        )
+        .await;
+
+        drop(pending_permit);
+
+        match handshake_result {
+            Ok(Ok(dtls_conn)) => {
+                let conn: Arc<dyn Conn + Send + Sync> = Arc::new(dtls_conn);
+                self.register_connection(conn, raw_conn, remote_addr, voice_guard)
+                    .await;
+            }
+            Ok(Err(e)) => {
+                debug!(ip = %remote_addr, err = %e, "{}", LOG_VOICE_HANDSHAKE_FAILED);
+                raw_conn.close().await;
+            }
+            Err(_) => {
+                debug!(ip = %remote_addr, "{}", LOG_VOICE_HANDSHAKE_TIMEOUT);
+                raw_conn.close().await;
+            }
+        }
+    }
+
+    async fn register_connection(
+        self: Arc<Self>,
+        conn: Arc<dyn Conn + Send + Sync>,
+        raw_conn: VoiceUdpConnHandle,
+        remote_addr: SocketAddr,
+        voice_guard: VoiceGuard,
+    ) {
+        debug!(ip = %remote_addr, "{}", LOG_VOICE_NEW_CONNECTION);
+
+        let client = Arc::new(DtlsClient::new(conn, raw_conn));
+
+        {
+            let mut clients = self.clients.write().await;
+            clients.insert(remote_addr, client.clone());
+        }
+
+        let server = self.clone();
+        tokio::spawn(async move {
+            // Held for the connection's lifetime; releases the slot on drop.
+            let _voice_guard = voice_guard;
+            server.handle_connection(client, remote_addr).await;
+        });
+    }
+
+    async fn remove_client_if_current(
+        &self,
+        remote_addr: SocketAddr,
+        client: &Arc<DtlsClient>,
+    ) -> Option<Arc<DtlsClient>> {
+        let mut clients = self.clients.write().await;
+        if clients
+            .get(&remote_addr)
+            .is_some_and(|current| Arc::ptr_eq(current, client))
+        {
+            return clients.remove(&remote_addr);
+        }
+
+        None
+    }
+
+    async fn handle_connection(&self, client: Arc<DtlsClient>, remote_addr: SocketAddr) {
         let mut buf = vec![0u8; MAX_VOICE_PACKET_SIZE + 100]; // Extra for DTLS overhead
+        let (conn, raw_conn) = client.connection_handles();
 
         loop {
-            let conn = {
-                let client_guard = client.read().await;
-                client_guard.conn.clone()
-            };
-
-            let read_result = tokio::time::timeout(
-                Duration::from_secs(VOICE_SESSION_TIMEOUT_SECS),
-                conn.recv(&mut buf),
-            )
-            .await;
-
-            match read_result {
-                Ok(Ok(len)) if len > 0 => {
-                    let packet_data = buf[..len].to_vec();
-                    if !self.handle_packet(&client, &packet_data).await {
+            match conn.recv(&mut buf).await {
+                Ok(len) if len > 0 => {
+                    if !self.handle_packet(&client, remote_addr, &buf[..len]).await {
                         break; // Session gone
                     }
                 }
-                Ok(Ok(_)) => {
+                Ok(_) => {
                     // Zero-length read = connection closed
                     debug!(ip = %remote_addr, "{}", LOG_VOICE_CONNECTION_CLOSED);
                     break;
                 }
-                Ok(Err(e)) => {
+                Err(e) => {
                     warn!(ip = %remote_addr, err = %e, "{}", LOG_VOICE_READ_ERROR);
-                    break;
-                }
-                Err(_) => {
-                    debug!(ip = %remote_addr, "{}", LOG_VOICE_CONNECTION_TIMEOUT);
                     break;
                 }
             }
         }
 
-        {
-            let mut clients = self.clients.write().await;
-            clients.remove(&remote_addr);
-        }
-
-        let conn = {
-            let client_guard = client.read().await;
-            client_guard.conn.clone()
-        };
+        self.remove_client_if_current(remote_addr, &client).await;
         let _ = conn.close().await;
+        raw_conn.close().await;
     }
 
     /// Returns `false` if the connection should be closed (session gone).
-    async fn handle_packet(&self, client: &Arc<RwLock<DtlsClient>>, data: &[u8]) -> bool {
-        let Some(packet) = VoicePacket::from_bytes(data) else {
-            let addr = client.read().await.addr;
-            warn!(ip = %addr, "{}", LOG_VOICE_INVALID_PACKET);
+    async fn handle_packet(
+        &self,
+        client: &Arc<DtlsClient>,
+        remote_addr: SocketAddr,
+        data: &[u8],
+    ) -> bool {
+        let Some(packet) = VoicePacketRef::from_bytes(data) else {
+            warn!(ip = %remote_addr, "{}", LOG_VOICE_INVALID_PACKET);
             return true; // Invalid packet, but keep connection
         };
 
-        {
-            let mut client_guard = client.write().await;
-            client_guard.last_packet = Instant::now();
-        }
+        client.mark_packet_received();
 
         // Validate the token on every packet — the session may have been
         // removed via VoiceLeave since the connection opened.
         let Some(session) = self.registry.get_by_token(packet.token).await else {
-            let addr = client.read().await.addr;
-            debug!(ip = %addr, "{}", LOG_VOICE_SESSION_NOT_FOUND);
+            debug!(ip = %remote_addr, "{}", LOG_VOICE_SESSION_NOT_FOUND);
             return false; // Session gone, close connection
         };
 
@@ -213,8 +296,7 @@ impl VoiceUdpServer {
         let session_id = session.session_id;
 
         if session.udp_addr.is_none() {
-            let addr = client.read().await.addr;
-            self.registry.set_udp_addr(packet.token, addr).await;
+            self.registry.set_udp_addr(packet.token, remote_addr).await;
         }
 
         // Update idle tracking only on speaking transitions, not every 10ms
@@ -228,9 +310,8 @@ impl VoiceUdpServer {
 
         match packet.msg_type {
             VoiceMessageType::Keepalive => {
-                // last_packet already bumped above; nothing else to do
-                let addr = client.read().await.addr;
-                debug!(user = %sender_nickname, ip = %addr, "{}", LOG_VOICE_KEEPALIVE);
+                // Idle timestamp already bumped above; nothing else to do.
+                debug!(user = %sender_nickname, ip = %remote_addr, "{}", LOG_VOICE_KEEPALIVE);
             }
             VoiceMessageType::VoiceData
             | VoiceMessageType::SpeakingStarted
@@ -259,63 +340,78 @@ impl VoiceUdpServer {
     }
 
     /// Relay a voice packet to the other participants in the same session.
-    async fn relay_packet(&self, packet: &VoicePacket, sender_nickname: &str, target_key: &str) {
+    async fn relay_packet(
+        &self,
+        packet: &VoicePacketRef<'_>,
+        sender_nickname: &str,
+        target_key: &str,
+    ) {
+        let relayed_bytes = RelayedVoicePacket::to_bytes_from_voice_packet(packet, sender_nickname);
+        let sender_folded = fold_name(sender_nickname);
         let sessions = self.registry.get_sessions_for_target(target_key).await;
 
-        let relayed = RelayedVoicePacket::from_voice_packet(packet, sender_nickname.to_string());
-        let relayed_bytes = relayed.to_bytes();
+        let targets = {
+            let clients = self.clients.read().await;
+            sessions
+                .into_iter()
+                .filter_map(|session| {
+                    // Never echo back to the sender
+                    if fold_name(&session.nickname) == sender_folded {
+                        return None;
+                    }
 
-        let clients = self.clients.read().await;
+                    let udp_addr = session.udp_addr?;
+                    clients
+                        .get(&udp_addr)
+                        .map(|client| (session.nickname, udp_addr, client.clone()))
+                })
+                .collect::<Vec<_>>()
+        };
 
-        for session in sessions {
-            // Never echo back to the sender
-            if fold_name(&session.nickname) == fold_name(sender_nickname) {
-                continue;
-            }
+        for (nickname, udp_addr, client) in targets {
+            let conn = client.conn.clone();
 
-            if let Some(udp_addr) = session.udp_addr
-                && let Some(client) = clients.get(&udp_addr)
-            {
-                let conn = {
-                    let client_guard = client.read().await;
-                    client_guard.conn.clone()
-                };
-
-                if let Err(e) = conn.send(&relayed_bytes).await {
-                    error!(user = %session.nickname, ip = %udp_addr, err = %e, "{}", LOG_VOICE_RELAY_FAILED);
-                }
+            if let Err(e) = conn.send(&relayed_bytes).await {
+                error!(user = %nickname, ip = %udp_addr, err = %e, "{}", LOG_VOICE_RELAY_FAILED);
             }
         }
     }
 
     async fn cleanup_loop(&self) {
         let check_interval = Duration::from_secs(STALE_CLIENT_CHECK_INTERVAL_SECS);
-        let timeout = Duration::from_secs(VOICE_SESSION_TIMEOUT_SECS);
 
         loop {
             tokio::time::sleep(check_interval).await;
 
-            let now = Instant::now();
-            let mut clients = self.clients.write().await;
+            let now_millis = voice_idle_now_millis();
+            let timeout_millis = VOICE_SESSION_TIMEOUT_SECS.saturating_mul(MILLIS_PER_SECOND);
 
-            let mut timed_out_addrs = Vec::new();
-            for (addr, client) in clients.iter() {
-                let client_guard = client.read().await;
-                if now.duration_since(client_guard.last_packet) > timeout {
-                    timed_out_addrs.push(*addr);
+            let clients_snapshot = {
+                let clients = self.clients.read().await;
+                clients
+                    .iter()
+                    .map(|(addr, client)| (*addr, client.clone()))
+                    .collect::<Vec<_>>()
+            };
+
+            let mut timed_out_candidates = Vec::new();
+            for (addr, client) in clients_snapshot {
+                if client.is_idle(now_millis, timeout_millis) {
+                    timed_out_candidates.push((addr, client));
                 }
             }
 
-            for addr in timed_out_addrs {
-                if let Some(client) = clients.remove(&addr) {
-                    let client_guard = client.read().await;
-                    debug!(ip = %addr, "{}", LOG_VOICE_CLEANUP_TIMEOUT);
-                    let _ = client_guard.conn.close().await;
-                }
+            for (addr, client) in timed_out_candidates {
+                let Some(client) = self.remove_client_if_current(addr, &client).await else {
+                    continue;
+                };
+
+                let (conn, raw_conn) = client.connection_handles();
+
+                debug!(ip = %addr, "{}", LOG_VOICE_CLEANUP_TIMEOUT);
+                let _ = conn.close().await;
+                raw_conn.close().await;
             }
-            // Release the UDP client map before the stale-token reap, which only touches
-            // the registry — and so it isn't held across read_user_state below.
-            drop(clients);
 
             // Reap sessions that joined via TCP but never established UDP
             // (e.g. DTLS handshake blocked by a firewall).
@@ -354,19 +450,27 @@ impl VoiceUdpServer {
     }
 }
 
+fn voice_idle_now_millis() -> u64 {
+    let elapsed = VOICE_IDLE_CLOCK_START.get_or_init(Instant::now).elapsed();
+    u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
+}
+
 /// Create a DTLS listener for voice traffic, bound to `addr` (same IP as TCP).
 pub async fn create_voice_listener(
     addr: SocketAddr,
     cert_path: &Path,
     key_path: &Path,
-) -> Result<Arc<dyn Listener + Send + Sync>, String> {
+) -> Result<VoiceListener, String> {
     let config = load_dtls_config(cert_path, key_path)?;
 
-    let listener = listen(addr, config)
+    let demux = VoiceUdpListener::bind(addr)
         .await
         .map_err(|e| format!("{}{}: {}", ERR_VOICE_DTLS_LISTENER_PREFIX, addr, e))?;
 
-    Ok(Arc::new(listener))
+    Ok(VoiceListener {
+        demux,
+        dtls_config: config,
+    })
 }
 
 /// Load DTLS config; uses the same certificate as the TCP/TLS server.

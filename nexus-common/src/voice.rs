@@ -237,6 +237,43 @@ impl VoicePacket {
     ///
     /// Returns `None` if the packet is malformed or too short.
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let packet = VoicePacketRef::from_bytes(bytes)?;
+
+        Some(Self {
+            msg_type: packet.msg_type,
+            token: packet.token,
+            sequence: packet.sequence,
+            timestamp: packet.timestamp,
+            payload: packet.payload.to_vec(),
+        })
+    }
+
+    /// Get the total packet size in bytes
+    pub fn size(&self) -> usize {
+        VOICE_HEADER_SIZE + self.payload.len()
+    }
+}
+
+/// Borrowed view of a voice packet sent over UDP/DTLS (client → server).
+#[derive(Debug, Clone, Copy)]
+pub struct VoicePacketRef<'a> {
+    /// Message type
+    pub msg_type: VoiceMessageType,
+    /// Authentication token (from VoiceJoinResponse)
+    pub token: Uuid,
+    /// Sequence number for ordering and loss detection
+    pub sequence: u32,
+    /// Timestamp in samples (48kHz) for synchronization
+    pub timestamp: u32,
+    /// Opus-encoded audio data (empty for non-audio messages)
+    pub payload: &'a [u8],
+}
+
+impl<'a> VoicePacketRef<'a> {
+    /// Deserialize a borrowed packet view from bytes.
+    ///
+    /// Returns `None` if the packet is malformed or too short.
+    pub fn from_bytes(bytes: &'a [u8]) -> Option<Self> {
         if bytes.len() < VOICE_HEADER_SIZE {
             return None;
         }
@@ -257,15 +294,12 @@ impl VoicePacket {
         // Timestamp (4 bytes)
         let timestamp = u32::from_be_bytes([bytes[21], bytes[22], bytes[23], bytes[24]]);
 
-        // Payload (remaining bytes)
-        let payload = bytes[VOICE_HEADER_SIZE..].to_vec();
-
         Some(Self {
             msg_type,
             token,
             sequence,
             timestamp,
-            payload,
+            payload: &bytes[VOICE_HEADER_SIZE..],
         })
     }
 
@@ -325,15 +359,42 @@ impl RelayedVoicePacket {
         }
     }
 
+    /// Serialize a borrowed voice packet directly into the relayed wire format.
+    pub fn to_bytes_from_voice_packet(packet: &VoicePacketRef<'_>, sender: &str) -> Vec<u8> {
+        Self::to_bytes_from_parts(
+            packet.msg_type,
+            sender,
+            packet.sequence,
+            packet.timestamp,
+            packet.payload,
+        )
+    }
+
     /// Serialize the relayed packet to bytes
     pub fn to_bytes(&self) -> Vec<u8> {
-        let sender_bytes = self.sender.as_bytes();
+        Self::to_bytes_from_parts(
+            self.msg_type,
+            &self.sender,
+            self.sequence,
+            self.timestamp,
+            &self.payload,
+        )
+    }
+
+    fn to_bytes_from_parts(
+        msg_type: VoiceMessageType,
+        sender: &str,
+        sequence: u32,
+        timestamp: u32,
+        payload: &[u8],
+    ) -> Vec<u8> {
+        let sender_bytes = sender.as_bytes();
         let sender_len = sender_bytes.len().min(Self::MAX_SENDER_LEN) as u8;
 
-        let mut bytes = Vec::with_capacity(2 + sender_len as usize + 8 + self.payload.len());
+        let mut bytes = Vec::with_capacity(2 + sender_len as usize + 8 + payload.len());
 
         // Message type (1 byte)
-        bytes.push(self.msg_type.to_byte());
+        bytes.push(msg_type.to_byte());
 
         // Sender length (1 byte)
         bytes.push(sender_len);
@@ -342,13 +403,13 @@ impl RelayedVoicePacket {
         bytes.extend_from_slice(&sender_bytes[..sender_len as usize]);
 
         // Sequence number (4 bytes, big-endian)
-        bytes.extend_from_slice(&self.sequence.to_be_bytes());
+        bytes.extend_from_slice(&sequence.to_be_bytes());
 
         // Timestamp (4 bytes, big-endian)
-        bytes.extend_from_slice(&self.timestamp.to_be_bytes());
+        bytes.extend_from_slice(&timestamp.to_be_bytes());
 
         // Payload
-        bytes.extend_from_slice(&self.payload);
+        bytes.extend_from_slice(payload);
 
         bytes
     }
@@ -450,6 +511,25 @@ mod tests {
         assert_eq!(decoded.sequence, 42);
         assert_eq!(decoded.timestamp, 12345);
         assert_eq!(decoded.payload, vec![1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn test_voice_packet_ref_borrows_payload() {
+        let token = Uuid::new_v4();
+        let packet = VoicePacket::voice_data(token, 42, 12345, vec![1, 2, 3, 4, 5]);
+
+        let bytes = packet.to_bytes();
+        let decoded = VoicePacketRef::from_bytes(&bytes).expect("should decode");
+
+        assert_eq!(decoded.msg_type, VoiceMessageType::VoiceData);
+        assert_eq!(decoded.token, token);
+        assert_eq!(decoded.sequence, 42);
+        assert_eq!(decoded.timestamp, 12345);
+        assert_eq!(decoded.payload, &[1, 2, 3, 4, 5]);
+        assert_eq!(
+            decoded.payload.as_ptr(),
+            bytes[VOICE_HEADER_SIZE..].as_ptr()
+        );
     }
 
     #[test]
@@ -602,6 +682,22 @@ mod tests {
         assert_eq!(relayed.sequence, 10);
         assert_eq!(relayed.timestamp, 20);
         assert_eq!(relayed.payload, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_relayed_bytes_from_voice_packet_ref() {
+        let token = Uuid::new_v4();
+        let voice_packet = VoicePacket::voice_data(token, 10, 20, vec![1, 2, 3]);
+        let voice_packet_bytes = voice_packet.to_bytes();
+        let voice_packet_ref =
+            VoicePacketRef::from_bytes(&voice_packet_bytes).expect("should decode");
+
+        let owned_bytes =
+            RelayedVoicePacket::from_voice_packet(&voice_packet, "sender".to_string()).to_bytes();
+        let borrowed_bytes =
+            RelayedVoicePacket::to_bytes_from_voice_packet(&voice_packet_ref, "sender");
+
+        assert_eq!(borrowed_bytes, owned_bytes);
     }
 
     #[test]

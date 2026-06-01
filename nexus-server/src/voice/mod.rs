@@ -4,6 +4,7 @@
 //! Rules: one voice session per user on this server; channel voice requires
 //! channel membership; user message voice requires the target user online.
 
+mod demux;
 mod registry;
 mod session;
 mod udp;

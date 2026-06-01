@@ -230,6 +230,10 @@ pub const ERR_BAN_TX_LOCK_POISONED: &str = "ban_tx lock poisoned";
 pub const ERR_CONNECTION_TRACKER_LOCK: &str = "connection tracker lock";
 pub const ERR_TRANSFER_TRACKER_LOCK: &str = "transfer tracker lock";
 pub const ERR_VOICE_TRACKER_LOCK: &str = "voice tracker lock";
+pub const ERR_VOICE_DEMUX_ACCEPT_TX_LOCK: &str = "voice UDP demux accept tx lock";
+pub const ERR_VOICE_DEMUX_CHILDREN_LOCK: &str = "voice UDP demux children lock";
+pub const ERR_VOICE_DEMUX_READ_TASK_LOCK: &str = "voice UDP demux read task lock";
+pub const ERR_VOICE_UDP_CHILD_TX_LOCK: &str = "voice UDP child tx lock";
 
 /// expect() message — `duration_since(UNIX_EPOCH)` failed (clock set before 1970).
 /// Used wherever the daemon derives a Unix-epoch timestamp; the daemon can't
@@ -405,9 +409,10 @@ pub const LOG_VOICE_REJECTED_BANNED: &str = "Voice DTLS: rejected banned IP";
 pub const LOG_VOICE_REJECTED_LIMIT: &str = "Voice DTLS: rejected, per-IP voice limit reached";
 pub const LOG_VOICE_NEW_CONNECTION: &str = "Voice DTLS: new connection";
 pub const LOG_VOICE_ACCEPT_ERROR: &str = "Voice DTLS: accept error";
+pub const LOG_VOICE_HANDSHAKE_FAILED: &str = "Voice DTLS: handshake failed";
+pub const LOG_VOICE_HANDSHAKE_TIMEOUT: &str = "Voice DTLS: handshake timeout";
 pub const LOG_VOICE_CONNECTION_CLOSED: &str = "Voice DTLS: connection closed";
 pub const LOG_VOICE_READ_ERROR: &str = "Voice DTLS: read error";
-pub const LOG_VOICE_CONNECTION_TIMEOUT: &str = "Voice DTLS: connection timeout";
 pub const LOG_VOICE_INVALID_PACKET: &str = "Voice DTLS: invalid packet";
 pub const LOG_VOICE_SESSION_NOT_FOUND: &str = "Voice DTLS: session not found, closing connection";
 pub const LOG_VOICE_KEEPALIVE: &str = "Voice DTLS: keepalive";

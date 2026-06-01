@@ -4754,6 +4754,7 @@ name = "nexus-server"
 version = "0.8.4"
 dependencies = [
  "argon2",
+ "async-trait",
  "chrono",
  "clap",
  "csv",
