@@ -2,7 +2,6 @@
 
 use iced::Task;
 use nexus_common::names::fold_name;
-use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, ChannelError};
 
 use crate::NexusApp;
@@ -72,34 +71,5 @@ pub fn execute(
         );
     }
 
-    // Check if we already have a pending leave request for this channel
-    if conn
-        .pending_channel_leave
-        .as_ref()
-        .is_some_and(|c| fold_name(c) == channel_lower)
-    {
-        return app.add_active_tab_message(
-            connection_id,
-            ChatMessage::error(t("err-leave-already-pending")),
-        );
-    }
-
-    // Set pending leave state
-    conn.pending_channel_leave = Some(channel.clone());
-
-    // Send ChatLeave message to server
-    let msg = ClientMessage::ChatLeave {
-        channel: channel.clone(),
-    };
-
-    if let Err(e) = conn.send(msg) {
-        // Clear pending state on send error
-        if let Some(conn) = app.connections.get_mut(&connection_id) {
-            conn.pending_channel_leave = None;
-        }
-        let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-        return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
-    }
-
-    Task::none()
+    app.send_chat_leave_once(connection_id, channel)
 }

@@ -1,7 +1,6 @@
 //! /window command implementation - manage chat tabs
 
 use iced::Task;
-use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
 use crate::i18n::{t, t_args};
@@ -119,16 +118,7 @@ fn close_current_tab(app: &mut NexusApp, connection_id: usize) -> Task<Message> 
             connection_id,
             ChatMessage::error(t("cmd-window-close-console")),
         ),
-        ChatTab::Channel(channel) => {
-            // Send ChatLeave to server - tab will close on successful response
-            let msg = ClientMessage::ChatLeave {
-                channel: channel.clone(),
-            };
-            if let Err(e) = conn.send(msg) {
-                return app.add_active_tab_message(connection_id, ChatMessage::error(e));
-            }
-            Task::none()
-        }
+        ChatTab::Channel(channel) => app.send_chat_leave_once(connection_id, channel.clone()),
         ChatTab::UserMessage(nickname) => {
             Task::done(Message::CloseUserMessageTab(nickname.clone()))
         }

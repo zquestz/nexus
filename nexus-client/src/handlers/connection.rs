@@ -445,32 +445,47 @@ impl NexusApp {
         let Some(conn_id) = self.active_connection else {
             return Task::none();
         };
-        let Some(conn) = self.connections.get_mut(&conn_id) else {
-            return Task::none();
+        self.send_chat_leave_once(conn_id, channel)
+    }
+
+    pub(crate) fn send_chat_leave_once(
+        &mut self,
+        connection_id: usize,
+        channel: String,
+    ) -> Task<Message> {
+        enum SendOutcome {
+            MissingConnection,
+            Pending,
+            Sent,
+            Failed(String),
+        }
+
+        let outcome = match self.connections.get_mut(&connection_id) {
+            Some(conn) if conn.pending_channel_leave.is_some() => SendOutcome::Pending,
+            Some(conn) => {
+                conn.pending_channel_leave = Some(channel.clone());
+                match conn.send(ClientMessage::ChatLeave { channel }) {
+                    Ok(_) => SendOutcome::Sent,
+                    Err(e) => {
+                        conn.pending_channel_leave = None;
+                        SendOutcome::Failed(e)
+                    }
+                }
+            }
+            None => SendOutcome::MissingConnection,
         };
 
-        // Prevent double-send
-        if conn.pending_channel_leave.is_some() {
-            return self.add_active_tab_message(
-                conn_id,
+        match outcome {
+            SendOutcome::MissingConnection | SendOutcome::Sent => Task::none(),
+            SendOutcome::Pending => self.add_active_tab_message(
+                connection_id,
                 ChatMessage::error(t("err-leave-already-pending")),
-            );
+            ),
+            SendOutcome::Failed(error) => {
+                let error_msg = t_args("err-failed-send-message", &[("error", &error)]);
+                self.add_active_tab_message(connection_id, ChatMessage::error(error_msg))
+            }
         }
-
-        // Send ChatLeave to server
-        let msg = ClientMessage::ChatLeave {
-            channel: channel.clone(),
-        };
-
-        if let Err(e) = conn.send(msg) {
-            let error_msg = t_args("err-failed-send-message", &[("error", &e.to_string())]);
-            return self.add_active_tab_message(conn_id, ChatMessage::error(error_msg));
-        }
-
-        // Track pending leave
-        conn.pending_channel_leave = Some(channel);
-
-        Task::none()
     }
 
     /// Close a user message tab
@@ -843,4 +858,112 @@ fn validate_connection_form(
         );
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use nexus_common::framing::MessageId;
+    use nexus_common::validators::PasswordStrength;
+    use tokio::sync::{Mutex, mpsc};
+
+    use super::*;
+    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
+
+    fn test_connection_with_receiver(
+        connection_id: usize,
+    ) -> (
+        ServerConnection,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let conn = ServerConnection::new(ServerConnectionParams {
+            bookmark_id: None,
+            user_id: None,
+            nickname: "me".to_string(),
+            connection_info: ConnectionInfo {
+                server_name: String::new(),
+                address: String::new(),
+                port: 0,
+                transfer_port: 0,
+                certificate_fingerprint: String::new(),
+                username: "me".to_string(),
+                password: String::new(),
+                nickname: "me".to_string(),
+            },
+            display_name: String::new(),
+            connection_id,
+            is_admin: false,
+            permissions: Vec::new(),
+            server_name: None,
+            server_description: None,
+            public_address: None,
+            server_version: None,
+            server_image: String::new(),
+            cached_server_image: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            max_connections_per_ip: None,
+            max_outbound_rate: None,
+            max_transfers_per_ip: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Weak,
+            log_level: None,
+            scheduler_chunk_size: None,
+            tx,
+            shutdown_handle: Arc::new(Mutex::new(None)),
+        });
+        (conn, rx)
+    }
+
+    fn expect_chat_leave(
+        rx: &mut mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+        expected_channel: &str,
+    ) {
+        match rx.try_recv() {
+            Ok((_, ClientMessage::ChatLeave { channel })) => {
+                assert_eq!(channel, expected_channel);
+            }
+            other => panic!("expected ChatLeave, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn send_chat_leave_once_blocks_duplicate_while_pending() {
+        let mut app = NexusApp::default();
+        let (conn, mut rx) = test_connection_with_receiver(1);
+        app.connections.insert(1, conn);
+
+        let _ = app.send_chat_leave_once(1, "#general".to_string());
+        expect_chat_leave(&mut rx, "#general");
+        assert_eq!(
+            app.connections[&1].pending_channel_leave,
+            Some("#general".to_string())
+        );
+
+        let _ = app.send_chat_leave_once(1, "#random".to_string());
+
+        assert!(rx.try_recv().is_err());
+        assert_eq!(
+            app.connections[&1].pending_channel_leave,
+            Some("#general".to_string())
+        );
+        assert_eq!(app.connections[&1].console_messages.len(), 1);
+    }
+
+    #[test]
+    fn send_chat_leave_once_rolls_back_pending_on_send_failure() {
+        let mut app = NexusApp::default();
+        let (conn, rx) = test_connection_with_receiver(1);
+        drop(rx);
+        app.connections.insert(1, conn);
+
+        let _ = app.send_chat_leave_once(1, "#general".to_string());
+
+        assert_eq!(app.connections[&1].pending_channel_leave, None);
+        assert_eq!(app.connections[&1].console_messages.len(), 1);
+    }
 }
