@@ -2,6 +2,7 @@
 
 use iced::Task;
 use iced::widget::{Id, operation, scrollable};
+use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 use nexus_common::validators::{self, MessageError};
 
@@ -464,7 +465,9 @@ impl NexusApp {
             Some(conn) if conn.pending_channel_leave.is_some() => SendOutcome::Pending,
             Some(conn) => {
                 conn.pending_channel_leave = Some(channel.clone());
-                match conn.send(ClientMessage::ChatLeave { channel }) {
+                match conn.send(ClientMessage::ChatLeave {
+                    channel: channel.clone(),
+                }) {
                     Ok(_) => SendOutcome::Sent,
                     Err(e) => {
                         conn.pending_channel_leave = None;
@@ -476,7 +479,11 @@ impl NexusApp {
         };
 
         match outcome {
-            SendOutcome::MissingConnection | SendOutcome::Sent => Task::none(),
+            SendOutcome::MissingConnection => Task::none(),
+            SendOutcome::Sent => {
+                self.mark_matching_channel_voice_left(connection_id, &channel);
+                Task::none()
+            }
             SendOutcome::Pending => self.add_active_tab_message(
                 connection_id,
                 ChatMessage::error(t("err-leave-already-pending")),
@@ -485,6 +492,18 @@ impl NexusApp {
                 let error_msg = t_args("err-failed-send-message", &[("error", &error)]);
                 self.add_active_tab_message(connection_id, ChatMessage::error(error_msg))
             }
+        }
+    }
+
+    fn mark_matching_channel_voice_left(&mut self, connection_id: usize, channel: &str) {
+        if let Some(session) = self
+            .connections
+            .get_mut(&connection_id)
+            .and_then(|conn| conn.voice_session.as_mut())
+            && session.target.starts_with('#')
+            && fold_name(&session.target) == fold_name(channel)
+        {
+            session.leave_sent = true;
         }
     }
 
@@ -867,9 +886,10 @@ mod tests {
     use nexus_common::framing::MessageId;
     use nexus_common::validators::PasswordStrength;
     use tokio::sync::{Mutex, mpsc};
+    use uuid::Uuid;
 
     use super::*;
-    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
+    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams, VoiceState};
 
     fn test_connection_with_receiver(
         connection_id: usize,
@@ -965,5 +985,45 @@ mod tests {
 
         assert_eq!(app.connections[&1].pending_channel_leave, None);
         assert_eq!(app.connections[&1].console_messages.len(), 1);
+    }
+
+    #[test]
+    fn send_chat_leave_once_marks_matching_channel_voice_left_without_voice_leave() {
+        let mut app = NexusApp::default();
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        let token = Uuid::new_v4();
+        conn.voice_session = Some(VoiceState::new_with_token(
+            "#general".to_string(),
+            vec!["me".to_string()],
+            token,
+        ));
+        app.active_voice_connection = Some(1);
+        app.connections.insert(1, conn);
+
+        let _ = app.send_chat_leave_once(1, "#General".to_string());
+
+        expect_chat_leave(&mut rx, "#General");
+        assert!(rx.try_recv().is_err());
+        assert_eq!(app.active_voice_connection, Some(1));
+        assert!(
+            app.connections[&1]
+                .voice_session
+                .as_ref()
+                .is_some_and(|session| session.leave_sent)
+        );
+
+        let _ = app.handle_voice_address_resolved(
+            1,
+            token,
+            Ok(Some("127.0.0.1:7500".parse().unwrap())),
+        );
+
+        assert!(app.voice_session_handle.is_none());
+        assert!(app.connections[&1].voice_session.is_some());
+
+        let _ = app.handle_voice_user_left(1, "me".to_string(), "#general".to_string());
+
+        assert!(app.connections[&1].voice_session.is_none());
+        assert_eq!(app.active_voice_connection, None);
     }
 }
