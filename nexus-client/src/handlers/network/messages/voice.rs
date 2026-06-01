@@ -58,9 +58,20 @@ impl NexusApp {
         error: Option<String>,
     ) -> Task<Message> {
         if !success {
-            // Clear the placeholder voice session on failure
-            if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.voice_session = None;
+            let should_report = if let Some(conn) = self.connections.get_mut(&connection_id) {
+                match conn.voice_session.as_ref() {
+                    Some(session) if session.token.is_none() => {
+                        conn.voice_session = None;
+                        true
+                    }
+                    _ => false,
+                }
+            } else {
+                false
+            };
+
+            if !should_report {
+                return Task::none();
             }
 
             let error_msg = error.unwrap_or_else(|| t("err-unknown"));
@@ -71,10 +82,22 @@ impl NexusApp {
         }
 
         let Some(token) = token else {
-            // Clear the placeholder voice session - no token means failure
-            if let Some(conn) = self.connections.get_mut(&connection_id) {
-                conn.voice_session = None;
+            let should_report = if let Some(conn) = self.connections.get_mut(&connection_id) {
+                match conn.voice_session.as_ref() {
+                    Some(session) if session.token.is_none() => {
+                        conn.voice_session = None;
+                        true
+                    }
+                    _ => false,
+                }
+            } else {
+                false
+            };
+
+            if !should_report {
+                return Task::none();
             }
+
             return self.add_active_tab_message(
                 connection_id,
                 ChatMessage::error(t("err-voice-no-token")),
@@ -602,6 +625,34 @@ mod tests {
         assert_eq!(session.token, None);
         assert!(session.leave_sent);
         assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn stale_voice_join_failure_does_not_clear_accepted_session() {
+        let mut app = NexusApp::default();
+        let (mut conn, _rx) = test_connection_with_receiver(1, "me", "#general");
+        let token = Uuid::new_v4();
+        conn.voice_session = Some(VoiceState::new_with_token(
+            "#general".to_string(),
+            vec!["me".to_string()],
+            token,
+        ));
+        app.active_voice_connection = Some(1);
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_voice_join_response(
+            1,
+            false,
+            None,
+            None,
+            None,
+            Some("already joined".to_string()),
+        );
+
+        let session = app.connections[&1].voice_session.as_ref().unwrap();
+        assert_eq!(session.token, Some(token));
+        assert_eq!(app.active_voice_connection, Some(1));
+        assert!(app.connections[&1].console_messages.is_empty());
     }
 
     #[test]

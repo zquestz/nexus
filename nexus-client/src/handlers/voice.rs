@@ -42,11 +42,16 @@ impl NexusApp {
             return Task::none();
         };
 
-        // Check if we already have a voice session on another connection
-        if let Some(active_voice_conn) = self.active_voice_connection
-            && active_voice_conn != connection_id
-        {
-            // Show error - can only have one voice session at a time
+        let existing_voice_connection = self
+            .connections
+            .iter()
+            .find_map(|(id, conn)| conn.voice_session.is_some().then_some(*id));
+
+        if let Some(existing_connection_id) = existing_voice_connection {
+            if existing_connection_id == connection_id {
+                return Task::none();
+            }
+
             return self.add_active_tab_message(
                 connection_id,
                 ChatMessage::error(t("err-voice-already-active")),
@@ -500,7 +505,14 @@ impl NexusApp {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use nexus_common::framing::MessageId;
+    use nexus_common::validators::PasswordStrength;
+    use tokio::sync::{Mutex, mpsc};
+
     use super::*;
+    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
 
     fn proxy(enabled: bool, allow_voice_bypass: bool) -> ProxySettings {
         ProxySettings {
@@ -511,6 +523,89 @@ mod tests {
             password: None,
             allow_voice_bypass,
         }
+    }
+
+    fn test_connection_with_receiver(
+        connection_id: usize,
+    ) -> (
+        ServerConnection,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let conn = ServerConnection::new(ServerConnectionParams {
+            bookmark_id: None,
+            user_id: None,
+            nickname: "me".to_string(),
+            connection_info: ConnectionInfo {
+                server_name: String::new(),
+                address: String::new(),
+                port: 0,
+                transfer_port: 0,
+                certificate_fingerprint: String::new(),
+                username: "me".to_string(),
+                password: String::new(),
+                nickname: "me".to_string(),
+            },
+            display_name: String::new(),
+            connection_id,
+            is_admin: false,
+            permissions: Vec::new(),
+            server_name: None,
+            server_description: None,
+            public_address: None,
+            server_version: None,
+            server_image: String::new(),
+            cached_server_image: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            max_connections_per_ip: None,
+            max_outbound_rate: None,
+            max_transfers_per_ip: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Weak,
+            log_level: None,
+            scheduler_chunk_size: None,
+            tx,
+            shutdown_handle: Arc::new(Mutex::new(None)),
+        });
+        (conn, rx)
+    }
+
+    #[test]
+    fn voice_join_pressed_ignores_existing_session_on_same_connection() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.voice_session = Some(VoiceState::new("#general".to_string(), Vec::new()));
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_voice_join_pressed("#general".to_string());
+
+        assert!(rx.try_recv().is_err());
+        assert!(app.connections[&1].voice_session.is_some());
+    }
+
+    #[test]
+    fn voice_join_pressed_blocks_pending_session_on_another_connection() {
+        let mut app = NexusApp {
+            active_connection: Some(2),
+            ..NexusApp::default()
+        };
+        let (mut first_conn, mut first_rx) = test_connection_with_receiver(1);
+        first_conn.voice_session = Some(VoiceState::new("#general".to_string(), Vec::new()));
+        let (second_conn, mut second_rx) = test_connection_with_receiver(2);
+        app.connections.insert(1, first_conn);
+        app.connections.insert(2, second_conn);
+
+        let _ = app.handle_voice_join_pressed("#random".to_string());
+
+        assert!(first_rx.try_recv().is_err());
+        assert!(second_rx.try_recv().is_err());
+        assert_eq!(app.connections[&2].console_messages.len(), 1);
     }
 
     #[test]
