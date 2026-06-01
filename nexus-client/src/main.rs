@@ -1298,17 +1298,9 @@ impl NexusApp {
             Message::VoiceJoinPressed(target) => self.handle_voice_join_pressed(target),
             Message::VoiceAddressResolved {
                 connection_id,
-                target,
-                participants,
                 token,
                 result,
-            } => self.handle_voice_address_resolved(
-                connection_id,
-                target,
-                participants,
-                token,
-                result,
-            ),
+            } => self.handle_voice_address_resolved(connection_id, token, result),
             Message::VoiceLeavePressed => self.handle_voice_leave_pressed(),
             Message::VoiceSessionEvent(connection_id, event) => {
                 self.handle_voice_session_event(connection_id, event)
@@ -1634,8 +1626,12 @@ impl NexusApp {
             ));
         }
 
-        // Subscribe to voice events when in an active voice session
-        if let Some(connection_id) = self.active_voice_connection {
+        // Subscribe to voice events once the voice thread has registered its
+        // receiver. `active_voice_connection` is set at VoiceJoinResponse time,
+        // before DNS/DTLS startup completes.
+        if let Some(connection_id) = self.active_voice_connection
+            && self.voice_session_handle.is_some()
+        {
             subscriptions.push(voice::subscription::voice_event_subscription(connection_id));
 
             // Subscribe to PTT hotkey events when in voice

@@ -95,6 +95,34 @@ impl NexusApp {
             }
         };
 
+        let (server_address, server_port) = {
+            let Some(conn) = self.connections.get_mut(&connection_id) else {
+                return Task::none();
+            };
+
+            if conn
+                .voice_session
+                .as_ref()
+                .is_some_and(|session| session.leave_sent)
+            {
+                return Task::none();
+            }
+
+            conn.voice_session = Some(VoiceState::new_with_token(
+                target.clone(),
+                participants.unwrap_or_default(),
+                token,
+            ));
+
+            (
+                conn.connection_info.address.clone(),
+                conn.connection_info.port,
+            )
+        };
+
+        // Track that this connection has the active voice session
+        self.active_voice_connection = Some(connection_id);
+
         // Emit event for our own join (is_from_self suppresses notification but allows sound)
         emit_event(
             self,
@@ -105,30 +133,10 @@ impl NexusApp {
                 .with_is_from_self(true),
         );
 
-        let Some(conn) = self.connections.get_mut(&connection_id) else {
-            return Task::none();
-        };
-
-        // Create the voice session
-        let participants = participants.unwrap_or_default();
-        conn.voice_session = Some(VoiceState::new_with_token(
-            target.clone(),
-            participants.clone(),
-            token,
-        ));
-
-        // Track that this connection has the active voice session
-        self.active_voice_connection = Some(connection_id);
-
-        let server_address = conn.connection_info.address.clone();
-        let server_port = conn.connection_info.port;
-
         Task::perform(
             resolve_voice_socket_addr(server_address, server_port),
             move |result| Message::VoiceAddressResolved {
                 connection_id,
-                target,
-                participants,
                 token,
                 result,
             },
@@ -138,33 +146,40 @@ impl NexusApp {
     pub fn handle_voice_address_resolved(
         &mut self,
         connection_id: usize,
-        target: String,
-        participants: Vec<String>,
         token: Uuid,
         result: Result<Option<std::net::SocketAddr>, String>,
     ) -> Task<Message> {
-        let Some(conn) = self.connections.get(&connection_id) else {
-            return Task::none();
-        };
+        let participants = {
+            let Some(conn) = self.connections.get(&connection_id) else {
+                return Task::none();
+            };
+            let Some(session) = conn.voice_session.as_ref() else {
+                return Task::none();
+            };
 
-        if self.active_voice_connection != Some(connection_id)
-            || conn
-                .voice_session
-                .as_ref()
-                .is_none_or(|session| session.target != target || session.token != Some(token))
-        {
-            return Task::none();
-        }
+            if self.active_voice_connection != Some(connection_id)
+                || session.token != Some(token)
+                || session.leave_sent
+            {
+                return Task::none();
+            }
+
+            session.participants.clone()
+        };
 
         let socket_addr = match result {
             Ok(Some(addr)) => addr,
             Ok(None) => {
+                let _ = self.send_voice_leave_once(connection_id);
+                self.cleanup_voice_session(connection_id);
                 return self.add_active_tab_message(
                     connection_id,
                     ChatMessage::error(t("err-voice-resolve-address")),
                 );
             }
             Err(e) => {
+                let _ = self.send_voice_leave_once(connection_id);
+                self.cleanup_voice_session(connection_id);
                 return self.add_active_tab_message(
                     connection_id,
                     ChatMessage::error(t_args("err-voice-resolve", &[("error", &e)])),
@@ -459,6 +474,8 @@ impl NexusApp {
 mod tests {
     use std::sync::Arc;
 
+    use nexus_common::framing::MessageId;
+    use nexus_common::protocol::ClientMessage;
     use nexus_common::validators::PasswordStrength;
     use tokio::sync::{Mutex, mpsc};
 
@@ -467,7 +484,18 @@ mod tests {
     use crate::voice::manager::{VoiceCommand, VoiceSessionHandle};
 
     fn test_connection(connection_id: usize, nickname: &str, target: &str) -> ServerConnection {
-        let (tx, _rx) = mpsc::unbounded_channel();
+        test_connection_with_receiver(connection_id, nickname, target).0
+    }
+
+    fn test_connection_with_receiver(
+        connection_id: usize,
+        nickname: &str,
+        target: &str,
+    ) -> (
+        ServerConnection,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
+        let (tx, rx) = mpsc::unbounded_channel();
         let mut conn = ServerConnection::new(ServerConnectionParams {
             bookmark_id: None,
             user_id: None,
@@ -510,7 +538,14 @@ mod tests {
             target.to_string(),
             vec![nickname.to_string()],
         ));
-        conn
+        (conn, rx)
+    }
+
+    fn expect_voice_leave(rx: &mut mpsc::UnboundedReceiver<(MessageId, ClientMessage)>) {
+        match rx.try_recv() {
+            Ok((_, ClientMessage::VoiceLeave)) => {}
+            other => panic!("expected VoiceLeave, got {other:?}"),
+        }
     }
 
     #[test]
@@ -543,5 +578,73 @@ mod tests {
 
         let _ = app.handle_voice_user_left(2, "Bob".to_string(), "#general".to_string());
         assert!(commands.try_recv().is_err());
+    }
+
+    #[test]
+    fn voice_join_response_after_pending_leave_does_not_start_voice() {
+        let mut app = NexusApp::default();
+        let (mut conn, mut rx) = test_connection_with_receiver(1, "me", "#general");
+        conn.voice_session.as_mut().unwrap().leave_sent = true;
+        app.connections.insert(1, conn);
+
+        let token = Uuid::new_v4();
+        let _ = app.handle_voice_join_response(
+            1,
+            true,
+            Some(token),
+            Some("#general".to_string()),
+            Some(vec!["me".to_string()]),
+            None,
+        );
+
+        assert_eq!(app.active_voice_connection, None);
+        let session = app.connections[&1].voice_session.as_ref().unwrap();
+        assert_eq!(session.token, None);
+        assert!(session.leave_sent);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn voice_address_resolve_failure_sends_leave_once_and_cleans_up() {
+        let mut app = NexusApp::default();
+        let (mut conn, mut rx) = test_connection_with_receiver(1, "me", "#general");
+        let token = Uuid::new_v4();
+        conn.voice_session = Some(VoiceState::new_with_token(
+            "#general".to_string(),
+            vec!["me".to_string()],
+            token,
+        ));
+        app.active_voice_connection = Some(1);
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_voice_address_resolved(1, token, Err("resolve failed".to_string()));
+
+        expect_voice_leave(&mut rx);
+        assert!(rx.try_recv().is_err());
+        assert!(app.connections[&1].voice_session.is_none());
+        assert_eq!(app.active_voice_connection, None);
+    }
+
+    #[test]
+    fn voice_address_resolve_after_leave_sent_does_not_send_again() {
+        let mut app = NexusApp::default();
+        let (mut conn, mut rx) = test_connection_with_receiver(1, "me", "#general");
+        let token = Uuid::new_v4();
+        conn.voice_session = Some(VoiceState::new_with_token(
+            "#general".to_string(),
+            vec!["me".to_string()],
+            token,
+        ));
+        app.active_voice_connection = Some(1);
+        app.connections.insert(1, conn);
+
+        assert_eq!(app.send_voice_leave_once(1), Ok(true));
+        expect_voice_leave(&mut rx);
+
+        let _ = app.handle_voice_address_resolved(1, token, Err("resolve failed".to_string()));
+
+        assert!(rx.try_recv().is_err());
+        assert!(app.connections[&1].voice_session.is_some());
+        assert_eq!(app.active_voice_connection, Some(1));
     }
 }

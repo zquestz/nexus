@@ -108,20 +108,18 @@ impl NexusApp {
             return Task::none();
         };
 
-        let Some(conn) = self.connections.get_mut(&connection_id) else {
-            return Task::none();
-        };
-
-        // Check if we're actually in a voice session
-        if conn.voice_session.is_none() {
+        let in_voice = self
+            .connections
+            .get(&connection_id)
+            .is_some_and(|conn| conn.voice_session.is_some());
+        if !in_voice {
             return self.add_active_tab_message(
                 connection_id,
                 ChatMessage::error(t("err-voice-not-in-session")),
             );
         }
 
-        // Send the VoiceLeave request
-        if let Err(e) = conn.send(ClientMessage::VoiceLeave) {
+        if let Err(e) = self.send_voice_leave_once(connection_id) {
             return self.add_active_tab_message(connection_id, ChatMessage::error(e));
         }
 
@@ -271,15 +269,37 @@ impl NexusApp {
     /// Sends VoiceLeave to the server (if still in a session) and cleans up
     /// all local voice state. Safe to call multiple times - only sends once.
     fn leave_voice_session(&mut self, connection_id: usize) {
-        // Send VoiceLeave to server if we still have an active session
-        if let Some(conn) = self.connections.get_mut(&connection_id)
-            && conn.voice_session.is_some()
-        {
-            let _ = conn.send(ClientMessage::VoiceLeave);
-        }
+        let _ = self.send_voice_leave_once(connection_id);
 
         // Clean up local state
         self.cleanup_voice_session(connection_id);
+    }
+
+    pub(crate) fn send_voice_leave_once(&mut self, connection_id: usize) -> Result<bool, String> {
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Ok(false);
+        };
+
+        let should_send = match conn.voice_session.as_mut() {
+            Some(session) if !session.leave_sent => {
+                session.leave_sent = true;
+                true
+            }
+            _ => false,
+        };
+
+        if !should_send {
+            return Ok(false);
+        }
+
+        if let Err(e) = conn.send(ClientMessage::VoiceLeave) {
+            if let Some(session) = conn.voice_session.as_mut() {
+                session.leave_sent = false;
+            }
+            return Err(e);
+        }
+
+        Ok(true)
     }
 
     /// Clean up voice session state (local only, does not notify server)

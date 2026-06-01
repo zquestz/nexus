@@ -31,6 +31,9 @@ pub struct VoiceLeaveInfo {
 pub struct VoiceRegistry {
     sessions: Arc<RwLock<HashMap<Uuid, VoiceSession>>>,
     session_id_to_token: Arc<RwLock<HashMap<u32, Uuid>>>,
+    /// Folded target key → tokens for sessions in that target. Writers update
+    /// this while holding `sessions`, so readers lock `sessions` before this.
+    target_to_tokens: Arc<RwLock<HashMap<String, Vec<Uuid>>>>,
 }
 
 impl VoiceRegistry {
@@ -38,6 +41,7 @@ impl VoiceRegistry {
         Self {
             sessions: Arc::new(RwLock::new(HashMap::new())),
             session_id_to_token: Arc::new(RwLock::new(HashMap::new())),
+            target_to_tokens: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -47,7 +51,7 @@ impl VoiceRegistry {
     pub async fn add(&self, session: VoiceSession) -> Option<AddOutcome> {
         let token = session.token;
         let session_id = session.session_id;
-        let target_key_lower = fold_name(&session.target_key());
+        let target_key = target_index_key(&session);
         let nickname_lower = fold_name(&session.nickname);
 
         let mut sessions = self.sessions.write().await;
@@ -57,13 +61,18 @@ impl VoiceRegistry {
             return None;
         }
 
-        let nickname_already_in_target = sessions.values().any(|s| {
-            fold_name(&s.target_key()) == target_key_lower
-                && fold_name(&s.nickname) == nickname_lower
+        let mut target_to_tokens = self.target_to_tokens.write().await;
+        let nickname_already_in_target = target_to_tokens.get(&target_key).is_some_and(|tokens| {
+            tokens.iter().any(|token| {
+                sessions
+                    .get(token)
+                    .is_some_and(|s| fold_name(&s.nickname) == nickname_lower)
+            })
         });
 
         sessions.insert(token, session);
         id_to_token.insert(session_id, token);
+        target_to_tokens.entry(target_key).or_default().push(token);
 
         Some(AddOutcome {
             token,
@@ -76,9 +85,11 @@ impl VoiceRegistry {
         let session = {
             let mut sessions = self.sessions.write().await;
             let mut id_to_token = self.session_id_to_token.write().await;
+            let mut target_to_tokens = self.target_to_tokens.write().await;
 
             if let Some(session) = sessions.remove(&token) {
                 id_to_token.remove(&session.session_id);
+                remove_from_target_index(&mut target_to_tokens, &session);
                 session
             } else {
                 return None;
@@ -93,10 +104,12 @@ impl VoiceRegistry {
         let session = {
             let mut sessions = self.sessions.write().await;
             let mut id_to_token = self.session_id_to_token.write().await;
+            let mut target_to_tokens = self.target_to_tokens.write().await;
 
             if let Some(token) = id_to_token.remove(&session_id)
                 && let Some(session) = sessions.remove(&token)
             {
+                remove_from_target_index(&mut target_to_tokens, &session);
                 session
             } else {
                 return None;
@@ -183,37 +196,47 @@ impl VoiceRegistry {
         exclude_session_id: Option<u32>,
     ) -> bool {
         let sessions = self.sessions.read().await;
+        let target_to_tokens = self.target_to_tokens.read().await;
         let target_key_lower = fold_name(target_key);
         let nickname_lower = fold_name(nickname);
 
-        sessions.values().any(|s| {
-            fold_name(&s.target_key()) == target_key_lower
-                && fold_name(&s.nickname) == nickname_lower
-                && exclude_session_id != Some(s.session_id)
-        })
+        target_to_tokens
+            .get(&target_key_lower)
+            .is_some_and(|tokens| {
+                tokens.iter().any(|token| {
+                    sessions.get(token).is_some_and(|s| {
+                        fold_name(&s.nickname) == nickname_lower
+                            && exclude_session_id != Some(s.session_id)
+                    })
+                })
+            })
     }
 
     /// Nicknames currently in voice for the given target.
     pub async fn get_participants(&self, target_key: &str) -> Vec<String> {
         let sessions = self.sessions.read().await;
+        let target_to_tokens = self.target_to_tokens.read().await;
         let target_key_lower = fold_name(target_key);
 
-        sessions
-            .values()
-            .filter(|s| fold_name(&s.target_key()) == target_key_lower)
-            .map(|s| s.nickname.clone())
+        target_to_tokens
+            .get(&target_key_lower)
+            .into_iter()
+            .flatten()
+            .filter_map(|token| sessions.get(token).map(|s| s.nickname.clone()))
             .collect()
     }
 
     /// Cloned sessions for the target (for broadcasting voice events).
     pub async fn get_sessions_for_target(&self, target_key: &str) -> Vec<VoiceSession> {
         let sessions = self.sessions.read().await;
+        let target_to_tokens = self.target_to_tokens.read().await;
         let target_key_lower = fold_name(target_key);
 
-        sessions
-            .values()
-            .filter(|s| fold_name(&s.target_key()) == target_key_lower)
-            .cloned()
+        target_to_tokens
+            .get(&target_key_lower)
+            .into_iter()
+            .flatten()
+            .filter_map(|token| sessions.get(token).cloned())
             .collect()
     }
 
@@ -240,6 +263,8 @@ impl VoiceRegistry {
     pub async fn update_nickname(&self, old_nickname: &str, new_nickname: &str) {
         let old_lower = fold_name(old_nickname);
         let mut sessions = self.sessions.write().await;
+        let mut target_to_tokens = self.target_to_tokens.write().await;
+
         for session in sessions.values_mut() {
             if fold_name(&session.nickname) == old_lower {
                 session.nickname = new_nickname.to_string();
@@ -255,6 +280,8 @@ impl VoiceRegistry {
                 session.target.sort_by_key(|a| fold_name(a));
             }
         }
+
+        *target_to_tokens = build_target_index(&sessions);
     }
 
     /// Tokens of sessions that signaled `VoiceJoin` but never opened
@@ -276,6 +303,34 @@ impl VoiceRegistry {
     }
 }
 
+fn target_index_key(session: &VoiceSession) -> String {
+    fold_name(&session.target_key())
+}
+
+fn build_target_index(sessions: &HashMap<Uuid, VoiceSession>) -> HashMap<String, Vec<Uuid>> {
+    let mut target_to_tokens: HashMap<String, Vec<Uuid>> = HashMap::new();
+    for (token, session) in sessions {
+        target_to_tokens
+            .entry(target_index_key(session))
+            .or_default()
+            .push(*token);
+    }
+    target_to_tokens
+}
+
+fn remove_from_target_index(
+    target_to_tokens: &mut HashMap<String, Vec<Uuid>>,
+    session: &VoiceSession,
+) {
+    let target_key = target_index_key(session);
+    if let Some(tokens) = target_to_tokens.get_mut(&target_key) {
+        tokens.retain(|token| *token != session.token);
+        if tokens.is_empty() {
+            target_to_tokens.remove(&target_key);
+        }
+    }
+}
+
 impl Default for VoiceRegistry {
     fn default() -> Self {
         Self::new()
@@ -288,6 +343,15 @@ mod tests {
 
     async fn session_count(registry: &VoiceRegistry) -> usize {
         registry.sessions.read().await.len()
+    }
+
+    async fn indexed_token_count(registry: &VoiceRegistry, target_key: &str) -> usize {
+        registry
+            .target_to_tokens
+            .read()
+            .await
+            .get(&fold_name(target_key))
+            .map_or(0, |tokens| tokens.len())
     }
 
     fn create_test_session(nickname: &str, target: &str, session_id: u32) -> VoiceSession {
@@ -383,6 +447,14 @@ mod tests {
         let participants = registry.get_participants("#general").await;
         assert!(participants.contains(&"zara".to_string()));
         assert!(!participants.contains(&"alice".to_string()));
+
+        // The target index follows the DM re-key: the old target is empty and
+        // the new canonical target finds both sides of the conversation.
+        assert!(registry.get_participants("alice:bob").await.is_empty());
+        let dm_participants = registry.get_participants("bob:zara").await;
+        assert_eq!(dm_participants.len(), 2);
+        assert!(dm_participants.contains(&"zara".to_string()));
+        assert!(dm_participants.contains(&"bob".to_string()));
     }
 
     #[tokio::test]
@@ -421,6 +493,41 @@ mod tests {
 
         assert!(registry.get_by_token(token).await.is_none());
         assert!(registry.get_by_session_id(1).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_target_index_removes_empty_targets() {
+        let registry = VoiceRegistry::new();
+
+        let alice = create_test_session("alice", "#general", 1);
+        let bob = create_test_session("bob", "#general", 2);
+        let charlie = create_test_session("charlie", "#other", 3);
+        let charlie_token = charlie.token;
+
+        registry
+            .add(alice)
+            .await
+            .expect("test setup: session_id is unique");
+        registry
+            .add(bob)
+            .await
+            .expect("test setup: session_id is unique");
+        registry
+            .add(charlie)
+            .await
+            .expect("test setup: session_id is unique");
+
+        assert_eq!(indexed_token_count(&registry, "#general").await, 2);
+        assert_eq!(indexed_token_count(&registry, "#other").await, 1);
+
+        registry.remove_by_token(charlie_token).await;
+        assert_eq!(indexed_token_count(&registry, "#other").await, 0);
+
+        registry.remove_by_session_id(1).await;
+        assert_eq!(indexed_token_count(&registry, "#general").await, 1);
+
+        registry.remove_by_session_id(2).await;
+        assert_eq!(indexed_token_count(&registry, "#general").await, 0);
     }
 
     #[tokio::test]

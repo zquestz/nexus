@@ -879,8 +879,6 @@ pub enum Message {
     /// Voice: Server address resolution completed after a successful join
     VoiceAddressResolved {
         connection_id: usize,
-        target: String,
-        participants: Vec<String>,
         token: Uuid,
         result: Result<Option<SocketAddr>, String>,
     },

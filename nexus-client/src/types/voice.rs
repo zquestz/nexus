@@ -14,6 +14,8 @@ use uuid::Uuid;
 pub struct VoiceState {
     /// Voice join token for the current accepted session, when known.
     pub token: Option<Uuid>,
+    /// Whether the client has already sent VoiceLeave for this session.
+    pub leave_sent: bool,
     /// Target channel (e.g., "#general") or other user's nickname for user message voice
     pub target: String,
     /// Nicknames of users currently in this voice session
@@ -30,6 +32,7 @@ impl VoiceState {
     pub fn new(target: String, participants: Vec<String>) -> Self {
         Self {
             token: None,
+            leave_sent: false,
             target,
             participants,
             speaking_users: HashSet::new(),
@@ -41,6 +44,7 @@ impl VoiceState {
     pub fn new_with_token(target: String, participants: Vec<String>, token: Uuid) -> Self {
         Self {
             token: Some(token),
+            leave_sent: false,
             target,
             participants,
             speaking_users: HashSet::new(),
