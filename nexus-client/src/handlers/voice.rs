@@ -62,6 +62,18 @@ impl NexusApp {
             return Task::none();
         };
 
+        if target.starts_with('#')
+            && conn
+                .pending_channel_leave
+                .as_ref()
+                .is_some_and(|channel| fold_name(channel) == fold_name(&target))
+        {
+            return self.add_active_tab_message(
+                connection_id,
+                ChatMessage::error(t("err-leave-already-pending")),
+            );
+        }
+
         if voice_join_blocked_by_proxy(&self.config.settings.proxy, &conn.connection_info.address) {
             return self.add_active_tab_message(
                 connection_id,
@@ -512,7 +524,7 @@ mod tests {
     use tokio::sync::{Mutex, mpsc};
 
     use super::*;
-    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
+    use crate::types::{ChannelState, ConnectionInfo, ServerConnection, ServerConnectionParams};
 
     fn proxy(enabled: bool, allow_voice_bypass: bool) -> ProxySettings {
         ProxySettings {
@@ -606,6 +618,28 @@ mod tests {
         assert!(first_rx.try_recv().is_err());
         assert!(second_rx.try_recv().is_err());
         assert_eq!(app.connections[&2].console_messages.len(), 1);
+    }
+
+    #[test]
+    fn voice_join_pressed_blocks_channel_pending_leave() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.permissions.push(PERMISSION_VOICE_LISTEN.to_string());
+        conn.channels.insert(
+            fold_name("#general"),
+            ChannelState::new(None, None, false, vec!["me".to_string()]),
+        );
+        conn.pending_channel_leave = Some("#General".to_string());
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_voice_join_pressed("#general".to_string());
+
+        assert!(rx.try_recv().is_err());
+        assert!(app.connections[&1].voice_session.is_none());
+        assert_eq!(app.connections[&1].console_messages.len(), 1);
     }
 
     #[test]
