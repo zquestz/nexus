@@ -9,6 +9,7 @@
 use std::net::ToSocketAddrs;
 
 use iced::Task;
+use nexus_common::address::resolve_host_for_connection;
 use nexus_common::names::fold_name;
 use uuid::Uuid;
 
@@ -16,10 +17,31 @@ use crate::NexusApp;
 use crate::config::events::EventType;
 use crate::events::{EventContext, emit_event};
 use crate::i18n::{t, t_args};
+use crate::network::DNS_LOOKUP_TIMEOUT;
 use crate::types::{ChatMessage, Message, VoiceState};
 use crate::voice::manager::{VoiceSessionConfig, VoiceSessionHandle};
 
 use crate::voice::subscription::register_voice_receiver_sync;
+
+async fn resolve_voice_socket_addr(
+    address: String,
+    port: u16,
+) -> Result<Option<std::net::SocketAddr>, String> {
+    let resolved = resolve_host_for_connection(&address).map_err(|e| e.to_string())?;
+    let lookup = tokio::task::spawn_blocking(move || {
+        (resolved.as_str(), port)
+            .to_socket_addrs()
+            .map(|iter| iter.collect::<Vec<_>>())
+    });
+
+    let addrs = tokio::time::timeout(DNS_LOOKUP_TIMEOUT, lookup)
+        .await
+        .map_err(|_| t_args("err-dns-lookup-timeout", &[("address", &address)]))?
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+
+    Ok(addrs.into_iter().next())
+}
 
 impl NexusApp {
     /// Handle response to VoiceJoin request
@@ -89,31 +111,63 @@ impl NexusApp {
 
         // Create the voice session
         let participants = participants.unwrap_or_default();
-        conn.voice_session = Some(VoiceState::new(target.clone(), participants.clone()));
+        conn.voice_session = Some(VoiceState::new_with_token(
+            target.clone(),
+            participants.clone(),
+            token,
+        ));
 
         // Track that this connection has the active voice session
         self.active_voice_connection = Some(connection_id);
 
-        // Start the voice DTLS client
-        // Resolve server address to SocketAddr
-        let server_addr = format!(
-            "{}:{}",
-            conn.connection_info.address, conn.connection_info.port
-        );
-        let socket_addr = match server_addr.to_socket_addrs() {
-            Ok(mut addrs) => match addrs.next() {
-                Some(addr) => addr,
-                None => {
-                    return self.add_active_tab_message(
-                        connection_id,
-                        ChatMessage::error(t("err-voice-resolve-address")),
-                    );
-                }
+        let server_address = conn.connection_info.address.clone();
+        let server_port = conn.connection_info.port;
+
+        Task::perform(
+            resolve_voice_socket_addr(server_address, server_port),
+            move |result| Message::VoiceAddressResolved {
+                connection_id,
+                target,
+                participants,
+                token,
+                result,
             },
+        )
+    }
+
+    pub fn handle_voice_address_resolved(
+        &mut self,
+        connection_id: usize,
+        target: String,
+        participants: Vec<String>,
+        token: Uuid,
+        result: Result<Option<std::net::SocketAddr>, String>,
+    ) -> Task<Message> {
+        let Some(conn) = self.connections.get(&connection_id) else {
+            return Task::none();
+        };
+
+        if self.active_voice_connection != Some(connection_id)
+            || conn
+                .voice_session
+                .as_ref()
+                .is_none_or(|session| session.target != target || session.token != Some(token))
+        {
+            return Task::none();
+        }
+
+        let socket_addr = match result {
+            Ok(Some(addr)) => addr,
+            Ok(None) => {
+                return self.add_active_tab_message(
+                    connection_id,
+                    ChatMessage::error(t("err-voice-resolve-address")),
+                );
+            }
             Err(e) => {
                 return self.add_active_tab_message(
                     connection_id,
-                    ChatMessage::error(t_args("err-voice-resolve", &[("error", &e.to_string())])),
+                    ChatMessage::error(t_args("err-voice-resolve", &[("error", &e)])),
                 );
             }
         };

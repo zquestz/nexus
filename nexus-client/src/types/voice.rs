@@ -3,6 +3,7 @@
 use std::collections::HashSet;
 
 use nexus_common::names::fold_name;
+use uuid::Uuid;
 
 /// Active voice state for UI display
 ///
@@ -11,6 +12,8 @@ use nexus_common::names::fold_name;
 /// This is distinct from the server's VoiceSession which tracks authentication and routing.
 #[derive(Debug, Clone)]
 pub struct VoiceState {
+    /// Voice join token for the current accepted session, when known.
+    pub token: Option<Uuid>,
     /// Target channel (e.g., "#general") or other user's nickname for user message voice
     pub target: String,
     /// Nicknames of users currently in this voice session
@@ -26,6 +29,18 @@ impl VoiceState {
     /// Create a new voice state
     pub fn new(target: String, participants: Vec<String>) -> Self {
         Self {
+            token: None,
+            target,
+            participants,
+            speaking_users: HashSet::new(),
+            muted_users: HashSet::new(),
+        }
+    }
+
+    /// Create a new accepted voice state tied to a specific join token.
+    pub fn new_with_token(target: String, participants: Vec<String>, token: Uuid) -> Self {
+        Self {
+            token: Some(token),
             target,
             participants,
             speaking_users: HashSet::new(),

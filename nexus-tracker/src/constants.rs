@@ -314,9 +314,9 @@ pub const LOG_AUTH_RATE_LIMITED: &str = "Auth rate-limited";
 pub const REFRESH_FLOOR_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// Bound on hostname resolution during address validation. Past this is treated
-/// as transient (initial register rejects, refresh soft-passes). 5s: healthy
-/// resolvers finish in ms, a stuck one can't pin the connection task.
-pub const ADDRESS_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+/// as transient (initial register rejects, refresh soft-passes). Matches the
+/// workspace DNS deadline used by client and server connection paths.
+pub const ADDRESS_LOOKUP_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// Per spec (`docs/protocol/18-trackers.md`, "Stale timeout"), an entry is
 /// evicted after 2× its refresh_interval — one missed refresh of slack for

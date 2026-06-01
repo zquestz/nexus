@@ -1,5 +1,7 @@
 //! Message types for the Elm-style architecture
 
+use std::net::SocketAddr;
+
 use iced::Theme;
 use iced::widget::{markdown, text_editor};
 use iced_toasts::ToastId;
@@ -874,6 +876,14 @@ pub enum Message {
     // ==================== Voice ====================
     /// Voice: Join voice for a channel or user message
     VoiceJoinPressed(String),
+    /// Voice: Server address resolution completed after a successful join
+    VoiceAddressResolved {
+        connection_id: usize,
+        target: String,
+        participants: Vec<String>,
+        token: Uuid,
+        result: Result<Option<SocketAddr>, String>,
+    },
     /// Voice: Leave current voice session
     VoiceLeavePressed,
     /// Voice: Event from voice session (DTLS connected, speaking, etc.)

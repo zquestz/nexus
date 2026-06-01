@@ -1296,6 +1296,19 @@ impl NexusApp {
 
             // Voice
             Message::VoiceJoinPressed(target) => self.handle_voice_join_pressed(target),
+            Message::VoiceAddressResolved {
+                connection_id,
+                target,
+                participants,
+                token,
+                result,
+            } => self.handle_voice_address_resolved(
+                connection_id,
+                target,
+                participants,
+                token,
+                result,
+            ),
             Message::VoiceLeavePressed => self.handle_voice_leave_pressed(),
             Message::VoiceSessionEvent(connection_id, event) => {
                 self.handle_voice_session_event(connection_id, event)

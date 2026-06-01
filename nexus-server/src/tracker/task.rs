@@ -75,6 +75,11 @@ const BACKOFF_JITTER_PCT: f64 = 0.25;
 /// instead of hanging until the outer 60s frame-completion timeout.
 const TRACKER_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Timeout for connection establishment phases only: TCP connect and
+/// TLS handshake. The long-lived registration refresh loop is governed
+/// by the tracker-provided refresh interval, not this deadline.
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
+
 /// Ceiling on a single `lookup_host`. Defends against a wedged/hostile
 /// resolver hanging the task (the frame-completion timeout is pre-frame here).
 #[cfg(not(test))]
@@ -257,13 +262,23 @@ async fn attempt_connection_cycle(
 
     // Phase 1b: TCP connect to a resolved address. Failure is
     // `Transient` (briefly unreachable); next cycle retries with backoff.
-    let tcp = match TcpStream::connect(&addrs[..]).await {
-        Ok(s) => s,
-        Err(e) => {
+    let tcp = match tokio::time::timeout(CONNECTION_TIMEOUT, TcpStream::connect(&addrs[..])).await {
+        Ok(Ok(s)) => s,
+        Ok(Err(e)) => {
             warn!(
                 id = record.id,
                 name = %record.name,
                 err = %e,
+                "{}", LOG_TRACKER_REGISTRATION_TCP_FAILED
+            );
+            set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
+            return CycleOutcome::Transient;
+        }
+        Err(_) => {
+            warn!(
+                id = record.id,
+                name = %record.name,
+                timeout_secs = CONNECTION_TIMEOUT.as_secs(),
                 "{}", LOG_TRACKER_REGISTRATION_TCP_FAILED
             );
             set_status_error(status, ERROR_KIND_TRACKER_CONNECTION_FAILED);
@@ -276,19 +291,32 @@ async fn attempt_connection_cycle(
     // on the wire, never compared. Use the BBS client's literal convention.
     let server_name =
         ServerName::try_from(SNI_SERVER_NAME).expect(EXPECT_SNI_SERVER_NAME_VALID_DNS);
-    let tls = match TLS_CONNECTOR.connect(server_name, tcp).await {
-        Ok(s) => s,
-        Err(e) => {
-            warn!(
-                id = record.id,
-                name = %record.name,
-                err = %e,
-                "{}", LOG_TRACKER_REGISTRATION_TLS_FAILED
-            );
-            set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED);
-            return CycleOutcome::Transient;
-        }
-    };
+    let tls =
+        match tokio::time::timeout(CONNECTION_TIMEOUT, TLS_CONNECTOR.connect(server_name, tcp))
+            .await
+        {
+            Ok(Ok(s)) => s,
+            Ok(Err(e)) => {
+                warn!(
+                    id = record.id,
+                    name = %record.name,
+                    err = %e,
+                    "{}", LOG_TRACKER_REGISTRATION_TLS_FAILED
+                );
+                set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED);
+                return CycleOutcome::Transient;
+            }
+            Err(_) => {
+                warn!(
+                    id = record.id,
+                    name = %record.name,
+                    timeout_secs = CONNECTION_TIMEOUT.as_secs(),
+                    "{}", LOG_TRACKER_REGISTRATION_TLS_FAILED
+                );
+                set_status_error(status, ERROR_KIND_TRACKER_TLS_FAILED);
+                return CycleOutcome::Transient;
+            }
+        };
 
     // Phase 3: extract observed cert fingerprint.
     let tls_observed = match observed_fingerprint(&tls) {

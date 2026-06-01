@@ -26,7 +26,7 @@ use nexus_common::voice::{
 const RECV_BUFFER_SIZE: usize = 2048;
 
 /// Connection timeout for DTLS handshake
-const CONNECT_TIMEOUT_SECS: u64 = 10;
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Receive poll timeout in milliseconds (allows select! to check other branches)
 const RECV_POLL_TIMEOUT_MS: u64 = 100;
@@ -95,13 +95,11 @@ impl VoiceDtlsClient {
 
         // Create DTLS connection with timeout
         // is_client=true for client-side connection
-        let dtls_conn = tokio::time::timeout(
-            Duration::from_secs(CONNECT_TIMEOUT_SECS),
-            DTLSConn::new(udp_conn, config, true, None),
-        )
-        .await
-        .map_err(|_| "DTLS handshake timeout".to_string())?
-        .map_err(|e| format!("DTLS handshake failed: {}", e))?;
+        let dtls_conn =
+            tokio::time::timeout(CONNECT_TIMEOUT, DTLSConn::new(udp_conn, config, true, None))
+                .await
+                .map_err(|_| "DTLS handshake timeout".to_string())?
+                .map_err(|e| format!("DTLS handshake failed: {}", e))?;
 
         // Store as trait object to use Conn methods
         let conn: Arc<dyn Conn + Send + Sync> = Arc::new(dtls_conn);
