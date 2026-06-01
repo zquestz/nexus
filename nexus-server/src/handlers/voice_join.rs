@@ -25,8 +25,8 @@ use crate::voice::VoiceSession;
 /// Outcome of the lock-serialized join section, dispatched to a `VoiceJoinResponse`
 /// after the `read_user_state` guard drops (so no socket I/O happens under the lock).
 enum VoiceJoinOutcome {
-    /// Session vanished mid-join (raced disconnect); send nothing.
-    Gone,
+    /// Session vanished mid-join; disconnect like other logged-in handlers.
+    Disconnect,
     /// Join rejected; send a failure response carrying this error.
     Error(String),
     /// Join succeeded; send a success response.
@@ -54,56 +54,6 @@ where
             .await;
     };
 
-    let user = match ctx.user_manager.get_user_by_session_id(session_id).await {
-        Some(u) => u,
-        None => {
-            return ctx
-                .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_VOICE_JOIN))
-                .await;
-        }
-    };
-
-    if !user.has_permission(Permission::VoiceListen) {
-        warn!(user = %user.username, ip = %ctx.peer_addr, "{}", LOG_VOICE_JOIN_PERMISSION_DENIED);
-        let response = ServerMessage::VoiceJoinResponse {
-            success: false,
-            token: None,
-            target: None,
-            participants: None,
-            error: Some(err_voice_listen_required(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    if target.is_empty() {
-        let response = ServerMessage::VoiceJoinResponse {
-            success: false,
-            token: None,
-            target: None,
-            participants: None,
-            error: Some(err_voice_invalid_target(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    // Fast-path also preserves error precedence: an already-joined
-    // session sending a join for a bad target gets
-    // `voice_already_joined` instead of leaking target validation.
-    if ctx.voice_registry.has_session(session_id).await {
-        let response = ServerMessage::VoiceJoinResponse {
-            success: false,
-            token: None,
-            target: None,
-            participants: None,
-            error: Some(err_voice_already_joined(ctx.locale)),
-        };
-        return ctx.send_message(&response).await;
-    }
-
-    let is_channel = target.starts_with('#');
-
-    let client_target = target.clone();
-
     // Serialize the resolve → registry insert → VoiceUserJoined broadcast under
     // read_user_state so a concurrent rename can't land between snapshotting the
     // joiner's nickname and the nickname-keyed registry entry / broadcast. The joiner's
@@ -118,10 +68,26 @@ where
         let _user_state = ctx.user_manager.read_user_state().await;
 
         let Some(current) = ctx.user_manager.get_user_by_session_id(session_id).await else {
-            // Session vanished mid-join (raced disconnect); nothing to send back.
-            break 'locked VoiceJoinOutcome::Gone;
+            break 'locked VoiceJoinOutcome::Disconnect;
         };
 
+        if !current.has_permission(Permission::VoiceListen) {
+            warn!(user = %current.username, ip = %ctx.peer_addr, "{}", LOG_VOICE_JOIN_PERMISSION_DENIED);
+            break 'locked VoiceJoinOutcome::Error(err_voice_listen_required(ctx.locale));
+        }
+
+        if target.is_empty() {
+            break 'locked VoiceJoinOutcome::Error(err_voice_invalid_target(ctx.locale));
+        }
+
+        // Fast-path also preserves error precedence: an already-joined
+        // session sending a join for a bad target gets
+        // `voice_already_joined` instead of leaking target validation.
+        if ctx.voice_registry.has_session(session_id).await {
+            break 'locked VoiceJoinOutcome::Error(err_voice_already_joined(ctx.locale));
+        }
+
+        let is_channel = target.starts_with('#');
         let internal_target = if is_channel {
             if !ctx.channel_manager.is_member(&target, session_id).await {
                 break 'locked VoiceJoinOutcome::Error(err_voice_not_channel_member(
@@ -170,7 +136,7 @@ where
                 // participants) so everyone sees who's in voice.
                 let members = ctx
                     .channel_manager
-                    .get_members(&client_target)
+                    .get_members(&target)
                     .await
                     .unwrap_or_default();
 
@@ -187,7 +153,7 @@ where
                     {
                         let join_notification = ServerMessage::VoiceUserJoined {
                             nickname: current.nickname.clone(),
-                            target: client_target.clone(),
+                            target: target.clone(),
                         };
                         let _ = member
                             .tx
@@ -226,7 +192,10 @@ where
     };
 
     match outcome {
-        VoiceJoinOutcome::Gone => Ok(()),
+        VoiceJoinOutcome::Disconnect => {
+            ctx.send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_VOICE_JOIN))
+                .await
+        }
         VoiceJoinOutcome::Error(error) => {
             let response = ServerMessage::VoiceJoinResponse {
                 success: false,
@@ -244,7 +213,7 @@ where
             let response = ServerMessage::VoiceJoinResponse {
                 success: true,
                 token: Some(token),
-                target: Some(client_target),
+                target: Some(target),
                 participants: Some(participants),
                 error: None,
             };
