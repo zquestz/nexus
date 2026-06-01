@@ -977,6 +977,10 @@ pub fn err_flood_disconnect(locale: &str) -> String {
     t(locale, "err-flood-disconnect")
 }
 
+pub fn err_slow_client_disconnect(locale: &str) -> String {
+    t(locale, "err-slow-client-disconnect")
+}
+
 pub fn err_ban_self(locale: &str) -> String {
     t(locale, "err-ban-self")
 }

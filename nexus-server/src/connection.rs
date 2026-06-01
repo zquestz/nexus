@@ -11,14 +11,12 @@ use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, warn};
 
 use nexus_common::framing::{FrameError, FrameReader, FrameWriter, MessageId};
-use nexus_common::io::{
-    read_client_message_with_full_timeout, read_client_message_with_timeout,
-    send_server_message_with_id,
-};
+use nexus_common::io::{read_client_message_with_full_timeout, read_client_message_with_timeout};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
 use nexus_common::tls::accept_tls_with_timeout;
 
 use crate::channels::ChannelManager;
+use crate::connection_io::send_server_message_with_write_timeout;
 use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
@@ -26,6 +24,7 @@ use crate::files::{FileActivityMap, FileIndex};
 use crate::flood::{FloodConfig, FloodTracker};
 use crate::handlers::{
     self, DirectWriter, HandlerContext, err_invalid_message_format, err_message_not_supported,
+    err_slow_client_disconnect,
 };
 use crate::ip_rule_cache::IpRuleState;
 use crate::tracker::TrackerManager;
@@ -194,7 +193,7 @@ where
                             command: None,
                             disconnect: true,
                         };
-                        let _ = send_server_message_with_id(
+                        let _ = send_server_message_with_write_timeout(
                             &mut frame_writer,
                             &error_msg,
                             MessageId::new(),
@@ -209,11 +208,24 @@ where
                 match event {
                     Some(SessionEvent::Message(msg, msg_id)) => {
                         let id = msg_id.unwrap_or_else(MessageId::new);
-                        if send_server_message_with_id(&mut frame_writer, &msg, id).await.is_err() {
+                        if send_server_message_with_write_timeout(&mut frame_writer, &msg, id).await.is_err() {
                             break;
                         }
                     }
                     Some(SessionEvent::Disconnect) => {
+                        break;
+                    }
+                    Some(SessionEvent::SlowClientDisconnect) => {
+                        let error_msg = ServerMessage::Error {
+                            message: err_slow_client_disconnect(&conn_state.locale),
+                            command: None,
+                            disconnect: true,
+                        };
+                        let _ = send_server_message_with_write_timeout(
+                            &mut frame_writer,
+                            &error_msg,
+                            MessageId::new(),
+                        ).await;
                         break;
                     }
                     None => {

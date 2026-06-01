@@ -8,7 +8,10 @@ use nexus_common::framing::MessageId;
 use nexus_common::protocol::ServerMessage;
 use tokio::sync::mpsc;
 
-use crate::constants::ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK;
+use crate::constants::{
+    ERR_SYSTEM_TIME_BEFORE_EPOCH_CHECK_CLOCK, SESSION_CONTROL_QUEUE_CAPACITY,
+    SESSION_MESSAGE_QUEUE_CAPACITY,
+};
 use crate::db::Permission;
 
 /// Event delivered from server-side producers to a connection task.
@@ -16,18 +19,24 @@ use crate::db::Permission;
 pub enum SessionEvent {
     Message(Box<ServerMessage>, Option<MessageId>),
     Disconnect,
+    SlowClientDisconnect,
 }
 
 impl SessionEvent {
     pub fn message(message: ServerMessage, message_id: Option<MessageId>) -> Self {
         Self::Message(Box::new(message), message_id)
     }
+}
 
-    #[allow(dead_code)]
+#[cfg(test)]
+impl SessionEvent {
     pub fn expect_message(self) -> (ServerMessage, Option<MessageId>) {
         match self {
             Self::Message(message, message_id) => (*message, message_id),
             Self::Disconnect => panic!("expected session message, got disconnect event"),
+            Self::SlowClientDisconnect => {
+                panic!("expected session message, got slow-client disconnect event")
+            }
         }
     }
 }
@@ -35,13 +44,15 @@ impl SessionEvent {
 /// Writer handle for events destined to a connection task.
 #[derive(Clone, Debug)]
 pub struct ConnectionWriter {
-    tx: mpsc::UnboundedSender<SessionEvent>,
+    tx: mpsc::Sender<SessionEvent>,
+    control_tx: mpsc::Sender<SessionEvent>,
 }
 
 impl ConnectionWriter {
     pub fn channel() -> (Self, SessionRx) {
-        let (tx, rx) = mpsc::unbounded_channel();
-        (Self { tx }, rx)
+        let (tx, rx) = mpsc::channel(SESSION_MESSAGE_QUEUE_CAPACITY);
+        let (control_tx, control_rx) = mpsc::channel(SESSION_CONTROL_QUEUE_CAPACITY);
+        (Self { tx, control_tx }, SessionRx { rx, control_rx })
     }
 
     pub fn send_message(
@@ -49,15 +60,114 @@ impl ConnectionWriter {
         message: ServerMessage,
         message_id: Option<MessageId>,
     ) -> Result<(), mpsc::error::SendError<SessionEvent>> {
-        self.tx.send(SessionEvent::message(message, message_id))
+        match self.tx.try_send(SessionEvent::message(message, message_id)) {
+            Ok(()) => Ok(()),
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                self.arm_slow_client_disconnect();
+                Ok(())
+            }
+            Err(mpsc::error::TrySendError::Closed(event)) => Err(mpsc::error::SendError(event)),
+        }
     }
 
     pub fn disconnect(&self) -> Result<(), mpsc::error::SendError<SessionEvent>> {
-        self.tx.send(SessionEvent::Disconnect)
+        match self.tx.try_send(SessionEvent::Disconnect) {
+            Ok(()) => Ok(()),
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                self.arm_slow_client_disconnect();
+                Ok(())
+            }
+            Err(mpsc::error::TrySendError::Closed(event)) => Err(mpsc::error::SendError(event)),
+        }
+    }
+
+    fn arm_slow_client_disconnect(&self) {
+        let _ = self.control_tx.try_send(SessionEvent::SlowClientDisconnect);
     }
 }
 
-pub type SessionRx = mpsc::UnboundedReceiver<SessionEvent>;
+#[derive(Debug)]
+pub struct SessionRx {
+    rx: mpsc::Receiver<SessionEvent>,
+    control_rx: mpsc::Receiver<SessionEvent>,
+}
+
+impl SessionRx {
+    pub async fn recv(&mut self) -> Option<SessionEvent> {
+        match self.try_recv() {
+            Ok(event) => return Some(event),
+            Err(mpsc::error::TryRecvError::Empty) => {}
+            Err(mpsc::error::TryRecvError::Disconnected) => return None,
+        }
+
+        tokio::select! {
+            biased;
+
+            event = self.control_rx.recv() => {
+                match event {
+                    Some(event) => Some(event),
+                    None => self.rx.recv().await,
+                }
+            }
+            event = self.rx.recv() => event,
+        }
+    }
+
+    pub fn try_recv(&mut self) -> Result<SessionEvent, mpsc::error::TryRecvError> {
+        match self.control_rx.try_recv() {
+            Ok(event) => Ok(event),
+            Err(mpsc::error::TryRecvError::Empty)
+            | Err(mpsc::error::TryRecvError::Disconnected) => self.rx.try_recv(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod connection_writer_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn full_message_queue_arms_priority_slow_client_disconnect() {
+        let (tx, mut rx) = ConnectionWriter::channel();
+
+        for _ in 0..SESSION_MESSAGE_QUEUE_CAPACITY {
+            tx.send_message(ServerMessage::Pong, None).unwrap();
+        }
+
+        tx.send_message(ServerMessage::Pong, None).unwrap();
+
+        assert!(matches!(
+            rx.recv().await,
+            Some(SessionEvent::SlowClientDisconnect)
+        ));
+    }
+
+    #[tokio::test]
+    async fn slow_client_disconnect_control_queue_is_one_shot() {
+        let (tx, mut rx) = ConnectionWriter::channel();
+
+        for _ in 0..SESSION_MESSAGE_QUEUE_CAPACITY {
+            tx.send_message(ServerMessage::Pong, None).unwrap();
+        }
+
+        tx.send_message(ServerMessage::Pong, None).unwrap();
+        tx.send_message(ServerMessage::Pong, None).unwrap();
+
+        assert!(matches!(
+            rx.recv().await,
+            Some(SessionEvent::SlowClientDisconnect)
+        ));
+        assert!(matches!(rx.recv().await, Some(SessionEvent::Message(_, _))));
+    }
+
+    #[test]
+    fn closed_message_queue_returns_send_error() {
+        let (tx, rx) = ConnectionWriter::channel();
+        drop(rx);
+
+        assert!(tx.send_message(ServerMessage::Pong, None).is_err());
+    }
+}
 
 /// Parameters for creating a new user session
 pub struct NewSessionParams {

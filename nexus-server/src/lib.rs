@@ -3,6 +3,7 @@
 //! This library exposes the server's internal modules for integration testing.
 
 pub mod channels;
+mod connection_io;
 pub mod connection_tracker;
 pub mod constants;
 pub mod db;

@@ -329,6 +329,7 @@ err-flood-warning = Mensagem limitada (aviso { $violation } de { $max_violations
    *[other] segundos
 }. Continuar a enviar mensagens resultará em desconexão.
 err-flood-disconnect = Desconectado: limite de velocidade do chat excedido.
+err-slow-client-disconnect = Desconectado: o seu cliente não conseguiu acompanhar as mensagens do servidor.
 
 # Bandwidth Errors
 err-bandwidth-weight-delegation = Não é possível conceder um peso da largura de banda acima do seu

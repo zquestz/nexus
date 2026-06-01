@@ -326,6 +326,7 @@ err-tracker-unknown = 追蹤器回報了未知的錯誤
 # Flood Protection Errors
 err-flood-warning = 訊息受到限制（警告 { $violation }/{ $max_violations }）。您可以在{ $seconds }秒後再次傳送訊息。繼續傳送將導致斷開連線。
 err-flood-disconnect = 已斷開連線：超出聊天速率限制。
+err-slow-client-disconnect = 已斷開連線：您的用戶端無法跟上伺服器訊息。
 
 # Bandwidth Errors
 err-bandwidth-weight-delegation = 無法授予高於自己的頻寬權重

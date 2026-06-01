@@ -135,11 +135,11 @@ use crate::constants::ERR_CHANNEL_CLOSED;
 use tokio::io::AsyncWrite;
 
 use nexus_common::framing::{FrameWriter, MessageId};
-use nexus_common::io::send_server_message_with_id;
 use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 
 use crate::channels::ChannelManager;
+use crate::connection_io::send_server_message_with_write_timeout;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::{Database, Permission};
 use crate::files::{FileActivityMap, FileIndex};
@@ -168,7 +168,7 @@ impl<W: AsyncWrite + Unpin> DirectWriter<'_, W> {
         message: &ServerMessage,
         message_id: MessageId,
     ) -> io::Result<()> {
-        send_server_message_with_id(self.frame_writer, message, message_id).await
+        send_server_message_with_write_timeout(self.frame_writer, message, message_id).await
     }
 }
 

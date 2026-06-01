@@ -3,6 +3,7 @@
 mod args;
 mod channels;
 mod connection;
+mod connection_io;
 mod connection_tracker;
 mod constants;
 mod db;

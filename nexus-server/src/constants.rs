@@ -118,6 +118,16 @@ pub const CONFIG_KEY_MAX_OUTBOUND_RATE: &str = "max_outbound_rate";
 /// Bytes/sec; 0 = unlimited.
 pub const DEFAULT_MAX_OUTBOUND_RATE: u64 = 0;
 
+/// Normal per-connection message queue depth. Large enough to absorb short
+/// client hiccups while still bounding memory for slow consumers.
+pub const SESSION_MESSAGE_QUEUE_CAPACITY: usize = 1024;
+/// Control queue is reserved for the slow-client disconnect only.
+pub const SESSION_CONTROL_QUEUE_CAPACITY: usize = 1;
+
+/// Upper bound for one BBS protocol message write. This is intentionally high
+/// enough for very slow links while still bounding peers that stop reading.
+pub const BBS_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+
 /// WF2Q+ scheduler chunk size in bytes.
 pub const CONFIG_KEY_SCHEDULER_CHUNK_SIZE: &str = "scheduler_chunk_size";
 
@@ -165,6 +175,7 @@ pub const ERR_DATABASE_INIT: &str = "Failed to initialize database: ";
 pub const ERR_TRACKER_BOOTSTRAP_FAILED: &str = "Failed to bootstrap tracker manager: ";
 pub const ERR_TLS_INIT: &str = "Failed to initialize TLS: ";
 pub const ERR_BIND_FAILED: &str = "Failed to bind to ";
+pub const ERR_BBS_WRITE_TIMEOUT: &str = "BBS message write timed out";
 
 #[cfg(unix)]
 pub const ERR_SET_PERMISSIONS: &str = "Failed to set file permissions: ";

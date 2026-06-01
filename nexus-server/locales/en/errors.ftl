@@ -330,6 +330,7 @@ err-flood-warning = Message rate limited (warning { $violation } of { $max_viola
    *[other] seconds
 }. Continued flooding will result in disconnection.
 err-flood-disconnect = Disconnected: chat rate limit exceeded.
+err-slow-client-disconnect = Disconnected: your client could not keep up with server messages.
 
 # Bandwidth Errors
 err-bandwidth-weight-delegation = Cannot grant a bandwidth weight above your own

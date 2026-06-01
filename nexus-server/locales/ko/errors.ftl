@@ -326,6 +326,7 @@ err-tracker-unknown = 트래커가 알 수 없는 오류를 보고했습니다
 # Flood Protection Errors
 err-flood-warning = 메시지가 제한되었습니다 (경고 { $violation }/{ $max_violations }). { $seconds }초 후에 다시 보낼 수 있습니다. 계속하면 연결이 끊어집니다.
 err-flood-disconnect = 연결 끊김: 채팅 속도 제한 초과.
+err-slow-client-disconnect = 연결 끊김: 클라이언트가 서버 메시지를 따라가지 못했습니다.
 
 # Bandwidth Errors
 err-bandwidth-weight-delegation = 자신보다 높은 대역폭 가중치를 부여할 수 없습니다

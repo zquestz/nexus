@@ -329,6 +329,7 @@ err-flood-warning = Bericht beperkt (waarschuwing { $violation } van { $max_viol
    *[other] seconden
 } weer een bericht sturen. Doorgaan met flooding resulteert in een verbroken verbinding.
 err-flood-disconnect = Verbinding verbroken: chatlimiet overschreden.
+err-slow-client-disconnect = Verbinding verbroken: je client kon de serverberichten niet bijhouden.
 
 # Bandwidth Errors
 err-bandwidth-weight-delegation = Kan geen bandbreedtegewicht boven het eigen gewicht verlenen

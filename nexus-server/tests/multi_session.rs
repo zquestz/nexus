@@ -5,11 +5,29 @@ mod common;
 use std::collections::HashSet;
 
 use common::{add_test_user, create_test_db};
+use nexus_common::framing::MessageId;
 use nexus_common::protocol::{ChatAction, NewsAction, ServerMessage, UserInfo};
 use nexus_common::validators::DEFAULT_CHANNEL;
 use nexus_server::constants::FEATURE_NEWS;
 use nexus_server::db::{self, CreateUserParams, Permission, Permissions};
 use nexus_server::users::UserManager;
+use nexus_server::users::user::SessionEvent;
+
+trait SessionEventExt {
+    fn expect_message(self) -> (ServerMessage, Option<MessageId>);
+}
+
+impl SessionEventExt for SessionEvent {
+    fn expect_message(self) -> (ServerMessage, Option<MessageId>) {
+        match self {
+            SessionEvent::Message(message, message_id) => (*message, message_id),
+            SessionEvent::Disconnect => panic!("expected session message, got disconnect event"),
+            SessionEvent::SlowClientDisconnect => {
+                panic!("expected session message, got slow-client disconnect event")
+            }
+        }
+    }
+}
 
 #[tokio::test]
 async fn test_multi_session_partial_disconnect() {

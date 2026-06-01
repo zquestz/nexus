@@ -329,6 +329,7 @@ err-flood-warning = Nachricht ratenbegrenzt (Warnung { $violation } von { $max_v
    *[other] Sekunden
 } eine weitere Nachricht senden. Weiteres Flooding führt zur Trennung.
 err-flood-disconnect = Getrennt: Chat-Ratenlimit überschritten.
+err-slow-client-disconnect = Getrennt: Dein Client konnte mit den Servernachrichten nicht Schritt halten.
 
 # Bandwidth Errors
 err-bandwidth-weight-delegation = Kann kein Bandbreitengewicht über dem eigenen gewähren
