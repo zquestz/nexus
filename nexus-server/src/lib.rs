@@ -7,6 +7,7 @@ mod connection_io;
 pub mod connection_tracker;
 pub mod constants;
 pub mod db;
+pub mod egress;
 pub mod files;
 pub mod flood;
 pub mod handlers;
