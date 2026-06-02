@@ -13,15 +13,23 @@ use crate::scheduler::{
     Wf2qScheduler,
 };
 
+pub const DEFAULT_EGRESS_QUEUED_FRAMES_PER_CONNECTION: usize = 32;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EgressChunk {
     frame: Arc<[u8]>,
     offset: usize,
     len: usize,
+    is_final_frame_chunk: bool,
 }
 
 impl EgressChunk {
-    pub fn new(frame: Arc<[u8]>, offset: usize, len: usize) -> Option<Self> {
+    pub fn new(
+        frame: Arc<[u8]>,
+        offset: usize,
+        len: usize,
+        is_final_frame_chunk: bool,
+    ) -> Option<Self> {
         if len == 0 {
             return None;
         }
@@ -31,7 +39,12 @@ impl EgressChunk {
             return None;
         }
 
-        Some(Self { frame, offset, len })
+        Some(Self {
+            frame,
+            offset,
+            len,
+            is_final_frame_chunk,
+        })
     }
 
     pub fn as_bytes(&self) -> &[u8] {
@@ -44,6 +57,10 @@ impl EgressChunk {
 
     pub fn is_empty(&self) -> bool {
         self.len == 0
+    }
+
+    pub fn is_final_frame_chunk(&self) -> bool {
+        self.is_final_frame_chunk
     }
 }
 
@@ -68,6 +85,7 @@ pub struct EgressRegistration {
 pub enum EgressEnqueueError {
     UnknownConnection,
     EmptyFrame,
+    QueueFull,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -81,14 +99,20 @@ pub struct EgressManager {
     scheduler: Wf2qScheduler<EgressChunk>,
     connections: HashMap<ConnectionId, EgressConnection>,
     chunk_size: NonZeroUsize,
+    frame_limit: usize,
 }
 
 impl EgressManager {
     pub fn new(chunk_size: NonZeroUsize) -> Self {
+        Self::with_frame_limit(chunk_size, DEFAULT_EGRESS_QUEUED_FRAMES_PER_CONNECTION)
+    }
+
+    pub fn with_frame_limit(chunk_size: NonZeroUsize, frame_limit: usize) -> Self {
         Self {
             scheduler: Wf2qScheduler::new(),
             connections: HashMap::new(),
             chunk_size,
+            frame_limit,
         }
     }
 
@@ -110,6 +134,8 @@ impl EgressManager {
             registration.connection_id,
             EgressConnection {
                 dispatch_tx: registration.dispatch_tx,
+                staged_frames: 0,
+                in_flight_is_final: None,
             },
         );
         true
@@ -163,15 +189,22 @@ impl EgressManager {
             return Err(EgressEnqueueError::EmptyFrame);
         }
 
-        if !self.connections.contains_key(&connection_id) {
+        let Some(connection) = self.connections.get(&connection_id) else {
             return Err(EgressEnqueueError::UnknownConnection);
+        };
+
+        if connection.staged_frames >= self.frame_limit {
+            return Err(EgressEnqueueError::QueueFull);
         }
 
         let mut chunks = 0;
         let chunk_size = self.chunk_size.get();
         for offset in (0..frame.len()).step_by(chunk_size) {
             let len = chunk_size.min(frame.len() - offset);
-            let Some(chunk) = EgressChunk::new(Arc::clone(&frame), offset, len) else {
+            let is_final_frame_chunk = offset + len == frame.len();
+            let Some(chunk) =
+                EgressChunk::new(Arc::clone(&frame), offset, len, is_final_frame_chunk)
+            else {
                 self.unregister(connection_id);
                 return Err(EgressEnqueueError::EmptyFrame);
             };
@@ -192,6 +225,9 @@ impl EgressManager {
             chunks += 1;
         }
 
+        if let Some(connection) = self.connections.get_mut(&connection_id) {
+            connection.staged_frames += 1;
+        }
         Ok(chunks)
     }
 
@@ -201,15 +237,17 @@ impl EgressManager {
         };
 
         let connection_id = packet.connection_id;
-        let Some(connection) = self.connections.get(&connection_id) else {
+        let Some(connection) = self.connections.get_mut(&connection_id) else {
             self.scheduler.unregister_connection(connection_id);
             return DispatchOutcome::Unregistered { connection_id };
         };
 
+        let is_final_frame_chunk = packet.payload.is_final_frame_chunk();
         let dispatch = EgressDispatch {
             connection_id,
             chunk: packet.payload,
         };
+        connection.in_flight_is_final = Some(is_final_frame_chunk);
         if connection.dispatch_tx.try_send(dispatch).is_err() {
             self.unregister(connection_id);
             return DispatchOutcome::Unregistered { connection_id };
@@ -219,6 +257,14 @@ impl EgressManager {
     }
 
     pub fn ack(&mut self, connection_id: ConnectionId) -> bool {
+        let Some(connection) = self.connections.get_mut(&connection_id) else {
+            return false;
+        };
+
+        if connection.in_flight_is_final.take() == Some(true) {
+            connection.staged_frames = connection.staged_frames.saturating_sub(1);
+        }
+
         self.scheduler
             .set_connection_in_flight(connection_id, false)
     }
@@ -231,6 +277,18 @@ impl EgressManager {
         self.scheduler.queued_packets(connection_id)
     }
 
+    pub fn staged_frame_count(&self, connection_id: ConnectionId) -> Option<usize> {
+        self.connections
+            .get(&connection_id)
+            .map(|connection| connection.staged_frames)
+    }
+
+    pub fn has_frame_capacity(&self, connection_id: ConnectionId) -> bool {
+        self.connections
+            .get(&connection_id)
+            .is_some_and(|connection| connection.staged_frames < self.frame_limit)
+    }
+
     pub fn has_connection(&self, connection_id: ConnectionId) -> bool {
         self.connections.contains_key(&connection_id)
     }
@@ -238,6 +296,8 @@ impl EgressManager {
 
 struct EgressConnection {
     dispatch_tx: EgressDispatchTx,
+    staged_frames: usize,
+    in_flight_is_final: Option<bool>,
 }
 
 #[cfg(test)]
@@ -250,6 +310,10 @@ mod tests {
 
     fn manager(chunk_size: usize) -> EgressManager {
         EgressManager::new(NonZeroUsize::new(chunk_size).unwrap())
+    }
+
+    fn manager_with_frame_limit(chunk_size: usize, frame_limit: usize) -> EgressManager {
+        EgressManager::with_frame_limit(NonZeroUsize::new(chunk_size).unwrap(), frame_limit)
     }
 
     fn channel() -> (EgressDispatchTx, EgressDispatchRx) {
@@ -284,13 +348,14 @@ mod tests {
     #[test]
     fn chunk_borrows_shared_frame_storage() {
         let frame = frame(b"abcdef");
-        let chunk = EgressChunk::new(Arc::clone(&frame), 2, 3).unwrap();
+        let chunk = EgressChunk::new(Arc::clone(&frame), 2, 3, true).unwrap();
 
         assert_eq!(chunk.as_bytes(), b"cde");
         assert_eq!(chunk.len(), 3);
+        assert!(chunk.is_final_frame_chunk());
         assert_eq!(Arc::strong_count(&frame), 2);
-        assert!(EgressChunk::new(Arc::clone(&frame), 6, 1).is_none());
-        assert!(EgressChunk::new(frame, 0, 0).is_none());
+        assert!(EgressChunk::new(Arc::clone(&frame), 6, 1, false).is_none());
+        assert!(EgressChunk::new(frame, 0, 0, false).is_none());
     }
 
     #[test]
@@ -365,6 +430,8 @@ mod tests {
         assert!(!manager.set_blocked(conn(999), true));
         assert!(!manager.transition_to_user(conn(999), 1, 1));
         assert!(!manager.update_user_weight(999, 1));
+        assert_eq!(manager.staged_frame_count(conn(999)), None);
+        assert!(!manager.has_frame_capacity(conn(999)));
     }
 
     #[test]
@@ -383,6 +450,133 @@ mod tests {
             manager.enqueue_frame(connection, frame(b"")),
             Err(EgressEnqueueError::EmptyFrame)
         );
+    }
+
+    #[test]
+    fn staged_frame_limit_rejects_without_queueing_chunks() {
+        let mut manager = manager_with_frame_limit(4, 2);
+        let connection = conn(1);
+        let (tx, _rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+
+        assert_eq!(manager.enqueue_frame(connection, frame(b"one")), Ok(1));
+        assert_eq!(manager.enqueue_frame(connection, frame(b"two")), Ok(1));
+        assert_eq!(manager.staged_frame_count(connection), Some(2));
+        assert!(!manager.has_frame_capacity(connection));
+        assert_eq!(manager.queued_packets(connection), Some(2));
+
+        assert_eq!(
+            manager.enqueue_frame(connection, frame(b"three")),
+            Err(EgressEnqueueError::QueueFull)
+        );
+        assert_eq!(manager.staged_frame_count(connection), Some(2));
+        assert_eq!(manager.queued_packets(connection), Some(2));
+    }
+
+    #[test]
+    fn multi_chunk_frame_counts_as_one_staged_frame() {
+        let mut manager = manager_with_frame_limit(4, 1);
+        let connection = conn(1);
+        let (tx, _rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+
+        assert_eq!(manager.enqueue_frame(connection, frame(b"abcdef")), Ok(2));
+        assert_eq!(manager.staged_frame_count(connection), Some(1));
+        assert_eq!(manager.queued_packets(connection), Some(2));
+        assert!(!manager.has_frame_capacity(connection));
+    }
+
+    #[test]
+    fn non_final_chunk_ack_does_not_free_frame_capacity() {
+        let mut manager = manager_with_frame_limit(4, 1);
+        let connection = conn(1);
+        let (tx, mut rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+        assert_eq!(manager.enqueue_frame(connection, frame(b"abcdef")), Ok(2));
+        assert_eq!(
+            manager.enqueue_frame(connection, frame(b"next")),
+            Err(EgressEnqueueError::QueueFull)
+        );
+
+        assert_eq!(expect_dispatch(&mut manager), connection);
+        let dispatch = rx.try_recv().unwrap();
+        assert_eq!(dispatch.chunk.as_bytes(), b"abcd");
+        assert!(!dispatch.chunk.is_final_frame_chunk());
+        assert!(manager.ack(connection));
+
+        assert_eq!(manager.staged_frame_count(connection), Some(1));
+        assert!(!manager.has_frame_capacity(connection));
+        assert_eq!(
+            manager.enqueue_frame(connection, frame(b"next")),
+            Err(EgressEnqueueError::QueueFull)
+        );
+    }
+
+    #[test]
+    fn final_chunk_ack_frees_frame_capacity() {
+        let mut manager = manager_with_frame_limit(4, 1);
+        let connection = conn(1);
+        let (tx, mut rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+        assert_eq!(manager.enqueue_frame(connection, frame(b"abcd")), Ok(1));
+        assert!(!manager.has_frame_capacity(connection));
+
+        assert_eq!(expect_dispatch(&mut manager), connection);
+        let dispatch = rx.try_recv().unwrap();
+        assert_eq!(dispatch.chunk.as_bytes(), b"abcd");
+        assert!(dispatch.chunk.is_final_frame_chunk());
+        assert!(manager.ack(connection));
+
+        assert_eq!(manager.staged_frame_count(connection), Some(0));
+        assert!(manager.has_frame_capacity(connection));
+        assert_eq!(manager.enqueue_frame(connection, frame(b"next")), Ok(1));
+    }
+
+    #[test]
+    fn resume_cycle_succeeds_after_final_chunk_ack() {
+        let mut manager = manager_with_frame_limit(4, 1);
+        let connection = conn(1);
+        let (tx, mut rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+        assert_eq!(manager.enqueue_frame(connection, frame(b"abcdef")), Ok(2));
+        assert_eq!(
+            manager.enqueue_frame(connection, frame(b"next")),
+            Err(EgressEnqueueError::QueueFull)
+        );
+
+        assert_eq!(expect_dispatch(&mut manager), connection);
+        assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"abcd");
+        assert!(manager.ack(connection));
+        assert_eq!(
+            manager.enqueue_frame(connection, frame(b"next")),
+            Err(EgressEnqueueError::QueueFull)
+        );
+
+        assert_eq!(expect_dispatch(&mut manager), connection);
+        let final_dispatch = rx.try_recv().unwrap();
+        assert_eq!(final_dispatch.chunk.as_bytes(), b"ef");
+        assert!(final_dispatch.chunk.is_final_frame_chunk());
+        assert!(manager.ack(connection));
+        assert_eq!(manager.enqueue_frame(connection, frame(b"next")), Ok(1));
+    }
+
+    #[test]
+    fn ack_without_final_in_flight_does_not_underflow_staged_frames() {
+        let mut manager = manager_with_frame_limit(4, 1);
+        let connection = conn(1);
+        let (tx, mut rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+
+        assert!(manager.ack(connection));
+        assert_eq!(manager.staged_frame_count(connection), Some(0));
+
+        assert_eq!(manager.enqueue_frame(connection, frame(b"abcd")), Ok(1));
+        assert_eq!(expect_dispatch(&mut manager), connection);
+        assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"abcd");
+        assert!(manager.ack(connection));
+        assert_eq!(manager.staged_frame_count(connection), Some(0));
+        assert!(manager.ack(connection));
+        assert_eq!(manager.staged_frame_count(connection), Some(0));
     }
 
     #[test]
@@ -489,6 +683,7 @@ mod tests {
 
         assert!(manager.transition_to_user(connection, 42, 1));
         assert_eq!(manager.queued_packets(connection), Some(2));
+        assert_eq!(manager.staged_frame_count(connection), Some(1));
         assert!(manager.update_user_weight(42, 1));
 
         assert_eq!(expect_dispatch(&mut manager), connection);
@@ -503,6 +698,7 @@ mod tests {
         let (tx, mut rx) = channel();
         assert!(manager.register_anon(connection, ConnectionClass::Protocol, tx));
         assert_eq!(manager.enqueue_frame(connection, frame(b"abcdef")), Ok(2));
+        assert_eq!(manager.staged_frame_count(connection), Some(1));
 
         assert_eq!(expect_dispatch(&mut manager), connection);
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"abcd");
@@ -513,6 +709,28 @@ mod tests {
         assert!(manager.ack(connection));
         assert_eq!(expect_dispatch(&mut manager), connection);
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"ef");
+        assert!(manager.ack(connection));
+        assert_eq!(manager.staged_frame_count(connection), Some(0));
+        assert!(manager.has_frame_capacity(connection));
+    }
+
+    #[test]
+    fn transition_to_user_while_final_chunk_in_flight_frees_capacity_on_ack() {
+        let mut manager = manager_with_frame_limit(4, 1);
+        let connection = conn(1);
+        let (tx, mut rx) = channel();
+        assert!(manager.register_anon(connection, ConnectionClass::Protocol, tx));
+        assert_eq!(manager.enqueue_frame(connection, frame(b"abcd")), Ok(1));
+
+        assert_eq!(expect_dispatch(&mut manager), connection);
+        let dispatch = rx.try_recv().unwrap();
+        assert!(dispatch.chunk.is_final_frame_chunk());
+        assert!(manager.transition_to_user(connection, 42, 5));
+        assert_eq!(manager.staged_frame_count(connection), Some(1));
+
+        assert!(manager.ack(connection));
+        assert_eq!(manager.staged_frame_count(connection), Some(0));
+        assert!(manager.has_frame_capacity(connection));
     }
 
     #[test]
@@ -592,6 +810,24 @@ mod tests {
         assert_eq!(order.iter().filter(|&&id| id == blocked).count(), 2);
         assert_eq!(order.iter().filter(|&&id| id == active).count(), 2);
         assert!(order.windows(2).all(|window| window != [blocked, blocked]));
+    }
+
+    #[test]
+    fn blocked_connection_stages_to_limit_then_returns_queue_full() {
+        let mut manager = manager_with_frame_limit(4, 2);
+        let connection = conn(1);
+        let (tx, _rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+        assert!(manager.set_blocked(connection, true));
+
+        assert_eq!(manager.enqueue_frame(connection, frame(b"one")), Ok(1));
+        assert_eq!(manager.enqueue_frame(connection, frame(b"two")), Ok(1));
+        assert_eq!(
+            manager.enqueue_frame(connection, frame(b"three")),
+            Err(EgressEnqueueError::QueueFull)
+        );
+        assert_eq!(manager.staged_frame_count(connection), Some(2));
+        assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
     }
 
     #[test]
@@ -686,10 +922,12 @@ mod tests {
         );
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"abcd");
 
+        assert_eq!(manager.staged_frame_count(connection), Some(1));
         assert!(manager.unregister(connection));
         assert!(!manager.ack(connection));
         assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
         assert!(!manager.has_connection(connection));
+        assert_eq!(manager.staged_frame_count(connection), None);
     }
 
     #[test]
@@ -708,10 +946,12 @@ mod tests {
         );
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"abcd");
 
+        assert_eq!(manager.staged_frame_count(connection), Some(1));
         assert!(manager.write_failed(connection));
         assert!(!manager.ack(connection));
         assert!(!manager.has_connection(connection));
         assert_eq!(manager.queued_packets(connection), None);
+        assert_eq!(manager.staged_frame_count(connection), None);
         assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
     }
 
@@ -732,6 +972,11 @@ mod tests {
         );
         assert!(!manager.has_connection(connection));
         assert_eq!(manager.queued_packets(connection), None);
+        assert_eq!(manager.staged_frame_count(connection), None);
         assert!(!manager.ack(connection));
+
+        let (new_tx, _new_rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, new_tx)));
+        assert_eq!(manager.enqueue_frame(connection, frame(b"ok")), Ok(1));
     }
 }
