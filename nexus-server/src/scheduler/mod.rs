@@ -143,6 +143,7 @@ impl<T> Wf2qScheduler<T> {
                 flow_id,
                 class,
                 blocked: false,
+                in_flight: false,
                 head_tags: None,
                 queue: VecDeque::new(),
             },
@@ -273,6 +274,19 @@ impl<T> Wf2qScheduler<T> {
         true
     }
 
+    pub fn set_connection_in_flight(
+        &mut self,
+        connection_id: ConnectionId,
+        in_flight: bool,
+    ) -> bool {
+        let Some(connection) = self.connections.get_mut(&connection_id) else {
+            return false;
+        };
+
+        connection.in_flight = in_flight;
+        true
+    }
+
     pub fn enqueue(
         &mut self,
         connection_id: ConnectionId,
@@ -313,6 +327,11 @@ impl<T> Wf2qScheduler<T> {
         Ok(())
     }
 
+    /// Dequeues the next packet and marks its connection in flight.
+    ///
+    /// The writer integration must clear the in-flight flag after the packet is
+    /// written or unregister the connection on write failure.
+    /// Callers must not drop a returned packet without taking one of those paths.
     pub fn dequeue(&mut self) -> Option<DequeuedPacket<T>> {
         let candidate = self.select_candidate()?;
         self.dequeue_candidate(candidate)
@@ -431,7 +450,9 @@ impl<T> Wf2qScheduler<T> {
             let connection_id = members[idx];
             connection_states
                 .get(&connection_id)
-                .filter(|connection| !connection.blocked && !connection.queue.is_empty())
+                .filter(|connection| {
+                    !connection.blocked && !connection.in_flight && !connection.queue.is_empty()
+                })
                 .map(|_| FlowSelection {
                     connection_id,
                     class,
@@ -479,6 +500,9 @@ impl<T> Wf2qScheduler<T> {
             );
         }
         self.tag_next_dispatchable_for_flow_after_dequeue(flow_id);
+        if let Some(connection) = self.connections.get_mut(&candidate.connection_id) {
+            connection.in_flight = true;
+        }
 
         let advanced = self.virtual_time.max(tags.start) + scaled_work(bytes, total_weight_sum);
         self.virtual_time = self
@@ -710,6 +734,7 @@ struct ConnectionState<T> {
     flow_id: FlowId,
     class: ConnectionClass,
     blocked: bool,
+    in_flight: bool,
     head_tags: Option<PacketTags>,
     queue: VecDeque<QueuedPacket<T>>,
 }
@@ -829,6 +854,12 @@ mod tests {
         }
     }
 
+    fn dequeue_and_ack(scheduler: &mut Wf2qScheduler<u64>) -> DequeuedPacket<u64> {
+        let packet = scheduler.dequeue().unwrap();
+        assert!(scheduler.set_connection_in_flight(packet.connection_id, false));
+        packet
+    }
+
     fn head_has_tags(scheduler: &Wf2qScheduler<u64>, connection_id: ConnectionId) -> bool {
         scheduler
             .connections
@@ -859,7 +890,7 @@ mod tests {
         let mut high_count = 0;
         let mut low_count = 0;
         for _ in 0..110 {
-            match scheduler.dequeue().unwrap().connection_id {
+            match dequeue_and_ack(&mut scheduler).connection_id {
                 id if id == high => high_count += 1,
                 id if id == low => low_count += 1,
                 _ => unreachable!(),
@@ -887,7 +918,7 @@ mod tests {
         let mut large_packets = 0;
         let mut large_bytes = 0;
         for _ in 0..150 {
-            let dequeued = scheduler.dequeue().unwrap();
+            let dequeued = dequeue_and_ack(&mut scheduler);
             match dequeued.connection_id {
                 id if id == small => {
                     small_packets += 1;
@@ -912,7 +943,7 @@ mod tests {
         scheduler.register_user_connection(connection, 1, ConnectionClass::Protocol, 1);
         enqueue_many(&mut scheduler, connection, 2);
 
-        assert_eq!(scheduler.dequeue().unwrap().connection_id, connection);
+        assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, connection);
 
         let tags = head_tags(&scheduler, connection).unwrap();
         let first_finish = scaled_work(PACKET_BYTES, 1);
@@ -973,7 +1004,7 @@ mod tests {
         let mut second_anon_count: usize = 0;
         let mut user_count: usize = 0;
         for _ in 0..120 {
-            match scheduler.dequeue().unwrap().connection_id {
+            match dequeue_and_ack(&mut scheduler).connection_id {
                 id if id == first_anon => first_anon_count += 1,
                 id if id == second_anon => second_anon_count += 1,
                 id if id == user => user_count += 1,
@@ -1003,7 +1034,7 @@ mod tests {
         let mut second_user_conn_count: usize = 0;
         let mut other_user_conn_count: usize = 0;
         for _ in 0..120 {
-            match scheduler.dequeue().unwrap().connection_id {
+            match dequeue_and_ack(&mut scheduler).connection_id {
                 id if id == first_user_conn => first_user_conn_count += 1,
                 id if id == second_user_conn => second_user_conn_count += 1,
                 id if id == other_user_conn => other_user_conn_count += 1,
@@ -1034,7 +1065,7 @@ mod tests {
         let mut other_count: usize = 0;
         let mut saw_user_bulk = false;
         for _ in 0..120 {
-            let dequeued = scheduler.dequeue().unwrap();
+            let dequeued = dequeue_and_ack(&mut scheduler);
             match dequeued.connection_id {
                 id if id == protocol => {
                     assert!(!saw_user_bulk);
@@ -1089,7 +1120,7 @@ mod tests {
         let mut first_active_count: usize = 0;
         let mut second_active_count: usize = 0;
         for _ in 0..120 {
-            match scheduler.dequeue().unwrap().connection_id {
+            match dequeue_and_ack(&mut scheduler).connection_id {
                 id if id == first_active => first_active_count += 1,
                 id if id == second_active => second_active_count += 1,
                 id if blocked_connections.contains(&id) => {
@@ -1112,7 +1143,7 @@ mod tests {
         enqueue_many(&mut scheduler, baseline, 200);
         enqueue_many(&mut scheduler, boosted, 200);
 
-        assert_eq!(scheduler.dequeue().unwrap().connection_id, baseline);
+        assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, baseline);
         assert!(head_has_tags(&scheduler, boosted));
 
         assert!(scheduler.update_user_weight(2, 10));
@@ -1121,7 +1152,7 @@ mod tests {
         let mut baseline_count = 0;
         let mut boosted_count = 0;
         for _ in 0..110 {
-            match scheduler.dequeue().unwrap().connection_id {
+            match dequeue_and_ack(&mut scheduler).connection_id {
                 id if id == baseline => baseline_count += 1,
                 id if id == boosted => boosted_count += 1,
                 _ => unreachable!(),
@@ -1142,7 +1173,7 @@ mod tests {
         enqueue_many(&mut scheduler, baseline, 200);
         enqueue_many(&mut scheduler, reduced, 200);
 
-        assert_eq!(scheduler.dequeue().unwrap().connection_id, reduced);
+        assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, reduced);
         assert!(head_has_tags(&scheduler, baseline));
 
         assert!(scheduler.update_user_weight(2, 1));
@@ -1151,7 +1182,7 @@ mod tests {
         let mut baseline_count: usize = 0;
         let mut reduced_count: usize = 0;
         for _ in 0..120 {
-            match scheduler.dequeue().unwrap().connection_id {
+            match dequeue_and_ack(&mut scheduler).connection_id {
                 id if id == baseline => baseline_count += 1,
                 id if id == reduced => reduced_count += 1,
                 _ => unreachable!(),
@@ -1189,13 +1220,13 @@ mod tests {
         enqueue_many(&mut scheduler, protocol, 3);
 
         for _ in 0..3 {
-            let dequeued = scheduler.dequeue().unwrap();
+            let dequeued = dequeue_and_ack(&mut scheduler);
             assert_eq!(dequeued.connection_id, protocol);
             assert_eq!(dequeued.class, ConnectionClass::Protocol);
         }
 
         for _ in 0..3 {
-            let dequeued = scheduler.dequeue().unwrap();
+            let dequeued = dequeue_and_ack(&mut scheduler);
             assert_eq!(dequeued.connection_id, bulk);
             assert_eq!(dequeued.class, ConnectionClass::Bulk);
         }
@@ -1212,7 +1243,7 @@ mod tests {
         enqueue_many(&mut scheduler, bulk, 1);
         scheduler.set_connection_blocked(protocol, true);
 
-        let dequeued = scheduler.dequeue().unwrap();
+        let dequeued = dequeue_and_ack(&mut scheduler);
         assert_eq!(dequeued.connection_id, bulk);
         assert_eq!(dequeued.class, ConnectionClass::Bulk);
     }
@@ -1227,10 +1258,10 @@ mod tests {
         enqueue_many(&mut scheduler, first, 2);
         enqueue_many(&mut scheduler, second, 2);
 
-        assert_eq!(scheduler.dequeue().unwrap().connection_id, first);
-        assert_eq!(scheduler.dequeue().unwrap().connection_id, second);
-        assert_eq!(scheduler.dequeue().unwrap().connection_id, first);
-        assert_eq!(scheduler.dequeue().unwrap().connection_id, second);
+        assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, first);
+        assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, second);
+        assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, first);
+        assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, second);
     }
 
     #[test]
@@ -1245,15 +1276,146 @@ mod tests {
         scheduler.set_connection_blocked(blocked, true);
 
         for _ in 0..5 {
-            assert_eq!(scheduler.dequeue().unwrap().connection_id, active);
+            assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, active);
         }
 
         scheduler.set_connection_blocked(blocked, false);
 
         let next: Vec<_> = (0..4)
-            .map(|_| scheduler.dequeue().unwrap().connection_id)
+            .map(|_| dequeue_and_ack(&mut scheduler).connection_id)
             .collect();
         assert_eq!(next, vec![blocked, active, blocked, active]);
+    }
+
+    #[test]
+    fn in_flight_connection_is_not_dispatched_again_until_acked() {
+        let mut scheduler = Wf2qScheduler::new();
+        let connection = conn(1);
+        scheduler.register_user_connection(connection, 1, ConnectionClass::Protocol, 1);
+        enqueue_many(&mut scheduler, connection, 2);
+
+        assert_eq!(scheduler.dequeue().unwrap().connection_id, connection);
+        assert!(scheduler.dequeue().is_none());
+
+        assert!(scheduler.set_connection_in_flight(connection, false));
+        assert_eq!(scheduler.dequeue().unwrap().connection_id, connection);
+    }
+
+    #[test]
+    fn in_flight_state_preserves_cached_tags() {
+        let mut scheduler = Wf2qScheduler::new();
+        let connection = conn(1);
+        scheduler.register_user_connection(connection, 1, ConnectionClass::Protocol, 1);
+        enqueue_many(&mut scheduler, connection, 2);
+
+        assert_eq!(scheduler.dequeue().unwrap().connection_id, connection);
+        let tags_before = head_tags(&scheduler, connection).unwrap();
+
+        let tags_during = head_tags(&scheduler, connection).unwrap();
+        assert_eq!(tags_during.start, tags_before.start);
+        assert_eq!(tags_during.finish, tags_before.finish);
+
+        assert!(scheduler.set_connection_in_flight(connection, false));
+        let tags_after = head_tags(&scheduler, connection).unwrap();
+        assert_eq!(tags_after.start, tags_before.start);
+        assert_eq!(tags_after.finish, tags_before.finish);
+        assert_eq!(scheduler.dequeue().unwrap().connection_id, connection);
+    }
+
+    #[test]
+    fn in_flight_connection_does_not_block_same_user_sibling_connection() {
+        let mut scheduler = Wf2qScheduler::new();
+        let in_flight = conn(1);
+        let sibling = conn(2);
+        scheduler.register_user_connection(in_flight, 1, ConnectionClass::Protocol, 1);
+        scheduler.register_user_connection(sibling, 1, ConnectionClass::Protocol, 1);
+        enqueue_many(&mut scheduler, in_flight, 2);
+        enqueue_many(&mut scheduler, sibling, 2);
+
+        assert_eq!(scheduler.dequeue().unwrap().connection_id, in_flight);
+
+        assert_eq!(scheduler.dequeue().unwrap().connection_id, sibling);
+    }
+
+    #[test]
+    fn repeated_in_flight_cycles_preserve_fair_share() {
+        let mut scheduler = Wf2qScheduler::new();
+        let first = conn(1);
+        let second = conn(2);
+        scheduler.register_user_connection(first, 1, ConnectionClass::Protocol, 1);
+        scheduler.register_user_connection(second, 2, ConnectionClass::Protocol, 1);
+        enqueue_many(&mut scheduler, first, 100);
+        enqueue_many(&mut scheduler, second, 100);
+
+        let mut first_count: usize = 0;
+        let mut second_count: usize = 0;
+        for _ in 0..120 {
+            let dequeued = scheduler.dequeue().unwrap();
+            match dequeued.connection_id {
+                id if id == first => first_count += 1,
+                id if id == second => second_count += 1,
+                _ => unreachable!(),
+            }
+            assert!(scheduler.set_connection_in_flight(dequeued.connection_id, false));
+        }
+
+        assert!(first_count.abs_diff(second_count) <= 2);
+    }
+
+    #[test]
+    fn transition_while_in_flight_clears_cached_tags_and_recomputes_on_ack() {
+        let mut scheduler = Wf2qScheduler::new();
+        let connection = conn(1);
+        scheduler.register_anon_connection(connection, ConnectionClass::Protocol);
+        enqueue_many(&mut scheduler, connection, 3);
+
+        assert_eq!(scheduler.dequeue().unwrap().connection_id, connection);
+        assert!(head_has_tags(&scheduler, connection));
+
+        assert!(scheduler.transition_to_user(connection, 42, 5));
+        assert!(!head_has_tags(&scheduler, connection));
+
+        assert!(scheduler.set_connection_in_flight(connection, false));
+        assert!(scheduler.select_candidate().is_some());
+        assert!(head_has_tags(&scheduler, connection));
+
+        let dequeued = scheduler.dequeue().unwrap();
+        assert_eq!(dequeued.connection_id, connection);
+        assert_eq!(dequeued.flow_id, FlowId::User(42));
+    }
+
+    #[test]
+    fn weight_update_while_in_flight_clears_cached_tags_and_recomputes_on_ack() {
+        let mut scheduler = Wf2qScheduler::new();
+        let connection = conn(1);
+        scheduler.register_user_connection(connection, 1, ConnectionClass::Protocol, 10);
+        enqueue_many(&mut scheduler, connection, 3);
+
+        assert_eq!(scheduler.dequeue().unwrap().connection_id, connection);
+        assert!(head_has_tags(&scheduler, connection));
+
+        assert!(scheduler.update_user_weight(1, 1));
+        assert!(!head_has_tags(&scheduler, connection));
+
+        assert!(scheduler.set_connection_in_flight(connection, false));
+        assert!(scheduler.select_candidate().is_some());
+        let tags = head_tags(&scheduler, connection).unwrap();
+        assert_eq!(tags.finish - tags.start, scaled_work(PACKET_BYTES, 1));
+    }
+
+    #[test]
+    fn unregister_while_in_flight_then_ack_is_harmless() {
+        let mut scheduler = Wf2qScheduler::new();
+        let connection = conn(1);
+        scheduler.register_user_connection(connection, 1, ConnectionClass::Protocol, 1);
+        enqueue_many(&mut scheduler, connection, 1);
+
+        assert_eq!(scheduler.dequeue().unwrap().connection_id, connection);
+        assert!(scheduler.unregister_connection(connection));
+
+        assert!(!scheduler.set_connection_in_flight(connection, false));
+        assert_eq!(scheduler.queued_packets(connection), None);
+        assert!(scheduler.dequeue().is_none());
     }
 
     #[test]
@@ -1264,7 +1426,7 @@ mod tests {
         scheduler.enqueue(connection, packet(1)).unwrap();
         assert!(scheduler.transition_to_user(connection, 42, 5));
 
-        let dequeued = scheduler.dequeue().unwrap();
+        let dequeued = dequeue_and_ack(&mut scheduler);
         assert_eq!(dequeued.connection_id, connection);
         assert_eq!(dequeued.flow_id, FlowId::User(42));
     }
@@ -1279,7 +1441,7 @@ mod tests {
         enqueue_many_sized(&mut scheduler, transitioning, PACKET_BYTES * 10, 20);
         enqueue_many_sized(&mut scheduler, active, PACKET_BYTES, 20);
 
-        assert_eq!(scheduler.dequeue().unwrap().connection_id, active);
+        assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, active);
         assert!(head_has_tags(&scheduler, transitioning));
 
         assert!(scheduler.transition_to_user(transitioning, 2, ANON_FLOW_WEIGHT));
@@ -1316,16 +1478,21 @@ mod tests {
         scheduler.set_connection_blocked(transitioning, true);
 
         for _ in 0..5 {
-            assert_eq!(scheduler.dequeue().unwrap().connection_id, active);
+            assert_eq!(dequeue_and_ack(&mut scheduler).connection_id, active);
         }
 
         assert!(scheduler.transition_to_user(transitioning, 2, ANON_FLOW_WEIGHT));
         scheduler.set_connection_blocked(transitioning, false);
 
         let next: Vec<_> = (0..4)
-            .map(|_| scheduler.dequeue().unwrap().connection_id)
+            .map(|_| dequeue_and_ack(&mut scheduler).connection_id)
             .collect();
-        assert_eq!(next, vec![active, transitioning, active, transitioning]);
+        assert_eq!(next.iter().filter(|&&id| id == active).count(), 2);
+        assert_eq!(next.iter().filter(|&&id| id == transitioning).count(), 2);
+        assert!(
+            next.windows(2)
+                .all(|window| window != [transitioning, transitioning])
+        );
     }
 
     #[test]
@@ -1340,7 +1507,7 @@ mod tests {
 
         assert!(scheduler.unregister_connection(first));
 
-        let dequeued = scheduler.dequeue().unwrap();
+        let dequeued = dequeue_and_ack(&mut scheduler);
         assert_eq!(dequeued.connection_id, second);
         assert!(scheduler.dequeue().is_none());
     }
