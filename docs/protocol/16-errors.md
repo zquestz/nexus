@@ -134,6 +134,8 @@ The `Error` message type is used for:
 - Critical errors that should disconnect the client
 - Terminal moderation reasons, such as kicks (`command: "UserKick"`)
   and bans (`command: "BanCreate"`)
+- Terminal slow-client reasons when a session cannot keep up with queued
+  server messages (`disconnect: true`, no `command`)
 
 ## Error Kind Values
 
@@ -210,6 +212,7 @@ These errors terminate the connection after sending:
 | Critical validation | Invalid handshake, malformed login          |
 | Some validation     | Chat message too long, broadcast validation |
 | Flood protection    | 3 consecutive rate limit violations         |
+| Slow client         | Session cannot keep up with server messages |
 
 ### Non-Disconnect Errors
 

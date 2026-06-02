@@ -2,21 +2,21 @@
 
 ## Implementation Order (Pre-Launch)
 
-| #   | Feature                     | Effort | Status                      |
-| --- | --------------------------- | ------ | --------------------------- |
-| 1   | Account groups              | Low    | ✅ Done                     |
-| 2   | Password strength           | Low    | ✅ Done                     |
-| 3   | Streaming hash transfers    | Medium | ✅ Done                     |
-| 4   | Boards                      | High   | Planned                     |
-| 5   | File previews               | Low    | Planned                     |
-| 6   | Tracker registration        | Medium | ✅ Done                     |
-| 7   | Tracker discovery           | Low    | ✅ Done                     |
-| 8   | Speed limiting              | Medium | Phase 1 ✅, Phase 2 planned |
-| 9   | Flood protection            | Low    | ✅ Done                     |
-| 10  | Server logs                 | Medium | ✅ Done                     |
-| 11  | Auto-away                   | Low    | ✅ Done                     |
-| 12  | Certificate fingerprint pin | Low    | ✅ Done                     |
-| 13  | Unicode name folding        | Low    | ✅ Done                     |
+| #   | Feature                     | Effort | Status                                          |
+| --- | --------------------------- | ------ | ----------------------------------------------- |
+| 1   | Account groups              | Low    | ✅ Done                                         |
+| 2   | Password strength           | Low    | ✅ Done                                         |
+| 3   | Streaming hash transfers    | Medium | ✅ Done                                         |
+| 4   | Boards                      | High   | Planned                                         |
+| 5   | File previews               | Low    | Planned                                         |
+| 6   | Tracker registration        | Medium | ✅ Done                                         |
+| 7   | Tracker discovery           | Low    | ✅ Done                                         |
+| 8   | Speed limiting              | Medium | Phase 1 ✅, slow-client guard ✅, WF2Q+ planned |
+| 9   | Flood protection            | Low    | ✅ Done                                         |
+| 10  | Server logs                 | Medium | ✅ Done                                         |
+| 11  | Auto-away                   | Low    | ✅ Done                                         |
+| 12  | Certificate fingerprint pin | Low    | ✅ Done                                         |
+| 13  | Unicode name folding        | Low    | ✅ Done                                         |
 
 ## Decided Against
 
@@ -97,6 +97,15 @@ Preview files before downloading.
 ### Speed Limiting
 
 Weighted fair share of server outbound bandwidth per user, enforced via a single egress scheduler. All of a user's sessions — BBS and transfer, regular or shared account — share one flow keyed on `user_id`; the weight bounds that account's total outbound share.
+
+**Current pre-scheduler safety layer (implemented)**
+
+- BBS session broadcasts and queued cross-task sends go through `ConnectionWriter`, not a raw `mpsc` sender.
+- `ConnectionWriter` has a bounded normal queue of 1024 `SessionEvent`s plus a priority control queue of exactly one event.
+- The control queue is reserved for slow-client disconnects. When the normal queue is full, the attempted event is dropped, the slow-client control event is armed, and the sender gets `Ok(())`. A closed queue still returns `Err`, preserving the existing "session is gone" signal for broadcast cleanup.
+- The connection task prioritizes the control queue before normal queued messages, sends a localized `Error { disconnect: true }`, then exits through the normal disconnect cleanup path.
+- `DirectWriter` is the immediate handler response path. Handlers do not expose raw `FrameWriter`; direct writes and queued BBS writes both use the server-local 30-minute per-message BBS write timeout.
+- This is a safety layer, not the final bandwidth scheduler. The future WF2Q+ scheduler below still owns byte-level fairness, rate limiting, transfer integration, and WAN/LAN routing.
 
 **Algorithm: WF2Q+ (Bennett & Zhang, 1997)**
 
@@ -183,7 +192,7 @@ WF2Q+ virtual-time accounting is unaffected — a packet is a packet regardless 
 
 **Backpressure model.**
 
-- **Protocol `send_frame`: blocks only on its own connection's backlog, never on Bulk.** Each Protocol-class connection has a **`PER_CONNECTION_PROTOCOL_CAP` (4 MB)** — the blocking rule is: if that connection's pending Protocol bytes are **already ≥ cap**, `send_frame` blocks until drain brings them below; if pending bytes are **below cap**, the enqueue always succeeds (even if the message itself pushes the total over). This means exactly one message can overshoot the cap, but the next caller blocks until the queue drains. A single 5 MB `FileListResponse` gets through (we were under cap when it arrived), but the next `send_frame` blocks — no unbounded bypass. The 4 MB cap is extremely generous: Protocol traffic for a connection comes from its handler responses plus broadcasts. A connection would need to fall 4 MB behind on its own Protocol output to trigger blocking — realistically only a frozen client. When blocking does trigger, it pauses exactly the right thing: that connection task's `select!` rx arm (for broadcasts) or its handler (for direct responses). The broadcaster (`UserManager.broadcast()`) is never blocked — it fire-and-forgets via the unbounded per-session `tx`, so backpressure stays local to the slow connection's task. **Session isolation:** the cap is per-connection, so a frozen session's Protocol backlog is its own — it cannot block `send_frame` for any sibling session of the same user flow. The flow shares only the weighted rate budget, never buffer capacity. **Upstream bound:** the 4 MB cap covers only the scheduler-side buffer; broadcasts queue ahead of it in the unbounded per-session channel, so a non-reading client's footprint is that channel + 4 MB + kernel buffer — unbounded on its own for a zero-window client that nothing else reaps. The writer **stall timeout** (see "Writer task lifecycle") is what bounds it: zero write progress for `WRITER_STALL_TIMEOUT` (60s) → disconnect, capping accumulation at ~one stall-window of rate-limited broadcasts.
+- **Protocol `send_frame`: blocks only on its own connection's backlog, never on Bulk.** Each Protocol-class connection has a **`PER_CONNECTION_PROTOCOL_CAP` (4 MB)** — the blocking rule is: if that connection's pending Protocol bytes are **already ≥ cap**, `send_frame` blocks until drain brings them below; if pending bytes are **below cap**, the enqueue always succeeds (even if the message itself pushes the total over). This means exactly one message can overshoot the cap, but the next caller blocks until the queue drains. A single 5 MB `FileListResponse` gets through (we were under cap when it arrived), but the next `send_frame` blocks — no unbounded bypass. The 4 MB cap is extremely generous: Protocol traffic for a connection comes from its handler responses plus broadcasts. A connection would need to fall 4 MB behind on its own Protocol output to trigger blocking — realistically only a frozen client. When blocking does trigger, it pauses exactly the right thing: that connection task's `select!` rx arm (for broadcasts) or its handler (for direct responses). The broadcaster (`UserManager.broadcast()`) is never blocked — today, full session queues arm the slow-client disconnect control path and report `Ok(())`; after the scheduler lands, scheduler-side backpressure must remain local to the slow connection's task. **Session isolation:** the cap is per-connection, so a frozen session's Protocol backlog is its own — it cannot block `send_frame` for any sibling session of the same user flow. The flow shares only the weighted rate budget, never buffer capacity. **Upstream bound:** the 4 MB cap covers only the scheduler-side buffer. The existing pre-scheduler `ConnectionWriter` queue is already bounded at 1024 events and disconnects slow consumers when full; the future scheduler should keep that property rather than reintroducing an unbounded broadcast queue. The writer **stall timeout** (see "Writer task lifecycle") is what bounds an active zero-progress socket write inside the future writer task: zero write progress for `WRITER_STALL_TIMEOUT` (60s) → disconnect, capping accumulation at ~one stall-window of rate-limited broadcasts.
 - **Bulk `send_bytes`: blocks when a connection's pending bulk bytes exceed `PER_CONNECTION_BULK_CAP` (1 MB).** Backpressure propagates naturally to callers: a transfer task pumping 64 KB chunks blocks when its own bulk queue is full, and the file read pauses. Per-connection, so a frozen transfer connection backpressures only itself, not the user's other transfers. A user opening many transfer connections does get a larger aggregate memory budget (bounded by `max_connections` / `max_connections_per_ip`) — an accepted trade for full per-session isolation.
 - **Bulk can never block Protocol.** The caps are per-connection and independent. A saturating transfer cannot prevent a chat message or file listing from being enqueued and dispatched. Protocol-class connections are dispatched before Bulk-class within a flow, and every connection's cap is its own.
 - **Pending-byte accounting.** The cap counts bytes still in **this connection's scheduler queue** — dispatched bytes leave the counter when handed to the writer channel. In the stuck case this stays accurate: a full writer channel refuses further dispatch, so the bytes remain queued and counted. The writer channel itself is bounded by **bytes, not packet count** — **`WRITER_CHANNEL_BYTE_CAP = 512 KiB`**, with the same one-oversized-packet-may-pass rule as the scheduler queue (a frame larger than the budget passes if in-flight bytes are below the cap, but the next dispatch waits). Implementation: the dispatch channel is a thin wrapper over `tokio::mpsc` (which is item-bounded) plus a per-connection in-flight-byte counter (or semaphore); "full" means `in_flight_bytes ≥ WRITER_CHANNEL_BYTE_CAP`, not a slot count. Byte-bounding (not packet-bounding) matters because at cap = 0 chunking is skipped, so a single Protocol "packet" can be a multi-MB `FileListResponse`; an 8-_packet_ channel would let 8 such frames pile up, whereas the byte budget admits at most one oversized frame ahead of the drain. No per-write progress reporting is needed — the budget counts every byte handed to the writer channel and releases it only when that buffer's write **completes** (not at `recv()`), so the buffer currently being written stays counted against the budget until it is fully on the socket. The `Drained` full→available edge is this byte total crossing back under the cap. True per-connection memory ≈ scheduler-queue soft cap + writer-channel soft byte cap (the active write buffer is inside that cap, not added to it).
@@ -387,12 +396,12 @@ The scheduler maintains two internal registries:
 - Admins bypass the rule entirely. The server reads the requester's current weight from `UserSession.bandwidth_weight` (the live `AtomicU16` cache), so admin downgrades take effect immediately on subsequent delegation attempts.
 - Admin-only ServerInfo edit still covers rate-limit config (`max_outbound_rate`, `scheduler_chunk_size`) — existing pattern, unchanged.
 
-**Implementation phasing (four PRs)**
+**Implementation phasing**
 
 1. ✅ **DONE** — Schema + plumbing (small, safe). DB migration, protocol additions, UI for weight, new Bandwidth section in Server Info (`max_outbound_rate` and `scheduler_chunk_size` fields), resolution helper cached on `UserSession`. Values are stored and settable but inert until the scheduler lands.
-2. **Bounded broadcast channel (standalone fix).** Change the per-session `user.tx` from `mpsc::unbounded_channel` to bounded; every producer (`broadcast`, `broadcast_to_*`, `send_to_session`, `send_message_via_channel`, the `helpers`/`mutations` sends) uses `try_send`, and `Full` joins the existing `Closed` branch → collect the `session_id`s and disconnect them after the lock releases. No producer can block (broadcasters hold the session lock and serve every client; `send_message_via_channel` runs in the connection's own drain task → self-deadlock), so a full inbox means "slow consumer → disconnect," not backpressure. Fixes a pre-existing OOM risk (a slow-but-progressing client lets the unbounded inbox grow without bound) **independent of the scheduler**. The bound stays small because the **avatar broadcast diet** (below) drops `UserUpdated` from ~176 KB to ~KB, so it only has to ride out a `UserConnected` join storm. Smallest, lowest-risk; can land first.
-3. **`ConnectionWriter` refactor (no behavior change).** Introduce `ConnectionWriter` as a concrete type with only the `Direct` variant (`Box<dyn AsyncWrite + Unpin + Send>`) wrapping today's writers. Thread it through `HandlerContext`, `Transfer`, and every handler, erasing the `<W>` generic. Pure mechanical refactor — no scheduler, no behavior change — landable and reviewable (and revertible) independently. Large diff, low risk. Independent of #2 (either order); prereq for #4.
-4. **Scheduler + cap (the big one).** Add the `Scheduled` variant and the new `nexus-server/src/scheduler/` module hosting WF2Q+ state + dispatch task. Wire all four accept loops, voice UDP exempt, LAN bypass at accept. **Depends on #3**; **assumes #2** (the bounded inbox is what keeps push traffic inside the per-connection memory bound). Scheduler consumes the config values phase 1 made available; the cap=0 default keeps it a pass-through until an operator sets a rate.
+2. ✅ **DONE** — Queued session writer safety. `ConnectionWriter` now wraps a bounded 1024-message normal queue plus a one-slot slow-client control queue. Producers use non-blocking `try_send`: `Full` drops the attempted event, arms the priority slow-client disconnect, and returns `Ok(())`; `Closed` returns `Err` for stale-session cleanup. The connection task prioritizes the control queue, sends localized `Error { disconnect: true }`, then exits through normal cleanup. Direct and queued BBS writes also have a 30-minute per-message write timeout.
+3. ✅ **DONE** — Writer surface split. `ConnectionWriter` is the queued cross-task session writer; `DirectWriter` is the immediate handler response writer. Handlers no longer expose raw `FrameWriter`, keeping BBS write policy centralized and making the scheduler integration point clearer.
+4. **Scheduler + cap (the big one).** Add the future scheduler writer abstraction and the new `nexus-server/src/scheduler/` module hosting WF2Q+ state + dispatch task. Wire BBS and transfer accept loops, voice UDP exempt, LAN bypass at accept. It builds on #2/#3, preserves the current slow-client disconnect property, and consumes the config values phase 1 made available; the cap=0 default keeps it a pass-through until an operator sets a rate.
 
 **Broadcast avatar diet (companion — done)**
 
