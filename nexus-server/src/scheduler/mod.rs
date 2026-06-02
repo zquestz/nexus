@@ -82,6 +82,7 @@ pub struct Wf2qScheduler<T> {
     flows: HashMap<FlowId, FlowState>,
     connections: HashMap<ConnectionId, ConnectionState<T>>,
     virtual_time: u128,
+    total_flow_weight_sum: u128,
     pending_scratch: Vec<PendingCandidate>,
 }
 
@@ -97,6 +98,7 @@ impl<T> Wf2qScheduler<T> {
             flows: HashMap::new(),
             connections: HashMap::new(),
             virtual_time: 0,
+            total_flow_weight_sum: 0,
             pending_scratch: Vec::new(),
         }
     }
@@ -113,12 +115,27 @@ impl<T> Wf2qScheduler<T> {
         }
 
         let weight = normalize_weight(weight);
-        let flow = self
-            .flows
-            .entry(flow_id)
-            .or_insert_with(|| FlowState::new(weight, self.virtual_time));
-        flow.weight = weight;
-        flow.add_connection(class, connection_id);
+        let should_clear_tags = if let Some(flow) = self.flows.get_mut(&flow_id) {
+            let weight_changed = flow.weight != weight;
+            if weight_changed {
+                self.total_flow_weight_sum = self
+                    .total_flow_weight_sum
+                    .saturating_sub(u128::from(flow.weight))
+                    + u128::from(weight);
+                flow.weight = weight;
+                flow.last_finish = flow.last_finish.max(self.virtual_time);
+            }
+            flow.add_connection(class, connection_id);
+            weight_changed
+        } else {
+            self.flows
+                .insert(flow_id, FlowState::new(weight, self.virtual_time));
+            self.total_flow_weight_sum += u128::from(weight);
+            if let Some(flow) = self.flows.get_mut(&flow_id) {
+                flow.add_connection(class, connection_id);
+            }
+            false
+        };
 
         self.connections.insert(
             connection_id,
@@ -130,6 +147,10 @@ impl<T> Wf2qScheduler<T> {
                 queue: VecDeque::new(),
             },
         );
+
+        if should_clear_tags {
+            self.clear_flow_tags(flow_id);
+        }
 
         true
     }
@@ -157,7 +178,13 @@ impl<T> Wf2qScheduler<T> {
             return false;
         };
 
-        self.remove_flow_member(connection.flow_id, connection.class, connection_id);
+        let clear_remaining_tags = !connection.queue.is_empty() || connection.head_tags.is_some();
+        self.remove_flow_member(
+            connection.flow_id,
+            connection.class,
+            connection_id,
+            clear_remaining_tags,
+        );
         true
     }
 
@@ -175,12 +202,15 @@ impl<T> Wf2qScheduler<T> {
         let weight = normalize_weight(weight);
         let old_flow_id = connection.flow_id;
         let class = connection.class;
+        let connection_had_dispatch_state =
+            !connection.queue.is_empty() || connection.head_tags.is_some();
         if old_flow_id == new_flow_id {
-            if let Some(flow) = self.flows.get_mut(&new_flow_id) {
-                flow.weight = weight;
-                flow.last_finish = flow.last_finish.max(self.virtual_time);
+            let Some(weight_changed) = self.update_existing_flow_weight(new_flow_id, weight) else {
+                return false;
+            };
+            if weight_changed {
+                self.clear_flow_tags(new_flow_id);
             }
-            self.clear_flow_tags(new_flow_id);
             return true;
         }
 
@@ -190,31 +220,44 @@ impl<T> Wf2qScheduler<T> {
         connection.flow_id = new_flow_id;
         connection.clear_tags();
 
-        self.remove_flow_member(old_flow_id, class, connection_id);
+        self.remove_flow_member(
+            old_flow_id,
+            class,
+            connection_id,
+            connection_had_dispatch_state,
+        );
 
+        let mut new_flow_weight_changed = false;
         {
-            let flow = self
-                .flows
-                .entry(new_flow_id)
-                .or_insert_with(|| FlowState::new(weight, self.virtual_time));
-            flow.weight = weight;
-            flow.last_finish = flow.last_finish.max(self.virtual_time);
-            flow.add_connection(class, connection_id);
+            if self.flows.contains_key(&new_flow_id) {
+                new_flow_weight_changed =
+                    self.update_existing_flow_weight(new_flow_id, weight) == Some(true);
+            } else {
+                self.flows
+                    .insert(new_flow_id, FlowState::new(weight, self.virtual_time));
+                self.total_flow_weight_sum += u128::from(weight);
+            }
+            if let Some(flow) = self.flows.get_mut(&new_flow_id) {
+                flow.add_connection(class, connection_id);
+            }
         }
-        self.clear_flow_tags(new_flow_id);
+        if connection_had_dispatch_state || new_flow_weight_changed {
+            self.clear_flow_tags(new_flow_id);
+        }
 
         true
     }
 
     pub fn update_user_weight(&mut self, user_id: i64, weight: u16) -> bool {
         let flow_id = FlowId::User(user_id);
-        let Some(flow) = self.flows.get_mut(&flow_id) else {
+        let Some(weight_changed) =
+            self.update_existing_flow_weight(flow_id, normalize_weight(weight))
+        else {
             return false;
         };
-
-        flow.weight = normalize_weight(weight);
-        flow.last_finish = flow.last_finish.max(self.virtual_time);
-        self.clear_flow_tags(flow_id);
+        if weight_changed {
+            self.clear_flow_tags(flow_id);
+        }
         true
     }
 
@@ -242,17 +285,30 @@ impl<T> Wf2qScheduler<T> {
             });
         }
 
+        let Some(connection) = self.connections.get(&connection_id) else {
+            return Err(EnqueueError::UnknownConnection {
+                connection_id,
+                packet,
+            });
+        };
+        let flow_id = connection.flow_id;
+        let was_dispatchable = self.flow_has_dispatchable_connection(flow_id);
+
         let Some(connection) = self.connections.get_mut(&connection_id) else {
             return Err(EnqueueError::UnknownConnection {
                 connection_id,
                 packet,
             });
         };
-
         connection.queue.push_back(QueuedPacket {
             bytes: packet.bytes,
             payload: packet.payload,
         });
+
+        if !was_dispatchable {
+            self.tag_initial_dispatchable_for_flow(flow_id);
+            self.update_virtual_time_floor();
+        }
 
         Ok(())
     }
@@ -275,7 +331,6 @@ impl<T> Wf2qScheduler<T> {
     fn select_candidate(&mut self) -> Option<SelectedCandidate> {
         self.collect_pending_candidates();
 
-        let mut active_weight_sum: u128 = 0;
         let mut min_start = None;
         let mut best_eligible = None;
         let mut best_after_idle = None;
@@ -286,7 +341,6 @@ impl<T> Wf2qScheduler<T> {
                 pending.weight,
                 pending.last_finish,
             ) {
-                active_weight_sum += u128::from(pending.weight);
                 let candidate = Candidate {
                     flow_id: pending.flow_id,
                     connection_id: pending.connection_id,
@@ -319,10 +373,7 @@ impl<T> Wf2qScheduler<T> {
             best_after_idle?
         };
 
-        Some(SelectedCandidate {
-            candidate,
-            active_weight_sum: active_weight_sum.max(1),
-        })
+        Some(SelectedCandidate { candidate })
     }
 
     fn collect_pending_candidates(&mut self) {
@@ -410,6 +461,7 @@ impl<T> Wf2qScheduler<T> {
 
     fn dequeue_candidate(&mut self, selected: SelectedCandidate) -> Option<DequeuedPacket<T>> {
         let candidate = selected.candidate;
+        let total_weight_sum = self.total_flow_weight_sum();
 
         let connection = self.connections.get_mut(&candidate.connection_id)?;
         let tags = connection.head_tags.take()?;
@@ -426,9 +478,12 @@ impl<T> Wf2qScheduler<T> {
                 candidate.connection_id,
             );
         }
+        self.tag_next_dispatchable_for_flow_after_dequeue(flow_id);
 
-        self.virtual_time =
-            self.virtual_time.max(tags.start) + scaled_work(bytes, selected.active_weight_sum);
+        let advanced = self.virtual_time.max(tags.start) + scaled_work(bytes, total_weight_sum);
+        self.virtual_time = self
+            .min_dispatchable_start()
+            .map_or(advanced, |min_start| advanced.max(min_start));
 
         Some(DequeuedPacket {
             connection_id: candidate.connection_id,
@@ -439,11 +494,109 @@ impl<T> Wf2qScheduler<T> {
         })
     }
 
+    fn tag_next_dispatchable_for_flow_after_dequeue(&mut self, flow_id: FlowId) {
+        let Some((selection, start, weight)) = self.flows.get(&flow_id).and_then(|flow| {
+            Self::dispatchable_connection_for_flow(&self.connections, flow)
+                .map(|selection| (selection, flow.last_finish, flow.weight))
+        }) else {
+            return;
+        };
+
+        // Dispatch-affecting membership and blocked-state changes clear flow
+        // tags, so this pre-tag cannot survive if another connection becomes
+        // the dispatchable head first.
+        let Some(connection) = self.connections.get_mut(&selection.connection_id) else {
+            return;
+        };
+        let Some(bytes) = connection.queue.front().map(|packet| packet.bytes) else {
+            return;
+        };
+
+        let finish = start + scaled_work(bytes, u128::from(weight));
+        connection.head_tags = Some(PacketTags { start, finish });
+    }
+
+    fn tag_initial_dispatchable_for_flow(&mut self, flow_id: FlowId) {
+        let Some((selection, start, weight)) = self.flows.get(&flow_id).and_then(|flow| {
+            Self::dispatchable_connection_for_flow(&self.connections, flow).map(|selection| {
+                (
+                    selection,
+                    flow.last_finish.max(self.virtual_time),
+                    flow.weight,
+                )
+            })
+        }) else {
+            return;
+        };
+
+        let Some(connection) = self.connections.get_mut(&selection.connection_id) else {
+            return;
+        };
+        let Some(bytes) = connection.queue.front().map(|packet| packet.bytes) else {
+            return;
+        };
+
+        let finish = start + scaled_work(bytes, u128::from(weight));
+        connection.head_tags = Some(PacketTags { start, finish });
+    }
+
+    fn min_dispatchable_start(&mut self) -> Option<u128> {
+        self.collect_pending_candidates();
+
+        let mut min_start = None;
+        for idx in 0..self.pending_scratch.len() {
+            let pending = self.pending_scratch[idx];
+            let Some(tags) = self.ensure_candidate_tags(
+                pending.connection_id,
+                pending.weight,
+                pending.last_finish,
+            ) else {
+                continue;
+            };
+            min_start = Some(min_start.map_or(tags.start, |current: u128| current.min(tags.start)));
+        }
+
+        min_start
+    }
+
+    fn total_flow_weight_sum(&self) -> u128 {
+        self.total_flow_weight_sum.max(1)
+    }
+
+    fn update_virtual_time_floor(&mut self) {
+        if let Some(min_start) = self.min_dispatchable_start() {
+            self.virtual_time = self.virtual_time.max(min_start);
+        }
+    }
+
+    fn flow_has_dispatchable_connection(&self, flow_id: FlowId) -> bool {
+        self.flows
+            .get(&flow_id)
+            .and_then(|flow| Self::dispatchable_connection_for_flow(&self.connections, flow))
+            .is_some()
+    }
+
+    fn update_existing_flow_weight(&mut self, flow_id: FlowId, weight: u16) -> Option<bool> {
+        let flow = self.flows.get_mut(&flow_id)?;
+
+        let weight_changed = flow.weight != weight;
+        if weight_changed {
+            self.total_flow_weight_sum = self
+                .total_flow_weight_sum
+                .saturating_sub(u128::from(flow.weight))
+                + u128::from(weight);
+            flow.weight = weight;
+        }
+        flow.last_finish = flow.last_finish.max(self.virtual_time);
+        Some(weight_changed)
+    }
+
     fn remove_flow_member(
         &mut self,
         flow_id: FlowId,
         class: ConnectionClass,
         connection_id: ConnectionId,
+        clear_remaining_tags: bool,
     ) {
         let should_remove = if let Some(flow) = self.flows.get_mut(&flow_id) {
             flow.remove_connection(class, connection_id);
@@ -453,7 +606,13 @@ impl<T> Wf2qScheduler<T> {
         };
 
         if should_remove {
-            self.flows.remove(&flow_id);
+            if let Some(flow) = self.flows.remove(&flow_id) {
+                self.total_flow_weight_sum = self
+                    .total_flow_weight_sum
+                    .saturating_sub(u128::from(flow.weight));
+            }
+        } else if clear_remaining_tags {
+            self.clear_flow_tags(flow_id);
         }
     }
 
@@ -601,7 +760,6 @@ struct Candidate {
 #[derive(Clone, Copy)]
 struct SelectedCandidate {
     candidate: Candidate,
-    active_weight_sum: u128,
 }
 
 fn normalize_weight(weight: u16) -> u16 {
@@ -678,6 +836,16 @@ mod tests {
             .is_some_and(|connection| connection.head_tags.is_some())
     }
 
+    fn head_tags(
+        scheduler: &Wf2qScheduler<u64>,
+        connection_id: ConnectionId,
+    ) -> Option<PacketTags> {
+        scheduler
+            .connections
+            .get(&connection_id)
+            .and_then(|connection| connection.head_tags)
+    }
+
     #[test]
     fn weighted_flows_receive_proportional_service_while_backlogged() {
         let mut scheduler = Wf2qScheduler::new();
@@ -735,6 +903,57 @@ mod tests {
 
         assert!(small_packets > large_packets);
         assert!(small_bytes.abs_diff(large_bytes) <= LARGE_BYTES);
+    }
+
+    #[test]
+    fn continuously_backlogged_flow_tags_next_head_from_previous_finish() {
+        let mut scheduler = Wf2qScheduler::new();
+        let connection = conn(1);
+        scheduler.register_user_connection(connection, 1, ConnectionClass::Protocol, 1);
+        enqueue_many(&mut scheduler, connection, 2);
+
+        assert_eq!(scheduler.dequeue().unwrap().connection_id, connection);
+
+        let tags = head_tags(&scheduler, connection).unwrap();
+        let first_finish = scaled_work(PACKET_BYTES, 1);
+        assert_eq!(tags.start, first_finish);
+        assert_eq!(tags.finish, first_finish + scaled_work(PACKET_BYTES, 1));
+    }
+
+    #[test]
+    fn enqueue_to_idle_flow_updates_virtual_time_before_later_arrivals() {
+        let mut scheduler = Wf2qScheduler::new();
+        let first = conn(1);
+        let second = conn(2);
+        scheduler.register_user_connection(first, 1, ConnectionClass::Protocol, 1);
+        scheduler.register_user_connection(second, 2, ConnectionClass::Protocol, 1);
+
+        let work = scaled_work(PACKET_BYTES, 1);
+        let first_last_finish = work * 4;
+        scheduler.virtual_time = work;
+        scheduler
+            .flows
+            .get_mut(&FlowId::User(1))
+            .unwrap()
+            .last_finish = first_last_finish;
+        scheduler
+            .flows
+            .get_mut(&FlowId::User(2))
+            .unwrap()
+            .last_finish = work;
+
+        scheduler.enqueue(first, packet(1)).unwrap();
+        assert_eq!(scheduler.virtual_time, first_last_finish);
+
+        scheduler.enqueue(second, packet(2)).unwrap();
+        assert_eq!(
+            head_tags(&scheduler, first).unwrap().start,
+            first_last_finish
+        );
+        assert_eq!(
+            head_tags(&scheduler, second).unwrap().start,
+            first_last_finish
+        );
     }
 
     #[test]
@@ -798,6 +1017,92 @@ mod tests {
     }
 
     #[test]
+    fn mixed_class_connections_still_share_one_user_flow() {
+        let mut scheduler = Wf2qScheduler::new();
+        let protocol = conn(1);
+        let bulk = conn(2);
+        let other = conn(3);
+        scheduler.register_user_connection(protocol, 1, ConnectionClass::Protocol, 1);
+        scheduler.register_user_connection(bulk, 1, ConnectionClass::Bulk, 1);
+        scheduler.register_user_connection(other, 2, ConnectionClass::Protocol, 1);
+        enqueue_many(&mut scheduler, protocol, 30);
+        enqueue_many(&mut scheduler, bulk, 200);
+        enqueue_many(&mut scheduler, other, 230);
+
+        let mut protocol_count: usize = 0;
+        let mut bulk_count: usize = 0;
+        let mut other_count: usize = 0;
+        let mut saw_user_bulk = false;
+        for _ in 0..120 {
+            let dequeued = scheduler.dequeue().unwrap();
+            match dequeued.connection_id {
+                id if id == protocol => {
+                    assert!(!saw_user_bulk);
+                    protocol_count += 1;
+                }
+                id if id == bulk => {
+                    saw_user_bulk = true;
+                    bulk_count += 1;
+                }
+                id if id == other => other_count += 1,
+                _ => unreachable!(),
+            }
+        }
+
+        let user_total = protocol_count + bulk_count;
+        assert_eq!(protocol_count, 30);
+        assert!(bulk_count > 0);
+        assert!(user_total.abs_diff(other_count) <= 2);
+    }
+
+    #[test]
+    fn blocked_and_idle_registered_flows_do_not_distort_active_fairness() {
+        let mut scheduler = Wf2qScheduler::new();
+        let first_active = conn(1);
+        let second_active = conn(2);
+        scheduler.register_user_connection(first_active, 1, ConnectionClass::Protocol, 1);
+        scheduler.register_user_connection(second_active, 2, ConnectionClass::Protocol, 1);
+        enqueue_many(&mut scheduler, first_active, 200);
+        enqueue_many(&mut scheduler, second_active, 200);
+
+        let blocked_connections: Vec<_> = (3..13).map(conn).collect();
+        for (idx, connection_id) in blocked_connections.iter().enumerate() {
+            scheduler.register_user_connection(
+                *connection_id,
+                idx as i64 + 3,
+                ConnectionClass::Protocol,
+                ANON_FLOW_WEIGHT,
+            );
+            enqueue_many(&mut scheduler, *connection_id, 200);
+            scheduler.set_connection_blocked(*connection_id, true);
+        }
+
+        for id in 20..30 {
+            scheduler.register_user_connection(
+                conn(id),
+                i64::try_from(id).unwrap(),
+                ConnectionClass::Protocol,
+                ANON_FLOW_WEIGHT,
+            );
+        }
+
+        let mut first_active_count: usize = 0;
+        let mut second_active_count: usize = 0;
+        for _ in 0..120 {
+            match scheduler.dequeue().unwrap().connection_id {
+                id if id == first_active => first_active_count += 1,
+                id if id == second_active => second_active_count += 1,
+                id if blocked_connections.contains(&id) => {
+                    panic!("blocked connection was dispatched")
+                }
+                _ => unreachable!(),
+            }
+        }
+
+        assert!(first_active_count.abs_diff(second_active_count) <= 2);
+    }
+
+    #[test]
     fn update_user_weight_clears_cached_tags_and_changes_service_share() {
         let mut scheduler = Wf2qScheduler::new();
         let baseline = conn(1);
@@ -825,6 +1130,52 @@ mod tests {
 
         assert!(boosted_count >= baseline_count * 8);
         assert!(boosted_count <= baseline_count * 12);
+    }
+
+    #[test]
+    fn update_user_weight_decrease_clears_cached_tags_and_changes_service_share() {
+        let mut scheduler = Wf2qScheduler::new();
+        let baseline = conn(1);
+        let reduced = conn(2);
+        scheduler.register_user_connection(baseline, 1, ConnectionClass::Protocol, 1);
+        scheduler.register_user_connection(reduced, 2, ConnectionClass::Protocol, 10);
+        enqueue_many(&mut scheduler, baseline, 200);
+        enqueue_many(&mut scheduler, reduced, 200);
+
+        assert_eq!(scheduler.dequeue().unwrap().connection_id, reduced);
+        assert!(head_has_tags(&scheduler, baseline));
+
+        assert!(scheduler.update_user_weight(2, 1));
+        assert!(!head_has_tags(&scheduler, reduced));
+
+        let mut baseline_count: usize = 0;
+        let mut reduced_count: usize = 0;
+        for _ in 0..120 {
+            match scheduler.dequeue().unwrap().connection_id {
+                id if id == baseline => baseline_count += 1,
+                id if id == reduced => reduced_count += 1,
+                _ => unreachable!(),
+            }
+        }
+
+        assert!(baseline_count.abs_diff(reduced_count) <= 2);
+    }
+
+    #[test]
+    fn registering_existing_flow_with_changed_weight_clears_cached_tags() {
+        let mut scheduler = Wf2qScheduler::new();
+        let first = conn(1);
+        let second = conn(2);
+        scheduler.register_user_connection(first, 1, ConnectionClass::Protocol, 1);
+        enqueue_many(&mut scheduler, first, 1);
+
+        assert!(scheduler.select_candidate().is_some());
+        assert!(head_has_tags(&scheduler, first));
+
+        assert!(scheduler.register_user_connection(second, 1, ConnectionClass::Protocol, 10));
+        assert_eq!(scheduler.total_flow_weight_sum, 10);
+        assert_eq!(scheduler.flows.get(&FlowId::User(1)).unwrap().weight, 10);
+        assert!(!head_has_tags(&scheduler, first));
     }
 
     #[test]
