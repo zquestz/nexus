@@ -102,8 +102,13 @@ pub enum StagingError {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DispatchOutcome {
-    Dispatched { connection_id: ConnectionId },
-    Unregistered { connection_id: ConnectionId },
+    Dispatched {
+        connection_id: ConnectionId,
+        bytes: usize,
+    },
+    Unregistered {
+        connection_id: ConnectionId,
+    },
     Empty,
 }
 
@@ -139,6 +144,14 @@ impl EgressManager {
             chunk_size,
             frame_limit,
         }
+    }
+
+    pub fn chunk_size(&self) -> NonZeroUsize {
+        self.chunk_size
+    }
+
+    pub fn set_chunk_size(&mut self, chunk_size: NonZeroUsize) {
+        self.chunk_size = chunk_size;
     }
 
     pub fn register(&mut self, registration: EgressRegistration) -> bool {
@@ -268,6 +281,7 @@ impl EgressManager {
         };
 
         let is_final_frame_chunk = packet.payload.is_final_frame_chunk();
+        let bytes = packet.payload.len();
         let dispatch = EgressDispatch {
             connection_id,
             chunk: packet.payload,
@@ -278,7 +292,10 @@ impl EgressManager {
             return DispatchOutcome::Unregistered { connection_id };
         }
 
-        DispatchOutcome::Dispatched { connection_id }
+        DispatchOutcome::Dispatched {
+            connection_id,
+            bytes,
+        }
     }
 
     pub fn ack(&mut self, connection_id: ConnectionId) -> bool {
@@ -300,6 +317,10 @@ impl EgressManager {
 
     pub fn queued_packets(&self, connection_id: ConnectionId) -> Option<usize> {
         self.scheduler.queued_packets(connection_id)
+    }
+
+    pub fn has_dispatchable_packet(&self) -> bool {
+        self.scheduler.has_dispatchable_packet()
     }
 
     #[cfg(test)]
@@ -371,7 +392,7 @@ mod tests {
     }
 
     fn expect_dispatch(manager: &mut EgressManager) -> ConnectionId {
-        let DispatchOutcome::Dispatched { connection_id } = manager.dispatch_next() else {
+        let DispatchOutcome::Dispatched { connection_id, .. } = manager.dispatch_next() else {
             panic!("expected dispatch");
         };
         connection_id
@@ -642,7 +663,8 @@ mod tests {
         assert_eq!(
             manager.dispatch_next(),
             DispatchOutcome::Dispatched {
-                connection_id: second
+                connection_id: second,
+                bytes: 4
             }
         );
 
@@ -667,12 +689,10 @@ mod tests {
 
         let mut reassembled = Vec::new();
         for _ in 0..3 {
-            assert_eq!(
-                manager.dispatch_next(),
-                DispatchOutcome::Dispatched {
-                    connection_id: connection
-                }
-            );
+            let DispatchOutcome::Dispatched { connection_id, .. } = manager.dispatch_next() else {
+                panic!("expected dispatch");
+            };
+            assert_eq!(connection_id, connection);
             reassembled.extend_from_slice(rx.try_recv().unwrap().chunk.as_bytes());
             assert!(manager.ack(connection));
         }
@@ -796,7 +816,7 @@ mod tests {
 
         let mut order = Vec::new();
         for _ in 0..20 {
-            let DispatchOutcome::Dispatched { connection_id } = manager.dispatch_next() else {
+            let DispatchOutcome::Dispatched { connection_id, .. } = manager.dispatch_next() else {
                 panic!("expected dispatch");
             };
             order.push(connection_id);
@@ -1034,7 +1054,8 @@ mod tests {
         assert_eq!(
             manager.dispatch_next(),
             DispatchOutcome::Dispatched {
-                connection_id: connection
+                connection_id: connection,
+                bytes: 4
             }
         );
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"abcd");
@@ -1044,7 +1065,8 @@ mod tests {
         assert_eq!(
             manager.dispatch_next(),
             DispatchOutcome::Dispatched {
-                connection_id: connection
+                connection_id: connection,
+                bytes: 2
             }
         );
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"ef");
@@ -1061,7 +1083,8 @@ mod tests {
         assert_eq!(
             manager.dispatch_next(),
             DispatchOutcome::Dispatched {
-                connection_id: connection
+                connection_id: connection,
+                bytes: 4
             }
         );
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"abcd");
@@ -1085,7 +1108,8 @@ mod tests {
         assert_eq!(
             manager.dispatch_next(),
             DispatchOutcome::Dispatched {
-                connection_id: connection
+                connection_id: connection,
+                bytes: 4
             }
         );
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"abcd");

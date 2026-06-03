@@ -343,6 +343,12 @@ impl<T> Wf2qScheduler<T> {
             .map(|connection| connection.queue.len())
     }
 
+    pub fn has_dispatchable_packet(&self) -> bool {
+        self.flows
+            .values()
+            .any(|flow| Self::dispatchable_connection_for_flow(&self.connections, flow).is_some())
+    }
+
     pub fn virtual_time(&self) -> u128 {
         self.virtual_time
     }

@@ -213,10 +213,12 @@ async fn main() {
     let chat_burst_limit = database.config.get_chat_burst_limit().await;
     let chat_rate_limit = database.config.get_chat_rate_limit().await;
     let flood_config = Arc::new(FloodConfig::new(chat_burst_limit, chat_rate_limit));
-    let egress_chunk_size =
-        resolve_egress_chunk_size(database.config.get_all().await.scheduler_chunk_size);
-    let (egress_handle, egress_task) =
-        egress::task::EgressTask::channel(egress::EgressManager::new(egress_chunk_size));
+    let egress_config = database.config.get_all().await;
+    let egress_chunk_size = resolve_egress_chunk_size(egress_config.scheduler_chunk_size);
+    let (egress_handle, egress_task) = egress::task::EgressTask::channel_with_rate(
+        egress::EgressManager::new(egress_chunk_size),
+        egress_config.max_outbound_rate,
+    );
     let _egress_task = tokio::spawn(egress_task.run());
     let egress_connection_ids = Arc::new(AtomicU64::new(1));
 

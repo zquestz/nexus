@@ -1,8 +1,8 @@
 //! Handler for ServerInfoUpdate command
 
-use std::io;
+use std::{io, num::NonZeroUsize};
 
-use tokio::io::AsyncWrite;
+use tokio::{io::AsyncWrite, time};
 use tracing::{error, info, warn};
 
 use nexus_common::names::fold_name;
@@ -29,7 +29,9 @@ use super::{
     err_server_name_too_long,
 };
 use crate::constants::{
-    HANDLER_SERVER_INFO_UPDATE, LOG_SERVER_INFO_ADMIN_REQUIRED,
+    EGRESS_COMMAND_TIMEOUT, HANDLER_SERVER_INFO_UPDATE, LOG_EGRESS_CHUNK_SIZE_UPDATE_FAILED,
+    LOG_EGRESS_CHUNK_SIZE_UPDATE_TIMEOUT, LOG_EGRESS_RATE_UPDATE_FAILED,
+    LOG_EGRESS_RATE_UPDATE_TIMEOUT, LOG_SERVER_INFO_ADMIN_REQUIRED,
     LOG_SERVER_INFO_CHANNEL_CREATE_FAILED, LOG_SERVER_INFO_CHANNEL_DELETE_FAILED,
     LOG_SERVER_INFO_CHANNEL_READ_FAILED, LOG_SERVER_INFO_DB_AUTO_JOIN, LOG_SERVER_INFO_DB_BEGIN,
     LOG_SERVER_INFO_DB_CHAT_BURST, LOG_SERVER_INFO_DB_CHAT_RATE, LOG_SERVER_INFO_DB_COMMIT,
@@ -63,6 +65,62 @@ enum StageFail {
     Db(&'static str, String),
     /// (log constant, error detail, channel name → `target` field)
     Channel(&'static str, String, String),
+}
+
+async fn update_egress_rate<W>(ctx: &HandlerContext<'_, W>, bytes_per_second: u64) {
+    match time::timeout(
+        EGRESS_COMMAND_TIMEOUT,
+        ctx.egress.set_max_outbound_rate(bytes_per_second),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            warn!(
+                ip = %ctx.peer_addr,
+                rate = bytes_per_second,
+                err = ?e,
+                "{}",
+                LOG_EGRESS_RATE_UPDATE_FAILED
+            );
+        }
+        Err(_) => {
+            warn!(
+                ip = %ctx.peer_addr,
+                rate = bytes_per_second,
+                "{}",
+                LOG_EGRESS_RATE_UPDATE_TIMEOUT
+            );
+        }
+    }
+}
+
+async fn update_egress_chunk_size<W>(ctx: &HandlerContext<'_, W>, chunk_size: NonZeroUsize) {
+    match time::timeout(
+        EGRESS_COMMAND_TIMEOUT,
+        ctx.egress.set_chunk_size(chunk_size),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            warn!(
+                ip = %ctx.peer_addr,
+                chunk_size = chunk_size.get(),
+                err = ?e,
+                "{}",
+                LOG_EGRESS_CHUNK_SIZE_UPDATE_FAILED
+            );
+        }
+        Err(_) => {
+            warn!(
+                ip = %ctx.peer_addr,
+                chunk_size = chunk_size.get(),
+                "{}",
+                LOG_EGRESS_CHUNK_SIZE_UPDATE_TIMEOUT
+            );
+        }
+    }
 }
 
 pub struct ServerInfoUpdateRequest {
@@ -518,6 +576,14 @@ where
         if let Some(rate) = chat_rate_limit {
             ctx.flood_config.set_rate(rate);
         }
+        if let Some(rate) = max_outbound_rate {
+            update_egress_rate(ctx, rate).await;
+        }
+        if let Some(size) = scheduler_chunk_size
+            && let Some(chunk_size) = NonZeroUsize::new(size as usize)
+        {
+            update_egress_chunk_size(ctx, chunk_size).await;
+        }
         if let Some(init) = channels_to_init {
             ctx.channel_manager
                 .reinitialize_persistent_channels(init)
@@ -561,6 +627,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::egress::task::EgressCommand;
     use crate::handlers::testing::{
         DEFAULT_TEST_LOCALE, create_test_context, login_user, read_server_message,
     };
@@ -2275,6 +2342,95 @@ mod tests {
 
         let stored = test_ctx.db.config.get_all().await.max_outbound_rate;
         assert_eq!(stored, 12_500_000);
+
+        match test_ctx.egress_command_rx.try_recv() {
+            Ok(EgressCommand::SetMaxOutboundRate { bytes_per_second }) => {
+                assert_eq!(bytes_per_second, 12_500_000);
+            }
+            _ => panic!("Expected SetMaxOutboundRate egress command"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_scheduler_chunk_size_persists_and_updates_egress() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            public_address: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+            max_outbound_rate: None,
+            scheduler_chunk_size: Some(4096),
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success, "Expected success, got error: {:?}", error);
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse"),
+        }
+
+        let stored = test_ctx.db.config.get_all().await.scheduler_chunk_size;
+        assert_eq!(stored, 4096);
+
+        match test_ctx.egress_command_rx.try_recv() {
+            Ok(EgressCommand::SetChunkSize { chunk_size }) => {
+                assert_eq!(chunk_size.get(), 4096);
+            }
+            _ => panic!("Expected SetChunkSize egress command"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_server_info_update_egress_command_failure_is_non_fatal() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        test_ctx.egress_command_rx.close();
+
+        let request = ServerInfoUpdateRequest {
+            name: None,
+            description: None,
+            public_address: None,
+            max_connections_per_ip: None,
+            max_transfers_per_ip: None,
+            image: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            min_password_strength: None,
+            max_outbound_rate: Some(1_000),
+            scheduler_chunk_size: None,
+            session_id: Some(session_id),
+        };
+        let result = handle_server_info_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::ServerInfoUpdateResponse { success, error } => {
+                assert!(success, "Expected success, got error: {:?}", error);
+            }
+            _ => panic!("Expected ServerInfoUpdateResponse"),
+        }
+
+        let stored = test_ctx.db.config.get_all().await.max_outbound_rate;
+        assert_eq!(stored, 1_000);
     }
 
     #[tokio::test]
