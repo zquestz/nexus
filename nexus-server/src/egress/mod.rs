@@ -4,8 +4,11 @@
 //! manager-side lifecycle around the WF2Q+ scheduler: registration, frame
 //! chunking, dispatch, ack, and write-failure cleanup.
 
-use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
+use std::{collections::HashMap, io, num::NonZeroUsize, sync::Arc};
 
+use nexus_common::framing::MessageId;
+use nexus_common::io::server_message_to_frame_bytes;
+use nexus_common::protocol::ServerMessage;
 use tokio::sync::mpsc;
 
 use crate::scheduler::{
@@ -88,11 +91,30 @@ pub enum EgressEnqueueError {
     QueueFull,
 }
 
+#[derive(Debug)]
+pub enum StagingError {
+    Serialize(io::Error),
+    Enqueue(EgressEnqueueError),
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DispatchOutcome {
     Dispatched { connection_id: ConnectionId },
     Unregistered { connection_id: ConnectionId },
     Empty,
+}
+
+pub fn stage_server_message(
+    manager: &mut EgressManager,
+    connection_id: ConnectionId,
+    message: &ServerMessage,
+    message_id: MessageId,
+) -> Result<usize, StagingError> {
+    let frame =
+        server_message_to_frame_bytes(message, message_id).map_err(StagingError::Serialize)?;
+    manager
+        .enqueue_frame(connection_id, frame)
+        .map_err(StagingError::Enqueue)
 }
 
 pub struct EgressManager {
@@ -303,6 +325,10 @@ struct EgressConnection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nexus_common::framing::MessageId;
+    use nexus_common::io::server_message_to_frame_bytes;
+    use nexus_common::protocol::{ChatAction, ServerMessage};
+    use nexus_common::validators::DEFAULT_CHANNEL;
 
     fn conn(id: u64) -> ConnectionId {
         ConnectionId::new(id)
@@ -343,6 +369,23 @@ mod tests {
             panic!("expected dispatch");
         };
         connection_id
+    }
+
+    fn message_id(bytes: &[u8]) -> MessageId {
+        MessageId::from_bytes(bytes).unwrap()
+    }
+
+    fn large_chat_message() -> ServerMessage {
+        ServerMessage::ChatMessage {
+            session_id: 42,
+            nickname: "alice".to_string(),
+            is_admin: true,
+            is_shared: false,
+            message: "x".repeat(16 * 1024),
+            action: ChatAction::Normal,
+            channel: DEFAULT_CHANNEL.to_string(),
+            timestamp: 1234,
+        }
     }
 
     #[test]
@@ -630,6 +673,101 @@ mod tests {
 
         assert_eq!(reassembled, original);
         assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
+    }
+
+    #[test]
+    fn stage_server_message_dispatches_wire_identical_chunks() {
+        let mut manager = manager(512);
+        let connection = conn(1);
+        let (tx, mut rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+        let message = large_chat_message();
+        let message_id = message_id(b"000000000101");
+        let expected = server_message_to_frame_bytes(&message, message_id).unwrap();
+
+        let chunks = stage_server_message(&mut manager, connection, &message, message_id).unwrap();
+        assert!(chunks > 1);
+        assert_eq!(manager.staged_frame_count(connection), Some(1));
+
+        let mut reassembled = Vec::new();
+        for _ in 0..chunks {
+            assert_eq!(expect_dispatch(&mut manager), connection);
+            reassembled.extend_from_slice(rx.try_recv().unwrap().chunk.as_bytes());
+            assert!(manager.ack(connection));
+        }
+
+        assert_eq!(reassembled.as_slice(), expected.as_ref());
+        assert_eq!(manager.staged_frame_count(connection), Some(0));
+        assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
+    }
+
+    #[test]
+    fn stage_server_message_counts_multi_chunk_message_as_one_frame() {
+        let mut manager = manager_with_frame_limit(512, 1);
+        let connection = conn(1);
+        let (tx, _rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+        let message = large_chat_message();
+
+        let chunks = stage_server_message(
+            &mut manager,
+            connection,
+            &message,
+            message_id(b"000000000102"),
+        )
+        .unwrap();
+
+        assert!(chunks > 1);
+        assert_eq!(manager.staged_frame_count(connection), Some(1));
+        assert!(!manager.has_frame_capacity(connection));
+    }
+
+    #[test]
+    fn stage_server_message_preserves_queue_full_error() {
+        let mut manager = manager_with_frame_limit(512, 1);
+        let connection = conn(1);
+        let (tx, _rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+        assert!(matches!(
+            stage_server_message(
+                &mut manager,
+                connection,
+                &ServerMessage::Pong,
+                message_id(b"000000000103"),
+            ),
+            Ok(1)
+        ));
+
+        let result = stage_server_message(
+            &mut manager,
+            connection,
+            &ServerMessage::Pong,
+            message_id(b"000000000104"),
+        );
+
+        assert!(matches!(
+            result,
+            Err(StagingError::Enqueue(EgressEnqueueError::QueueFull))
+        ));
+        assert_eq!(manager.staged_frame_count(connection), Some(1));
+        assert_eq!(manager.queued_packets(connection), Some(1));
+    }
+
+    #[test]
+    fn stage_server_message_preserves_unknown_connection_error() {
+        let mut manager = manager(512);
+
+        let result = stage_server_message(
+            &mut manager,
+            conn(999),
+            &ServerMessage::Pong,
+            message_id(b"000000000105"),
+        );
+
+        assert!(matches!(
+            result,
+            Err(StagingError::Enqueue(EgressEnqueueError::UnknownConnection))
+        ));
     }
 
     #[test]
