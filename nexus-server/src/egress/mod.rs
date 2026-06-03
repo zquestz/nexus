@@ -4,6 +4,8 @@
 //! manager-side lifecycle around the WF2Q+ scheduler: registration, frame
 //! chunking, dispatch, ack, and write-failure cleanup.
 
+pub mod task;
+
 use std::{collections::HashMap, io, num::NonZeroUsize, sync::Arc};
 
 use nexus_common::framing::MessageId;
