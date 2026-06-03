@@ -4,6 +4,7 @@
 //! (`ClientMessage`, `ServerMessage`) and the wire format (framing).
 
 use std::io;
+use std::sync::Arc;
 use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -97,12 +98,31 @@ pub async fn send_server_message_with_id<W>(
 where
     W: AsyncWriteExt + Unpin,
 {
+    let frame = server_message_to_raw_frame(message, message_id)?;
+    writer.write_frame(&frame).await.map_err(Into::into)
+}
+
+/// Serialize a `ServerMessage` into complete BBS frame bytes.
+///
+/// This uses the same message-type and JSON payload encoding as
+/// [`send_server_message_with_id`].
+pub fn server_message_to_frame_bytes(
+    message: &ServerMessage,
+    message_id: MessageId,
+) -> io::Result<Arc<[u8]>> {
+    let frame = server_message_to_raw_frame(message, message_id)?;
+    Ok(Arc::from(frame.to_bytes()))
+}
+
+fn server_message_to_raw_frame(
+    message: &ServerMessage,
+    message_id: MessageId,
+) -> io::Result<RawFrame> {
     let message_type = server_message_type(message);
     let payload =
         serde_json::to_vec(message).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    let frame = RawFrame::new(message_id, message_type, payload);
-    writer.write_frame(&frame).await.map_err(Into::into)
+    Ok(RawFrame::new(message_id, message_type, payload))
 }
 
 // =============================================================================
@@ -681,6 +701,66 @@ mod tests {
             }),
             "Error"
         );
+    }
+
+    async fn sent_server_frame_bytes(message: &ServerMessage, message_id: MessageId) -> Vec<u8> {
+        let mut buffer = Vec::new();
+        {
+            let cursor = Cursor::new(&mut buffer);
+            let mut writer = FrameWriter::new(cursor);
+            send_server_message_with_id(&mut writer, message, message_id)
+                .await
+                .unwrap();
+        }
+        buffer
+    }
+
+    async fn assert_server_frame_bytes_match_writer(message: ServerMessage, message_id: MessageId) {
+        let serialized = server_message_to_frame_bytes(&message, message_id).unwrap();
+        let sent = sent_server_frame_bytes(&message, message_id).await;
+        assert_eq!(serialized.as_ref(), sent.as_slice());
+    }
+
+    #[tokio::test]
+    async fn server_message_to_frame_bytes_matches_writer_for_pong() {
+        let message_id = MessageId::from_bytes(b"000000000001").unwrap();
+
+        assert_server_frame_bytes_match_writer(ServerMessage::Pong, message_id).await;
+    }
+
+    #[tokio::test]
+    async fn server_message_to_frame_bytes_matches_writer_for_disconnect_error() {
+        let message_id = MessageId::from_bytes(b"000000000002").unwrap();
+
+        assert_server_frame_bytes_match_writer(
+            ServerMessage::Error {
+                message: "Disconnected".to_string(),
+                command: Some("BanCreate".to_string()),
+                disconnect: true,
+            },
+            message_id,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn server_message_to_frame_bytes_matches_writer_for_large_payload() {
+        let message_id = MessageId::from_bytes(b"000000000003").unwrap();
+
+        assert_server_frame_bytes_match_writer(
+            ServerMessage::ChatMessage {
+                session_id: 42,
+                nickname: "alice".to_string(),
+                is_admin: true,
+                is_shared: false,
+                message: "x".repeat(16 * 1024),
+                action: ChatAction::Normal,
+                channel: DEFAULT_CHANNEL.to_string(),
+                timestamp: 1234,
+            },
+            message_id,
+        )
+        .await;
     }
 
     #[tokio::test]
