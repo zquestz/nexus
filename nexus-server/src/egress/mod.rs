@@ -302,19 +302,22 @@ impl EgressManager {
         self.scheduler.queued_packets(connection_id)
     }
 
-    pub fn staged_frame_count(&self, connection_id: ConnectionId) -> Option<usize> {
+    #[cfg(test)]
+    fn staged_frame_count(&self, connection_id: ConnectionId) -> Option<usize> {
         self.connections
             .get(&connection_id)
             .map(|connection| connection.staged_frames)
     }
 
-    pub fn has_frame_capacity(&self, connection_id: ConnectionId) -> bool {
+    #[cfg(test)]
+    fn has_frame_capacity(&self, connection_id: ConnectionId) -> bool {
         self.connections
             .get(&connection_id)
             .is_some_and(|connection| connection.staged_frames < self.frame_limit)
     }
 
-    pub fn has_connection(&self, connection_id: ConnectionId) -> bool {
+    #[cfg(test)]
+    fn has_connection(&self, connection_id: ConnectionId) -> bool {
         self.connections.contains_key(&connection_id)
     }
 }

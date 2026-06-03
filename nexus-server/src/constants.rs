@@ -359,6 +359,12 @@ pub const LOG_EGRESS_UNREGISTER_FAILED: &str = "Egress unregister failed";
 pub const LOG_EGRESS_UNREGISTER_TIMEOUT: &str = "Egress unregister timed out";
 pub const LOG_EGRESS_TRANSITION_FAILED: &str = "Egress user transition failed";
 pub const LOG_EGRESS_TRANSITION_TIMEOUT: &str = "Egress user transition timed out";
+pub const LOG_EGRESS_STAGE_FAILED: &str = "Egress message staging failed";
+pub const LOG_EGRESS_DISPATCH_CLOSED: &str = "Egress dispatch channel closed";
+pub const LOG_EGRESS_DISPATCH_WRONG_CONNECTION: &str =
+    "Egress dispatch targeted the wrong connection";
+pub const LOG_EGRESS_ACK_FAILED: &str = "Egress chunk ack failed";
+pub const LOG_EGRESS_WRITE_FAILED_NOTIFY_FAILED: &str = "Egress write-failure notify failed";
 
 pub const LOG_CLEANUP_EXPIRED: &str = "Cleaned up expired entries";
 pub const LOG_CLEANUP_EXPIRED_BANS_FAILED: &str = "Failed to cleanup expired bans";

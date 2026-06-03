@@ -22,7 +22,10 @@ use crate::connection_io::send_server_message_with_write_timeout;
 use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
-use crate::egress::{self, task::EgressHandle};
+use crate::egress::{
+    self,
+    task::{EgressHandle, StageMessageError},
+};
 use crate::files::{FileActivityMap, FileIndex};
 use crate::flood::{FloodConfig, FloodTracker};
 use crate::handlers::{
@@ -98,8 +101,9 @@ where
     let peer_addr = params.peer_addr;
     let egress = params.egress.clone();
     let egress_connection_id = params.egress_connection_id;
-    let (egress_dispatch_tx, _egress_dispatch_rx) =
+    let (egress_dispatch_tx, egress_dispatch_rx) =
         mpsc::channel(egress::EGRESS_DISPATCH_QUEUE_CAPACITY);
+    let mut egress_registered = false;
 
     match time::timeout(
         EGRESS_COMMAND_TIMEOUT,
@@ -111,7 +115,9 @@ where
     )
     .await
     {
-        Ok(Ok(true)) => {}
+        Ok(Ok(true)) => {
+            egress_registered = true;
+        }
         Ok(Ok(false)) => {
             warn!(
                 ip = %peer_addr,
@@ -139,7 +145,12 @@ where
         }
     }
 
-    let result = handle_connection_inner_registered(socket, params).await;
+    let result = handle_connection_inner_registered(
+        socket,
+        params,
+        egress_registered.then_some(egress_dispatch_rx),
+    )
+    .await;
 
     match time::timeout(
         EGRESS_COMMAND_TIMEOUT,
@@ -170,9 +181,121 @@ where
     result
 }
 
+async fn recv_egress_dispatch(
+    rx: &mut Option<egress::EgressDispatchRx>,
+) -> Option<egress::EgressDispatch> {
+    match rx {
+        Some(rx) => rx.recv().await,
+        None => std::future::pending().await,
+    }
+}
+
+async fn notify_egress_write_failed(
+    egress: &EgressHandle,
+    connection_id: ConnectionId,
+    peer_addr: SocketAddr,
+) {
+    if let Err(e) = egress.write_failed(connection_id).await {
+        warn!(
+            ip = %peer_addr,
+            egress_connection_id = connection_id.get(),
+            err = ?e,
+            "{}",
+            LOG_EGRESS_WRITE_FAILED_NOTIFY_FAILED
+        );
+    }
+}
+
+async fn stage_egress_message(
+    egress: &EgressHandle,
+    connection_id: ConnectionId,
+    peer_addr: SocketAddr,
+    message: Box<ServerMessage>,
+    message_id: MessageId,
+    staged_frames: &mut usize,
+    pending_session_event: &mut Option<SessionEvent>,
+) -> bool {
+    match egress
+        .stage_message(connection_id, message, message_id)
+        .await
+    {
+        Ok(Ok(_chunks)) => {
+            *staged_frames += 1;
+            true
+        }
+        Ok(Err(StageMessageError::QueueFull {
+            message,
+            message_id,
+        })) => {
+            if *staged_frames == 0 {
+                warn!(
+                    ip = %peer_addr,
+                    egress_connection_id = connection_id.get(),
+                    "{}",
+                    LOG_EGRESS_STAGE_FAILED
+                );
+                return false;
+            }
+
+            *pending_session_event = Some(SessionEvent::Message(message, Some(message_id)));
+            true
+        }
+        Ok(Err(StageMessageError::Failed(e))) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = connection_id.get(),
+                err = ?e,
+                "{}",
+                LOG_EGRESS_STAGE_FAILED
+            );
+            false
+        }
+        Err(e) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = connection_id.get(),
+                err = ?e,
+                "{}",
+                LOG_EGRESS_STAGE_FAILED
+            );
+            false
+        }
+    }
+}
+
+async fn write_egress_frame_chunk<W>(
+    writer: &mut FrameWriter<W>,
+    bytes: &[u8],
+    flush: bool,
+) -> io::Result<()>
+where
+    W: tokio::io::AsyncWrite + Unpin,
+{
+    match time::timeout(BBS_WRITE_TIMEOUT, async {
+        // Egress chunks are already complete frame bytes. They intentionally
+        // bypass FrameWriter framing and are only safe while the loop enforces
+        // frame-boundary writes for every other path.
+        let inner = writer.get_mut();
+        inner.write_all(bytes).await?;
+        if flush {
+            inner.flush().await?;
+        }
+        Ok(())
+    })
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            ERR_BBS_WRITE_TIMEOUT,
+        )),
+    }
+}
+
 async fn handle_connection_inner_registered<S>(
     socket: S,
     params: ConnectionParams,
+    mut egress_dispatch_rx: Option<egress::EgressDispatchRx>,
 ) -> io::Result<()>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
@@ -207,11 +330,19 @@ where
     let (tx, mut rx): (ConnectionWriter, SessionRx) = ConnectionWriter::channel();
 
     let mut conn_state = ConnectionState::new();
+    let mut pending_session_event: Option<SessionEvent> = None;
+    let mut egress_frame_in_progress = false;
+    let mut egress_staged_frames = 0usize;
+    let mut disconnect_after_egress_drain = false;
 
     // tokio::select! over incoming reads and outgoing events. Read timeout
     // depends on auth state: pre-login uses a 30s idle + 60s frame timeout
     // (resource-exhaustion defense); authenticated users may idle freely.
     loop {
+        if disconnect_after_egress_drain && !egress_frame_in_progress && egress_staged_frames == 0 {
+            break;
+        }
+
         let is_authenticated = conn_state.session_id.is_some();
 
         tokio::select! {
@@ -221,7 +352,7 @@ where
                 } else {
                     read_client_message_with_full_timeout(&mut frame_reader, None, None).await
                 }
-            } => {
+            }, if !egress_frame_in_progress && pending_session_event.is_none() && !disconnect_after_egress_drain => {
                 match result {
                     Ok(Some(received)) => {
                         // Clone locale to avoid borrow checker conflict with conn_state.
@@ -295,19 +426,110 @@ where
                 }
             }
 
+            dispatch = recv_egress_dispatch(&mut egress_dispatch_rx) => {
+                let Some(dispatch) = dispatch else {
+                    warn!(
+                        ip = %peer_addr,
+                        egress_connection_id = egress_connection_id.get(),
+                        "{}",
+                        LOG_EGRESS_DISPATCH_CLOSED
+                    );
+                    break;
+                };
+
+                if dispatch.connection_id != egress_connection_id {
+                    warn!(
+                        ip = %peer_addr,
+                        egress_connection_id = egress_connection_id.get(),
+                        dispatch_connection_id = dispatch.connection_id.get(),
+                        "{}",
+                        LOG_EGRESS_DISPATCH_WRONG_CONNECTION
+                    );
+                    notify_egress_write_failed(&egress, dispatch.connection_id, peer_addr).await;
+                    continue;
+                }
+
+                let is_final_frame_chunk = dispatch.chunk.is_final_frame_chunk();
+                if write_egress_frame_chunk(
+                    &mut frame_writer,
+                    dispatch.chunk.as_bytes(),
+                    is_final_frame_chunk,
+                )
+                .await
+                .is_err()
+                {
+                    notify_egress_write_failed(&egress, egress_connection_id, peer_addr).await;
+                    break;
+                }
+
+                egress_frame_in_progress = !is_final_frame_chunk;
+
+                if let Err(e) = egress.ack(egress_connection_id).await {
+                    warn!(
+                        ip = %peer_addr,
+                        egress_connection_id = egress_connection_id.get(),
+                        err = ?e,
+                        "{}",
+                        LOG_EGRESS_ACK_FAILED
+                    );
+                    break;
+                }
+
+                if is_final_frame_chunk {
+                    egress_staged_frames = egress_staged_frames.saturating_sub(1);
+                    if let Some(SessionEvent::Message(msg, msg_id)) = pending_session_event.take() {
+                        let id = msg_id.unwrap_or_else(MessageId::new);
+                        if !stage_egress_message(
+                            &egress,
+                            egress_connection_id,
+                            peer_addr,
+                            msg,
+                            id,
+                            &mut egress_staged_frames,
+                            &mut pending_session_event,
+                        )
+                        .await
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+
             // Outgoing server messages/events.
-            event = rx.recv() => {
+            event = rx.recv(), if !egress_frame_in_progress && pending_session_event.is_none() && !disconnect_after_egress_drain => {
                 match event {
                     Some(SessionEvent::Message(msg, msg_id)) => {
                         let id = msg_id.unwrap_or_else(MessageId::new);
-                        if send_server_message_with_write_timeout(&mut frame_writer, &msg, id).await.is_err() {
+                        if egress_dispatch_rx.is_some() {
+                            if !stage_egress_message(
+                                &egress,
+                                egress_connection_id,
+                                peer_addr,
+                                msg,
+                                id,
+                                &mut egress_staged_frames,
+                                &mut pending_session_event,
+                            )
+                            .await
+                            {
+                                break;
+                            }
+                        } else if send_server_message_with_write_timeout(&mut frame_writer, &msg, id).await.is_err() {
                             break;
                         }
                     }
                     Some(SessionEvent::Disconnect) => {
-                        break;
+                        if egress_dispatch_rx.is_some() && egress_staged_frames > 0 {
+                            disconnect_after_egress_drain = true;
+                        } else {
+                            break;
+                        }
                     }
                     Some(SessionEvent::SlowClientDisconnect) => {
+                        if egress_dispatch_rx.is_some() {
+                            notify_egress_write_failed(&egress, egress_connection_id, peer_addr).await;
+                        }
                         let error_msg = ServerMessage::Error {
                             message: err_slow_client_disconnect(&conn_state.locale),
                             command: None,
@@ -803,7 +1025,221 @@ fn is_passive_message(msg: &ClientMessage) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nexus_common::protocol::ChatAction;
+    use std::num::NonZeroUsize;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use nexus_common::framing::RawFrame;
+    use nexus_common::io::{
+        read_server_message, send_client_message_with_id, server_message_to_frame_bytes,
+    };
+    use nexus_common::protocol::{ChatAction, ServerMessage};
+    use nexus_common::validators::{DEFAULT_CHANNEL, MAX_MESSAGE_LENGTH};
+    use tokio::io::{DuplexStream, ReadHalf, WriteHalf};
+
+    use crate::egress::EgressManager;
+    use crate::egress::task::EgressTask;
+    use crate::handlers::testing::{TEST_FINGERPRINT, TestContext, create_test_context};
+
+    type TestReader = FrameReader<BufReader<ReadHalf<DuplexStream>>>;
+    type TestWriter = FrameWriter<WriteHalf<DuplexStream>>;
+
+    struct TestConnection {
+        reader: TestReader,
+        writer: TestWriter,
+        user_manager: UserManager,
+        server_task: tokio::task::JoinHandle<io::Result<()>>,
+        egress_task: tokio::task::JoinHandle<()>,
+        _test_ctx: TestContext,
+    }
+
+    impl TestConnection {
+        async fn shutdown(self) {
+            let Self {
+                reader,
+                writer,
+                server_task,
+                egress_task,
+                _test_ctx,
+                ..
+            } = self;
+
+            drop(reader);
+            drop(writer);
+
+            let server_result = time::timeout(Duration::from_secs(2), server_task)
+                .await
+                .expect("connection task should exit");
+            server_result
+                .expect("connection task should not panic")
+                .expect("connection task should not fail");
+
+            time::timeout(Duration::from_secs(2), egress_task)
+                .await
+                .expect("egress task should exit")
+                .expect("egress task should not panic");
+        }
+    }
+
+    fn nonzero(value: usize) -> NonZeroUsize {
+        NonZeroUsize::new(value).expect("test value must be non-zero")
+    }
+
+    fn message_id(bytes: &[u8]) -> MessageId {
+        MessageId::from_bytes(bytes).expect("valid hex test message ID")
+    }
+
+    async fn start_test_connection(chunk_size: usize, stream_capacity: usize) -> TestConnection {
+        let test_ctx = create_test_context().await;
+        let (client, server) = tokio::io::duplex(stream_capacity);
+        let (client_read, client_write) = tokio::io::split(client);
+        let reader = FrameReader::new(BufReader::new(client_read));
+        let writer = FrameWriter::new(client_write);
+
+        let user_manager = test_ctx.user_manager.clone();
+        let tracker_context = Arc::new(crate::tracker::TrackerContext {
+            db: test_ctx.db.clone(),
+            user_manager: user_manager.clone(),
+            server_fingerprint: TEST_FINGERPRINT,
+            server_port: nexus_common::DEFAULT_PORT,
+            server_websocket_port: None,
+        });
+        let tracker_manager = Arc::new(crate::tracker::TrackerManager::new(tracker_context));
+
+        let (egress, egress_task) = EgressTask::channel(EgressManager::new(nonzero(chunk_size)));
+        let egress_task = tokio::spawn(egress_task.run());
+
+        let params = ConnectionParams {
+            peer_addr: test_ctx.peer_addr,
+            user_manager: user_manager.clone(),
+            db: test_ctx.db.clone(),
+            file_root: test_ctx.file_root,
+            transfer_port: nexus_common::DEFAULT_TRANSFER_PORT,
+            transfer_websocket_port: Some(nexus_common::DEFAULT_TRANSFER_WEBSOCKET_PORT),
+            connection_tracker: test_ctx.connection_tracker.clone(),
+            ip_rule_cache: test_ctx.ip_rule_cache.clone(),
+            file_index: test_ctx.file_index.clone(),
+            file_activity: test_ctx.file_activity.clone(),
+            channel_manager: test_ctx.channel_manager.clone(),
+            transfer_registry: test_ctx.transfer_registry.clone(),
+            voice_registry: test_ctx.voice_registry.clone(),
+            tracker_manager,
+            fingerprint: TEST_FINGERPRINT,
+            flood_config: test_ctx.flood_config.clone(),
+            egress,
+            egress_connection_id: ConnectionId::new(10_001),
+        };
+
+        let server_task = tokio::spawn(handle_connection_inner(server, params));
+
+        TestConnection {
+            reader,
+            writer,
+            user_manager,
+            server_task,
+            egress_task,
+            _test_ctx: test_ctx,
+        }
+    }
+
+    async fn read_next_server_message(
+        connection: &mut TestConnection,
+    ) -> nexus_common::io::ReceivedServerMessage {
+        time::timeout(
+            Duration::from_secs(2),
+            read_server_message(&mut connection.reader),
+        )
+        .await
+        .expect("timed out waiting for server message")
+        .expect("failed to read server message")
+        .expect("connection closed unexpectedly")
+    }
+
+    async fn read_next_raw_frame(connection: &mut TestConnection) -> RawFrame {
+        time::timeout(Duration::from_secs(2), connection.reader.read_frame())
+            .await
+            .expect("timed out waiting for server frame")
+            .expect("failed to read server frame")
+            .expect("connection closed unexpectedly")
+    }
+
+    async fn login_test_connection(connection: &mut TestConnection) -> u32 {
+        send_client_message_with_id(
+            &mut connection.writer,
+            &ClientMessage::Handshake {
+                version: nexus_common::PROTOCOL_VERSION.to_string(),
+            },
+            message_id(b"000000000301"),
+        )
+        .await
+        .expect("handshake send should succeed");
+
+        let handshake = read_next_server_message(connection).await;
+        match handshake.message {
+            ServerMessage::HandshakeResponse { success, .. } => {
+                assert!(success, "handshake should succeed");
+            }
+            other => panic!("expected HandshakeResponse, got {other:?}"),
+        }
+
+        send_client_message_with_id(
+            &mut connection.writer,
+            &ClientMessage::Login {
+                username: "alice".to_string(),
+                password: "password".to_string(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: None,
+            },
+            message_id(b"000000000302"),
+        )
+        .await
+        .expect("login send should succeed");
+
+        let login = read_next_server_message(connection).await;
+        match login.message {
+            ServerMessage::LoginResponse {
+                success,
+                session_id,
+                ..
+            } => {
+                assert!(success, "login should succeed");
+                session_id.expect("successful login should include session_id")
+            }
+            other => panic!("expected LoginResponse, got {other:?}"),
+        }
+    }
+
+    async fn queue_session_message(
+        connection: &TestConnection,
+        session_id: u32,
+        message: ServerMessage,
+        message_id: MessageId,
+    ) {
+        let session = connection
+            .user_manager
+            .get_user_by_session_id(session_id)
+            .await
+            .expect("session should exist");
+        session
+            .tx
+            .send_message(message, Some(message_id))
+            .expect("session queue should accept message");
+    }
+
+    fn chat_message(session_id: u32, body: impl Into<String>) -> ServerMessage {
+        ServerMessage::ChatMessage {
+            session_id,
+            nickname: "alice".to_string(),
+            is_admin: true,
+            is_shared: false,
+            message: body.into(),
+            action: ChatAction::Normal,
+            channel: DEFAULT_CHANNEL.to_string(),
+            timestamp: 1234,
+        }
+    }
 
     #[test]
     fn test_passive_messages() {
@@ -831,5 +1267,51 @@ mod tests {
         assert!(!is_passive_message(&ClientMessage::UserStatus {
             status: Some("busy".to_string()),
         }));
+    }
+
+    #[tokio::test]
+    async fn queued_egress_message_writes_wire_identical_frame() {
+        let mut connection = start_test_connection(64, 8192).await;
+        let session_id = login_test_connection(&mut connection).await;
+        let queued_id = message_id(b"000000000303");
+        let queued_message = chat_message(session_id, "queued over egress");
+
+        queue_session_message(&connection, session_id, queued_message.clone(), queued_id).await;
+
+        let frame = read_next_raw_frame(&mut connection).await;
+        let expected = server_message_to_frame_bytes(&queued_message, queued_id)
+            .expect("expected frame should serialize");
+        assert_eq!(frame.to_bytes().as_slice(), expected.as_ref());
+
+        connection.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn direct_response_does_not_interleave_with_chunked_egress_frame() {
+        let mut connection = start_test_connection(32, 128).await;
+        let session_id = login_test_connection(&mut connection).await;
+        let queued_id = message_id(b"000000000304");
+        let ping_id = message_id(b"000000000305");
+        let queued_message = chat_message(session_id, "x".repeat(MAX_MESSAGE_LENGTH));
+
+        queue_session_message(&connection, session_id, queued_message.clone(), queued_id).await;
+
+        // Give the server loop a chance to start writing the queued frame into
+        // the deliberately tiny duplex buffer before the direct Ping arrives.
+        time::sleep(Duration::from_millis(25)).await;
+        send_client_message_with_id(&mut connection.writer, &ClientMessage::Ping, ping_id)
+            .await
+            .expect("ping send should succeed");
+
+        let frame = read_next_raw_frame(&mut connection).await;
+        let expected = server_message_to_frame_bytes(&queued_message, queued_id)
+            .expect("expected frame should serialize");
+        assert_eq!(frame.to_bytes().as_slice(), expected.as_ref());
+
+        let pong = read_next_server_message(&mut connection).await;
+        assert_eq!(pong.message_id, ping_id);
+        assert!(matches!(pong.message, ServerMessage::Pong));
+
+        connection.shutdown().await;
     }
 }

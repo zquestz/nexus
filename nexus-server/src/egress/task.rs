@@ -5,8 +5,8 @@ use nexus_common::protocol::ServerMessage;
 use tokio::sync::{mpsc, oneshot};
 
 use crate::egress::{
-    DispatchOutcome, EgressDispatchTx, EgressManager, EgressRegistration, StagingError,
-    stage_server_message,
+    DispatchOutcome, EgressDispatchTx, EgressEnqueueError, EgressManager, EgressRegistration,
+    StagingError, stage_server_message,
 };
 use crate::scheduler::{ConnectionClass, ConnectionId};
 
@@ -14,7 +14,16 @@ pub const DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY: usize = 1024;
 
 pub type EgressCommandTx = mpsc::Sender<EgressCommand>;
 pub type EgressCommandRx = mpsc::Receiver<EgressCommand>;
-pub type StageMessageResult = Result<usize, StagingError>;
+pub type StageMessageResult = Result<usize, StageMessageError>;
+
+#[derive(Debug)]
+pub enum StageMessageError {
+    QueueFull {
+        message: Box<ServerMessage>,
+        message_id: MessageId,
+    },
+    Failed(StagingError),
+}
 
 pub enum EgressCommand {
     Register {
@@ -242,8 +251,21 @@ impl EgressTask {
                 message_id,
                 reply_tx,
             } => {
-                let result =
-                    stage_server_message(&mut self.manager, connection_id, &message, message_id);
+                let result = match stage_server_message(
+                    &mut self.manager,
+                    connection_id,
+                    &message,
+                    message_id,
+                ) {
+                    Ok(chunks) => Ok(chunks),
+                    Err(StagingError::Enqueue(EgressEnqueueError::QueueFull)) => {
+                        Err(StageMessageError::QueueFull {
+                            message,
+                            message_id,
+                        })
+                    }
+                    Err(err) => Err(StageMessageError::Failed(err)),
+                };
                 let _ = reply_tx.send(result);
             }
             EgressCommand::Ack { connection_id } => {
@@ -521,7 +543,7 @@ mod tests {
     async fn stage_message_preserves_queue_full() {
         let (handle, task) = spawn_task(EgressManager::with_frame_limit(nonzero(512), 1));
         let connection = conn(1);
-        let (dispatch_tx, _dispatch_rx) = dispatch_channel();
+        let (dispatch_tx, mut dispatch_rx) = dispatch_channel();
         assert!(
             handle
                 .register_anon(connection, ConnectionClass::Protocol, dispatch_tx)
@@ -539,20 +561,27 @@ mod tests {
                 .unwrap(),
             Ok(1)
         ));
+        let full_message_id = message_id(b"000000000203");
 
         let result = handle
-            .stage_message(
-                connection,
-                Box::new(ServerMessage::Pong),
-                message_id(b"000000000203"),
-            )
+            .stage_message(connection, Box::new(ServerMessage::Pong), full_message_id)
             .await
             .unwrap();
 
-        assert!(matches!(
-            result,
-            Err(StagingError::Enqueue(EgressEnqueueError::QueueFull))
-        ));
+        match result {
+            Err(StageMessageError::QueueFull {
+                message,
+                message_id,
+            }) => {
+                assert!(matches!(*message, ServerMessage::Pong));
+                assert_eq!(message_id, full_message_id);
+            }
+            other => panic!("expected returned QueueFull message, got {other:?}"),
+        }
+
+        let dispatch = recv_dispatch(&mut dispatch_rx).await;
+        assert_eq!(dispatch.connection_id, connection);
+        handle.ack(connection).await.unwrap();
         stop_task(handle, task).await;
     }
 
@@ -626,7 +655,9 @@ mod tests {
 
         assert!(matches!(
             result,
-            Err(StagingError::Enqueue(EgressEnqueueError::UnknownConnection))
+            Err(StageMessageError::Failed(StagingError::Enqueue(
+                EgressEnqueueError::UnknownConnection
+            )))
         ));
         stop_task(handle, task).await;
     }
