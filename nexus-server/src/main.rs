@@ -22,12 +22,16 @@ mod websocket;
 use std::fs;
 use std::io;
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use clap::Parser;
 use nexus_common::names::fold_name;
+use nexus_common::validators::DEFAULT_BANDWIDTH_CHUNK_SIZE;
+pub(crate) use nexus_server::{egress, scheduler};
 use tokio::net::TcpListener;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, info, warn};
@@ -209,6 +213,12 @@ async fn main() {
     let chat_burst_limit = database.config.get_chat_burst_limit().await;
     let chat_rate_limit = database.config.get_chat_rate_limit().await;
     let flood_config = Arc::new(FloodConfig::new(chat_burst_limit, chat_rate_limit));
+    let egress_chunk_size =
+        resolve_egress_chunk_size(database.config.get_all().await.scheduler_chunk_size);
+    let (egress_handle, egress_task) =
+        egress::task::EgressTask::channel(egress::EgressManager::new(egress_chunk_size));
+    let _egress_task = tokio::spawn(egress_task.run());
+    let egress_connection_ids = Arc::new(AtomicU64::new(1));
 
     // Leak to a 'static reference — lives for the program lifetime anyway.
     let fingerprint: &'static str = Box::leak(fingerprint.into_boxed_str());
@@ -391,6 +401,10 @@ async fn main() {
                             tracker_manager: tracker_manager.clone(),
                             fingerprint,
                             flood_config: flood_config.clone(),
+                            egress: egress_handle.clone(),
+                            egress_connection_id: allocate_egress_connection_id(
+                                &egress_connection_ids,
+                            ),
                         };
                         let tls_acceptor = tls_acceptor.clone();
                         let ip_rule_cache_for_check = ip_rule_cache.clone();
@@ -515,6 +529,10 @@ async fn main() {
                             tracker_manager: tracker_manager.clone(),
                             fingerprint,
                             flood_config: flood_config.clone(),
+                            egress: egress_handle.clone(),
+                            egress_connection_id: allocate_egress_connection_id(
+                                &egress_connection_ids,
+                            ),
                         };
                         let tls_acceptor = tls_acceptor.clone();
                         let ip_rule_cache_for_check = ip_rule_cache.clone();
@@ -723,6 +741,19 @@ async fn setup_db(db_path: &Path) -> (db::Database, UserManager) {
     let user_manager = UserManager::new();
 
     (database, user_manager)
+}
+
+fn resolve_egress_chunk_size(configured: u32) -> NonZeroUsize {
+    if let Some(chunk_size) = NonZeroUsize::new(configured as usize) {
+        return chunk_size;
+    }
+
+    warn!("{}", LOG_EGRESS_CHUNK_SIZE_INVALID);
+    NonZeroUsize::new(DEFAULT_BANDWIDTH_CHUNK_SIZE as usize).unwrap_or(NonZeroUsize::MIN)
+}
+
+fn allocate_egress_connection_id(counter: &AtomicU64) -> scheduler::ConnectionId {
+    scheduler::ConnectionId::new(counter.fetch_add(1, Ordering::Relaxed))
 }
 
 /// Standalone-spawned background tasks bundled so shutdown is one

@@ -19,6 +19,7 @@ use crate::scheduler::{
 };
 
 pub const DEFAULT_EGRESS_QUEUED_FRAMES_PER_CONNECTION: usize = 32;
+pub const EGRESS_DISPATCH_QUEUE_CAPACITY: usize = 1;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EgressChunk {

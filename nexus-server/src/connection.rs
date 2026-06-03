@@ -7,6 +7,8 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
+use tokio::sync::mpsc;
+use tokio::time;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, warn};
 
@@ -20,6 +22,7 @@ use crate::connection_io::send_server_message_with_write_timeout;
 use crate::connection_tracker::ConnectionTracker;
 use crate::constants::*;
 use crate::db::Database;
+use crate::egress::{self, task::EgressHandle};
 use crate::files::{FileActivityMap, FileIndex};
 use crate::flood::{FloodConfig, FloodTracker};
 use crate::handlers::{
@@ -27,6 +30,7 @@ use crate::handlers::{
     err_slow_client_disconnect,
 };
 use crate::ip_rule_cache::IpRuleState;
+use crate::scheduler::{ConnectionClass, ConnectionId};
 use crate::tracker::TrackerManager;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
@@ -51,6 +55,8 @@ pub struct ConnectionParams {
     pub tracker_manager: Arc<TrackerManager>,
     pub fingerprint: &'static str,
     pub flood_config: Arc<FloodConfig>,
+    pub egress: EgressHandle,
+    pub egress_connection_id: ConnectionId,
 }
 
 /// Connection state for a single client
@@ -89,6 +95,88 @@ pub async fn handle_connection_inner<S>(socket: S, params: ConnectionParams) -> 
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
+    let peer_addr = params.peer_addr;
+    let egress = params.egress.clone();
+    let egress_connection_id = params.egress_connection_id;
+    let (egress_dispatch_tx, _egress_dispatch_rx) =
+        mpsc::channel(egress::EGRESS_DISPATCH_QUEUE_CAPACITY);
+
+    match time::timeout(
+        EGRESS_COMMAND_TIMEOUT,
+        egress.register_anon(
+            egress_connection_id,
+            ConnectionClass::Protocol,
+            egress_dispatch_tx,
+        ),
+    )
+    .await
+    {
+        Ok(Ok(true)) => {}
+        Ok(Ok(false)) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = egress_connection_id.get(),
+                "{}",
+                LOG_EGRESS_REGISTER_REJECTED
+            );
+        }
+        Ok(Err(e)) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = egress_connection_id.get(),
+                err = ?e,
+                "{}",
+                LOG_EGRESS_REGISTER_FAILED
+            );
+        }
+        Err(_) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = egress_connection_id.get(),
+                "{}",
+                LOG_EGRESS_REGISTER_TIMEOUT
+            );
+        }
+    }
+
+    let result = handle_connection_inner_registered(socket, params).await;
+
+    match time::timeout(
+        EGRESS_COMMAND_TIMEOUT,
+        egress.unregister(egress_connection_id),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = egress_connection_id.get(),
+                err = ?e,
+                "{}",
+                LOG_EGRESS_UNREGISTER_FAILED
+            );
+        }
+        Err(_) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = egress_connection_id.get(),
+                "{}",
+                LOG_EGRESS_UNREGISTER_TIMEOUT
+            );
+        }
+    }
+
+    result
+}
+
+async fn handle_connection_inner_registered<S>(
+    socket: S,
+    params: ConnectionParams,
+) -> io::Result<()>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
     let ConnectionParams {
         peer_addr,
         user_manager,
@@ -106,6 +194,8 @@ where
         tracker_manager,
         fingerprint,
         flood_config,
+        egress: _,
+        egress_connection_id: _,
     } = params;
 
     let (reader, writer) = tokio::io::split(socket);

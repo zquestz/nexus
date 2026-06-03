@@ -127,6 +127,10 @@ pub const SESSION_CONTROL_QUEUE_CAPACITY: usize = 1;
 /// Upper bound for one BBS protocol message write. This is intentionally high
 /// enough for very slow links while still bounding peers that stop reading.
 pub const BBS_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+/// Timeout for dark egress lifecycle commands. Egress is non-fatal in the
+/// registration-only wiring chunk, so stalled lifecycle commands are logged
+/// and the live connection continues.
+pub const EGRESS_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// WF2Q+ scheduler chunk size in bytes.
 pub const CONFIG_KEY_SCHEDULER_CHUNK_SIZE: &str = "scheduler_chunk_size";
@@ -346,6 +350,13 @@ pub const LOG_REJECTED_BANNED_IP_WS: &str = "Rejected banned IP on WebSocket por
 pub const LOG_REJECTED_BANNED_IP_WS_TRANSFER: &str =
     "Rejected banned IP on WebSocket transfer port";
 pub const LOG_TRANSFER_ON_MAIN_PORT: &str = "Transfer message received on main port";
+pub const LOG_EGRESS_CHUNK_SIZE_INVALID: &str =
+    "Configured egress scheduler chunk size is invalid; using default";
+pub const LOG_EGRESS_REGISTER_FAILED: &str = "Egress registration failed";
+pub const LOG_EGRESS_REGISTER_REJECTED: &str = "Egress registration rejected";
+pub const LOG_EGRESS_REGISTER_TIMEOUT: &str = "Egress registration timed out";
+pub const LOG_EGRESS_UNREGISTER_FAILED: &str = "Egress unregister failed";
+pub const LOG_EGRESS_UNREGISTER_TIMEOUT: &str = "Egress unregister timed out";
 
 pub const LOG_CLEANUP_EXPIRED: &str = "Cleaned up expired entries";
 pub const LOG_CLEANUP_EXPIRED_BANS_FAILED: &str = "Failed to cleanup expired bans";
