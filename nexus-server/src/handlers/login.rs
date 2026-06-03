@@ -1,8 +1,11 @@
 //! Login message handler
 
 use std::io;
+use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 
 use tokio::io::AsyncWrite;
+use tokio::time;
 use tracing::{debug, error, info, warn};
 
 use nexus_common::names::fold_name;
@@ -25,16 +28,19 @@ use super::{
     err_password_too_long, err_username_empty, err_username_invalid, err_username_too_long,
 };
 use crate::constants::{
-    ERR_SESSION_ID_AFTER_LOGIN, FEATURE_CHAT, HANDLER_LOGIN, LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED,
-    LOG_LOGIN_ACCOUNT_DISABLED, LOG_LOGIN_ALREADY_LOGGED_IN, LOG_LOGIN_AVATAR_VALIDATE_ERROR,
-    LOG_LOGIN_CREATE_USER_ERROR, LOG_LOGIN_DB_ERROR, LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN,
-    LOG_LOGIN_GROUP_ERROR, LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR,
-    LOG_LOGIN_INVALID_CREDENTIALS, LOG_LOGIN_PASSWORD_CHANGED, LOG_LOGIN_PASSWORD_VERIFY_ERROR,
-    LOG_LOGIN_PERMISSIONS_ERROR, LOG_LOGIN_RENAMED_MID_LOGIN, LOG_LOGIN_SUCCESS,
+    EGRESS_COMMAND_TIMEOUT, FEATURE_CHAT, HANDLER_LOGIN, LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED,
+    LOG_EGRESS_TRANSITION_FAILED, LOG_EGRESS_TRANSITION_TIMEOUT, LOG_LOGIN_ACCOUNT_DISABLED,
+    LOG_LOGIN_ALREADY_LOGGED_IN, LOG_LOGIN_AVATAR_VALIDATE_ERROR, LOG_LOGIN_CREATE_USER_ERROR,
+    LOG_LOGIN_DB_ERROR, LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN, LOG_LOGIN_GROUP_ERROR,
+    LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR, LOG_LOGIN_INVALID_CREDENTIALS,
+    LOG_LOGIN_PASSWORD_CHANGED, LOG_LOGIN_PASSWORD_VERIFY_ERROR, LOG_LOGIN_PERMISSIONS_ERROR,
+    LOG_LOGIN_RENAMED_MID_LOGIN, LOG_LOGIN_SUCCESS,
 };
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, LoginSnapshotError, Permission};
+use crate::egress::task::EgressHandle;
 use crate::ip_rule_cache::IpAdmission;
+use crate::scheduler::ConnectionId;
 use crate::users::manager::{AddUserError, UserManager};
 use crate::users::user::NewSessionParams;
 
@@ -47,6 +53,52 @@ pub struct LoginRequest {
     pub avatar: Option<String>,
     pub nickname: Option<String>,
     pub handshake_complete: bool,
+}
+
+struct LoginSuccess {
+    response: Box<ServerMessage>,
+    user_connected: ServerMessage,
+    session_id: u32,
+    user_id: i64,
+    bandwidth_weight: u16,
+}
+
+async fn transition_login_to_user_flow(
+    egress: &EgressHandle,
+    egress_connection_id: ConnectionId,
+    user_id: i64,
+    weight: u16,
+    peer_addr: SocketAddr,
+) {
+    match time::timeout(
+        EGRESS_COMMAND_TIMEOUT,
+        egress.transition_to_user(egress_connection_id, user_id, weight),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = egress_connection_id.get(),
+                user_id,
+                weight,
+                err = ?e,
+                "{}",
+                LOG_EGRESS_TRANSITION_FAILED
+            );
+        }
+        Err(_) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = egress_connection_id.get(),
+                user_id,
+                weight,
+                "{}",
+                LOG_EGRESS_TRANSITION_TIMEOUT
+            );
+        }
+    }
 }
 
 fn handle_login_snapshot_error(
@@ -348,9 +400,7 @@ where
         None
     };
 
-    let mut user_connected: Option<ServerMessage> = None;
-
-    let result: Result<Box<ServerMessage>, String> = 'locked: {
+    let result: Result<LoginSuccess, String> = 'locked: {
         let _user_state = ctx.user_manager.read_user_state().await;
 
         let user_snapshot = match ctx
@@ -648,23 +698,38 @@ where
                 .await;
             UserManager::aggregate_avatar(sessions.iter())
         };
-        user_connected = Some(ServerMessage::UserConnected { user: user_info });
+        let user_connected = ServerMessage::UserConnected { user: user_info };
+        let bandwidth_weight = session.bandwidth_weight.load(Ordering::Relaxed);
 
         debug!(user = %session.username, ip = %ctx.peer_addr, "{}", LOG_LOGIN_SUCCESS);
-        Ok(Box::new(response))
+        Ok(LoginSuccess {
+            response: Box::new(response),
+            user_connected,
+            session_id: id,
+            user_id: session.user_id,
+            bandwidth_weight,
+        })
         // _user_state and _server_info drop here
     };
 
     match result {
-        Ok(response) => {
+        Ok(success) => {
+            transition_login_to_user_flow(
+                ctx.egress,
+                ctx.egress_connection_id,
+                success.user_id,
+                success.bandwidth_weight,
+                ctx.peer_addr,
+            )
+            .await;
+
             // Broadcast UserConnected before sending LoginResponse so other
             // clients already know about this user before they can interact.
-            if let Some(msg) = user_connected {
-                ctx.user_manager
-                    .broadcast_user_event(msg, Some(session_id.expect(ERR_SESSION_ID_AFTER_LOGIN)))
-                    .await;
-            }
-            ctx.send_message(&response).await?;
+            ctx.user_manager
+                .broadcast_user_event(success.user_connected, Some(success.session_id))
+                .await;
+
+            ctx.send_message(&success.response).await?;
         }
         Err(msg) => {
             return ctx
@@ -679,10 +744,32 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::egress::task::EgressCommand;
     use crate::handlers::testing::{
-        DEFAULT_TEST_LOCALE, create_test_context, get_cached_password_hash, read_login_response,
-        read_server_message,
+        DEFAULT_TEST_LOCALE, TestContext, create_test_context, get_cached_password_hash,
+        read_login_response, read_server_message,
     };
+
+    fn expect_egress_transition(test_ctx: &mut TestContext) -> (i64, u16) {
+        let transition = test_ctx
+            .egress_command_rx
+            .try_recv()
+            .expect("Login should transition egress to the user flow");
+        match transition {
+            EgressCommand::TransitionToUser {
+                connection_id,
+                user_id,
+                weight,
+            } => {
+                assert_eq!(
+                    connection_id, test_ctx.egress_connection_id,
+                    "Transition should target this egress connection"
+                );
+                (user_id, weight)
+            }
+            _ => panic!("Expected egress TransitionToUser command"),
+        }
+    }
 
     #[tokio::test]
     async fn test_login_requires_handshake() {
@@ -703,6 +790,10 @@ mod tests {
 
         assert!(result.is_err(), "Login should fail without handshake");
         assert!(session_id.is_none(), "Session ID should remain None");
+        assert!(
+            test_ctx.egress_command_rx.try_recv().is_err(),
+            "Failed login should not transition egress"
+        );
     }
 
     #[tokio::test]
@@ -724,6 +815,19 @@ mod tests {
 
         assert!(result.is_ok(), "First login should succeed");
         assert!(session_id.is_some(), "Session ID should be set");
+
+        let session = test_ctx
+            .user_manager
+            .get_user_by_session_id(session_id.expect("Session ID should be set"))
+            .await
+            .expect("Session should exist");
+        let (transition_user_id, transition_weight) = expect_egress_transition(&mut test_ctx);
+        assert_eq!(transition_user_id, session.user_id);
+        assert_eq!(
+            transition_weight,
+            session.bandwidth_weight.load(Ordering::Relaxed),
+            "Transition should use the session's resolved bandwidth weight"
+        );
 
         let response_msg = read_login_response(&mut test_ctx).await;
         match response_msg {
@@ -758,6 +862,41 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(user.is_admin, "First user should be admin");
+    }
+
+    #[tokio::test]
+    async fn test_login_succeeds_when_egress_transition_channel_closed() {
+        let mut test_ctx = create_test_context().await;
+        let (_replacement_tx, replacement_rx) = tokio::sync::mpsc::channel(1);
+        let old_rx = std::mem::replace(&mut test_ctx.egress_command_rx, replacement_rx);
+        drop(old_rx);
+
+        let mut session_id = None;
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: "password123".to_string(),
+            features: vec![FEATURE_CHAT.to_string()],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete: true,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(
+            result.is_ok(),
+            "Login should succeed when egress transition cannot be sent"
+        );
+        assert!(session_id.is_some(), "Session ID should be set");
+
+        let response_msg = read_login_response(&mut test_ctx).await;
+        match response_msg {
+            ServerMessage::LoginResponse { success, error, .. } => {
+                assert!(success, "Login should still indicate success");
+                assert!(error.is_none(), "Login should have no error");
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
     }
 
     #[tokio::test]
@@ -2473,8 +2612,10 @@ mod tests {
         assert!(result1.is_ok(), "First login should succeed");
         assert!(session_id1.is_some());
 
+        let (first_transition_user_id, _) = expect_egress_transition(&mut test_ctx);
         let _response1 = read_login_response(&mut test_ctx).await;
 
+        test_ctx.egress_connection_id = crate::scheduler::ConnectionId::new(2);
         let mut session_id2 = None;
         let request2 = LoginRequest {
             username: "shared_acct".to_string(),
@@ -2494,6 +2635,9 @@ mod tests {
         );
         assert!(session_id2.is_some(), "Session ID should be set");
 
+        let (second_transition_user_id, _) = expect_egress_transition(&mut test_ctx);
+        let _response2 = read_login_response(&mut test_ctx).await;
+
         let session1 = test_ctx
             .user_manager
             .get_user_by_session_id(session_id1.unwrap())
@@ -2507,6 +2651,18 @@ mod tests {
             .await
             .expect("session 2 should exist");
         assert_eq!(session2.nickname, "Bob");
+        assert_eq!(
+            first_transition_user_id, session1.user_id,
+            "First shared-account transition should use the shared account user id"
+        );
+        assert_eq!(
+            second_transition_user_id, session2.user_id,
+            "Second shared-account transition should use the shared account user id"
+        );
+        assert_eq!(
+            session1.user_id, session2.user_id,
+            "Shared-account sessions should share one egress user flow"
+        );
     }
 
     #[tokio::test]

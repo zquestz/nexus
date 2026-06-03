@@ -142,9 +142,11 @@ use crate::channels::ChannelManager;
 use crate::connection_io::send_server_message_with_write_timeout;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::{Database, Permission};
+use crate::egress::task::EgressHandle;
 use crate::files::{FileActivityMap, FileIndex};
 use crate::flood::FloodConfig;
 use crate::ip_rule_cache::IpRuleState;
+use crate::scheduler::ConnectionId;
 use crate::tracker::TrackerManager;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
@@ -179,6 +181,10 @@ pub struct HandlerContext<'a, W> {
     pub user_manager: &'a UserManager,
     pub db: &'a Database,
     pub tx: &'a ConnectionWriter,
+    /// Egress control for the login flow transition before `LoginResponse` is sent.
+    pub egress: &'a EgressHandle,
+    /// Stable per-socket scheduler identity paired with `egress`.
+    pub egress_connection_id: ConnectionId,
     pub locale: &'a str,
     /// Echoed back on responses for request correlation.
     pub message_id: MessageId,

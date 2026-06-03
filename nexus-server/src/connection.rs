@@ -194,8 +194,8 @@ where
         tracker_manager,
         fingerprint,
         flood_config,
-        egress: _,
-        egress_connection_id: _,
+        egress,
+        egress_connection_id,
     } = params;
 
     let (reader, writer) = tokio::io::split(socket);
@@ -233,6 +233,8 @@ where
                             user_manager: &user_manager,
                             db: &db,
                             tx: &tx,
+                            egress: &egress,
+                            egress_connection_id,
                             locale: &locale,
                             message_id: received.message_id,
                             file_root,

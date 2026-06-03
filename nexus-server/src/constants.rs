@@ -357,6 +357,8 @@ pub const LOG_EGRESS_REGISTER_REJECTED: &str = "Egress registration rejected";
 pub const LOG_EGRESS_REGISTER_TIMEOUT: &str = "Egress registration timed out";
 pub const LOG_EGRESS_UNREGISTER_FAILED: &str = "Egress unregister failed";
 pub const LOG_EGRESS_UNREGISTER_TIMEOUT: &str = "Egress unregister timed out";
+pub const LOG_EGRESS_TRANSITION_FAILED: &str = "Egress user transition failed";
+pub const LOG_EGRESS_TRANSITION_TIMEOUT: &str = "Egress user transition timed out";
 
 pub const LOG_CLEANUP_EXPIRED: &str = "Cleaned up expired entries";
 pub const LOG_CLEANUP_EXPIRED_BANS_FAILED: &str = "Failed to cleanup expired bans";
@@ -843,10 +845,6 @@ pub const LOG_LOGIN_PASSWORD_VERIFY_ERROR: &str = "Login: password verification 
 pub const LOG_LOGIN_AVATAR_VALIDATE_ERROR: &str = "Login: avatar validation task failed";
 pub const LOG_LOGIN_RENAMED_MID_LOGIN: &str = "Login: account renamed";
 pub const LOG_LOGIN_PASSWORD_CHANGED: &str = "Login: password changed";
-/// expect() message — session_id is set to Some(id) when add_user succeeds,
-/// so it is always populated by the time UserConnected is broadcast.
-pub const ERR_SESSION_ID_AFTER_LOGIN: &str =
-    "session_id is set after add_user succeeds and must be present at broadcast";
 
 // --- Handler: Voice ---
 pub const LOG_VOICE_JOIN_NOT_LOGGED_IN: &str = "VoiceJoin: not logged in";

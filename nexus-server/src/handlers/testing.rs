@@ -30,8 +30,10 @@ use super::{DirectWriter, HandlerContext};
 use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::{CreateUserParams, Database, Permissions};
+use crate::egress::task::{DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY, EgressCommandRx, EgressHandle};
 use crate::files::{FileActivityMap, FileIndex};
 use crate::ip_rule_cache::{IpRuleCache, IpRuleState};
+use crate::scheduler::ConnectionId;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
 use crate::users::user::{ConnectionWriter, NewSessionParams, SessionRx};
@@ -79,8 +81,11 @@ pub struct TestContext {
     pub user_manager: UserManager,
     pub db: Database,
     pub tx: ConnectionWriter,
+    pub egress: EgressHandle,
+    pub egress_connection_id: ConnectionId,
     pub peer_addr: SocketAddr,
     pub rx: SessionRx,
+    pub egress_command_rx: EgressCommandRx,
     pub message_id: MessageId,
     pub file_root: Option<&'static Path>,
     pub connection_tracker: Arc<ConnectionTracker>,
@@ -104,6 +109,8 @@ impl TestContext {
             user_manager: &self.user_manager,
             db: &self.db,
             tx: &self.tx,
+            egress: &self.egress,
+            egress_connection_id: self.egress_connection_id,
             locale: DEFAULT_TEST_LOCALE,
             message_id: self.message_id,
             file_root: self.file_root,
@@ -167,6 +174,10 @@ pub async fn create_test_context() -> TestContext {
 
     // Keep rx alive to prevent channel closure.
     let (tx, rx) = ConnectionWriter::channel();
+    let (egress_tx, egress_command_rx) =
+        tokio::sync::mpsc::channel(DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY);
+    let egress = EgressHandle::new(egress_tx);
+    let egress_connection_id = ConnectionId::new(1);
 
     let message_id = MessageId::from_bytes(b"000000000000").expect("valid hex test message ID");
 
@@ -204,8 +215,11 @@ pub async fn create_test_context() -> TestContext {
         user_manager,
         db,
         tx,
+        egress,
+        egress_connection_id,
         peer_addr,
         rx,
+        egress_command_rx,
         message_id,
         file_root: None,
         connection_tracker,
@@ -504,6 +518,8 @@ pub fn concurrent_handler_context<'a>(
         user_manager: &test_ctx.user_manager,
         db: &test_ctx.db,
         tx: &test_ctx.tx,
+        egress: &test_ctx.egress,
+        egress_connection_id: test_ctx.egress_connection_id,
         locale: DEFAULT_TEST_LOCALE,
         message_id: test_ctx.message_id,
         file_root: test_ctx.file_root,
