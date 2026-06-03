@@ -1,8 +1,8 @@
-//! Dark egress-manager skeleton for future BBS-port scheduling.
+//! Egress manager for BBS-port scheduling.
 //!
-//! This module is not wired to live connections yet. It owns the future
-//! manager-side lifecycle around the WF2Q+ scheduler: registration, frame
-//! chunking, dispatch, ack, and write-failure cleanup.
+//! This module owns the manager-side lifecycle around the WF2Q+ scheduler:
+//! registration, frame staging, chunking, dispatch, ack, and write-failure
+//! cleanup.
 
 pub mod task;
 
@@ -101,6 +101,12 @@ pub enum StagingError {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EgressMessagePriority {
+    Normal,
+    Priority,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DispatchOutcome {
     Dispatched {
         connection_id: ConnectionId,
@@ -118,10 +124,26 @@ pub fn stage_server_message(
     message: &ServerMessage,
     message_id: MessageId,
 ) -> Result<usize, StagingError> {
+    stage_server_message_with_priority(
+        manager,
+        connection_id,
+        message,
+        message_id,
+        EgressMessagePriority::Normal,
+    )
+}
+
+pub fn stage_server_message_with_priority(
+    manager: &mut EgressManager,
+    connection_id: ConnectionId,
+    message: &ServerMessage,
+    message_id: MessageId,
+    priority: EgressMessagePriority,
+) -> Result<usize, StagingError> {
     let frame =
         server_message_to_frame_bytes(message, message_id).map_err(StagingError::Serialize)?;
     manager
-        .enqueue_frame(connection_id, frame)
+        .enqueue_frame_with_priority(connection_id, frame, priority)
         .map_err(StagingError::Enqueue)
 }
 
@@ -223,6 +245,23 @@ impl EgressManager {
         connection_id: ConnectionId,
         frame: Arc<[u8]>,
     ) -> Result<usize, EgressEnqueueError> {
+        self.enqueue_frame_with_priority(connection_id, frame, EgressMessagePriority::Normal)
+    }
+
+    pub fn enqueue_priority_frame(
+        &mut self,
+        connection_id: ConnectionId,
+        frame: Arc<[u8]>,
+    ) -> Result<usize, EgressEnqueueError> {
+        self.enqueue_frame_with_priority(connection_id, frame, EgressMessagePriority::Priority)
+    }
+
+    fn enqueue_frame_with_priority(
+        &mut self,
+        connection_id: ConnectionId,
+        frame: Arc<[u8]>,
+        priority: EgressMessagePriority,
+    ) -> Result<usize, EgressEnqueueError> {
         if frame.is_empty() {
             return Err(EgressEnqueueError::EmptyFrame);
         }
@@ -246,10 +285,11 @@ impl EgressManager {
                 self.unregister(connection_id);
                 return Err(EgressEnqueueError::EmptyFrame);
             };
-            if let Err(err) = self
-                .scheduler
-                .enqueue(connection_id, SchedulerPacket::new(chunk.len(), chunk))
-            {
+            let packet = match priority {
+                EgressMessagePriority::Normal => SchedulerPacket::new(chunk.len(), chunk),
+                EgressMessagePriority::Priority => SchedulerPacket::priority(chunk.len(), chunk),
+            };
+            if let Err(err) = self.scheduler.enqueue(connection_id, packet) {
                 // This should be unreachable after the manager-map check and
                 // non-empty chunk construction. If the manager/scheduler
                 // invariant is ever broken, remove the connection so a partial
@@ -600,6 +640,29 @@ mod tests {
         assert_eq!(manager.staged_frame_count(connection), Some(0));
         assert!(manager.has_frame_capacity(connection));
         assert_eq!(manager.enqueue_frame(connection, frame(b"next")), Ok(1));
+    }
+
+    #[test]
+    fn priority_frame_overtakes_normal_frame_at_connection_boundary() {
+        let mut manager = manager(8);
+        let connection = conn(1);
+        let (tx, mut rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+
+        assert_eq!(manager.enqueue_frame(connection, frame(b"normal")), Ok(1));
+        assert_eq!(
+            manager.enqueue_priority_frame(connection, frame(b"priority")),
+            Ok(1)
+        );
+
+        assert_eq!(expect_dispatch(&mut manager), connection);
+        let dispatch = rx.try_recv().unwrap();
+        assert_eq!(dispatch.chunk.as_bytes(), b"priority");
+        assert!(manager.ack(connection));
+
+        assert_eq!(expect_dispatch(&mut manager), connection);
+        let dispatch = rx.try_recv().unwrap();
+        assert_eq!(dispatch.chunk.as_bytes(), b"normal");
     }
 
     #[test]

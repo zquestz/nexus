@@ -1,9 +1,9 @@
-//! Weighted fair queuing core for future server egress scheduling.
+//! Weighted fair queuing core for server egress scheduling.
 //!
 //! This module is deliberately isolated from sockets and async I/O. It owns
 //! virtual-time accounting, flow membership, intra-flow priority, and blocked
-//! connection skipping; the future scheduler task will wrap this core with
-//! rate-budget and writer-channel integration.
+//! connection skipping; the egress task wraps this core with rate-budget and
+//! writer-channel integration.
 
 use std::collections::{HashMap, VecDeque};
 
@@ -42,16 +42,36 @@ pub enum ConnectionClass {
     Bulk,
 }
 
+/// A packet's priority within one scheduler connection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PacketPriority {
+    Normal,
+    Priority,
+}
+
 /// Packet stored in the scheduler queue.
 #[derive(Debug, PartialEq, Eq)]
 pub struct SchedulerPacket<T> {
     pub bytes: usize,
     pub payload: T,
+    pub priority: PacketPriority,
 }
 
 impl<T> SchedulerPacket<T> {
     pub fn new(bytes: usize, payload: T) -> Self {
-        Self { bytes, payload }
+        Self {
+            bytes,
+            payload,
+            priority: PacketPriority::Normal,
+        }
+    }
+
+    pub fn priority(bytes: usize, payload: T) -> Self {
+        Self {
+            bytes,
+            payload,
+            priority: PacketPriority::Priority,
+        }
     }
 }
 
@@ -145,6 +165,7 @@ impl<T> Wf2qScheduler<T> {
                 blocked: false,
                 in_flight: false,
                 head_tags: None,
+                priority_queue: VecDeque::new(),
                 queue: VecDeque::new(),
             },
         );
@@ -179,7 +200,7 @@ impl<T> Wf2qScheduler<T> {
             return false;
         };
 
-        let clear_remaining_tags = !connection.queue.is_empty() || connection.head_tags.is_some();
+        let clear_remaining_tags = !connection.is_empty() || connection.head_tags.is_some();
         self.remove_flow_member(
             connection.flow_id,
             connection.class,
@@ -204,7 +225,7 @@ impl<T> Wf2qScheduler<T> {
         let old_flow_id = connection.flow_id;
         let class = connection.class;
         let connection_had_dispatch_state =
-            !connection.queue.is_empty() || connection.head_tags.is_some();
+            !connection.is_empty() || connection.head_tags.is_some();
         if old_flow_id == new_flow_id {
             let Some(weight_changed) = self.update_existing_flow_weight(new_flow_id, weight) else {
                 return false;
@@ -306,6 +327,10 @@ impl<T> Wf2qScheduler<T> {
             });
         };
         let flow_id = connection.flow_id;
+        let flow_weight = self
+            .flows
+            .get(&flow_id)
+            .map_or(MIN_BANDWIDTH_WEIGHT, |flow| flow.weight);
         let was_dispatchable = self.flow_has_dispatchable_connection(flow_id);
 
         let Some(connection) = self.connections.get_mut(&connection_id) else {
@@ -314,10 +339,20 @@ impl<T> Wf2qScheduler<T> {
                 packet,
             });
         };
-        connection.queue.push_back(QueuedPacket {
-            bytes: packet.bytes,
-            payload: packet.payload,
-        });
+        let bytes = packet.bytes;
+        let preempted_start = connection.push_packet(
+            QueuedPacket {
+                bytes,
+                payload: packet.payload,
+            },
+            packet.priority,
+        );
+        if let Some(start) = preempted_start {
+            connection.head_tags = Some(PacketTags {
+                start,
+                finish: start + scaled_work(bytes, u128::from(flow_weight)),
+            });
+        }
 
         if !was_dispatchable {
             self.tag_initial_dispatchable_for_flow(flow_id);
@@ -340,7 +375,7 @@ impl<T> Wf2qScheduler<T> {
     pub fn queued_packets(&self, connection_id: ConnectionId) -> Option<usize> {
         self.connections
             .get(&connection_id)
-            .map(|connection| connection.queue.len())
+            .map(ConnectionState::queued_packets)
     }
 
     pub fn has_dispatchable_packet(&self) -> bool {
@@ -457,7 +492,7 @@ impl<T> Wf2qScheduler<T> {
             connection_states
                 .get(&connection_id)
                 .filter(|connection| {
-                    !connection.blocked && !connection.in_flight && !connection.queue.is_empty()
+                    !connection.blocked && !connection.in_flight && !connection.is_empty()
                 })
                 .map(|_| FlowSelection {
                     connection_id,
@@ -476,7 +511,7 @@ impl<T> Wf2qScheduler<T> {
         let virtual_time = self.virtual_time;
 
         let connection = self.connections.get_mut(&connection_id)?;
-        let bytes = connection.queue.front()?.bytes;
+        let bytes = connection.front_packet()?.bytes;
         if connection.head_tags.is_none() {
             let start = last_finish.max(virtual_time);
             let finish = start + scaled_work(bytes, u128::from(weight));
@@ -492,7 +527,7 @@ impl<T> Wf2qScheduler<T> {
 
         let connection = self.connections.get_mut(&candidate.connection_id)?;
         let tags = connection.head_tags.take()?;
-        let packet = connection.queue.pop_front()?;
+        let packet = connection.pop_front_packet()?;
         let bytes = packet.bytes;
         let flow_id = connection.flow_id;
         let class = connection.class;
@@ -538,7 +573,7 @@ impl<T> Wf2qScheduler<T> {
         let Some(connection) = self.connections.get_mut(&selection.connection_id) else {
             return;
         };
-        let Some(bytes) = connection.queue.front().map(|packet| packet.bytes) else {
+        let Some(bytes) = connection.front_packet().map(|packet| packet.bytes) else {
             return;
         };
 
@@ -562,7 +597,7 @@ impl<T> Wf2qScheduler<T> {
         let Some(connection) = self.connections.get_mut(&selection.connection_id) else {
             return;
         };
-        let Some(bytes) = connection.queue.front().map(|packet| packet.bytes) else {
+        let Some(bytes) = connection.front_packet().map(|packet| packet.bytes) else {
             return;
         };
 
@@ -742,12 +777,49 @@ struct ConnectionState<T> {
     blocked: bool,
     in_flight: bool,
     head_tags: Option<PacketTags>,
+    priority_queue: VecDeque<QueuedPacket<T>>,
     queue: VecDeque<QueuedPacket<T>>,
 }
 
 impl<T> ConnectionState<T> {
     fn clear_tags(&mut self) {
         self.head_tags = None;
+    }
+
+    fn push_packet(&mut self, packet: QueuedPacket<T>, priority: PacketPriority) -> Option<u128> {
+        match priority {
+            PacketPriority::Normal => {
+                self.queue.push_back(packet);
+                None
+            }
+            PacketPriority::Priority => {
+                let preempted_start = if self.priority_queue.is_empty() && !self.queue.is_empty() {
+                    self.head_tags.take().map(|tags| tags.start)
+                } else {
+                    None
+                };
+                self.priority_queue.push_back(packet);
+                preempted_start
+            }
+        }
+    }
+
+    fn front_packet(&self) -> Option<&QueuedPacket<T>> {
+        self.priority_queue.front().or_else(|| self.queue.front())
+    }
+
+    fn pop_front_packet(&mut self) -> Option<QueuedPacket<T>> {
+        self.priority_queue
+            .pop_front()
+            .or_else(|| self.queue.pop_front())
+    }
+
+    fn is_empty(&self) -> bool {
+        self.priority_queue.is_empty() && self.queue.is_empty()
+    }
+
+    fn queued_packets(&self) -> usize {
+        self.priority_queue.len() + self.queue.len()
     }
 }
 
@@ -839,6 +911,10 @@ mod tests {
 
     fn sized_packet(bytes: usize, id: u64) -> SchedulerPacket<u64> {
         SchedulerPacket::new(bytes, id)
+    }
+
+    fn priority_sized_packet(bytes: usize, id: u64) -> SchedulerPacket<u64> {
+        SchedulerPacket::priority(bytes, id)
     }
 
     fn enqueue_many(scheduler: &mut Wf2qScheduler<u64>, connection_id: ConnectionId, count: u64) {
@@ -955,6 +1031,73 @@ mod tests {
         let first_finish = scaled_work(PACKET_BYTES, 1);
         assert_eq!(tags.start, first_finish);
         assert_eq!(tags.finish, first_finish + scaled_work(PACKET_BYTES, 1));
+    }
+
+    #[test]
+    fn priority_preemption_retains_flow_tag_budget_for_displaced_normal_head() {
+        let mut scheduler = Wf2qScheduler::new();
+        let connection = conn(1);
+        scheduler.register_user_connection(connection, 1, ConnectionClass::Protocol, 1);
+
+        scheduler.enqueue(connection, sized_packet(100, 1)).unwrap();
+        let normal_tags = head_tags(&scheduler, connection).unwrap();
+
+        scheduler
+            .enqueue(connection, priority_sized_packet(20, 2))
+            .unwrap();
+        let priority_tags = head_tags(&scheduler, connection).unwrap();
+
+        assert_eq!(priority_tags.start, normal_tags.start);
+        assert_eq!(
+            priority_tags.finish,
+            priority_tags.start + scaled_work(20, 1)
+        );
+
+        let priority = dequeue_and_ack(&mut scheduler);
+        assert_eq!(priority.payload, 2);
+
+        let displaced_normal_tags = head_tags(&scheduler, connection).unwrap();
+        assert_eq!(displaced_normal_tags.start, priority_tags.finish);
+        assert_eq!(
+            displaced_normal_tags.finish,
+            priority_tags.finish + scaled_work(100, 1)
+        );
+
+        let normal = dequeue_and_ack(&mut scheduler);
+        assert_eq!(normal.payload, 1);
+    }
+
+    #[test]
+    fn priority_preemption_preserves_cross_flow_fairness() {
+        let mut scheduler = Wf2qScheduler::new();
+        let priority_flow = conn(1);
+        let other_flow = conn(2);
+        scheduler.register_user_connection(priority_flow, 1, ConnectionClass::Protocol, 1);
+        scheduler.register_user_connection(other_flow, 2, ConnectionClass::Protocol, 1);
+
+        enqueue_many(&mut scheduler, priority_flow, 200);
+        enqueue_many(&mut scheduler, other_flow, 200);
+        scheduler
+            .enqueue(priority_flow, priority_sized_packet(PACKET_BYTES, 999))
+            .unwrap();
+
+        let mut priority_flow_count = 0usize;
+        let mut other_flow_count = 0usize;
+        let mut saw_priority_payload = false;
+        for _ in 0..200 {
+            let packet = dequeue_and_ack(&mut scheduler);
+            match packet.connection_id {
+                id if id == priority_flow => {
+                    priority_flow_count += 1;
+                    saw_priority_payload |= packet.payload == 999;
+                }
+                id if id == other_flow => other_flow_count += 1,
+                _ => panic!("unexpected connection"),
+            }
+        }
+
+        assert!(saw_priority_payload);
+        assert!(priority_flow_count.abs_diff(other_flow_count) <= 2);
     }
 
     #[test]

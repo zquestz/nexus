@@ -346,85 +346,7 @@ where
         let is_authenticated = conn_state.session_id.is_some();
 
         tokio::select! {
-            result = async {
-                if is_authenticated {
-                    read_client_message_with_timeout(&mut frame_reader).await
-                } else {
-                    read_client_message_with_full_timeout(&mut frame_reader, None, None).await
-                }
-            }, if !egress_frame_in_progress && pending_session_event.is_none() && !disconnect_after_egress_drain => {
-                match result {
-                    Ok(Some(received)) => {
-                        // Clone locale to avoid borrow checker conflict with conn_state.
-                        let locale = conn_state.locale.clone();
-
-                        let mut ctx = HandlerContext {
-                            writer: DirectWriter::new(&mut frame_writer),
-                            peer_addr,
-                            user_manager: &user_manager,
-                            db: &db,
-                            tx: &tx,
-                            egress: &egress,
-                            egress_connection_id,
-                            locale: &locale,
-                            message_id: received.message_id,
-                            file_root,
-                            transfer_port,
-                            transfer_websocket_port,
-                            connection_tracker: connection_tracker.clone(),
-                            ip_rule_cache: ip_rule_cache.clone(),
-                            file_index: file_index.clone(),
-                            file_activity: file_activity.clone(),
-                            channel_manager: &channel_manager,
-                            transfer_registry: transfer_registry.clone(),
-                            voice_registry: &voice_registry,
-                            tracker_manager: &tracker_manager,
-                            fingerprint,
-                            flood_config: flood_config.clone(),
-                        };
-
-                        if let Err(e) = handle_client_message(
-                            received.message,
-                            &mut conn_state,
-                            &mut ctx,
-                        ).await {
-                            error!(ip = %peer_addr, err = %e, "{}", LOG_ERROR_HANDLING_MESSAGE);
-                            break;
-                        }
-                    }
-                    Ok(None) => {
-                        // Connection closed cleanly
-                        break;
-                    }
-                    Err(e) => {
-                        // Invalid magic / timeouts are common (scanners, dropped
-                        // connections); log those at debug to reduce noise.
-                        let is_common_error = matches!(
-                            e,
-                            FrameError::InvalidMagic | FrameError::FrameTimeout | FrameError::IdleTimeout
-                        );
-
-                        if is_common_error {
-                            debug!(ip = %peer_addr, err = %e, "{}", LOG_PARSE_MESSAGE_ERROR);
-                        } else {
-                            warn!(ip = %peer_addr, err = %e, "{}", LOG_PARSE_MESSAGE_ERROR);
-                        }
-
-                        // Try to send error before disconnecting.
-                        let error_msg = ServerMessage::Error {
-                            message: err_invalid_message_format(&conn_state.locale),
-                            command: None,
-                            disconnect: true,
-                        };
-                        let _ = send_server_message_with_write_timeout(
-                            &mut frame_writer,
-                            &error_msg,
-                            MessageId::new(),
-                        ).await;
-                        break;
-                    }
-                }
-            }
+            biased;
 
             dispatch = recv_egress_dispatch(&mut egress_dispatch_rx) => {
                 let Some(dispatch) = dispatch else {
@@ -492,6 +414,135 @@ where
                         {
                             break;
                         }
+                    }
+                }
+            }
+
+            result = async {
+                if is_authenticated {
+                    read_client_message_with_timeout(&mut frame_reader).await
+                } else {
+                    read_client_message_with_full_timeout(&mut frame_reader, None, None).await
+                }
+            }, if !egress_frame_in_progress && pending_session_event.is_none() && !disconnect_after_egress_drain => {
+                match result {
+                    Ok(Some(received)) => {
+                        // Clone locale to avoid borrow checker conflict with conn_state.
+                        let locale = conn_state.locale.clone();
+
+                        let writer = if egress_dispatch_rx.is_some() {
+                            DirectWriter::egress(
+                                &egress,
+                                egress_connection_id,
+                                &mut egress_staged_frames,
+                            )
+                        } else {
+                            DirectWriter::new(&mut frame_writer)
+                        };
+
+                        let mut ctx = HandlerContext {
+                            writer,
+                            peer_addr,
+                            user_manager: &user_manager,
+                            db: &db,
+                            tx: &tx,
+                            egress: &egress,
+                            egress_connection_id,
+                            locale: &locale,
+                            message_id: received.message_id,
+                            file_root,
+                            transfer_port,
+                            transfer_websocket_port,
+                            connection_tracker: connection_tracker.clone(),
+                            ip_rule_cache: ip_rule_cache.clone(),
+                            file_index: file_index.clone(),
+                            file_activity: file_activity.clone(),
+                            channel_manager: &channel_manager,
+                            transfer_registry: transfer_registry.clone(),
+                            voice_registry: &voice_registry,
+                            tracker_manager: &tracker_manager,
+                            fingerprint,
+                            flood_config: flood_config.clone(),
+                        };
+
+                        if let Err(e) = handle_client_message(
+                            received.message,
+                            &mut conn_state,
+                            &mut ctx,
+                        ).await {
+                            error!(ip = %peer_addr, err = %e, "{}", LOG_ERROR_HANDLING_MESSAGE);
+                            if egress_dispatch_rx.is_some() && egress_staged_frames > 0 {
+                                disconnect_after_egress_drain = true;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        // Connection closed cleanly
+                        break;
+                    }
+                    Err(e) => {
+                        // Invalid magic / timeouts are common (scanners, dropped
+                        // connections); log those at debug to reduce noise.
+                        let is_common_error = matches!(
+                            e,
+                            FrameError::InvalidMagic | FrameError::FrameTimeout | FrameError::IdleTimeout
+                        );
+
+                        if is_common_error {
+                            debug!(ip = %peer_addr, err = %e, "{}", LOG_PARSE_MESSAGE_ERROR);
+                        } else {
+                            warn!(ip = %peer_addr, err = %e, "{}", LOG_PARSE_MESSAGE_ERROR);
+                        }
+
+                        // Try to send error before disconnecting.
+                        let error_msg = ServerMessage::Error {
+                            message: err_invalid_message_format(&conn_state.locale),
+                            command: None,
+                            disconnect: true,
+                        };
+                        if egress_dispatch_rx.is_some() {
+                            match egress
+                                .stage_priority_message(
+                                    egress_connection_id,
+                                    Box::new(error_msg),
+                                    MessageId::new(),
+                                )
+                                .await
+                            {
+                                Ok(Ok(_chunks)) => {
+                                    egress_staged_frames += 1;
+                                    disconnect_after_egress_drain = true;
+                                    continue;
+                                }
+                                Ok(Err(e)) => {
+                                    warn!(
+                                        ip = %peer_addr,
+                                        egress_connection_id = egress_connection_id.get(),
+                                        err = ?e,
+                                        "{}",
+                                        LOG_EGRESS_STAGE_FAILED
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        ip = %peer_addr,
+                                        egress_connection_id = egress_connection_id.get(),
+                                        err = ?e,
+                                        "{}",
+                                        LOG_EGRESS_STAGE_FAILED
+                                    );
+                                }
+                            }
+                        } else {
+                            let _ = send_server_message_with_write_timeout(
+                                &mut frame_writer,
+                                &error_msg,
+                                MessageId::new(),
+                            ).await;
+                        }
+                        break;
                     }
                 }
             }
@@ -1038,7 +1089,7 @@ mod tests {
     use tokio::io::{DuplexStream, ReadHalf, WriteHalf};
 
     use crate::egress::EgressManager;
-    use crate::egress::task::EgressTask;
+    use crate::egress::task::{EgressHandle, EgressTask};
     use crate::handlers::testing::{TEST_FINGERPRINT, TestContext, create_test_context};
 
     type TestReader = FrameReader<BufReader<ReadHalf<DuplexStream>>>;
@@ -1048,6 +1099,7 @@ mod tests {
         reader: TestReader,
         writer: TestWriter,
         user_manager: UserManager,
+        egress: EgressHandle,
         server_task: tokio::task::JoinHandle<io::Result<()>>,
         egress_task: tokio::task::JoinHandle<()>,
         _test_ctx: TestContext,
@@ -1058,6 +1110,7 @@ mod tests {
             let Self {
                 reader,
                 writer,
+                egress,
                 server_task,
                 egress_task,
                 _test_ctx,
@@ -1066,6 +1119,7 @@ mod tests {
 
             drop(reader);
             drop(writer);
+            drop(egress);
 
             let server_result = time::timeout(Duration::from_secs(2), server_task)
                 .await
@@ -1090,6 +1144,14 @@ mod tests {
     }
 
     async fn start_test_connection(chunk_size: usize, stream_capacity: usize) -> TestConnection {
+        start_test_connection_with_rate(chunk_size, stream_capacity, 0).await
+    }
+
+    async fn start_test_connection_with_rate(
+        chunk_size: usize,
+        stream_capacity: usize,
+        bytes_per_second: u64,
+    ) -> TestConnection {
         let test_ctx = create_test_context().await;
         let (client, server) = tokio::io::duplex(stream_capacity);
         let (client_read, client_write) = tokio::io::split(client);
@@ -1106,7 +1168,10 @@ mod tests {
         });
         let tracker_manager = Arc::new(crate::tracker::TrackerManager::new(tracker_context));
 
-        let (egress, egress_task) = EgressTask::channel(EgressManager::new(nonzero(chunk_size)));
+        let (egress, egress_task) = EgressTask::channel_with_rate(
+            EgressManager::new(nonzero(chunk_size)),
+            bytes_per_second,
+        );
         let egress_task = tokio::spawn(egress_task.run());
 
         let params = ConnectionParams {
@@ -1126,7 +1191,7 @@ mod tests {
             tracker_manager,
             fingerprint: TEST_FINGERPRINT,
             flood_config: test_ctx.flood_config.clone(),
-            egress,
+            egress: egress.clone(),
             egress_connection_id: ConnectionId::new(10_001),
         };
 
@@ -1136,6 +1201,7 @@ mod tests {
             reader,
             writer,
             user_manager,
+            egress,
             server_task,
             egress_task,
             _test_ctx: test_ctx,
@@ -1309,6 +1375,37 @@ mod tests {
         assert_eq!(frame.to_bytes().as_slice(), expected.as_ref());
 
         let pong = read_next_server_message(&mut connection).await;
+        assert_eq!(pong.message_id, ping_id);
+        assert!(matches!(pong.message, ServerMessage::Pong));
+
+        connection.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn direct_response_is_throttled_by_egress_rate_limit() {
+        let mut connection = start_test_connection(4, 8192).await;
+        login_test_connection(&mut connection).await;
+        let ping_id = message_id(b"000000000306");
+        let expected = server_message_to_frame_bytes(&ServerMessage::Pong, ping_id)
+            .expect("expected pong frame should serialize");
+        assert!(expected.len() > 16);
+
+        connection
+            .egress
+            .set_max_outbound_rate(32)
+            .await
+            .expect("rate update should queue");
+
+        send_client_message_with_id(&mut connection.writer, &ClientMessage::Ping, ping_id)
+            .await
+            .expect("ping send should succeed");
+
+        let started = time::Instant::now();
+        let pong = read_next_server_message(&mut connection).await;
+        assert!(
+            started.elapsed() >= Duration::from_millis(50),
+            "direct response should be paced by the egress limiter"
+        );
         assert_eq!(pong.message_id, ping_id);
         assert!(matches!(pong.message, ServerMessage::Pong));
 

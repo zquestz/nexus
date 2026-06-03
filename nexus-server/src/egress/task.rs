@@ -1,4 +1,4 @@
-use std::num::NonZeroUsize;
+use std::{num::NonZeroUsize, sync::Arc};
 
 use nexus_common::framing::MessageId;
 use nexus_common::protocol::ServerMessage;
@@ -6,8 +6,8 @@ use tokio::sync::{mpsc, oneshot};
 use tokio::time::{self, Duration, Instant};
 
 use crate::egress::{
-    DispatchOutcome, EgressDispatchTx, EgressEnqueueError, EgressManager, EgressRegistration,
-    StagingError, stage_server_message,
+    DispatchOutcome, EgressDispatchTx, EgressEnqueueError, EgressManager, EgressMessagePriority,
+    EgressRegistration, StagingError, stage_server_message_with_priority,
 };
 use crate::scheduler::{ConnectionClass, ConnectionId};
 
@@ -18,6 +18,7 @@ const NANOS_PER_SECOND: u128 = 1_000_000_000;
 pub type EgressCommandTx = mpsc::Sender<EgressCommand>;
 pub type EgressCommandRx = mpsc::Receiver<EgressCommand>;
 pub type StageMessageResult = Result<usize, StageMessageError>;
+pub type StageFrameResult = Result<usize, EgressEnqueueError>;
 
 #[derive(Debug)]
 pub enum StageMessageError {
@@ -46,7 +47,13 @@ pub enum EgressCommand {
         connection_id: ConnectionId,
         message: Box<ServerMessage>,
         message_id: MessageId,
+        priority: EgressMessagePriority,
         reply_tx: oneshot::Sender<StageMessageResult>,
+    },
+    StagePriorityFrame {
+        connection_id: ConnectionId,
+        frame: Arc<[u8]>,
+        reply_tx: oneshot::Sender<StageFrameResult>,
     },
     Ack {
         connection_id: ConnectionId,
@@ -131,10 +138,55 @@ impl EgressHandle {
         message: Box<ServerMessage>,
         message_id: MessageId,
     ) -> Result<StageMessageResult, EgressTaskError> {
+        self.stage_message_with_priority(
+            connection_id,
+            message,
+            message_id,
+            EgressMessagePriority::Normal,
+        )
+        .await
+    }
+
+    pub async fn stage_priority_message(
+        &self,
+        connection_id: ConnectionId,
+        message: Box<ServerMessage>,
+        message_id: MessageId,
+    ) -> Result<StageMessageResult, EgressTaskError> {
+        self.stage_message_with_priority(
+            connection_id,
+            message,
+            message_id,
+            EgressMessagePriority::Priority,
+        )
+        .await
+    }
+
+    pub async fn stage_priority_frame(
+        &self,
+        connection_id: ConnectionId,
+        frame: Arc<[u8]>,
+    ) -> Result<StageFrameResult, EgressTaskError> {
+        self.request(|reply_tx| EgressCommand::StagePriorityFrame {
+            connection_id,
+            frame,
+            reply_tx,
+        })
+        .await
+    }
+
+    async fn stage_message_with_priority(
+        &self,
+        connection_id: ConnectionId,
+        message: Box<ServerMessage>,
+        message_id: MessageId,
+        priority: EgressMessagePriority,
+    ) -> Result<StageMessageResult, EgressTaskError> {
         self.request(|reply_tx| EgressCommand::StageMessage {
             connection_id,
             message,
             message_id,
+            priority,
             reply_tx,
         })
         .await
@@ -326,13 +378,15 @@ impl EgressTask {
                 connection_id,
                 message,
                 message_id,
+                priority,
                 reply_tx,
             } => {
-                let result = match stage_server_message(
+                let result = match stage_server_message_with_priority(
                     &mut self.manager,
                     connection_id,
                     &message,
                     message_id,
+                    priority,
                 ) {
                     Ok(chunks) => Ok(chunks),
                     Err(StagingError::Enqueue(EgressEnqueueError::QueueFull)) => {
@@ -344,6 +398,13 @@ impl EgressTask {
                     Err(err) => Err(StageMessageError::Failed(err)),
                 };
                 let _ = reply_tx.send(result);
+            }
+            EgressCommand::StagePriorityFrame {
+                connection_id,
+                frame,
+                reply_tx,
+            } => {
+                let _ = reply_tx.send(self.manager.enqueue_priority_frame(connection_id, frame));
             }
             EgressCommand::Ack { connection_id } => {
                 self.manager.ack(connection_id);
@@ -591,21 +652,6 @@ mod tests {
             .await
             .unwrap()
             .unwrap()
-    }
-
-    async fn recv_either_dispatch(
-        first_rx: &mut EgressDispatchRx,
-        second_rx: &mut EgressDispatchRx,
-    ) -> crate::egress::EgressDispatch {
-        time::timeout(Duration::from_secs(1), async {
-            tokio::select! {
-                dispatch = first_rx.recv() => dispatch,
-                dispatch = second_rx.recv() => dispatch,
-            }
-        })
-        .await
-        .unwrap()
-        .unwrap()
     }
 
     fn large_chat_message() -> ServerMessage {
@@ -904,18 +950,17 @@ mod tests {
         let (handle, task) = spawn_task_with_rate(EgressManager::new(nonzero(100)), 20_000);
         let heavy = conn(1);
         let light = conn(2);
-        let (heavy_tx, mut heavy_rx) = dispatch_channel();
-        let (light_tx, mut light_rx) = dispatch_channel();
+        let (dispatch_tx, mut dispatch_rx) = dispatch_channel();
 
         assert!(
             handle
-                .register(user_registration(heavy, 1, heavy_tx))
+                .register(user_registration(heavy, 1, dispatch_tx.clone()))
                 .await
                 .unwrap()
         );
         assert!(
             handle
-                .register(user_registration(light, 2, light_tx))
+                .register(user_registration(light, 2, dispatch_tx))
                 .await
                 .unwrap()
         );
@@ -946,7 +991,7 @@ mod tests {
         let mut heavy_seen = 0;
         let mut light_seen = 0;
         for _ in 0..32 {
-            let dispatch = recv_either_dispatch(&mut heavy_rx, &mut light_rx).await;
+            let dispatch = recv_dispatch(&mut dispatch_rx).await;
             assert_eq!(dispatch.chunk.len(), 100);
             if dispatch.connection_id == heavy {
                 heavy_seen += 1;

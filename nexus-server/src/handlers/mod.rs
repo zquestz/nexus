@@ -130,11 +130,12 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::constants::ERR_CHANNEL_CLOSED;
+use crate::constants::{ERR_CHANNEL_CLOSED, ERR_EGRESS_STAGE_FAILED};
 
 use tokio::io::AsyncWrite;
 
 use nexus_common::framing::{FrameWriter, MessageId};
+use nexus_common::io::server_message_to_frame_bytes;
 use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 
@@ -155,12 +156,28 @@ use crate::voice::{VoiceRegistry, send_voice_leave_notifications};
 
 /// Direct socket writer for messages sent by the active connection task.
 pub struct DirectWriter<'a, W> {
-    frame_writer: &'a mut FrameWriter<W>,
+    target: DirectWriterTarget<'a, W>,
 }
 
 impl<'a, W> DirectWriter<'a, W> {
     pub fn new(frame_writer: &'a mut FrameWriter<W>) -> Self {
-        Self { frame_writer }
+        Self {
+            target: DirectWriterTarget::Frame(frame_writer),
+        }
+    }
+
+    pub fn egress(
+        egress: &'a EgressHandle,
+        connection_id: ConnectionId,
+        staged_frames: &'a mut usize,
+    ) -> Self {
+        Self {
+            target: DirectWriterTarget::Egress {
+                egress,
+                connection_id,
+                staged_frames,
+            },
+        }
     }
 }
 
@@ -170,8 +187,35 @@ impl<W: AsyncWrite + Unpin> DirectWriter<'_, W> {
         message: &ServerMessage,
         message_id: MessageId,
     ) -> io::Result<()> {
-        send_server_message_with_write_timeout(self.frame_writer, message, message_id).await
+        match &mut self.target {
+            DirectWriterTarget::Frame(frame_writer) => {
+                send_server_message_with_write_timeout(frame_writer, message, message_id).await
+            }
+            DirectWriterTarget::Egress {
+                egress,
+                connection_id,
+                staged_frames,
+            } => {
+                let frame = server_message_to_frame_bytes(message, message_id)?;
+                match egress.stage_priority_frame(*connection_id, frame).await {
+                    Ok(Ok(_chunks)) => {
+                        **staged_frames += 1;
+                        Ok(())
+                    }
+                    Ok(Err(_)) | Err(_) => Err(io::Error::other(ERR_EGRESS_STAGE_FAILED)),
+                }
+            }
+        }
     }
+}
+
+enum DirectWriterTarget<'a, W> {
+    Frame(&'a mut FrameWriter<W>),
+    Egress {
+        egress: &'a EgressHandle,
+        connection_id: ConnectionId,
+        staged_frames: &'a mut usize,
+    },
 }
 
 /// Shared resources passed to every handler.
