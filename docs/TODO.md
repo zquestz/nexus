@@ -2,21 +2,21 @@
 
 ## Implementation Order (Pre-Launch)
 
-| #   | Feature                     | Effort | Status                                          |
-| --- | --------------------------- | ------ | ----------------------------------------------- |
-| 1   | Account groups              | Low    | ✅ Done                                         |
-| 2   | Password strength           | Low    | ✅ Done                                         |
-| 3   | Streaming hash transfers    | Medium | ✅ Done                                         |
-| 4   | Boards                      | High   | Planned                                         |
-| 5   | File previews               | Low    | Planned                                         |
-| 6   | Tracker registration        | Medium | ✅ Done                                         |
-| 7   | Tracker discovery           | Low    | ✅ Done                                         |
-| 8   | Speed limiting              | Medium | Phase 1 ✅, slow-client guard ✅, WF2Q+ planned |
-| 9   | Flood protection            | Low    | ✅ Done                                         |
-| 10  | Server logs                 | Medium | ✅ Done                                         |
-| 11  | Auto-away                   | Low    | ✅ Done                                         |
-| 12  | Certificate fingerprint pin | Low    | ✅ Done                                         |
-| 13  | Unicode name folding        | Low    | ✅ Done                                         |
+| #   | Feature                     | Effort | Status                                      |
+| --- | --------------------------- | ------ | ------------------------------------------- |
+| 1   | Account groups              | Low    | ✅ Done                                     |
+| 2   | Password strength           | Low    | ✅ Done                                     |
+| 3   | Streaming hash transfers    | Medium | ✅ Done                                     |
+| 4   | Boards                      | High   | Planned                                     |
+| 5   | File previews               | Low    | Planned                                     |
+| 6   | Tracker registration        | Medium | ✅ Done                                     |
+| 7   | Tracker discovery           | Low    | ✅ Done                                     |
+| 8   | Speed limiting              | Medium | BBS egress ✅, transfer integration pending |
+| 9   | Flood protection            | Low    | ✅ Done                                     |
+| 10  | Server logs                 | Medium | ✅ Done                                     |
+| 11  | Auto-away                   | Low    | ✅ Done                                     |
+| 12  | Certificate fingerprint pin | Low    | ✅ Done                                     |
+| 13  | Unicode name folding        | Low    | ✅ Done                                     |
 
 ## Decided Against
 
@@ -98,14 +98,17 @@ Preview files before downloading.
 
 Weighted fair share of server outbound bandwidth per user, enforced via a single egress scheduler. All of a user's sessions — BBS and transfer, regular or shared account — share one flow keyed on `user_id`; the weight bounds that account's total outbound share.
 
-**Current pre-scheduler safety layer (implemented)**
+**Current BBS egress implementation (implemented)**
 
-- BBS session broadcasts and queued cross-task sends go through `ConnectionWriter`, not a raw `mpsc` sender.
-- `ConnectionWriter` has a bounded normal queue of 1024 `SessionEvent`s plus a priority control queue of exactly one event.
-- The control queue is reserved for slow-client disconnects. When the normal queue is full, the attempted event is dropped, the slow-client control event is armed, and the sender gets `Ok(())`. A closed queue still returns `Err`, preserving the existing "session is gone" signal for broadcast cleanup.
-- The connection task prioritizes the control queue before normal queued messages, sends a localized `Error { disconnect: true }`, then exits through the normal disconnect cleanup path.
-- `DirectWriter` is the immediate handler response path. Handlers do not expose raw `FrameWriter`; direct writes and queued BBS writes both use the server-local 30-minute per-message BBS write timeout.
-- This is a safety layer, not the final bandwidth scheduler. The future WF2Q+ scheduler below still owns byte-level fairness, rate limiting, transfer integration, and WAN/LAN routing.
+- BBS session broadcasts and queued cross-task sends go through `ConnectionWriter`, not a raw `mpsc` sender. `ConnectionWriter` has a bounded normal queue of 1024 `SessionEvent`s plus a priority control queue of exactly one slow-client disconnect event.
+- BBS outbound frames route through the egress task: `ServerMessage` → complete frame bytes → `Arc<[u8]>` → scheduler chunks → per-connection dispatch channel → connection task writes raw pre-framed bytes.
+- The scheduler core is WF2Q+-based, deterministic, and clock-free. The egress task owns the token bucket, lifecycle commands, staging, dispatch, ack, and write-failure cleanup.
+- `DirectWriter` stages handler responses through the same egress path as priority frames, so direct responses are rate-accounted and cannot interleave into a partially written queued frame. `send_message_via_channel` remains normal-priority FIFO behind queued messages.
+- Each BBS connection has a staged-frame admission limit (`DEFAULT_EGRESS_QUEUED_FRAMES_PER_CONNECTION = 32`). `QueueFull` is lossless for queued messages and maps direct-response `QueueFull` to drain-then-disconnect, not silent drop.
+- Login transitions the connection from the global anon flow to `FlowId::User(user_id)` before `LoginResponse`, so authenticated BBS traffic uses the user's current resolved `bandwidth_weight`. Live `UserUpdate` / `GroupUpdate` weight changes update active BBS flows after commit and outside user-state locks.
+- Live Server Info updates call egress `set_max_outbound_rate` and `set_chunk_size` after the DB commit succeeds. Egress command failures/timeouts are warn-only and do not fail the admin operation.
+- Slow-client disconnect, parse-error disconnect, regular `Disconnect`, in-flight frame boundaries, and direct responses are all coordinated so the socket sees whole frames only.
+- Still pending for the final combined cap: transfer-port integration, transfer auth transition, transfer-only weight updates, LAN bypass, and any future writer-task split for transfer/raw-byte dispatch.
 
 **Algorithm: WF2Q+ (Bennett & Zhang, 1997)**
 
@@ -115,7 +118,7 @@ Weighted fair share of server outbound bandwidth per user, enforced via a single
 - Reference C implementation: <https://github.com/zquestz/throttled/blob/master/src/wf2q%2B.h>.
 - Defer to those for the virtual-time update rule and eligibility check — they're more precise than any in-spec prose.
 
-**Architecture: single central scheduler with per-connection writer tasks**
+**Target combined architecture with per-connection writer tasks**
 
 - One scheduler instance for the entire server, running as a dedicated tokio task that wakes when a flow has data and rate budget is available.
 - **The scheduler task does zero I/O.** It is a pure dispatch engine: it maintains WF2Q+ state, rate-limits, and dispatches packets to per-connection bounded channels. It never calls `write_all` on a socket.
@@ -129,7 +132,8 @@ Weighted fair share of server outbound bandwidth per user, enforced via a single
 
 **Scope of cap**
 
-- Single combined cap across BBS port (7500/7502) + transfer port (7501/7503).
+- Target final state: a single combined cap across BBS port (7500/7502) + transfer port (7501/7503).
+- Implemented today: BBS port (7500/7502) egress only. Transfer ports (7501/7503) still bypass this scheduler and are the next major integration target.
 - **Voice UDP exempt** — real-time, would degrade quality. UDP packets go directly to socket, not through scheduler.
 - **LAN bypass** via `nexus_common::address::is_private_network` (RFC 1918 + IPv6 ULA + loopback). **NOT** Yggdrasil — that mesh routes over the internet, counts as WAN bandwidth. Implementation: LAN connections keep their `WriteHalf` on the connection task and `send_*()` writes directly to the socket — they never touch the scheduler. This decouples LAN traffic from the scheduler's dispatch task, so a saturating LAN client can't starve WAN traffic. The cap=0 optimization is unrelated: at cap=0 the scheduler still dispatches WAN connections (skipping chunking + rate sleep), so live cap changes take effect immediately on existing WAN connections.
 
@@ -160,9 +164,9 @@ Cached on `UserSession.bandwidth_weight` at login as an `AtomicU16`. The handler
 
 **Bounds:** weight is `INTEGER` with allowed range `1..=65535`. Validate at the protocol boundary; reject out-of-range with the standard validation error path. The scheduler holds it as `u16` internally.
 
-**Scheduler-owned flow weights.** The scheduler maintains flow weights as plain `u16` values (not by reading `UserSession.bandwidth_weight` directly — `AtomicU16` clones snapshot, so the scheduler cannot hold a live reference). Weight updates arrive as explicit commands through the `SchedulerHandle`:
+**Scheduler-owned flow weights.** The scheduler maintains flow weights as plain `u16` values (not by reading `UserSession.bandwidth_weight` directly — `AtomicU16` clones snapshot, so the scheduler cannot hold a live reference). Weight updates arrive as explicit commands through the scheduler / egress handle:
 
-- `update_user_weight(user_id, weight)` — updates the weight of the user's flow. One flow per `user_id`, so this is a single-flow update; it reaches transfer-only users (not in `UserManager`'s session map) because the flow is keyed by `user_id`, not by session presence. Primary API for user/group weight changes; for a group cascade, call once per affected `user_id`.
+- `update_user_weight(user_id, weight)` — updates the weight of the user's flow. One flow per `user_id`, so this is a single-flow update. In the final transfer-integrated scheduler this also reaches transfer-only users (not in `UserManager`'s session map) because the flow is keyed by `user_id`, not by session presence. Primary API for user/group weight changes; for a group cascade, call once per affected `user_id`.
 - `transition_to_user(conn_id, user_id, weight)` — graduates a connection from its anon flow to its user flow at login, carrying the initial weight (see Lifecycle).
 
 The flow key is `FlowId::User(user_id)` for authenticated traffic and `FlowId::Anon` pre-login (a single global flow) — `user_id` _is_ the scheduling identity, no separate metadata needed. A username rename never touches the scheduler: the flow is keyed on the immutable `user_id`, so the key is stable across renames (no `rename_flow`).
@@ -170,7 +174,7 @@ The flow key is `FlowId::User(user_id)` for authenticated traffic and `FlowId::A
 **Cache invalidation.** Two updates fire when a user's effective weight changes:
 
 - **Server-side (session cache)**: refresh `UserSession.bandwidth_weight` (the `AtomicU16`) for every active session of the affected user via `UserManager::update_bandwidth_state`. For `UserUpdate` changing `bandwidth_weight` or `group_id`, that's the target user's sessions. For `GroupUpdate` changing the group's weight, fan out via `get_sessions_by_group_id` to every member's session (same pattern as group permission cascades).
-- **Server-side (scheduler)**: the same handler code that refreshes the session cache also calls `scheduler.update_user_weight(user_id, resolved_weight)`. For a `UserUpdate`, one call for the target. For a `GroupUpdate` the scheduler's target set is **broader than the session cache's** — a transfer-only member has a scheduler flow but no `UserManager` session — so the scheduler cascade enumerates the group's **inheriting member `user_id`s via a new DB helper** (`SELECT id FROM users WHERE group_id = ? AND bandwidth_weight IS NULL`), **not** the active-session list and **not** the Phase-1 `update_bandwidth_weight_for_group_inheritors` helper (which only scans live `UserManager` sessions, so it can't reach transfer-only or BBS-offline members). Call `update_user_weight` for each; members with no live flow are harmless no-ops (a `HashMap` miss). Username renames need no scheduler call at all (the flow is keyed on `user_id`).
+- **Server-side (scheduler / egress)**: the same handler code that refreshes the session cache also calls `update_user_weight(user_id, resolved_weight)`. For a `UserUpdate`, one call for the target. For the current BBS-only implementation, `GroupUpdate` uses the live `UserManager::update_bandwidth_weight_for_group_inheritors` set, which is enough because only active BBS sessions have egress flows. For transfer integration, the scheduler target set becomes **broader than the BBS session cache's** — a transfer-only member can have a scheduler flow but no `UserManager` session — so the transfer-ready cascade should enumerate the group's **inheriting member `user_id`s via a DB helper** (`SELECT id FROM users WHERE group_id = ? AND bandwidth_weight IS NULL`). Username renames need no scheduler call at all (the flow is keyed on `user_id`).
 - **Client-visible**: the resolved weight is in `UserInfo`, so it naturally rides on existing `UserUpdated` broadcasts (which fire for renames, group changes, etc.). Weight-only changes do not require a new broadcast trigger — the value is "best-effort current at last broadcast" the same way `group_name` is today. Clients render the latest broadcast value; brief staleness on weight-only edits is acceptable since the client UI doesn't render weight for non-admins anyway.
 
 **Intra-flow priority (Protocol-class connections before Bulk-class)**
@@ -190,9 +194,9 @@ WF2Q+ virtual-time accounting is unaffected — a packet is a packet regardless 
 
 **Why Protocol starves Bulk — user behavior on slow connections.** Consider a user on a 0.5 Mbps link downloading a large file. They click a directory: the `FileListResponse` must arrive fast because they're actively interacting. If Protocol competes with Bulk for the same pipe, a 1 MB file listing takes ~32 seconds instead of ~16. With starvation, Protocol gets the full pipe — the listing arrives as fast as physically possible, the transfer pauses, and then resumes once the user stops clicking. The same logic applies to news listings, chat messages, user lists — anything interactive. Most Protocol messages are small and go out so fast that the starvation is invisible. When they're large (e.g., a huge directory listing), starvation is even more valuable because the user would notice the delay.
 
-**Backpressure model.**
+**Target transfer/raw-byte backpressure model.**
 
-- **Protocol `send_frame`: blocks only on its own connection's backlog, never on Bulk.** Each Protocol-class connection has a **`PER_CONNECTION_PROTOCOL_CAP` (4 MB)** — the blocking rule is: if that connection's pending Protocol bytes are **already ≥ cap**, `send_frame` blocks until drain brings them below; if pending bytes are **below cap**, the enqueue always succeeds (even if the message itself pushes the total over). This means exactly one message can overshoot the cap, but the next caller blocks until the queue drains. A single 5 MB `FileListResponse` gets through (we were under cap when it arrived), but the next `send_frame` blocks — no unbounded bypass. The 4 MB cap is extremely generous: Protocol traffic for a connection comes from its handler responses plus broadcasts. A connection would need to fall 4 MB behind on its own Protocol output to trigger blocking — realistically only a frozen client. When blocking does trigger, it pauses exactly the right thing: that connection task's `select!` rx arm (for broadcasts) or its handler (for direct responses). The broadcaster (`UserManager.broadcast()`) is never blocked — today, full session queues arm the slow-client disconnect control path and report `Ok(())`; after the scheduler lands, scheduler-side backpressure must remain local to the slow connection's task. **Session isolation:** the cap is per-connection, so a frozen session's Protocol backlog is its own — it cannot block `send_frame` for any sibling session of the same user flow. The flow shares only the weighted rate budget, never buffer capacity. **Upstream bound:** the 4 MB cap covers only the scheduler-side buffer. The existing pre-scheduler `ConnectionWriter` queue is already bounded at 1024 events and disconnects slow consumers when full; the future scheduler should keep that property rather than reintroducing an unbounded broadcast queue. The writer **stall timeout** (see "Writer task lifecycle") is what bounds an active zero-progress socket write inside the future writer task: zero write progress for `WRITER_STALL_TIMEOUT` (60s) → disconnect, capping accumulation at ~one stall-window of rate-limited broadcasts.
+- **Protocol `send_frame`: blocks only on its own connection's backlog, never on Bulk.** Each Protocol-class connection has a **`PER_CONNECTION_PROTOCOL_CAP` (4 MB)** — the blocking rule is: if that connection's pending Protocol bytes are **already ≥ cap**, `send_frame` blocks until drain brings them below; if pending bytes are **below cap**, the enqueue always succeeds (even if the message itself pushes the total over). This means exactly one message can overshoot the cap, but the next caller blocks until the queue drains. A single 5 MB `FileListResponse` gets through (we were under cap when it arrived), but the next `send_frame` blocks — no unbounded bypass. The 4 MB cap is extremely generous: Protocol traffic for a connection comes from its handler responses plus broadcasts. A connection would need to fall 4 MB behind on its own Protocol output to trigger blocking — realistically only a frozen client. When blocking does trigger, it pauses exactly the right thing: that connection task's `select!` rx arm (for broadcasts) or its handler (for direct responses). The broadcaster (`UserManager.broadcast()`) is never blocked — full session queues arm the slow-client disconnect control path and report `Ok(())`; scheduler-side backpressure must remain local to the slow connection's task. **Session isolation:** the cap is per-connection, so a frozen session's Protocol backlog is its own — it cannot block `send_frame` for any sibling session of the same user flow. The flow shares only the weighted rate budget, never buffer capacity. **Upstream bound:** the existing `ConnectionWriter` queue is already bounded at 1024 events and disconnects slow consumers when full; transfer/raw-byte integration should keep that property rather than reintroducing an unbounded broadcast queue. The writer **stall timeout** (see "Writer task lifecycle") is what bounds an active zero-progress socket write inside the future writer task: zero write progress for `WRITER_STALL_TIMEOUT` (60s) → disconnect, capping accumulation at ~one stall-window of rate-limited broadcasts.
 - **Bulk `send_bytes`: blocks when a connection's pending bulk bytes exceed `PER_CONNECTION_BULK_CAP` (1 MB).** Backpressure propagates naturally to callers: a transfer task pumping 64 KB chunks blocks when its own bulk queue is full, and the file read pauses. Per-connection, so a frozen transfer connection backpressures only itself, not the user's other transfers. A user opening many transfer connections does get a larger aggregate memory budget (bounded by `max_connections` / `max_connections_per_ip`) — an accepted trade for full per-session isolation.
 - **Bulk can never block Protocol.** The caps are per-connection and independent. A saturating transfer cannot prevent a chat message or file listing from being enqueued and dispatched. Protocol-class connections are dispatched before Bulk-class within a flow, and every connection's cap is its own.
 - **Pending-byte accounting.** The cap counts bytes still in **this connection's scheduler queue** — dispatched bytes leave the counter when handed to the writer channel. In the stuck case this stays accurate: a full writer channel refuses further dispatch, so the bytes remain queued and counted. The writer channel itself is bounded by **bytes, not packet count** — **`WRITER_CHANNEL_BYTE_CAP = 512 KiB`**, with the same one-oversized-packet-may-pass rule as the scheduler queue (a frame larger than the budget passes if in-flight bytes are below the cap, but the next dispatch waits). Implementation: the dispatch channel is a thin wrapper over `tokio::mpsc` (which is item-bounded) plus a per-connection in-flight-byte counter (or semaphore); "full" means `in_flight_bytes ≥ WRITER_CHANNEL_BYTE_CAP`, not a slot count. Byte-bounding (not packet-bounding) matters because at cap = 0 chunking is skipped, so a single Protocol "packet" can be a multi-MB `FileListResponse`; an 8-_packet_ channel would let 8 such frames pile up, whereas the byte budget admits at most one oversized frame ahead of the drain. No per-write progress reporting is needed — the budget counts every byte handed to the writer channel and releases it only when that buffer's write **completes** (not at `recv()`), so the buffer currently being written stays counted against the budget until it is fully on the socket. The `Drained` full→available edge is this byte total crossing back under the cap. True per-connection memory ≈ scheduler-queue soft cap + writer-channel soft byte cap (the active write buffer is inside that cap, not added to it).
@@ -203,9 +207,9 @@ The scheduler chunks every enqueued payload into `scheduler_chunk_size`-byte WF2
 
 Worst-case added latency for a small message behind one already-dispatched chunk on the same flow = `chunk_size / cap_rate` (the non-preemptible transmission). This is the intra-flow bound only; WF2Q+ weights govern when the message's flow is served relative to other flows.
 
-**Optimization: when `max_outbound_rate = 0` (unlimited), chunking is skipped.** The whole reason to chunk is bounding the `chunk_size / cap_rate` latency for small messages competing with bulk transfers — at cap=0, the kernel drains the socket at line rate (microseconds per packet), so the bound isn't needed. **Chunking is a dispatch-time decision, not enqueue-time:** the payload is retained as `Bytes` and the dispatcher slices it by the _current_ `scheduler_chunk_size` when cap > 0, or hands it over whole when cap = 0. So a payload enqueued while cap = 0 is sliced lazily if `set_rate` raises the cap before it finishes draining — no oversized packet escapes the new bound and no burst exceeds one chunk. This also reduces scheduler ops by ~8× at 100 MB/s outbound (one slice per 64 KB transfer chunk instead of one per 8 KB sub-chunk); WAN egress still flows through the scheduler so live cap changes take effect immediately.
+**Future optimization: when `max_outbound_rate = 0` (unlimited), chunking can be skipped.** The current BBS implementation chunks at staging time even when the cap is unlimited. That is correct but not minimal work. The future transfer/raw-byte path can make chunking a dispatch-time decision: retain the payload as `Bytes` and slice it by the _current_ `scheduler_chunk_size` when cap > 0, or hand it over whole when cap = 0. If `set_rate` raises the cap before an unlimited payload finishes draining, the remaining payload must be sliced before dispatch so no oversized packet escapes the new bound.
 
-**Rate bucket.** The rate limiter is a token bucket whose capacity is one `scheduler_chunk_size` of bytes (cap > 0). Tokens accumulate only up to one chunk, so idle time cannot bank into a burst — maximum burst is one chunk, consistent with "no burst budgets beyond chunk size" (Out of scope). At cap = 0 there is no bucket (no rate limiting).
+**Rate bucket.** The implemented BBS rate limiter is a token bucket with a bounded burst of four scheduler chunks (`EGRESS_RATE_BURST_CHUNKS = 4`). Tokens accumulate only to that bounded depth, so idle time cannot bank into an unlimited burst. Dispatch consumes the actual chunk length; if a chunk overshoots the current token count, the bounded deficit delays the next dispatch. At cap = 0 there is no rate limiting.
 
 **Operator config (two knobs)**
 
@@ -216,16 +220,16 @@ Worst-case added latency for a small message behind one already-dispatched chunk
 
 Mbps chosen to match how ISPs print plans (1 Gbps → `1000`, 100 Mbps → `100`, slow link → `0.5`). Live changes picked up on the next tick via `set_rate` / `set_chunk_size` (see Scheduler-owned global config below).
 
-**Scheduler-owned global config.** `max_outbound_rate` and `scheduler_chunk_size` live as scheduler-internal atomics, re-read at the top of each dispatch tick. Two `SchedulerHandle` commands update them live:
+**Scheduler-owned global config.** `max_outbound_rate` and `scheduler_chunk_size` live inside the egress task. Two handle commands update them live:
 
-- `set_rate(bytes_per_sec: u64)` — updates the token-bucket cap. `0` = unlimited (skips chunking + rate sleep).
-- `set_chunk_size(bytes: u32)` — updates the WF2Q+ packet size (applies only when rate > 0).
+- `set_rate(bytes_per_sec: u64)` — updates the token-bucket cap. `0` = unlimited.
+- `set_chunk_size(bytes: u32)` — updates the chunk size for frames staged after the update and the rate bucket's burst depth. Already-staged chunks keep their existing ranges.
 
-Both are invoked from the `ServerInfoUpdate` handler's post-commit runtime-side-effects block (where the `connection_tracker` / `flood_config` updates already apply) — never by polling the DB or restarting. "Picked up on the next tick" is literally the dispatch loop re-reading these atomics.
+Both are invoked from the `ServerInfoUpdate` handler's post-commit runtime-side-effects block (where the `connection_tracker` / `flood_config` updates already apply) — never by polling the DB or restarting. Runtime update failures are logged but do not roll back the committed config change.
 
-**Connection writer API**
+**Future connection writer API for transfer/raw-byte integration**
 
-Callers (protocol handlers, transfer code) don't talk to the scheduler directly. Each connection task holds a `ConnectionWriter` — an enum that internally routes to the scheduler (WAN) or writes directly to its own `WriteHalf` (LAN). Same API both ways:
+Current BBS integration keeps the existing `ConnectionWriter` / `DirectWriter` surface and routes BBS frames through the egress task from the connection loop. Transfer integration still needs a raw-byte writer surface. The intended final shape is that callers (protocol handlers, transfer code) don't talk to the scheduler directly. Each connection task holds a `ConnectionWriter` — an enum that internally routes to the scheduler (WAN) or writes directly to its own `WriteHalf` (LAN). Same API both ways:
 
 ```rust
 use bytes::Bytes;
@@ -297,7 +301,7 @@ Per-connection backpressure and the scheduler-registry semantics described next 
 
 **Writer errors and death detection.** Each WAN connection's writer task owns its `WriteHalf` and drains a bounded channel from the scheduler. When a writer task's `write_all` fails (socket error, peer disconnect), it exits, dropping its channel receiver. The connection task detects writer death via the writer task's `JoinHandle` in its `select!` loop — when the handle completes, the connection task breaks its read loop and cleans up the session. Future `send_*` calls on the `ConnectionWriter` after the writer has exited return `Err(ConnectionGone)`. The scheduler detects the dead channel on its next `try_send()` and removes the connection from its registry.
 
-**Lifecycle**
+**Target combined lifecycle**
 
 The scheduler maintains two internal registries:
 
@@ -398,22 +402,26 @@ The scheduler maintains two internal registries:
 
 **Implementation phasing**
 
-1. ✅ **DONE** — Schema + plumbing (small, safe). DB migration, protocol additions, UI for weight, new Bandwidth section in Server Info (`max_outbound_rate` and `scheduler_chunk_size` fields), resolution helper cached on `UserSession`. Values are stored and settable but inert until the scheduler lands.
+1. ✅ **DONE** — Schema + plumbing (small, safe). DB migration, protocol additions, UI for weight, new Bandwidth section in Server Info (`max_outbound_rate` and `scheduler_chunk_size` fields), resolution helper cached on `UserSession`.
 2. ✅ **DONE** — Queued session writer safety. `ConnectionWriter` now wraps a bounded 1024-message normal queue plus a one-slot slow-client control queue. Producers use non-blocking `try_send`: `Full` drops the attempted event, arms the priority slow-client disconnect, and returns `Ok(())`; `Closed` returns `Err` for stale-session cleanup. The connection task prioritizes the control queue, sends localized `Error { disconnect: true }`, then exits through normal cleanup. Direct and queued BBS writes also have a 30-minute per-message write timeout.
 3. ✅ **DONE** — Writer surface split. `ConnectionWriter` is the queued cross-task session writer; `DirectWriter` is the immediate handler response writer. Handlers no longer expose raw `FrameWriter`, keeping BBS write policy centralized and making the scheduler integration point clearer.
-4. **Scheduler + cap (the big one).** Add the future scheduler writer abstraction and the new `nexus-server/src/scheduler/` module hosting WF2Q+ state + dispatch task. Wire BBS and transfer accept loops, voice UDP exempt, LAN bypass at accept. It builds on #2/#3, preserves the current slow-client disconnect property, and consumes the config values phase 1 made available; the cap=0 default keeps it a pass-through until an operator sets a rate.
+4. ✅ **DONE** — WF2Q+ scheduler core. `nexus-server/src/scheduler/` hosts the clock-free WF2Q+ state, anon/user flows, per-user weights, per-connection classes, tag-preserving in-flight state, priority packet lane, block/unblock, transition, weight update, and lifecycle tests.
+5. ✅ **DONE** — BBS egress manager/task. `nexus-server/src/egress/` owns frame staging, zero-copy `Arc<[u8]>` chunking, per-connection staged-frame admission (32 frames), dispatch/ack/write-failure cleanup, lossless `QueueFull`, priority frame staging, and token-bucket rate limiting.
+6. ✅ **DONE** — BBS connection wiring. BBS connections register as anon, transition to user before `LoginResponse`, stage queued and direct frames through egress, preserve frame boundaries, drain before disconnect, handle priority `QueueFull` by drain-then-close, and apply live rate/chunk-size and weight-update commands.
+7. **Pending** — Transfer integration. Route transfer-port / WS-transfer egress through the same scheduler flow model, add transfer auth `user_id` + resolved weight, transition transfer connections before their login response, send raw transfer bytes through the egress path, and make group weight cascades cover transfer-only flows.
+8. **Pending** — Final routing policy. Decide/implement LAN bypass for BBS and transfers, keep voice UDP exempt, and reconcile any future writer-task/raw-byte split with the BBS frame-based egress path.
 
 **Broadcast avatar diet (companion — done)**
 
 Standalone bandwidth fix the bounded-broadcast bound relies on. Avatars (≤176 KB data URIs) used to ride every `UserUpdated` — away/back/status, admin edit, group cascade, disconnect — though they never change within a session and the client hashes-and-discards unchanged ones; auto-away made that the dominant broadcast volume. Now the avatar = `UserManager::aggregate_avatar(live sessions)` — the most recent login that supplied one (regular accounts; shared are per-session) — carried only on **snapshots** (`UserConnected`, `UserListResponse`, `UserInfoResponse`) and on a **disconnect** `UserUpdated` that changes the aggregate (`Some(bytes)`, or `Some("")` = removed). Every other `UserUpdated` sends `avatar: None` and the client keeps its cache; a no-avatar login never blanks an existing avatar. Drops `UserUpdated` from ~176 KB to ~KB. Spec: `docs/protocol/04-users.md` → Avatar Handling.
 
-**What Phase 1 delivered (for the Phase 2 implementer)**
+**What the schema/plumbing phase delivered**
 
-- **Shared resolver**: `nexus_common::validators::resolve_bandwidth_weight(user_override: Option<u16>, group_weight: Option<u16>, is_admin: bool) -> u16` is the single source of truth for the precedence rule (per-user override > admin default > group inherit > system default). Phase 2's scheduler should call this when it needs to resolve at startup or in tests, rather than re-implementing the cascade.
+- **Shared resolver**: `nexus_common::validators::resolve_bandwidth_weight(user_override: Option<u16>, group_weight: Option<u16>, is_admin: bool) -> u16` is the single source of truth for the precedence rule (per-user override > admin default > group inherit > system default). The scheduler / egress implementation should use this when it needs to resolve weights in new integration paths or tests, rather than re-implementing the cascade.
 - **Session cache**: `UserSession.bandwidth_weight: AtomicU16` (plain `AtomicU16`, not `Arc<AtomicU16>` — nothing holds a cross-task live reference to it, so the `Arc` was unnecessary; the `AtomicU16` itself remains because handler threads read and refresh it concurrently). The scheduler does **not** read this cache — it owns its own `u16` flow weights updated through explicit `SchedulerHandle` commands (see "Scheduler-owned flow weights"). This cache exists only for the handler layer's delegation checks (a non-admin can't set a weight above their own). Cloning a `UserSession` snapshots the atomic value; live updates flow through `UserManager::update_bandwidth_state` (per-user fan-out, writes override + resolved atomically) and `UserManager::update_bandwidth_weight_for_group_inheritors` (group cascade, filters by `bandwidth_weight_override.is_none()`). Multi-session invariant: every session of a given `user_id` holds the same value.
 - **Typed update returns**: `db::UpdateUserResult::Updated { account: UserAccount, resolved_bandwidth_weight: u16 }` and `db::UpdateGroupResult { group: GroupRecord, previous_permissions: Permissions, final_permissions: Permissions }`. The resolved value is computed inside the same transaction as the write — no torn states, no follow-up read. Cache refreshes consume these directly, and any new code path that writes to bandwidth-relevant fields should follow the same shape. The group bandwidth cascade target set is no longer returned from `update_group`; the handler calls `update_bandwidth_weight_for_group_inheritors` post-commit to scan live session state.
 - **DB clamp**: `db::util::clamp_db_bandwidth_weight(i64) -> u16` defends against corrupt rows and emits `warn!(raw, clamped, ...)` (constant `LOG_BANDWIDTH_WEIGHT_CLAMPED`) when it fires. Under normal operation it's the identity function.
-- **Login disconnect**: `handle_login` disconnects with `err_database` if `get_resolved_bandwidth_weight` fails — seeding the session cache with a wrong value would silently demote/promote the user. Phase 2 should treat its own startup-time resolution failures the same way.
+- **Login disconnect**: `handle_login` disconnects with `err_database` if `get_resolved_bandwidth_weight` fails — seeding the session cache with a wrong value would silently demote/promote the user. Transfer auth should treat its own weight-resolution failures the same way.
 
 **Out of scope**
 

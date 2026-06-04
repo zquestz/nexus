@@ -364,20 +364,6 @@ impl EgressManager {
     }
 
     #[cfg(test)]
-    fn staged_frame_count(&self, connection_id: ConnectionId) -> Option<usize> {
-        self.connections
-            .get(&connection_id)
-            .map(|connection| connection.staged_frames)
-    }
-
-    #[cfg(test)]
-    fn has_frame_capacity(&self, connection_id: ConnectionId) -> bool {
-        self.connections
-            .get(&connection_id)
-            .is_some_and(|connection| connection.staged_frames < self.frame_limit)
-    }
-
-    #[cfg(test)]
     fn has_connection(&self, connection_id: ConnectionId) -> bool {
         self.connections.contains_key(&connection_id)
     }
@@ -540,8 +526,6 @@ mod tests {
         assert!(!manager.set_blocked(conn(999), true));
         assert!(!manager.transition_to_user(conn(999), 1, 1));
         assert!(!manager.update_user_weight(999, 1));
-        assert_eq!(manager.staged_frame_count(conn(999)), None);
-        assert!(!manager.has_frame_capacity(conn(999)));
     }
 
     #[test]
@@ -571,15 +555,12 @@ mod tests {
 
         assert_eq!(manager.enqueue_frame(connection, frame(b"one")), Ok(1));
         assert_eq!(manager.enqueue_frame(connection, frame(b"two")), Ok(1));
-        assert_eq!(manager.staged_frame_count(connection), Some(2));
-        assert!(!manager.has_frame_capacity(connection));
         assert_eq!(manager.queued_packets(connection), Some(2));
 
         assert_eq!(
             manager.enqueue_frame(connection, frame(b"three")),
             Err(EgressEnqueueError::QueueFull)
         );
-        assert_eq!(manager.staged_frame_count(connection), Some(2));
         assert_eq!(manager.queued_packets(connection), Some(2));
     }
 
@@ -591,9 +572,11 @@ mod tests {
         assert!(manager.register(user_registration(connection, 1, tx)));
 
         assert_eq!(manager.enqueue_frame(connection, frame(b"abcdef")), Ok(2));
-        assert_eq!(manager.staged_frame_count(connection), Some(1));
         assert_eq!(manager.queued_packets(connection), Some(2));
-        assert!(!manager.has_frame_capacity(connection));
+        assert_eq!(
+            manager.enqueue_frame(connection, frame(b"next")),
+            Err(EgressEnqueueError::QueueFull)
+        );
     }
 
     #[test]
@@ -614,12 +597,18 @@ mod tests {
         assert!(!dispatch.chunk.is_final_frame_chunk());
         assert!(manager.ack(connection));
 
-        assert_eq!(manager.staged_frame_count(connection), Some(1));
-        assert!(!manager.has_frame_capacity(connection));
         assert_eq!(
             manager.enqueue_frame(connection, frame(b"next")),
             Err(EgressEnqueueError::QueueFull)
         );
+
+        assert_eq!(expect_dispatch(&mut manager), connection);
+        let dispatch = rx.try_recv().unwrap();
+        assert_eq!(dispatch.chunk.as_bytes(), b"ef");
+        assert!(dispatch.chunk.is_final_frame_chunk());
+        assert!(manager.ack(connection));
+
+        assert_eq!(manager.enqueue_frame(connection, frame(b"next")), Ok(1));
     }
 
     #[test]
@@ -629,7 +618,6 @@ mod tests {
         let (tx, mut rx) = channel();
         assert!(manager.register(user_registration(connection, 1, tx)));
         assert_eq!(manager.enqueue_frame(connection, frame(b"abcd")), Ok(1));
-        assert!(!manager.has_frame_capacity(connection));
 
         assert_eq!(expect_dispatch(&mut manager), connection);
         let dispatch = rx.try_recv().unwrap();
@@ -637,8 +625,6 @@ mod tests {
         assert!(dispatch.chunk.is_final_frame_chunk());
         assert!(manager.ack(connection));
 
-        assert_eq!(manager.staged_frame_count(connection), Some(0));
-        assert!(manager.has_frame_capacity(connection));
         assert_eq!(manager.enqueue_frame(connection, frame(b"next")), Ok(1));
     }
 
@@ -663,6 +649,56 @@ mod tests {
         assert_eq!(expect_dispatch(&mut manager), connection);
         let dispatch = rx.try_recv().unwrap();
         assert_eq!(dispatch.chunk.as_bytes(), b"normal");
+    }
+
+    #[test]
+    fn priority_frame_preserves_cross_flow_fairness_at_manager_layer() {
+        let mut manager = manager(4);
+        let priority_connection = conn(1);
+        let other_connection = conn(2);
+        let (priority_tx, mut priority_rx) = channel();
+        let (other_tx, mut other_rx) = channel();
+        assert!(manager.register(user_registration(priority_connection, 1, priority_tx)));
+        assert!(manager.register(user_registration(other_connection, 2, other_tx)));
+
+        assert_eq!(
+            manager.enqueue_frame(priority_connection, Arc::from(vec![b'a'; 400])),
+            Ok(100)
+        );
+        assert_eq!(
+            manager.enqueue_frame(other_connection, Arc::from(vec![b'b'; 400])),
+            Ok(100)
+        );
+        assert_eq!(
+            manager.enqueue_priority_frame(priority_connection, frame(b"pppp")),
+            Ok(1)
+        );
+
+        let mut priority_count = 0usize;
+        let mut other_count = 0usize;
+        let mut saw_priority_chunk = false;
+        for _ in 0..201 {
+            let connection_id = expect_dispatch(&mut manager);
+            if connection_id == priority_connection {
+                priority_count += 1;
+                let dispatch = priority_rx.try_recv().unwrap();
+                saw_priority_chunk |= dispatch.chunk.as_bytes() == b"pppp";
+            } else {
+                assert_eq!(connection_id, other_connection);
+                other_count += 1;
+                assert_eq!(other_rx.try_recv().unwrap().chunk.as_bytes(), b"bbbb");
+            }
+            assert!(
+                priority_count.abs_diff(other_count) <= 2,
+                "priority preemption should not starve the other flow; running split was {priority_count}:{other_count}"
+            );
+            assert!(manager.ack(connection_id));
+        }
+
+        assert!(saw_priority_chunk);
+        assert_eq!(priority_count, 101);
+        assert_eq!(other_count, 100);
+        assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
     }
 
     #[test]
@@ -701,15 +737,13 @@ mod tests {
         assert!(manager.register(user_registration(connection, 1, tx)));
 
         assert!(manager.ack(connection));
-        assert_eq!(manager.staged_frame_count(connection), Some(0));
 
         assert_eq!(manager.enqueue_frame(connection, frame(b"abcd")), Ok(1));
         assert_eq!(expect_dispatch(&mut manager), connection);
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"abcd");
         assert!(manager.ack(connection));
-        assert_eq!(manager.staged_frame_count(connection), Some(0));
         assert!(manager.ack(connection));
-        assert_eq!(manager.staged_frame_count(connection), Some(0));
+        assert_eq!(manager.enqueue_frame(connection, frame(b"next")), Ok(1));
     }
 
     #[test]
@@ -776,7 +810,6 @@ mod tests {
 
         let chunks = stage_server_message(&mut manager, connection, &message, message_id).unwrap();
         assert!(chunks > 1);
-        assert_eq!(manager.staged_frame_count(connection), Some(1));
 
         let mut reassembled = Vec::new();
         for _ in 0..chunks {
@@ -786,7 +819,6 @@ mod tests {
         }
 
         assert_eq!(reassembled.as_slice(), expected.as_ref());
-        assert_eq!(manager.staged_frame_count(connection), Some(0));
         assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
     }
 
@@ -807,8 +839,15 @@ mod tests {
         .unwrap();
 
         assert!(chunks > 1);
-        assert_eq!(manager.staged_frame_count(connection), Some(1));
-        assert!(!manager.has_frame_capacity(connection));
+        assert!(matches!(
+            stage_server_message(
+                &mut manager,
+                connection,
+                &ServerMessage::Pong,
+                message_id(b"000000000106"),
+            ),
+            Err(StagingError::Enqueue(EgressEnqueueError::QueueFull))
+        ));
     }
 
     #[test]
@@ -838,7 +877,6 @@ mod tests {
             result,
             Err(StagingError::Enqueue(EgressEnqueueError::QueueFull))
         ));
-        assert_eq!(manager.staged_frame_count(connection), Some(1));
         assert_eq!(manager.queued_packets(connection), Some(1));
     }
 
@@ -910,7 +948,6 @@ mod tests {
 
         assert!(manager.transition_to_user(connection, 42, 1));
         assert_eq!(manager.queued_packets(connection), Some(2));
-        assert_eq!(manager.staged_frame_count(connection), Some(1));
         assert!(manager.update_user_weight(42, 1));
 
         assert_eq!(expect_dispatch(&mut manager), connection);
@@ -925,7 +962,6 @@ mod tests {
         let (tx, mut rx) = channel();
         assert!(manager.register_anon(connection, ConnectionClass::Protocol, tx));
         assert_eq!(manager.enqueue_frame(connection, frame(b"abcdef")), Ok(2));
-        assert_eq!(manager.staged_frame_count(connection), Some(1));
 
         assert_eq!(expect_dispatch(&mut manager), connection);
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"abcd");
@@ -937,8 +973,7 @@ mod tests {
         assert_eq!(expect_dispatch(&mut manager), connection);
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"ef");
         assert!(manager.ack(connection));
-        assert_eq!(manager.staged_frame_count(connection), Some(0));
-        assert!(manager.has_frame_capacity(connection));
+        assert_eq!(manager.enqueue_frame(connection, frame(b"next")), Ok(1));
     }
 
     #[test]
@@ -953,11 +988,9 @@ mod tests {
         let dispatch = rx.try_recv().unwrap();
         assert!(dispatch.chunk.is_final_frame_chunk());
         assert!(manager.transition_to_user(connection, 42, 5));
-        assert_eq!(manager.staged_frame_count(connection), Some(1));
 
         assert!(manager.ack(connection));
-        assert_eq!(manager.staged_frame_count(connection), Some(0));
-        assert!(manager.has_frame_capacity(connection));
+        assert_eq!(manager.enqueue_frame(connection, frame(b"next")), Ok(1));
     }
 
     #[test]
@@ -1053,7 +1086,6 @@ mod tests {
             manager.enqueue_frame(connection, frame(b"three")),
             Err(EgressEnqueueError::QueueFull)
         );
-        assert_eq!(manager.staged_frame_count(connection), Some(2));
         assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
     }
 
@@ -1152,12 +1184,10 @@ mod tests {
         );
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"abcd");
 
-        assert_eq!(manager.staged_frame_count(connection), Some(1));
         assert!(manager.unregister(connection));
         assert!(!manager.ack(connection));
         assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
         assert!(!manager.has_connection(connection));
-        assert_eq!(manager.staged_frame_count(connection), None);
     }
 
     #[test]
@@ -1177,12 +1207,10 @@ mod tests {
         );
         assert_eq!(rx.try_recv().unwrap().chunk.as_bytes(), b"abcd");
 
-        assert_eq!(manager.staged_frame_count(connection), Some(1));
         assert!(manager.write_failed(connection));
         assert!(!manager.ack(connection));
         assert!(!manager.has_connection(connection));
         assert_eq!(manager.queued_packets(connection), None);
-        assert_eq!(manager.staged_frame_count(connection), None);
         assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
     }
 
@@ -1203,7 +1231,6 @@ mod tests {
         );
         assert!(!manager.has_connection(connection));
         assert_eq!(manager.queued_packets(connection), None);
-        assert_eq!(manager.staged_frame_count(connection), None);
         assert!(!manager.ack(connection));
 
         let (new_tx, _new_rx) = channel();

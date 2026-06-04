@@ -1100,6 +1100,7 @@ mod tests {
         writer: TestWriter,
         user_manager: UserManager,
         egress: EgressHandle,
+        egress_connection_id: ConnectionId,
         server_task: tokio::task::JoinHandle<io::Result<()>>,
         egress_task: tokio::task::JoinHandle<()>,
         _test_ctx: TestContext,
@@ -1152,6 +1153,19 @@ mod tests {
         stream_capacity: usize,
         bytes_per_second: u64,
     ) -> TestConnection {
+        start_test_connection_with_manager(
+            EgressManager::new(nonzero(chunk_size)),
+            stream_capacity,
+            bytes_per_second,
+        )
+        .await
+    }
+
+    async fn start_test_connection_with_manager(
+        manager: EgressManager,
+        stream_capacity: usize,
+        bytes_per_second: u64,
+    ) -> TestConnection {
         let test_ctx = create_test_context().await;
         let (client, server) = tokio::io::duplex(stream_capacity);
         let (client_read, client_write) = tokio::io::split(client);
@@ -1168,11 +1182,9 @@ mod tests {
         });
         let tracker_manager = Arc::new(crate::tracker::TrackerManager::new(tracker_context));
 
-        let (egress, egress_task) = EgressTask::channel_with_rate(
-            EgressManager::new(nonzero(chunk_size)),
-            bytes_per_second,
-        );
+        let (egress, egress_task) = EgressTask::channel_with_rate(manager, bytes_per_second);
         let egress_task = tokio::spawn(egress_task.run());
+        let egress_connection_id = ConnectionId::new(10_001);
 
         let params = ConnectionParams {
             peer_addr: test_ctx.peer_addr,
@@ -1192,7 +1204,7 @@ mod tests {
             fingerprint: TEST_FINGERPRINT,
             flood_config: test_ctx.flood_config.clone(),
             egress: egress.clone(),
-            egress_connection_id: ConnectionId::new(10_001),
+            egress_connection_id,
         };
 
         let server_task = tokio::spawn(handle_connection_inner(server, params));
@@ -1202,6 +1214,7 @@ mod tests {
             writer,
             user_manager,
             egress,
+            egress_connection_id,
             server_task,
             egress_task,
             _test_ctx: test_ctx,
@@ -1382,10 +1395,63 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn priority_queue_full_drains_existing_frame_then_disconnects() {
+        let mut connection = start_test_connection_with_manager(
+            EgressManager::with_frame_limit(nonzero(64), 1),
+            8192,
+            0,
+        )
+        .await;
+        let session_id = login_test_connection(&mut connection).await;
+        let queued_id = message_id(b"000000000306");
+        let ping_id = message_id(b"000000000307");
+        let queued_message = chat_message(session_id, "drain before disconnect");
+
+        connection
+            .egress
+            .set_blocked(connection.egress_connection_id, true)
+            .await
+            .expect("block command should queue");
+        queue_session_message(&connection, session_id, queued_message.clone(), queued_id).await;
+
+        // Let the connection task stage the normal queued frame while egress is
+        // blocked, filling the one-frame staging limit.
+        time::sleep(Duration::from_millis(25)).await;
+        send_client_message_with_id(&mut connection.writer, &ClientMessage::Ping, ping_id)
+            .await
+            .expect("ping send should succeed");
+
+        // Keep dispatch blocked long enough for the direct response to hit
+        // QueueFull and arm drain-then-disconnect instead of racing a freed slot.
+        time::sleep(Duration::from_millis(25)).await;
+        connection
+            .egress
+            .set_blocked(connection.egress_connection_id, false)
+            .await
+            .expect("unblock command should queue");
+
+        let frame = read_next_raw_frame(&mut connection).await;
+        let expected = server_message_to_frame_bytes(&queued_message, queued_id)
+            .expect("expected queued frame should serialize");
+        assert_eq!(frame.to_bytes().as_slice(), expected.as_ref());
+
+        let closed = time::timeout(Duration::from_secs(2), connection.reader.read_frame())
+            .await
+            .expect("timed out waiting for drain disconnect")
+            .expect("read after drain should not fail");
+        assert!(
+            closed.is_none(),
+            "priority QueueFull should drain staged egress and close without sending Pong"
+        );
+
+        connection.shutdown().await;
+    }
+
+    #[tokio::test]
     async fn direct_response_is_throttled_by_egress_rate_limit() {
         let mut connection = start_test_connection(4, 8192).await;
         login_test_connection(&mut connection).await;
-        let ping_id = message_id(b"000000000306");
+        let ping_id = message_id(b"000000000308");
         let expected = server_message_to_frame_bytes(&ServerMessage::Pong, ping_id)
             .expect("expected pong frame should serialize");
         assert!(expected.len() > 16);

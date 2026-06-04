@@ -1093,6 +1093,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn stage_priority_frame_preserves_queue_full() {
+        let (handle, task) = spawn_task(EgressManager::with_frame_limit(nonzero(512), 1));
+        let connection = conn(1);
+        let (dispatch_tx, mut dispatch_rx) = dispatch_channel();
+        assert!(
+            handle
+                .register_anon(connection, ConnectionClass::Protocol, dispatch_tx)
+                .await
+                .unwrap()
+        );
+        assert!(matches!(
+            handle
+                .stage_message(
+                    connection,
+                    Box::new(ServerMessage::Pong),
+                    message_id(b"000000000213"),
+                )
+                .await
+                .unwrap(),
+            Ok(1)
+        ));
+        let priority_frame =
+            server_message_to_frame_bytes(&ServerMessage::Pong, message_id(b"000000000214"))
+                .unwrap();
+
+        let result = handle
+            .stage_priority_frame(connection, priority_frame)
+            .await
+            .unwrap();
+
+        assert_eq!(result, Err(EgressEnqueueError::QueueFull));
+
+        let dispatch = recv_dispatch(&mut dispatch_rx).await;
+        assert_eq!(dispatch.connection_id, connection);
+        handle.ack(connection).await.unwrap();
+        stop_task(handle, task).await;
+    }
+
+    #[tokio::test]
     async fn blocked_connection_dispatches_after_unblock_command() {
         let (handle, task) = spawn_task(EgressManager::new(nonzero(512)));
         let connection = conn(1);
