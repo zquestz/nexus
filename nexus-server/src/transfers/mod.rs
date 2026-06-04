@@ -26,6 +26,7 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, warn};
 
+use nexus_common::address::is_private_network;
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::send_server_message_with_id;
 use nexus_common::names::fold_name;
@@ -82,57 +83,60 @@ where
     let peer_addr = params.peer_addr;
     let egress = params.egress.clone();
     let egress_connection_id = params.egress_connection_id;
-    let (egress_dispatch_tx, egress_dispatch_rx) =
-        mpsc::channel(egress::EGRESS_DISPATCH_QUEUE_CAPACITY);
+    let egress_enabled = !params.lan_egress_bypass_enabled || !is_private_network(peer_addr.ip());
     let mut egress_registered = false;
+    let mut egress_dispatch_rx = None;
 
-    match egress
-        .register_anon(
-            egress_connection_id,
-            ConnectionClass::Bulk,
-            egress_dispatch_tx,
-        )
-        .await
-    {
-        Ok(true) => {
-            egress_registered = true;
-        }
-        Ok(false) => {
-            warn!(
-                ip = %peer_addr,
-                egress_connection_id = egress_connection_id.get(),
-                "{}",
-                LOG_EGRESS_REGISTER_REJECTED
-            );
-        }
-        Err(e) => {
-            warn!(
-                ip = %peer_addr,
-                egress_connection_id = egress_connection_id.get(),
-                err = ?e,
-                "{}",
-                LOG_EGRESS_REGISTER_FAILED
-            );
+    if egress_enabled {
+        let (egress_dispatch_tx, rx) = mpsc::channel(egress::EGRESS_DISPATCH_QUEUE_CAPACITY);
+
+        match egress
+            .register_anon(
+                egress_connection_id,
+                ConnectionClass::Bulk,
+                egress_dispatch_tx,
+            )
+            .await
+        {
+            Ok(true) => {
+                egress_registered = true;
+                egress_dispatch_rx = Some(rx);
+            }
+            Ok(false) => {
+                warn!(
+                    ip = %peer_addr,
+                    egress_connection_id = egress_connection_id.get(),
+                    "{}",
+                    LOG_EGRESS_REGISTER_REJECTED
+                );
+            }
+            Err(e) => {
+                warn!(
+                    ip = %peer_addr,
+                    egress_connection_id = egress_connection_id.get(),
+                    err = ?e,
+                    "{}",
+                    LOG_EGRESS_REGISTER_FAILED
+                );
+            }
         }
     }
 
-    let result = handle_transfer_connection_inner_registered(
-        socket,
-        params,
-        egress_registered.then_some(egress_dispatch_rx),
-    )
-    .await;
+    let result =
+        handle_transfer_connection_inner_registered(socket, params, egress_dispatch_rx).await;
 
-    match egress.unregister(egress_connection_id).await {
-        Ok(()) => {}
-        Err(e) => {
-            warn!(
-                ip = %peer_addr,
-                egress_connection_id = egress_connection_id.get(),
-                err = ?e,
-                "{}",
-                LOG_EGRESS_UNREGISTER_FAILED
-            );
+    if egress_registered {
+        match egress.unregister(egress_connection_id).await {
+            Ok(()) => {}
+            Err(e) => {
+                warn!(
+                    ip = %peer_addr,
+                    egress_connection_id = egress_connection_id.get(),
+                    err = ?e,
+                    "{}",
+                    LOG_EGRESS_UNREGISTER_FAILED
+                );
+            }
         }
     }
 
@@ -159,6 +163,7 @@ where
         fingerprint,
         egress,
         egress_connection_id,
+        lan_egress_bypass_enabled: _,
     } = params;
 
     debug!(ip = %peer_addr, "{}", LOG_TRANSFER_CONNECTION);
@@ -197,6 +202,7 @@ where
             user_manager: &user_manager,
             egress: &egress,
             egress_connection_id,
+            egress_connection_registered: egress_dispatch_rx.is_some(),
             locale: &locale,
             peer_addr,
         },
@@ -336,6 +342,7 @@ struct TransferLoginContext<'a> {
     user_manager: &'a UserManager,
     egress: &'a EgressHandle,
     egress_connection_id: ConnectionId,
+    egress_connection_registered: bool,
     locale: &'a str,
     peer_addr: SocketAddr,
 }
@@ -377,13 +384,15 @@ async fn complete_transfer_login(
         login.user.nickname = snapshot.account.username.clone();
     }
 
-    transition_transfer_login_to_user_flow(
-        ctx.egress,
-        ctx.egress_connection_id,
-        login.user.user_id,
-        snapshot.resolved_bandwidth_weight,
-        ctx.peer_addr,
-    );
+    if ctx.egress_connection_registered {
+        transition_transfer_login_to_user_flow(
+            ctx.egress,
+            ctx.egress_connection_id,
+            login.user.user_id,
+            snapshot.resolved_bandwidth_weight,
+            ctx.peer_addr,
+        );
+    }
 
     Ok(TransferLoginSuccess {
         user: login.user,
@@ -656,6 +665,7 @@ mod tests {
                 fingerprint: TEST_FINGERPRINT,
                 egress,
                 egress_connection_id,
+                lan_egress_bypass_enabled: false,
             },
             _temp_dir: temp_dir,
         }
@@ -753,6 +763,11 @@ mod tests {
         }
     }
 
+    fn registered_dispatch_rx() -> egress::EgressDispatchRx {
+        let (_tx, rx) = mpsc::channel(egress::EGRESS_DISPATCH_QUEUE_CAPACITY);
+        rx
+    }
+
     #[tokio::test]
     async fn transfer_login_transitions_before_success_response() {
         let pool = create_test_db().await;
@@ -771,7 +786,7 @@ mod tests {
         let server_task = tokio::spawn(handle_transfer_connection_inner_registered(
             server,
             harness.params,
-            None,
+            Some(registered_dispatch_rx()),
         ));
 
         send_client_message(
@@ -852,7 +867,7 @@ mod tests {
         let server_task = tokio::spawn(handle_transfer_connection_inner_registered(
             server,
             harness.params,
-            None,
+            Some(registered_dispatch_rx()),
         ));
 
         let login = send_transfer_handshake_and_login(
@@ -947,6 +962,7 @@ mod tests {
                 user_manager: &user_manager,
                 egress: &egress,
                 egress_connection_id: ConnectionId::new(9_004),
+                egress_connection_registered: true,
                 locale: "en",
                 peer_addr: SocketAddr::from(([127, 0, 0, 1], 7501)),
             },
@@ -966,6 +982,38 @@ mod tests {
             }
             _ => panic!("expected transfer login transition"),
         }
+    }
+
+    #[tokio::test]
+    async fn transfer_login_without_registered_egress_skips_transition() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let permissions = Permissions::from(&[Permission::FileDownload]);
+        let account = create_transfer_user_with_weight(&db, "alice", 7, &permissions).await;
+        let (egress, _command_rx, mut settings_rx) = egress_handle_for_test();
+        let login = TransferLoginAuth {
+            user: stale_auth_user(account.id, "alice", "alice", false),
+            message_id: MessageId::new(),
+        };
+
+        let success = complete_transfer_login(
+            TransferLoginContext {
+                db: &db,
+                user_manager: &user_manager,
+                egress: &egress,
+                egress_connection_id: ConnectionId::new(9_104),
+                egress_connection_registered: false,
+                locale: "en",
+                peer_addr: SocketAddr::from(([127, 0, 0, 1], 7501)),
+            },
+            login,
+        )
+        .await
+        .expect("transfer login should complete");
+
+        assert_eq!(success.bandwidth_weight, 7);
+        assert!(settings_rx.try_recv().is_err());
     }
 
     #[tokio::test]
@@ -1003,6 +1051,79 @@ mod tests {
             _ => panic!("expected Unregister"),
         }
         server_task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn lan_peer_bypasses_transfer_egress_registration() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let (egress, mut command_rx, _settings_rx) = egress_handle_for_test();
+        let mut harness =
+            transfer_harness(db, user_manager, egress, ConnectionId::new(9_105)).await;
+        harness.params.lan_egress_bypass_enabled = true;
+        let (client, server) = tokio::io::duplex(4096);
+
+        let server_task = tokio::spawn(handle_transfer_connection_inner(server, harness.params));
+        time::sleep(Duration::from_millis(25)).await;
+        assert!(command_rx.try_recv().is_err());
+
+        drop(client);
+        time::timeout(Duration::from_secs(2), server_task)
+            .await
+            .expect("transfer task should exit")
+            .expect("transfer task should not panic")
+            .expect("transfer task should not fail");
+    }
+
+    #[tokio::test]
+    async fn yggdrasil_peer_uses_transfer_egress_registration_under_lan_bypass() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let (egress, mut command_rx, _settings_rx) = egress_handle_for_test();
+        let egress_connection_id = ConnectionId::new(9_106);
+        let mut harness = transfer_harness(db, user_manager, egress, egress_connection_id).await;
+        harness.params.peer_addr = SocketAddr::from(([0x0200, 0, 0, 0, 0, 0, 0, 1], 7501));
+        harness.params.lan_egress_bypass_enabled = true;
+        let (client, server) = tokio::io::duplex(4096);
+
+        let server_task = tokio::spawn(handle_transfer_connection_inner(server, harness.params));
+        let register = time::timeout(Duration::from_secs(2), command_rx.recv())
+            .await
+            .expect("timed out waiting for Yggdrasil transfer registration")
+            .expect("register command");
+        match register {
+            EgressCommand::RegisterAnon {
+                connection_id,
+                class,
+                reply_tx,
+                ..
+            } => {
+                assert_eq!(connection_id, egress_connection_id);
+                assert_eq!(class, ConnectionClass::Bulk);
+                reply_tx.send(true).unwrap();
+            }
+            _ => panic!("expected RegisterAnon"),
+        }
+
+        drop(client);
+        let unregister = time::timeout(Duration::from_secs(2), command_rx.recv())
+            .await
+            .expect("timed out waiting for Yggdrasil transfer unregister")
+            .expect("unregister command");
+        match unregister {
+            EgressCommand::Unregister { connection_id } => {
+                assert_eq!(connection_id, egress_connection_id);
+            }
+            _ => panic!("expected Unregister"),
+        }
+
+        time::timeout(Duration::from_secs(2), server_task)
+            .await
+            .expect("transfer task should exit")
+            .expect("transfer task should not panic")
+            .expect("transfer task should not fail");
     }
 
     #[tokio::test]

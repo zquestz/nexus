@@ -30,6 +30,7 @@ pub struct TransferParams {
     pub fingerprint: &'static str,
     pub egress: EgressHandle,
     pub egress_connection_id: ConnectionId,
+    pub lan_egress_bypass_enabled: bool,
 }
 
 /// A file to download.

@@ -2,21 +2,21 @@
 
 ## Implementation Order (Pre-Launch)
 
-| #   | Feature                     | Effort | Status                                       |
-| --- | --------------------------- | ------ | -------------------------------------------- |
-| 1   | Account groups              | Low    | ✅ Done                                      |
-| 2   | Password strength           | Low    | ✅ Done                                      |
-| 3   | Streaming hash transfers    | Medium | ✅ Done                                      |
-| 4   | Boards                      | High   | Planned                                      |
-| 5   | File previews               | Low    | Planned                                      |
-| 6   | Tracker registration        | Medium | ✅ Done                                      |
-| 7   | Tracker discovery           | Low    | ✅ Done                                      |
-| 8   | Speed limiting              | Medium | BBS + transfer egress ✅, LAN bypass pending |
-| 9   | Flood protection            | Low    | ✅ Done                                      |
-| 10  | Server logs                 | Medium | ✅ Done                                      |
-| 11  | Auto-away                   | Low    | ✅ Done                                      |
-| 12  | Certificate fingerprint pin | Low    | ✅ Done                                      |
-| 13  | Unicode name folding        | Low    | ✅ Done                                      |
+| #   | Feature                     | Effort | Status  |
+| --- | --------------------------- | ------ | ------- |
+| 1   | Account groups              | Low    | ✅ Done |
+| 2   | Password strength           | Low    | ✅ Done |
+| 3   | Streaming hash transfers    | Medium | ✅ Done |
+| 4   | Boards                      | High   | Planned |
+| 5   | File previews               | Low    | Planned |
+| 6   | Tracker registration        | Medium | ✅ Done |
+| 7   | Tracker discovery           | Low    | ✅ Done |
+| 8   | Speed limiting              | Medium | ✅ Done |
+| 9   | Flood protection            | Low    | ✅ Done |
+| 10  | Server logs                 | Medium | ✅ Done |
+| 11  | Auto-away                   | Low    | ✅ Done |
+| 12  | Certificate fingerprint pin | Low    | ✅ Done |
+| 13  | Unicode name folding        | Low    | ✅ Done |
 
 ## Decided Against
 
@@ -112,7 +112,7 @@ Weighted fair share of server outbound bandwidth per user, enforced via a single
 - Live Server Info updates call egress `set_max_outbound_rate` and `set_chunk_size` after the DB commit succeeds. Settings commands use a dedicated unbounded settings queue, so they can be enqueued under user/server-info locks without blocking or dropping; the egress task drains settings in FIFO order before ordinary command batches.
 - Slow-client disconnect, parse-error disconnect, regular `Disconnect`, in-flight frame boundaries, and direct responses are all coordinated so the socket sees whole frames only.
 - Covered policy tests pin Protocol-over-Bulk within a user flow, no multiplied user share from adding transfer sessions, shared-account sessions sharing one flow, cross-user Bulk weighted fairness, and rate-limited transfer `FileData` completion.
-- Still pending for the final routing shape: LAN bypass for private-network peers and any future writer-task/raw-byte refactor. Voice UDP remains outside this scheduler.
+- Final routing shape is implemented for the current architecture: private-network peers bypass egress, WAN/Yggdrasil peers schedule through egress, and voice UDP remains outside this scheduler. The only remaining question is whether to keep the current BBS/transfer egress surfaces or do a future writer-task/raw-byte refactor.
 
 **Algorithm: WF2Q+ (Bennett & Zhang, 1997)**
 
@@ -138,12 +138,12 @@ Weighted fair share of server outbound bandwidth per user, enforced via a single
 
 - Implemented today: a single combined cap across BBS port (7500/7502) + transfer port (7501/7503), including WebSocket variants, for connections registered with egress.
 - **Voice UDP exempt** — real-time, would degrade quality. UDP packets go directly to socket, not through scheduler.
-- **LAN bypass (pending)** via `nexus_common::address::is_private_network` (RFC 1918 + IPv6 ULA + loopback). **NOT** Yggdrasil — that mesh routes over the internet, counts as WAN bandwidth. Target implementation: LAN connections keep their `WriteHalf` on the connection task and `send_*()` writes directly to the socket — they never touch the scheduler. This decouples LAN traffic from the scheduler's dispatch task, so a saturating LAN client can't starve WAN traffic. The cap=0 optimization is unrelated: at cap=0 the scheduler still dispatches WAN connections (skipping rate sleep), so live cap changes take effect immediately on existing scheduled connections.
+- **LAN bypass implemented** via `nexus_common::address::is_private_network` (RFC 1918 + IPv6 ULA + loopback). **NOT** Yggdrasil — that mesh routes over the internet, counts as WAN bandwidth. Production BBS and transfer TCP/WebSocket connections keep LAN/private peers on the connection task's direct writer path and skip egress registration/transition entirely. Tests can disable the bypass through the connection params when they need loopback traffic to exercise egress. This decouples LAN traffic from the scheduler's dispatch task, so a saturating LAN client can't starve WAN traffic. The cap=0 optimization is unrelated: at cap=0 the scheduler still dispatches WAN connections (skipping rate sleep), so live cap changes take effect immediately on existing scheduled connections.
 
 **Flow model**
 
 - Flow = authenticated `user_id`. **All** of a user's sessions — BBS and transfer, regular or shared account — share one flow and one weighted share; sessions split it via the intra-flow rule below. The weight bounds the _account's_ total outbound share regardless of session count. This is deliberately per-account, not per-nickname: per-nickname flows would let anyone multiply their share by opening more sessions under distinct nicknames (a shared account permits many logins). Nicknames are display-only and never key a flow. To give a busy shared/guest login more aggregate bandwidth, an operator raises that account's weight. Consequence: a shared/guest login pools all its sessions into one share, so one heavy session starves its siblings — intended, and tunable via the account's weight.
-- Pre-login traffic: one **single global pre-login flow** (`FlowId::Anon`, no per-IP split), weight = `ANON_FLOW_WEIGHT` (50). The flow is permanent — connections join its member set at register and leave on graduation/disconnect, so there's no per-IP refcount or reaping. The elevated weight is a latency knob, not a bandwidth grant: pre-login egress is tiny (a `HandshakeResponse`, maybe an error frame) and WF2Q+ is work-conserving, so the weight just keeps handshakes/logins responsive when the cap is saturated, then yields the unused share back. Once LAN bypass lands, LAN connections bypass the scheduler from accept onward and never enter this flow.
+- Pre-login traffic: one **single global pre-login flow** (`FlowId::Anon`, no per-IP split), weight = `ANON_FLOW_WEIGHT` (50). The flow is permanent — scheduled connections join its member set at register and leave on graduation/disconnect, so there's no per-IP refcount or reaping. The elevated weight is a latency knob, not a bandwidth grant: pre-login egress is tiny (a `HandshakeResponse`, maybe an error frame) and WF2Q+ is work-conserving, so the weight just keeps handshakes/logins responsive when the cap is saturated, then yields the unused share back. LAN/private connections bypass the scheduler from accept onward and never enter this flow.
 - **Trust does NOT bypass cap.** Speed and ban are orthogonal concerns.
 - **Admins skip group lookup.** Admins don't belong to groups; if they have no explicit per-user weight, they resolve to `DEFAULT_ADMIN_BANDWIDTH_WEIGHT` (50). They participate in fair scheduling like everyone else — the elevated default just reflects that admins typically warrant a larger share than guests.
 
@@ -314,8 +314,8 @@ The scheduler maintains two internal registries:
 - `flows: HashMap<FlowId, FlowState>` — per-flow **scheduling** state: weight, WF2Q+ virtual time, and the set of member `ConnectionId`s. No queue lives here — queues are per-connection (above); the flow only arbitrates which of its member connections to service next (Protocol-class before Bulk-class, skipping blocked connections, round-robin within a class). At dequeue the flow selects its next dispatchable packet from its member connections by that rule, then advances the flow's virtual finish time by **that packet's** length / weight — so per-connection queues stay consistent with flow-granular WF2Q+ accounting. The single pre-login flow (`FlowId::Anon`) is created at startup and never reaped; only user flows are created on first session and reaped on last disconnect.
 - **Flow idle/reactivation (no phantom reservation).** A flow with no dispatchable connection (all members blocked or empty) is treated as **inactive** — removed from the eligible set, reserving no rate, so other flows receive the full cap. When a member becomes dispatchable again the flow re-enters with its virtual start tag clamped to `max(its last virtual finish, current system V(t))` — standard WFQ idle handling. Without the clamp, a stale head tag from before the idle gap would grant catch-up service, violating the no-phantom-reservation property the work-conservation test asserts. Concretely, assign WF2Q+ start/finish tags when a packet becomes **dispatchable**, not at enqueue — otherwise a head packet queued before the idle gap carries a stale tag and reproduces the catch-up burst the flow-level clamp was meant to prevent.
 
-- **Connection register**: current BBS and transfer connections register after TLS/WebSocket setup and use `ConnectionClass::Protocol` for BBS / WS-BBS and `ConnectionClass::Bulk` for transfer / WS-transfer. In the future LAN-bypass shape, registration checks `is_private_network(peer_ip)` and scheduled registration happens only for WAN connections; LAN connections keep their writer on the connection task and bypass egress entirely.
-- **Pre-login**: traffic flows into the single global pre-login flow `FlowId::Anon`, weight = `ANON_FLOW_WEIGHT`. The connection joins the flow's member set (no refcount). When LAN bypass lands, LAN connections will bypass the scheduler from accept onward and never enter this flow.
+- **Connection register**: current BBS and transfer connections register after TLS/WebSocket setup only when LAN bypass does not apply. Scheduled BBS / WS-BBS connections use `ConnectionClass::Protocol`; scheduled transfer / WS-transfer connections use `ConnectionClass::Bulk`. LAN/private peers identified by `is_private_network(peer_ip)` keep their writer on the connection task and bypass egress entirely. Production enables this bypass; tests can disable it through the connection params when loopback must exercise scheduler behavior.
+- **Pre-login**: scheduled traffic flows into the single global pre-login flow `FlowId::Anon`, weight = `ANON_FLOW_WEIGHT`. The connection joins the flow's member set (no refcount). LAN/private connections bypass the scheduler from accept onward and never enter this flow.
 - **Login transition (BBS port)**: after auth succeeds but **before sending `LoginResponse`**, the login handler calls `scheduler.transition_to_user(conn_id, user_id, weight)`. The scheduler atomically:
   - Swaps the conn's `FlowId` to `FlowId::User(user_id)`.
   - Removes the connection from the pre-login flow's member set (the pre-login flow is permanent — never reaped).
@@ -415,11 +415,10 @@ The scheduler maintains two internal registries:
 6. ✅ **DONE** — BBS connection wiring. BBS connections register as anon, transition to user before `LoginResponse`, stage queued and direct frames through egress, preserve frame boundaries, drain before disconnect, handle priority `QueueFull` by drain-then-close, and apply live rate/chunk-size and weight-update commands.
 7. ✅ **DONE** — Transfer integration. Transfer-port / WS-transfer connections register as Bulk, transition to the user flow before transfer `LoginResponse`, route control frames and streaming `FileData` through egress, preserve the one-`FileData`-frame wire protocol, and make user/group weight cascades cover transfer-only flows.
 8. ✅ **DONE** — Transfer egress hardening. Tests cover Protocol-over-Bulk priority, no user-share multiplication from BBS+transfer sessions, shared-account flow sharing, cross-user Bulk weighted fairness, rate-limited `FileData`, small-file streaming, mid-stream ban/error cleanup, and re-register-after-stream-failure recovery.
-9. **Pending** — Final routing policy. Implement LAN bypass for BBS and transfers, keep voice UDP exempt, and decide whether the current BBS/transfer egress surfaces are sufficient or whether to do the future unified writer-task/raw-byte refactor.
+9. ✅ **DONE** — Final routing policy. LAN/private BBS and transfer peers bypass egress, WAN/Yggdrasil peers remain scheduled, voice UDP stays exempt, and the current BBS/transfer egress surfaces are correct and tested. The future unified writer-task/raw-byte refactor remains optional.
 
 **Remaining speed-limiting work**
 
-- **LAN bypass**: private-network peers should bypass egress entirely and write directly, while Yggdrasil remains scheduled WAN traffic.
 - **Writer-task/raw-byte decision**: the current BBS/transfer egress surfaces are correct and tested. Decide whether to keep them or invest in the larger unified writer-task/raw-byte API for cleaner architecture and possible unlimited-transfer performance gains.
 - **Performance follow-up**: measure unlimited transfer throughput with the current no-read-ahead streaming-frame path. If overhead is material, prefer a larger Bulk chunk size or small read-ahead window before a deeper credit/raw-byte redesign.
 

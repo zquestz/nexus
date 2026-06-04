@@ -12,6 +12,7 @@ use tokio::time;
 use tokio_rustls::TlsAcceptor;
 use tracing::{debug, error, warn};
 
+use nexus_common::address::is_private_network;
 use nexus_common::framing::{FrameError, FrameReader, FrameWriter, MessageId};
 use nexus_common::io::{read_client_message_with_full_timeout, read_client_message_with_timeout};
 use nexus_common::protocol::{ClientMessage, ServerMessage};
@@ -60,6 +61,7 @@ pub struct ConnectionParams {
     pub flood_config: Arc<FloodConfig>,
     pub egress: EgressHandle,
     pub egress_connection_id: ConnectionId,
+    pub lan_egress_bypass_enabled: bool,
 }
 
 /// Connection state for a single client
@@ -101,57 +103,59 @@ where
     let peer_addr = params.peer_addr;
     let egress = params.egress.clone();
     let egress_connection_id = params.egress_connection_id;
-    let (egress_dispatch_tx, egress_dispatch_rx) =
-        mpsc::channel(egress::EGRESS_DISPATCH_QUEUE_CAPACITY);
+    let egress_enabled = !params.lan_egress_bypass_enabled || !is_private_network(peer_addr.ip());
     let mut egress_registered = false;
+    let mut egress_dispatch_rx = None;
 
-    match egress
-        .register_anon(
-            egress_connection_id,
-            ConnectionClass::Protocol,
-            egress_dispatch_tx,
-        )
-        .await
-    {
-        Ok(true) => {
-            egress_registered = true;
-        }
-        Ok(false) => {
-            warn!(
-                ip = %peer_addr,
-                egress_connection_id = egress_connection_id.get(),
-                "{}",
-                LOG_EGRESS_REGISTER_REJECTED
-            );
-        }
-        Err(e) => {
-            warn!(
-                ip = %peer_addr,
-                egress_connection_id = egress_connection_id.get(),
-                err = ?e,
-                "{}",
-                LOG_EGRESS_REGISTER_FAILED
-            );
+    if egress_enabled {
+        let (egress_dispatch_tx, rx) = mpsc::channel(egress::EGRESS_DISPATCH_QUEUE_CAPACITY);
+
+        match egress
+            .register_anon(
+                egress_connection_id,
+                ConnectionClass::Protocol,
+                egress_dispatch_tx,
+            )
+            .await
+        {
+            Ok(true) => {
+                egress_registered = true;
+                egress_dispatch_rx = Some(rx);
+            }
+            Ok(false) => {
+                warn!(
+                    ip = %peer_addr,
+                    egress_connection_id = egress_connection_id.get(),
+                    "{}",
+                    LOG_EGRESS_REGISTER_REJECTED
+                );
+            }
+            Err(e) => {
+                warn!(
+                    ip = %peer_addr,
+                    egress_connection_id = egress_connection_id.get(),
+                    err = ?e,
+                    "{}",
+                    LOG_EGRESS_REGISTER_FAILED
+                );
+            }
         }
     }
 
-    let result = handle_connection_inner_registered(
-        socket,
-        params,
-        egress_registered.then_some(egress_dispatch_rx),
-    )
-    .await;
+    let result = handle_connection_inner_registered(socket, params, egress_dispatch_rx).await;
 
-    match egress.unregister(egress_connection_id).await {
-        Ok(()) => {}
-        Err(e) => {
-            warn!(
-                ip = %peer_addr,
-                egress_connection_id = egress_connection_id.get(),
-                err = ?e,
-                "{}",
-                LOG_EGRESS_UNREGISTER_FAILED
-            );
+    if egress_registered {
+        match egress.unregister(egress_connection_id).await {
+            Ok(()) => {}
+            Err(e) => {
+                warn!(
+                    ip = %peer_addr,
+                    egress_connection_id = egress_connection_id.get(),
+                    err = ?e,
+                    "{}",
+                    LOG_EGRESS_UNREGISTER_FAILED
+                );
+            }
         }
     }
 
@@ -296,6 +300,7 @@ where
         flood_config,
         egress,
         egress_connection_id,
+        lan_egress_bypass_enabled: _,
     } = params;
 
     let (reader, writer) = tokio::io::split(socket);
@@ -425,6 +430,7 @@ where
                             tx: &tx,
                             egress: &egress,
                             egress_connection_id,
+                            egress_connection_registered: egress_dispatch_rx.is_some(),
                             locale: &locale,
                             message_id: received.message_id,
                             file_root,
@@ -1066,7 +1072,10 @@ mod tests {
     use tokio::io::{DuplexStream, ReadHalf, WriteHalf};
 
     use crate::egress::EgressManager;
-    use crate::egress::task::{EgressHandle, EgressTask};
+    use crate::egress::task::{
+        DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY, EgressCommand, EgressHandle, EgressSettingsCommand,
+        EgressTask,
+    };
     use crate::handlers::testing::{TEST_FINGERPRINT, TestContext, create_test_context};
 
     type TestReader = FrameReader<BufReader<ReadHalf<DuplexStream>>>;
@@ -1119,6 +1128,20 @@ mod tests {
 
     fn message_id(bytes: &[u8]) -> MessageId {
         MessageId::from_bytes(bytes).expect("valid hex test message ID")
+    }
+
+    fn egress_handle_for_test() -> (
+        EgressHandle,
+        mpsc::Receiver<EgressCommand>,
+        mpsc::UnboundedReceiver<EgressSettingsCommand>,
+    ) {
+        let (command_tx, command_rx) = mpsc::channel(DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY);
+        let (settings_tx, settings_rx) = mpsc::unbounded_channel();
+        (
+            EgressHandle::new(command_tx, settings_tx),
+            command_rx,
+            settings_rx,
+        )
     }
 
     async fn start_test_connection(chunk_size: usize, stream_capacity: usize) -> TestConnection {
@@ -1182,6 +1205,7 @@ mod tests {
             flood_config: test_ctx.flood_config.clone(),
             egress: egress.clone(),
             egress_connection_id,
+            lan_egress_bypass_enabled: false,
         };
 
         let server_task = tokio::spawn(handle_connection_inner(server, params));
@@ -1295,6 +1319,179 @@ mod tests {
             channel: DEFAULT_CHANNEL.to_string(),
             timestamp: 1234,
         }
+    }
+
+    #[tokio::test]
+    async fn lan_peer_bypasses_bbs_egress_registration_and_login_transition() {
+        let test_ctx = create_test_context().await;
+        let (client, server) = tokio::io::duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        let mut writer = FrameWriter::new(client_write);
+
+        let user_manager = test_ctx.user_manager.clone();
+        let tracker_context = Arc::new(crate::tracker::TrackerContext {
+            db: test_ctx.db.clone(),
+            user_manager: user_manager.clone(),
+            server_fingerprint: TEST_FINGERPRINT,
+            server_port: nexus_common::DEFAULT_PORT,
+            server_websocket_port: None,
+        });
+        let tracker_manager = Arc::new(crate::tracker::TrackerManager::new(tracker_context));
+        let (egress, mut command_rx, mut settings_rx) = egress_handle_for_test();
+
+        let params = ConnectionParams {
+            peer_addr: test_ctx.peer_addr,
+            user_manager,
+            db: test_ctx.db.clone(),
+            file_root: test_ctx.file_root,
+            transfer_port: nexus_common::DEFAULT_TRANSFER_PORT,
+            transfer_websocket_port: Some(nexus_common::DEFAULT_TRANSFER_WEBSOCKET_PORT),
+            connection_tracker: test_ctx.connection_tracker.clone(),
+            ip_rule_cache: test_ctx.ip_rule_cache.clone(),
+            file_index: test_ctx.file_index.clone(),
+            file_activity: test_ctx.file_activity.clone(),
+            channel_manager: test_ctx.channel_manager.clone(),
+            transfer_registry: test_ctx.transfer_registry.clone(),
+            voice_registry: test_ctx.voice_registry.clone(),
+            tracker_manager,
+            fingerprint: TEST_FINGERPRINT,
+            flood_config: test_ctx.flood_config.clone(),
+            egress,
+            egress_connection_id: ConnectionId::new(10_900),
+            lan_egress_bypass_enabled: true,
+        };
+
+        let server_task = tokio::spawn(handle_connection_inner(server, params));
+        time::sleep(Duration::from_millis(25)).await;
+        assert!(command_rx.try_recv().is_err());
+
+        send_client_message_with_id(
+            &mut writer,
+            &ClientMessage::Handshake {
+                version: nexus_common::PROTOCOL_VERSION.to_string(),
+            },
+            message_id(b"000000000391"),
+        )
+        .await
+        .expect("handshake send should succeed");
+        let handshake = read_server_message(&mut reader)
+            .await
+            .expect("handshake read should succeed")
+            .expect("handshake response");
+        assert!(matches!(
+            handshake.message,
+            ServerMessage::HandshakeResponse { success: true, .. }
+        ));
+
+        send_client_message_with_id(
+            &mut writer,
+            &ClientMessage::Login {
+                username: "alice".to_string(),
+                password: "password".to_string(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: None,
+            },
+            message_id(b"000000000392"),
+        )
+        .await
+        .expect("login send should succeed");
+        let login = read_server_message(&mut reader)
+            .await
+            .expect("login read should succeed")
+            .expect("login response");
+        assert!(matches!(
+            login.message,
+            ServerMessage::LoginResponse { success: true, .. }
+        ));
+        assert!(command_rx.try_recv().is_err());
+        assert!(settings_rx.try_recv().is_err());
+
+        drop(reader);
+        drop(writer);
+        time::timeout(Duration::from_secs(2), server_task)
+            .await
+            .expect("connection task should exit")
+            .expect("connection task should not panic")
+            .expect("connection task should not fail");
+    }
+
+    #[tokio::test]
+    async fn yggdrasil_peer_uses_bbs_egress_registration_under_lan_bypass() {
+        let test_ctx = create_test_context().await;
+        let (client, server) = tokio::io::duplex(4096);
+        let user_manager = test_ctx.user_manager.clone();
+        let tracker_context = Arc::new(crate::tracker::TrackerContext {
+            db: test_ctx.db.clone(),
+            user_manager: user_manager.clone(),
+            server_fingerprint: TEST_FINGERPRINT,
+            server_port: nexus_common::DEFAULT_PORT,
+            server_websocket_port: None,
+        });
+        let tracker_manager = Arc::new(crate::tracker::TrackerManager::new(tracker_context));
+        let (egress, mut command_rx, _settings_rx) = egress_handle_for_test();
+        let egress_connection_id = ConnectionId::new(10_901);
+
+        let params = ConnectionParams {
+            peer_addr: SocketAddr::from(([0x0200, 0, 0, 0, 0, 0, 0, 1], 7500)),
+            user_manager,
+            db: test_ctx.db.clone(),
+            file_root: test_ctx.file_root,
+            transfer_port: nexus_common::DEFAULT_TRANSFER_PORT,
+            transfer_websocket_port: Some(nexus_common::DEFAULT_TRANSFER_WEBSOCKET_PORT),
+            connection_tracker: test_ctx.connection_tracker.clone(),
+            ip_rule_cache: test_ctx.ip_rule_cache.clone(),
+            file_index: test_ctx.file_index.clone(),
+            file_activity: test_ctx.file_activity.clone(),
+            channel_manager: test_ctx.channel_manager.clone(),
+            transfer_registry: test_ctx.transfer_registry.clone(),
+            voice_registry: test_ctx.voice_registry.clone(),
+            tracker_manager,
+            fingerprint: TEST_FINGERPRINT,
+            flood_config: test_ctx.flood_config.clone(),
+            egress,
+            egress_connection_id,
+            lan_egress_bypass_enabled: true,
+        };
+
+        let server_task = tokio::spawn(handle_connection_inner(server, params));
+        let register = time::timeout(Duration::from_secs(2), command_rx.recv())
+            .await
+            .expect("timed out waiting for Yggdrasil BBS registration")
+            .expect("register command");
+        match register {
+            EgressCommand::RegisterAnon {
+                connection_id,
+                class,
+                reply_tx,
+                ..
+            } => {
+                assert_eq!(connection_id, egress_connection_id);
+                assert_eq!(class, ConnectionClass::Protocol);
+                reply_tx.send(true).unwrap();
+            }
+            _ => panic!("expected RegisterAnon"),
+        }
+
+        drop(client);
+        let unregister = time::timeout(Duration::from_secs(2), command_rx.recv())
+            .await
+            .expect("timed out waiting for Yggdrasil BBS unregister")
+            .expect("unregister command");
+        match unregister {
+            EgressCommand::Unregister { connection_id } => {
+                assert_eq!(connection_id, egress_connection_id);
+            }
+            _ => panic!("expected Unregister"),
+        }
+
+        time::timeout(Duration::from_secs(2), server_task)
+            .await
+            .expect("connection task should exit")
+            .expect("connection task should not panic")
+            .expect("connection task should not fail");
     }
 
     #[test]

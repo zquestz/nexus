@@ -407,6 +407,7 @@ async fn main() {
                             egress_connection_id: allocate_egress_connection_id(
                                 &egress_connection_ids,
                             ),
+                            lan_egress_bypass_enabled: true,
                         };
                         let tls_acceptor = tls_acceptor.clone();
                         let ip_rule_cache_for_check = ip_rule_cache.clone();
@@ -467,6 +468,7 @@ async fn main() {
                             egress_connection_id: allocate_egress_connection_id(
                                 &egress_connection_ids,
                             ),
+                            lan_egress_bypass_enabled: true,
                         };
                         let tls_acceptor = tls_acceptor.clone();
                         let ip_rule_cache_for_check = ip_rule_cache.clone();
@@ -539,6 +541,7 @@ async fn main() {
                             egress_connection_id: allocate_egress_connection_id(
                                 &egress_connection_ids,
                             ),
+                            lan_egress_bypass_enabled: true,
                         };
                         let tls_acceptor = tls_acceptor.clone();
                         let ip_rule_cache_for_check = ip_rule_cache.clone();
@@ -604,6 +607,7 @@ async fn main() {
                             egress_connection_id: allocate_egress_connection_id(
                                 &egress_connection_ids,
                             ),
+                            lan_egress_bypass_enabled: true,
                         };
                         let tls_acceptor = tls_acceptor.clone();
                         let ip_rule_cache_for_check = ip_rule_cache.clone();

@@ -232,6 +232,9 @@ pub struct HandlerContext<'a, W> {
     pub egress: &'a EgressHandle,
     /// Stable per-socket scheduler identity paired with `egress`.
     pub egress_connection_id: ConnectionId,
+    /// Whether this socket registered with egress; LAN-bypassed sockets still
+    /// keep `egress` for global settings updates but skip per-connection flow work.
+    pub egress_connection_registered: bool,
     pub locale: &'a str,
     /// Echoed back on responses for request correlation.
     pub message_id: MessageId,

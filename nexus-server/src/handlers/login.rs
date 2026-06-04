@@ -681,13 +681,15 @@ where
         };
         let user_connected = ServerMessage::UserConnected { user: user_info };
         let bandwidth_weight = session.bandwidth_weight.load(Ordering::Relaxed);
-        transition_login_to_user_flow(
-            ctx.egress,
-            ctx.egress_connection_id,
-            session.user_id,
-            bandwidth_weight,
-            ctx.peer_addr,
-        );
+        if ctx.egress_connection_registered {
+            transition_login_to_user_flow(
+                ctx.egress,
+                ctx.egress_connection_id,
+                session.user_id,
+                bandwidth_weight,
+                ctx.peer_addr,
+            );
+        }
 
         debug!(user = %session.username, ip = %ctx.peer_addr, "{}", LOG_LOGIN_SUCCESS);
         Ok(LoginSuccess {
