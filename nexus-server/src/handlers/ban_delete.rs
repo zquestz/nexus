@@ -635,4 +635,39 @@ mod tests {
 
         assert!(!test_ctx.db.bans.ban_exists("2001:db8::1").await.unwrap());
     }
+
+    #[tokio::test]
+    async fn test_bandelete_ipv6_cidr_with_uppercase_and_host_bits_finds_canonical_row() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        test_ctx
+            .db
+            .bans
+            .create_or_update_ban("2001:db8::/64", None, None, "admin", None)
+            .await
+            .unwrap();
+        {
+            let mut cache = test_ctx.ip_rule_cache.write();
+            cache.add_ban("2001:db8::/64", None);
+        }
+
+        let result = handle_ban_delete(
+            "2001:DB8::ABCD/64".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::BanDeleteResponse { success, ips, .. } => {
+                assert!(success);
+                assert_eq!(ips.unwrap(), vec!["2001:db8::/64".to_string()]);
+            }
+            other => panic!("Expected BanDeleteResponse, got: {other:?}"),
+        }
+
+        assert!(!test_ctx.db.bans.ban_exists("2001:db8::/64").await.unwrap());
+    }
 }

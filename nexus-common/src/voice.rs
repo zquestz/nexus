@@ -8,6 +8,8 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use crate::validators::{MAX_NICKNAME_LENGTH, MAX_USERNAME_LENGTH};
+
 /// Maximum payload size for voice data (Opus-encoded audio)
 ///
 /// At 96 kbps (very high quality) with 10ms frames:
@@ -345,8 +347,16 @@ pub struct RelayedVoicePacket {
 }
 
 impl RelayedVoicePacket {
-    /// Maximum sender nickname length in bytes (UTF-8)
-    pub const MAX_SENDER_LEN: usize = 64;
+    /// Maximum sender nickname length in bytes (UTF-8).
+    ///
+    /// Voice senders are validated Nexus usernames or nicknames. Those are
+    /// capped in Unicode scalar values, and UTF-8 uses at most 4 bytes per
+    /// scalar, so this can carry every valid sender without truncation.
+    pub const MAX_SENDER_LEN: usize = if MAX_USERNAME_LENGTH >= MAX_NICKNAME_LENGTH {
+        MAX_USERNAME_LENGTH * 4
+    } else {
+        MAX_NICKNAME_LENGTH * 4
+    };
 
     /// Create a new relayed packet from a voice packet and sender nickname
     pub fn from_voice_packet(packet: &VoicePacket, sender: String) -> Self {
@@ -389,7 +399,11 @@ impl RelayedVoicePacket {
         payload: &[u8],
     ) -> Vec<u8> {
         let sender_bytes = sender.as_bytes();
-        let sender_len = sender_bytes.len().min(Self::MAX_SENDER_LEN) as u8;
+        debug_assert!(
+            sender_bytes.len() <= Self::MAX_SENDER_LEN,
+            "validated voice sender names must fit in the relayed sender field"
+        );
+        let sender_len = sender_prefix_len(sender, Self::MAX_SENDER_LEN) as u8;
 
         let mut bytes = Vec::with_capacity(2 + sender_len as usize + 8 + payload.len());
 
@@ -464,6 +478,18 @@ impl RelayedVoicePacket {
             payload,
         })
     }
+}
+
+fn sender_prefix_len(sender: &str, max_len: usize) -> usize {
+    if sender.len() <= max_len {
+        return sender.len();
+    }
+
+    let mut len = max_len;
+    while !sender.is_char_boundary(len) {
+        len -= 1;
+    }
+    len
 }
 
 #[cfg(test)]
@@ -668,6 +694,25 @@ mod tests {
         let decoded = RelayedVoicePacket::from_bytes(&bytes).expect("should decode");
 
         assert_eq!(decoded.sender, "用户名");
+    }
+
+    #[test]
+    fn test_relayed_packet_preserves_max_length_unicode_sender() {
+        let sender = "𐐀".repeat(MAX_USERNAME_LENGTH);
+        assert_eq!(sender.len(), RelayedVoicePacket::MAX_SENDER_LEN);
+
+        let packet = RelayedVoicePacket {
+            msg_type: VoiceMessageType::VoiceData,
+            sender: sender.clone(),
+            sequence: 1,
+            timestamp: 0,
+            payload: vec![],
+        };
+
+        let bytes = packet.to_bytes();
+        let decoded = RelayedVoicePacket::from_bytes(&bytes).expect("should decode");
+
+        assert_eq!(decoded.sender, sender);
     }
 
     #[test]

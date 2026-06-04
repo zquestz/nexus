@@ -609,10 +609,9 @@ mod tests {
         let listener = VoiceUdpListener::bind_with_limits("127.0.0.1:0".parse().unwrap(), 2, 2)
             .await
             .expect("bind listener");
-        let client = udp_client(&listener).await;
+        let remote_addr = "127.0.0.1:40000".parse().unwrap();
 
-        client.send(&[0, 1, 2, 3]).await.expect("send probe");
-        tokio::time::sleep(Duration::from_millis(25)).await;
+        listener.inner.route_datagram(remote_addr, &[0, 1, 2, 3]);
 
         assert_eq!(listener.child_count(), 0);
         assert_eq!(listener.pending_permits(), 2);
@@ -648,20 +647,18 @@ mod tests {
         let listener = VoiceUdpListener::bind_with_limits("127.0.0.1:0".parse().unwrap(), 1, 2)
             .await
             .expect("bind listener");
-        let first = udp_client(&listener).await;
-        let second = udp_client(&listener).await;
+        let first_addr = "127.0.0.1:40001".parse().unwrap();
+        let second_addr = "127.0.0.1:40002".parse().unwrap();
 
-        first
-            .send(&client_hello_probe())
-            .await
-            .expect("send first client hello");
+        listener
+            .inner
+            .route_datagram(first_addr, &client_hello_probe());
         let pending = accept_pending(&listener).await;
+        assert_eq!(pending.remote_addr(), first_addr);
 
-        second
-            .send(&client_hello_probe())
-            .await
-            .expect("send second client hello");
-        tokio::time::sleep(Duration::from_millis(25)).await;
+        listener
+            .inner
+            .route_datagram(second_addr, &client_hello_probe());
 
         assert_eq!(listener.child_count(), 1);
         assert_eq!(listener.pending_permits(), 0);
