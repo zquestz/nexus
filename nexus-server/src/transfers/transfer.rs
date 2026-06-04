@@ -775,8 +775,20 @@ mod tests {
         tokio::task::JoinHandle<()>,
         ConnectionId,
     ) {
+        registered_transfer_egress_with_rate(chunk_size, 0).await
+    }
+
+    async fn registered_transfer_egress_with_rate(
+        chunk_size: usize,
+        bytes_per_second: u64,
+    ) -> (
+        TransferEgress,
+        EgressHandle,
+        tokio::task::JoinHandle<()>,
+        ConnectionId,
+    ) {
         let manager = EgressManager::new(NonZeroUsize::new(chunk_size).unwrap());
-        let (egress, task) = EgressTask::channel(manager);
+        let (egress, task) = EgressTask::channel_with_rate(manager, bytes_per_second);
         let task = tokio::spawn(task.run());
         let connection_id = ConnectionId::new(88_001);
         let (dispatch_tx, dispatch_rx) = mpsc::channel(egress::EGRESS_DISPATCH_QUEUE_CAPACITY);
@@ -1295,6 +1307,79 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn egress_file_data_is_rate_limited() {
+        let registry = TransferRegistry::new();
+        let (client, server) = duplex(64 * 1024);
+        let (client_read, _client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_reader = FrameReader::new(tokio::io::BufReader::new(client_read));
+
+        let peer_addr = make_test_addr();
+        let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/rate.bin".to_string(),
+            total_size: 2048,
+        });
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path();
+        let file_index = make_test_file_index(&temp_dir);
+        let file_activity = Arc::new(FileActivityMap::new());
+        let (transfer_egress, egress, egress_task, connection_id) =
+            registered_transfer_egress_with_rate(256, 2048).await;
+
+        let mut transfer = Transfer::new(
+            FrameReader::new(tokio::io::BufReader::new(server_read)),
+            FrameWriter::new(server_write),
+            ban_rx,
+            info,
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                user_area_root: None,
+                registry: &registry,
+                egress: Some(transfer_egress),
+            },
+        );
+
+        let file_data = vec![0x44; 2048];
+        let mut reader = std::io::Cursor::new(file_data.clone());
+        let started = tokio::time::Instant::now();
+        let written = tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            transfer.stream_file_to_client("FileData", &mut reader, file_data.len() as u64),
+        )
+        .await
+        .expect("rate-limited transfer should eventually complete")
+        .unwrap();
+        let elapsed = started.elapsed();
+
+        assert_eq!(written, file_data.len() as u64);
+        assert!(
+            elapsed >= std::time::Duration::from_millis(200),
+            "FileData completed too quickly for configured egress rate: {elapsed:?}"
+        );
+
+        let frame = client_reader.read_frame_header().await.unwrap().unwrap();
+        assert_eq!(frame.message_type, "FileData");
+        assert_eq!(frame.payload_length, file_data.len() as u64);
+        let payload = client_reader.read_payload_into_vec(&frame).await.unwrap();
+        assert_eq!(payload, file_data);
+
+        drop(transfer);
+        stop_egress_task(egress, egress_task, connection_id).await;
+    }
+
+    #[tokio::test]
     async fn egress_file_data_first_read_error_does_not_start_frame() {
         let registry = TransferRegistry::new();
         let (client, server) = duplex(4096);
@@ -1425,6 +1510,68 @@ mod tests {
             })
             .await;
         assert!(matches!(result, Err(StreamError::Io(_))));
+
+        drop(transfer);
+
+        let (dispatch_tx, dispatch_rx) = mpsc::channel(egress::EGRESS_DISPATCH_QUEUE_CAPACITY);
+        assert!(
+            egress
+                .register_anon(connection_id, ConnectionClass::Bulk, dispatch_tx)
+                .await
+                .unwrap()
+        );
+
+        let (client, server) = duplex(4096);
+        let (client_read, _client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_reader = FrameReader::new(tokio::io::BufReader::new(client_read));
+        let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/recovered.txt".to_string(),
+            total_size: 9,
+        });
+
+        let mut transfer = Transfer::new(
+            FrameReader::new(tokio::io::BufReader::new(server_read)),
+            FrameWriter::new(server_write),
+            ban_rx,
+            info.clone(),
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                user_area_root: None,
+                registry: &registry,
+                egress: Some(TransferEgress::new(
+                    egress.clone(),
+                    connection_id,
+                    dispatch_rx,
+                )),
+            },
+        );
+
+        let file_data = b"recovered".to_vec();
+        let mut reader = std::io::Cursor::new(file_data.clone());
+        let written = transfer
+            .stream_file_to_client("FileData", &mut reader, file_data.len() as u64)
+            .await
+            .unwrap();
+        assert_eq!(written, file_data.len() as u64);
+        assert_eq!(info.get_bytes_transferred(), file_data.len() as u64);
+
+        let frame = client_reader.read_frame_header().await.unwrap().unwrap();
+        assert_eq!(frame.message_type, "FileData");
+        assert_eq!(frame.payload_length, file_data.len() as u64);
+        let payload = client_reader.read_payload_into_vec(&frame).await.unwrap();
+        assert_eq!(payload, file_data);
 
         drop(transfer);
         stop_egress_task(egress, egress_task, connection_id).await;

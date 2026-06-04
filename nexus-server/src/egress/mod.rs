@@ -517,11 +517,27 @@ mod tests {
         user_id: i64,
         dispatch_tx: EgressDispatchTx,
     ) -> EgressRegistration {
+        user_registration_with_class_and_weight(
+            connection_id,
+            user_id,
+            ConnectionClass::Protocol,
+            1,
+            dispatch_tx,
+        )
+    }
+
+    fn user_registration_with_class_and_weight(
+        connection_id: ConnectionId,
+        user_id: i64,
+        class: ConnectionClass,
+        weight: u16,
+        dispatch_tx: EgressDispatchTx,
+    ) -> EgressRegistration {
         EgressRegistration {
             connection_id,
             flow_id: FlowId::User(user_id),
-            class: ConnectionClass::Protocol,
-            weight: 1,
+            class,
+            weight,
             dispatch_tx,
         }
     }
@@ -1144,6 +1160,267 @@ mod tests {
         assert_eq!(order.iter().filter(|&&id| id == second).count(), 10);
         assert!(order.windows(2).all(|window| window[0] != window[1]));
         assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
+    }
+
+    #[test]
+    fn protocol_class_drains_before_bulk_within_same_user_flow() {
+        let mut manager = manager(4);
+        let protocol = conn(1);
+        let bulk = conn(2);
+        let (protocol_tx, mut protocol_rx) = channel();
+        let (bulk_tx, mut bulk_rx) = channel();
+        assert!(manager.register(user_registration_with_class_and_weight(
+            protocol,
+            42,
+            ConnectionClass::Protocol,
+            1,
+            protocol_tx,
+        )));
+        assert!(manager.register(user_registration_with_class_and_weight(
+            bulk,
+            42,
+            ConnectionClass::Bulk,
+            1,
+            bulk_tx,
+        )));
+        assert_eq!(
+            manager.enqueue_frame(bulk, Arc::from(vec![b'b'; 12])),
+            Ok(3)
+        );
+        assert_eq!(
+            manager.enqueue_frame(protocol, Arc::from(vec![b'p'; 12])),
+            Ok(3)
+        );
+
+        for _ in 0..3 {
+            assert_eq!(expect_dispatch(&mut manager), protocol);
+            assert_eq!(protocol_rx.try_recv().unwrap().chunk.as_bytes(), b"pppp");
+            assert!(manager.ack(protocol));
+        }
+
+        for _ in 0..3 {
+            assert_eq!(expect_dispatch(&mut manager), bulk);
+            assert_eq!(bulk_rx.try_recv().unwrap().chunk.as_bytes(), b"bbbb");
+            assert!(manager.ack(bulk));
+        }
+
+        assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
+    }
+
+    #[test]
+    fn mixed_protocol_and_bulk_connections_do_not_multiply_user_flow_share() {
+        let mut manager = manager(4);
+        let user_protocol = conn(1);
+        let user_bulk = conn(2);
+        let other_user = conn(3);
+        let (protocol_tx, mut protocol_rx) = channel();
+        let (bulk_tx, mut bulk_rx) = channel();
+        let (other_tx, mut other_rx) = channel();
+        assert!(manager.register(user_registration_with_class_and_weight(
+            user_protocol,
+            42,
+            ConnectionClass::Protocol,
+            1,
+            protocol_tx,
+        )));
+        assert!(manager.register(user_registration_with_class_and_weight(
+            user_bulk,
+            42,
+            ConnectionClass::Bulk,
+            1,
+            bulk_tx,
+        )));
+        assert!(manager.register(user_registration_with_class_and_weight(
+            other_user,
+            7,
+            ConnectionClass::Protocol,
+            1,
+            other_tx,
+        )));
+
+        assert_eq!(
+            manager.enqueue_frame(user_protocol, Arc::from(vec![b'p'; 120])),
+            Ok(30)
+        );
+        assert_eq!(
+            manager.enqueue_frame(user_bulk, Arc::from(vec![b'b'; 800])),
+            Ok(200)
+        );
+        assert_eq!(
+            manager.enqueue_frame(other_user, Arc::from(vec![b'o'; 920])),
+            Ok(230)
+        );
+
+        let mut user_protocol_count = 0usize;
+        let mut user_bulk_count = 0usize;
+        let mut other_user_count = 0usize;
+        let mut saw_user_bulk = false;
+        for _ in 0..120 {
+            let connection_id = expect_dispatch(&mut manager);
+            if connection_id == user_protocol {
+                assert!(!saw_user_bulk);
+                user_protocol_count += 1;
+                assert_eq!(protocol_rx.try_recv().unwrap().chunk.as_bytes(), b"pppp");
+            } else if connection_id == user_bulk {
+                saw_user_bulk = true;
+                user_bulk_count += 1;
+                assert_eq!(bulk_rx.try_recv().unwrap().chunk.as_bytes(), b"bbbb");
+            } else {
+                assert_eq!(connection_id, other_user);
+                other_user_count += 1;
+                assert_eq!(other_rx.try_recv().unwrap().chunk.as_bytes(), b"oooo");
+            }
+            assert!(manager.ack(connection_id));
+        }
+
+        let combined_user_count = user_protocol_count + user_bulk_count;
+        assert_eq!(user_protocol_count, 30);
+        assert!(user_bulk_count > 0);
+        assert!(combined_user_count.abs_diff(other_user_count) <= 2);
+    }
+
+    #[test]
+    fn shared_account_protocol_and_bulk_sessions_share_one_user_flow() {
+        let mut manager = manager(4);
+        let shared_protocol = conn(1);
+        let shared_bulk_first = conn(2);
+        let shared_bulk_second = conn(3);
+        let other_user = conn(4);
+        let (protocol_tx, mut protocol_rx) = channel();
+        let (bulk_first_tx, mut bulk_first_rx) = channel();
+        let (bulk_second_tx, mut bulk_second_rx) = channel();
+        let (other_tx, mut other_rx) = channel();
+        let shared_user_id = 99;
+        assert!(manager.register(user_registration_with_class_and_weight(
+            shared_protocol,
+            shared_user_id,
+            ConnectionClass::Protocol,
+            1,
+            protocol_tx,
+        )));
+        assert!(manager.register(user_registration_with_class_and_weight(
+            shared_bulk_first,
+            shared_user_id,
+            ConnectionClass::Bulk,
+            1,
+            bulk_first_tx,
+        )));
+        assert!(manager.register(user_registration_with_class_and_weight(
+            shared_bulk_second,
+            shared_user_id,
+            ConnectionClass::Bulk,
+            1,
+            bulk_second_tx,
+        )));
+        assert!(manager.register(user_registration_with_class_and_weight(
+            other_user,
+            7,
+            ConnectionClass::Protocol,
+            1,
+            other_tx,
+        )));
+
+        assert_eq!(
+            manager.enqueue_frame(shared_protocol, Arc::from(vec![b'p'; 40])),
+            Ok(10)
+        );
+        assert_eq!(
+            manager.enqueue_frame(shared_bulk_first, Arc::from(vec![b'a'; 400])),
+            Ok(100)
+        );
+        assert_eq!(
+            manager.enqueue_frame(shared_bulk_second, Arc::from(vec![b'b'; 400])),
+            Ok(100)
+        );
+        assert_eq!(
+            manager.enqueue_frame(other_user, Arc::from(vec![b'o'; 840])),
+            Ok(210)
+        );
+
+        let mut shared_count = 0usize;
+        let mut other_count = 0usize;
+        let mut protocol_count = 0usize;
+        let mut bulk_count = 0usize;
+        for _ in 0..120 {
+            let connection_id = expect_dispatch(&mut manager);
+            if connection_id == shared_protocol {
+                protocol_count += 1;
+                shared_count += 1;
+                assert_eq!(protocol_rx.try_recv().unwrap().chunk.as_bytes(), b"pppp");
+            } else if connection_id == shared_bulk_first {
+                bulk_count += 1;
+                shared_count += 1;
+                assert_eq!(bulk_first_rx.try_recv().unwrap().chunk.as_bytes(), b"aaaa");
+            } else if connection_id == shared_bulk_second {
+                bulk_count += 1;
+                shared_count += 1;
+                assert_eq!(bulk_second_rx.try_recv().unwrap().chunk.as_bytes(), b"bbbb");
+            } else {
+                assert_eq!(connection_id, other_user);
+                other_count += 1;
+                assert_eq!(other_rx.try_recv().unwrap().chunk.as_bytes(), b"oooo");
+            }
+            assert!(manager.ack(connection_id));
+        }
+
+        assert_eq!(protocol_count, 10);
+        assert!(bulk_count > 0);
+        assert!(shared_count.abs_diff(other_count) <= 2);
+    }
+
+    #[test]
+    fn bulk_connections_receive_weighted_share_across_users() {
+        let mut manager = manager(4);
+        let heavy = conn(1);
+        let light = conn(2);
+        let (heavy_tx, mut heavy_rx) = channel();
+        let (light_tx, mut light_rx) = channel();
+        assert!(manager.register(user_registration_with_class_and_weight(
+            heavy,
+            1,
+            ConnectionClass::Bulk,
+            3,
+            heavy_tx,
+        )));
+        assert!(manager.register(user_registration_with_class_and_weight(
+            light,
+            2,
+            ConnectionClass::Bulk,
+            1,
+            light_tx,
+        )));
+        assert_eq!(
+            manager.enqueue_frame(heavy, Arc::from(vec![b'h'; 800])),
+            Ok(200)
+        );
+        assert_eq!(
+            manager.enqueue_frame(light, Arc::from(vec![b'l'; 800])),
+            Ok(200)
+        );
+
+        let mut heavy_count = 0usize;
+        let mut light_count = 0usize;
+        for _ in 0..160 {
+            let connection_id = expect_dispatch(&mut manager);
+            if connection_id == heavy {
+                heavy_count += 1;
+                assert_eq!(heavy_rx.try_recv().unwrap().chunk.as_bytes(), b"hhhh");
+            } else {
+                assert_eq!(connection_id, light);
+                light_count += 1;
+                assert_eq!(light_rx.try_recv().unwrap().chunk.as_bytes(), b"llll");
+            }
+            assert!(manager.ack(connection_id));
+        }
+
+        assert!(
+            (112..=128).contains(&heavy_count),
+            "expected heavy bulk flow near 3:1 share, got {heavy_count}:{light_count}"
+        );
+        assert!(
+            (32..=48).contains(&light_count),
+            "expected light bulk flow near 3:1 share, got {heavy_count}:{light_count}"
+        );
     }
 
     #[test]
