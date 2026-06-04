@@ -63,6 +63,20 @@ pub enum EgressCommand {
         frame: Arc<[u8]>,
         reply_tx: oneshot::Sender<StageFrameResult>,
     },
+    BeginStreamFrame {
+        connection_id: ConnectionId,
+        header: Arc<[u8]>,
+        reply_tx: oneshot::Sender<StageFrameResult>,
+    },
+    StageStreamChunk {
+        connection_id: ConnectionId,
+        chunk: Arc<[u8]>,
+        reply_tx: oneshot::Sender<StageFrameResult>,
+    },
+    FinishStreamFrame {
+        connection_id: ConnectionId,
+        reply_tx: oneshot::Sender<StageFrameResult>,
+    },
     Ack {
         connection_id: ConnectionId,
     },
@@ -219,6 +233,43 @@ impl EgressHandle {
                 .await
             }
         }
+    }
+
+    pub async fn begin_stream_frame(
+        &self,
+        connection_id: ConnectionId,
+        header: Arc<[u8]>,
+    ) -> Result<StageFrameResult, EgressTaskError> {
+        self.request(|reply_tx| EgressCommand::BeginStreamFrame {
+            connection_id,
+            header,
+            reply_tx,
+        })
+        .await
+    }
+
+    pub async fn stage_stream_chunk(
+        &self,
+        connection_id: ConnectionId,
+        chunk: Arc<[u8]>,
+    ) -> Result<StageFrameResult, EgressTaskError> {
+        self.request(|reply_tx| EgressCommand::StageStreamChunk {
+            connection_id,
+            chunk,
+            reply_tx,
+        })
+        .await
+    }
+
+    pub async fn finish_stream_frame(
+        &self,
+        connection_id: ConnectionId,
+    ) -> Result<StageFrameResult, EgressTaskError> {
+        self.request(|reply_tx| EgressCommand::FinishStreamFrame {
+            connection_id,
+            reply_tx,
+        })
+        .await
     }
 
     async fn stage_message_with_priority(
@@ -504,6 +555,26 @@ impl EgressTask {
                 reply_tx,
             } => {
                 let _ = reply_tx.send(self.manager.enqueue_priority_frame(connection_id, frame));
+            }
+            EgressCommand::BeginStreamFrame {
+                connection_id,
+                header,
+                reply_tx,
+            } => {
+                let _ = reply_tx.send(self.manager.begin_stream_frame(connection_id, header));
+            }
+            EgressCommand::StageStreamChunk {
+                connection_id,
+                chunk,
+                reply_tx,
+            } => {
+                let _ = reply_tx.send(self.manager.stage_stream_chunk(connection_id, chunk));
+            }
+            EgressCommand::FinishStreamFrame {
+                connection_id,
+                reply_tx,
+            } => {
+                let _ = reply_tx.send(self.manager.finish_stream_frame(connection_id));
             }
             EgressCommand::Ack { connection_id } => {
                 self.manager.ack(connection_id);

@@ -208,7 +208,7 @@ impl From<StreamError> for ReceiveFileError {
     fn from(e: StreamError) -> Self {
         match e {
             StreamError::Banned => ReceiveFileError::Banned,
-            StreamError::Io(e) => {
+            StreamError::Io(e) | StreamError::FrameStarted(e) => {
                 ReceiveFileError::Transfer(TransferError::io_error(e.to_string()))
             }
             StreamError::ConnectionClosed => {

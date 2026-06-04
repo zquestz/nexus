@@ -238,6 +238,18 @@ where
                 error_kind = Some(ERROR_KIND_IO_ERROR.to_string());
                 break;
             }
+            Err(StreamFileError::FrameStarted(e)) => {
+                warn!(
+                    id = %log_transfer_id,
+                    user = %username,
+                    ip = %peer_addr,
+                    path = %file_info.relative_path,
+                    err = %e,
+                    "{}", LOG_DOWNLOAD_STREAM_ERROR
+                );
+                let _ = transfer.writer().get_mut().shutdown().await;
+                return Ok(());
+            }
         }
     }
 
@@ -261,6 +273,7 @@ where
 
 enum StreamFileError {
     Io(io::Error),
+    FrameStarted(io::Error),
     Banned,
     HashMismatch,
 }
@@ -276,6 +289,7 @@ impl From<StreamError> for StreamFileError {
         match e {
             StreamError::Banned => StreamFileError::Banned,
             StreamError::Io(e) => StreamFileError::Io(e),
+            StreamError::FrameStarted(e) => StreamFileError::FrameStarted(e),
             StreamError::ConnectionClosed => {
                 StreamFileError::Io(io::Error::other("Connection closed"))
             }
@@ -619,6 +633,7 @@ mod tests {
     use super::super::test_helpers::make_authenticated_user;
     use super::*;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::num::NonZeroUsize;
     use std::sync::Arc;
 
     use nexus_common::ERROR_KIND_CONFLICT;
@@ -626,10 +641,14 @@ mod tests {
     use tempfile::TempDir;
     use tokio::fs;
     use tokio::io::{BufReader, DuplexStream, ReadHalf, WriteHalf, duplex};
+    use tokio::sync::mpsc;
 
+    use crate::egress::task::{EgressHandle, EgressTask};
+    use crate::egress::{EGRESS_DISPATCH_QUEUE_CAPACITY, EgressManager};
     use crate::files::{FileActivityMap, FileIndex};
+    use crate::scheduler::{ConnectionClass, ConnectionId};
     use crate::transfers::registry::{TransferDirection, TransferRegistration, TransferRegistry};
-    use crate::transfers::transfer::TransferContext;
+    use crate::transfers::transfer::{TransferContext, TransferEgress};
 
     const TEST_LOCALE: &str = "en";
 
@@ -637,16 +656,21 @@ mod tests {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 7501)
     }
 
-    fn make_download_transfer<'a>(
-        server_read: ReadHalf<DuplexStream>,
-        server_write: WriteHalf<DuplexStream>,
+    struct DownloadTransferFixture<'a> {
         file_root: &'a Path,
         shared_root: &'a Path,
         file_index: &'a Arc<FileIndex>,
         file_activity: &'a Arc<FileActivityMap>,
         registry: &'a TransferRegistry,
+        egress: Option<TransferEgress>,
+    }
+
+    fn make_download_transfer<'a>(
+        server_read: ReadHalf<DuplexStream>,
+        server_write: WriteHalf<DuplexStream>,
+        fixture: DownloadTransferFixture<'a>,
     ) -> Transfer<'a, BufReader<ReadHalf<DuplexStream>>, WriteHalf<DuplexStream>> {
-        let (info, ban_rx) = registry.register(TransferRegistration {
+        let (info, ban_rx) = fixture.registry.register(TransferRegistration {
             user_id: 1,
             peer_addr: test_addr(),
             nickname: "tester".to_string(),
@@ -666,13 +690,41 @@ mod tests {
             TransferContext {
                 user: make_authenticated_user(false, &[Permission::FileDownload]),
                 locale: TEST_LOCALE.to_string(),
-                file_root,
-                file_index,
-                file_activity,
-                user_area_root: Some(shared_root.to_path_buf()),
-                registry,
-                egress: None,
+                file_root: fixture.file_root,
+                file_index: fixture.file_index,
+                file_activity: fixture.file_activity,
+                user_area_root: Some(fixture.shared_root.to_path_buf()),
+                registry: fixture.registry,
+                egress: fixture.egress,
             },
+        )
+    }
+
+    async fn registered_download_egress(
+        chunk_size: usize,
+    ) -> (
+        TransferEgress,
+        EgressHandle,
+        tokio::task::JoinHandle<()>,
+        ConnectionId,
+    ) {
+        let (egress, egress_task) =
+            EgressTask::channel(EgressManager::new(NonZeroUsize::new(chunk_size).unwrap()));
+        let egress_task = tokio::spawn(egress_task.run());
+        let connection_id = ConnectionId::new(9001);
+        let (dispatch_tx, dispatch_rx) = mpsc::channel(EGRESS_DISPATCH_QUEUE_CAPACITY);
+        assert!(
+            egress
+                .register_anon(connection_id, ConnectionClass::Bulk, dispatch_tx)
+                .await
+                .unwrap()
+        );
+
+        (
+            TransferEgress::new(egress.clone(), connection_id, dispatch_rx),
+            egress,
+            egress_task,
+            connection_id,
         )
     }
 
@@ -734,11 +786,14 @@ mod tests {
         let mut transfer = make_download_transfer(
             server_read,
             server_write,
-            &file_root,
-            &shared_root,
-            &file_index,
-            &file_activity,
-            &registry,
+            DownloadTransferFixture {
+                file_root: &file_root,
+                shared_root: &shared_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                registry: &registry,
+                egress: None,
+            },
         );
 
         assert_download_conflict_response(client_read, &mut transfer, "file.txt").await;
@@ -767,11 +822,14 @@ mod tests {
         let mut transfer = make_download_transfer(
             server_read,
             server_write,
-            &file_root,
-            &shared_root,
-            &file_index,
-            &file_activity,
-            &registry,
+            DownloadTransferFixture {
+                file_root: &file_root,
+                shared_root: &shared_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                registry: &registry,
+                egress: None,
+            },
         );
 
         assert_download_conflict_response(client_read, &mut transfer, "bundle").await;
@@ -801,11 +859,14 @@ mod tests {
         let mut transfer = make_download_transfer(
             server_read,
             server_write,
-            &file_root,
-            &shared_root,
-            &file_index,
-            &file_activity,
-            &registry,
+            DownloadTransferFixture {
+                file_root: &file_root,
+                shared_root: &shared_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                registry: &registry,
+                egress: None,
+            },
         );
         let mut reader = FrameReader::new(BufReader::new(client_read));
         let mut writer = FrameWriter::new(client_write);
@@ -874,6 +935,121 @@ mod tests {
         tokio::join!(server, client);
     }
 
+    #[tokio::test]
+    async fn test_download_egress_file_data_is_single_frame_followed_by_hash() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        fs::create_dir_all(&shared_root).await.unwrap();
+        let file_data = {
+            let mut data = vec![0xAB; 64 * 1024];
+            data.extend_from_slice(b"final");
+            data
+        };
+        let target = shared_root.join("file.bin");
+        fs::write(&target, &file_data).await.unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+        let (transfer_egress, egress, egress_task, connection_id) =
+            registered_download_egress(8192).await;
+
+        let (client, server) = duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut transfer = make_download_transfer(
+            server_read,
+            server_write,
+            DownloadTransferFixture {
+                file_root: &file_root,
+                shared_root: &shared_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                registry: &registry,
+                egress: Some(transfer_egress),
+            },
+        );
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        let mut writer = FrameWriter::new(client_write);
+
+        let server = async {
+            handle_download(
+                &mut transfer,
+                DownloadParams {
+                    path: "file.bin".to_string(),
+                    root: false,
+                },
+            )
+            .await
+            .unwrap();
+        };
+
+        let client = async {
+            let response = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            assert!(matches!(
+                response,
+                ServerMessage::FileDownloadResponse { success: true, .. }
+            ));
+
+            let file_start = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            match file_start {
+                ServerMessage::FileStart { path, size } => {
+                    assert_eq!(path, "file.bin");
+                    assert_eq!(size, file_data.len() as u64);
+                }
+                _ => panic!("Expected FileStart"),
+            }
+
+            send_client_message(
+                &mut writer,
+                &ClientMessage::FileStartResponse {
+                    size: 0,
+                    sha256: None,
+                },
+            )
+            .await
+            .unwrap();
+
+            let frame = reader.read_frame_header().await.unwrap().unwrap();
+            assert_eq!(frame.message_type, "FileData");
+            assert_eq!(frame.payload_length, file_data.len() as u64);
+            let payload = reader.read_payload_into_vec(&frame).await.unwrap();
+            assert_eq!(payload, file_data);
+
+            let file_hash = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            assert!(matches!(file_hash, ServerMessage::FileHash { .. }));
+
+            let complete = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            assert!(matches!(
+                complete,
+                ServerMessage::TransferComplete { success: true, .. }
+            ));
+        };
+
+        tokio::join!(server, client);
+        egress.unregister(connection_id).await.unwrap();
+        drop(transfer);
+        drop(egress);
+        egress_task.await.unwrap();
+    }
+
     #[cfg(unix)]
     #[tokio::test]
     async fn test_download_directory_conflicts_when_symlink_target_active() {
@@ -904,11 +1080,14 @@ mod tests {
         let mut transfer = make_download_transfer(
             server_read,
             server_write,
-            &file_root,
-            &shared_root,
-            &file_index,
-            &file_activity,
-            &registry,
+            DownloadTransferFixture {
+                file_root: &file_root,
+                shared_root: &shared_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                registry: &registry,
+                egress: None,
+            },
         );
 
         assert_download_conflict_response(client_read, &mut transfer, "bundle").await;

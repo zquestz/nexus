@@ -30,6 +30,7 @@ use super::types::AuthenticatedUser;
 #[derive(Debug)]
 pub enum StreamError {
     Io(io::Error),
+    FrameStarted(io::Error),
     /// Connection terminated due to IP ban
     Banned,
     ConnectionClosed,
@@ -39,6 +40,7 @@ impl std::fmt::Display for StreamError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Io(e) => write!(f, "I/O error: {e}"),
+            Self::FrameStarted(e) => write!(f, "I/O error after frame started: {e}"),
             Self::Banned => write!(f, "Connection terminated: IP banned"),
             Self::ConnectionClosed => write!(f, "Connection closed"),
         }
@@ -48,7 +50,7 @@ impl std::fmt::Display for StreamError {
 impl std::error::Error for StreamError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            Self::Io(e) => Some(e),
+            Self::Io(e) | Self::FrameStarted(e) => Some(e),
             _ => None,
         }
     }
@@ -231,8 +233,13 @@ where
             return Err(StreamError::Banned);
         }
 
-        self.stream_file_to_client_direct(message_type, reader, length)
-            .await
+        if self.egress.is_some() {
+            self.stream_file_to_client_egress(message_type, reader, length)
+                .await
+        } else {
+            self.stream_file_to_client_direct(message_type, reader, length)
+                .await
+        }
     }
 
     async fn stream_file_to_client_direct<S>(
@@ -272,10 +279,10 @@ where
             let bytes_read = reader
                 .read(&mut buffer[..to_read])
                 .await
-                .map_err(StreamError::Io)?;
+                .map_err(StreamError::FrameStarted)?;
 
             if bytes_read == 0 {
-                return Err(StreamError::Io(std::io::Error::other(format!(
+                return Err(StreamError::FrameStarted(std::io::Error::other(format!(
                     "Reader ended early: expected {} more bytes",
                     remaining
                 ))));
@@ -285,7 +292,7 @@ where
                 .get_mut()
                 .write_all(&buffer[..bytes_read])
                 .await
-                .map_err(StreamError::Io)?;
+                .map_err(StreamError::FrameStarted)?;
 
             remaining -= bytes_read as u64;
             total_written += bytes_read as u64;
@@ -298,15 +305,228 @@ where
             .get_mut()
             .write_all(b"\n")
             .await
-            .map_err(StreamError::Io)?;
+            .map_err(StreamError::FrameStarted)?;
 
         self.writer
             .get_mut()
             .flush()
             .await
-            .map_err(StreamError::Io)?;
+            .map_err(StreamError::FrameStarted)?;
 
         Ok(total_written)
+    }
+
+    async fn stream_file_to_client_egress<S>(
+        &mut self,
+        message_type: &str,
+        reader: &mut S,
+        length: u64,
+    ) -> Result<u64, StreamError>
+    where
+        S: AsyncRead + Unpin,
+    {
+        let msg_id = MessageId::new();
+        let header: Arc<[u8]> = Arc::from(
+            format!(
+                "NX|{}|{}|{}|{}|",
+                message_type.len(),
+                message_type,
+                msg_id,
+                length
+            )
+            .into_bytes(),
+        );
+
+        let mut buffer = vec![0u8; CHUNK_SIZE];
+        let mut remaining = length;
+        let mut total_written: u64 = 0;
+        let first_block = if remaining > 0 {
+            let to_read = (remaining as usize).min(CHUNK_SIZE);
+            let bytes_read = reader
+                .read(&mut buffer[..to_read])
+                .await
+                .map_err(StreamError::Io)?;
+            if bytes_read == 0 {
+                return Err(StreamError::Io(std::io::Error::other(format!(
+                    "Reader ended early: expected {remaining} more bytes"
+                ))));
+            }
+            remaining -= bytes_read as u64;
+            let block: Arc<[u8]> = Arc::from(buffer[..bytes_read].to_vec());
+            Some((block, bytes_read))
+        } else {
+            None
+        };
+
+        let header_chunks = self.begin_egress_stream_frame(header).await?;
+        let result = self
+            .stream_file_to_client_egress_after_begin(
+                reader,
+                remaining,
+                first_block,
+                header_chunks,
+                &mut total_written,
+            )
+            .await;
+
+        if result.is_err() {
+            self.notify_egress_write_failed().await;
+        }
+
+        result.map(|()| total_written)
+    }
+
+    async fn stream_file_to_client_egress_after_begin<S>(
+        &mut self,
+        reader: &mut S,
+        mut remaining: u64,
+        first_block: Option<(Arc<[u8]>, usize)>,
+        header_chunks: usize,
+        total_written: &mut u64,
+    ) -> Result<(), StreamError>
+    where
+        S: AsyncRead + Unpin,
+    {
+        let mut chunks_to_drain = header_chunks;
+        if let Some((block, bytes_read)) = first_block {
+            chunks_to_drain += self.stage_egress_stream_chunk(block).await?;
+            self.drain_egress_chunks(chunks_to_drain).await?;
+            *total_written += bytes_read as u64;
+            self.info.add_bytes_transferred(bytes_read as u64);
+        } else {
+            self.drain_egress_chunks(chunks_to_drain).await?;
+        }
+
+        let mut buffer = vec![0u8; CHUNK_SIZE];
+        while remaining > 0 {
+            if self.is_banned() {
+                return Err(StreamError::Banned);
+            }
+
+            let to_read = (remaining as usize).min(CHUNK_SIZE);
+            let bytes_read = reader
+                .read(&mut buffer[..to_read])
+                .await
+                .map_err(StreamError::FrameStarted)?;
+            if bytes_read == 0 {
+                return Err(StreamError::FrameStarted(std::io::Error::other(format!(
+                    "Reader ended early: expected {remaining} more bytes"
+                ))));
+            }
+            remaining -= bytes_read as u64;
+
+            let block: Arc<[u8]> = Arc::from(buffer[..bytes_read].to_vec());
+            let chunks = self.stage_egress_stream_chunk(block).await?;
+            self.drain_egress_chunks(chunks).await?;
+            *total_written += bytes_read as u64;
+            self.info.add_bytes_transferred(bytes_read as u64);
+        }
+
+        let terminator_chunks = self.finish_egress_stream_frame().await?;
+        self.drain_egress_chunks(terminator_chunks).await
+    }
+
+    async fn begin_egress_stream_frame(&self, header: Arc<[u8]>) -> Result<usize, StreamError> {
+        let Some(egress) = self.egress.as_ref() else {
+            return Err(StreamError::Io(io::Error::other(
+                "egress is not registered",
+            )));
+        };
+
+        match egress
+            .handle
+            .begin_stream_frame(egress.connection_id, header)
+            .await
+        {
+            Ok(Ok(chunks)) => Ok(chunks),
+            Ok(Err(err)) => Err(StreamError::Io(egress_enqueue_io_error(err))),
+            Err(err) => Err(StreamError::Io(egress_task_io_error(err))),
+        }
+    }
+
+    async fn stage_egress_stream_chunk(&self, chunk: Arc<[u8]>) -> Result<usize, StreamError> {
+        let Some(egress) = self.egress.as_ref() else {
+            return Err(StreamError::FrameStarted(io::Error::other(
+                "egress is not registered",
+            )));
+        };
+
+        match egress
+            .handle
+            .stage_stream_chunk(egress.connection_id, chunk)
+            .await
+        {
+            Ok(Ok(chunks)) => Ok(chunks),
+            Ok(Err(err)) => Err(StreamError::FrameStarted(egress_enqueue_io_error(err))),
+            Err(err) => Err(StreamError::FrameStarted(egress_task_io_error(err))),
+        }
+    }
+
+    async fn finish_egress_stream_frame(&self) -> Result<usize, StreamError> {
+        let Some(egress) = self.egress.as_ref() else {
+            return Err(StreamError::FrameStarted(io::Error::other(
+                "egress is not registered",
+            )));
+        };
+
+        match egress
+            .handle
+            .finish_stream_frame(egress.connection_id)
+            .await
+        {
+            Ok(Ok(chunks)) => Ok(chunks),
+            Ok(Err(err)) => Err(StreamError::FrameStarted(egress_enqueue_io_error(err))),
+            Err(err) => Err(StreamError::FrameStarted(egress_task_io_error(err))),
+        }
+    }
+
+    async fn drain_egress_chunks(&mut self, mut chunks: usize) -> Result<(), StreamError> {
+        while chunks > 0 {
+            let Some(egress) = self.egress.as_mut() else {
+                return Err(StreamError::FrameStarted(io::Error::other(
+                    "egress is not registered",
+                )));
+            };
+
+            let Some(dispatch) = egress.dispatch_rx.recv().await else {
+                return Err(StreamError::FrameStarted(io::Error::other(
+                    "egress dispatch channel closed",
+                )));
+            };
+
+            if dispatch.connection_id != egress.connection_id {
+                let _ = egress.handle.write_failed(dispatch.connection_id).await;
+                continue;
+            }
+
+            if let Err(err) = self
+                .writer
+                .get_mut()
+                .write_all(dispatch.chunk.as_bytes())
+                .await
+            {
+                let _ = egress.handle.write_failed(egress.connection_id).await;
+                return Err(StreamError::FrameStarted(err));
+            }
+            if let Err(err) = self.writer.get_mut().flush().await {
+                let _ = egress.handle.write_failed(egress.connection_id).await;
+                return Err(StreamError::FrameStarted(err));
+            }
+
+            if let Err(err) = egress.handle.ack(egress.connection_id).await {
+                return Err(StreamError::FrameStarted(egress_task_io_error(err)));
+            }
+
+            chunks -= 1;
+        }
+
+        Ok(())
+    }
+
+    async fn notify_egress_write_failed(&self) {
+        if let Some(egress) = self.egress.as_ref() {
+            let _ = egress.handle.write_failed(egress.connection_id).await;
+        }
     }
 
     async fn send_egress_frame(&mut self, frame: Arc<[u8]>) -> Result<(), StreamError> {
@@ -522,8 +742,10 @@ mod tests {
     use std::collections::HashSet;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::num::NonZeroUsize;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
     use tempfile::TempDir;
-    use tokio::io::duplex;
+    use tokio::io::{AsyncRead, ReadBuf, duplex};
     use tokio::sync::mpsc;
 
     fn make_test_user() -> AuthenticatedUser {
@@ -581,6 +803,87 @@ mod tests {
         let _ = egress.unregister(connection_id).await;
         drop(egress);
         task.await.unwrap();
+    }
+
+    struct ErrorAfterDataReader {
+        data: Vec<u8>,
+        offset: usize,
+        failed: bool,
+    }
+
+    impl ErrorAfterDataReader {
+        fn new(data: Vec<u8>) -> Self {
+            Self {
+                data,
+                offset: 0,
+                failed: false,
+            }
+        }
+    }
+
+    impl AsyncRead for ErrorAfterDataReader {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            if self.offset < self.data.len() {
+                let remaining = self.data.len() - self.offset;
+                let len = remaining.min(buf.remaining());
+                buf.put_slice(&self.data[self.offset..self.offset + len]);
+                self.offset += len;
+                return Poll::Ready(Ok(()));
+            }
+
+            if !self.failed {
+                self.failed = true;
+                return Poll::Ready(Err(io::Error::other("injected read failure")));
+            }
+
+            Poll::Ready(Ok(()))
+        }
+    }
+
+    struct BanAfterFirstRead<'a> {
+        data: Vec<u8>,
+        offset: usize,
+        registry: &'a TransferRegistry,
+        signaled: bool,
+    }
+
+    impl<'a> BanAfterFirstRead<'a> {
+        fn new(data: Vec<u8>, registry: &'a TransferRegistry) -> Self {
+            Self {
+                data,
+                offset: 0,
+                registry,
+                signaled: false,
+            }
+        }
+    }
+
+    impl AsyncRead for BanAfterFirstRead<'_> {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<io::Result<()>> {
+            if self.offset < self.data.len() {
+                let remaining = self.data.len() - self.offset;
+                let len = remaining.min(buf.remaining());
+                buf.put_slice(&self.data[self.offset..self.offset + len]);
+                self.offset += len;
+
+                if !self.signaled {
+                    self.signaled = true;
+                    assert_eq!(self.registry.disconnect_matching(|_| true), 1);
+                }
+
+                return Poll::Ready(Ok(()));
+            }
+
+            Poll::Ready(Ok(()))
+        }
     }
 
     #[test]
@@ -895,6 +1198,296 @@ mod tests {
         assert_eq!(frame.payload_length, file_data.len() as u64);
         let payload = client_reader.read_payload_into_vec(&frame).await.unwrap();
         assert_eq!(payload, file_data);
+
+        transfer
+            .send(&ServerMessage::FileHash {
+                sha256: "abc123".to_string(),
+            })
+            .await
+            .unwrap();
+        let file_hash = read_server_message(&mut client_reader)
+            .await
+            .unwrap()
+            .unwrap()
+            .message;
+        assert!(matches!(file_hash, ServerMessage::FileHash { .. }));
+
+        drop(transfer);
+        stop_egress_task(egress, egress_task, connection_id).await;
+    }
+
+    #[tokio::test]
+    async fn egress_registered_small_file_data_uses_single_streaming_frame() {
+        let registry = TransferRegistry::new();
+        let (client, server) = duplex(4096);
+        let (client_read, _client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_reader = FrameReader::new(tokio::io::BufReader::new(client_read));
+
+        let peer_addr = make_test_addr();
+        let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/small.txt".to_string(),
+            total_size: 9,
+        });
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path();
+        let file_index = make_test_file_index(&temp_dir);
+        let file_activity = Arc::new(FileActivityMap::new());
+        let (transfer_egress, egress, egress_task, connection_id) =
+            registered_transfer_egress(1024).await;
+
+        let mut transfer = Transfer::new(
+            FrameReader::new(tokio::io::BufReader::new(server_read)),
+            FrameWriter::new(server_write),
+            ban_rx,
+            info.clone(),
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                user_area_root: None,
+                registry: &registry,
+                egress: Some(transfer_egress),
+            },
+        );
+
+        let file_data = b"tiny data".to_vec();
+        let mut reader = std::io::Cursor::new(file_data.clone());
+
+        let written = transfer
+            .stream_file_to_client("FileData", &mut reader, file_data.len() as u64)
+            .await
+            .unwrap();
+        assert_eq!(written, file_data.len() as u64);
+        assert_eq!(info.get_bytes_transferred(), file_data.len() as u64);
+
+        let frame = client_reader.read_frame_header().await.unwrap().unwrap();
+        assert_eq!(frame.message_type, "FileData");
+        assert_eq!(frame.payload_length, file_data.len() as u64);
+        let payload = client_reader.read_payload_into_vec(&frame).await.unwrap();
+        assert_eq!(payload, file_data);
+
+        transfer
+            .send(&ServerMessage::FileHash {
+                sha256: "small-hash".to_string(),
+            })
+            .await
+            .unwrap();
+        let file_hash = read_server_message(&mut client_reader)
+            .await
+            .unwrap()
+            .unwrap()
+            .message;
+        assert!(matches!(file_hash, ServerMessage::FileHash { .. }));
+
+        drop(transfer);
+        stop_egress_task(egress, egress_task, connection_id).await;
+    }
+
+    #[tokio::test]
+    async fn egress_file_data_first_read_error_does_not_start_frame() {
+        let registry = TransferRegistry::new();
+        let (client, server) = duplex(4096);
+        let (client_read, _client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_reader = FrameReader::new(tokio::io::BufReader::new(client_read));
+
+        let peer_addr = make_test_addr();
+        let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: 10,
+        });
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path();
+        let file_index = make_test_file_index(&temp_dir);
+        let file_activity = Arc::new(FileActivityMap::new());
+        let (transfer_egress, egress, egress_task, connection_id) =
+            registered_transfer_egress(1024).await;
+
+        let mut transfer = Transfer::new(
+            FrameReader::new(tokio::io::BufReader::new(server_read)),
+            FrameWriter::new(server_write),
+            ban_rx,
+            info,
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                user_area_root: None,
+                registry: &registry,
+                egress: Some(transfer_egress),
+            },
+        );
+
+        let mut empty_reader = std::io::Cursor::new(Vec::<u8>::new());
+        let result = transfer
+            .stream_file_to_client("FileData", &mut empty_reader, 10)
+            .await;
+        assert!(matches!(result, Err(StreamError::Io(_))));
+
+        transfer
+            .send(&ServerMessage::TransferComplete {
+                success: false,
+                error: Some("read failed".to_string()),
+                error_kind: Some("io_error".to_string()),
+            })
+            .await
+            .unwrap();
+        let response = read_server_message(&mut client_reader)
+            .await
+            .unwrap()
+            .unwrap()
+            .message;
+        assert!(matches!(
+            response,
+            ServerMessage::TransferComplete { success: false, .. }
+        ));
+
+        drop(transfer);
+        stop_egress_task(egress, egress_task, connection_id).await;
+    }
+
+    #[tokio::test]
+    async fn egress_file_data_post_begin_read_error_clears_stream_state() {
+        let registry = TransferRegistry::new();
+        let (_client, server) = duplex(256 * 1024);
+        let (server_read, server_write) = tokio::io::split(server);
+
+        let peer_addr = make_test_addr();
+        let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: CHUNK_SIZE as u64 + 1,
+        });
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path();
+        let file_index = make_test_file_index(&temp_dir);
+        let file_activity = Arc::new(FileActivityMap::new());
+        let (transfer_egress, egress, egress_task, connection_id) =
+            registered_transfer_egress(1024).await;
+
+        let mut transfer = Transfer::new(
+            FrameReader::new(tokio::io::BufReader::new(server_read)),
+            FrameWriter::new(server_write),
+            ban_rx,
+            info.clone(),
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                user_area_root: None,
+                registry: &registry,
+                egress: Some(transfer_egress),
+            },
+        );
+
+        let mut reader = ErrorAfterDataReader::new(vec![0xCC; CHUNK_SIZE]);
+        let result = transfer
+            .stream_file_to_client("FileData", &mut reader, CHUNK_SIZE as u64 + 1)
+            .await;
+        assert!(matches!(result, Err(StreamError::FrameStarted(_))));
+        assert_eq!(info.get_bytes_transferred(), CHUNK_SIZE as u64);
+
+        let result = transfer
+            .send(&ServerMessage::TransferComplete {
+                success: false,
+                error: Some("stream failed".to_string()),
+                error_kind: Some("io_error".to_string()),
+            })
+            .await;
+        assert!(matches!(result, Err(StreamError::Io(_))));
+
+        drop(transfer);
+        stop_egress_task(egress, egress_task, connection_id).await;
+    }
+
+    #[tokio::test]
+    async fn egress_file_data_banned_mid_stream_clears_stream_state() {
+        let registry = TransferRegistry::new();
+        let (_client, server) = duplex(256 * 1024);
+        let (server_read, server_write) = tokio::io::split(server);
+
+        let peer_addr = make_test_addr();
+        let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: CHUNK_SIZE as u64 + 1,
+        });
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path();
+        let file_index = make_test_file_index(&temp_dir);
+        let file_activity = Arc::new(FileActivityMap::new());
+        let (transfer_egress, egress, egress_task, connection_id) =
+            registered_transfer_egress(1024).await;
+
+        let mut transfer = Transfer::new(
+            FrameReader::new(tokio::io::BufReader::new(server_read)),
+            FrameWriter::new(server_write),
+            ban_rx,
+            info.clone(),
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                user_area_root: None,
+                registry: &registry,
+                egress: Some(transfer_egress),
+            },
+        );
+
+        let mut reader = BanAfterFirstRead::new(vec![0xAB; CHUNK_SIZE], &registry);
+        let result = transfer
+            .stream_file_to_client("FileData", &mut reader, CHUNK_SIZE as u64 + 1)
+            .await;
+        assert!(matches!(result, Err(StreamError::Banned)));
+        assert_eq!(info.get_bytes_transferred(), CHUNK_SIZE as u64);
+
+        let result = transfer
+            .send(&ServerMessage::TransferComplete {
+                success: false,
+                error: Some("banned".to_string()),
+                error_kind: None,
+            })
+            .await;
+        assert!(matches!(result, Err(StreamError::Io(_))));
 
         drop(transfer);
         stop_egress_task(egress, egress_task, connection_id).await;

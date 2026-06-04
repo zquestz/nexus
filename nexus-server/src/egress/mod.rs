@@ -92,6 +92,8 @@ pub enum EgressEnqueueError {
     UnknownConnection,
     EmptyFrame,
     QueueFull,
+    FrameInProgress,
+    NoFrameInProgress,
 }
 
 #[derive(Debug)]
@@ -196,6 +198,7 @@ impl EgressManager {
                 dispatch_tx: registration.dispatch_tx,
                 staged_frames: 0,
                 in_flight_is_final: None,
+                stream_frame_active: false,
             },
         );
         true
@@ -270,15 +273,116 @@ impl EgressManager {
             return Err(EgressEnqueueError::UnknownConnection);
         };
 
+        if connection.stream_frame_active {
+            return Err(EgressEnqueueError::FrameInProgress);
+        }
+
         if connection.staged_frames >= self.frame_limit {
             return Err(EgressEnqueueError::QueueFull);
         }
 
+        let chunks =
+            self.enqueue_chunked_payload(connection_id, frame, priority, FinalChunk::Last)?;
+
+        if let Some(connection) = self.connections.get_mut(&connection_id) {
+            connection.staged_frames += 1;
+        }
+        Ok(chunks)
+    }
+
+    pub fn begin_stream_frame(
+        &mut self,
+        connection_id: ConnectionId,
+        header: Arc<[u8]>,
+    ) -> Result<usize, EgressEnqueueError> {
+        if header.is_empty() {
+            return Err(EgressEnqueueError::EmptyFrame);
+        }
+
+        let Some(connection) = self.connections.get(&connection_id) else {
+            return Err(EgressEnqueueError::UnknownConnection);
+        };
+
+        if connection.stream_frame_active {
+            return Err(EgressEnqueueError::FrameInProgress);
+        }
+
+        if connection.staged_frames >= self.frame_limit {
+            return Err(EgressEnqueueError::QueueFull);
+        }
+
+        let chunks = self.enqueue_chunked_payload(
+            connection_id,
+            header,
+            EgressMessagePriority::Normal,
+            FinalChunk::None,
+        )?;
+
+        if let Some(connection) = self.connections.get_mut(&connection_id) {
+            connection.staged_frames += 1;
+            connection.stream_frame_active = true;
+        }
+        Ok(chunks)
+    }
+
+    pub fn stage_stream_chunk(
+        &mut self,
+        connection_id: ConnectionId,
+        chunk: Arc<[u8]>,
+    ) -> Result<usize, EgressEnqueueError> {
+        if chunk.is_empty() {
+            return Err(EgressEnqueueError::EmptyFrame);
+        }
+
+        let Some(connection) = self.connections.get(&connection_id) else {
+            return Err(EgressEnqueueError::UnknownConnection);
+        };
+
+        if !connection.stream_frame_active {
+            return Err(EgressEnqueueError::NoFrameInProgress);
+        }
+
+        self.enqueue_chunked_payload(
+            connection_id,
+            chunk,
+            EgressMessagePriority::Normal,
+            FinalChunk::None,
+        )
+    }
+
+    pub fn finish_stream_frame(
+        &mut self,
+        connection_id: ConnectionId,
+    ) -> Result<usize, EgressEnqueueError> {
+        let Some(connection) = self.connections.get(&connection_id) else {
+            return Err(EgressEnqueueError::UnknownConnection);
+        };
+
+        if !connection.stream_frame_active {
+            return Err(EgressEnqueueError::NoFrameInProgress);
+        }
+
+        self.enqueue_chunked_payload(
+            connection_id,
+            Arc::from(&b"\n"[..]),
+            EgressMessagePriority::Normal,
+            FinalChunk::Last,
+        )
+    }
+
+    fn enqueue_chunked_payload(
+        &mut self,
+        connection_id: ConnectionId,
+        frame: Arc<[u8]>,
+        priority: EgressMessagePriority,
+        final_chunk: FinalChunk,
+    ) -> Result<usize, EgressEnqueueError> {
         let mut chunks = 0;
         let chunk_size = self.chunk_size.get();
         for offset in (0..frame.len()).step_by(chunk_size) {
             let len = chunk_size.min(frame.len() - offset);
-            let is_final_frame_chunk = offset + len == frame.len();
+            let is_final_frame_chunk =
+                final_chunk == FinalChunk::Last && offset + len == frame.len();
             let Some(chunk) =
                 EgressChunk::new(Arc::clone(&frame), offset, len, is_final_frame_chunk)
             else {
@@ -303,9 +407,6 @@ impl EgressManager {
             chunks += 1;
         }
 
-        if let Some(connection) = self.connections.get_mut(&connection_id) {
-            connection.staged_frames += 1;
-        }
         Ok(chunks)
     }
 
@@ -345,6 +446,7 @@ impl EgressManager {
 
         if connection.in_flight_is_final.take() == Some(true) {
             connection.staged_frames = connection.staged_frames.saturating_sub(1);
+            connection.stream_frame_active = false;
         }
 
         self.scheduler
@@ -373,6 +475,13 @@ struct EgressConnection {
     dispatch_tx: EgressDispatchTx,
     staged_frames: usize,
     in_flight_is_final: Option<bool>,
+    stream_frame_active: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FinalChunk {
+    None,
+    Last,
 }
 
 #[cfg(test)]
@@ -625,6 +734,107 @@ mod tests {
         assert!(dispatch.chunk.is_final_frame_chunk());
         assert!(manager.ack(connection));
 
+        assert_eq!(manager.enqueue_frame(connection, frame(b"next")), Ok(1));
+    }
+
+    #[test]
+    fn streaming_frame_reassembles_and_releases_slot_on_terminator_ack() {
+        let mut manager = manager_with_frame_limit(4, 1);
+        let connection = conn(1);
+        let (tx, mut rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+
+        assert_eq!(
+            manager.begin_stream_frame(connection, frame(b"header")),
+            Ok(2)
+        );
+        assert_eq!(
+            manager.stage_stream_chunk(connection, frame(b"abcdef")),
+            Ok(2)
+        );
+        assert_eq!(manager.finish_stream_frame(connection), Ok(1));
+        assert_eq!(
+            manager.enqueue_frame(connection, frame(b"control")),
+            Err(EgressEnqueueError::FrameInProgress)
+        );
+
+        let mut bytes = Vec::new();
+        for expected_final in [false, false, false, false, true] {
+            assert_eq!(expect_dispatch(&mut manager), connection);
+            let dispatch = rx.try_recv().unwrap();
+            bytes.extend_from_slice(dispatch.chunk.as_bytes());
+            assert_eq!(dispatch.chunk.is_final_frame_chunk(), expected_final);
+            assert!(manager.ack(connection));
+            if !expected_final {
+                assert_eq!(
+                    manager.enqueue_frame(connection, frame(b"next")),
+                    Err(EgressEnqueueError::FrameInProgress)
+                );
+            }
+        }
+
+        assert_eq!(bytes, b"headerabcdef\n");
+        assert_eq!(manager.enqueue_frame(connection, frame(b"next")), Ok(1));
+    }
+
+    #[test]
+    fn stream_chunk_and_finish_require_active_stream_frame() {
+        let mut manager = manager(4);
+        let connection = conn(1);
+        let (tx, _rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+
+        assert_eq!(
+            manager.stage_stream_chunk(connection, frame(b"data")),
+            Err(EgressEnqueueError::NoFrameInProgress)
+        );
+        assert_eq!(
+            manager.finish_stream_frame(connection),
+            Err(EgressEnqueueError::NoFrameInProgress)
+        );
+    }
+
+    #[test]
+    fn stream_frame_active_rejects_normal_and_priority_frames() {
+        let mut manager = manager(4);
+        let connection = conn(1);
+        let (tx, _rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, tx)));
+
+        assert_eq!(
+            manager.begin_stream_frame(connection, frame(b"header")),
+            Ok(2)
+        );
+        assert_eq!(
+            manager.enqueue_frame(connection, frame(b"normal")),
+            Err(EgressEnqueueError::FrameInProgress)
+        );
+        assert_eq!(
+            manager.enqueue_priority_frame(connection, frame(b"priority")),
+            Err(EgressEnqueueError::FrameInProgress)
+        );
+        assert_eq!(
+            manager.begin_stream_frame(connection, frame(b"other")),
+            Err(EgressEnqueueError::FrameInProgress)
+        );
+    }
+
+    #[test]
+    fn unregister_clears_active_stream_frame_state() {
+        let mut manager = manager(4);
+        let connection = conn(1);
+        let (first_tx, _first_rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, first_tx)));
+        assert_eq!(
+            manager.begin_stream_frame(connection, frame(b"header")),
+            Ok(2)
+        );
+
+        assert!(manager.write_failed(connection));
+        assert_eq!(manager.queued_packets(connection), None);
+
+        let (second_tx, _second_rx) = channel();
+        assert!(manager.register(user_registration(connection, 1, second_tx)));
         assert_eq!(manager.enqueue_frame(connection, frame(b"next")), Ok(1));
     }
 
