@@ -69,6 +69,9 @@ pub const SQL_SELECT_GROUP_SHARED_AND_BANDWIDTH: &str =
 /// per-user override is set) — in one row, avoiding two round-trips.
 pub const SQL_SELECT_USER_AND_GROUP_BANDWIDTH_WEIGHT: &str = "SELECT u.bandwidth_weight, g.bandwidth_weight, u.is_admin FROM users u LEFT JOIN groups g ON u.group_id = g.id WHERE u.id = ?";
 
+pub const SQL_SELECT_GROUP_BANDWIDTH_INHERITOR_USER_IDS: &str =
+    "SELECT id FROM users WHERE group_id = ? AND bandwidth_weight IS NULL";
+
 /// Joins on a *parameter* group_id rather than the user's current one — used
 /// by `get_inherited_bandwidth_weight` to ask "what will the user's inherited
 /// weight be if they're in group X?" for the inherit-delegation check on a

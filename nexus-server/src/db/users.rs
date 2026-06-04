@@ -343,6 +343,17 @@ impl UserDb {
         ))
     }
 
+    pub async fn get_group_bandwidth_inheritor_user_ids(
+        &self,
+        group_id: i64,
+    ) -> Result<Vec<i64>, sqlx::Error> {
+        let rows: Vec<(i64,)> = sqlx::query_as(sql::SQL_SELECT_GROUP_BANDWIDTH_INHERITOR_USER_IDS)
+            .bind(group_id)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.into_iter().map(|(user_id,)| user_id).collect())
+    }
+
     /// Get effective permissions for a user, resolving group + overrides
     ///
     /// Resolution logic:
@@ -1150,15 +1161,15 @@ impl UserDb {
             .filter_map(|(p,)| Permission::parse(&p))
             .collect())
     }
-}
 
-#[cfg(test)]
-impl UserDb {
     pub async fn get_resolved_bandwidth_weight(&self, user_id: i64) -> Result<u16, sqlx::Error> {
         let mut conn = self.pool.acquire().await?;
         Self::get_resolved_bandwidth_weight_in_tx(&mut conn, user_id).await
     }
+}
 
+#[cfg(test)]
+impl UserDb {
     /// Check if user has a specific permission with admin override and group
     /// resolution. Production code uses cached permissions on `User`.
     pub async fn has_permission(

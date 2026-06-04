@@ -955,6 +955,34 @@ where
             Some(requesting_user.bandwidth_weight.load(Ordering::Relaxed))
         };
 
+        let group_may_change = validated_remove_group || validated_group_id.is_some();
+        let admin_status_may_change = request.is_admin.is_some_and(|new| new != old_is_admin);
+        let bandwidth_weight_request_may_change = if request.inherit_bandwidth_weight == Some(true)
+        {
+            target_user_account
+                .as_ref()
+                .is_some_and(|account| account.bandwidth_weight.is_some())
+        } else if let Some(new) = request.bandwidth_weight {
+            target_user_account
+                .as_ref()
+                .is_some_and(|account| account.bandwidth_weight != Some(new))
+        } else {
+            false
+        };
+        let transfer_egress_weight_may_change = ctx.transfer_registry.has_active_user(request.id)
+            && (bandwidth_weight_request_may_change || group_may_change || admin_status_may_change);
+        let old_transfer_resolved = if transfer_egress_weight_may_change {
+            match ctx.db.users.get_resolved_bandwidth_weight(request.id).await {
+                Ok(weight) => Some(weight),
+                Err(e) => {
+                    error!(user = %requesting_user.username, ip = %ctx.peer_addr, target_user_id = request.id, err = %e, "{}", LOG_USER_UPDATE_DB_ERROR_LOOKUP);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+
         if let Some(new_username) = request.username.as_deref()
             && fold_name(new_username) != fold_name(&old_username)
         {
@@ -1115,7 +1143,7 @@ where
                     ctx.file_index.mark_dirty();
                 }
 
-                let group_changed = validated_remove_group || validated_group_id.is_some();
+                let group_changed = group_may_change;
                 let admin_status_changed = old_is_admin != updated_account.is_admin;
                 let permissions_changed =
                     old_permissions.permissions != final_permissions.permissions;
@@ -1374,6 +1402,8 @@ where
                     bw_only_trigger && old_resolved == Some(resolved_bandwidth_weight);
                 let egress_weight_changed =
                     old_resolved.is_some_and(|old| old != resolved_bandwidth_weight);
+                let transfer_egress_weight_changed = transfer_egress_weight_may_change
+                    && old_transfer_resolved != Some(resolved_bandwidth_weight);
 
                 if broadcast_should_fire && !suppress_for_bw_only {
                     // Re-read post-update so per-session (shared) broadcasts carry the
@@ -1468,7 +1498,7 @@ where
                     }
                 }
 
-                if egress_weight_changed {
+                if egress_weight_changed || transfer_egress_weight_changed {
                     update_egress_user_weight(ctx, updated_account.id, resolved_bandwidth_weight);
                 }
 
@@ -1713,7 +1743,27 @@ mod tests {
     #[allow(unused_imports)]
     use crate::handlers::testing::read_login_response;
     use crate::handlers::testing::*;
+    use crate::transfers::registry::{TransferDirection, TransferRegistration};
     use crate::users::user::{ConnectionWriter, NewSessionParams, SessionRx};
+
+    fn register_active_transfer(
+        test_ctx: &mut TestContext,
+        user_id: i64,
+        username: &str,
+        is_admin: bool,
+    ) {
+        let (_info, _rx) = test_ctx.transfer_registry.register(TransferRegistration {
+            user_id,
+            peer_addr: test_ctx.peer_addr,
+            nickname: username.to_string(),
+            username: username.to_string(),
+            is_admin,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/files/test.bin".to_string(),
+            total_size: 1024,
+        });
+    }
 
     #[test]
     fn test_personal_area_rollback_warning_appends_to_primary_error() {
@@ -10524,6 +10574,127 @@ mod tests {
             }
             _ => panic!("Expected egress UpdateUserWeight command"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_transfer_only_bandwidth_change_updates_egress_weight() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: Some(50),
+            })
+            .await
+            .unwrap();
+        register_active_transfer(&mut test_ctx, bob.id, "bob", false);
+
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(200),
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "user update should succeed: {:?}", error);
+            }
+            other => panic!("Expected UserUpdateResponse, got {:?}", other),
+        }
+
+        match test_ctx.egress_settings_rx.try_recv() {
+            Ok(EgressSettingsCommand::UpdateUserWeight { user_id, weight }) => {
+                assert_eq!(user_id, bob.id);
+                assert_eq!(weight, 200);
+            }
+            _ => panic!("Expected egress UpdateUserWeight command"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_transfer_only_same_resolved_skips_egress_weight_update() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let group = test_ctx
+            .db
+            .groups
+            .create_group("Staff", false, &db::Permissions::new(), 50)
+            .await
+            .unwrap();
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+        register_active_transfer(&mut test_ctx, bob.id, "bob", false);
+
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(50),
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "user update should succeed: {:?}", error);
+            }
+            other => panic!("Expected UserUpdateResponse, got {:?}", other),
+        }
+
+        assert!(
+            test_ctx.egress_settings_rx.try_recv().is_err(),
+            "same-resolved transfer-only update should not emit an egress weight update"
+        );
     }
 
     #[tokio::test]

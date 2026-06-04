@@ -367,7 +367,30 @@ where
                 } else {
                     HashSet::new()
                 };
-                for user_id in &inheriting_set {
+                let mut egress_update_user_ids = inheriting_set.clone();
+                if bandwidth_weight_changed {
+                    let active_transfer_user_ids = ctx.transfer_registry.active_user_ids();
+                    if !active_transfer_user_ids.is_empty() {
+                        match ctx
+                            .db
+                            .users
+                            .get_group_bandwidth_inheritor_user_ids(id)
+                            .await
+                        {
+                            Ok(group_inheritors) => {
+                                for user_id in group_inheritors {
+                                    if active_transfer_user_ids.contains(&user_id) {
+                                        egress_update_user_ids.insert(user_id);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                error!(user = %requesting_user.username, ip = %ctx.peer_addr, group_id = id, err = %e, "{}", LOG_GROUP_UPDATE_DB_ERROR);
+                            }
+                        }
+                    }
+                }
+                for user_id in &egress_update_user_ids {
                     update_egress_user_weight(ctx, *user_id, updated_group.bandwidth_weight);
                 }
 
@@ -568,6 +591,7 @@ mod tests {
     use crate::db;
     use crate::egress::task::EgressSettingsCommand;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+    use crate::transfers::registry::{TransferDirection, TransferRegistration};
 
     async fn add_online_group_member(
         test_ctx: &mut crate::handlers::testing::TestContext,
@@ -638,6 +662,44 @@ mod tests {
             })
             .await
             .unwrap();
+
+        user.id
+    }
+
+    async fn add_transfer_only_group_member(
+        test_ctx: &mut crate::handlers::testing::TestContext,
+        username: &str,
+        group_id: i64,
+        bandwidth_weight_override: Option<u16>,
+    ) -> i64 {
+        let user = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username,
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group_id),
+                revokes: &[],
+                bandwidth_weight: bandwidth_weight_override,
+            })
+            .await
+            .unwrap();
+
+        let (_info, _rx) = test_ctx.transfer_registry.register(TransferRegistration {
+            user_id: user.id,
+            peer_addr: test_ctx.peer_addr,
+            nickname: username.to_string(),
+            username: username.to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/files/test.bin".to_string(),
+            total_size: 1024,
+        });
 
         user.id
     }
@@ -2880,6 +2942,152 @@ mod tests {
             test_ctx.egress_settings_rx.try_recv().is_err(),
             "override members should not receive egress updates for inherited group weight changes"
         );
+    }
+
+    #[tokio::test]
+    async fn test_group_update_bandwidth_cascade_updates_transfer_only_inheritors() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                5,
+            )
+            .await
+            .unwrap();
+
+        let inheritor_id =
+            add_transfer_only_group_member(&mut test_ctx, "bob", group.id, None).await;
+        let override_id =
+            add_transfer_only_group_member(&mut test_ctx, "carol", group.id, Some(100)).await;
+
+        let result = handle_group_update(
+            group.id,
+            None,
+            None,
+            None,
+            Some(13),
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(success, "group update should succeed: {:?}", error);
+            }
+            other => panic!("Expected GroupUpdateResponse, got {:?}", other),
+        }
+
+        match test_ctx.egress_settings_rx.try_recv() {
+            Ok(EgressSettingsCommand::UpdateUserWeight { user_id, weight }) => {
+                assert_eq!(user_id, inheritor_id);
+                assert_eq!(weight, 13);
+                assert_ne!(user_id, override_id);
+            }
+            _ => panic!("Expected egress UpdateUserWeight command"),
+        }
+        assert!(
+            test_ctx.egress_settings_rx.try_recv().is_err(),
+            "transfer override members should not receive inherited group weight updates"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_group_update_transfer_inheritors_use_current_db_membership() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let old_group = test_ctx
+            .db
+            .groups
+            .create_group("OldStaff", false, &Permissions::new(), 5)
+            .await
+            .unwrap();
+        let new_group = test_ctx
+            .db
+            .groups
+            .create_group("NewStaff", false, &Permissions::new(), 7)
+            .await
+            .unwrap();
+        let bob_id = add_transfer_only_group_member(&mut test_ctx, "bob", old_group.id, None).await;
+
+        test_ctx
+            .db
+            .users
+            .update_user(db::UpdateUserParams {
+                username: "bob",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: Some(new_group.id),
+                bandwidth_weight: None,
+                inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: db::PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
+            })
+            .await
+            .unwrap();
+
+        let result = handle_group_update(
+            old_group.id,
+            None,
+            None,
+            None,
+            Some(11),
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(success, "old group update should succeed: {:?}", error);
+            }
+            other => panic!("Expected GroupUpdateResponse, got {:?}", other),
+        }
+        assert!(
+            test_ctx.egress_settings_rx.try_recv().is_err(),
+            "old group update must not target a transfer whose user moved away"
+        );
+
+        let result = handle_group_update(
+            new_group.id,
+            None,
+            None,
+            None,
+            Some(17),
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(success, "new group update should succeed: {:?}", error);
+            }
+            other => panic!("Expected GroupUpdateResponse, got {:?}", other),
+        }
+
+        match test_ctx.egress_settings_rx.try_recv() {
+            Ok(EgressSettingsCommand::UpdateUserWeight { user_id, weight }) => {
+                assert_eq!(user_id, bob_id);
+                assert_eq!(weight, 17);
+            }
+            _ => panic!("Expected egress UpdateUserWeight command for new group"),
+        }
     }
 
     /// Regression: when a single GroupUpdate changes BOTH name and

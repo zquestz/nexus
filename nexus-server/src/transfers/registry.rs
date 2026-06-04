@@ -2,7 +2,7 @@
 //! their IP is banned, so no lock is held during I/O. Stored `ActiveTransfer`
 //! metadata also feeds the connection monitor.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -300,6 +300,23 @@ impl TransferRegistry {
         }
     }
 
+    pub fn has_active_user(&self, user_id: i64) -> bool {
+        self.transfers
+            .lock()
+            .expect(ERR_TRANSFER_REGISTRY_LOCK_POISONED)
+            .values()
+            .any(|info| info.user_id == user_id)
+    }
+
+    pub fn active_user_ids(&self) -> HashSet<i64> {
+        self.transfers
+            .lock()
+            .expect(ERR_TRANSFER_REGISTRY_LOCK_POISONED)
+            .values()
+            .map(|info| info.user_id)
+            .collect()
+    }
+
     /// Cloned Arc snapshot of all active transfers; safe to call mid-transfer.
     pub fn snapshot(&self) -> Vec<Arc<ActiveTransfer>> {
         self.transfers
@@ -512,6 +529,55 @@ mod tests {
         assert_eq!(new_info.nickname, "alice2");
         assert_eq!(new_info.username, "alice2");
         assert!(new_info.is_admin);
+    }
+
+    #[test]
+    fn test_active_user_ids_deduplicates_active_transfers() {
+        let registry = TransferRegistry::new();
+        let addr = make_test_addr(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1)));
+
+        let (_info1, _rx1) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr: addr,
+            nickname: "alice".to_string(),
+            username: "alice".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/files/a1.bin".to_string(),
+            total_size: 1024,
+        });
+        let (_info2, _rx2) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr: addr,
+            nickname: "alice".to_string(),
+            username: "alice".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Upload,
+            path: "/files/a2.bin".to_string(),
+            total_size: 1024,
+        });
+        let (_info3, _rx3) = registry.register(TransferRegistration {
+            user_id: 2,
+            peer_addr: addr,
+            nickname: "bob".to_string(),
+            username: "bob".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/files/b.bin".to_string(),
+            total_size: 1024,
+        });
+
+        assert!(registry.has_active_user(1));
+        assert!(registry.has_active_user(2));
+        assert!(!registry.has_active_user(3));
+
+        let active = registry.active_user_ids();
+        assert_eq!(active.len(), 2);
+        assert!(active.contains(&1));
+        assert!(active.contains(&2));
     }
 
     #[test]
