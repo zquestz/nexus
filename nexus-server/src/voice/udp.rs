@@ -406,6 +406,8 @@ impl VoiceUdpServer {
                     continue;
                 };
 
+                self.remove_timed_out_voice_session(addr).await;
+
                 let (conn, raw_conn) = client.connection_handles();
 
                 debug!(ip = %addr, "{}", LOG_VOICE_CLEANUP_TIMEOUT);
@@ -447,6 +449,36 @@ impl VoiceUdpServer {
                 }
             }
         }
+    }
+
+    async fn remove_timed_out_voice_session(&self, addr: SocketAddr) {
+        // Hold the user-state read lock across removal + notifications so a
+        // concurrent rename cannot make VoiceUserLeft carry a stale nickname.
+        let _user_state = self.user_manager.read_user_state().await;
+        let Some(info) = self.registry.remove_by_udp_addr(addr).await else {
+            return;
+        };
+
+        let leaving_user_tx = self
+            .user_manager
+            .get_user_by_session_id(info.session.session_id)
+            .await
+            .map(|u| u.tx.clone());
+
+        send_voice_leave_notifications(
+            &info,
+            leaving_user_tx.as_ref(),
+            &self.user_manager,
+            &self.channel_manager,
+        )
+        .await;
+
+        debug!(
+            user = %info.session.nickname,
+            ip = %addr,
+            "{}",
+            LOG_VOICE_TIMED_OUT_SESSION
+        );
     }
 }
 

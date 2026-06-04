@@ -1,6 +1,7 @@
 //! In-memory registry of active voice sessions on the server.
 
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use nexus_common::names::fold_name;
@@ -114,6 +115,27 @@ impl VoiceRegistry {
             } else {
                 return None;
             }
+        };
+
+        Some(self.compute_leave_info(session).await)
+    }
+
+    /// `None` when no session is bound to the UDP remote address.
+    pub async fn remove_by_udp_addr(&self, addr: SocketAddr) -> Option<VoiceLeaveInfo> {
+        let session = {
+            let mut sessions = self.sessions.write().await;
+            let mut id_to_token = self.session_id_to_token.write().await;
+            let mut target_to_tokens = self.target_to_tokens.write().await;
+
+            let token = sessions
+                .iter()
+                .find_map(|(token, session)| (session.udp_addr == Some(addr)).then_some(*token))?;
+
+            let session = sessions.remove(&token)?;
+
+            id_to_token.remove(&session.session_id);
+            remove_from_target_index(&mut target_to_tokens, &session);
+            session
         };
 
         Some(self.compute_leave_info(session).await)
@@ -493,6 +515,70 @@ mod tests {
 
         assert!(registry.get_by_token(token).await.is_none());
         assert!(registry.get_by_session_id(1).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_remove_by_udp_addr() {
+        let registry = VoiceRegistry::new();
+        let session = create_test_session("alice", "#general", 1);
+        let token = session.token;
+        let addr: std::net::SocketAddr = "192.168.1.1:12345".parse().unwrap();
+
+        registry
+            .add(session)
+            .await
+            .expect("test setup: session_id is unique");
+        assert!(registry.set_udp_addr(token, addr).await);
+
+        let removed = registry.remove_by_udp_addr(addr).await;
+        assert!(removed.is_some());
+        assert_eq!(removed.unwrap().session.nickname, "alice");
+
+        assert!(registry.get_by_token(token).await.is_none());
+        assert!(registry.get_by_session_id(1).await.is_none());
+        assert!(registry.remove_by_udp_addr(addr).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_remove_by_udp_addr_broadcasts_only_for_last_nickname_session() {
+        let registry = VoiceRegistry::new();
+        let first = create_test_session("alice", "#general", 1);
+        let first_token = first.token;
+        let second = create_test_session("alice", "#general", 2);
+        let second_token = second.token;
+        let first_addr: std::net::SocketAddr = "192.168.1.1:12345".parse().unwrap();
+        let second_addr: std::net::SocketAddr = "192.168.1.2:12345".parse().unwrap();
+
+        registry
+            .add(first)
+            .await
+            .expect("test setup: session_id 1 is unique");
+        registry
+            .add(second)
+            .await
+            .expect("test setup: session_id 2 is unique");
+        assert!(registry.set_udp_addr(first_token, first_addr).await);
+        assert!(registry.set_udp_addr(second_token, second_addr).await);
+
+        let first_removed = registry
+            .remove_by_udp_addr(first_addr)
+            .await
+            .expect("first session removed");
+        assert!(
+            !first_removed.should_broadcast,
+            "another alice session is still in the same voice target"
+        );
+        assert!(registry.get_by_session_id(2).await.is_some());
+
+        let second_removed = registry
+            .remove_by_udp_addr(second_addr)
+            .await
+            .expect("second session removed");
+        assert!(
+            second_removed.should_broadcast,
+            "last alice session leaving should notify peers"
+        );
+        assert!(registry.get_by_session_id(2).await.is_none());
     }
 
     #[tokio::test]
