@@ -127,10 +127,6 @@ pub const SESSION_CONTROL_QUEUE_CAPACITY: usize = 1;
 /// Upper bound for one BBS protocol message write. This is intentionally high
 /// enough for very slow links while still bounding peers that stop reading.
 pub const BBS_WRITE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30 * 60);
-/// Timeout for dark egress lifecycle commands. Egress is non-fatal in the
-/// registration-only wiring chunk, so stalled lifecycle commands are logged
-/// and the live connection continues.
-pub const EGRESS_COMMAND_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// WF2Q+ scheduler chunk size in bytes.
 pub const CONFIG_KEY_SCHEDULER_CHUNK_SIZE: &str = "scheduler_chunk_size";
@@ -355,17 +351,11 @@ pub const LOG_EGRESS_CHUNK_SIZE_INVALID: &str =
     "Configured egress scheduler chunk size is invalid; using default";
 pub const LOG_EGRESS_REGISTER_FAILED: &str = "Egress registration failed";
 pub const LOG_EGRESS_REGISTER_REJECTED: &str = "Egress registration rejected";
-pub const LOG_EGRESS_REGISTER_TIMEOUT: &str = "Egress registration timed out";
 pub const LOG_EGRESS_UNREGISTER_FAILED: &str = "Egress unregister failed";
-pub const LOG_EGRESS_UNREGISTER_TIMEOUT: &str = "Egress unregister timed out";
 pub const LOG_EGRESS_TRANSITION_FAILED: &str = "Egress user transition failed";
-pub const LOG_EGRESS_TRANSITION_TIMEOUT: &str = "Egress user transition timed out";
 pub const LOG_EGRESS_RATE_UPDATE_FAILED: &str = "Egress rate update failed";
-pub const LOG_EGRESS_RATE_UPDATE_TIMEOUT: &str = "Egress rate update timed out";
 pub const LOG_EGRESS_CHUNK_SIZE_UPDATE_FAILED: &str = "Egress chunk-size update failed";
-pub const LOG_EGRESS_CHUNK_SIZE_UPDATE_TIMEOUT: &str = "Egress chunk-size update timed out";
 pub const LOG_EGRESS_USER_WEIGHT_UPDATE_FAILED: &str = "Egress user weight update failed";
-pub const LOG_EGRESS_USER_WEIGHT_UPDATE_TIMEOUT: &str = "Egress user weight update timed out";
 pub const LOG_EGRESS_STAGE_FAILED: &str = "Egress message staging failed";
 pub const LOG_EGRESS_DISPATCH_CLOSED: &str = "Egress dispatch channel closed";
 pub const LOG_EGRESS_DISPATCH_WRONG_CONNECTION: &str =

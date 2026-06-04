@@ -30,7 +30,9 @@ use super::{DirectWriter, HandlerContext};
 use crate::channels::ChannelManager;
 use crate::connection_tracker::ConnectionTracker;
 use crate::db::{CreateUserParams, Database, Permissions};
-use crate::egress::task::{DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY, EgressCommandRx, EgressHandle};
+use crate::egress::task::{
+    DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY, EgressCommandRx, EgressHandle, EgressSettingsCommandRx,
+};
 use crate::files::{FileActivityMap, FileIndex};
 use crate::ip_rule_cache::{IpRuleCache, IpRuleState};
 use crate::scheduler::ConnectionId;
@@ -85,7 +87,8 @@ pub struct TestContext {
     pub egress_connection_id: ConnectionId,
     pub peer_addr: SocketAddr,
     pub rx: SessionRx,
-    pub egress_command_rx: EgressCommandRx,
+    pub _egress_command_rx: EgressCommandRx,
+    pub egress_settings_rx: EgressSettingsCommandRx,
     pub message_id: MessageId,
     pub file_root: Option<&'static Path>,
     pub connection_tracker: Arc<ConnectionTracker>,
@@ -176,7 +179,8 @@ pub async fn create_test_context() -> TestContext {
     let (tx, rx) = ConnectionWriter::channel();
     let (egress_tx, egress_command_rx) =
         tokio::sync::mpsc::channel(DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY);
-    let egress = EgressHandle::new(egress_tx);
+    let (egress_settings_tx, egress_settings_rx) = tokio::sync::mpsc::unbounded_channel();
+    let egress = EgressHandle::new(egress_tx, egress_settings_tx);
     let egress_connection_id = ConnectionId::new(1);
 
     let message_id = MessageId::from_bytes(b"000000000000").expect("valid hex test message ID");
@@ -219,7 +223,8 @@ pub async fn create_test_context() -> TestContext {
         egress_connection_id,
         peer_addr,
         rx,
-        egress_command_rx,
+        _egress_command_rx: egress_command_rx,
+        egress_settings_rx,
         message_id,
         file_root: None,
         connection_tracker,

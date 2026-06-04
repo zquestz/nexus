@@ -131,12 +131,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::constants::{
-    EGRESS_COMMAND_TIMEOUT, ERR_CHANNEL_CLOSED, ERR_EGRESS_STAGE_FAILED,
-    LOG_EGRESS_USER_WEIGHT_UPDATE_FAILED, LOG_EGRESS_USER_WEIGHT_UPDATE_TIMEOUT,
+    ERR_CHANNEL_CLOSED, ERR_EGRESS_STAGE_FAILED, LOG_EGRESS_USER_WEIGHT_UPDATE_FAILED,
 };
 
 use tokio::io::AsyncWrite;
-use tokio::time;
 use tracing::warn;
 
 use nexus_common::framing::{FrameWriter, MessageId};
@@ -335,19 +333,10 @@ where
     }
 }
 
-pub(super) async fn update_egress_user_weight<W>(
-    ctx: &HandlerContext<'_, W>,
-    user_id: i64,
-    weight: u16,
-) {
-    match time::timeout(
-        EGRESS_COMMAND_TIMEOUT,
-        ctx.egress.update_user_weight(user_id, weight),
-    )
-    .await
-    {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => {
+pub(super) fn update_egress_user_weight<W>(ctx: &HandlerContext<'_, W>, user_id: i64, weight: u16) {
+    match ctx.egress.update_user_weight(user_id, weight) {
+        Ok(()) => {}
+        Err(e) => {
             warn!(
                 ip = %ctx.peer_addr,
                 user_id,
@@ -355,15 +344,6 @@ pub(super) async fn update_egress_user_weight<W>(
                 err = ?e,
                 "{}",
                 LOG_EGRESS_USER_WEIGHT_UPDATE_FAILED
-            );
-        }
-        Err(_) => {
-            warn!(
-                ip = %ctx.peer_addr,
-                user_id,
-                weight,
-                "{}",
-                LOG_EGRESS_USER_WEIGHT_UPDATE_TIMEOUT
             );
         }
     }

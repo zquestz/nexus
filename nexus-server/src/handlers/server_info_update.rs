@@ -2,7 +2,7 @@
 
 use std::{io, num::NonZeroUsize};
 
-use tokio::{io::AsyncWrite, time};
+use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use nexus_common::names::fold_name;
@@ -29,15 +29,14 @@ use super::{
     err_server_name_too_long,
 };
 use crate::constants::{
-    EGRESS_COMMAND_TIMEOUT, HANDLER_SERVER_INFO_UPDATE, LOG_EGRESS_CHUNK_SIZE_UPDATE_FAILED,
-    LOG_EGRESS_CHUNK_SIZE_UPDATE_TIMEOUT, LOG_EGRESS_RATE_UPDATE_FAILED,
-    LOG_EGRESS_RATE_UPDATE_TIMEOUT, LOG_SERVER_INFO_ADMIN_REQUIRED,
-    LOG_SERVER_INFO_CHANNEL_CREATE_FAILED, LOG_SERVER_INFO_CHANNEL_DELETE_FAILED,
-    LOG_SERVER_INFO_CHANNEL_READ_FAILED, LOG_SERVER_INFO_DB_AUTO_JOIN, LOG_SERVER_INFO_DB_BEGIN,
-    LOG_SERVER_INFO_DB_CHAT_BURST, LOG_SERVER_INFO_DB_CHAT_RATE, LOG_SERVER_INFO_DB_COMMIT,
-    LOG_SERVER_INFO_DB_CONNECTIONS, LOG_SERVER_INFO_DB_DESC, LOG_SERVER_INFO_DB_IMAGE,
-    LOG_SERVER_INFO_DB_MAX_OUTBOUND_RATE, LOG_SERVER_INFO_DB_NAME, LOG_SERVER_INFO_DB_PASSWORD,
-    LOG_SERVER_INFO_DB_PERSISTENT, LOG_SERVER_INFO_DB_PUBLIC_ADDRESS, LOG_SERVER_INFO_DB_REINDEX,
+    HANDLER_SERVER_INFO_UPDATE, LOG_EGRESS_CHUNK_SIZE_UPDATE_FAILED, LOG_EGRESS_RATE_UPDATE_FAILED,
+    LOG_SERVER_INFO_ADMIN_REQUIRED, LOG_SERVER_INFO_CHANNEL_CREATE_FAILED,
+    LOG_SERVER_INFO_CHANNEL_DELETE_FAILED, LOG_SERVER_INFO_CHANNEL_READ_FAILED,
+    LOG_SERVER_INFO_DB_AUTO_JOIN, LOG_SERVER_INFO_DB_BEGIN, LOG_SERVER_INFO_DB_CHAT_BURST,
+    LOG_SERVER_INFO_DB_CHAT_RATE, LOG_SERVER_INFO_DB_COMMIT, LOG_SERVER_INFO_DB_CONNECTIONS,
+    LOG_SERVER_INFO_DB_DESC, LOG_SERVER_INFO_DB_IMAGE, LOG_SERVER_INFO_DB_MAX_OUTBOUND_RATE,
+    LOG_SERVER_INFO_DB_NAME, LOG_SERVER_INFO_DB_PASSWORD, LOG_SERVER_INFO_DB_PERSISTENT,
+    LOG_SERVER_INFO_DB_PUBLIC_ADDRESS, LOG_SERVER_INFO_DB_REINDEX,
     LOG_SERVER_INFO_DB_SCHEDULER_CHUNK_SIZE, LOG_SERVER_INFO_DB_TRANSFERS,
     LOG_SERVER_INFO_NOT_LOGGED_IN, LOG_SERVER_INFO_SUCCESS,
 };
@@ -67,15 +66,10 @@ enum StageFail {
     Channel(&'static str, String, String),
 }
 
-async fn update_egress_rate<W>(ctx: &HandlerContext<'_, W>, bytes_per_second: u64) {
-    match time::timeout(
-        EGRESS_COMMAND_TIMEOUT,
-        ctx.egress.set_max_outbound_rate(bytes_per_second),
-    )
-    .await
-    {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => {
+fn update_egress_rate<W>(ctx: &HandlerContext<'_, W>, bytes_per_second: u64) {
+    match ctx.egress.set_max_outbound_rate(bytes_per_second) {
+        Ok(()) => {}
+        Err(e) => {
             warn!(
                 ip = %ctx.peer_addr,
                 rate = bytes_per_second,
@@ -84,40 +78,19 @@ async fn update_egress_rate<W>(ctx: &HandlerContext<'_, W>, bytes_per_second: u6
                 LOG_EGRESS_RATE_UPDATE_FAILED
             );
         }
-        Err(_) => {
-            warn!(
-                ip = %ctx.peer_addr,
-                rate = bytes_per_second,
-                "{}",
-                LOG_EGRESS_RATE_UPDATE_TIMEOUT
-            );
-        }
     }
 }
 
-async fn update_egress_chunk_size<W>(ctx: &HandlerContext<'_, W>, chunk_size: NonZeroUsize) {
-    match time::timeout(
-        EGRESS_COMMAND_TIMEOUT,
-        ctx.egress.set_chunk_size(chunk_size),
-    )
-    .await
-    {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => {
+fn update_egress_chunk_size<W>(ctx: &HandlerContext<'_, W>, chunk_size: NonZeroUsize) {
+    match ctx.egress.set_chunk_size(chunk_size) {
+        Ok(()) => {}
+        Err(e) => {
             warn!(
                 ip = %ctx.peer_addr,
                 chunk_size = chunk_size.get(),
                 err = ?e,
                 "{}",
                 LOG_EGRESS_CHUNK_SIZE_UPDATE_FAILED
-            );
-        }
-        Err(_) => {
-            warn!(
-                ip = %ctx.peer_addr,
-                chunk_size = chunk_size.get(),
-                "{}",
-                LOG_EGRESS_CHUNK_SIZE_UPDATE_TIMEOUT
             );
         }
     }
@@ -577,12 +550,12 @@ where
             ctx.flood_config.set_rate(rate);
         }
         if let Some(rate) = max_outbound_rate {
-            update_egress_rate(ctx, rate).await;
+            update_egress_rate(ctx, rate);
         }
         if let Some(size) = scheduler_chunk_size
             && let Some(chunk_size) = NonZeroUsize::new(size as usize)
         {
-            update_egress_chunk_size(ctx, chunk_size).await;
+            update_egress_chunk_size(ctx, chunk_size);
         }
         if let Some(init) = channels_to_init {
             ctx.channel_manager
@@ -627,7 +600,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::egress::task::EgressCommand;
+    use crate::egress::task::EgressSettingsCommand;
     use crate::handlers::testing::{
         DEFAULT_TEST_LOCALE, create_test_context, login_user, read_server_message,
     };
@@ -2343,8 +2316,8 @@ mod tests {
         let stored = test_ctx.db.config.get_all().await.max_outbound_rate;
         assert_eq!(stored, 12_500_000);
 
-        match test_ctx.egress_command_rx.try_recv() {
-            Ok(EgressCommand::SetMaxOutboundRate { bytes_per_second }) => {
+        match test_ctx.egress_settings_rx.try_recv() {
+            Ok(EgressSettingsCommand::SetMaxOutboundRate { bytes_per_second }) => {
                 assert_eq!(bytes_per_second, 12_500_000);
             }
             _ => panic!("Expected SetMaxOutboundRate egress command"),
@@ -2387,8 +2360,8 @@ mod tests {
         let stored = test_ctx.db.config.get_all().await.scheduler_chunk_size;
         assert_eq!(stored, 4096);
 
-        match test_ctx.egress_command_rx.try_recv() {
-            Ok(EgressCommand::SetChunkSize { chunk_size }) => {
+        match test_ctx.egress_settings_rx.try_recv() {
+            Ok(EgressSettingsCommand::SetChunkSize { chunk_size }) => {
                 assert_eq!(chunk_size.get(), 4096);
             }
             _ => panic!("Expected SetChunkSize egress command"),
@@ -2399,7 +2372,7 @@ mod tests {
     async fn test_server_info_update_egress_command_failure_is_non_fatal() {
         let mut test_ctx = create_test_context().await;
         let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
-        test_ctx.egress_command_rx.close();
+        test_ctx.egress_settings_rx.close();
 
         let request = ServerInfoUpdateRequest {
             name: None,

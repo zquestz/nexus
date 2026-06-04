@@ -105,20 +105,18 @@ where
         mpsc::channel(egress::EGRESS_DISPATCH_QUEUE_CAPACITY);
     let mut egress_registered = false;
 
-    match time::timeout(
-        EGRESS_COMMAND_TIMEOUT,
-        egress.register_anon(
+    match egress
+        .register_anon(
             egress_connection_id,
             ConnectionClass::Protocol,
             egress_dispatch_tx,
-        ),
-    )
-    .await
+        )
+        .await
     {
-        Ok(Ok(true)) => {
+        Ok(true) => {
             egress_registered = true;
         }
-        Ok(Ok(false)) => {
+        Ok(false) => {
             warn!(
                 ip = %peer_addr,
                 egress_connection_id = egress_connection_id.get(),
@@ -126,21 +124,13 @@ where
                 LOG_EGRESS_REGISTER_REJECTED
             );
         }
-        Ok(Err(e)) => {
+        Err(e) => {
             warn!(
                 ip = %peer_addr,
                 egress_connection_id = egress_connection_id.get(),
                 err = ?e,
                 "{}",
                 LOG_EGRESS_REGISTER_FAILED
-            );
-        }
-        Err(_) => {
-            warn!(
-                ip = %peer_addr,
-                egress_connection_id = egress_connection_id.get(),
-                "{}",
-                LOG_EGRESS_REGISTER_TIMEOUT
             );
         }
     }
@@ -152,28 +142,15 @@ where
     )
     .await;
 
-    match time::timeout(
-        EGRESS_COMMAND_TIMEOUT,
-        egress.unregister(egress_connection_id),
-    )
-    .await
-    {
-        Ok(Ok(())) => {}
-        Ok(Err(e)) => {
+    match egress.unregister(egress_connection_id).await {
+        Ok(()) => {}
+        Err(e) => {
             warn!(
                 ip = %peer_addr,
                 egress_connection_id = egress_connection_id.get(),
                 err = ?e,
                 "{}",
                 LOG_EGRESS_UNREGISTER_FAILED
-            );
-        }
-        Err(_) => {
-            warn!(
-                ip = %peer_addr,
-                egress_connection_id = egress_connection_id.get(),
-                "{}",
-                LOG_EGRESS_UNREGISTER_TIMEOUT
             );
         }
     }
@@ -1459,7 +1436,6 @@ mod tests {
         connection
             .egress
             .set_max_outbound_rate(32)
-            .await
             .expect("rate update should queue");
 
         send_client_message_with_id(&mut connection.writer, &ClientMessage::Ping, ping_id)

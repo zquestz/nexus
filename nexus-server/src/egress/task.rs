@@ -12,11 +12,14 @@ use crate::egress::{
 use crate::scheduler::{ConnectionClass, ConnectionId};
 
 pub const DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY: usize = 1024;
+const EGRESS_SETTINGS_BATCH_LIMIT: usize = 128;
 const EGRESS_RATE_BURST_CHUNKS: usize = 4;
 const NANOS_PER_SECOND: u128 = 1_000_000_000;
 
 pub type EgressCommandTx = mpsc::Sender<EgressCommand>;
 pub type EgressCommandRx = mpsc::Receiver<EgressCommand>;
+pub type EgressSettingsCommandTx = mpsc::UnboundedSender<EgressSettingsCommand>;
+pub type EgressSettingsCommandRx = mpsc::UnboundedReceiver<EgressSettingsCommand>;
 pub type StageMessageResult = Result<usize, StageMessageError>;
 pub type StageFrameResult = Result<usize, EgressEnqueueError>;
 
@@ -65,6 +68,12 @@ pub enum EgressCommand {
         connection_id: ConnectionId,
         blocked: bool,
     },
+}
+
+pub enum EgressSettingsCommand {
+    // This may live on the settings queue because registration is still a
+    // request/reply command on the bounded queue and is awaited before login.
+    // Do not make registration fire-and-forget without reworking this ordering.
     TransitionToUser {
         connection_id: ConnectionId,
         user_id: i64,
@@ -85,6 +94,7 @@ pub enum EgressCommand {
 #[derive(Clone)]
 pub struct EgressHandle {
     tx: EgressCommandTx,
+    settings_tx: EgressSettingsCommandTx,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -94,8 +104,8 @@ pub enum EgressTaskError {
 }
 
 impl EgressHandle {
-    pub fn new(tx: EgressCommandTx) -> Self {
-        Self { tx }
+    pub fn new(tx: EgressCommandTx, settings_tx: EgressSettingsCommandTx) -> Self {
+        Self { tx, settings_tx }
     }
 
     pub fn sender(&self) -> &EgressCommandTx {
@@ -213,39 +223,29 @@ impl EgressHandle {
         .await
     }
 
-    pub async fn transition_to_user(
+    pub fn transition_to_user(
         &self,
         connection_id: ConnectionId,
         user_id: i64,
         weight: u16,
     ) -> Result<(), EgressTaskError> {
-        self.send(EgressCommand::TransitionToUser {
+        self.send_settings(EgressSettingsCommand::TransitionToUser {
             connection_id,
             user_id,
             weight,
         })
-        .await
     }
 
-    pub async fn update_user_weight(
-        &self,
-        user_id: i64,
-        weight: u16,
-    ) -> Result<(), EgressTaskError> {
-        self.send(EgressCommand::UpdateUserWeight { user_id, weight })
-            .await
+    pub fn update_user_weight(&self, user_id: i64, weight: u16) -> Result<(), EgressTaskError> {
+        self.send_settings(EgressSettingsCommand::UpdateUserWeight { user_id, weight })
     }
 
-    pub async fn set_max_outbound_rate(
-        &self,
-        bytes_per_second: u64,
-    ) -> Result<(), EgressTaskError> {
-        self.send(EgressCommand::SetMaxOutboundRate { bytes_per_second })
-            .await
+    pub fn set_max_outbound_rate(&self, bytes_per_second: u64) -> Result<(), EgressTaskError> {
+        self.send_settings(EgressSettingsCommand::SetMaxOutboundRate { bytes_per_second })
     }
 
-    pub async fn set_chunk_size(&self, chunk_size: NonZeroUsize) -> Result<(), EgressTaskError> {
-        self.send(EgressCommand::SetChunkSize { chunk_size }).await
+    pub fn set_chunk_size(&self, chunk_size: NonZeroUsize) -> Result<(), EgressTaskError> {
+        self.send_settings(EgressSettingsCommand::SetChunkSize { chunk_size })
     }
 
     async fn request<T>(
@@ -263,31 +263,52 @@ impl EgressHandle {
             .await
             .map_err(|_| EgressTaskError::Closed)
     }
+
+    fn send_settings(&self, command: EgressSettingsCommand) -> Result<(), EgressTaskError> {
+        self.settings_tx
+            .send(command)
+            .map_err(|_| EgressTaskError::Closed)
+    }
 }
 
 pub struct EgressTask {
     manager: EgressManager,
     rx: EgressCommandRx,
+    settings_rx: EgressSettingsCommandRx,
     rate_limiter: EgressRateLimiter,
 }
 
 impl EgressTask {
-    pub fn new(manager: EgressManager, rx: EgressCommandRx) -> Self {
-        Self::with_rate(manager, rx, 0)
+    pub fn new(
+        manager: EgressManager,
+        rx: EgressCommandRx,
+        settings_rx: EgressSettingsCommandRx,
+    ) -> Self {
+        Self::with_rate(manager, rx, settings_rx, 0)
     }
 
-    pub fn with_rate(manager: EgressManager, rx: EgressCommandRx, bytes_per_second: u64) -> Self {
+    pub fn with_rate(
+        manager: EgressManager,
+        rx: EgressCommandRx,
+        settings_rx: EgressSettingsCommandRx,
+        bytes_per_second: u64,
+    ) -> Self {
         let rate_limiter = EgressRateLimiter::new(bytes_per_second, manager.chunk_size());
         Self {
             manager,
             rx,
+            settings_rx,
             rate_limiter,
         }
     }
 
     pub fn channel(manager: EgressManager) -> (EgressHandle, Self) {
         let (tx, rx) = mpsc::channel(DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY);
-        (EgressHandle::new(tx), Self::new(manager, rx))
+        let (settings_tx, settings_rx) = mpsc::unbounded_channel();
+        (
+            EgressHandle::new(tx, settings_tx),
+            Self::new(manager, rx, settings_rx),
+        )
     }
 
     pub fn channel_with_rate(
@@ -295,9 +316,10 @@ impl EgressTask {
         bytes_per_second: u64,
     ) -> (EgressHandle, Self) {
         let (tx, rx) = mpsc::channel(DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY);
+        let (settings_tx, settings_rx) = mpsc::unbounded_channel();
         (
-            EgressHandle::new(tx),
-            Self::with_rate(manager, rx, bytes_per_second),
+            EgressHandle::new(tx, settings_tx),
+            Self::with_rate(manager, rx, settings_rx, bytes_per_second),
         )
     }
 
@@ -306,7 +328,11 @@ impl EgressTask {
         command_capacity: NonZeroUsize,
     ) -> (EgressHandle, Self) {
         let (tx, rx) = mpsc::channel(command_capacity.get());
-        (EgressHandle::new(tx), Self::new(manager, rx))
+        let (settings_tx, settings_rx) = mpsc::unbounded_channel();
+        (
+            EgressHandle::new(tx, settings_tx),
+            Self::new(manager, rx, settings_rx),
+        )
     }
 
     pub fn channel_with_capacity_and_rate(
@@ -315,16 +341,27 @@ impl EgressTask {
         bytes_per_second: u64,
     ) -> (EgressHandle, Self) {
         let (tx, rx) = mpsc::channel(command_capacity.get());
+        let (settings_tx, settings_rx) = mpsc::unbounded_channel();
         (
-            EgressHandle::new(tx),
-            Self::with_rate(manager, rx, bytes_per_second),
+            EgressHandle::new(tx, settings_tx),
+            Self::with_rate(manager, rx, settings_rx, bytes_per_second),
         )
     }
 
     pub async fn run(mut self) {
         let mut dispatch_deferred = false;
+        let mut commands_closed = false;
+        let mut settings_closed = false;
 
         loop {
+            if !settings_closed && !self.drain_settings_batch() {
+                settings_closed = true;
+            }
+
+            if commands_closed && settings_closed {
+                break;
+            }
+
             if dispatch_deferred {
                 let delay = self
                     .rate_limiter
@@ -332,19 +369,38 @@ impl EgressTask {
                     .unwrap_or(Duration::ZERO);
 
                 tokio::select! {
-                    command = self.rx.recv() => {
+                    setting = self.settings_rx.recv(), if !settings_closed => {
+                        match setting {
+                            Some(setting) => self.handle_settings_command(setting),
+                            None => settings_closed = true,
+                        }
+                    }
+                    command = self.rx.recv(), if !commands_closed => {
                         let Some(command) = command else {
-                            break;
+                            commands_closed = true;
+                            dispatch_deferred = self.pump_dispatch().is_rate_limited();
+                            continue;
                         };
                         self.handle_command(command);
                     }
                     () = time::sleep(delay) => {}
                 }
             } else {
-                let Some(command) = self.rx.recv().await else {
-                    break;
-                };
-                self.handle_command(command);
+                tokio::select! {
+                    biased;
+                    setting = self.settings_rx.recv(), if !settings_closed => {
+                        match setting {
+                            Some(setting) => self.handle_settings_command(setting),
+                            None => settings_closed = true,
+                        }
+                    }
+                    command = self.rx.recv(), if !commands_closed => {
+                        match command {
+                            Some(command) => self.handle_command(command),
+                            None => commands_closed = true,
+                        }
+                    }
+                }
             }
 
             dispatch_deferred = self.pump_dispatch().is_rate_limited();
@@ -418,7 +474,12 @@ impl EgressTask {
             } => {
                 self.manager.set_blocked(connection_id, blocked);
             }
-            EgressCommand::TransitionToUser {
+        }
+    }
+
+    fn handle_settings_command(&mut self, command: EgressSettingsCommand) {
+        match command {
+            EgressSettingsCommand::TransitionToUser {
                 connection_id,
                 user_id,
                 weight,
@@ -426,18 +487,30 @@ impl EgressTask {
                 self.manager
                     .transition_to_user(connection_id, user_id, weight);
             }
-            EgressCommand::UpdateUserWeight { user_id, weight } => {
+            EgressSettingsCommand::UpdateUserWeight { user_id, weight } => {
                 self.manager.update_user_weight(user_id, weight);
             }
-            EgressCommand::SetMaxOutboundRate { bytes_per_second } => {
+            EgressSettingsCommand::SetMaxOutboundRate { bytes_per_second } => {
                 self.rate_limiter
                     .set_rate(bytes_per_second, self.manager.chunk_size());
             }
-            EgressCommand::SetChunkSize { chunk_size } => {
+            EgressSettingsCommand::SetChunkSize { chunk_size } => {
                 self.manager.set_chunk_size(chunk_size);
                 self.rate_limiter.set_chunk_size(chunk_size);
             }
         }
+    }
+
+    fn drain_settings_batch(&mut self) -> bool {
+        for _ in 0..EGRESS_SETTINGS_BATCH_LIMIT {
+            match self.settings_rx.try_recv() {
+                Ok(command) => self.handle_settings_command(command),
+                Err(mpsc::error::TryRecvError::Empty) => return true,
+                Err(mpsc::error::TryRecvError::Disconnected) => return false,
+            }
+        }
+
+        true
     }
 
     fn pump_dispatch(&mut self) -> PumpResult {
@@ -907,7 +980,7 @@ mod tests {
                 .await
                 .is_err()
         );
-        handle.set_max_outbound_rate(0).await.unwrap();
+        handle.set_max_outbound_rate(0).unwrap();
         let dispatch = time::timeout(Duration::from_millis(100), dispatch_rx.recv())
             .await
             .unwrap()
@@ -930,7 +1003,7 @@ mod tests {
                 .unwrap()
         );
 
-        handle.set_chunk_size(nonzero(50)).await.unwrap();
+        handle.set_chunk_size(nonzero(50)).unwrap();
         let chunks = handle
             .stage_message(
                 connection,
@@ -948,6 +1021,188 @@ mod tests {
         handle.ack(connection).await.unwrap();
 
         stop_task(handle, task).await;
+    }
+
+    #[test]
+    fn settings_send_does_not_use_bounded_command_capacity() {
+        let (tx, _rx) = mpsc::channel(1);
+        tx.try_send(EgressCommand::Unregister {
+            connection_id: conn(99),
+        })
+        .unwrap();
+        let (settings_tx, _settings_rx) = mpsc::unbounded_channel();
+        let handle = EgressHandle::new(tx, settings_tx);
+
+        handle.set_max_outbound_rate(1024).unwrap();
+        handle.set_chunk_size(nonzero(2048)).unwrap();
+        handle.update_user_weight(42, 9).unwrap();
+        handle.transition_to_user(conn(1), 42, 9).unwrap();
+    }
+
+    #[test]
+    fn settings_transition_then_weight_update_drives_dispatch_share() {
+        let connection = conn(1);
+        let peer = conn(2);
+        let (dispatch_tx, mut dispatch_rx) = dispatch_channel();
+        let mut manager = EgressManager::new(nonzero(100));
+        assert!(manager.register_anon(connection, ConnectionClass::Protocol, dispatch_tx.clone(),));
+        assert!(manager.register(user_registration(peer, 2, dispatch_tx)));
+
+        let (_tx, rx) = mpsc::channel(1);
+        let (settings_tx, settings_rx) = mpsc::unbounded_channel();
+        let mut task = EgressTask::new(manager, rx, settings_rx);
+
+        settings_tx
+            .send(EgressSettingsCommand::TransitionToUser {
+                connection_id: connection,
+                user_id: 1,
+                weight: 1,
+            })
+            .unwrap();
+        settings_tx
+            .send(EgressSettingsCommand::UpdateUserWeight {
+                user_id: 1,
+                weight: 10,
+            })
+            .unwrap();
+        assert!(task.drain_settings_batch());
+
+        task.manager
+            .enqueue_frame(connection, frame_with_chunks(80, 100))
+            .unwrap();
+        task.manager
+            .enqueue_frame(peer, frame_with_chunks(80, 100))
+            .unwrap();
+
+        let mut connection_seen = 0;
+        let mut peer_seen = 0;
+        for _ in 0..80 {
+            match task.manager.dispatch_next() {
+                DispatchOutcome::Dispatched { connection_id, .. } => {
+                    let dispatch = dispatch_rx
+                        .try_recv()
+                        .expect("dispatch should reach the shared receiver");
+                    assert_eq!(dispatch.connection_id, connection_id);
+                    if connection_id == connection {
+                        connection_seen += 1;
+                    } else {
+                        assert_eq!(connection_id, peer);
+                        peer_seen += 1;
+                    }
+                    assert!(task.manager.ack(connection_id));
+                }
+                other => panic!("expected dispatch, got {other:?}"),
+            }
+        }
+
+        assert!(
+            connection_seen > peer_seen * 3,
+            "expected updated 10:1 flow share, got {connection_seen}:{peer_seen}"
+        );
+    }
+
+    #[test]
+    fn settings_update_before_transition_uses_transition_weight() {
+        let connection = conn(1);
+        let peer = conn(2);
+        let (dispatch_tx, mut dispatch_rx) = dispatch_channel();
+        let mut manager = EgressManager::new(nonzero(100));
+        assert!(manager.register_anon(connection, ConnectionClass::Protocol, dispatch_tx.clone(),));
+        assert!(manager.register(user_registration(peer, 2, dispatch_tx)));
+
+        let (_tx, rx) = mpsc::channel(1);
+        let (settings_tx, settings_rx) = mpsc::unbounded_channel();
+        let mut task = EgressTask::new(manager, rx, settings_rx);
+
+        settings_tx
+            .send(EgressSettingsCommand::UpdateUserWeight {
+                user_id: 1,
+                weight: 10,
+            })
+            .unwrap();
+        settings_tx
+            .send(EgressSettingsCommand::TransitionToUser {
+                connection_id: connection,
+                user_id: 1,
+                weight: 10,
+            })
+            .unwrap();
+        assert!(task.drain_settings_batch());
+
+        task.manager
+            .enqueue_frame(connection, frame_with_chunks(80, 100))
+            .unwrap();
+        task.manager
+            .enqueue_frame(peer, frame_with_chunks(80, 100))
+            .unwrap();
+
+        let mut connection_seen = 0;
+        let mut peer_seen = 0;
+        for _ in 0..80 {
+            match task.manager.dispatch_next() {
+                DispatchOutcome::Dispatched { connection_id, .. } => {
+                    let dispatch = dispatch_rx
+                        .try_recv()
+                        .expect("dispatch should reach the shared receiver");
+                    assert_eq!(dispatch.connection_id, connection_id);
+                    if connection_id == connection {
+                        connection_seen += 1;
+                    } else {
+                        assert_eq!(connection_id, peer);
+                        peer_seen += 1;
+                    }
+                    assert!(task.manager.ack(connection_id));
+                }
+                other => panic!("expected dispatch, got {other:?}"),
+            }
+        }
+
+        assert!(
+            connection_seen > peer_seen * 3,
+            "expected transition-applied 10:1 flow share, got {connection_seen}:{peer_seen}"
+        );
+    }
+
+    #[test]
+    fn settings_batch_cap_allows_dispatch_before_remaining_settings() {
+        let connection = conn(1);
+        let (dispatch_tx, mut dispatch_rx) = dispatch_channel();
+        let mut manager = EgressManager::new(nonzero(100));
+        assert!(manager.register_anon(connection, ConnectionClass::Protocol, dispatch_tx));
+        assert_eq!(
+            manager
+                .enqueue_frame(connection, frame_with_chunks(1, 100))
+                .unwrap(),
+            1
+        );
+
+        let (_tx, rx) = mpsc::channel(1);
+        let (settings_tx, settings_rx) = mpsc::unbounded_channel();
+        for _ in 0..EGRESS_SETTINGS_BATCH_LIMIT {
+            settings_tx
+                .send(EgressSettingsCommand::SetMaxOutboundRate {
+                    bytes_per_second: 0,
+                })
+                .unwrap();
+        }
+        settings_tx
+            .send(EgressSettingsCommand::SetChunkSize {
+                chunk_size: nonzero(777),
+            })
+            .unwrap();
+        let mut task = EgressTask::new(manager, rx, settings_rx);
+
+        assert!(task.drain_settings_batch());
+        assert_eq!(task.manager.chunk_size(), nonzero(100));
+        assert_eq!(task.pump_dispatch(), PumpResult::Empty);
+        let dispatch = dispatch_rx
+            .try_recv()
+            .expect("dispatch should progress after one settings batch");
+        assert_eq!(dispatch.connection_id, connection);
+        assert!(task.manager.ack(connection));
+
+        assert!(task.drain_settings_batch());
+        assert_eq!(task.manager.chunk_size(), nonzero(777));
     }
 
     #[test]
@@ -976,7 +1231,8 @@ mod tests {
         );
 
         let (_tx, rx) = mpsc::channel(1);
-        let mut task = EgressTask::with_rate(manager, rx, 1);
+        let (_settings_tx, settings_rx) = mpsc::unbounded_channel();
+        let mut task = EgressTask::with_rate(manager, rx, settings_rx, 1);
 
         let mut heavy_seen = 0;
         let mut light_seen = 0;
@@ -1031,7 +1287,7 @@ mod tests {
         assert!(chunks > 1);
         assert!(dispatch_rx.try_recv().is_err());
 
-        handle.transition_to_user(connection, 42, 5).await.unwrap();
+        handle.transition_to_user(connection, 42, 5).unwrap();
         handle.set_blocked(connection, false).await.unwrap();
 
         let mut reassembled = Vec::new();

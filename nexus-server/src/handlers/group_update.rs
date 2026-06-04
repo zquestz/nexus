@@ -51,7 +51,6 @@ where
     };
 
     // Guard lives only inside this block; all socket sends happen after it.
-    let mut egress_weight_updates = Vec::new();
     let outcome = 'locked: {
         let _state_guard = ctx.user_manager.lock_user_state().await;
         let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
@@ -369,7 +368,7 @@ where
                     HashSet::new()
                 };
                 for user_id in &inheriting_set {
-                    egress_weight_updates.push((*user_id, updated_group.bandwidth_weight));
+                    update_egress_user_weight(ctx, *user_id, updated_group.bandwidth_weight);
                 }
 
                 if name_changed {
@@ -556,10 +555,6 @@ where
         }
     };
 
-    for (user_id, weight) in egress_weight_updates {
-        update_egress_user_weight(ctx, user_id, weight).await;
-    }
-
     dispatch_outcome(outcome, ctx, HANDLER_GROUP_UPDATE).await
 }
 
@@ -571,7 +566,7 @@ mod tests {
     use super::*;
     use crate::channels::JoinPolicy;
     use crate::db;
-    use crate::egress::task::EgressCommand;
+    use crate::egress::task::EgressSettingsCommand;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
 
     async fn add_online_group_member(
@@ -2755,8 +2750,8 @@ mod tests {
             12
         );
 
-        match test_ctx.egress_command_rx.try_recv() {
-            Ok(EgressCommand::UpdateUserWeight { user_id, weight }) => {
+        match test_ctx.egress_settings_rx.try_recv() {
+            Ok(EgressSettingsCommand::UpdateUserWeight { user_id, weight }) => {
                 assert_eq!(user_id, bob.id);
                 assert_eq!(weight, 12);
             }
@@ -2806,8 +2801,8 @@ mod tests {
 
         let mut updates = Vec::new();
         for _ in 0..2 {
-            match test_ctx.egress_command_rx.try_recv() {
-                Ok(EgressCommand::UpdateUserWeight { user_id, weight }) => {
+            match test_ctx.egress_settings_rx.try_recv() {
+                Ok(EgressSettingsCommand::UpdateUserWeight { user_id, weight }) => {
                     updates.push((user_id, weight));
                 }
                 _ => panic!("Expected egress UpdateUserWeight command"),
@@ -2819,7 +2814,7 @@ mod tests {
         expected.sort_unstable();
         assert_eq!(updates, expected);
         assert!(
-            test_ctx.egress_command_rx.try_recv().is_err(),
+            test_ctx.egress_settings_rx.try_recv().is_err(),
             "group cascade should emit exactly one egress update per affected online user"
         );
     }
@@ -2873,8 +2868,8 @@ mod tests {
             other => panic!("Expected GroupUpdateResponse, got {:?}", other),
         }
 
-        match test_ctx.egress_command_rx.try_recv() {
-            Ok(EgressCommand::UpdateUserWeight { user_id, weight }) => {
+        match test_ctx.egress_settings_rx.try_recv() {
+            Ok(EgressSettingsCommand::UpdateUserWeight { user_id, weight }) => {
                 assert_eq!(user_id, inheritor_id);
                 assert_eq!(weight, 13);
                 assert_ne!(user_id, override_id);
@@ -2882,7 +2877,7 @@ mod tests {
             _ => panic!("Expected egress UpdateUserWeight command"),
         }
         assert!(
-            test_ctx.egress_command_rx.try_recv().is_err(),
+            test_ctx.egress_settings_rx.try_recv().is_err(),
             "override members should not receive egress updates for inherited group weight changes"
         );
     }
@@ -3100,7 +3095,7 @@ mod tests {
             "No UserUpdated broadcast when every member's resolved weight is unchanged"
         );
         assert!(
-            test_ctx.egress_command_rx.try_recv().is_err(),
+            test_ctx.egress_settings_rx.try_recv().is_err(),
             "No egress weight update when every member's resolved weight is unchanged"
         );
     }

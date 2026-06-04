@@ -97,7 +97,6 @@ where
     };
 
     // Guard lives only inside this block; all socket sends happen after it.
-    let mut egress_weight_updates = Vec::new();
     let outcome = 'locked: {
         let _state_guard = ctx.user_manager.lock_user_state().await;
         let requesting_user = match ctx
@@ -1470,7 +1469,7 @@ where
                 }
 
                 if egress_weight_changed {
-                    egress_weight_updates.push((updated_account.id, resolved_bandwidth_weight));
+                    update_egress_user_weight(ctx, updated_account.id, resolved_bandwidth_weight);
                 }
 
                 info!(
@@ -1649,10 +1648,6 @@ where
         }
     };
 
-    for (user_id, weight) in egress_weight_updates {
-        update_egress_user_weight(ctx, user_id, weight).await;
-    }
-
     dispatch_outcome(outcome, ctx, HANDLER_USER_UPDATE).await
 }
 
@@ -1714,7 +1709,7 @@ mod tests {
     use super::*;
     use crate::channels::JoinPolicy;
     use crate::db;
-    use crate::egress::task::EgressCommand;
+    use crate::egress::task::EgressSettingsCommand;
     #[allow(unused_imports)]
     use crate::handlers::testing::read_login_response;
     use crate::handlers::testing::*;
@@ -10478,7 +10473,7 @@ mod tests {
             other_msgs
         );
         assert!(
-            test_ctx.egress_command_rx.try_recv().is_err(),
+            test_ctx.egress_settings_rx.try_recv().is_err(),
             "same-resolved bandwidth update should not emit an egress weight update"
         );
     }
@@ -10522,8 +10517,8 @@ mod tests {
             other => panic!("Expected UserUpdateResponse, got {:?}", other),
         }
 
-        match test_ctx.egress_command_rx.try_recv() {
-            Ok(EgressCommand::UpdateUserWeight { user_id, weight }) => {
+        match test_ctx.egress_settings_rx.try_recv() {
+            Ok(EgressSettingsCommand::UpdateUserWeight { user_id, weight }) => {
                 assert_eq!(user_id, bob.user_id);
                 assert_eq!(weight, 200);
             }
@@ -10612,8 +10607,8 @@ mod tests {
             other => panic!("Expected UserUpdateResponse, got {:?}", other),
         }
 
-        match test_ctx.egress_command_rx.try_recv() {
-            Ok(EgressCommand::UpdateUserWeight { user_id, weight }) => {
+        match test_ctx.egress_settings_rx.try_recv() {
+            Ok(EgressSettingsCommand::UpdateUserWeight { user_id, weight }) => {
                 assert_eq!(user_id, bob.id);
                 assert_eq!(weight, 7);
             }
@@ -10645,7 +10640,7 @@ mod tests {
             .get_user_by_session_id(bob_session)
             .await
             .unwrap();
-        test_ctx.egress_command_rx.close();
+        test_ctx.egress_settings_rx.close();
 
         let request = UserUpdateRequest {
             id: bob.user_id,
