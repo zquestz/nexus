@@ -177,15 +177,17 @@ and receive broadcasts until disconnection.
 The BBS protocol version follows [Semantic Versioning](https://semver.org/):
 
 - **Major** - Breaking changes (must match between client and server)
-- **Minor** - New features (client minor ≤ server minor)
+- **Minor** - Pre-1.0 (`0.x`): must match exactly; post-1.0: client minor ≤ server minor
 - **Patch** - Bug fixes (ignored for compatibility)
 
 Current version: `0.8.4`
 
 ## Tracker Protocol Version
 
-The tracker protocol versions independently of the BBS protocol but
-follows the same SemVer rules within its own namespace. See
+The tracker protocol is versioned independently of the BBS protocol but
+follows the same SemVer rules within its own namespace: pre-1.0 minor
+versions must match exactly; post-1.0 clients may connect to servers
+with the same or newer minor version. See
 [Chapter 18](18-trackers.md#protocol-version) for the version exchanged
 on the wire.
 

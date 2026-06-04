@@ -170,7 +170,7 @@ impl VoiceUdpListener {
     }
 
     #[cfg(test)]
-    fn local_addr(&self) -> WebRtcResult<SocketAddr> {
+    pub(super) fn local_addr(&self) -> WebRtcResult<SocketAddr> {
         self.inner.socket.local_addr().map_err(WebRtcError::from)
     }
 

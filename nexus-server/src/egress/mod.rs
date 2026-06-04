@@ -1369,6 +1369,102 @@ mod tests {
     }
 
     #[test]
+    fn streaming_bulk_bbs_priority_and_peer_flow_compose_without_share_multiplication() {
+        let mut manager = manager_with_frame_limit(4, 1);
+        let transfer = conn(1);
+        let bbs = conn(2);
+        let other_user = conn(3);
+        let (transfer_tx, mut transfer_rx) = channel();
+        let (bbs_tx, mut bbs_rx) = channel();
+        let (other_tx, mut other_rx) = channel();
+        let user_id = 42;
+        assert!(manager.register(user_registration_with_class_and_weight(
+            transfer,
+            user_id,
+            ConnectionClass::Bulk,
+            1,
+            transfer_tx,
+        )));
+        assert!(manager.register(user_registration_with_class_and_weight(
+            bbs,
+            user_id,
+            ConnectionClass::Protocol,
+            1,
+            bbs_tx,
+        )));
+        assert!(manager.register(user_registration_with_class_and_weight(
+            other_user,
+            7,
+            ConnectionClass::Protocol,
+            1,
+            other_tx,
+        )));
+
+        let stream_header = frame(b"NX|8|FileData|000000000301|12|");
+        let stream_payload = frame(b"abcdefghijkl");
+        let stream_chunks = manager
+            .begin_stream_frame(transfer, Arc::clone(&stream_header))
+            .unwrap()
+            + manager
+                .stage_stream_chunk(transfer, Arc::clone(&stream_payload))
+                .unwrap()
+            + manager.finish_stream_frame(transfer).unwrap();
+        assert_eq!(stream_chunks, 12);
+
+        assert_eq!(manager.enqueue_priority_frame(bbs, frame(b"pong")), Ok(1));
+        let user_chunks = stream_chunks + 1;
+        assert_eq!(
+            manager.enqueue_frame(other_user, Arc::from(vec![b'o'; user_chunks * 4])),
+            Ok(user_chunks)
+        );
+
+        let mut saw_bbs_priority_before_bulk = false;
+        let mut transfer_bytes = Vec::new();
+        let mut user_count = 0usize;
+        let mut other_count = 0usize;
+        for _ in 0..(user_chunks * 2) {
+            let connection_id = expect_dispatch(&mut manager);
+            if connection_id == bbs {
+                saw_bbs_priority_before_bulk = true;
+                user_count += 1;
+                assert_eq!(bbs_rx.try_recv().unwrap().chunk.as_bytes(), b"pong");
+            } else if connection_id == transfer {
+                assert!(
+                    saw_bbs_priority_before_bulk,
+                    "BBS priority traffic must drain before same-user bulk stream chunks"
+                );
+                user_count += 1;
+                transfer_bytes.extend_from_slice(transfer_rx.try_recv().unwrap().chunk.as_bytes());
+            } else {
+                assert_eq!(connection_id, other_user);
+                other_count += 1;
+                assert_eq!(other_rx.try_recv().unwrap().chunk.as_bytes(), b"oooo");
+            }
+            assert!(manager.ack(connection_id));
+            assert!(
+                user_count.abs_diff(other_count) <= 2,
+                "same-user BBS+bulk flow must not multiply share against a peer flow; running split was {user_count}:{other_count}"
+            );
+        }
+
+        assert!(saw_bbs_priority_before_bulk);
+        assert_eq!(user_count, user_chunks);
+        assert_eq!(other_count, user_chunks);
+        let mut expected_stream = Vec::new();
+        expected_stream.extend_from_slice(stream_header.as_ref());
+        expected_stream.extend_from_slice(stream_payload.as_ref());
+        expected_stream.push(b'\n');
+        assert_eq!(transfer_bytes, expected_stream);
+        assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
+
+        assert_eq!(manager.enqueue_frame(transfer, frame(b"done")), Ok(1));
+        assert_eq!(expect_dispatch(&mut manager), transfer);
+        assert_eq!(transfer_rx.try_recv().unwrap().chunk.as_bytes(), b"done");
+        assert!(manager.ack(transfer));
+        assert_eq!(manager.dispatch_next(), DispatchOutcome::Empty);
+    }
+
+    #[test]
     fn bulk_connections_receive_weighted_share_across_users() {
         let mut manager = manager(4);
         let heavy = conn(1);

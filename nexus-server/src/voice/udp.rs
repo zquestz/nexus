@@ -308,13 +308,34 @@ impl VoiceUdpServer {
         remote_addr: SocketAddr,
         data: &[u8],
     ) -> bool {
-        let Some(packet) = VoicePacketRef::from_bytes(data) else {
-            warn!(ip = %remote_addr, "{}", LOG_VOICE_INVALID_PACKET);
-            return true; // Invalid packet, but keep connection
+        let Some(packet) = Self::parse_packet(remote_addr, data) else {
+            return true;
         };
-
         client.mark_packet_received();
+        self.handle_parsed_packet(remote_addr, &packet).await
+    }
 
+    fn parse_packet<'a>(remote_addr: SocketAddr, data: &'a [u8]) -> Option<VoicePacketRef<'a>> {
+        let packet = VoicePacketRef::from_bytes(data);
+        if packet.is_none() {
+            warn!(ip = %remote_addr, "{}", LOG_VOICE_INVALID_PACKET);
+        }
+        packet
+    }
+
+    #[cfg(test)]
+    async fn handle_packet_for_test(&self, remote_addr: SocketAddr, data: &[u8]) -> bool {
+        let Some(packet) = Self::parse_packet(remote_addr, data) else {
+            return true;
+        };
+        self.handle_parsed_packet(remote_addr, &packet).await
+    }
+
+    async fn handle_parsed_packet(
+        &self,
+        remote_addr: SocketAddr,
+        packet: &VoicePacketRef<'_>,
+    ) -> bool {
         // Validate the token on every packet — the session may have been
         // removed via VoiceLeave since the connection opened.
         let Some(session) = self.registry.get_by_token(packet.token).await else {
@@ -353,7 +374,7 @@ impl VoiceUdpServer {
                     .await
                 {
                     Some(true) => {
-                        self.relay_packet(&packet, &sender_nickname, &target_key)
+                        self.relay_packet(packet, &sender_nickname, &target_key)
                             .await;
                     }
                     Some(false) => {
@@ -608,9 +629,127 @@ fn load_dtls_config(cert_path: &Path, key_path: &Path) -> Result<DtlsConfig, Str
 
 #[cfg(test)]
 mod tests {
-    use nexus_common::voice::{RelayedVoicePacket, VoiceMessageType};
+    use std::any::Any;
+    use std::collections::HashSet;
+    use std::net::SocketAddr;
+    use std::sync::Arc;
+    use std::time::Duration;
 
-    use super::{VoiceControlCommand, VoiceControlHandle, relayed_speaking_stopped_bytes};
+    use dtls::config::Config as DtlsConfig;
+    use nexus_common::voice::{RelayedVoicePacket, VoiceMessageType, VoicePacket};
+    use tokio::net::UdpSocket;
+    use tokio::sync::mpsc;
+    use tokio::time::timeout;
+    use webrtc_util::conn::Conn;
+    use webrtc_util::{Error as WebRtcError, Result as WebRtcResult};
+
+    use crate::db::Permission;
+    use crate::handlers::testing::{create_test_context, login_user};
+    use crate::voice::VoiceSession;
+    use crate::voice::demux::{VoiceUdpConnHandle, VoiceUdpListener};
+
+    use super::{
+        DtlsClient, VoiceControlCommand, VoiceControlHandle, VoiceListener, VoiceUdpServer,
+        relayed_speaking_stopped_bytes,
+    };
+
+    const TEST_TIMEOUT: Duration = Duration::from_millis(500);
+
+    struct RecordingConn {
+        local_addr: SocketAddr,
+        remote_addr: SocketAddr,
+        sent_tx: mpsc::UnboundedSender<Vec<u8>>,
+    }
+
+    #[async_trait::async_trait]
+    impl Conn for RecordingConn {
+        async fn connect(&self, _addr: SocketAddr) -> WebRtcResult<()> {
+            Ok(())
+        }
+
+        async fn recv(&self, _buf: &mut [u8]) -> WebRtcResult<usize> {
+            Err(WebRtcError::ErrUseClosedNetworkConn)
+        }
+
+        async fn recv_from(&self, _buf: &mut [u8]) -> WebRtcResult<(usize, SocketAddr)> {
+            Err(WebRtcError::ErrUseClosedNetworkConn)
+        }
+
+        async fn send(&self, buf: &[u8]) -> WebRtcResult<usize> {
+            self.sent_tx
+                .send(buf.to_vec())
+                .map_err(|_| WebRtcError::ErrUseClosedNetworkConn)?;
+            Ok(buf.len())
+        }
+
+        async fn send_to(&self, buf: &[u8], _target: SocketAddr) -> WebRtcResult<usize> {
+            self.send(buf).await
+        }
+
+        fn local_addr(&self) -> WebRtcResult<SocketAddr> {
+            Ok(self.local_addr)
+        }
+
+        fn remote_addr(&self) -> Option<SocketAddr> {
+            Some(self.remote_addr)
+        }
+
+        async fn close(&self) -> WebRtcResult<()> {
+            Ok(())
+        }
+
+        fn as_any(&self) -> &(dyn Any + Send + Sync) {
+            self
+        }
+    }
+
+    fn client_hello_probe() -> Vec<u8> {
+        vec![22, 0xfe, 0xfd, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]
+    }
+
+    async fn raw_voice_conn_handle() -> VoiceUdpConnHandle {
+        let listener = VoiceUdpListener::bind("127.0.0.1:0".parse().unwrap())
+            .await
+            .expect("bind listener");
+        let client = UdpSocket::bind("127.0.0.1:0")
+            .await
+            .expect("bind UDP client");
+        client
+            .connect(listener.local_addr().expect("listener addr"))
+            .await
+            .expect("connect UDP client");
+        client
+            .send(&client_hello_probe())
+            .await
+            .expect("send client hello probe");
+
+        let pending = timeout(TEST_TIMEOUT, listener.accept())
+            .await
+            .expect("accept should complete")
+            .expect("accept should succeed");
+        let (_conn, raw_conn, pending_permit) = pending.into_parts();
+        drop(pending_permit);
+        raw_conn
+    }
+
+    async fn test_voice_server(test_ctx: &crate::handlers::testing::TestContext) -> VoiceUdpServer {
+        let listener = VoiceListener {
+            demux: VoiceUdpListener::bind("127.0.0.1:0".parse().unwrap())
+                .await
+                .expect("bind listener"),
+            dtls_config: DtlsConfig::default(),
+        };
+        let (_control, control_rx) = VoiceControlHandle::channel();
+        VoiceUdpServer::new(
+            listener,
+            test_ctx.voice_registry.clone(),
+            test_ctx.ip_rule_cache.clone(),
+            test_ctx.user_manager.clone(),
+            test_ctx.channel_manager.clone(),
+            test_ctx.connection_tracker.clone(),
+            control_rx,
+        )
+    }
 
     #[test]
     fn voice_control_handle_queues_speaking_stopped() {
@@ -634,6 +773,126 @@ mod tests {
         assert_eq!(packet.sequence, 0);
         assert_eq!(packet.timestamp, 0);
         assert!(packet.payload.is_empty());
+    }
+
+    #[tokio::test]
+    async fn udp_voice_talk_revoke_blocks_transmit_packets_but_allows_keepalive() {
+        let mut test_ctx = create_test_context().await;
+        let alice_session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::VoiceListen, Permission::VoiceTalk],
+            false,
+        )
+        .await;
+        let bob_session_id = login_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+        let alice_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("alice")
+            .await
+            .unwrap()
+            .expect("alice user");
+        let server = test_voice_server(&test_ctx).await;
+
+        let alice_voice = VoiceSession::new(
+            "alice".to_string(),
+            vec!["#general".to_string()],
+            alice_session_id,
+        );
+        let alice_token = alice_voice.token;
+        test_ctx
+            .voice_registry
+            .add(alice_voice)
+            .await
+            .expect("alice voice session is unique");
+
+        let bob_addr: SocketAddr = "127.0.0.1:41000".parse().unwrap();
+        let bob_voice = VoiceSession::new(
+            "bob".to_string(),
+            vec!["#general".to_string()],
+            bob_session_id,
+        );
+        let bob_token = bob_voice.token;
+        test_ctx
+            .voice_registry
+            .add(bob_voice)
+            .await
+            .expect("bob voice session is unique");
+        assert!(
+            test_ctx
+                .voice_registry
+                .set_udp_addr(bob_token, bob_addr)
+                .await
+        );
+
+        let (sent_tx, mut sent_rx) = mpsc::unbounded_channel();
+        let recipient_conn: Arc<dyn Conn + Send + Sync> = Arc::new(RecordingConn {
+            local_addr: "127.0.0.1:0".parse().unwrap(),
+            remote_addr: bob_addr,
+            sent_tx,
+        });
+        server.clients.write().await.insert(
+            bob_addr,
+            Arc::new(DtlsClient::new(
+                recipient_conn,
+                raw_voice_conn_handle().await,
+            )),
+        );
+
+        let alice_addr: SocketAddr = "127.0.0.1:42000".parse().unwrap();
+        let first_voice_data =
+            VoicePacket::voice_data(alice_token, 1, 480, vec![1, 2, 3]).to_bytes();
+        assert!(
+            server
+                .handle_packet_for_test(alice_addr, &first_voice_data)
+                .await
+        );
+        let relayed =
+            RelayedVoicePacket::from_bytes(&sent_rx.try_recv().expect("voice data relay"))
+                .expect("relayed voice packet decodes");
+        assert_eq!(relayed.msg_type, VoiceMessageType::VoiceData);
+        assert_eq!(relayed.sender, "alice");
+        assert_eq!(relayed.sequence, 1);
+        assert_eq!(relayed.timestamp, 480);
+        assert_eq!(relayed.payload, vec![1, 2, 3]);
+
+        test_ctx
+            .user_manager
+            .update_permissions(alice_user.id, HashSet::from([Permission::VoiceListen]))
+            .await;
+
+        let denied_packets = [
+            VoicePacket::voice_data(alice_token, 2, 960, vec![4, 5, 6]).to_bytes(),
+            VoicePacket::speaking_started(alice_token, 3).to_bytes(),
+            VoicePacket::speaking_stopped(alice_token, 4).to_bytes(),
+        ];
+        for packet in denied_packets {
+            assert!(server.handle_packet_for_test(alice_addr, &packet).await);
+        }
+        assert!(
+            sent_rx.try_recv().is_err(),
+            "voice_talk revoke must stop relaying VoiceData and speaking indicators"
+        );
+
+        let keepalive = VoicePacket::keepalive(alice_token, 5).to_bytes();
+        assert!(server.handle_packet_for_test(alice_addr, &keepalive).await);
+        assert!(
+            sent_rx.try_recv().is_err(),
+            "keepalive should not relay to other participants"
+        );
+        assert!(
+            test_ctx.voice_registry.has_session(alice_session_id).await,
+            "revoked voice_talk must leave the listener-side voice session active"
+        );
     }
 
     // Integration tests need a real DTLS listener (certificate files);

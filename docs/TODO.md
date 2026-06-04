@@ -1,40 +1,12 @@
 # Nexus TODO
 
-## Implementation Order (Pre-Launch)
+## Future Work
 
-| #   | Feature                     | Effort | Status  |
-| --- | --------------------------- | ------ | ------- |
-| 1   | Account groups              | Low    | ✅ Done |
-| 2   | Password strength           | Low    | ✅ Done |
-| 3   | Streaming hash transfers    | Medium | ✅ Done |
-| 4   | Boards                      | High   | Planned |
-| 5   | File previews               | Low    | Planned |
-| 6   | Tracker registration        | Medium | ✅ Done |
-| 7   | Tracker discovery           | Low    | ✅ Done |
-| 8   | Speed limiting              | Medium | ✅ Done |
-| 9   | Flood protection            | Low    | ✅ Done |
-| 10  | Server logs                 | Medium | ✅ Done |
-| 11  | Auto-away                   | Low    | ✅ Done |
-| 12  | Certificate fingerprint pin | Low    | ✅ Done |
-| 13  | Unicode name folding        | Low    | ✅ Done |
-
-## Decided Against
-
-Features intentionally excluded with rationale.
-
-| Feature              | Reason                                                                                     |
-| -------------------- | ------------------------------------------------------------------------------------------ |
-| `/me's` (possessive) | i18n complexity — each language handles possessives differently                            |
-| Disable encryption   | Security — Nexus requires TLS always                                                       |
-| File aliases         | OS concern — admin can use filesystem symlinks                                             |
-| Process monitor      | Out of scope — BBS server, not system management tool                                      |
-| Custom text colors   | Novelty feature that makes chat hard to read                                               |
-| Folder comments      | Use descriptive folder names instead                                                       |
-| News categories      | Flat list simpler for typical use cases                                                    |
-| Remote shutdown      | Docker/systemd auto-restart defeats purpose; users with container access can stop directly |
-| File tree view       | Tabs work well, tree view adds rendering complexity without real benefit                   |
-| DCC                  | Peer-to-peer adds complexity; server-mediated transfers work well                          |
-| Remote desktop       | Most servers are headless; out of scope for BBS software                                   |
+| Feature                              | Effort | Notes                  |
+| ------------------------------------ | ------ | ---------------------- |
+| Boards                               | High   | Spec TBD               |
+| File previews                        | Low    | See feature spec below |
+| Connection Monitor egress visibility | Medium | See feature spec below |
 
 ## Feature Specs
 
