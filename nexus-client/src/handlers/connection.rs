@@ -996,6 +996,7 @@ mod tests {
             "#general".to_string(),
             vec!["me".to_string()],
             token,
+            true,
         ));
         app.active_voice_connection = Some(1);
         app.connections.insert(1, conn);

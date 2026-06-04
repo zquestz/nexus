@@ -21,7 +21,7 @@ use crate::NexusApp;
 use crate::config::settings::ProxySettings;
 use crate::i18n::{t, t_args};
 use crate::types::{ChatMessage, ChatTab, Message, VoiceState};
-use crate::views::constants::{PERMISSION_VOICE_LISTEN, PERMISSION_VOICE_TALK};
+use crate::views::constants::PERMISSION_VOICE_LISTEN;
 use crate::voice::manager::VoiceEvent;
 use crate::voice::ptt::PttState;
 
@@ -81,10 +81,9 @@ impl NexusApp {
             );
         }
 
-        // Check permissions - need at least voice_listen to join
-        if !conn.has_permission(PERMISSION_VOICE_LISTEN)
-            && !conn.has_permission(PERMISSION_VOICE_TALK)
-        {
+        // `voice_listen` gates joining/listening. `voice_talk` only gates
+        // microphone transmit once a session is active.
+        if !conn.has_permission(PERMISSION_VOICE_LISTEN) {
             return self.add_active_tab_message(
                 connection_id,
                 ChatMessage::error(t("err-voice-no-permission")),
@@ -115,6 +114,96 @@ impl NexusApp {
         }
 
         Task::none()
+    }
+
+    pub(crate) fn active_voice_can_transmit(&self) -> bool {
+        let Some(connection_id) = self.active_voice_connection else {
+            return false;
+        };
+
+        self.connections
+            .get(&connection_id)
+            .and_then(|conn| conn.voice_session.as_ref())
+            .is_some_and(|session| session.can_transmit)
+    }
+
+    pub(crate) fn enable_voice_transmit_controls(&mut self) -> Result<(), String> {
+        // Lazily create PTT manager on first transmit-capable voice join (not at
+        // startup). This keeps listen-only sessions from grabbing mic hotkeys.
+        if self.ptt_manager.is_none() {
+            self.ptt_manager = Some(crate::voice::ptt::PttManager::new()?);
+        }
+
+        if let Some(ref mut ptt) = self.ptt_manager {
+            ptt.set_mode(self.config.settings.audio.ptt_mode);
+            ptt.register_hotkey(&self.config.settings.audio.ptt_key)?;
+            ptt.set_in_voice(true);
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn disable_voice_transmit_controls(&mut self) {
+        if let Some(ref handle) = self.voice_session_handle {
+            handle.stop_transmitting();
+        }
+
+        if let Some(ref mut ptt) = self.ptt_manager {
+            ptt.set_in_voice(false);
+            ptt.unregister_hotkey();
+        }
+
+        self.ptt_release_delay_generation += 1;
+        self.is_local_speaking = false;
+        self.mic_level
+            .store(0f32.to_bits(), std::sync::atomic::Ordering::Relaxed);
+
+        #[cfg(not(target_os = "macos"))]
+        self.update_tray_state();
+    }
+
+    pub(crate) fn set_active_voice_transmit_allowed(
+        &mut self,
+        connection_id: usize,
+        can_transmit: bool,
+    ) -> Task<Message> {
+        if self.active_voice_connection != Some(connection_id) {
+            return Task::none();
+        }
+
+        let Some(conn) = self.connections.get_mut(&connection_id) else {
+            return Task::none();
+        };
+        let Some(session) = conn.voice_session.as_mut() else {
+            return Task::none();
+        };
+
+        if session.can_transmit == can_transmit {
+            return Task::none();
+        }
+
+        let enable_worker_transmit = can_transmit && !session.transmit_initialized;
+        session.can_transmit = can_transmit;
+        if can_transmit {
+            session.transmit_initialized = true;
+        }
+
+        if !can_transmit {
+            self.disable_voice_transmit_controls();
+            return Task::none();
+        }
+
+        if enable_worker_transmit && let Some(ref handle) = self.voice_session_handle {
+            handle.enable_transmit();
+        }
+
+        match self.enable_voice_transmit_controls() {
+            Ok(()) => Task::none(),
+            Err(e) => self.add_active_tab_message(
+                connection_id,
+                ChatMessage::error(t_args("err-voice-ptt-failed", &[("error", &e)])),
+            ),
+        }
     }
 
     /// Handle voice leave button pressed
@@ -232,6 +321,23 @@ impl NexusApp {
             VoiceEvent::AudioError(error) => {
                 // Audio device error - notify server and clean up
                 self.leave_voice_session(connection_id);
+                self.add_active_tab_message(
+                    connection_id,
+                    ChatMessage::error(t_args("err-voice-audio", &[("error", &error)])),
+                )
+            }
+
+            VoiceEvent::TransmitEnableFailed(error) => {
+                // Enabling talk failed after a listen-only join; stay in voice.
+                if self.active_voice_connection == Some(connection_id) {
+                    if let Some(conn) = self.connections.get_mut(&connection_id)
+                        && let Some(session) = conn.voice_session.as_mut()
+                    {
+                        session.can_transmit = false;
+                        session.transmit_initialized = false;
+                    }
+                    self.disable_voice_transmit_controls();
+                }
                 self.add_active_tab_message(
                     connection_id,
                     ChatMessage::error(t_args("err-voice-audio", &[("error", &error)])),
@@ -377,6 +483,9 @@ impl NexusApp {
         let Some(ref handle) = self.voice_session_handle else {
             return Task::none();
         };
+        if !self.active_voice_can_transmit() {
+            return Task::none();
+        }
 
         match state {
             PttState::Transmitting => {
@@ -417,6 +526,9 @@ impl NexusApp {
         // Check if this timer is still current
         if generation != self.ptt_release_delay_generation {
             // PTT was pressed again during the delay - ignore this expired timer
+            return Task::none();
+        }
+        if !self.active_voice_can_transmit() {
             return Task::none();
         }
 
@@ -522,9 +634,11 @@ mod tests {
     use nexus_common::framing::MessageId;
     use nexus_common::validators::PasswordStrength;
     use tokio::sync::{Mutex, mpsc};
+    use uuid::Uuid;
 
     use super::*;
     use crate::types::{ChannelState, ConnectionInfo, ServerConnection, ServerConnectionParams};
+    use crate::views::constants::PERMISSION_VOICE_TALK;
 
     fn proxy(enabled: bool, allow_voice_bypass: bool) -> ProxySettings {
         ProxySettings {
@@ -640,6 +754,145 @@ mod tests {
         assert!(rx.try_recv().is_err());
         assert!(app.connections[&1].voice_session.is_none());
         assert_eq!(app.connections[&1].console_messages.len(), 1);
+    }
+
+    #[test]
+    fn voice_join_pressed_requires_voice_listen_not_voice_talk() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.permissions.push(PERMISSION_VOICE_TALK.to_string());
+        conn.channels.insert(
+            fold_name("#general"),
+            ChannelState::new(None, None, false, vec!["me".to_string()]),
+        );
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_voice_join_pressed("#general".to_string());
+
+        assert!(rx.try_recv().is_err());
+        assert!(app.connections[&1].voice_session.is_none());
+        assert_eq!(app.connections[&1].console_messages.len(), 1);
+    }
+
+    #[test]
+    fn voice_join_pressed_allows_voice_listen_without_voice_talk() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.permissions.push(PERMISSION_VOICE_LISTEN.to_string());
+        conn.channels.insert(
+            fold_name("#general"),
+            ChannelState::new(None, None, false, vec!["me".to_string()]),
+        );
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_voice_join_pressed("#general".to_string());
+
+        match rx.try_recv() {
+            Ok((_, ClientMessage::VoiceJoin { target })) => assert_eq!(target, "#general"),
+            other => panic!("expected VoiceJoin, got {other:?}"),
+        }
+        assert!(
+            app.connections[&1]
+                .voice_session
+                .as_ref()
+                .is_some_and(|session| session.token.is_none() && !session.can_transmit)
+        );
+    }
+
+    #[test]
+    fn disabling_voice_transmit_stops_local_transmission() {
+        let mut app = NexusApp::default();
+        let (mut conn, _rx) = test_connection_with_receiver(1);
+        conn.voice_session = Some(VoiceState::new_with_token(
+            "#general".to_string(),
+            vec!["me".to_string()],
+            Uuid::new_v4(),
+            true,
+        ));
+        app.active_voice_connection = Some(1);
+        app.is_local_speaking = true;
+        let (handle, mut commands) = crate::voice::manager::VoiceSessionHandle::test_handle();
+        app.voice_session_handle = Some(handle);
+        app.connections.insert(1, conn);
+
+        let _ = app.set_active_voice_transmit_allowed(1, false);
+
+        assert!(
+            !app.connections[&1]
+                .voice_session
+                .as_ref()
+                .unwrap()
+                .can_transmit
+        );
+        assert!(!app.is_local_speaking);
+        match commands.try_recv() {
+            Ok(crate::voice::manager::VoiceCommand::StopTransmitting) => {}
+            other => panic!("expected StopTransmitting, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn transmit_enable_failure_keeps_listening_but_disables_transmit() {
+        let mut app = NexusApp::default();
+        let (mut conn, _rx) = test_connection_with_receiver(1);
+        conn.voice_session = Some(VoiceState::new_with_token(
+            "#general".to_string(),
+            vec!["me".to_string()],
+            Uuid::new_v4(),
+            true,
+        ));
+        app.active_voice_connection = Some(1);
+        app.is_local_speaking = true;
+        let (handle, mut commands) = crate::voice::manager::VoiceSessionHandle::test_handle();
+        app.voice_session_handle = Some(handle);
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_voice_session_event(
+            1,
+            VoiceEvent::TransmitEnableFailed("no input device".to_string()),
+        );
+
+        let session = app.connections[&1].voice_session.as_ref().unwrap();
+        assert!(!session.can_transmit);
+        assert!(!session.transmit_initialized);
+        assert!(!app.is_local_speaking);
+        match commands.try_recv() {
+            Ok(crate::voice::manager::VoiceCommand::StopTransmitting) => {}
+            other => panic!("expected StopTransmitting, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn granting_voice_talk_after_listen_only_join_enables_transmit() {
+        let mut app = NexusApp::default();
+        let (mut conn, _rx) = test_connection_with_receiver(1);
+        conn.voice_session = Some(VoiceState::new_with_token(
+            "#general".to_string(),
+            vec!["me".to_string()],
+            Uuid::new_v4(),
+            false,
+        ));
+        app.active_voice_connection = Some(1);
+        let (handle, mut commands) = crate::voice::manager::VoiceSessionHandle::test_handle();
+        app.voice_session_handle = Some(handle);
+        app.connections.insert(1, conn);
+
+        let _ = app.set_active_voice_transmit_allowed(1, true);
+
+        let session = app.connections[&1].voice_session.as_ref().unwrap();
+        assert!(session.can_transmit);
+        assert!(session.transmit_initialized);
+        assert!(app.active_voice_can_transmit());
+        match commands.try_recv() {
+            Ok(crate::voice::manager::VoiceCommand::EnableTransmit) => {}
+            other => panic!("expected EnableTransmit, got {other:?}"),
+        }
     }
 
     #[test]

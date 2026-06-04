@@ -1634,8 +1634,10 @@ impl NexusApp {
         {
             subscriptions.push(voice::subscription::voice_event_subscription(connection_id));
 
-            // Subscribe to PTT hotkey events when in voice
-            subscriptions.push(voice::ptt::ptt_subscription());
+            // Subscribe to PTT hotkey events only when voice_talk allows local transmit.
+            if self.active_voice_can_transmit() {
+                subscriptions.push(voice::ptt::ptt_subscription());
+            }
 
             // Subscribe to VU meter ticks when transmitting (for UI updates)
             if self.is_local_speaking {

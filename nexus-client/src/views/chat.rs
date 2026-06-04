@@ -20,7 +20,7 @@ use crate::style::{
     content_background_style, shaped_text, tooltip_container_style,
 };
 use crate::types::{ChatTab, Message, MessageType, ScrollableId, ServerConnection};
-use crate::views::constants::{PERMISSION_VOICE_LISTEN, PERMISSION_VOICE_TALK};
+use crate::views::constants::PERMISSION_VOICE_LISTEN;
 use crate::views::voice::{build_input_row_with_voice, build_voice_bar};
 
 const CONSOLE_TAB_TOOLTIP_KEY: &str = "console-tab";
@@ -621,9 +621,8 @@ pub fn chat_view<'a>(
         .width(Fill)
         .height(Fill);
 
-    // Check if user has voice permissions (for enabling the voice button)
-    let has_voice_permission =
-        conn.has_permission(PERMISSION_VOICE_LISTEN) || conn.has_permission(PERMISSION_VOICE_TALK);
+    // `voice_listen` gates joining/listening. `voice_talk` only gates transmit.
+    let has_voice_permission = conn.has_permission(PERMISSION_VOICE_LISTEN);
 
     // Build input row with voice button
     let input_row =

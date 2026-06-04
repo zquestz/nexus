@@ -881,7 +881,8 @@ impl NexusApp {
         self.config.settings.audio.ptt_key = key.clone();
 
         // Re-register hotkey immediately if in voice (applies without rejoin)
-        if let Some(ref mut ptt) = self.ptt_manager
+        if self.active_voice_can_transmit()
+            && let Some(ref mut ptt) = self.ptt_manager
             && let Some(connection_id) = self.active_voice_connection
             && let Err(e) = ptt.register_hotkey(&key)
         {
@@ -899,16 +900,22 @@ impl NexusApp {
         self.config.settings.audio.ptt_mode = mode;
 
         // Update active PTT manager if in voice (applies immediately, no rejoin needed)
-        if let Some(ref mut ptt) = self.ptt_manager {
+        if self.active_voice_can_transmit()
+            && let Some(ref mut ptt) = self.ptt_manager
+        {
             ptt.set_mode(mode);
         }
 
         // Stop transmitting if mode changed while transmitting (e.g., toggle mode was on)
         // set_mode() resets the active flag, so we need to sync the voice session
-        if let Some(ref handle) = self.voice_session_handle {
+        if self.active_voice_can_transmit()
+            && let Some(ref handle) = self.voice_session_handle
+        {
             handle.stop_transmitting();
         }
-        self.is_local_speaking = false;
+        if self.active_voice_can_transmit() {
+            self.is_local_speaking = false;
+        }
 
         Task::none()
     }

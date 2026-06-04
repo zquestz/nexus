@@ -11,7 +11,7 @@ use crate::i18n::t;
 use crate::image::decode_data_uri_max_width;
 use crate::style::SERVER_IMAGE_MAX_CACHE_WIDTH;
 use crate::types::{ChatMessage, Message};
-use crate::views::constants::PERMISSION_USER_LIST;
+use crate::views::constants::{PERMISSION_USER_LIST, PERMISSION_VOICE_TALK};
 
 impl NexusApp {
     /// Handle permissions updated notification
@@ -50,8 +50,10 @@ impl NexusApp {
         };
 
         let had_user_list = conn.has_permission(PERMISSION_USER_LIST);
+        let had_voice_talk = conn.has_permission(PERMISSION_VOICE_TALK);
 
         let has_user_list = is_admin || permissions.iter().any(|p| p == PERMISSION_USER_LIST);
+        let has_voice_talk = is_admin || permissions.iter().any(|p| p == PERMISSION_VOICE_TALK);
 
         conn.is_admin = is_admin;
         conn.permissions = permissions;
@@ -91,19 +93,34 @@ impl NexusApp {
 
         // If user just gained user_list permission, refresh the list
         // (it may be stale from missed join/leave events while permission was revoked)
-        if !had_user_list
-            && has_user_list
-            && let Err(e) = conn.send(ClientMessage::UserList { all: false })
-        {
+        let user_list_error = if !had_user_list && has_user_list {
+            conn.send(ClientMessage::UserList { all: false })
+                .err()
+                .map(|e| format!("{}: {}", t("err-userlist-failed"), e))
+        } else {
+            None
+        };
+
+        let voice_task = if had_voice_talk != has_voice_talk {
+            self.set_active_voice_transmit_allowed(connection_id, has_voice_talk)
+        } else {
+            Task::none()
+        };
+
+        if let Some(error_msg) = user_list_error {
             // Channel send failed - add error to chat
-            let error_msg = format!("{}: {}", t("err-userlist-failed"), e);
-            return self.add_console_message(connection_id, ChatMessage::error(error_msg));
+            return Task::batch([
+                voice_task,
+                self.add_console_message(connection_id, ChatMessage::error(error_msg)),
+            ]);
         }
 
         // Show notification message
-        self.add_console_message(
+        let notice_task = self.add_console_message(
             connection_id,
             ChatMessage::system(t("msg-permissions-updated")),
-        )
+        );
+
+        Task::batch([voice_task, notice_task])
     }
 }

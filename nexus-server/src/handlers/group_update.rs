@@ -407,9 +407,10 @@ where
                         Vec::new()
                     };
 
-                // (user_id, payload, voice_cleanup_needed) — keyed on the
-                // immutable user_id so a concurrent rename can't drop sessions.
-                let mut perm_updates: Vec<(i64, ServerMessage, bool)> = Vec::new();
+                // (user_id, payload, voice_talk_cleanup_needed,
+                // voice_cleanup_needed) — keyed on the immutable user_id so a
+                // concurrent rename can't drop sessions.
+                let mut perm_updates: Vec<(i64, ServerMessage, bool, bool)> = Vec::new();
                 if permissions_changed {
                     let config = ctx.db.config.get_all().await;
                     let info_values = ServerInfoValues {
@@ -485,10 +486,14 @@ where
                         let has_voice_listen =
                             new_effective.permissions.contains(&Permission::VoiceListen);
                         let voice_cleanup_needed = had_voice_listen && !has_voice_listen;
+                        let voice_talk_cleanup_needed = old_session_perms
+                            .contains(&Permission::VoiceTalk)
+                            && !new_effective.permissions.contains(&Permission::VoiceTalk);
 
                         perm_updates.push((
                             session.user_id,
                             permissions_update,
+                            voice_talk_cleanup_needed,
                             voice_cleanup_needed,
                         ));
                     }
@@ -504,10 +509,21 @@ where
                     .await;
                 }
 
-                for (user_id, permissions_update, voice_cleanup_needed) in perm_updates {
+                for (
+                    user_id,
+                    permissions_update,
+                    voice_talk_cleanup_needed,
+                    voice_cleanup_needed,
+                ) in perm_updates
+                {
                     ctx.user_manager
                         .broadcast_to_user_id(user_id, &permissions_update)
                         .await;
+                    if voice_talk_cleanup_needed {
+                        for session in ctx.user_manager.get_sessions_by_user_id(user_id).await {
+                            ctx.voice_control.speaking_stopped(session.session_id);
+                        }
+                    }
                     if voice_cleanup_needed {
                         for session in ctx.user_manager.get_sessions_by_user_id(user_id).await {
                             if let Some(info) = ctx
@@ -1841,7 +1857,11 @@ mod tests {
             .create_group(
                 "Listeners",
                 false,
-                &Permissions::from(&[Permission::VoiceListen, Permission::ChatSend]),
+                &Permissions::from(&[
+                    Permission::VoiceListen,
+                    Permission::VoiceTalk,
+                    Permission::ChatSend,
+                ]),
                 1,
             )
             .await
@@ -1940,6 +1960,13 @@ mod tests {
         assert!(
             !test_ctx.voice_registry.has_session(bob_session).await,
             "User should be kicked from voice when voice_listen is revoked via group edit"
+        );
+        assert_eq!(
+            test_ctx.voice_control_rx.try_recv(),
+            Ok(crate::voice::VoiceControlCommand::SpeakingStopped {
+                session_id: bob_session
+            }),
+            "voice_talk revoke should clear remote speaking indicators"
         );
     }
 

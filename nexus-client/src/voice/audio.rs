@@ -1311,7 +1311,7 @@ where
 /// Uses tanh-based soft clipping which smoothly limits the signal
 /// as it approaches the maximum, resulting in less harsh distortion
 /// when multiple loud sources are summed together.
-fn soft_clip(sample: f32) -> f32 {
+pub(crate) fn soft_clip(sample: f32) -> f32 {
     // tanh gives smooth saturation, but we scale input to make it more gradual
     (sample * SOFT_CLIP_GAIN).tanh() / SOFT_CLIP_GAIN.tanh()
 }

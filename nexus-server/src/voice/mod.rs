@@ -18,7 +18,9 @@ use crate::users::user::ConnectionWriter;
 
 pub use registry::{VoiceLeaveInfo, VoiceRegistry};
 pub use session::VoiceSession;
-pub use udp::{VoiceUdpServer, create_voice_listener};
+#[cfg(test)]
+pub use udp::VoiceControlCommand;
+pub use udp::{VoiceControlHandle, VoiceUdpServer, create_voice_listener};
 
 /// Single source of truth for VoiceUserLeft notifications across every
 /// cleanup path (normal disconnect, kick/delete/disable/ban, DTLS timeout).
@@ -70,12 +72,9 @@ pub async fn send_voice_leave_notifications(
                     target: info.broadcast_target.clone(),
                 };
 
-                if let Some(participant) = user_manager
-                    .get_session_by_nickname(participant_nickname)
-                    .await
-                {
-                    let _ = participant.tx.send_message(leave_notification, None);
-                }
+                user_manager
+                    .broadcast_to_nickname(participant_nickname, &leave_notification)
+                    .await;
             }
         }
     }

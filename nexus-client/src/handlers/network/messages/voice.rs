@@ -19,6 +19,7 @@ use crate::events::{EventContext, emit_event};
 use crate::i18n::{t, t_args};
 use crate::network::DNS_LOOKUP_TIMEOUT;
 use crate::types::{ChatMessage, Message, VoiceState};
+use crate::views::constants::PERMISSION_VOICE_TALK;
 use crate::voice::manager::{VoiceSessionConfig, VoiceSessionHandle};
 
 use crate::voice::subscription::register_voice_receiver_sync;
@@ -131,10 +132,12 @@ impl NexusApp {
                 return Task::none();
             }
 
+            let can_transmit = conn.has_permission(PERMISSION_VOICE_TALK);
             conn.voice_session = Some(VoiceState::new_with_token(
                 target.clone(),
                 participants.unwrap_or_default(),
                 token,
+                can_transmit,
             ));
 
             (
@@ -172,7 +175,7 @@ impl NexusApp {
         token: Uuid,
         result: Result<Option<std::net::SocketAddr>, String>,
     ) -> Task<Message> {
-        let participants = {
+        let (participants, can_transmit) = {
             let Some(conn) = self.connections.get(&connection_id) else {
                 return Task::none();
             };
@@ -187,7 +190,7 @@ impl NexusApp {
                 return Task::none();
             }
 
-            session.participants.clone()
+            (session.participants.clone(), session.can_transmit)
         };
 
         let socket_addr = match result {
@@ -215,6 +218,7 @@ impl NexusApp {
             server_addr: socket_addr,
             token,
             participants,
+            can_transmit,
             input_device: self.config.settings.audio.input_device.clone(),
             output_device: self.config.settings.audio.output_device.clone(),
             quality: self.config.settings.audio.voice_quality,
@@ -237,37 +241,12 @@ impl NexusApp {
         // Must be synchronous to avoid race with subscription starting
         register_voice_receiver_sync(connection_id, event_rx);
 
-        // Lazily create PTT manager on first voice join (not at startup).
-        // This ensures the native event loop is active when the hotkey system initializes.
-        if self.ptt_manager.is_none() {
-            match crate::voice::ptt::PttManager::new() {
-                Ok(ptt) => self.ptt_manager = Some(ptt),
-                Err(e) => {
-                    return self.add_active_tab_message(
-                        connection_id,
-                        ChatMessage::error(t_args("err-voice-ptt-failed", &[("error", &e)])),
-                    );
-                }
-            }
-        }
-
-        // Register PTT hotkey and enable it for voice
-        if let Some(ref mut ptt) = self.ptt_manager {
-            // Set mode from settings
-            ptt.set_mode(self.config.settings.audio.ptt_mode);
-
-            // Register the hotkey and show error if it fails
-            if let Err(e) = ptt.register_hotkey(&self.config.settings.audio.ptt_key) {
-                // PTT won't work, but voice chat still functions
-                ptt.set_in_voice(true);
-                return self.add_active_tab_message(
-                    connection_id,
-                    ChatMessage::error(t_args("err-voice-ptt-failed", &[("error", &e)])),
-                );
-            }
-
-            // Enable PTT for voice
-            ptt.set_in_voice(true);
+        if can_transmit && let Err(e) = self.enable_voice_transmit_controls() {
+            // PTT won't work, but voice chat still functions.
+            return self.add_active_tab_message(
+                connection_id,
+                ChatMessage::error(t_args("err-voice-ptt-failed", &[("error", &e)])),
+            );
         }
 
         // Update tray icon state (Windows/Linux only)
@@ -628,6 +607,51 @@ mod tests {
     }
 
     #[test]
+    fn voice_join_response_records_voice_talk_transmit_capability() {
+        let mut app = NexusApp::default();
+        let (mut conn, _rx) = test_connection_with_receiver(1, "me", "#general");
+        conn.permissions.push(PERMISSION_VOICE_TALK.to_string());
+        app.connections.insert(1, conn);
+
+        let token = Uuid::new_v4();
+        let _ = app.handle_voice_join_response(
+            1,
+            true,
+            Some(token),
+            Some("#general".to_string()),
+            Some(vec!["me".to_string()]),
+            None,
+        );
+
+        let session = app.connections[&1].voice_session.as_ref().unwrap();
+        assert_eq!(session.token, Some(token));
+        assert!(session.can_transmit);
+        assert!(session.transmit_initialized);
+    }
+
+    #[test]
+    fn voice_join_response_without_voice_talk_is_listen_only() {
+        let mut app = NexusApp::default();
+        let (conn, _rx) = test_connection_with_receiver(1, "me", "#general");
+        app.connections.insert(1, conn);
+
+        let token = Uuid::new_v4();
+        let _ = app.handle_voice_join_response(
+            1,
+            true,
+            Some(token),
+            Some("#general".to_string()),
+            Some(vec!["me".to_string()]),
+            None,
+        );
+
+        let session = app.connections[&1].voice_session.as_ref().unwrap();
+        assert_eq!(session.token, Some(token));
+        assert!(!session.can_transmit);
+        assert!(!session.transmit_initialized);
+    }
+
+    #[test]
     fn stale_voice_join_failure_does_not_clear_accepted_session() {
         let mut app = NexusApp::default();
         let (mut conn, _rx) = test_connection_with_receiver(1, "me", "#general");
@@ -636,6 +660,7 @@ mod tests {
             "#general".to_string(),
             vec!["me".to_string()],
             token,
+            true,
         ));
         app.active_voice_connection = Some(1);
         app.connections.insert(1, conn);
@@ -664,6 +689,7 @@ mod tests {
             "#general".to_string(),
             vec!["me".to_string()],
             token,
+            true,
         ));
         app.active_voice_connection = Some(1);
         app.connections.insert(1, conn);
@@ -685,6 +711,7 @@ mod tests {
             "#general".to_string(),
             vec!["me".to_string()],
             token,
+            true,
         ));
         app.active_voice_connection = Some(1);
         app.connections.insert(1, conn);

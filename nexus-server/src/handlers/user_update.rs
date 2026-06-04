@@ -1264,6 +1264,22 @@ where
                             || final_permissions
                                 .permissions
                                 .contains(&Permission::VoiceListen);
+                        let had_voice_talk = old_is_admin
+                            || old_permissions.permissions.contains(&Permission::VoiceTalk);
+                        let has_voice_talk = updated_account.is_admin
+                            || final_permissions
+                                .permissions
+                                .contains(&Permission::VoiceTalk);
+
+                        if had_voice_talk && !has_voice_talk {
+                            for session in ctx
+                                .user_manager
+                                .get_sessions_by_user_id(updated_account.id)
+                                .await
+                            {
+                                ctx.voice_control.speaking_stopped(session.session_id);
+                            }
+                        }
 
                         if had_voice_listen && !has_voice_listen {
                             for session in ctx
@@ -3483,6 +3499,7 @@ mod tests {
                 channel_manager: &test_ctx.channel_manager,
                 transfer_registry: test_ctx.transfer_registry.clone(),
                 voice_registry: &test_ctx.voice_registry,
+                voice_control: &test_ctx.voice_control,
                 tracker_manager: &test_ctx.tracker_manager,
                 fingerprint: TEST_FINGERPRINT,
                 flood_config: test_ctx.flood_config.clone(),
@@ -3508,6 +3525,7 @@ mod tests {
                 channel_manager: &test_ctx.channel_manager,
                 transfer_registry: test_ctx.transfer_registry.clone(),
                 voice_registry: &test_ctx.voice_registry,
+                voice_control: &test_ctx.voice_control,
                 tracker_manager: &test_ctx.tracker_manager,
                 fingerprint: TEST_FINGERPRINT,
                 flood_config: test_ctx.flood_config.clone(),
@@ -7725,6 +7743,13 @@ mod tests {
                 .has_session(voice_user_session)
                 .await,
             "User should stay in voice when only voice_talk is revoked (can still listen)"
+        );
+        assert_eq!(
+            test_ctx.voice_control_rx.try_recv(),
+            Ok(crate::voice::VoiceControlCommand::SpeakingStopped {
+                session_id: voice_user_session
+            }),
+            "voice_talk revoke should clear remote speaking indicators"
         );
     }
 

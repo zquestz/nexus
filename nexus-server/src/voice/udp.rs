@@ -18,7 +18,7 @@ use tracing::{debug, error, warn};
 use dtls::config::Config as DtlsConfig;
 use dtls::conn::DTLSConn;
 use dtls::crypto::Certificate;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock, mpsc};
 
 use webrtc_util::conn::Conn;
 
@@ -44,6 +44,29 @@ use crate::users::UserManager;
 
 use super::demux::{PendingVoiceConnection, VoiceUdpConnHandle, VoiceUdpListener};
 use super::{VoiceRegistry, send_voice_leave_notifications};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VoiceControlCommand {
+    SpeakingStopped { session_id: u32 },
+}
+
+#[derive(Clone)]
+pub struct VoiceControlHandle {
+    tx: mpsc::UnboundedSender<VoiceControlCommand>,
+}
+
+impl VoiceControlHandle {
+    pub fn channel() -> (Self, mpsc::UnboundedReceiver<VoiceControlCommand>) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        (Self { tx }, rx)
+    }
+
+    pub fn speaking_stopped(&self, session_id: u32) {
+        let _ = self
+            .tx
+            .send(VoiceControlCommand::SpeakingStopped { session_id });
+    }
+}
 
 struct DtlsClient {
     conn: Arc<dyn Conn + Send + Sync>,
@@ -96,6 +119,7 @@ pub struct VoiceUdpServer {
     registry: VoiceRegistry,
     /// Active DTLS clients, keyed by remote address.
     clients: Arc<RwLock<HashMap<SocketAddr, Arc<DtlsClient>>>>,
+    control_rx: Mutex<mpsc::UnboundedReceiver<VoiceControlCommand>>,
     ip_rule_cache: Arc<IpRuleState>,
     user_manager: UserManager,
     channel_manager: ChannelManager,
@@ -110,11 +134,13 @@ impl VoiceUdpServer {
         user_manager: UserManager,
         channel_manager: ChannelManager,
         connection_tracker: Arc<ConnectionTracker>,
+        control_rx: mpsc::UnboundedReceiver<VoiceControlCommand>,
     ) -> Self {
         Self {
             listener,
             registry,
             clients: Arc::new(RwLock::new(HashMap::new())),
+            control_rx: Mutex::new(control_rx),
             ip_rule_cache,
             user_manager,
             channel_manager,
@@ -127,6 +153,11 @@ impl VoiceUdpServer {
         let cleanup_self = self.clone();
         tokio::spawn(async move {
             cleanup_self.cleanup_loop().await;
+        });
+
+        let control_self = self.clone();
+        tokio::spawn(async move {
+            control_self.control_loop().await;
         });
 
         loop {
@@ -316,7 +347,6 @@ impl VoiceUdpServer {
             VoiceMessageType::VoiceData
             | VoiceMessageType::SpeakingStarted
             | VoiceMessageType::SpeakingStopped => {
-                // Gate relaying on voice_talk permission.
                 match self
                     .user_manager
                     .has_permission(session_id, Permission::VoiceTalk)
@@ -347,6 +377,11 @@ impl VoiceUdpServer {
         target_key: &str,
     ) {
         let relayed_bytes = RelayedVoicePacket::to_bytes_from_voice_packet(packet, sender_nickname);
+        self.relay_bytes(relayed_bytes, sender_nickname, target_key)
+            .await;
+    }
+
+    async fn relay_bytes(&self, relayed_bytes: Vec<u8>, sender_nickname: &str, target_key: &str) {
         let sender_folded = fold_name(sender_nickname);
         let sessions = self.registry.get_sessions_for_target(target_key).await;
 
@@ -375,6 +410,32 @@ impl VoiceUdpServer {
                 error!(user = %nickname, ip = %udp_addr, err = %e, "{}", LOG_VOICE_RELAY_FAILED);
             }
         }
+    }
+
+    async fn control_loop(&self) {
+        loop {
+            let command = {
+                let mut rx = self.control_rx.lock().await;
+                rx.recv().await
+            };
+
+            match command {
+                Some(VoiceControlCommand::SpeakingStopped { session_id }) => {
+                    self.relay_speaking_stopped(session_id).await;
+                }
+                None => break,
+            }
+        }
+    }
+
+    async fn relay_speaking_stopped(&self, session_id: u32) {
+        let Some(session) = self.registry.get_by_session_id(session_id).await else {
+            return;
+        };
+
+        let relayed_bytes = relayed_speaking_stopped_bytes(&session.nickname);
+        self.relay_bytes(relayed_bytes, &session.nickname, &session.target_key())
+            .await;
     }
 
     async fn cleanup_loop(&self) {
@@ -487,6 +548,17 @@ fn voice_idle_now_millis() -> u64 {
     u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX)
 }
 
+fn relayed_speaking_stopped_bytes(nickname: &str) -> Vec<u8> {
+    RelayedVoicePacket {
+        msg_type: VoiceMessageType::SpeakingStopped,
+        sender: nickname.to_string(),
+        sequence: 0,
+        timestamp: 0,
+        payload: Vec::new(),
+    }
+    .to_bytes()
+}
+
 /// Create a DTLS listener for voice traffic, bound to `addr` (same IP as TCP).
 pub async fn create_voice_listener(
     addr: SocketAddr,
@@ -536,6 +608,34 @@ fn load_dtls_config(cert_path: &Path, key_path: &Path) -> Result<DtlsConfig, Str
 
 #[cfg(test)]
 mod tests {
+    use nexus_common::voice::{RelayedVoicePacket, VoiceMessageType};
+
+    use super::{VoiceControlCommand, VoiceControlHandle, relayed_speaking_stopped_bytes};
+
+    #[test]
+    fn voice_control_handle_queues_speaking_stopped() {
+        let (handle, mut rx) = VoiceControlHandle::channel();
+
+        handle.speaking_stopped(42);
+
+        assert_eq!(
+            rx.try_recv(),
+            Ok(VoiceControlCommand::SpeakingStopped { session_id: 42 })
+        );
+    }
+
+    #[test]
+    fn server_synthesized_speaking_stopped_packet_is_cleanup_only() {
+        let bytes = relayed_speaking_stopped_bytes("alice");
+        let packet = RelayedVoicePacket::from_bytes(&bytes).expect("packet should decode");
+
+        assert_eq!(packet.msg_type, VoiceMessageType::SpeakingStopped);
+        assert_eq!(packet.sender, "alice");
+        assert_eq!(packet.sequence, 0);
+        assert_eq!(packet.timestamp, 0);
+        assert!(packet.payload.is_empty());
+    }
+
     // Integration tests need a real DTLS listener (certificate files);
     // packet-handling unit tests live in nexus-common/src/voice.rs.
 }

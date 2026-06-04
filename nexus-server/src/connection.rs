@@ -39,7 +39,7 @@ use crate::tracker::TrackerManager;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
 use crate::users::user::{ConnectionWriter, SessionEvent, SessionRx};
-use crate::voice::VoiceRegistry;
+use crate::voice::{VoiceControlHandle, VoiceRegistry};
 
 /// Parameters for handling a connection
 pub struct ConnectionParams {
@@ -56,6 +56,7 @@ pub struct ConnectionParams {
     pub channel_manager: ChannelManager,
     pub transfer_registry: Arc<TransferRegistry>,
     pub voice_registry: VoiceRegistry,
+    pub voice_control: VoiceControlHandle,
     pub tracker_manager: Arc<TrackerManager>,
     pub fingerprint: &'static str,
     pub flood_config: Arc<FloodConfig>,
@@ -295,6 +296,7 @@ where
         channel_manager,
         transfer_registry,
         voice_registry,
+        voice_control,
         tracker_manager,
         fingerprint,
         flood_config,
@@ -443,6 +445,7 @@ where
                             channel_manager: &channel_manager,
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: &voice_registry,
+                            voice_control: &voice_control,
                             tracker_manager: &tracker_manager,
                             fingerprint,
                             flood_config: flood_config.clone(),
@@ -1200,6 +1203,7 @@ mod tests {
             channel_manager: test_ctx.channel_manager.clone(),
             transfer_registry: test_ctx.transfer_registry.clone(),
             voice_registry: test_ctx.voice_registry.clone(),
+            voice_control: test_ctx.voice_control.clone(),
             tracker_manager,
             fingerprint: TEST_FINGERPRINT,
             flood_config: test_ctx.flood_config.clone(),
@@ -1354,6 +1358,7 @@ mod tests {
             channel_manager: test_ctx.channel_manager.clone(),
             transfer_registry: test_ctx.transfer_registry.clone(),
             voice_registry: test_ctx.voice_registry.clone(),
+            voice_control: test_ctx.voice_control.clone(),
             tracker_manager,
             fingerprint: TEST_FINGERPRINT,
             flood_config: test_ctx.flood_config.clone(),
@@ -1448,6 +1453,7 @@ mod tests {
             channel_manager: test_ctx.channel_manager.clone(),
             transfer_registry: test_ctx.transfer_registry.clone(),
             voice_registry: test_ctx.voice_registry.clone(),
+            voice_control: test_ctx.voice_control.clone(),
             tracker_manager,
             fingerprint: TEST_FINGERPRINT,
             flood_config: test_ctx.flood_config.clone(),

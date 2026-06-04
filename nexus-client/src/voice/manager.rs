@@ -11,6 +11,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use tokio::sync::mpsc;
+use tokio::time::{self, MissedTickBehavior};
 use uuid::Uuid;
 
 use nexus_common::names::fold_name;
@@ -19,7 +20,7 @@ use nexus_common::voice::{VOICE_SAMPLES_PER_FRAME, VoiceQuality};
 use crate::config::audio::PttMode;
 use crate::constants::ERR_VOICE_THREAD_TOKIO_RUNTIME;
 
-use super::audio::{AudioCapture, AudioMixer};
+use super::audio::{AudioCapture, AudioMixer, soft_clip};
 use super::codec::{DecoderPool, VoiceEncoder};
 use super::dtls::{VoiceDtlsCommand, VoiceDtlsEvent, run_voice_client};
 use super::jitter::JitterBufferPool;
@@ -37,6 +38,8 @@ pub struct VoiceSessionConfig {
     pub token: Uuid,
     /// Nicknames currently in the voice session when the DTLS client starts
     pub participants: Vec<String>,
+    /// Whether the local user is allowed to capture and transmit microphone audio.
+    pub can_transmit: bool,
     /// Input device name (empty for default)
     pub input_device: String,
     /// Output device name (empty for default)
@@ -78,6 +81,32 @@ fn calculate_rms_level(samples: &[f32]) -> f32 {
 
     // Convert to 0-1 range with some headroom
     (rms * RMS_DISPLAY_SCALE).min(1.0) as f32
+}
+
+fn soft_clip_render_reference(frame: &mut [f32]) {
+    for sample in frame {
+        *sample = soft_clip(*sample);
+    }
+}
+
+fn initialize_transmit_resources(
+    input_device: &str,
+    quality: VoiceQuality,
+    processor_settings: AudioProcessorSettings,
+    event_tx: &mpsc::UnboundedSender<VoiceEvent>,
+) -> Result<(AudioCapture, VoiceEncoder, Option<AudioProcessor>), String> {
+    let capture =
+        AudioCapture::new(input_device).map_err(|e| format!("Input device error: {}", e))?;
+    let encoder = VoiceEncoder::new(quality).map_err(|e| format!("Encoder error: {}", e))?;
+    let processor = match AudioProcessor::new(processor_settings) {
+        Ok(processor) => Some(processor),
+        Err(e) => {
+            let _ = event_tx.send(VoiceEvent::AudioProcessorDisabled(e));
+            None
+        }
+    };
+
+    Ok((capture, encoder, processor))
 }
 
 #[derive(Debug)]
@@ -188,6 +217,17 @@ fn emit_speaking_stopped(
     }
 }
 
+fn unknown_voice_sender_keys<'a, I>(participants: &VoiceParticipantState, senders: I) -> Vec<String>
+where
+    I: IntoIterator<Item = &'a String>,
+{
+    senders
+        .into_iter()
+        .filter(|sender| !participants.is_known_key(sender))
+        .cloned()
+        .collect()
+}
+
 // =============================================================================
 // Voice Events
 // =============================================================================
@@ -207,6 +247,8 @@ pub enum VoiceEvent {
     SpeakingStopped(String),
     /// Audio device error (should leave voice)
     AudioError(String),
+    /// Enabling transmit during a live listen-only session failed.
+    TransmitEnableFailed(String),
     /// Local speaking state changed
     LocalSpeakingChanged(bool),
     /// Audio processor failed to initialize (voice works, but no noise suppression/AGC)
@@ -218,6 +260,8 @@ pub enum VoiceEvent {
 /// Commands to control the voice manager
 #[derive(Debug)]
 pub enum VoiceCommand {
+    /// Enable capture/encoding after voice_talk is granted during a live session.
+    EnableTransmit,
     /// Start PTT (begin transmitting)
     StartTransmitting,
     /// Stop PTT (stop transmitting)
@@ -314,17 +358,6 @@ async fn run_voice_session(
         return;
     }
 
-    // Initialize audio components
-    let capture = match AudioCapture::new(&config.input_device) {
-        Ok(c) => c,
-        Err(e) => {
-            let _ = event_tx.send(VoiceEvent::AudioError(format!("Input device error: {}", e)));
-            let _ = dtls_command_tx.send(VoiceDtlsCommand::Disconnect);
-            dtls_handle.abort();
-            return;
-        }
-    };
-
     let mut mixer = match AudioMixer::new(&config.output_device) {
         Ok(m) => m,
         Err(e) => {
@@ -349,27 +382,30 @@ async fn run_voice_session(
         return;
     }
 
-    // Initialize codec
-    let mut encoder = match VoiceEncoder::new(config.quality) {
-        Ok(e) => e,
-        Err(e) => {
-            let _ = event_tx.send(VoiceEvent::AudioError(format!("Encoder error: {}", e)));
-            let _ = dtls_command_tx.send(VoiceDtlsCommand::Disconnect);
-            dtls_handle.abort();
-            return;
-        }
-    };
-
     let mut decoder_pool = DecoderPool::new();
     let mut jitter_pool = JitterBufferPool::new();
 
-    // Initialize audio processor for noise suppression, echo cancellation, and AGC
-    let mut processor = match AudioProcessor::new(config.processor_settings) {
-        Ok(p) => Some(p),
-        Err(e) => {
-            let _ = event_tx.send(VoiceEvent::AudioProcessorDisabled(e));
-            None
+    let mut current_quality = config.quality;
+    let mut current_processor_settings = config.processor_settings;
+    let mut transmit_allowed = config.can_transmit;
+
+    let (mut capture, mut encoder, mut processor) = if transmit_allowed {
+        match initialize_transmit_resources(
+            &config.input_device,
+            current_quality,
+            current_processor_settings,
+            &event_tx,
+        ) {
+            Ok((capture, encoder, processor)) => (Some(capture), Some(encoder), processor),
+            Err(error) => {
+                let _ = event_tx.send(VoiceEvent::AudioError(error));
+                let _ = dtls_command_tx.send(VoiceDtlsCommand::Disconnect);
+                dtls_handle.abort();
+                return;
+            }
         }
+    } else {
+        (None, None, None)
     };
 
     // State tracking
@@ -383,18 +419,20 @@ async fn run_voice_session(
     let mut render_mix = vec![0.0f32; VOICE_SAMPLES_PER_FRAME as usize];
 
     // Audio processing interval
-    let mut audio_interval =
-        tokio::time::interval(Duration::from_millis(AUDIO_PROCESS_INTERVAL_MS));
+    let mut audio_interval = time::interval(Duration::from_millis(AUDIO_PROCESS_INTERVAL_MS));
+    audio_interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 
     loop {
         tokio::select! {
             // Process audio at regular intervals
             _ = audio_interval.tick() => {
                 // Check for audio device errors
-                if let Some(err) = capture.check_error() {
-                    let _ = event_tx.send(VoiceEvent::AudioError(err));
-                    let _ = dtls_command_tx.send(VoiceDtlsCommand::Disconnect);
-                    break;
+                if let Some(capture) = capture.as_ref()
+                    && let Some(err) = capture.check_error()
+                {
+                        let _ = event_tx.send(VoiceEvent::AudioError(err));
+                        let _ = dtls_command_tx.send(VoiceDtlsCommand::Disconnect);
+                        break;
                 }
                 if let Some(err) = mixer.check_error() {
                     let _ = event_tx.send(VoiceEvent::AudioError(err));
@@ -408,11 +446,15 @@ async fn run_voice_session(
                 // through the speakers to subtract it from the mic signal.
                 let mut has_render_audio = false;
                 render_mix.fill(0.0);
+                let stale_senders =
+                    unknown_voice_sender_keys(&participants, jitter_pool.iter_mut().map(|(s, _)| s));
 
                 for (sender, buffer) in jitter_pool.iter_mut() {
-                    // Skip stale or muted users. Unknown buffers should only be a
-                    // transient defensive state after membership/rename races.
-                    if !participants.is_known_key(sender) || participants.is_muted_key(sender) {
+                    if !participants.is_known_key(sender) {
+                        continue;
+                    }
+
+                    if participants.is_muted_key(sender) {
                         continue;
                     }
 
@@ -435,6 +477,11 @@ async fn run_voice_session(
                         mixer.queue_audio(sender, &samples);
                     }
                 }
+                for sender in stale_senders {
+                    jitter_pool.remove(&sender);
+                    decoder_pool.remove(&sender);
+                    mixer.remove_user_state(&sender);
+                }
 
                 // Feed the mixed render output to the AEC so it can
                 // subtract speaker echo from the microphone signal.
@@ -444,11 +491,14 @@ async fn run_voice_session(
                 if has_render_audio && !deafened
                     && let Some(ref proc) = processor
                 {
+                    soft_clip_render_reference(&mut render_mix);
                     let _ = proc.analyze_render_frame(&render_mix);
                 }
 
                 // Now capture and send audio with AEC properly primed
-                if transmitting && capture.is_active()
+                if transmitting
+                    && let Some(capture) = capture.as_ref()
+                    && capture.is_active()
                     && let Some(mut samples) = capture.take_frame()
                 {
                     // Apply audio processing (noise suppression, AGC, AEC) to capture
@@ -466,7 +516,9 @@ async fn run_voice_session(
                     // reflects what others actually hear (post-AGC/NS)
                     let level = calculate_rms_level(&samples);
                     config.mic_level.store(level.to_bits(), Ordering::Relaxed);
-                    if let Ok(encoded) = encoder.encode(&samples) {
+                    if let Some(encoder) = encoder.as_mut()
+                        && let Ok(encoded) = encoder.encode(&samples)
+                    {
                         let _ = dtls_command_tx.send(VoiceDtlsCommand::SendVoice(encoded));
                     }
                 } else if transmitting {
@@ -522,13 +574,38 @@ async fn run_voice_session(
             // Handle commands
             cmd = command_rx.recv() => {
                 match cmd {
+                    Some(VoiceCommand::EnableTransmit) => {
+                        if transmit_allowed {
+                            continue;
+                        }
+
+                        match initialize_transmit_resources(
+                            &config.input_device,
+                            current_quality,
+                            current_processor_settings,
+                            &event_tx,
+                        ) {
+                            Ok((new_capture, new_encoder, new_processor)) => {
+                                capture = Some(new_capture);
+                                encoder = Some(new_encoder);
+                                processor = new_processor;
+                                transmit_allowed = true;
+                            }
+                            Err(error) => {
+                                let _ = event_tx.send(VoiceEvent::TransmitEnableFailed(error));
+                            }
+                        }
+                    }
                     Some(VoiceCommand::StartTransmitting) => {
-                        if !transmitting {
+                        if transmit_allowed && !transmitting {
                             transmitting = true;
                             // Hint to transient suppressor that PTT key was pressed
                             if let Some(ref proc) = processor {
                                 proc.set_stream_key_pressed(true);
                             }
+                            let Some(capture) = capture.as_ref() else {
+                                continue;
+                            };
                             if let Err(e) = capture.start() {
                                 let _ = event_tx.send(VoiceEvent::AudioError(format!("Capture error: {}", e)));
                             } else {
@@ -544,7 +621,9 @@ async fn run_voice_session(
                             if let Some(ref proc) = processor {
                                 proc.set_stream_key_pressed(false);
                             }
-                            capture.stop();
+                            if let Some(capture) = capture.as_ref() {
+                                capture.stop();
+                            }
                             // Clear mic level when stopping
                             config.mic_level.store(0f32.to_bits(), Ordering::Relaxed);
                             let _ = dtls_command_tx.send(VoiceDtlsCommand::SendSpeakingStopped);
@@ -610,11 +689,15 @@ async fn run_voice_session(
                         }
                     }
                     Some(VoiceCommand::SetQuality(quality)) => {
-                        if let Err(e) = encoder.set_quality(quality) {
+                        current_quality = quality;
+                        if let Some(encoder) = encoder.as_mut()
+                            && let Err(e) = encoder.set_quality(quality)
+                        {
                             let _ = event_tx.send(VoiceEvent::QualityChangeFailed(e));
                         }
                     }
                     Some(VoiceCommand::SetProcessorSettings(settings)) => {
+                        current_processor_settings = settings;
                         if let Some(ref mut proc) = processor {
                             proc.update_settings(settings);
                         }
@@ -622,7 +705,9 @@ async fn run_voice_session(
                     Some(VoiceCommand::Stop) | None => {
                         // Clean shutdown
                         if transmitting {
-                            capture.stop();
+                            if let Some(capture) = capture.as_ref() {
+                                capture.stop();
+                            }
                             let _ = dtls_command_tx.send(VoiceDtlsCommand::SendSpeakingStopped);
                         }
                         let _ = dtls_command_tx.send(VoiceDtlsCommand::Disconnect);
@@ -699,6 +784,11 @@ impl VoiceSessionHandle {
     /// Start transmitting (PTT pressed)
     pub fn start_transmitting(&self) {
         let _ = self.command_tx.send(VoiceCommand::StartTransmitting);
+    }
+
+    /// Enable capture/encoding for a live session after voice_talk is granted.
+    pub fn enable_transmit(&self) {
+        let _ = self.command_tx.send(VoiceCommand::EnableTransmit);
     }
 
     /// Stop transmitting (PTT released)
@@ -806,6 +896,7 @@ mod tests {
         let _ = VoiceEvent::SpeakingStarted("Alice".to_string());
         let _ = VoiceEvent::SpeakingStopped("Alice".to_string());
         let _ = VoiceEvent::AudioError("test".to_string());
+        let _ = VoiceEvent::TransmitEnableFailed("test".to_string());
         let _ = VoiceEvent::LocalSpeakingChanged(true);
         let _ = VoiceEvent::AudioProcessorDisabled("test".to_string());
         let _ = VoiceEvent::QualityChangeFailed("test".to_string());
@@ -814,6 +905,7 @@ mod tests {
     #[test]
     fn test_voice_command_variants() {
         // Verify enum variants compile
+        let _ = VoiceCommand::EnableTransmit;
         let _ = VoiceCommand::StartTransmitting;
         let _ = VoiceCommand::StopTransmitting;
         let _ = VoiceCommand::MuteUser("Alice".to_string());
@@ -846,6 +938,38 @@ mod tests {
         assert!(!state.is_muted_key(&fold_name("Alice")));
         assert!(state.clear_speaking("Alice"));
         assert!(!state.clear_speaking("Alicia"));
+    }
+
+    #[test]
+    fn unknown_voice_sender_keys_selects_stale_buffers() {
+        let state = VoiceParticipantState::new(vec!["Alice".to_string(), "Bob".to_string()]);
+        let senders = [
+            fold_name("Alice"),
+            fold_name("Bob"),
+            fold_name("Charlie"),
+            fold_name("Alicia"),
+        ];
+
+        let stale = unknown_voice_sender_keys(&state, senders.iter());
+
+        assert_eq!(stale, vec![fold_name("Charlie"), fold_name("Alicia")]);
+    }
+
+    #[test]
+    fn render_reference_uses_playback_soft_clip_curve() {
+        let mut frame = vec![0.0, 0.5, 2.0, -2.0];
+        let expected: Vec<f32> = frame.iter().copied().map(soft_clip).collect();
+
+        soft_clip_render_reference(&mut frame);
+
+        for (actual, expected) in frame.iter().zip(expected) {
+            assert!((actual - expected).abs() < f32::EPSILON);
+        }
+        assert!((frame[1] - 0.5).abs() < 0.1);
+        assert!(frame[2] < 2.0);
+        assert!(frame[2] > 0.0);
+        assert!(frame[3] > -2.0);
+        assert!(frame[3] < 0.0);
     }
 
     #[test]

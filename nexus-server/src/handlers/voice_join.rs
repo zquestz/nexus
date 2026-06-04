@@ -169,13 +169,9 @@ where
                         target: current.nickname.clone(), // joiner's nickname keys the other's tab
                     };
 
-                    if let Some(participant_user) = ctx
-                        .user_manager
-                        .get_session_by_nickname(participant_nickname)
-                        .await
-                    {
-                        let _ = participant_user.tx.send_message(join_notification, None);
-                    }
+                    ctx.user_manager
+                        .broadcast_to_nickname(participant_nickname, &join_notification)
+                        .await;
                 }
             }
         }
@@ -224,8 +220,33 @@ mod tests {
     use crate::db::Permission;
     use crate::handlers::chat_join::handle_chat_join;
     use crate::handlers::testing::{
-        create_test_context, login_user, login_user_with_features, read_server_message,
+        add_observer_session_for_existing_regular_user, create_test_context, login_user,
+        login_user_with_features, read_server_message,
     };
+    use crate::users::user::SessionRx;
+    use std::time::Duration;
+    use tokio::time::timeout;
+
+    async fn expect_voice_user_joined(rx: &mut SessionRx, nickname: &str, target: &str) {
+        let event = timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("timed out waiting for voice join notification")
+            .expect("voice join notification")
+            .expect_message();
+        let (message, message_id) = event;
+
+        assert_eq!(message_id, None);
+        match message {
+            ServerMessage::VoiceUserJoined {
+                nickname: actual_nickname,
+                target: actual_target,
+            } => {
+                assert_eq!(actual_nickname, nickname);
+                assert_eq!(actual_target, target);
+            }
+            other => panic!("Expected VoiceUserJoined, got {:?}", other),
+        }
+    }
 
     #[tokio::test]
     async fn test_voice_join_requires_login() {
@@ -528,6 +549,66 @@ mod tests {
         let participants = test_ctx.voice_registry.get_participants("alice:bob").await;
         assert_eq!(participants.len(), 1);
         assert!(participants.contains(&"alice".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_voice_join_user_message_notifies_all_regular_user_sessions() {
+        let mut test_ctx = create_test_context().await;
+
+        let alice_session = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+
+        let bob_session = login_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+        let (_bob_second_session, mut bob_second_rx) =
+            add_observer_session_for_existing_regular_user(
+                &mut test_ctx,
+                "bob",
+                &[Permission::VoiceListen],
+            )
+            .await;
+
+        handle_voice_join(
+            "alice".to_string(),
+            Some(bob_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::VoiceJoinResponse { success: true, .. }
+        ));
+
+        handle_voice_join(
+            "bob".to_string(),
+            Some(alice_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::VoiceJoinResponse { success: true, .. }
+        ));
+
+        expect_voice_user_joined(&mut test_ctx.rx, "alice", "alice").await;
+        expect_voice_user_joined(&mut bob_second_rx, "alice", "alice").await;
     }
 
     #[tokio::test]

@@ -48,7 +48,7 @@ use nexus_common::address::normalize_socket_addr;
 use nexus_common::logging::{self, LogInitParams, LogLevel};
 use transfers::{TransferParams, TransferRegistry};
 use users::UserManager;
-use voice::{VoiceRegistry, VoiceUdpServer, create_voice_listener};
+use voice::{VoiceControlHandle, VoiceRegistry, VoiceUdpServer, create_voice_listener};
 
 #[tokio::main]
 async fn main() {
@@ -244,6 +244,7 @@ async fn main() {
 
     let transfer_registry = Arc::new(TransferRegistry::new());
     let voice_registry = VoiceRegistry::new();
+    let (voice_control, voice_control_rx) = VoiceControlHandle::channel();
 
     // `bootstrap()` loads enabled tracker rows and spawns one task per row;
     // task-level connection failures back off and retry, never fail startup.
@@ -275,6 +276,7 @@ async fn main() {
             user_manager.clone(),
             channel_manager.clone(),
             connection_tracker.clone(),
+            voice_control_rx,
         ))
     });
 
@@ -400,6 +402,7 @@ async fn main() {
                             channel_manager: channel_manager.clone(),
                             transfer_registry: transfer_registry.clone(),
                             voice_registry: voice_registry.clone(),
+                            voice_control: voice_control.clone(),
                             tracker_manager: tracker_manager.clone(),
                             fingerprint,
                             flood_config: flood_config.clone(),
@@ -531,10 +534,11 @@ async fn main() {
                             ip_rule_cache: ip_rule_cache.clone(),
                             file_index: file_index.clone(),
                             file_activity: file_activity.clone(),
-                            channel_manager: channel_manager.clone(),
-                            transfer_registry: transfer_registry.clone(),
-                            voice_registry: voice_registry.clone(),
-                            tracker_manager: tracker_manager.clone(),
+                                channel_manager: channel_manager.clone(),
+                                transfer_registry: transfer_registry.clone(),
+                                voice_registry: voice_registry.clone(),
+                                voice_control: voice_control.clone(),
+                                tracker_manager: tracker_manager.clone(),
                             fingerprint,
                             flood_config: flood_config.clone(),
                             egress: egress_handle.clone(),

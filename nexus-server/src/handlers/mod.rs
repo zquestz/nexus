@@ -155,7 +155,7 @@ use crate::tracker::TrackerManager;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
 use crate::users::user::{ConnectionWriter, UserSession};
-use crate::voice::{VoiceRegistry, send_voice_leave_notifications};
+use crate::voice::{VoiceControlHandle, VoiceRegistry, send_voice_leave_notifications};
 
 /// Direct socket writer for messages sent by the active connection task.
 pub struct DirectWriter<'a, W> {
@@ -253,6 +253,7 @@ pub struct HandlerContext<'a, W> {
     /// Used to disconnect active transfers on ban.
     pub transfer_registry: Arc<TransferRegistry>,
     pub voice_registry: &'a VoiceRegistry,
+    pub voice_control: &'a VoiceControlHandle,
     /// Per-tracker registration tasks.
     pub tracker_manager: &'a TrackerManager,
     /// Server certificate fingerprint (SHA-256, colon-separated).

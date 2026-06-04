@@ -16,6 +16,10 @@ pub struct VoiceState {
     pub token: Option<Uuid>,
     /// Whether the client has already sent VoiceLeave for this session.
     pub leave_sent: bool,
+    /// Whether this client may transmit audio in the current voice session.
+    pub can_transmit: bool,
+    /// Whether the voice thread was started with capture/encoder resources.
+    pub transmit_initialized: bool,
     /// Target channel (e.g., "#general") or other user's nickname for user message voice
     pub target: String,
     /// Nicknames of users currently in this voice session
@@ -33,6 +37,8 @@ impl VoiceState {
         Self {
             token: None,
             leave_sent: false,
+            can_transmit: false,
+            transmit_initialized: false,
             target,
             participants,
             speaking_users: HashSet::new(),
@@ -41,10 +47,17 @@ impl VoiceState {
     }
 
     /// Create a new accepted voice state tied to a specific join token.
-    pub fn new_with_token(target: String, participants: Vec<String>, token: Uuid) -> Self {
+    pub fn new_with_token(
+        target: String,
+        participants: Vec<String>,
+        token: Uuid,
+        can_transmit: bool,
+    ) -> Self {
         Self {
             token: Some(token),
             leave_sent: false,
+            can_transmit,
+            transmit_initialized: can_transmit,
             target,
             participants,
             speaking_users: HashSet::new(),
@@ -160,6 +173,30 @@ impl VoiceState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pending_voice_state_starts_without_transmit_capability() {
+        let state = VoiceState::new("#general".to_string(), vec!["Alice".to_string()]);
+
+        assert!(state.token.is_none());
+        assert!(!state.can_transmit);
+        assert!(!state.transmit_initialized);
+    }
+
+    #[test]
+    fn accepted_voice_state_records_transmit_capability() {
+        let token = Uuid::new_v4();
+        let state = VoiceState::new_with_token(
+            "#general".to_string(),
+            vec!["Alice".to_string()],
+            token,
+            true,
+        );
+
+        assert_eq!(state.token, Some(token));
+        assert!(state.can_transmit);
+        assert!(state.transmit_initialized);
+    }
 
     /// Regression: `remove_participant` once compared exactly while the rest of
     /// VoiceState folds, so a differently-cased leave (e.g. "alice" against a stored

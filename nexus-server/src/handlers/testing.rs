@@ -39,7 +39,7 @@ use crate::scheduler::ConnectionId;
 use crate::transfers::TransferRegistry;
 use crate::users::UserManager;
 use crate::users::user::{ConnectionWriter, NewSessionParams, SessionRx};
-use crate::voice::VoiceRegistry;
+use crate::voice::{VoiceControlCommand, VoiceControlHandle, VoiceRegistry};
 use nexus_common::address::normalize_socket_addr;
 
 pub const DEFAULT_TEST_LOCALE: &str = "en";
@@ -98,6 +98,8 @@ pub struct TestContext {
     pub channel_manager: ChannelManager,
     pub transfer_registry: Arc<TransferRegistry>,
     pub voice_registry: VoiceRegistry,
+    pub voice_control: VoiceControlHandle,
+    pub voice_control_rx: tokio::sync::mpsc::UnboundedReceiver<VoiceControlCommand>,
     pub tracker_manager: crate::tracker::TrackerManager,
     pub flood_config: Arc<crate::flood::FloodConfig>,
     /// Keep temp dir alive for tests that use file areas
@@ -127,6 +129,7 @@ impl TestContext {
             channel_manager: &self.channel_manager,
             transfer_registry: self.transfer_registry.clone(),
             voice_registry: &self.voice_registry,
+            voice_control: &self.voice_control,
             tracker_manager: &self.tracker_manager,
             fingerprint: TEST_FINGERPRINT,
             flood_config: self.flood_config.clone(),
@@ -200,6 +203,7 @@ pub async fn create_test_context() -> TestContext {
     let transfer_registry = Arc::new(TransferRegistry::new());
 
     let voice_registry = VoiceRegistry::new();
+    let (voice_control, voice_control_rx) = VoiceControlHandle::channel();
 
     // No rows seeded, so tracker tasks don't run; manager-exercising tests
     // populate it via spawn() / replace().
@@ -235,6 +239,8 @@ pub async fn create_test_context() -> TestContext {
         channel_manager,
         transfer_registry,
         voice_registry,
+        voice_control,
+        voice_control_rx,
         tracker_manager,
         flood_config,
         _temp_dir: temp_dir,
@@ -447,6 +453,71 @@ pub async fn login_observer_user(
     (session_id, rx)
 }
 
+/// Add another session for an already-created regular account with its own
+/// receiver, so tests can assert every session for the same nickname was
+/// notified.
+pub async fn add_observer_session_for_existing_regular_user(
+    test_ctx: &mut TestContext,
+    username: &str,
+    permissions: &[crate::db::Permission],
+) -> (u32, SessionRx) {
+    let user = test_ctx
+        .db
+        .users
+        .get_user_by_username(username)
+        .await
+        .expect("user lookup should succeed")
+        .expect("existing user should be present");
+
+    assert!(
+        !user.is_shared,
+        "helper is for regular accounts; shared accounts use per-session nicknames"
+    );
+
+    let mut perms = Permissions::new();
+    for perm in permissions {
+        perms.permissions.insert(*perm);
+    }
+
+    let bandwidth_weight = test_ctx
+        .db
+        .users
+        .get_resolved_bandwidth_weight(user.id)
+        .await
+        .expect("resolved bandwidth weight should load");
+
+    let (tx, rx) = ConnectionWriter::channel();
+
+    let session_id = test_ctx
+        .user_manager
+        .add_user(NewSessionParams {
+            session_id: 0,
+            user_id: user.id,
+            username: username.to_string(),
+            is_admin: user.is_admin,
+            is_shared: false,
+            permissions: perms.permissions.clone(),
+            address: test_ctx.peer_addr,
+            created_at: user.created_at,
+            tx,
+            features: vec![],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: username.to_string(),
+            is_away: false,
+            status: None,
+            group_id: user.group_id,
+            group_name: None,
+            bandwidth_weight,
+            bandwidth_weight_override: user.bandwidth_weight,
+            last_activity: std::time::Instant::now(),
+        })
+        .await
+        .expect("Failed to add additional user session to UserManager");
+
+    (session_id, rx)
+}
+
 /// Create a shared account + session with a distinct `nickname`.
 pub async fn login_shared_user(
     test_ctx: &mut TestContext,
@@ -539,6 +610,7 @@ pub fn concurrent_handler_context<'a>(
         channel_manager: &test_ctx.channel_manager,
         transfer_registry: test_ctx.transfer_registry.clone(),
         voice_registry: &test_ctx.voice_registry,
+        voice_control: &test_ctx.voice_control,
         tracker_manager: &test_ctx.tracker_manager,
         fingerprint: TEST_FINGERPRINT,
         flood_config: test_ctx.flood_config.clone(),

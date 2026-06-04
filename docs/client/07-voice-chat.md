@@ -298,7 +298,7 @@ The same VU meter style is used in both the settings mic test and the voice bar 
 
 **"You don't have permission"**
 
-- Contact the server admin to grant `voice_listen` or `voice_talk`
+- Contact the server admin to grant `voice_listen`
 
 **"Already in voice on another connection"**
 
