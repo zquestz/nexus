@@ -130,9 +130,14 @@ use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::constants::{ERR_CHANNEL_CLOSED, ERR_EGRESS_STAGE_FAILED};
+use crate::constants::{
+    EGRESS_COMMAND_TIMEOUT, ERR_CHANNEL_CLOSED, ERR_EGRESS_STAGE_FAILED,
+    LOG_EGRESS_USER_WEIGHT_UPDATE_FAILED, LOG_EGRESS_USER_WEIGHT_UPDATE_TIMEOUT,
+};
 
 use tokio::io::AsyncWrite;
+use tokio::time;
+use tracing::warn;
 
 use nexus_common::framing::{FrameWriter, MessageId};
 use nexus_common::io::server_message_to_frame_bytes;
@@ -326,6 +331,40 @@ where
         Outcome::Disconnect => {
             ctx.send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(handler_name))
                 .await
+        }
+    }
+}
+
+pub(super) async fn update_egress_user_weight<W>(
+    ctx: &HandlerContext<'_, W>,
+    user_id: i64,
+    weight: u16,
+) {
+    match time::timeout(
+        EGRESS_COMMAND_TIMEOUT,
+        ctx.egress.update_user_weight(user_id, weight),
+    )
+    .await
+    {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            warn!(
+                ip = %ctx.peer_addr,
+                user_id,
+                weight,
+                err = ?e,
+                "{}",
+                LOG_EGRESS_USER_WEIGHT_UPDATE_FAILED
+            );
+        }
+        Err(_) => {
+            warn!(
+                ip = %ctx.peer_addr,
+                user_id,
+                weight,
+                "{}",
+                LOG_EGRESS_USER_WEIGHT_UPDATE_TIMEOUT
+            );
         }
     }
 }

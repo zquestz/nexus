@@ -25,7 +25,7 @@ use super::{
     err_group_shared_permission, err_not_logged_in, err_permission_denied,
     err_permissions_contains_newlines, err_permissions_empty_permission,
     err_permissions_invalid_characters, err_permissions_permission_too_long,
-    err_permissions_too_many, err_unknown_permission,
+    err_permissions_too_many, err_unknown_permission, update_egress_user_weight,
 };
 use crate::constants::*;
 use crate::db::{GroupPermissionWriteScope, Permission, Permissions};
@@ -51,6 +51,7 @@ where
     };
 
     // Guard lives only inside this block; all socket sends happen after it.
+    let mut egress_weight_updates = Vec::new();
     let outcome = 'locked: {
         let _state_guard = ctx.user_manager.lock_user_state().await;
         let requesting_user = match ctx.user_manager.get_user_by_session_id(session_id).await {
@@ -367,6 +368,9 @@ where
                 } else {
                     HashSet::new()
                 };
+                for user_id in &inheriting_set {
+                    egress_weight_updates.push((*user_id, updated_group.bandwidth_weight));
+                }
 
                 if name_changed {
                     ctx.user_manager
@@ -552,17 +556,96 @@ where
         }
     };
 
+    for (user_id, weight) in egress_weight_updates {
+        update_egress_user_weight(ctx, user_id, weight).await;
+    }
+
     dispatch_outcome(outcome, ctx, HANDLER_GROUP_UPDATE).await
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::time::Instant;
 
     use super::*;
     use crate::channels::JoinPolicy;
     use crate::db;
+    use crate::egress::task::EgressCommand;
     use crate::handlers::testing::{create_test_context, login_user, read_server_message};
+
+    async fn add_online_group_member(
+        test_ctx: &mut crate::handlers::testing::TestContext,
+        username: &str,
+        group_id: i64,
+        group_name: &str,
+        bandwidth_weight: u16,
+    ) -> i64 {
+        add_online_group_member_with_override(
+            test_ctx,
+            username,
+            group_id,
+            group_name,
+            bandwidth_weight,
+            None,
+        )
+        .await
+    }
+
+    async fn add_online_group_member_with_override(
+        test_ctx: &mut crate::handlers::testing::TestContext,
+        username: &str,
+        group_id: i64,
+        group_name: &str,
+        bandwidth_weight: u16,
+        bandwidth_weight_override: Option<u16>,
+    ) -> i64 {
+        let user = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username,
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group_id),
+                revokes: &[],
+                bandwidth_weight: bandwidth_weight_override,
+            })
+            .await
+            .unwrap();
+
+        test_ctx
+            .user_manager
+            .add_user(crate::users::user::NewSessionParams {
+                session_id: 0,
+                user_id: user.id,
+                username: username.to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: username.to_string(),
+                is_away: false,
+                status: None,
+                group_id: Some(group_id),
+                group_name: Some(group_name.to_string()),
+                bandwidth_weight,
+                bandwidth_weight_override,
+                last_activity: Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        user.id
+    }
 
     #[tokio::test]
     async fn test_group_update_requires_login() {
@@ -2671,6 +2754,137 @@ mod tests {
                 .load(std::sync::atomic::Ordering::Relaxed),
             12
         );
+
+        match test_ctx.egress_command_rx.try_recv() {
+            Ok(EgressCommand::UpdateUserWeight { user_id, weight }) => {
+                assert_eq!(user_id, bob.id);
+                assert_eq!(weight, 12);
+            }
+            _ => panic!("Expected egress UpdateUserWeight command"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_group_update_bandwidth_cascade_updates_egress_for_each_online_member() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                5,
+            )
+            .await
+            .unwrap();
+
+        let bob_id = add_online_group_member(&mut test_ctx, "bob", group.id, "Staff", 5).await;
+        let carol_id = add_online_group_member(&mut test_ctx, "carol", group.id, "Staff", 5).await;
+
+        let result = handle_group_update(
+            group.id,
+            None,
+            None,
+            None,
+            Some(13),
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(success, "group update should succeed: {:?}", error);
+            }
+            other => panic!("Expected GroupUpdateResponse, got {:?}", other),
+        }
+
+        let mut updates = Vec::new();
+        for _ in 0..2 {
+            match test_ctx.egress_command_rx.try_recv() {
+                Ok(EgressCommand::UpdateUserWeight { user_id, weight }) => {
+                    updates.push((user_id, weight));
+                }
+                _ => panic!("Expected egress UpdateUserWeight command"),
+            }
+        }
+        updates.sort_unstable();
+
+        let mut expected = vec![(bob_id, 13), (carol_id, 13)];
+        expected.sort_unstable();
+        assert_eq!(updates, expected);
+        assert!(
+            test_ctx.egress_command_rx.try_recv().is_err(),
+            "group cascade should emit exactly one egress update per affected online user"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_group_update_bandwidth_cascade_skips_override_members_for_egress() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let group = test_ctx
+            .db
+            .groups
+            .create_group(
+                "Staff",
+                false,
+                &Permissions::from(&[Permission::ChatSend]),
+                5,
+            )
+            .await
+            .unwrap();
+
+        let inheritor_id =
+            add_online_group_member(&mut test_ctx, "bob", group.id, "Staff", 5).await;
+        let override_id = add_online_group_member_with_override(
+            &mut test_ctx,
+            "carol",
+            group.id,
+            "Staff",
+            100,
+            Some(100),
+        )
+        .await;
+
+        let result = handle_group_update(
+            group.id,
+            None,
+            None,
+            None,
+            Some(13),
+            Some(admin_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::GroupUpdateResponse { success, error, .. } => {
+                assert!(success, "group update should succeed: {:?}", error);
+            }
+            other => panic!("Expected GroupUpdateResponse, got {:?}", other),
+        }
+
+        match test_ctx.egress_command_rx.try_recv() {
+            Ok(EgressCommand::UpdateUserWeight { user_id, weight }) => {
+                assert_eq!(user_id, inheritor_id);
+                assert_eq!(weight, 13);
+                assert_ne!(user_id, override_id);
+            }
+            _ => panic!("Expected egress UpdateUserWeight command"),
+        }
+        assert!(
+            test_ctx.egress_command_rx.try_recv().is_err(),
+            "override members should not receive egress updates for inherited group weight changes"
+        );
     }
 
     /// Regression: when a single GroupUpdate changes BOTH name and
@@ -2884,6 +3098,10 @@ mod tests {
         assert!(
             test_ctx.rx.try_recv().is_err(),
             "No UserUpdated broadcast when every member's resolved weight is unchanged"
+        );
+        assert!(
+            test_ctx.egress_command_rx.try_recv().is_err(),
+            "No egress weight update when every member's resolved weight is unchanged"
         );
     }
 }

@@ -583,6 +583,7 @@ fn burst_capacity(chunk_size: NonZeroUsize) -> i128 {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::time::Duration;
 
     use nexus_common::framing::MessageId;
@@ -665,6 +666,10 @@ mod tests {
             channel: DEFAULT_CHANNEL.to_string(),
             timestamp: 1234,
         }
+    }
+
+    fn frame_with_chunks(chunks: usize, chunk_size: usize) -> Arc<[u8]> {
+        vec![0_u8; chunks * chunk_size].into()
     }
 
     #[test]
@@ -945,53 +950,44 @@ mod tests {
         stop_task(handle, task).await;
     }
 
-    #[tokio::test]
-    async fn finite_rate_limiter_preserves_weighted_fairness() {
-        let (handle, task) = spawn_task_with_rate(EgressManager::new(nonzero(100)), 20_000);
+    #[test]
+    fn finite_rate_limiter_preserves_weighted_fairness() {
+        let mut manager = EgressManager::new(nonzero(100));
         let heavy = conn(1);
         let light = conn(2);
         let (dispatch_tx, mut dispatch_rx) = dispatch_channel();
 
-        assert!(
-            handle
-                .register(user_registration(heavy, 1, dispatch_tx.clone()))
-                .await
-                .unwrap()
-        );
-        assert!(
-            handle
-                .register(user_registration(light, 2, dispatch_tx))
-                .await
-                .unwrap()
-        );
-        handle.update_user_weight(1, 3).await.unwrap();
-        handle.update_user_weight(2, 1).await.unwrap();
+        assert!(manager.register(user_registration(heavy, 1, dispatch_tx.clone())));
+        assert!(manager.register(user_registration(light, 2, dispatch_tx)));
+        assert!(manager.update_user_weight(1, 3));
+        assert!(manager.update_user_weight(2, 1));
 
-        let heavy_chunks = handle
-            .stage_message(
-                heavy,
-                Box::new(large_chat_message()),
-                message_id(b"000000000213"),
-            )
-            .await
-            .unwrap()
-            .unwrap();
-        let light_chunks = handle
-            .stage_message(
-                light,
-                Box::new(large_chat_message()),
-                message_id(b"000000000214"),
-            )
-            .await
-            .unwrap()
-            .unwrap();
-        assert!(heavy_chunks >= 32);
-        assert!(light_chunks >= 32);
+        assert_eq!(
+            manager
+                .enqueue_frame(heavy, frame_with_chunks(128, 100))
+                .unwrap(),
+            128
+        );
+        assert_eq!(
+            manager
+                .enqueue_frame(light, frame_with_chunks(128, 100))
+                .unwrap(),
+            128
+        );
+
+        let (_tx, rx) = mpsc::channel(1);
+        let mut task = EgressTask::with_rate(manager, rx, 1);
 
         let mut heavy_seen = 0;
         let mut light_seen = 0;
-        for _ in 0..32 {
-            let dispatch = recv_dispatch(&mut dispatch_rx).await;
+        for _ in 0..128 {
+            task.rate_limiter.tokens = 1;
+            task.rate_limiter.last_refill = Instant::now();
+            assert_eq!(task.pump_dispatch(), PumpResult::RateLimited);
+
+            let dispatch = dispatch_rx
+                .try_recv()
+                .expect("one dispatch should be emitted for each token grant");
             assert_eq!(dispatch.chunk.len(), 100);
             if dispatch.connection_id == heavy {
                 heavy_seen += 1;
@@ -999,19 +995,17 @@ mod tests {
                 assert_eq!(dispatch.connection_id, light);
                 light_seen += 1;
             }
-            handle.ack(dispatch.connection_id).await.unwrap();
+            assert!(task.manager.ack(dispatch.connection_id));
         }
 
         assert!(
-            (22..=26).contains(&heavy_seen),
+            (92..=100).contains(&heavy_seen),
             "expected heavy flow near 3:1 share, got {heavy_seen}:{light_seen}"
         );
         assert!(
-            (6..=10).contains(&light_seen),
+            (28..=36).contains(&light_seen),
             "expected light flow near 3:1 share, got {heavy_seen}:{light_seen}"
         );
-
-        stop_task(handle, task).await;
     }
 
     #[tokio::test]

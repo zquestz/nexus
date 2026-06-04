@@ -48,7 +48,7 @@ use super::{
     err_shared_cannot_self_edit, err_shared_invalid_permissions, err_unknown_permission,
     err_update_failed, err_user_not_found, err_username_empty, err_username_exists,
     err_username_invalid, err_username_is_active_nickname, err_username_too_long,
-    remove_users_with_cleanup_locked, send_reason_and_disconnect,
+    remove_users_with_cleanup_locked, send_reason_and_disconnect, update_egress_user_weight,
 };
 use super::{
     ServerInfoOptions, ServerInfoValues, broadcast_chat_user_renamed,
@@ -97,6 +97,7 @@ where
     };
 
     // Guard lives only inside this block; all socket sends happen after it.
+    let mut egress_weight_updates = Vec::new();
     let outcome = 'locked: {
         let _state_guard = ctx.user_manager.lock_user_state().await;
         let requesting_user = match ctx
@@ -1372,6 +1373,8 @@ where
                 // emptiness guard below — UserUpdated is presence-only.)
                 let suppress_for_bw_only =
                     bw_only_trigger && old_resolved == Some(resolved_bandwidth_weight);
+                let egress_weight_changed =
+                    old_resolved.is_some_and(|old| old != resolved_bandwidth_weight);
 
                 if broadcast_should_fire && !suppress_for_bw_only {
                     // Re-read post-update so per-session (shared) broadcasts carry the
@@ -1464,6 +1467,10 @@ where
                             }
                         }
                     }
+                }
+
+                if egress_weight_changed {
+                    egress_weight_updates.push((updated_account.id, resolved_bandwidth_weight));
                 }
 
                 info!(
@@ -1642,6 +1649,10 @@ where
         }
     };
 
+    for (user_id, weight) in egress_weight_updates {
+        update_egress_user_weight(ctx, user_id, weight).await;
+    }
+
     dispatch_outcome(outcome, ctx, HANDLER_USER_UPDATE).await
 }
 
@@ -1703,6 +1714,7 @@ mod tests {
     use super::*;
     use crate::channels::JoinPolicy;
     use crate::db;
+    use crate::egress::task::EgressCommand;
     #[allow(unused_imports)]
     use crate::handlers::testing::read_login_response;
     use crate::handlers::testing::*;
@@ -10465,6 +10477,206 @@ mod tests {
              other msgs: {:?}",
             other_msgs
         );
+        assert!(
+            test_ctx.egress_command_rx.try_recv().is_err(),
+            "same-resolved bandwidth update should not emit an egress weight update"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_bandwidth_change_updates_egress_weight() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let bob_session = login_user(&mut test_ctx, "bob", "password", &[], false).await;
+        let bob = test_ctx
+            .user_manager
+            .get_user_by_session_id(bob_session)
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: bob.user_id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(200),
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "user update should succeed: {:?}", error);
+            }
+            other => panic!("Expected UserUpdateResponse, got {:?}", other),
+        }
+
+        match test_ctx.egress_command_rx.try_recv() {
+            Ok(EgressCommand::UpdateUserWeight { user_id, weight }) => {
+                assert_eq!(user_id, bob.user_id);
+                assert_eq!(weight, 200);
+            }
+            _ => panic!("Expected egress UpdateUserWeight command"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_inherit_bandwidth_updates_egress_to_group_weight() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let group = test_ctx
+            .db
+            .groups
+            .create_group("Staff", false, &db::Permissions::new(), 7)
+            .await
+            .unwrap();
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: Some(group.id),
+                revokes: &[],
+                bandwidth_weight: Some(100),
+            })
+            .await
+            .unwrap();
+        let bob_session = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: bob.id,
+                username: "bob".to_string(),
+                is_admin: false,
+                is_shared: false,
+                permissions: HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: 0,
+                tx: test_ctx.tx.clone(),
+                features: vec![],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "bob".to_string(),
+                is_away: false,
+                status: None,
+                group_id: Some(group.id),
+                group_name: Some("Staff".to_string()),
+                bandwidth_weight: 100,
+                bandwidth_weight_override: Some(100),
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            id: bob.id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: Some(true),
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(success, "user update should succeed: {:?}", error);
+            }
+            other => panic!("Expected UserUpdateResponse, got {:?}", other),
+        }
+
+        match test_ctx.egress_command_rx.try_recv() {
+            Ok(EgressCommand::UpdateUserWeight { user_id, weight }) => {
+                assert_eq!(user_id, bob.id);
+                assert_eq!(weight, 7);
+            }
+            _ => panic!("Expected egress UpdateUserWeight command"),
+        }
+
+        let updated_bob = test_ctx
+            .user_manager
+            .get_user_by_session_id(bob_session)
+            .await
+            .unwrap();
+        assert_eq!(
+            updated_bob
+                .bandwidth_weight
+                .load(std::sync::atomic::Ordering::Relaxed),
+            7
+        );
+        assert_eq!(updated_bob.bandwidth_weight_override, None);
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_bandwidth_change_succeeds_when_egress_channel_closed() {
+        let mut test_ctx = create_test_context().await;
+
+        let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let bob_session = login_user(&mut test_ctx, "bob", "password", &[], false).await;
+        let bob = test_ctx
+            .user_manager
+            .get_user_by_session_id(bob_session)
+            .await
+            .unwrap();
+        test_ctx.egress_command_rx.close();
+
+        let request = UserUpdateRequest {
+            id: bob.user_id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: Some(200),
+            inherit_bandwidth_weight: None,
+            session_id: Some(admin_session),
+        };
+        handle_user_update(request, &mut test_ctx.handler_context())
+            .await
+            .unwrap();
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserUpdateResponse { success, error, .. } => {
+                assert!(
+                    success,
+                    "egress failure must not fail user update: {:?}",
+                    error
+                );
+            }
+            other => panic!("Expected UserUpdateResponse, got {:?}", other),
+        }
     }
 
     /// Suppression must NOT fire when a non-bandwidth field also changed: same
