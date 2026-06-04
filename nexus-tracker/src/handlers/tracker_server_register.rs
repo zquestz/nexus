@@ -520,7 +520,8 @@ where
 ///    address-vs-peer check is skipped (after hard-reject).
 /// 4. **IP literal match** — a public peer requires the literal to equal
 ///    the peer source IP.
-/// 5. **Hostname resolution** — resolve the Punycode form (5s ceiling).
+/// 5. **Hostname resolution** — resolve the Punycode form
+///    ([`ADDRESS_LOOKUP_TIMEOUT`] ceiling).
 ///    Includes-peer accepts; without-peer / NXDOMAIN reject. Transient
 ///    failures are mode-asymmetric (see [`transient_outcome`]).
 async fn validate_address(

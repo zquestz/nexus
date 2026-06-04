@@ -101,6 +101,19 @@ const MIN_REFRESH_INTERVAL_SECS: u32 = 1;
 /// peer close (tracker restart) so we reconnect in seconds, not a full interval.
 const IDLE_READ_PADDING: Duration = Duration::from_secs(15);
 
+/// Test-only tracker task entrypoint without lifecycle serialization.
+///
+/// Production tasks are spawned through [`run_with_lifecycle_lock`] so TOFU
+/// fingerprint writes serialize with admin lifecycle mutations.
+#[cfg(test)]
+pub async fn run(
+    mut record: TrackerRecord,
+    status: Arc<RwLock<TrackerStatus>>,
+    context: Arc<TrackerContext>,
+) {
+    run_inner(&mut record, status, context, None).await;
+}
+
 /// Run the tracker task for one tracker. Loops with backoff until the
 /// manager cancels it, or exits early on an unrecoverable error.
 ///
@@ -109,10 +122,22 @@ const IDLE_READ_PADDING: Duration = Duration::from_secs(15);
 ///   and respawn the task — no in-place reconfiguration.
 /// - `status`: shared with the manager for admin reads.
 /// - `context`: shared infrastructure (DB, UserManager, server fingerprint, ports).
-pub async fn run(
+/// - `lifecycle`: shared with `TrackerManager` so task-side TOFU writes
+///   serialize with admin DB mutation + spawn/replace/terminate sections.
+pub(crate) async fn run_with_lifecycle_lock(
     mut record: TrackerRecord,
     status: Arc<RwLock<TrackerStatus>>,
     context: Arc<TrackerContext>,
+    lifecycle: Arc<tokio::sync::Mutex<()>>,
+) {
+    run_inner(&mut record, status, context, Some(lifecycle)).await;
+}
+
+async fn run_inner(
+    record: &mut TrackerRecord,
+    status: Arc<RwLock<TrackerStatus>>,
+    context: Arc<TrackerContext>,
+    lifecycle: Option<Arc<tokio::sync::Mutex<()>>>,
 ) {
     let mut backoff = BACKOFF_BASE;
     // Whether the hostname has resolved at least once this lifetime.
@@ -132,7 +157,14 @@ pub async fn run(
             s.last_attempted_at = Some(Utc::now().timestamp());
         }
 
-        match attempt_connection_cycle(&mut record, &status, &context, &mut has_resolved_once).await
+        match attempt_connection_cycle(
+            record,
+            &status,
+            &context,
+            lifecycle.as_ref(),
+            &mut has_resolved_once,
+        )
+        .await
         {
             CycleOutcome::Transient => {
                 // Already logged + status-updated. Backoff and retry.
@@ -181,6 +213,7 @@ async fn attempt_connection_cycle(
     record: &mut TrackerRecord,
     status: &Arc<RwLock<TrackerStatus>>,
     context: &Arc<TrackerContext>,
+    lifecycle: Option<&Arc<tokio::sync::Mutex<()>>>,
     has_resolved_once: &mut bool,
 ) -> CycleOutcome {
     // Phase 0: normalize the address for the resolver and rustls
@@ -468,6 +501,10 @@ async fn attempt_connection_cycle(
     // this is the first connect — persist the trusted fingerprint and
     // update the local record so later iterations see it.
     if record.fingerprint.is_none() {
+        let _lifecycle_guard = match lifecycle {
+            Some(lock) => Some(lock.lock().await),
+            None => None,
+        };
         match context
             .db
             .trackers
@@ -1537,7 +1574,7 @@ mod tests {
 
         let outcome = tokio::time::timeout(
             Duration::from_secs(10),
-            attempt_connection_cycle(&mut record, &status, &context, &mut has_resolved_once),
+            attempt_connection_cycle(&mut record, &status, &context, None, &mut has_resolved_once),
         )
         .await
         .expect("DNS lookup of an .invalid hostname must fail fast — the resolver hung");
@@ -1581,7 +1618,7 @@ mod tests {
 
         let outcome = tokio::time::timeout(
             Duration::from_secs(10),
-            attempt_connection_cycle(&mut record, &status, &context, &mut has_resolved_once),
+            attempt_connection_cycle(&mut record, &status, &context, None, &mut has_resolved_once),
         )
         .await
         .expect("DNS lookup of an .invalid hostname must fail fast — the resolver hung");

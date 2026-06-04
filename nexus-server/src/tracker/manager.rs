@@ -66,7 +66,7 @@ pub struct TrackerManager {
     /// method, not the DB↔manager boundary; without this a `TrackerUpdate`
     /// can lose to a concurrent `TrackerRemove` and orphan a task. See
     /// [`Self::lock_lifecycle`].
-    lifecycle: tokio::sync::Mutex<()>,
+    lifecycle: Arc<tokio::sync::Mutex<()>>,
     context: Arc<TrackerContext>,
 }
 
@@ -77,7 +77,7 @@ impl TrackerManager {
     pub fn new(context: Arc<TrackerContext>) -> Self {
         Self {
             inner: Mutex::new(HashMap::new()),
-            lifecycle: tokio::sync::Mutex::new(()),
+            lifecycle: Arc::new(tokio::sync::Mutex::new(())),
             context,
         }
     }
@@ -286,9 +286,10 @@ impl TrackerManager {
         let status = Arc::new(RwLock::new(TrackerStatus::default()));
         let task_status = Arc::clone(&status);
         let task_context = Arc::clone(&self.context);
+        let task_lifecycle = Arc::clone(&self.lifecycle);
 
         let join = tokio::spawn(async move {
-            task::run(record, task_status, task_context).await;
+            task::run_with_lifecycle_lock(record, task_status, task_context, task_lifecycle).await;
         });
 
         if let Some(old) = map.insert(id, TrackerHandle { join, status, name }) {

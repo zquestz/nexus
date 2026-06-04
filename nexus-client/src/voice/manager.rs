@@ -3,12 +3,12 @@
 //! Orchestrates all voice chat components: DTLS connection, audio capture/playback,
 //! Opus codec, jitter buffer, and push-to-talk.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 use tokio::time::{self, MissedTickBehavior};
@@ -60,6 +60,9 @@ pub struct VoiceSessionConfig {
 
 /// Interval for processing audio frames (10ms = 100 frames/second)
 const AUDIO_PROCESS_INTERVAL_MS: u64 = 10;
+
+/// Remote speaking indicators are cleaned up if a stop packet is lost.
+const SPEAKING_INDICATOR_TTL: Duration = Duration::from_secs(5);
 
 /// Scaling factor for RMS to UI level conversion (provides headroom for typical speech)
 const RMS_DISPLAY_SCALE: f64 = 2.0;
@@ -113,6 +116,7 @@ fn initialize_transmit_resources(
 struct VoiceParticipantState {
     known_participants: HashSet<String>,
     speaking_users: HashSet<String>,
+    speaking_activity: HashMap<String, (String, Instant)>,
     muted_users: HashSet<String>,
 }
 
@@ -121,6 +125,7 @@ impl VoiceParticipantState {
         Self {
             known_participants: participants.into_iter().map(|n| fold_name(&n)).collect(),
             speaking_users: HashSet::new(),
+            speaking_activity: HashMap::new(),
             muted_users: HashSet::new(),
         }
     }
@@ -188,12 +193,35 @@ impl VoiceParticipantState {
         old_was_known
     }
 
-    fn mark_speaking(&mut self, nickname: &str) -> bool {
-        self.speaking_users.insert(fold_name(nickname))
+    fn mark_speaking(&mut self, nickname: &str, now: Instant) -> bool {
+        let key = fold_name(nickname);
+        self.speaking_activity
+            .insert(key.clone(), (nickname.to_string(), now));
+        self.speaking_users.insert(key)
     }
 
     fn clear_speaking(&mut self, nickname: &str) -> bool {
-        self.speaking_users.remove(&fold_name(nickname))
+        let key = fold_name(nickname);
+        self.speaking_activity.remove(&key);
+        self.speaking_users.remove(&key)
+    }
+
+    fn expire_stale_speakers(&mut self, now: Instant, ttl: Duration) -> Vec<String> {
+        let expired = self
+            .speaking_activity
+            .iter()
+            .filter(|(key, (_, last_seen))| {
+                self.speaking_users.contains(*key)
+                    && now.saturating_duration_since(*last_seen) >= ttl
+            })
+            .map(|(_, (nickname, _))| nickname.clone())
+            .collect::<Vec<_>>();
+
+        for nickname in &expired {
+            self.clear_speaking(nickname);
+        }
+
+        expired
     }
 }
 
@@ -202,7 +230,7 @@ fn emit_speaking_started(
     nickname: &str,
     event_tx: &mpsc::UnboundedSender<VoiceEvent>,
 ) {
-    if state.mark_speaking(nickname) {
+    if state.mark_speaking(nickname, Instant::now()) {
         let _ = event_tx.send(VoiceEvent::SpeakingStarted(nickname.to_string()));
     }
 }
@@ -426,6 +454,12 @@ async fn run_voice_session(
         tokio::select! {
             // Process audio at regular intervals
             _ = audio_interval.tick() => {
+                for nickname in
+                    participants.expire_stale_speakers(Instant::now(), SPEAKING_INDICATOR_TTL)
+                {
+                    let _ = event_tx.send(VoiceEvent::SpeakingStopped(nickname));
+                }
+
                 // Check for audio device errors
                 if let Some(capture) = capture.as_ref()
                     && let Some(err) = capture.check_error()
@@ -923,11 +957,12 @@ mod tests {
     #[test]
     fn participant_state_gates_and_rekeys_voice_rename() {
         let mut state = VoiceParticipantState::new(vec!["Alice".to_string()]);
+        let now = Instant::now();
 
         assert!(state.is_known("alice"));
         assert!(!state.is_known("Bob"));
 
-        assert!(state.mark_speaking("Alice"));
+        assert!(state.mark_speaking("Alice", now));
         state.set_muted("Alice", true);
 
         assert!(state.rename_user("Alice", "Alicia", true));
@@ -938,6 +973,32 @@ mod tests {
         assert!(!state.is_muted_key(&fold_name("Alice")));
         assert!(state.clear_speaking("Alice"));
         assert!(!state.clear_speaking("Alicia"));
+    }
+
+    #[test]
+    fn participant_state_speaking_ttl_clears_stale_and_refreshes_active() {
+        let mut state = VoiceParticipantState::new(vec!["Alice".to_string(), "Bob".to_string()]);
+        let now = Instant::now();
+        let stale_start = now.checked_sub(SPEAKING_INDICATOR_TTL).unwrap_or(now);
+
+        assert!(state.mark_speaking("Alice", stale_start));
+        assert!(state.mark_speaking("Bob", now));
+        assert!(!state.mark_speaking("Bob", now + Duration::from_secs(1)));
+
+        assert_eq!(
+            state.expire_stale_speakers(now, SPEAKING_INDICATOR_TTL),
+            vec!["Alice".to_string()]
+        );
+        assert!(!state.speaking_users.contains(&fold_name("Alice")));
+        assert!(state.speaking_users.contains(&fold_name("Bob")));
+
+        assert!(state.mark_speaking("Alice", now));
+        assert!(state.speaking_users.contains(&fold_name("Alice")));
+        assert!(
+            state
+                .expire_stale_speakers(now + Duration::from_secs(4), SPEAKING_INDICATOR_TTL)
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1021,7 +1082,7 @@ mod tests {
     fn duplicate_rename_does_not_clear_rebuilt_new_speaking() {
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
         let mut state = VoiceParticipantState::new(vec!["Alicia".to_string()]);
-        assert!(state.mark_speaking("Alicia"));
+        assert!(state.mark_speaking("Alicia", Instant::now()));
 
         let old_was_known = state.rename_user("Alice", "Alicia", false);
         emit_speaking_stopped(&mut state, "Alice", &event_tx);

@@ -1368,8 +1368,6 @@ mod tests {
         };
 
         let server_task = tokio::spawn(handle_connection_inner(server, params));
-        time::sleep(Duration::from_millis(25)).await;
-        assert!(command_rx.try_recv().is_err());
 
         send_client_message_with_id(
             &mut writer,
@@ -1380,8 +1378,9 @@ mod tests {
         )
         .await
         .expect("handshake send should succeed");
-        let handshake = read_server_message(&mut reader)
+        let handshake = time::timeout(Duration::from_secs(2), read_server_message(&mut reader))
             .await
+            .expect("timed out waiting for handshake response")
             .expect("handshake read should succeed")
             .expect("handshake response");
         assert!(matches!(
@@ -1403,8 +1402,9 @@ mod tests {
         )
         .await
         .expect("login send should succeed");
-        let login = read_server_message(&mut reader)
+        let login = time::timeout(Duration::from_secs(2), read_server_message(&mut reader))
             .await
+            .expect("timed out waiting for login response")
             .expect("login read should succeed")
             .expect("login response");
         assert!(matches!(
@@ -1421,6 +1421,8 @@ mod tests {
             .expect("connection task should exit")
             .expect("connection task should not panic")
             .expect("connection task should not fail");
+        assert!(command_rx.try_recv().is_err());
+        assert!(settings_rx.try_recv().is_err());
     }
 
     #[tokio::test]

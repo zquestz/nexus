@@ -788,6 +788,58 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_entry_releases_preliminary_counters() {
+        let temp = setup_root();
+        let activity = FileActivityMap::new();
+        let parent = temp.path().join("shared/music");
+        let child = parent.join("a.mp3");
+
+        let parent_guard = activity
+            .try_enter_directory_path(temp.path(), &parent)
+            .await
+            .unwrap()
+            .unwrap();
+        let blocked = activity
+            .try_enter_child_path(temp.path(), &child)
+            .await
+            .unwrap();
+
+        assert!(blocked.is_err());
+        drop(parent_guard);
+
+        let child_guard = activity
+            .try_enter_child_path(temp.path(), &child)
+            .await
+            .unwrap();
+
+        assert!(
+            child_guard.is_ok(),
+            "failed child entry left stale activity counters"
+        );
+    }
+
+    #[tokio::test]
+    async fn dropped_guard_releases_activity_for_reentry() {
+        let temp = setup_root();
+        let activity = FileActivityMap::new();
+        let target = temp.path().join("shared/music/a.mp3");
+
+        let guard = activity
+            .try_enter_child_path(temp.path(), &target)
+            .await
+            .unwrap()
+            .unwrap();
+        drop(guard);
+
+        let reentry = activity
+            .try_enter_child_path(temp.path(), &target)
+            .await
+            .unwrap();
+
+        assert!(reentry.is_ok());
+    }
+
+    #[tokio::test]
     async fn active_parent_directory_blocks_child() {
         let temp = setup_root();
         let activity = FileActivityMap::new();

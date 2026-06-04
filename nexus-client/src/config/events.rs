@@ -291,11 +291,29 @@ impl EventConfig {
 // =============================================================================
 
 /// All event-related settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct EventSettings {
     /// Per-event configuration
     #[serde(default = "default_event_configs")]
     pub events: HashMap<EventType, EventConfig>,
+}
+
+impl<'de> Deserialize<'de> for EventSettings {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct RawEventSettings {
+            #[serde(default = "default_event_configs")]
+            events: HashMap<EventType, EventConfig>,
+        }
+
+        let raw = RawEventSettings::deserialize(deserializer)?;
+        let mut settings = Self { events: raw.events };
+        settings.fill_missing_defaults();
+        Ok(settings)
+    }
 }
 
 impl Default for EventSettings {
@@ -317,6 +335,14 @@ impl EventSettings {
     /// Get mutable configuration for a specific event type
     pub fn get_mut(&mut self, event_type: EventType) -> &mut EventConfig {
         self.events.entry(event_type).or_default()
+    }
+
+    /// Populate shipped defaults for event types introduced after this config
+    /// was written, without changing any stored user choices.
+    fn fill_missing_defaults(&mut self) {
+        for (event_type, config) in default_event_configs() {
+            self.events.entry(event_type).or_insert(config);
+        }
     }
 }
 
@@ -494,6 +520,47 @@ mod tests {
             settings.get(EventType::UserMessage).sound,
             deserialized.get(EventType::UserMessage).sound
         );
+    }
+
+    #[test]
+    fn test_event_settings_deserialize_fills_missing_defaults() {
+        let json = r#"{
+            "events": {
+                "user_message": {
+                    "show_notification": false,
+                    "notification_content": "with_preview",
+                    "show_toast": true,
+                    "toast_content": "with_context",
+                    "play_sound": true,
+                    "sound": "bell",
+                    "always_play_sound": true
+                }
+            }
+        }"#;
+
+        let settings: EventSettings = serde_json::from_str(json).expect("deserialize");
+
+        let customized = settings.get(EventType::UserMessage);
+        assert!(!customized.show_notification);
+        assert!(customized.show_toast);
+        assert_eq!(customized.toast_content, NotificationContent::WithContext);
+        assert!(customized.play_sound);
+        assert_eq!(customized.sound, SoundChoice::Bell);
+        assert!(customized.always_play_sound);
+
+        let missing_enabled = settings.get(EventType::UserBanned);
+        assert!(missing_enabled.show_notification);
+        assert_eq!(
+            missing_enabled.notification_content,
+            NotificationContent::WithPreview
+        );
+        assert!(!missing_enabled.show_toast);
+        assert!(!missing_enabled.play_sound);
+
+        let missing_disabled = settings.get(EventType::UserDisconnected);
+        assert!(!missing_disabled.show_notification);
+        assert!(!missing_disabled.show_toast);
+        assert!(!missing_disabled.play_sound);
     }
 
     #[test]

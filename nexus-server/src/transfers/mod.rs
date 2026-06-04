@@ -1065,8 +1065,6 @@ mod tests {
         let (client, server) = tokio::io::duplex(4096);
 
         let server_task = tokio::spawn(handle_transfer_connection_inner(server, harness.params));
-        time::sleep(Duration::from_millis(25)).await;
-        assert!(command_rx.try_recv().is_err());
 
         drop(client);
         time::timeout(Duration::from_secs(2), server_task)
@@ -1074,6 +1072,7 @@ mod tests {
             .expect("transfer task should exit")
             .expect("transfer task should not panic")
             .expect("transfer task should not fail");
+        assert!(command_rx.try_recv().is_err());
     }
 
     #[tokio::test]
