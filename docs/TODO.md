@@ -113,6 +113,7 @@ Weighted fair share of server outbound bandwidth per user, enforced via a single
 - Slow-client disconnect, parse-error disconnect, regular `Disconnect`, in-flight frame boundaries, and direct responses are all coordinated so the socket sees whole frames only.
 - Covered policy tests pin Protocol-over-Bulk within a user flow, no multiplied user share from adding transfer sessions, shared-account sessions sharing one flow, cross-user Bulk weighted fairness, and rate-limited transfer `FileData` completion.
 - Final routing shape is implemented for the current architecture: private-network peers bypass egress, WAN/Yggdrasil peers schedule through egress, and voice UDP remains outside this scheduler. The only remaining question is whether to keep the current BBS/transfer egress surfaces or do a future writer-task/raw-byte refactor.
+- Real Yggdrasil testing at a 5 Mbps cap confirmed accurate aggregate rate limiting, Protocol responsiveness while Bulk transfers run, same-user transfer sharing, weighted cross-user sharing, and unlimited mode returning to high throughput. A 20 GB unlimited transfer test showed the default 8 KB chunk size remains reasonable, while 32 KB improves transfer-heavy throughput modestly and is a good tuning option.
 
 **Algorithm: WF2Q+ (Bennett & Zhang, 1997)**
 
@@ -212,7 +213,7 @@ The scheduler chunks every enqueued payload into `scheduler_chunk_size`-byte WF2
 
 Worst-case added latency for a small message behind one already-dispatched chunk on the same flow = `chunk_size / cap_rate` (the non-preemptible transmission). This is the intra-flow bound only; WF2Q+ weights govern when the message's flow is served relative to other flows.
 
-**Future optimization: when `max_outbound_rate = 0` (unlimited), chunking can be skipped.** The current egress implementation chunks at staging time even when the cap is unlimited. That is correct but not minimal work. A future writer/raw-byte path could make chunking a dispatch-time decision: retain the payload as `Bytes` and slice it by the _current_ `scheduler_chunk_size` when cap > 0, or hand it over whole when cap = 0. If `set_rate` raises the cap before an unlimited payload finishes draining, the remaining payload must be sliced before dispatch so no oversized packet escapes the new bound.
+**Future optimization: when `max_outbound_rate = 0` (unlimited), chunking can be skipped.** The current egress implementation chunks at staging time even when the cap is unlimited. That is correct but not minimal work, and real unlimited-transfer testing shows it is good enough to defer. A future writer/raw-byte path could make chunking a dispatch-time decision: retain the payload as `Bytes` and slice it by the _current_ `scheduler_chunk_size` when cap > 0, or hand it over whole when cap = 0. If `set_rate` raises the cap before an unlimited payload finishes draining, the remaining payload must be sliced before dispatch so no oversized packet escapes the new bound.
 
 **Rate bucket.** The implemented egress rate limiter is a token bucket with a bounded burst of four scheduler chunks (`EGRESS_RATE_BURST_CHUNKS = 4`). Tokens accumulate only to that bounded depth, so idle time cannot bank into an unlimited burst. Dispatch consumes the actual chunk length; if a chunk overshoots the current token count, the bounded deficit delays the next dispatch. At cap = 0 there is no rate limiting.
 
@@ -354,11 +355,11 @@ The scheduler maintains two internal registries:
 - Writer-channel byte budget (cap = 0, no chunking): one oversized Protocol packet enters the byte-bounded writer channel (in-flight was below `WRITER_CHANNEL_BYTE_CAP` when it arrived); a second oversized packet stays scheduler-queued and counted until the writer **completes** the in-flight write that frees enough channel capacity to admit it.
 - Cap enabled mid-flight: a large Bulk payload enqueued while `max_outbound_rate = 0` is sliced to the current `scheduler_chunk_size` when `set_rate` raises the cap before the payload finishes draining — no packet exceeds the chunk size and no burst exceeds one chunk.
 
-**Docs**
+**Docs (done)**
 
-- `docs/server/02-configuration.md` — new "Bandwidth" subsection: what `max_outbound_rate` does, what `scheduler_chunk_size` does, when to tune each, worked examples (slow link vs gigabit, mostly-chat vs mostly-transfers).
-- `docs/server/05-user-management.md` — explain `bandwidth_weight`, the user/group resolution rule, worked example ("guest group weight 1, regulars weight 10, in a contention of 1 guest + 1 regular the regular sees 10/11 of the cap"). Also document the **shared-account / guest bandwidth collapse**: all sessions of a shared account share one weighted flow, so N guests collectively get one user's share and one guest's heavy download starves the others — intentional (closes the multiply-by-sessions hole), with the mitigation being to raise the guest group's weight on guest-heavy servers.
-- `docs/client/10-server-info.md` (or equivalent admin panel doc) — document the new Bandwidth section in the Server Info panel.
+- `docs/server/02-configuration.md` documents the Bandwidth section, `max_outbound_rate`, `scheduler_chunk_size`, LAN bypass, Yggdrasil-as-WAN behavior, and chunk-size tuning guidance.
+- `docs/server/05-user-management.md` explains `bandwidth_weight`, the user/group resolution rule, worked examples, and the shared-account / guest bandwidth collapse: all sessions of a shared account share one weighted flow, so N guests collectively get one user's share and one guest's heavy download can starve the others. This is intentional and tunable by raising that account's or group's weight.
+- `docs/client/10-server-info.md` documents the Bandwidth fields in the Server Info panel.
 - English locale strings only during development; other locales after feature ships (per project convention).
 
 **Future work (out of this PR pair)**
@@ -417,10 +418,10 @@ The scheduler maintains two internal registries:
 8. ✅ **DONE** — Transfer egress hardening. Tests cover Protocol-over-Bulk priority, no user-share multiplication from BBS+transfer sessions, shared-account flow sharing, cross-user Bulk weighted fairness, rate-limited `FileData`, small-file streaming, mid-stream ban/error cleanup, and re-register-after-stream-failure recovery.
 9. ✅ **DONE** — Final routing policy. LAN/private BBS and transfer peers bypass egress, WAN/Yggdrasil peers remain scheduled, voice UDP stays exempt, and the current BBS/transfer egress surfaces are correct and tested. The future unified writer-task/raw-byte refactor remains optional.
 
-**Remaining speed-limiting work**
+**Optional speed-limiting follow-up**
 
-- **Writer-task/raw-byte decision**: the current BBS/transfer egress surfaces are correct and tested. Decide whether to keep them or invest in the larger unified writer-task/raw-byte API for cleaner architecture and possible unlimited-transfer performance gains.
-- **Performance follow-up**: measure unlimited transfer throughput with the current no-read-ahead streaming-frame path. If overhead is material, prefer a larger Bulk chunk size or small read-ahead window before a deeper credit/raw-byte redesign.
+- **Writer-task/raw-byte decision**: the current BBS/transfer egress surfaces are correct, tested, and perform well enough in real Yggdrasil transfer tests. Keep the larger unified writer-task/raw-byte API deferred unless future profiling shows a production-relevant bottleneck or the codebase needs the cleanup for other reasons.
+- **Throughput tuning**: keep 8192 bytes as the conservative default for interactive latency. Transfer-heavy servers on fast links can raise `scheduler_chunk_size` (for example 16384 or 32768 bytes) before considering any deeper credit/raw-byte redesign.
 
 **Broadcast avatar diet (companion — done)**
 

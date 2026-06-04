@@ -327,8 +327,10 @@ reassemble frames as usual.
 The worst-case latency for a small message arriving behind one
 in-flight chunk is `chunk_size / cap_rate`. Smaller chunks tighten
 that bound at the cost of more scheduler operations per byte
-transferred. The default is a reasonable balance for most uplinks;
-change it only if you have a specific reason.
+transferred. The default is a conservative balance for interactive
+use. Transfer-heavy servers on fast links can try larger values such
+as 16384 or 32768 bytes; larger chunks reduce scheduler overhead but
+increase the worst-case wait behind one bulk chunk.
 
 `scheduler_chunk_size` is admin-only — non-admin users do not see it
 in the Config display, and only admins can change it in the edit
@@ -346,6 +348,9 @@ LAN classification:
 - Loopback (`127.0.0.0/8`, `::1`)
 - RFC 1918 private IPv4 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`)
 - IPv6 ULA (`fc00::/7`)
+
+Yggdrasil mesh addresses (`0200::/7`) are **not** LAN for bandwidth
+purposes. They route over the mesh and remain scheduled WAN traffic.
 
 ## Example Configurations
 
