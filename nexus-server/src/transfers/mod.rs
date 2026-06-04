@@ -52,7 +52,7 @@ use auth::{
 use download::handle_download;
 use helpers::{login_error_response, send_error_and_close};
 use registry::{ActiveTransfer, TransferDirection, TransferRegistration};
-use transfer::{Transfer, TransferContext};
+use transfer::{Transfer, TransferContext, TransferEgress};
 use types::{AuthenticatedUser, TransferRequest};
 use upload::handle_upload;
 
@@ -142,7 +142,7 @@ where
 async fn handle_transfer_connection_inner_registered<S>(
     socket: S,
     params: TransferParams,
-    _egress_dispatch_rx: Option<egress::EgressDispatchRx>,
+    egress_dispatch_rx: Option<egress::EgressDispatchRx>,
 ) -> io::Result<()>
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
@@ -300,6 +300,8 @@ where
             file_activity: &file_activity,
             user_area_root,
             registry: &transfer_registry,
+            egress: egress_dispatch_rx
+                .map(|rx| TransferEgress::new(egress.clone(), egress_connection_id, rx)),
         },
     );
 

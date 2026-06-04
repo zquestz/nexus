@@ -943,6 +943,7 @@ mod tests {
                 file_activity,
                 user_area_root: Some(shared_root.to_path_buf()),
                 registry,
+                egress: None,
             },
         )
     }

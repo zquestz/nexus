@@ -53,6 +53,11 @@ pub enum EgressCommand {
         priority: EgressMessagePriority,
         reply_tx: oneshot::Sender<StageMessageResult>,
     },
+    StageFrame {
+        connection_id: ConnectionId,
+        frame: Arc<[u8]>,
+        reply_tx: oneshot::Sender<StageFrameResult>,
+    },
     StagePriorityFrame {
         connection_id: ConnectionId,
         frame: Arc<[u8]>,
@@ -177,12 +182,43 @@ impl EgressHandle {
         connection_id: ConnectionId,
         frame: Arc<[u8]>,
     ) -> Result<StageFrameResult, EgressTaskError> {
-        self.request(|reply_tx| EgressCommand::StagePriorityFrame {
-            connection_id,
-            frame,
-            reply_tx,
-        })
-        .await
+        self.stage_frame_with_priority(connection_id, frame, EgressMessagePriority::Priority)
+            .await
+    }
+
+    pub async fn stage_frame(
+        &self,
+        connection_id: ConnectionId,
+        frame: Arc<[u8]>,
+    ) -> Result<StageFrameResult, EgressTaskError> {
+        self.stage_frame_with_priority(connection_id, frame, EgressMessagePriority::Normal)
+            .await
+    }
+
+    async fn stage_frame_with_priority(
+        &self,
+        connection_id: ConnectionId,
+        frame: Arc<[u8]>,
+        priority: EgressMessagePriority,
+    ) -> Result<StageFrameResult, EgressTaskError> {
+        match priority {
+            EgressMessagePriority::Normal => {
+                self.request(|reply_tx| EgressCommand::StageFrame {
+                    connection_id,
+                    frame,
+                    reply_tx,
+                })
+                .await
+            }
+            EgressMessagePriority::Priority => {
+                self.request(|reply_tx| EgressCommand::StagePriorityFrame {
+                    connection_id,
+                    frame,
+                    reply_tx,
+                })
+                .await
+            }
+        }
     }
 
     async fn stage_message_with_priority(
@@ -454,6 +490,13 @@ impl EgressTask {
                     Err(err) => Err(StageMessageError::Failed(err)),
                 };
                 let _ = reply_tx.send(result);
+            }
+            EgressCommand::StageFrame {
+                connection_id,
+                frame,
+                reply_tx,
+            } => {
+                let _ = reply_tx.send(self.manager.enqueue_frame(connection_id, frame));
             }
             EgressCommand::StagePriorityFrame {
                 connection_id,

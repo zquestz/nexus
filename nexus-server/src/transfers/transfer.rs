@@ -10,10 +10,14 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::oneshot;
 
 use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
-use nexus_common::io::send_server_message_with_id;
+use nexus_common::io::{send_server_message_with_id, server_message_to_frame_bytes};
 use nexus_common::protocol::ServerMessage;
 
+use crate::egress;
+use crate::egress::EgressEnqueueError;
+use crate::egress::task::{EgressHandle, EgressTaskError};
 use crate::files::{FileActivityMap, FileIndex};
+use crate::scheduler::ConnectionId;
 
 #[cfg(test)]
 use super::registry::TransferRegistration;
@@ -65,6 +69,27 @@ pub struct TransferContext<'a> {
     pub file_activity: &'a Arc<FileActivityMap>,
     pub user_area_root: Option<PathBuf>,
     pub registry: &'a TransferRegistry,
+    pub egress: Option<TransferEgress>,
+}
+
+pub struct TransferEgress {
+    handle: EgressHandle,
+    connection_id: ConnectionId,
+    dispatch_rx: egress::EgressDispatchRx,
+}
+
+impl TransferEgress {
+    pub fn new(
+        handle: EgressHandle,
+        connection_id: ConnectionId,
+        dispatch_rx: egress::EgressDispatchRx,
+    ) -> Self {
+        Self {
+            handle,
+            connection_id,
+            dispatch_rx,
+        }
+    }
 }
 
 /// A file transfer connection with integrated ban handling. Streaming methods
@@ -87,6 +112,7 @@ pub struct Transfer<'a, R, W> {
     file_index: &'a Arc<FileIndex>,
     file_activity: &'a Arc<FileActivityMap>,
     user_area_root: Option<PathBuf>,
+    egress: Option<TransferEgress>,
 
     // Must be last so it drops after the other fields
     _guard: TransferRegistryGuard<'a>,
@@ -119,6 +145,7 @@ where
             file_index: ctx.file_index,
             file_activity: ctx.file_activity,
             user_area_root: ctx.user_area_root,
+            egress: ctx.egress,
             _guard: TransferRegistryGuard::new(ctx.registry, id),
         }
     }
@@ -177,6 +204,11 @@ where
         msg: &ServerMessage,
         msg_id: MessageId,
     ) -> Result<(), StreamError> {
+        if self.egress.is_some() {
+            let frame = server_message_to_frame_bytes(msg, msg_id).map_err(StreamError::Io)?;
+            return self.send_egress_frame(frame).await;
+        }
+
         send_server_message_with_id(&mut self.writer, msg, msg_id)
             .await
             .map_err(StreamError::Io)
@@ -199,6 +231,19 @@ where
             return Err(StreamError::Banned);
         }
 
+        self.stream_file_to_client_direct(message_type, reader, length)
+            .await
+    }
+
+    async fn stream_file_to_client_direct<S>(
+        &mut self,
+        message_type: &str,
+        reader: &mut S,
+        length: u64,
+    ) -> Result<u64, StreamError>
+    where
+        S: AsyncRead + Unpin,
+    {
         // Frame header: NX|type_len|type|msg_id|payload_len|
         let msg_id = MessageId::new();
         let header = format!(
@@ -262,6 +307,66 @@ where
             .map_err(StreamError::Io)?;
 
         Ok(total_written)
+    }
+
+    async fn send_egress_frame(&mut self, frame: Arc<[u8]>) -> Result<(), StreamError> {
+        let Some(egress) = self.egress.as_mut() else {
+            self.writer
+                .get_mut()
+                .write_all(&frame)
+                .await
+                .map_err(StreamError::Io)?;
+            self.writer
+                .get_mut()
+                .flush()
+                .await
+                .map_err(StreamError::Io)?;
+            return Ok(());
+        };
+
+        match egress
+            .handle
+            .stage_frame(egress.connection_id, Arc::clone(&frame))
+            .await
+        {
+            Ok(Ok(_)) => {}
+            Ok(Err(err)) => return Err(StreamError::Io(egress_enqueue_io_error(err))),
+            Err(err) => return Err(StreamError::Io(egress_task_io_error(err))),
+        }
+
+        loop {
+            let Some(dispatch) = egress.dispatch_rx.recv().await else {
+                return Err(StreamError::ConnectionClosed);
+            };
+
+            if dispatch.connection_id != egress.connection_id {
+                let _ = egress.handle.write_failed(dispatch.connection_id).await;
+                continue;
+            }
+
+            let is_final_frame_chunk = dispatch.chunk.is_final_frame_chunk();
+            if let Err(err) = self
+                .writer
+                .get_mut()
+                .write_all(dispatch.chunk.as_bytes())
+                .await
+            {
+                let _ = egress.handle.write_failed(egress.connection_id).await;
+                return Err(StreamError::Io(err));
+            }
+            if let Err(err) = self.writer.get_mut().flush().await {
+                let _ = egress.handle.write_failed(egress.connection_id).await;
+                return Err(StreamError::Io(err));
+            }
+
+            if let Err(err) = egress.handle.ack(egress.connection_id).await {
+                return Err(StreamError::Io(egress_task_io_error(err)));
+            }
+
+            if is_final_frame_chunk {
+                return Ok(());
+            }
+        }
     }
 
     /// Receive file data from the client, checking for a ban between chunks.
@@ -397,15 +502,29 @@ where
     }
 }
 
+fn egress_enqueue_io_error(err: EgressEnqueueError) -> io::Error {
+    io::Error::other(format!("egress enqueue failed: {err:?}"))
+}
+
+fn egress_task_io_error(err: EgressTaskError) -> io::Error {
+    io::Error::other(format!("egress task failed: {err:?}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::egress::task::EgressTask;
+    use crate::egress::{self, EgressManager};
     use crate::files::{FileActivityMap, FileIndex};
+    use crate::scheduler::{ConnectionClass, ConnectionId};
     use crate::transfers::registry::{TransferDirection, TransferRegistry};
+    use nexus_common::io::read_server_message;
     use std::collections::HashSet;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+    use std::num::NonZeroUsize;
     use tempfile::TempDir;
     use tokio::io::duplex;
+    use tokio::sync::mpsc;
 
     fn make_test_user() -> AuthenticatedUser {
         AuthenticatedUser {
@@ -424,6 +543,44 @@ mod tests {
 
     fn make_test_file_index(temp_dir: &TempDir) -> Arc<FileIndex> {
         Arc::new(FileIndex::new(temp_dir.path(), temp_dir.path()))
+    }
+
+    async fn registered_transfer_egress(
+        chunk_size: usize,
+    ) -> (
+        TransferEgress,
+        EgressHandle,
+        tokio::task::JoinHandle<()>,
+        ConnectionId,
+    ) {
+        let manager = EgressManager::new(NonZeroUsize::new(chunk_size).unwrap());
+        let (egress, task) = EgressTask::channel(manager);
+        let task = tokio::spawn(task.run());
+        let connection_id = ConnectionId::new(88_001);
+        let (dispatch_tx, dispatch_rx) = mpsc::channel(egress::EGRESS_DISPATCH_QUEUE_CAPACITY);
+        assert!(
+            egress
+                .register_anon(connection_id, ConnectionClass::Bulk, dispatch_tx)
+                .await
+                .unwrap()
+        );
+
+        (
+            TransferEgress::new(egress.clone(), connection_id, dispatch_rx),
+            egress,
+            task,
+            connection_id,
+        )
+    }
+
+    async fn stop_egress_task(
+        egress: EgressHandle,
+        task: tokio::task::JoinHandle<()>,
+        connection_id: ConnectionId,
+    ) {
+        let _ = egress.unregister(connection_id).await;
+        drop(egress);
+        task.await.unwrap();
     }
 
     #[test]
@@ -482,6 +639,7 @@ mod tests {
                 file_activity: &file_activity,
                 user_area_root: None,
                 registry: &registry,
+                egress: None,
             },
         );
 
@@ -531,6 +689,7 @@ mod tests {
                 file_activity: &file_activity,
                 user_area_root: None,
                 registry: &registry,
+                egress: None,
             },
         );
 
@@ -582,6 +741,7 @@ mod tests {
                 file_activity: &file_activity,
                 user_area_root: None,
                 registry: &registry,
+                egress: None,
             },
         );
 
@@ -596,6 +756,148 @@ mod tests {
         };
         let result = transfer.send(&msg).await;
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn transfer_send_routes_complete_frame_through_egress() {
+        let registry = TransferRegistry::new();
+        let (client, server) = duplex(4096);
+        let (client_read, _client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_reader = FrameReader::new(tokio::io::BufReader::new(client_read));
+
+        let peer_addr = make_test_addr();
+        let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: 0,
+        });
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path();
+        let file_index = make_test_file_index(&temp_dir);
+        let file_activity = Arc::new(FileActivityMap::new());
+        let (transfer_egress, egress, egress_task, connection_id) =
+            registered_transfer_egress(8).await;
+
+        let mut transfer = Transfer::new(
+            FrameReader::new(tokio::io::BufReader::new(server_read)),
+            FrameWriter::new(server_write),
+            ban_rx,
+            info,
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                user_area_root: None,
+                registry: &registry,
+                egress: Some(transfer_egress),
+            },
+        );
+
+        let message = ServerMessage::TransferComplete {
+            success: true,
+            error: None,
+            error_kind: None,
+        };
+        transfer
+            .send_with_id(&message, MessageId::new())
+            .await
+            .unwrap();
+
+        let received = read_server_message(&mut client_reader)
+            .await
+            .unwrap()
+            .unwrap();
+        match received.message {
+            ServerMessage::TransferComplete {
+                success,
+                error,
+                error_kind,
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                assert!(error_kind.is_none());
+            }
+            other => panic!("expected TransferComplete, got {other:?}"),
+        }
+
+        drop(transfer);
+        stop_egress_task(egress, egress_task, connection_id).await;
+    }
+
+    #[tokio::test]
+    async fn egress_registered_file_data_keeps_single_streaming_frame() {
+        let registry = TransferRegistry::new();
+        let (client, server) = duplex(256 * 1024);
+        let (client_read, _client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_reader = FrameReader::new(tokio::io::BufReader::new(client_read));
+
+        let peer_addr = make_test_addr();
+        let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr,
+            nickname: "testuser".to_string(),
+            username: "testuser".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Download,
+            path: "/test/file.zip".to_string(),
+            total_size: CHUNK_SIZE as u64 + 5,
+        });
+
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path();
+        let file_index = make_test_file_index(&temp_dir);
+        let file_activity = Arc::new(FileActivityMap::new());
+        let (transfer_egress, egress, egress_task, connection_id) =
+            registered_transfer_egress(1024).await;
+
+        let mut transfer = Transfer::new(
+            FrameReader::new(tokio::io::BufReader::new(server_read)),
+            FrameWriter::new(server_write),
+            ban_rx,
+            info.clone(),
+            TransferContext {
+                user: make_test_user(),
+                locale: "en".to_string(),
+                file_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                user_area_root: None,
+                registry: &registry,
+                egress: Some(transfer_egress),
+            },
+        );
+
+        let mut file_data = vec![0xAB; CHUNK_SIZE];
+        file_data.extend_from_slice(b"final");
+        let mut reader = std::io::Cursor::new(file_data.clone());
+
+        let written = transfer
+            .stream_file_to_client("FileData", &mut reader, file_data.len() as u64)
+            .await
+            .unwrap();
+        assert_eq!(written, file_data.len() as u64);
+        assert_eq!(info.get_bytes_transferred(), file_data.len() as u64);
+
+        let frame = client_reader.read_frame_header().await.unwrap().unwrap();
+        assert_eq!(frame.message_type, "FileData");
+        assert_eq!(frame.payload_length, file_data.len() as u64);
+        let payload = client_reader.read_payload_into_vec(&frame).await.unwrap();
+        assert_eq!(payload, file_data);
+
+        drop(transfer);
+        stop_egress_task(egress, egress_task, connection_id).await;
     }
 
     #[tokio::test]
@@ -636,6 +938,7 @@ mod tests {
                 file_activity: &file_activity,
                 user_area_root: None,
                 registry: &registry,
+                egress: None,
             },
         );
 
@@ -688,6 +991,7 @@ mod tests {
                 file_activity: &file_activity,
                 user_area_root: None,
                 registry: &registry,
+                egress: None,
             },
         );
 
@@ -744,6 +1048,7 @@ mod tests {
                     file_activity: &file_activity,
                     user_area_root: None,
                     registry: &registry,
+                    egress: None,
                 },
             );
 
@@ -790,6 +1095,7 @@ mod tests {
                 file_activity: &file_activity,
                 user_area_root: None,
                 registry: &registry,
+                egress: None,
             },
         );
 
