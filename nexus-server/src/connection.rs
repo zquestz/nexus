@@ -1069,7 +1069,7 @@ mod tests {
     };
     use nexus_common::protocol::{ChatAction, ServerMessage};
     use nexus_common::validators::{DEFAULT_CHANNEL, MAX_MESSAGE_LENGTH};
-    use tokio::io::{DuplexStream, ReadHalf, WriteHalf};
+    use tokio::io::{AsyncWriteExt, DuplexStream, ReadHalf, WriteHalf};
 
     use crate::egress::EgressManager;
     use crate::egress::task::{
@@ -1616,6 +1616,73 @@ mod tests {
         assert!(
             closed.is_none(),
             "priority QueueFull should drain staged egress and close without sending Pong"
+        );
+
+        connection.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn slow_client_disconnect_under_egress_sends_error_directly_then_closes() {
+        let mut connection = start_test_connection(64, 8192).await;
+        let session_id = login_test_connection(&mut connection).await;
+        let session = connection
+            .user_manager
+            .get_user_by_session_id(session_id)
+            .await
+            .expect("session should exist");
+
+        session.tx.arm_slow_client_disconnect_for_test();
+
+        let error = read_next_server_message(&mut connection).await;
+        match error.message {
+            ServerMessage::Error { disconnect, .. } => {
+                assert!(disconnect, "slow-client error must disconnect");
+            }
+            other => panic!("expected slow-client Error, got {other:?}"),
+        }
+
+        let closed = time::timeout(Duration::from_secs(2), connection.reader.read_frame())
+            .await
+            .expect("timed out waiting for slow-client close")
+            .expect("read after slow-client error should not fail");
+        assert!(
+            closed.is_none(),
+            "slow-client egress abort should close after the direct error frame"
+        );
+
+        connection.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn decode_error_under_egress_stages_disconnect_error_before_close() {
+        let mut connection = start_test_connection(16, 8192).await;
+        login_test_connection(&mut connection).await;
+
+        let invalid_id = message_id(b"000000000309");
+        let payload = serde_json::to_vec(&ClientMessage::Ping).unwrap();
+        let invalid_frame = RawFrame::new(invalid_id, "ChatSend", payload);
+        connection
+            .writer
+            .get_mut()
+            .write_all(&invalid_frame.to_bytes())
+            .await
+            .expect("invalid frame write should succeed");
+
+        let error = read_next_server_message(&mut connection).await;
+        match error.message {
+            ServerMessage::Error { disconnect, .. } => {
+                assert!(disconnect, "decode error must disconnect");
+            }
+            other => panic!("expected decode Error, got {other:?}"),
+        }
+
+        let closed = time::timeout(Duration::from_secs(2), connection.reader.read_frame())
+            .await
+            .expect("timed out waiting for decode-error close")
+            .expect("read after decode error should not fail");
+        assert!(
+            closed.is_none(),
+            "decode-error egress path should send one error frame then close"
         );
 
         connection.shutdown().await;

@@ -84,6 +84,11 @@ impl ConnectionWriter {
     fn arm_slow_client_disconnect(&self) {
         let _ = self.control_tx.try_send(SessionEvent::SlowClientDisconnect);
     }
+
+    #[cfg(test)]
+    pub(crate) fn arm_slow_client_disconnect_for_test(&self) {
+        self.arm_slow_client_disconnect();
+    }
 }
 
 #[derive(Debug)]
@@ -158,6 +163,18 @@ mod connection_writer_tests {
             Some(SessionEvent::SlowClientDisconnect)
         ));
         assert!(matches!(rx.recv().await, Some(SessionEvent::Message(_, _))));
+    }
+
+    #[tokio::test]
+    async fn test_hook_arms_slow_client_disconnect() {
+        let (tx, mut rx) = ConnectionWriter::channel();
+
+        tx.arm_slow_client_disconnect_for_test();
+
+        assert!(matches!(
+            rx.recv().await,
+            Some(SessionEvent::SlowClientDisconnect)
+        ));
     }
 
     #[test]

@@ -835,6 +835,27 @@ mod tests {
         task.await.unwrap();
     }
 
+    #[tokio::test]
+    async fn task_waits_for_settings_queue_after_command_queue_closes() {
+        let (command_tx, command_rx) = mpsc::channel(1);
+        let (settings_tx, settings_rx) = mpsc::unbounded_channel();
+        let task = EgressTask::new(EgressManager::new(nonzero(100)), command_rx, settings_rx);
+        let task = tokio::spawn(task.run());
+
+        drop(command_tx);
+        time::sleep(Duration::from_millis(25)).await;
+        assert!(
+            !task.is_finished(),
+            "settings sender should keep the egress task alive after command queue close"
+        );
+
+        drop(settings_tx);
+        time::timeout(Duration::from_secs(1), task)
+            .await
+            .expect("task should exit once both queues close")
+            .expect("task should not panic");
+    }
+
     async fn recv_dispatch(rx: &mut EgressDispatchRx) -> crate::egress::EgressDispatch {
         time::timeout(Duration::from_secs(1), rx.recv())
             .await

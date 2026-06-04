@@ -105,7 +105,7 @@ Weighted fair share of server outbound bandwidth per user, enforced via a single
 - The scheduler core is WF2Q+-based, deterministic, and clock-free. The egress task owns the token bucket, lifecycle commands, staging, dispatch, ack, and write-failure cleanup.
 - `DirectWriter` stages handler responses through the same egress path as priority frames, so direct responses are rate-accounted and cannot interleave into a partially written queued frame. `send_message_via_channel` remains normal-priority FIFO behind queued messages.
 - Each BBS connection has a staged-frame admission limit (`DEFAULT_EGRESS_QUEUED_FRAMES_PER_CONNECTION = 32`). `QueueFull` is lossless for queued messages and maps direct-response `QueueFull` to drain-then-disconnect, not silent drop.
-- Login transitions the connection from the global anon flow to `FlowId::User(user_id)` before `LoginResponse`, so authenticated BBS traffic uses the user's current resolved `bandwidth_weight`. Live `UserUpdate` / `GroupUpdate` weight changes update active BBS flows after commit and outside user-state locks.
+- Login transitions the connection from the global anon flow to `FlowId::User(user_id)` before `LoginResponse`, so authenticated BBS traffic uses the user's current resolved `bandwidth_weight`. Live `UserUpdate` / `GroupUpdate` weight changes update active BBS flows after commit by synchronously enqueueing settings commands under the user-state lock, preserving lock-order → FIFO ordering without any lock-held await.
 - Transfer connections register as `ConnectionClass::Bulk`, transition from anon to `FlowId::User(user_id)` before transfer `LoginResponse`, and share the same user flow as that user's BBS sessions. Transfer auth keeps the expensive password work outside the user-state lock, then resolves the current weight and enqueues the transition under the read lock so it is ordered against concurrent weight updates.
 - Transfer control frames route through egress as complete frames. Transfer `FileData` routes through the egress streaming-frame API as exactly one logical `FileData` frame on the wire: a header chunk, one or more file-data blocks, and the terminator as the only final chunk. The transfer reader does not read ahead; it stages one block, drains it, and then reads the next block, so memory remains bounded by the current file block and scheduler chunks rather than file size.
 - Live `UserUpdate` / `GroupUpdate` weight changes update active transfer-only flows too. User updates key directly by `user_id`; group cascades use the transfer registry's active `user_id` set intersected with current DB inheritors, avoiding stale captured group metadata.
@@ -124,6 +124,8 @@ Weighted fair share of server outbound bandwidth per user, enforced via a single
 - Defer to those for the virtual-time update rule and eligibility check — they're more precise than any in-spec prose.
 
 **Future combined architecture with per-connection writer tasks**
+
+This section is **not current behavior**. It describes a deferred raw-byte writer-task redesign that may replace the current, working BBS/transfer egress surfaces only if future profiling or maintenance needs justify it.
 
 - One scheduler instance for the entire server, running as a dedicated tokio task that wakes when a flow has data and rate budget is available.
 - **The scheduler task does zero I/O.** It is a pure dispatch engine: it maintains WF2Q+ state, rate-limits, and dispatches packets to per-connection bounded channels. It never calls `write_all` on a socket.

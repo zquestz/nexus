@@ -936,6 +936,113 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_download_registered_egress_zero_byte_sends_file_hash_without_file_data() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        fs::create_dir_all(&shared_root).await.unwrap();
+        let target = shared_root.join("file.txt");
+        fs::write(&target, b"").await.unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+        let (transfer_egress, egress, egress_task, connection_id) =
+            registered_download_egress(8192).await;
+
+        let (client, server) = duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut transfer = make_download_transfer(
+            server_read,
+            server_write,
+            DownloadTransferFixture {
+                file_root: &file_root,
+                shared_root: &shared_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                registry: &registry,
+                egress: Some(transfer_egress),
+            },
+        );
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        let mut writer = FrameWriter::new(client_write);
+
+        let server = async {
+            handle_download(
+                &mut transfer,
+                DownloadParams {
+                    path: "file.txt".to_string(),
+                    root: false,
+                },
+            )
+            .await
+            .unwrap();
+        };
+
+        let client = async {
+            let response = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            assert!(matches!(
+                response,
+                ServerMessage::FileDownloadResponse { success: true, .. }
+            ));
+
+            let file_start = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            match file_start {
+                ServerMessage::FileStart { path, size } => {
+                    assert_eq!(path, "file.txt");
+                    assert_eq!(size, 0);
+                }
+                _ => panic!("Expected FileStart"),
+            }
+
+            send_client_message(
+                &mut writer,
+                &ClientMessage::FileStartResponse {
+                    size: 0,
+                    sha256: None,
+                },
+            )
+            .await
+            .unwrap();
+
+            let next = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            assert!(
+                matches!(next, ServerMessage::FileHash { .. }),
+                "zero-byte egress download must not emit FileData"
+            );
+
+            let complete = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            assert!(matches!(
+                complete,
+                ServerMessage::TransferComplete { success: true, .. }
+            ));
+        };
+
+        tokio::join!(server, client);
+        egress.unregister(connection_id).await.unwrap();
+        drop(transfer);
+        drop(egress);
+        egress_task.await.unwrap();
+    }
+
+    #[tokio::test]
     async fn test_download_egress_file_data_is_single_frame_followed_by_hash() {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path().canonicalize().unwrap();

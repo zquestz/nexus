@@ -888,16 +888,22 @@ mod tests {
     use super::*;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::sync::Arc;
+    use std::time::Duration;
 
+    use nexus_common::hash::StreamingHasher;
     use nexus_common::io::{read_server_message, send_client_message};
     use nexus_common::{ERROR_KIND_CONFLICT, ERROR_KIND_INVALID};
     use tempfile::TempDir;
     use tokio::fs;
-    use tokio::io::{BufReader, DuplexStream, ReadHalf, WriteHalf, duplex};
+    use tokio::io::{AsyncWriteExt, BufReader, DuplexStream, ReadHalf, WriteHalf, duplex};
+    use tokio::sync::mpsc;
 
+    use crate::egress::EGRESS_DISPATCH_QUEUE_CAPACITY;
+    use crate::egress::task::{DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY, EgressHandle};
     use crate::files::{FileActivityMap, FileIndex};
+    use crate::scheduler::ConnectionId;
     use crate::transfers::registry::{TransferDirection, TransferRegistration, TransferRegistry};
-    use crate::transfers::transfer::TransferContext;
+    use crate::transfers::transfer::{TransferContext, TransferEgress};
 
     const TEST_LOCALE: &str = "en";
 
@@ -946,6 +952,136 @@ mod tests {
                 egress: None,
             },
         )
+    }
+
+    #[tokio::test]
+    async fn receive_file_with_egress_handle_does_not_stage_upload_bytes() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let destination = shared_root.join("uploads [NEXUS-UL]");
+        fs::create_dir_all(&destination).await.unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+
+        let (command_tx, mut command_rx) = mpsc::channel(DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY);
+        let (settings_tx, _settings_rx) = mpsc::unbounded_channel();
+        let egress = EgressHandle::new(command_tx, settings_tx);
+        let (_dispatch_tx, dispatch_rx) = mpsc::channel(EGRESS_DISPATCH_QUEUE_CAPACITY);
+        let transfer_egress = TransferEgress::new(egress, ConnectionId::new(77_001), dispatch_rx);
+
+        let (client, server) = duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let (info, ban_rx) = registry.register(TransferRegistration {
+            user_id: 1,
+            peer_addr: test_addr(),
+            nickname: "tester".to_string(),
+            username: "tester".to_string(),
+            is_admin: false,
+            is_shared: false,
+            direction: TransferDirection::Upload,
+            path: "uploads [NEXUS-UL]".to_string(),
+            total_size: 0,
+        });
+        let mut transfer = Transfer::new(
+            FrameReader::new(BufReader::new(server_read)),
+            FrameWriter::new(server_write),
+            ban_rx,
+            info,
+            TransferContext {
+                user: make_authenticated_user(false, &[Permission::FileUpload]),
+                locale: TEST_LOCALE.to_string(),
+                file_root: &file_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                user_area_root: Some(shared_root.to_path_buf()),
+                registry: &registry,
+                egress: Some(transfer_egress),
+            },
+        );
+        let mut upload_targets = HashSet::new();
+        let file_data = b"uploaded through inbound path".to_vec();
+        let mut hasher = StreamingHasher::new();
+        hasher.update(&file_data);
+        let file_hash = hasher.finalize();
+
+        let server = async {
+            match receive_file(
+                &mut transfer,
+                ReceiveFileParams {
+                    area_root: &shared_root,
+                    destination: &destination,
+                    upload_targets: &mut upload_targets,
+                    locale: TEST_LOCALE,
+                    transfer_id: "test",
+                    file_index: 0,
+                },
+            )
+            .await
+            {
+                Ok(relative_path) => relative_path,
+                Err(ReceiveFileError::Transfer(err)) => {
+                    panic!("upload receive should succeed, got transfer error: {err:?}")
+                }
+                Err(ReceiveFileError::Banned) => {
+                    panic!("upload receive should succeed, got banned")
+                }
+            }
+        };
+
+        let client = async {
+            send_client_message(
+                &mut client_writer,
+                &ClientMessage::FileStart {
+                    path: "file.txt".to_string(),
+                    size: file_data.len() as u64,
+                },
+            )
+            .await
+            .unwrap();
+
+            let response = read_server_message(&mut client_reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            assert!(matches!(
+                response,
+                ServerMessage::FileStartResponse { size: 0, .. }
+            ));
+
+            client_writer
+                .get_mut()
+                .write_all(&build_frame("FileData", &file_data))
+                .await
+                .unwrap();
+            send_client_message(
+                &mut client_writer,
+                &ClientMessage::FileHash { sha256: file_hash },
+            )
+            .await
+            .unwrap();
+        };
+
+        let (relative_path, ()) = tokio::time::timeout(Duration::from_secs(2), async {
+            tokio::join!(server, client)
+        })
+        .await
+        .expect("upload receive should not wait on egress");
+        assert_eq!(relative_path, "file.txt");
+        assert!(
+            command_rx.try_recv().is_err(),
+            "inbound upload FileData must not stage egress commands"
+        );
+        assert_eq!(
+            fs::read(destination.join("file.txt")).await.unwrap(),
+            file_data
+        );
     }
 
     #[tokio::test]
