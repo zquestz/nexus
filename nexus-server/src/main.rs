@@ -463,6 +463,10 @@ async fn main() {
                             ip_rule_cache: ip_rule_cache.clone(),
                             user_manager: user_manager.clone(),
                             fingerprint,
+                            egress: egress_handle.clone(),
+                            egress_connection_id: allocate_egress_connection_id(
+                                &egress_connection_ids,
+                            ),
                         };
                         let tls_acceptor = tls_acceptor.clone();
                         let ip_rule_cache_for_check = ip_rule_cache.clone();
@@ -596,6 +600,10 @@ async fn main() {
                             ip_rule_cache: ip_rule_cache.clone(),
                             user_manager: user_manager.clone(),
                             fingerprint,
+                            egress: egress_handle.clone(),
+                            egress_connection_id: allocate_egress_connection_id(
+                                &egress_connection_ids,
+                            ),
                         };
                         let tls_acceptor = tls_acceptor.clone();
                         let ip_rule_cache_for_check = ip_rule_cache.clone();

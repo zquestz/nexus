@@ -5,7 +5,7 @@ use std::io;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use nexus_common::framing::{FrameReader, FrameWriter};
+use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
 use nexus_common::io::{read_client_message_with_full_timeout, send_server_message_with_id};
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
@@ -33,6 +33,17 @@ use crate::handlers::{
 
 use super::helpers::{login_error_response, send_error_and_close};
 use super::types::{AuthenticatedUser, DownloadParams, TransferRequest, UploadParams};
+
+pub(crate) struct TransferLoginAuth {
+    pub user: AuthenticatedUser,
+    pub message_id: MessageId,
+}
+
+pub(crate) struct TransferLoginSuccess {
+    pub user: AuthenticatedUser,
+    pub message_id: MessageId,
+    pub bandwidth_weight: u16,
+}
 
 pub(crate) async fn handle_transfer_handshake<R, W>(
     frame_reader: &mut FrameReader<R>,
@@ -170,7 +181,7 @@ pub(crate) async fn handle_transfer_login<R, W>(
     frame_writer: &mut FrameWriter<W>,
     db: &Database,
     locale: &mut String,
-) -> io::Result<AuthenticatedUser>
+) -> io::Result<TransferLoginAuth>
 where
     R: AsyncReadExt + Unpin,
     W: AsyncWriteExt + Unpin,
@@ -296,6 +307,26 @@ where
         account.username.clone()
     };
 
+    Ok(TransferLoginAuth {
+        user: AuthenticatedUser {
+            user_id: account.id,
+            nickname,
+            username: account.username,
+            is_admin: account.is_admin,
+            is_shared: account.is_shared,
+            permissions,
+        },
+        message_id: received.message_id,
+    })
+}
+
+pub(crate) async fn send_transfer_login_success<W>(
+    frame_writer: &mut FrameWriter<W>,
+    message_id: MessageId,
+) -> io::Result<()>
+where
+    W: AsyncWriteExt + Unpin,
+{
     let response = ServerMessage::LoginResponse {
         success: true,
         error: None,
@@ -310,16 +341,7 @@ where
         group_id: None,
         group_name: None,
     };
-    send_server_message_with_id(frame_writer, &response, received.message_id).await?;
-
-    Ok(AuthenticatedUser {
-        user_id: account.id,
-        nickname,
-        username: account.username,
-        is_admin: account.is_admin,
-        is_shared: account.is_shared,
-        permissions,
-    })
+    send_server_message_with_id(frame_writer, &response, message_id).await
 }
 
 /// Read the initial transfer request (FileDownload or FileUpload).

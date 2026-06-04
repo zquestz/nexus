@@ -6,8 +6,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::db::{Database, Permission};
+use crate::egress::task::EgressHandle;
 use crate::files::{FileActivityMap, FileIndex};
 use crate::ip_rule_cache::IpRuleState;
+use crate::scheduler::ConnectionId;
 use crate::users::UserManager;
 
 use super::registry::TransferRegistry;
@@ -26,6 +28,8 @@ pub struct TransferParams {
     /// Sent in HandshakeResponse so the client can detect TLS interception
     /// before sending credentials.
     pub fingerprint: &'static str,
+    pub egress: EgressHandle,
+    pub egress_connection_id: ConnectionId,
 }
 
 /// A file to download.

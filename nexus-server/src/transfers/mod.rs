@@ -22,17 +22,18 @@ use std::{collections::HashSet, io, net::SocketAddr, sync::Arc};
 
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tokio_rustls::TlsAcceptor;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
-use nexus_common::framing::{FrameReader, FrameWriter};
+use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
+use nexus_common::io::send_server_message_with_id;
 use nexus_common::names::fold_name;
 use nexus_common::tls::accept_tls_with_timeout;
 
 use crate::constants::*;
 use crate::db::sql::GUEST_USERNAME;
-use crate::db::{Database, Permission};
+use crate::db::{Database, LoginSnapshotError, Permission};
 use crate::files::resolve_user_area;
 use crate::handlers::duration::format_duration_remaining;
 use crate::handlers::{
@@ -40,11 +41,16 @@ use crate::handlers::{
     err_database, err_file_area_not_configured, err_guest_disabled,
 };
 use crate::ip_rule_cache::IpAdmission;
+use crate::scheduler::{ConnectionClass, ConnectionId};
 use crate::users::UserManager;
+use crate::{egress, egress::task::EgressHandle};
 
-use auth::{handle_transfer_handshake, handle_transfer_login, handle_transfer_request};
+use auth::{
+    TransferLoginAuth, TransferLoginSuccess, handle_transfer_handshake, handle_transfer_login,
+    handle_transfer_request, send_transfer_login_success,
+};
 use download::handle_download;
-use helpers::send_error_and_close;
+use helpers::{login_error_response, send_error_and_close};
 use registry::{ActiveTransfer, TransferDirection, TransferRegistration};
 use transfer::{Transfer, TransferContext};
 use types::{AuthenticatedUser, TransferRequest};
@@ -73,6 +79,74 @@ pub async fn handle_transfer_connection_inner<S>(
 where
     S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
+    let peer_addr = params.peer_addr;
+    let egress = params.egress.clone();
+    let egress_connection_id = params.egress_connection_id;
+    let (egress_dispatch_tx, egress_dispatch_rx) =
+        mpsc::channel(egress::EGRESS_DISPATCH_QUEUE_CAPACITY);
+    let mut egress_registered = false;
+
+    match egress
+        .register_anon(
+            egress_connection_id,
+            ConnectionClass::Bulk,
+            egress_dispatch_tx,
+        )
+        .await
+    {
+        Ok(true) => {
+            egress_registered = true;
+        }
+        Ok(false) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = egress_connection_id.get(),
+                "{}",
+                LOG_EGRESS_REGISTER_REJECTED
+            );
+        }
+        Err(e) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = egress_connection_id.get(),
+                err = ?e,
+                "{}",
+                LOG_EGRESS_REGISTER_FAILED
+            );
+        }
+    }
+
+    let result = handle_transfer_connection_inner_registered(
+        socket,
+        params,
+        egress_registered.then_some(egress_dispatch_rx),
+    )
+    .await;
+
+    match egress.unregister(egress_connection_id).await {
+        Ok(()) => {}
+        Err(e) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = egress_connection_id.get(),
+                err = ?e,
+                "{}",
+                LOG_EGRESS_UNREGISTER_FAILED
+            );
+        }
+    }
+
+    result
+}
+
+async fn handle_transfer_connection_inner_registered<S>(
+    socket: S,
+    params: TransferParams,
+    _egress_dispatch_rx: Option<egress::EgressDispatchRx>,
+) -> io::Result<()>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
     let TransferParams {
         peer_addr,
         db,
@@ -83,6 +157,8 @@ where
         ip_rule_cache,
         user_manager,
         fingerprint,
+        egress,
+        egress_connection_id,
     } = params;
 
     debug!(ip = %peer_addr, "{}", LOG_TRANSFER_CONNECTION);
@@ -105,9 +181,9 @@ where
     }
 
     // Phase 2: Login (authentication only)
-    let user =
+    let login_auth =
         match handle_transfer_login(&mut frame_reader, &mut frame_writer, &db, &mut locale).await {
-            Ok(user) => user,
+            Ok(login) => login,
             Err(e) => {
                 debug!(ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_LOGIN_FAILED);
                 let _ = frame_writer.get_mut().shutdown().await;
@@ -115,7 +191,38 @@ where
             }
         };
 
-    debug!(user = %user.username, ip = %peer_addr, "{}", LOG_TRANSFER_AUTHENTICATED);
+    let login_success = match complete_transfer_login(
+        TransferLoginContext {
+            db: &db,
+            user_manager: &user_manager,
+            egress: &egress,
+            egress_connection_id,
+            locale: &locale,
+            peer_addr,
+        },
+        login_auth,
+    )
+    .await
+    {
+        Ok(success) => success,
+        Err((message_id, error)) => {
+            let response = login_error_response(error);
+            let _ = send_server_message_with_id(&mut frame_writer, &response, message_id).await;
+            let _ = frame_writer.get_mut().shutdown().await;
+            return Ok(());
+        }
+    };
+
+    if let Err(e) = send_transfer_login_success(&mut frame_writer, login_success.message_id).await {
+        debug!(ip = %peer_addr, err = %e, "{}", LOG_TRANSFER_LOGIN_FAILED);
+        let _ = frame_writer.get_mut().shutdown().await;
+        return Ok(());
+    }
+
+    let bandwidth_weight = login_success.bandwidth_weight;
+    let user = login_success.user;
+
+    debug!(user = %user.username, ip = %peer_addr, bandwidth_weight, "{}", LOG_TRANSFER_AUTHENTICATED);
 
     // Phase 3: Transfer request (FileDownload or FileUpload)
     let Some(file_root) = file_root else {
@@ -222,6 +329,106 @@ fn late_ban_error(locale: &str, expires_at: Option<i64>) -> String {
     }
 }
 
+struct TransferLoginContext<'a> {
+    db: &'a Database,
+    user_manager: &'a UserManager,
+    egress: &'a EgressHandle,
+    egress_connection_id: ConnectionId,
+    locale: &'a str,
+    peer_addr: SocketAddr,
+}
+
+async fn complete_transfer_login(
+    ctx: TransferLoginContext<'_>,
+    mut login: TransferLoginAuth,
+) -> Result<TransferLoginSuccess, (MessageId, String)> {
+    let _user_state = ctx.user_manager.read_user_state().await;
+    let snapshot = match ctx.db.get_login_session_snapshot(login.user.user_id).await {
+        Ok(Some(snapshot)) if snapshot.account.enabled => snapshot,
+        Ok(Some(snapshot)) => {
+            let error = if fold_name(&snapshot.account.username) == GUEST_USERNAME {
+                err_guest_disabled(ctx.locale)
+            } else {
+                err_account_disabled(ctx.locale, &snapshot.account.username)
+            };
+            return Err((login.message_id, error));
+        }
+        Ok(None) => return Err((login.message_id, err_authentication(ctx.locale))),
+        Err(e) => {
+            return Err((
+                login.message_id,
+                handle_transfer_login_snapshot_error(
+                    &e,
+                    login.user.user_id,
+                    ctx.peer_addr,
+                    ctx.locale,
+                ),
+            ));
+        }
+    };
+
+    login.user.username = snapshot.account.username.clone();
+    login.user.is_admin = snapshot.account.is_admin;
+    login.user.is_shared = snapshot.account.is_shared;
+    login.user.permissions = snapshot.permissions.permissions;
+    if !snapshot.account.is_shared {
+        login.user.nickname = snapshot.account.username.clone();
+    }
+
+    transition_transfer_login_to_user_flow(
+        ctx.egress,
+        ctx.egress_connection_id,
+        login.user.user_id,
+        snapshot.resolved_bandwidth_weight,
+        ctx.peer_addr,
+    );
+
+    Ok(TransferLoginSuccess {
+        user: login.user,
+        message_id: login.message_id,
+        bandwidth_weight: snapshot.resolved_bandwidth_weight,
+    })
+}
+
+fn transition_transfer_login_to_user_flow(
+    egress: &EgressHandle,
+    egress_connection_id: ConnectionId,
+    user_id: i64,
+    weight: u16,
+    peer_addr: SocketAddr,
+) {
+    match egress.transition_to_user(egress_connection_id, user_id, weight) {
+        Ok(()) => {}
+        Err(e) => {
+            warn!(
+                ip = %peer_addr,
+                egress_connection_id = egress_connection_id.get(),
+                user_id,
+                weight,
+                err = ?e,
+                "{}",
+                LOG_EGRESS_TRANSITION_FAILED
+            );
+        }
+    }
+}
+
+fn handle_transfer_login_snapshot_error(
+    err: &LoginSnapshotError,
+    user_id: i64,
+    peer_addr: SocketAddr,
+    locale: &str,
+) -> String {
+    let (message, source) = match err {
+        LoginSnapshotError::User(e) => (LOG_TRANSFER_REGISTRATION_DB_ERROR, e),
+        LoginSnapshotError::Permissions(e) => (LOG_TRANSFER_REGISTRATION_DB_ERROR, e),
+        LoginSnapshotError::Group(e) => (LOG_TRANSFER_REGISTRATION_DB_ERROR, e),
+        LoginSnapshotError::BandwidthWeight(e) => (LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED, e),
+    };
+    error!(user_id, ip = %peer_addr, err = %source, "{}", message);
+    err_database(locale)
+}
+
 struct TransferRegistrationContext<'a> {
     db: &'a Database,
     user_manager: &'a UserManager,
@@ -326,12 +533,26 @@ async fn current_transfer_permissions(
 mod tests {
     use std::collections::HashSet;
     use std::net::SocketAddr;
+    use std::sync::Arc;
+
+    use tokio::io::BufReader;
+    use tokio::time::{self, Duration};
+
+    use nexus_common::io::{read_server_message, send_client_message};
+    use nexus_common::protocol::{ClientMessage, ServerMessage};
 
     use crate::db::testing::create_test_db;
     use crate::db::{
         CreateUserParams, Database, Permission, PermissionWriteScope, Permissions,
         UpdateUserParams, UserAccount,
     };
+    use crate::egress::task::{
+        DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY, EgressCommand, EgressHandle, EgressSettingsCommand,
+    };
+    use crate::files::{FileActivityMap, FileIndex};
+    use crate::handlers::testing::{TEST_FINGERPRINT, get_cached_password_hash};
+    use crate::ip_rule_cache::{IpRuleCache, IpRuleState};
+    use crate::scheduler::ConnectionId;
     use crate::users::UserManager;
     use tempfile::TempDir;
 
@@ -367,6 +588,119 @@ mod tests {
             })
             .await
             .unwrap()
+    }
+
+    async fn create_transfer_user_with_weight(
+        db: &Database,
+        username: &str,
+        weight: u16,
+        permissions: &Permissions,
+    ) -> UserAccount {
+        db.users
+            .create_user(CreateUserParams {
+                username,
+                hashed_password: &get_cached_password_hash("password"),
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: Some(weight),
+            })
+            .await
+            .unwrap()
+    }
+
+    fn egress_handle_for_test() -> (
+        EgressHandle,
+        tokio::sync::mpsc::Receiver<EgressCommand>,
+        tokio::sync::mpsc::UnboundedReceiver<EgressSettingsCommand>,
+    ) {
+        let (egress_tx, egress_command_rx) =
+            tokio::sync::mpsc::channel(DEFAULT_EGRESS_COMMAND_QUEUE_CAPACITY);
+        let (egress_settings_tx, egress_settings_rx) = tokio::sync::mpsc::unbounded_channel();
+        (
+            EgressHandle::new(egress_tx, egress_settings_tx),
+            egress_command_rx,
+            egress_settings_rx,
+        )
+    }
+
+    struct TransferHarness {
+        params: TransferParams,
+        _temp_dir: TempDir,
+    }
+
+    async fn transfer_harness(
+        db: Database,
+        user_manager: UserManager,
+        egress: EgressHandle,
+        egress_connection_id: ConnectionId,
+    ) -> TransferHarness {
+        let temp_dir = TempDir::new().unwrap();
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), temp_dir.path()));
+        let file_activity = Arc::new(FileActivityMap::new());
+        TransferHarness {
+            params: TransferParams {
+                peer_addr: SocketAddr::from(([127, 0, 0, 1], 7501)),
+                db,
+                file_root: None,
+                file_index,
+                file_activity,
+                transfer_registry: Arc::new(TransferRegistry::new()),
+                ip_rule_cache: Arc::new(IpRuleState::new(IpRuleCache::new())),
+                user_manager,
+                fingerprint: TEST_FINGERPRINT,
+                egress,
+                egress_connection_id,
+            },
+            _temp_dir: temp_dir,
+        }
+    }
+
+    async fn send_transfer_handshake_and_login(
+        writer: &mut FrameWriter<tokio::io::WriteHalf<tokio::io::DuplexStream>>,
+        reader: &mut FrameReader<BufReader<tokio::io::ReadHalf<tokio::io::DuplexStream>>>,
+        username: &str,
+        password: &str,
+    ) -> ServerMessage {
+        send_client_message(
+            writer,
+            &ClientMessage::Handshake {
+                version: nexus_common::PROTOCOL_VERSION.to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        let handshake = read_server_message(reader)
+            .await
+            .unwrap()
+            .expect("handshake response");
+        assert!(matches!(
+            handshake.message,
+            ServerMessage::HandshakeResponse { success: true, .. }
+        ));
+
+        send_client_message(
+            writer,
+            &ClientMessage::Login {
+                username: username.to_string(),
+                password: password.to_string(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        read_server_message(reader)
+            .await
+            .unwrap()
+            .expect("login response")
+            .message
     }
 
     async fn disable_user(db: &Database, username: &str) {
@@ -415,6 +749,258 @@ mod tests {
             total_size: 0,
             use_root: false,
         }
+    }
+
+    #[tokio::test]
+    async fn transfer_login_transitions_before_success_response() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let permissions = Permissions::from(&[Permission::FileDownload]);
+        let account = create_transfer_user_with_weight(&db, "alice", 9, &permissions).await;
+        let (egress, _command_rx, mut settings_rx) = egress_handle_for_test();
+        let egress_connection_id = ConnectionId::new(9_001);
+        let harness = transfer_harness(db, user_manager, egress, egress_connection_id).await;
+
+        let (client, server) = tokio::io::duplex(4096);
+        let (client_read, client_write) = tokio::io::split(client);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let server_task = tokio::spawn(handle_transfer_connection_inner_registered(
+            server,
+            harness.params,
+            None,
+        ));
+
+        send_client_message(
+            &mut client_writer,
+            &ClientMessage::Handshake {
+                version: nexus_common::PROTOCOL_VERSION.to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        let handshake = read_server_message(&mut client_reader)
+            .await
+            .unwrap()
+            .expect("handshake response");
+        assert!(matches!(
+            handshake.message,
+            ServerMessage::HandshakeResponse { success: true, .. }
+        ));
+
+        send_client_message(
+            &mut client_writer,
+            &ClientMessage::Login {
+                username: "alice".to_string(),
+                password: "password".to_string(),
+                features: vec![],
+                locale: "en".to_string(),
+                avatar: None,
+                nickname: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let transition = time::timeout(Duration::from_secs(1), settings_rx.recv())
+            .await
+            .unwrap()
+            .expect("transition should be queued before login response");
+        match transition {
+            EgressSettingsCommand::TransitionToUser {
+                connection_id,
+                user_id,
+                weight,
+            } => {
+                assert_eq!(connection_id, egress_connection_id);
+                assert_eq!(user_id, account.id);
+                assert_eq!(weight, 9);
+            }
+            _ => panic!("expected transfer login transition"),
+        }
+
+        let login = read_server_message(&mut client_reader)
+            .await
+            .unwrap()
+            .expect("login response");
+        assert!(matches!(
+            login.message,
+            ServerMessage::LoginResponse { success: true, .. }
+        ));
+
+        drop(client_writer);
+        server_task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn failed_transfer_login_does_not_transition() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let permissions = Permissions::from(&[Permission::FileDownload]);
+        create_transfer_user_with_weight(&db, "alice", 9, &permissions).await;
+        let (egress, _command_rx, mut settings_rx) = egress_handle_for_test();
+        let harness = transfer_harness(db, user_manager, egress, ConnectionId::new(9_002)).await;
+
+        let (client, server) = tokio::io::duplex(4096);
+        let (client_read, client_write) = tokio::io::split(client);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let server_task = tokio::spawn(handle_transfer_connection_inner_registered(
+            server,
+            harness.params,
+            None,
+        ));
+
+        let login = send_transfer_handshake_and_login(
+            &mut client_writer,
+            &mut client_reader,
+            "alice",
+            "wrong-password",
+        )
+        .await;
+        assert!(matches!(
+            login,
+            ServerMessage::LoginResponse { success: false, .. }
+        ));
+        assert!(settings_rx.try_recv().is_err());
+
+        drop(client_writer);
+        server_task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn transfer_login_succeeds_when_egress_settings_channel_closed() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let permissions = Permissions::from(&[Permission::FileDownload]);
+        create_transfer_user_with_weight(&db, "alice", 9, &permissions).await;
+        let (egress, _command_rx, settings_rx) = egress_handle_for_test();
+        drop(settings_rx);
+        let harness = transfer_harness(db, user_manager, egress, ConnectionId::new(9_003)).await;
+
+        let (client, server) = tokio::io::duplex(4096);
+        let (client_read, client_write) = tokio::io::split(client);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let server_task = tokio::spawn(handle_transfer_connection_inner_registered(
+            server,
+            harness.params,
+            None,
+        ));
+
+        let login = send_transfer_handshake_and_login(
+            &mut client_writer,
+            &mut client_reader,
+            "alice",
+            "password",
+        )
+        .await;
+        assert!(matches!(
+            login,
+            ServerMessage::LoginResponse { success: true, .. }
+        ));
+
+        drop(client_writer);
+        server_task.await.unwrap().unwrap();
+    }
+
+    #[tokio::test]
+    async fn transfer_login_transition_uses_fresh_weight_snapshot() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let permissions = Permissions::from(&[Permission::FileDownload]);
+        let account = create_transfer_user_with_weight(&db, "alice", 1, &permissions).await;
+        db.users
+            .update_user(UpdateUserParams {
+                username: "alice",
+                new_username: None,
+                new_password_hash: None,
+                is_admin: None,
+                enabled: None,
+                permissions: None,
+                revokes: None,
+                remove_group: false,
+                group_id: None,
+                bandwidth_weight: Some(10),
+                inherit_bandwidth_weight: false,
+                requester_is_admin: true,
+                permission_write_scope: PermissionWriteScope::ReplaceAll,
+                requester_bandwidth_max: None,
+            })
+            .await
+            .unwrap();
+        let (egress, _command_rx, mut settings_rx) = egress_handle_for_test();
+        let login = TransferLoginAuth {
+            user: stale_auth_user(account.id, "alice", "alice", false),
+            message_id: MessageId::new(),
+        };
+
+        let success = complete_transfer_login(
+            TransferLoginContext {
+                db: &db,
+                user_manager: &user_manager,
+                egress: &egress,
+                egress_connection_id: ConnectionId::new(9_004),
+                locale: "en",
+                peer_addr: SocketAddr::from(([127, 0, 0, 1], 7501)),
+            },
+            login,
+        )
+        .await
+        .expect("transfer login should complete");
+
+        assert_eq!(success.bandwidth_weight, 10);
+        let transition = settings_rx.try_recv().expect("transition command");
+        match transition {
+            EgressSettingsCommand::TransitionToUser {
+                user_id, weight, ..
+            } => {
+                assert_eq!(user_id, account.id);
+                assert_eq!(weight, 10);
+            }
+            _ => panic!("expected transfer login transition"),
+        }
+    }
+
+    #[tokio::test]
+    async fn transfer_egress_unregister_runs_after_inner_error() {
+        let pool = create_test_db().await;
+        let db = Database::new(pool);
+        let user_manager = UserManager::new();
+        let (egress, mut command_rx, _settings_rx) = egress_handle_for_test();
+        let egress_connection_id = ConnectionId::new(9_005);
+        let harness = transfer_harness(db, user_manager, egress, egress_connection_id).await;
+        let (client, server) = tokio::io::duplex(4096);
+
+        let server_task = tokio::spawn(handle_transfer_connection_inner(server, harness.params));
+        drop(client);
+        let register = command_rx.recv().await.expect("register command");
+        match register {
+            EgressCommand::RegisterAnon {
+                connection_id,
+                class,
+                reply_tx,
+                ..
+            } => {
+                assert_eq!(connection_id, egress_connection_id);
+                assert_eq!(class, ConnectionClass::Bulk);
+                reply_tx.send(true).unwrap();
+            }
+            _ => panic!("expected RegisterAnon"),
+        }
+
+        let unregister = command_rx.recv().await.expect("unregister command");
+        match unregister {
+            EgressCommand::Unregister { connection_id } => {
+                assert_eq!(connection_id, egress_connection_id);
+            }
+            _ => panic!("expected Unregister"),
+        }
+        server_task.await.unwrap().unwrap();
     }
 
     #[tokio::test]
