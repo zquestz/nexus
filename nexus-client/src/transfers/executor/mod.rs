@@ -66,6 +66,10 @@ const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 /// Idle timeout waiting for a frame to start
 const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Directory downloads may need to scan the tree before the server can report
+/// total size and file count in FileDownloadResponse.
+const DOWNLOAD_RESPONSE_TIMEOUT: Duration = Duration::from_secs(60);
+
 /// Progress timeout for FileData (must receive some bytes within this time)
 const PROGRESS_TIMEOUT: Duration = Duration::from_secs(60);
 
@@ -235,7 +239,7 @@ where
         .map_err(|_| TransferError::ConnectionError)?;
 
     // Read FileDownloadResponse
-    let response = read_message_with_timeout(reader, IDLE_TIMEOUT).await?;
+    let response = read_message_with_timeout(reader, DOWNLOAD_RESPONSE_TIMEOUT).await?;
 
     let (total_bytes, file_count, server_transfer_id) = match response {
         ServerMessage::FileDownloadResponse {
@@ -1010,5 +1014,305 @@ fn handle_transfer_complete(
             TransferError::ProtocolError,
             None,
         )),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::ConnectionInfo;
+    use nexus_common::framing::{FrameReader, FrameWriter, MessageId};
+    use nexus_common::hash::StreamingHasher;
+    use nexus_common::io::{read_client_message, send_server_message};
+    use std::sync::atomic::AtomicBool;
+    use tokio::io::{BufReader, duplex};
+
+    fn test_connection_info() -> ConnectionInfo {
+        ConnectionInfo {
+            server_name: "Test Server".to_string(),
+            address: "127.0.0.1".to_string(),
+            port: 7500,
+            transfer_port: 7501,
+            certificate_fingerprint: "AA:BB:CC".to_string(),
+            username: "testuser".to_string(),
+            password: "testpass".to_string(),
+            nickname: String::new(),
+        }
+    }
+
+    fn hash_bytes(bytes: &[u8]) -> String {
+        let mut hasher = StreamingHasher::new();
+        hasher.update(bytes);
+        hasher.finalize()
+    }
+
+    async fn send_file_data<W>(writer: &mut FrameWriter<W>, payload: &[u8]) -> std::io::Result<()>
+    where
+        W: tokio::io::AsyncWrite + Unpin,
+    {
+        let mut reader = payload;
+        writer
+            .write_streaming_frame(
+                MessageId::new(),
+                "FileData",
+                &mut reader,
+                payload.len() as u64,
+            )
+            .await
+            .map_err(Into::into)
+    }
+
+    #[tokio::test]
+    async fn test_execute_download_directory_sends_file_start_response() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let local_base = temp_dir.path().join("bundle");
+        let transfer = Transfer::new_download(
+            test_connection_info(),
+            "bundle".to_string(),
+            false,
+            true,
+            local_base.clone(),
+            None,
+            0,
+        );
+
+        let (client_io, server_io) = duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let mut server_reader = FrameReader::new(BufReader::new(server_read));
+        let mut server_writer = FrameWriter::new(server_write);
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let cancel_flag = Some(Arc::new(AtomicBool::new(false)));
+
+        let client = async {
+            execute_download(
+                &transfer,
+                &mut client_reader,
+                &mut client_writer,
+                &event_tx,
+                &cancel_flag,
+            )
+            .await
+        };
+
+        let server = async {
+            let request = read_client_message(&mut server_reader)
+                .await
+                .expect("read FileDownload")
+                .expect("FileDownload message")
+                .message;
+            assert!(matches!(
+                request,
+                ClientMessage::FileDownload { path, .. } if path == "bundle"
+            ));
+
+            send_server_message(
+                &mut server_writer,
+                &ServerMessage::FileDownloadResponse {
+                    success: true,
+                    error: None,
+                    error_kind: None,
+                    size: Some(11),
+                    file_count: Some(2),
+                    transfer_id: Some("test-xfer".to_string()),
+                },
+            )
+            .await
+            .expect("send FileDownloadResponse");
+
+            for (path, payload) in [
+                ("first.txt", b"first".as_slice()),
+                ("nested/second.txt", b"second".as_slice()),
+            ] {
+                send_server_message(
+                    &mut server_writer,
+                    &ServerMessage::FileStart {
+                        path: path.to_string(),
+                        size: payload.len() as u64,
+                    },
+                )
+                .await
+                .expect("send FileStart");
+
+                let response = read_client_message(&mut server_reader)
+                    .await
+                    .expect("read FileStartResponse")
+                    .expect("FileStartResponse message")
+                    .message;
+                assert!(matches!(
+                    response,
+                    ClientMessage::FileStartResponse {
+                        size: 0,
+                        sha256: None
+                    }
+                ));
+
+                send_file_data(&mut server_writer, payload)
+                    .await
+                    .expect("send FileData");
+                send_server_message(
+                    &mut server_writer,
+                    &ServerMessage::FileHash {
+                        sha256: hash_bytes(payload),
+                    },
+                )
+                .await
+                .expect("send FileHash");
+            }
+
+            send_server_message(
+                &mut server_writer,
+                &ServerMessage::TransferComplete {
+                    success: true,
+                    error: None,
+                    error_kind: None,
+                },
+            )
+            .await
+            .expect("send TransferComplete");
+        };
+
+        let (client_result, _) = tokio::join!(client, server);
+        client_result.expect("download succeeds");
+
+        let first = tokio::fs::read(local_base.join("first.txt"))
+            .await
+            .expect("read first file");
+        let second = tokio::fs::read(local_base.join("nested/second.txt"))
+            .await
+            .expect("read second file");
+        assert_eq!(first, b"first");
+        assert_eq!(second, b"second");
+        assert!(matches!(
+            event_rx.recv().await,
+            Some(TransferEvent::Started { file_count: 2, .. })
+        ));
+        assert!(matches!(
+            event_rx.recv().await,
+            Some(TransferEvent::Progress { .. })
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_execute_download_directory_resume_reports_part_hash() {
+        let temp_dir = tempfile::tempdir().expect("create temp dir");
+        let local_base = temp_dir.path().join("bundle");
+        tokio::fs::create_dir_all(&local_base)
+            .await
+            .expect("create local base");
+        let partial = b"first";
+        let full = b"first-second";
+        let part_path = local_base.join("first.bin.part");
+        tokio::fs::write(&part_path, partial)
+            .await
+            .expect("write partial file");
+
+        let transfer = Transfer::new_download(
+            test_connection_info(),
+            "bundle".to_string(),
+            false,
+            true,
+            local_base.clone(),
+            None,
+            0,
+        );
+
+        let (client_io, server_io) = duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client_io);
+        let (server_read, server_write) = tokio::io::split(server_io);
+        let mut client_reader = FrameReader::new(BufReader::new(client_read));
+        let mut client_writer = FrameWriter::new(client_write);
+        let mut server_reader = FrameReader::new(BufReader::new(server_read));
+        let mut server_writer = FrameWriter::new(server_write);
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        let cancel_flag = Some(Arc::new(AtomicBool::new(false)));
+
+        let client = async {
+            execute_download(
+                &transfer,
+                &mut client_reader,
+                &mut client_writer,
+                &event_tx,
+                &cancel_flag,
+            )
+            .await
+        };
+
+        let server = async {
+            let _request = read_client_message(&mut server_reader)
+                .await
+                .expect("read FileDownload")
+                .expect("FileDownload message");
+
+            send_server_message(
+                &mut server_writer,
+                &ServerMessage::FileDownloadResponse {
+                    success: true,
+                    error: None,
+                    error_kind: None,
+                    size: Some(full.len() as u64),
+                    file_count: Some(1),
+                    transfer_id: Some("test-xfer".to_string()),
+                },
+            )
+            .await
+            .expect("send FileDownloadResponse");
+
+            send_server_message(
+                &mut server_writer,
+                &ServerMessage::FileStart {
+                    path: "first.bin".to_string(),
+                    size: full.len() as u64,
+                },
+            )
+            .await
+            .expect("send FileStart");
+
+            let response = read_client_message(&mut server_reader)
+                .await
+                .expect("read FileStartResponse")
+                .expect("FileStartResponse message")
+                .message;
+            assert!(matches!(
+                response,
+                ClientMessage::FileStartResponse {
+                    size,
+                    sha256: Some(hash),
+                } if size == partial.len() as u64 && hash == hash_bytes(partial)
+            ));
+
+            send_file_data(&mut server_writer, &full[partial.len()..])
+                .await
+                .expect("send FileData");
+            send_server_message(
+                &mut server_writer,
+                &ServerMessage::FileHash {
+                    sha256: hash_bytes(full),
+                },
+            )
+            .await
+            .expect("send FileHash");
+            send_server_message(
+                &mut server_writer,
+                &ServerMessage::TransferComplete {
+                    success: true,
+                    error: None,
+                    error_kind: None,
+                },
+            )
+            .await
+            .expect("send TransferComplete");
+        };
+
+        let (client_result, _) = tokio::join!(client, server);
+        client_result.expect("download succeeds");
+
+        let final_file = tokio::fs::read(local_base.join("first.bin"))
+            .await
+            .expect("read final file");
+        assert_eq!(final_file, full);
+        assert!(!part_path.exists());
     }
 }

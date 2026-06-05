@@ -152,6 +152,11 @@ Response to download request.
 | `file_count`  | integer | If success | Number of files to transfer           |
 | `transfer_id` | string  | If success | Transfer ID for logging (8 hex chars) |
 
+For directory downloads, the server scans the directory before this response so
+it can report `size` and `file_count`. If that scan exceeds the server's bounded
+scan window, the server returns a failed `FileDownloadResponse` with
+`error_kind: "io_error"` and closes the transfer.
+
 **Success example:**
 
 ```json
@@ -448,12 +453,14 @@ Both sides use a `StreamingHasher` that supports clone-and-finalize (`partial_ha
 
 ## Timeouts
 
-| Context           | Timeout    | Description                                  |
-| ----------------- | ---------- | -------------------------------------------- |
-| Connection        | 30 seconds | TLS handshake must complete                  |
-| Idle              | 30 seconds | Time waiting for first byte of frame         |
-| Frame             | 60 seconds | Frame must complete within 60s of first byte |
-| FileData progress | 60 seconds | Must receive some bytes within 60s           |
+| Context                 | Timeout    | Description                                                  |
+| ----------------------- | ---------- | ------------------------------------------------------------ |
+| Connection              | 30 seconds | TLS handshake must complete                                  |
+| Download directory scan | 50 seconds | Server-side scan before `FileDownloadResponse` must complete |
+| Download response wait  | 60 seconds | Client wait for initial `FileDownloadResponse`               |
+| Idle                    | 30 seconds | Time waiting for first byte of any other frame               |
+| Frame                   | 60 seconds | Frame must complete within 60s of first byte                 |
+| FileData progress       | 60 seconds | Must receive some bytes within 60s                           |
 
 **Note:** Unlike port 7500, port 7501 does not allow indefinite idle connections.
 

@@ -191,12 +191,14 @@ In both cases, no login credentials were sent — both stages run before authent
 
 - Transfer port (7501) may be blocked
 - You may not have `file_download` permission
+- Very large folder downloads may time out while the server scans the folder
 
 **Solutions:**
 
 1. Verify you have download permission (check with server admin)
 2. Check if port 7501 is accessible
-3. Try a different file
+3. Try a smaller folder or download subfolders separately
+4. Try a different file
 
 ### Uploads fail or are rejected
 

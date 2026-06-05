@@ -164,6 +164,10 @@ Or: Select the file and use the context menu.
 
 This downloads all files in the folder and its subfolders.
 
+Large folders may take longer to start because the server scans the folder to
+calculate the total size and file count before the transfer begins. If the scan
+takes too long, the transfer fails before any files are downloaded.
+
 ### Download Current Directory
 
 Click the **Download** button in the toolbar to download everything in the current directory.

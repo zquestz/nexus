@@ -143,6 +143,7 @@ impl FileActivityMap {
     ///
     /// Readers can coexist with other readers of the same file, but they fail
     /// fast against active writers of the same file or protected ancestors.
+    #[cfg(test)]
     pub async fn try_enter_read_paths(
         &self,
         file_root: &Path,

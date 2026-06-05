@@ -137,6 +137,8 @@ This is useful for:
 1. Transfer port (7501) is accessible
 2. Firewall allows port 7501
 3. User has `file_download` or `file_upload` permission
+4. For very large folder downloads, try a smaller subfolder; directory scans are
+   bounded before the transfer starts
 
 ### Uploads rejected
 

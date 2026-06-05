@@ -6,19 +6,21 @@
 
 use std::io;
 use std::path::Path;
+use std::time::Duration;
 
 use tokio::fs::File;
 use tokio::io::{
     AsyncRead, AsyncReadExt, AsyncSeekExt, AsyncWrite, AsyncWriteExt, BufReader, SeekFrom,
 };
+use tokio::time::timeout;
 use tracing::{debug, error, info, warn};
 
-use nexus_common::ERROR_KIND_IO_ERROR;
 use nexus_common::framing::{FrameReader, FrameWriter};
 use nexus_common::hash::StreamingHasher;
 use nexus_common::io::read_client_message_with_full_timeout;
 use nexus_common::names::fold_name;
 use nexus_common::protocol::{ClientMessage, ServerMessage};
+use nexus_common::{ERROR_KIND_CONFLICT, ERROR_KIND_IO_ERROR};
 
 use crate::constants::*;
 use crate::db::Permission;
@@ -36,6 +38,8 @@ use super::helpers::{
 };
 use super::transfer::{StreamError, Transfer};
 use super::types::{DownloadParams, FileInfo};
+
+const DOWNLOAD_SCAN_TIMEOUT: Duration = Duration::from_secs(50);
 
 pub(crate) async fn handle_download<R, W>(
     transfer: &mut Transfer<'_, R, W>,
@@ -94,9 +98,14 @@ where
         }
     };
 
-    let files = match scan_files_for_transfer(&resolved_path, &username, is_admin).await {
-        Ok(files) => files,
-        Err(e) => {
+    let files = match timeout(
+        DOWNLOAD_SCAN_TIMEOUT,
+        scan_files_for_transfer(&resolved_path, &username, is_admin),
+    )
+    .await
+    {
+        Ok(Ok(files)) => files,
+        Ok(Err(e)) => {
             error!(user = %username, ip = %peer_addr, err = %e, "{}", LOG_DOWNLOAD_SCAN_FAILED);
             let err_msg = err_transfer_read_failed(&locale);
             return send_download_error_and_close(
@@ -106,39 +115,21 @@ where
             )
             .await;
         }
-    };
-
-    let mut activity_paths = Vec::with_capacity(files.len() * 2);
-    for file in &files {
-        activity_paths.push(file.absolute_path.clone());
-        match tokio::fs::canonicalize(&file.absolute_path).await {
-            Ok(canonical_path) if canonical_path != file.absolute_path => {
-                activity_paths.push(canonical_path);
-            }
-            Ok(_) => {}
-            Err(e) => {
-                error!(user = %username, ip = %peer_addr, err = %e, "{}", LOG_DOWNLOAD_SCAN_FAILED);
-                let err = TransferError::io_error(err_transfer_read_failed(&locale));
-                return send_download_transfer_error(transfer.writer(), &err).await;
-            }
-        }
-    }
-    // Directory downloads are intentionally all-or-nothing: if any scanned
-    // file is busy, fail fast rather than streaming a partial snapshot.
-    let _activity_guard = match transfer
-        .file_activity()
-        .try_enter_read_paths(transfer.file_root(), &activity_paths)
-        .await
-    {
-        Ok(Ok(g)) => g,
-        Ok(Err(_)) => {
-            let err = TransferError::conflict(err_source_busy(&locale));
-            return send_download_transfer_error(transfer.writer(), &err).await;
-        }
-        Err(e) => {
-            error!(user = %username, ip = %peer_addr, err = %e, "{}", LOG_DOWNLOAD_SCAN_FAILED);
-            let err = TransferError::io_error(err_transfer_read_failed(&locale));
-            return send_download_transfer_error(transfer.writer(), &err).await;
+        Err(_) => {
+            warn!(
+                user = %username,
+                ip = %peer_addr,
+                timeout_secs = DOWNLOAD_SCAN_TIMEOUT.as_secs(),
+                "{}",
+                LOG_DOWNLOAD_SCAN_FAILED
+            );
+            let err_msg = err_transfer_read_failed(&locale);
+            return send_download_error_and_close(
+                transfer.writer(),
+                &err_msg,
+                Some(ERROR_KIND_IO_ERROR),
+            )
+            .await;
         }
     };
 
@@ -193,7 +184,109 @@ where
             }
         };
 
-        match stream_file_with_hash(transfer, file_info, &canonical_path, &log_transfer_id).await {
+        let mut activity_keys = Vec::with_capacity(2);
+        match crate::files::activity_key(&file_info.absolute_path).await {
+            Ok(key) => activity_keys.push(key),
+            Err(e) => {
+                warn!(
+                    id = %log_transfer_id,
+                    user = %username,
+                    ip = %peer_addr,
+                    path = %file_info.relative_path,
+                    err = %e,
+                    "{}", LOG_DOWNLOAD_STREAM_ERROR
+                );
+                success = false;
+                error = Some(err_transfer_file_failed(
+                    &locale,
+                    &file_info.relative_path,
+                    &e.to_string(),
+                ));
+                error_kind = Some(ERROR_KIND_IO_ERROR.to_string());
+                break;
+            }
+        }
+        if canonical_path != file_info.absolute_path {
+            activity_keys.push(canonical_path.clone());
+        }
+
+        let _file_activity_guard = match transfer
+            .file_activity()
+            .try_enter_read_keys(transfer.file_root(), activity_keys)
+            .await
+        {
+            Ok(Ok(g)) => g,
+            Ok(Err(_)) => {
+                success = false;
+                error = Some(err_transfer_file_failed(
+                    &locale,
+                    &file_info.relative_path,
+                    &err_source_busy(&locale),
+                ));
+                error_kind = Some(ERROR_KIND_CONFLICT.to_string());
+                break;
+            }
+            Err(e) => {
+                warn!(
+                    id = %log_transfer_id,
+                    user = %username,
+                    ip = %peer_addr,
+                    path = %file_info.relative_path,
+                    err = %e,
+                    "{}", LOG_DOWNLOAD_STREAM_ERROR
+                );
+                success = false;
+                error = Some(err_transfer_file_failed(
+                    &locale,
+                    &file_info.relative_path,
+                    &e.to_string(),
+                ));
+                error_kind = Some(ERROR_KIND_IO_ERROR.to_string());
+                break;
+            }
+        };
+
+        let file_metadata = match tokio::fs::metadata(&canonical_path).await {
+            Ok(metadata) if metadata.is_file() => metadata,
+            Ok(_) => {
+                success = false;
+                error = Some(err_transfer_file_failed(
+                    &locale,
+                    &file_info.relative_path,
+                    "path is no longer a file",
+                ));
+                error_kind = Some(ERROR_KIND_IO_ERROR.to_string());
+                break;
+            }
+            Err(e) => {
+                warn!(
+                    id = %log_transfer_id,
+                    user = %username,
+                    ip = %peer_addr,
+                    path = %file_info.relative_path,
+                    err = %e,
+                    "{}", LOG_DOWNLOAD_STREAM_ERROR
+                );
+                success = false;
+                error = Some(err_transfer_file_failed(
+                    &locale,
+                    &file_info.relative_path,
+                    &e.to_string(),
+                ));
+                error_kind = Some(ERROR_KIND_IO_ERROR.to_string());
+                break;
+            }
+        };
+
+        match stream_file_with_hash(
+            transfer,
+            file_info,
+            &canonical_path,
+            file_metadata.len(),
+            &log_transfer_id,
+        )
+        .await
+        {
             Ok(()) => {
                 // bytes_transferred updated inside stream_file_with_hash
             }
@@ -271,6 +364,7 @@ where
     Ok(())
 }
 
+#[derive(Debug)]
 enum StreamFileError {
     Io(io::Error),
     FrameStarted(io::Error),
@@ -452,6 +546,7 @@ async fn stream_file_with_hash<R, W>(
     transfer: &mut Transfer<'_, R, W>,
     file_info: &FileInfo,
     canonical_path: &Path,
+    file_size: u64,
     transfer_id: &str,
 ) -> Result<(), StreamFileError>
 where
@@ -461,15 +556,14 @@ where
     // FileStart carries no sha256; the hash follows in FileHash after the data.
     let file_start = ServerMessage::FileStart {
         path: file_info.relative_path.clone(),
-        size: file_info.size,
+        size: file_size,
     };
     transfer.send(&file_start).await?;
 
     // Returns the resume offset and a hasher pre-fed with 0..offset.
     let (frame_reader, frame_writer) = transfer.reader_writer();
     let (offset, mut hasher) =
-        match read_file_start_response(frame_reader, frame_writer, file_info.size, canonical_path)
-            .await
+        match read_file_start_response(frame_reader, frame_writer, file_size, canonical_path).await
         {
             Ok(result) => result,
             Err(e) if e.kind() == io::ErrorKind::InvalidData => {
@@ -483,21 +577,21 @@ where
             id = %transfer_id,
             path = %file_info.relative_path,
             offset = offset,
-            percent = (offset * 100) / file_info.size.max(1),
+            percent = (offset * 100) / file_size.max(1),
             "{}", LOG_DOWNLOAD_RESUMING
         );
-    } else if file_info.size > 0 {
+    } else if file_size > 0 {
         debug!(
             id = %transfer_id,
             path = %file_info.relative_path,
-            bytes = file_info.size,
+            bytes = file_size,
             "{}", LOG_DOWNLOAD_SENDING
         );
     }
 
     // Already complete (offset == size): send FileHash alone, no data.
-    if offset >= file_info.size {
-        if file_info.size > 0 {
+    if offset >= file_size {
+        if file_size > 0 {
             debug!(
                 id = %transfer_id,
                 path = %file_info.relative_path,
@@ -511,7 +605,7 @@ where
         return Ok(());
     }
 
-    let bytes_to_send = file_info.size - offset;
+    let bytes_to_send = file_size - offset;
 
     let file = File::open(canonical_path).await?;
     let mut reader = BufReader::new(file);
@@ -632,6 +726,7 @@ where
 mod tests {
     use super::super::test_helpers::make_authenticated_user;
     use super::*;
+    use std::collections::BTreeMap;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
     use std::num::NonZeroUsize;
     use std::sync::Arc;
@@ -762,8 +857,54 @@ mod tests {
         }
     }
 
+    async fn assert_download_starts_then_conflicts(
+        client_read: ReadHalf<DuplexStream>,
+        transfer: &mut Transfer<'_, BufReader<ReadHalf<DuplexStream>>, WriteHalf<DuplexStream>>,
+        path: &str,
+    ) {
+        handle_download(
+            transfer,
+            DownloadParams {
+                path: path.to_string(),
+                root: false,
+            },
+        )
+        .await
+        .unwrap();
+
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        let response = read_server_message(&mut reader)
+            .await
+            .unwrap()
+            .unwrap()
+            .message;
+        match response {
+            ServerMessage::FileDownloadResponse { success, .. } => {
+                assert!(success);
+            }
+            _ => panic!("Expected FileDownloadResponse"),
+        }
+
+        let complete = read_server_message(&mut reader)
+            .await
+            .unwrap()
+            .unwrap()
+            .message;
+        match complete {
+            ServerMessage::TransferComplete {
+                success,
+                error_kind,
+                ..
+            } => {
+                assert!(!success);
+                assert_eq!(error_kind.as_deref(), Some(ERROR_KIND_CONFLICT));
+            }
+            _ => panic!("Expected TransferComplete"),
+        }
+    }
+
     #[tokio::test]
-    async fn test_download_conflicts_when_scanned_file_active() {
+    async fn test_download_conflicts_when_streamed_file_active() {
         let temp_dir = TempDir::new().unwrap();
         let file_root = temp_dir.path().canonicalize().unwrap();
         let shared_root = file_root.join("shared");
@@ -796,7 +937,7 @@ mod tests {
             },
         );
 
-        assert_download_conflict_response(client_read, &mut transfer, "file.txt").await;
+        assert_download_starts_then_conflicts(client_read, &mut transfer, "file.txt").await;
     }
 
     #[tokio::test]
@@ -933,6 +1074,354 @@ mod tests {
         };
 
         tokio::join!(server, client);
+    }
+
+    #[tokio::test]
+    async fn test_download_stream_file_uses_restat_size_instead_of_scan_size() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        fs::create_dir_all(&shared_root).await.unwrap();
+        let target = shared_root.join("file.txt");
+        let payload = b"fresh";
+        fs::write(&target, payload).await.unwrap();
+        let canonical_path = tokio::fs::canonicalize(&target).await.unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+
+        let (client, server) = duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut transfer = make_download_transfer(
+            server_read,
+            server_write,
+            DownloadTransferFixture {
+                file_root: &file_root,
+                shared_root: &shared_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                registry: &registry,
+                egress: None,
+            },
+        );
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        let mut writer = FrameWriter::new(client_write);
+        let file_info = FileInfo {
+            relative_path: "file.txt".to_string(),
+            absolute_path: target,
+            size: 100,
+        };
+
+        let server = async {
+            stream_file_with_hash(
+                &mut transfer,
+                &file_info,
+                &canonical_path,
+                payload.len() as u64,
+                "test",
+            )
+            .await
+            .unwrap();
+        };
+
+        let client = async {
+            let file_start = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            match file_start {
+                ServerMessage::FileStart { path, size } => {
+                    assert_eq!(path, "file.txt");
+                    assert_eq!(size, payload.len() as u64);
+                }
+                _ => panic!("Expected FileStart"),
+            }
+
+            send_client_message(
+                &mut writer,
+                &ClientMessage::FileStartResponse {
+                    size: 0,
+                    sha256: None,
+                },
+            )
+            .await
+            .unwrap();
+
+            let header = reader.read_frame_header().await.unwrap().unwrap();
+            assert_eq!(header.message_type, "FileData");
+            assert_eq!(header.payload_length, payload.len() as u64);
+            let data = reader.read_payload_into_vec(&header).await.unwrap();
+            assert_eq!(data, payload);
+
+            let file_hash = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            assert!(matches!(file_hash, ServerMessage::FileHash { .. }));
+        };
+
+        tokio::join!(server, client);
+    }
+
+    #[tokio::test]
+    async fn test_download_directory_streams_all_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let bundle = shared_root.join("bundle");
+        let nested = bundle.join("nested");
+        fs::create_dir_all(&nested).await.unwrap();
+        fs::write(bundle.join("first.txt"), b"first").await.unwrap();
+        fs::write(nested.join("second.txt"), b"second")
+            .await
+            .unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+
+        let (client, server) = duplex(8192);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut transfer = make_download_transfer(
+            server_read,
+            server_write,
+            DownloadTransferFixture {
+                file_root: &file_root,
+                shared_root: &shared_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                registry: &registry,
+                egress: None,
+            },
+        );
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        let mut writer = FrameWriter::new(client_write);
+
+        let server = async {
+            handle_download(
+                &mut transfer,
+                DownloadParams {
+                    path: "bundle".to_string(),
+                    root: false,
+                },
+            )
+            .await
+            .unwrap();
+        };
+
+        let client = async {
+            let response = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            match response {
+                ServerMessage::FileDownloadResponse {
+                    success,
+                    size,
+                    file_count,
+                    ..
+                } => {
+                    assert!(success);
+                    assert_eq!(size, Some(11));
+                    assert_eq!(file_count, Some(2));
+                }
+                _ => panic!("Expected FileDownloadResponse"),
+            }
+
+            let mut expected = BTreeMap::from([
+                ("first.txt".to_string(), b"first".to_vec()),
+                ("nested/second.txt".to_string(), b"second".to_vec()),
+            ]);
+
+            for _ in 0..2 {
+                let file_start = read_server_message(&mut reader)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .message;
+                let (path, size) = match file_start {
+                    ServerMessage::FileStart { path, size } => (path, size),
+                    _ => panic!("Expected FileStart"),
+                };
+                let expected_payload = expected.remove(&path).expect("unexpected file path");
+                assert_eq!(size, expected_payload.len() as u64);
+
+                send_client_message(
+                    &mut writer,
+                    &ClientMessage::FileStartResponse {
+                        size: 0,
+                        sha256: None,
+                    },
+                )
+                .await
+                .unwrap();
+
+                let header = reader.read_frame_header().await.unwrap().unwrap();
+                assert_eq!(header.message_type, "FileData");
+                assert_eq!(header.payload_length, expected_payload.len() as u64);
+                let payload = reader.read_payload_into_vec(&header).await.unwrap();
+                assert_eq!(payload, expected_payload);
+
+                let file_hash = read_server_message(&mut reader)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .message;
+                assert!(matches!(file_hash, ServerMessage::FileHash { .. }));
+            }
+
+            assert!(expected.is_empty());
+            let complete = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            assert!(matches!(
+                complete,
+                ServerMessage::TransferComplete { success: true, .. }
+            ));
+        };
+
+        tokio::join!(server, client);
+    }
+
+    #[tokio::test]
+    async fn test_download_registered_egress_directory_streams_all_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_root = temp_dir.path().canonicalize().unwrap();
+        let shared_root = file_root.join("shared");
+        let bundle = shared_root.join("bundle");
+        let nested = bundle.join("nested");
+        fs::create_dir_all(&nested).await.unwrap();
+        let large_payload = vec![0xAB; 70 * 1024];
+        fs::write(bundle.join("first.bin"), &large_payload)
+            .await
+            .unwrap();
+        fs::write(nested.join("second.txt"), b"second")
+            .await
+            .unwrap();
+
+        let file_index = Arc::new(FileIndex::new(temp_dir.path(), &file_root));
+        let file_activity = Arc::new(FileActivityMap::new());
+        let registry = TransferRegistry::new();
+        let (transfer_egress, egress, egress_task, connection_id) =
+            registered_download_egress(8192).await;
+
+        let (client, server) = duplex(16 * 1024);
+        let (client_read, client_write) = tokio::io::split(client);
+        let (server_read, server_write) = tokio::io::split(server);
+        let mut transfer = make_download_transfer(
+            server_read,
+            server_write,
+            DownloadTransferFixture {
+                file_root: &file_root,
+                shared_root: &shared_root,
+                file_index: &file_index,
+                file_activity: &file_activity,
+                registry: &registry,
+                egress: Some(transfer_egress),
+            },
+        );
+        let mut reader = FrameReader::new(BufReader::new(client_read));
+        let mut writer = FrameWriter::new(client_write);
+
+        let server = async {
+            handle_download(
+                &mut transfer,
+                DownloadParams {
+                    path: "bundle".to_string(),
+                    root: false,
+                },
+            )
+            .await
+            .unwrap();
+        };
+
+        let client = async {
+            let response = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            match response {
+                ServerMessage::FileDownloadResponse {
+                    success,
+                    size,
+                    file_count,
+                    ..
+                } => {
+                    assert!(success);
+                    assert_eq!(size, Some(large_payload.len() as u64 + 6));
+                    assert_eq!(file_count, Some(2));
+                }
+                _ => panic!("Expected FileDownloadResponse"),
+            }
+
+            let mut expected = BTreeMap::from([
+                ("first.bin".to_string(), large_payload),
+                ("nested/second.txt".to_string(), b"second".to_vec()),
+            ]);
+
+            for _ in 0..2 {
+                let file_start = read_server_message(&mut reader)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .message;
+                let (path, size) = match file_start {
+                    ServerMessage::FileStart { path, size } => (path, size),
+                    _ => panic!("Expected FileStart"),
+                };
+                let expected_payload = expected.remove(&path).expect("unexpected file path");
+                assert_eq!(size, expected_payload.len() as u64);
+
+                send_client_message(
+                    &mut writer,
+                    &ClientMessage::FileStartResponse {
+                        size: 0,
+                        sha256: None,
+                    },
+                )
+                .await
+                .unwrap();
+
+                let header = reader.read_frame_header().await.unwrap().unwrap();
+                assert_eq!(header.message_type, "FileData");
+                assert_eq!(header.payload_length, expected_payload.len() as u64);
+                let payload = reader.read_payload_into_vec(&header).await.unwrap();
+                assert_eq!(payload, expected_payload);
+
+                let file_hash = read_server_message(&mut reader)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .message;
+                assert!(matches!(file_hash, ServerMessage::FileHash { .. }));
+            }
+
+            assert!(expected.is_empty());
+            let complete = read_server_message(&mut reader)
+                .await
+                .unwrap()
+                .unwrap()
+                .message;
+            assert!(matches!(
+                complete,
+                ServerMessage::TransferComplete { success: true, .. }
+            ));
+        };
+
+        tokio::join!(server, client);
+        egress.unregister(connection_id).await.unwrap();
+        drop(transfer);
+        drop(egress);
+        egress_task.await.unwrap();
     }
 
     #[tokio::test]
@@ -1197,7 +1686,7 @@ mod tests {
             },
         );
 
-        assert_download_conflict_response(client_read, &mut transfer, "bundle").await;
+        assert_download_starts_then_conflicts(client_read, &mut transfer, "bundle").await;
     }
 
     #[test]
