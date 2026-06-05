@@ -7,6 +7,7 @@
 | Boards                               | High   | Spec TBD               |
 | File previews                        | Low    | See feature spec below |
 | Connection Monitor egress visibility | Medium | See feature spec below |
+| BLAKE3 transfer hashes               | Medium | 0.9.x breaking change  |
 
 ## Feature Specs
 
@@ -69,3 +70,9 @@ Preview files before downloading.
 ### Connection Monitor Egress Visibility
 
 - Connection Monitor integration: surface per-user current outbound rate and backlog in the admin UI.
+
+### BLAKE3 Transfer Hashes
+
+Migrate transfer hashes from SHA-256 to BLAKE3 in 0.9.x for faster large-file downloads/uploads and resume verification.
+
+- Benchmark SHA-256 vs BLAKE3 on desktop and NAS-class hardware before choosing defaults.
