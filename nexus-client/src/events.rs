@@ -224,7 +224,7 @@ pub fn build_test_event_content(
         username: Some("TestUser".to_string()),
         message: Some("This is a test message".to_string()),
         server_name: Some("Test Server".to_string()),
-        path: Some("/Downloads/test-file.txt".to_string()),
+        path: Some("test-file.txt".to_string()),
         error: Some("Connection timeout".to_string()),
         is_upload: Some(false),
         is_from_self: false,

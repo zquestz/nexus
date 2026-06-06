@@ -56,7 +56,7 @@ impl NexusApp {
                 let transfer_info = self
                     .transfer_manager
                     .get(id)
-                    .map(|t| (t.direction, t.remote_path.clone()));
+                    .map(|t| (t.direction, t.display_name()));
 
                 // Check if we should refresh the file list before marking complete
                 let should_refresh = self.should_refresh_after_upload(id);
@@ -65,12 +65,12 @@ impl NexusApp {
                 tasks.push(self.save_transfers());
 
                 // Emit transfer complete notification
-                if let Some((direction, path)) = transfer_info {
+                if let Some((direction, display_name)) = transfer_info {
                     emit_event(
                         self,
                         EventType::TransferComplete,
                         EventContext::new()
-                            .with_path(&path)
+                            .with_path(&display_name)
                             .with_is_upload(direction == TransferDirection::Upload),
                     );
                 }
@@ -90,18 +90,18 @@ impl NexusApp {
                 let transfer_info = self
                     .transfer_manager
                     .get(id)
-                    .map(|t| (t.direction, t.remote_path.clone()));
+                    .map(|t| (t.direction, t.display_name()));
 
                 self.transfer_manager.fail(id, error.clone(), error_kind);
                 tasks.push(self.save_transfers());
 
                 // Emit transfer failed notification
-                if let Some((direction, path)) = transfer_info {
+                if let Some((direction, display_name)) = transfer_info {
                     emit_event(
                         self,
                         EventType::TransferFailed,
                         EventContext::new()
-                            .with_path(&path)
+                            .with_path(&display_name)
                             .with_error(&error)
                             .with_is_upload(direction == TransferDirection::Upload),
                     );

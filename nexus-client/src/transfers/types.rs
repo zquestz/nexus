@@ -326,11 +326,8 @@ impl Transfer {
         match self.direction {
             TransferDirection::Download => {
                 // Use the last component of the remote path
-                let name = self
-                    .remote_path
-                    .rsplit('/')
-                    .next()
-                    .filter(|s| !s.is_empty());
+                let remote_path = self.remote_path.trim_end_matches('/');
+                let name = remote_path.rsplit('/').next().filter(|s| !s.is_empty());
 
                 // For root directory downloads ("/"), use server name instead
                 match name {
@@ -509,7 +506,7 @@ mod tests {
         assert_eq!(transfer2.display_name(), "Test Server");
 
         let transfer3 = Transfer::new_download(
-            conn,
+            conn.clone(),
             "single_file.txt".to_string(),
             false,
             false,
@@ -518,6 +515,39 @@ mod tests {
             0,
         );
         assert_eq!(transfer3.display_name(), "single_file.txt");
+
+        let directory_download = Transfer::new_download(
+            conn.clone(),
+            "/Games/ROMs/".to_string(),
+            false,
+            true,
+            PathBuf::from("/tmp/ROMs"),
+            None,
+            0,
+        );
+        assert_eq!(directory_download.display_name(), "ROMs");
+
+        let upload = Transfer::new_upload(
+            conn.clone(),
+            "/Uploads".to_string(),
+            false,
+            false,
+            PathBuf::from("/home/user/movie.zip"),
+            None,
+            0,
+        );
+        assert_eq!(upload.display_name(), "movie.zip");
+
+        let directory_upload = Transfer::new_upload(
+            conn,
+            "/Uploads/Album".to_string(),
+            false,
+            true,
+            PathBuf::from("/home/user/Album"),
+            None,
+            0,
+        );
+        assert_eq!(directory_upload.display_name(), "Album");
     }
 
     #[test]
