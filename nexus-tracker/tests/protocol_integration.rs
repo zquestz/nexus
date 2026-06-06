@@ -391,7 +391,7 @@ fn make_register(name: &str, user_count: u32) -> TrackerClientMessage {
         address: Some("bbs.test.example".to_string()),
         port: 7500,
         websocket_port: None,
-        version: "0.8.5".to_string(),
+        version: "0.8.6".to_string(),
         fingerprint: "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
              AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99"
             .to_string(),
@@ -479,7 +479,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
         &TrackerClientMessage::TrackerServerList {
             password: None,
             locale: "en".to_string(),
-            version: "0.8.5".to_string(),
+            version: "0.8.6".to_string(),
         },
     )
     .await;
@@ -515,7 +515,7 @@ async fn test_register_appears_in_list_then_unregister_on_disconnect() {
         &TrackerClientMessage::TrackerServerList {
             password: None,
             locale: "en".to_string(),
-            version: "0.8.5".to_string(),
+            version: "0.8.6".to_string(),
         },
     )
     .await;
@@ -683,7 +683,7 @@ async fn test_role_violation_on_server_connection_disconnects() {
         &TrackerClientMessage::TrackerServerList {
             password: None,
             locale: "en".to_string(),
-            version: "0.8.5".to_string(),
+            version: "0.8.6".to_string(),
         },
     )
     .await;
@@ -1235,7 +1235,7 @@ async fn test_refresh_too_soon_rejected_and_disconnected() {
     wait_for_registry_len(&state, 0).await;
 }
 
-/// `make_register` with an explicit `version` (default `"0.8.5"`); plants
+/// `make_register` with an explicit `version` (default `"0.8.6"`); plants
 /// entries at varying versions for the compat-filter tests.
 fn make_register_with_version(name: &str, version: &str) -> TrackerClientMessage {
     let mut msg = make_register(name, 0);
@@ -1350,7 +1350,7 @@ async fn test_list_filters_incompatible_versions() {
     // only same-minor is compatible per `check_compatibility`.
     let registers = [
         make_register_with_version("Old BBS", "0.7.5"),
-        make_register_with_version("Match BBS", "0.8.5"),
+        make_register_with_version("Match BBS", "0.8.6"),
         make_register_with_version("New BBS", "0.9.0"),
     ];
     let mut server_conns = Vec::new();
@@ -1375,7 +1375,7 @@ async fn test_list_filters_incompatible_versions() {
         &TrackerClientMessage::TrackerServerList {
             password: None,
             locale: "en".to_string(),
-            version: "0.8.5".to_string(),
+            version: "0.8.6".to_string(),
         },
     )
     .await;
@@ -1387,7 +1387,7 @@ async fn test_list_filters_incompatible_versions() {
         } => {
             assert_eq!(servers.len(), 1, "expected only same-minor entry to pass");
             assert_eq!(servers[0].name, "Match BBS");
-            assert_eq!(servers[0].version, "0.8.5");
+            assert_eq!(servers[0].version, "0.8.6");
         }
         other => panic!("expected list success, got {other:?}"),
     }
@@ -1687,7 +1687,7 @@ async fn test_list_rejects_over_cap_client_version() {
     // Over `MAX_VERSION_LENGTH` but under the frame cap → `VersionError::TooLong`
     // → typed list failure with `error_kind: invalid`. Distinct from the missing-
     // field and unparseable-semver paths covered by other tests.
-    let over_cap_version = "0.8.5".to_string() + &"a".repeat(64);
+    let over_cap_version = "0.8.6".to_string() + &"a".repeat(64);
     send_tracker_client(
         &mut c_writer,
         &TrackerClientMessage::TrackerServerList {

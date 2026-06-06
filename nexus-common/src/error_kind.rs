@@ -31,7 +31,7 @@ pub const ERROR_KIND_IO_ERROR: &str = "io_error";
 /// Error kind string: protocol error (unexpected message type, malformed data)
 pub const ERROR_KIND_PROTOCOL_ERROR: &str = "protocol_error";
 
-/// Error kind string: hash mismatch (SHA-256 verification failed)
+/// Error kind string: hash mismatch (BLAKE3 verification failed)
 pub const ERROR_KIND_HASH_MISMATCH: &str = "hash_mismatch";
 
 /// Error kind string: upload conflict (another upload to same file in progress)
@@ -199,7 +199,7 @@ pub enum ErrorKind {
 
     /// Hash mismatch
     ///
-    /// SHA-256 verification failed after file transfer.
+    /// BLAKE3 verification failed after file transfer.
     HashMismatch,
 
     /// Upload conflict

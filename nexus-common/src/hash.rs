@@ -1,4 +1,4 @@
-//! High-performance SHA-256 hashing utilities
+//! High-performance BLAKE3 hashing utilities
 //!
 //! Provides optimized file hashing using buffered I/O with hardware acceleration.
 //! All async functions use `spawn_blocking` to run CPU-intensive hashing on a
@@ -6,7 +6,7 @@
 //!
 //! ## Performance Characteristics
 //!
-//! - **Hardware acceleration**: SHA-NI on x86_64, crypto extensions on ARM64
+//! - **Hardware acceleration**: SIMD-optimized BLAKE3 implementation
 //! - **Large buffers**: 1MB buffers reduce syscall overhead
 //! - **Non-blocking**: Uses `spawn_blocking` to avoid blocking async workers
 //! - **Cancellation granularity**: Checked every buffer read (~1MB), sub-second response
@@ -21,7 +21,7 @@
 //! ## Streaming Support
 //!
 //! [`StreamingHasher`] provides incremental hashing for streaming transfers.
-//! It supports computing intermediate hashes via clone-and-finalize (`partial_hash`)
+//! It supports computing intermediate hashes without consuming state (`partial_hash`)
 //! without losing state, enabling single-pass hashing across resume verification
 //! and streaming phases.
 //!
@@ -38,50 +38,50 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use sha2::{Digest, Sha256};
+use blake3::Hasher;
 
 use crate::{HASH_BUFFER_SIZE, KEEPALIVE_INTERVAL};
 
-/// Compute SHA-256 hash of an entire file
+/// Compute BLAKE3 hash of an entire file
 ///
 /// Runs on a blocking thread pool to avoid blocking async workers.
-pub async fn compute_sha256(path: &Path) -> io::Result<String> {
+pub async fn compute_blake3(path: &Path) -> io::Result<String> {
     let path = path.to_path_buf();
-    tokio::task::spawn_blocking(move || compute_sha256_sync(&path))
+    tokio::task::spawn_blocking(move || compute_blake3_sync(&path))
         .await
         .map_err(|e| io::Error::other(format!("hash task failed: {e}")))?
 }
 
-/// Compute SHA-256 hash of the first `max_bytes` of a file
+/// Compute BLAKE3 hash of the first `max_bytes` of a file
 ///
 /// Used for resume verification. If the file is smaller than `max_bytes`,
 /// hashes the entire file.
 ///
 /// Runs on a blocking thread pool to avoid blocking async workers.
-pub async fn compute_partial_sha256(path: &Path, max_bytes: u64) -> io::Result<String> {
+pub async fn compute_partial_blake3(path: &Path, max_bytes: u64) -> io::Result<String> {
     let path = path.to_path_buf();
-    tokio::task::spawn_blocking(move || compute_partial_sha256_sync(&path, max_bytes))
+    tokio::task::spawn_blocking(move || compute_partial_blake3_sync(&path, max_bytes))
         .await
         .map_err(|e| io::Error::other(format!("hash task failed: {e}")))?
 }
 
-/// Synchronous SHA-256 computation (full file)
-pub fn compute_sha256_sync(path: &Path) -> io::Result<String> {
-    compute_partial_sha256_sync(path, u64::MAX)
+/// Synchronous BLAKE3 computation (full file)
+pub fn compute_blake3_sync(path: &Path) -> io::Result<String> {
+    compute_partial_blake3_sync(path, u64::MAX)
 }
 
-/// Synchronous partial SHA-256 computation
-pub fn compute_partial_sha256_sync(path: &Path, max_bytes: u64) -> io::Result<String> {
-    compute_partial_sha256_sync_with_keepalive_cancellable(path, max_bytes, None, || {})
+/// Synchronous partial BLAKE3 computation
+pub fn compute_partial_blake3_sync(path: &Path, max_bytes: u64) -> io::Result<String> {
+    compute_partial_blake3_sync_with_keepalive_cancellable(path, max_bytes, None, || {})
 }
 
-/// Incremental SHA-256 hasher for streaming transfers.
+/// Incremental BLAKE3 hasher for streaming transfers.
 ///
-/// Supports computing intermediate hashes via clone-and-finalize without losing
+/// Supports computing intermediate hashes without losing
 /// state, enabling single-pass hashing across resume verification and streaming
 /// phases.
 pub struct StreamingHasher {
-    hasher: Sha256,
+    hasher: Hasher,
 }
 
 impl std::fmt::Debug for StreamingHasher {
@@ -97,10 +97,10 @@ impl Default for StreamingHasher {
 }
 
 impl StreamingHasher {
-    /// Creates a new incremental SHA-256 hasher.
+    /// Creates a new incremental BLAKE3 hasher.
     pub fn new() -> Self {
         Self {
-            hasher: Sha256::new(),
+            hasher: Hasher::new(),
         }
     }
 
@@ -109,20 +109,18 @@ impl StreamingHasher {
         self.hasher.update(data);
     }
 
-    /// Clones the internal hasher, finalizes the clone, and returns the hex
-    /// string. The original hasher is **not** consumed.
+    /// Returns the current hex string without consuming the hasher.
     pub fn partial_hash(&self) -> String {
-        let cloned = self.hasher.clone();
-        hex::encode(cloned.finalize())
+        self.hasher.finalize().to_hex().to_string()
     }
 
-    /// Consumes the hasher and returns the final hex-encoded SHA-256 hash.
+    /// Consumes the hasher and returns the final hex-encoded BLAKE3 hash.
     pub fn finalize(self) -> String {
-        hex::encode(self.hasher.finalize())
+        self.hasher.finalize().to_hex().to_string()
     }
 }
 
-/// Synchronous partial SHA-256 with periodic keepalive callback and cancellation support
+/// Synchronous partial BLAKE3 with periodic keepalive callback and cancellation support
 ///
 /// This is the core implementation used by all other hash functions.
 ///
@@ -135,10 +133,10 @@ impl StreamingHasher {
 ///
 /// # Returns
 ///
-/// * `Ok(hash)` - The hex-encoded SHA-256 hash
+/// * `Ok(hash)` - The hex-encoded BLAKE3 hash
 /// * `Err` with `ErrorKind::Interrupted` - If cancelled via `cancel_flag`
 /// * `Err` with other kinds - For I/O errors
-fn compute_partial_sha256_sync_with_keepalive_cancellable<F>(
+fn compute_partial_blake3_sync_with_keepalive_cancellable<F>(
     path: &Path,
     max_bytes: u64,
     cancel_flag: Option<&Arc<AtomicBool>>,
@@ -157,12 +155,11 @@ where
 
     if max_bytes == 0 {
         // Hash of empty input
-        let hasher = Sha256::new();
-        return Ok(hex::encode(hasher.finalize()));
+        return Ok(blake3::hash(b"").to_hex().to_string());
     }
 
     let mut file = File::open(path)?;
-    let mut hasher = Sha256::new();
+    let mut hasher = Hasher::new();
     let mut buffer = vec![0u8; HASH_BUFFER_SIZE];
     let mut last_keepalive = Instant::now();
     let mut remaining = max_bytes;
@@ -191,7 +188,7 @@ where
         }
     }
 
-    Ok(hex::encode(hasher.finalize()))
+    Ok(hasher.finalize().to_hex().to_string())
 }
 
 /// Check if the cancel flag is set.
@@ -215,11 +212,11 @@ mod tests {
 
     #[test]
     fn test_empty_hash() {
-        let result = compute_partial_sha256_sync(Path::new("/dev/null"), 0).unwrap();
-        // SHA-256 of empty string
+        let result = compute_partial_blake3_sync(Path::new("/dev/null"), 0).unwrap();
+        // BLAKE3 of empty string
         assert_eq!(
             result,
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
         );
     }
 
@@ -229,11 +226,11 @@ mod tests {
         file.write_all(b"hello world").unwrap();
         file.flush().unwrap();
 
-        let result = compute_sha256_sync(file.path()).unwrap();
-        // SHA-256 of "hello world"
+        let result = compute_blake3_sync(file.path()).unwrap();
+        // BLAKE3 of "hello world"
         assert_eq!(
             result,
-            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+            "d74981efa70a0c880b8d8c1985d075dbcbf679b99a5f9914e5aaf96b831a9e24"
         );
     }
 
@@ -244,10 +241,10 @@ mod tests {
         file.flush().unwrap();
 
         // Hash of first 5 bytes ("hello")
-        let result = compute_partial_sha256_sync(file.path(), 5).unwrap();
+        let result = compute_partial_blake3_sync(file.path(), 5).unwrap();
         assert_eq!(
             result,
-            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+            "ea8f163db38682925e4491c5e58d4bb3506ef8c14eb78a86e908c5624a67200f"
         );
     }
 
@@ -258,8 +255,8 @@ mod tests {
         file.flush().unwrap();
 
         // Request more bytes than file contains
-        let partial = compute_partial_sha256_sync(file.path(), 1000).unwrap();
-        let full = compute_sha256_sync(file.path()).unwrap();
+        let partial = compute_partial_blake3_sync(file.path(), 1000).unwrap();
+        let full = compute_blake3_sync(file.path()).unwrap();
 
         // Should be the same (hashes entire file)
         assert_eq!(partial, full);
@@ -271,7 +268,7 @@ mod tests {
         file.write_all(b"async test").unwrap();
         file.flush().unwrap();
 
-        let result = compute_sha256(file.path()).await.unwrap();
+        let result = compute_blake3(file.path()).await.unwrap();
         assert!(!result.is_empty());
     }
 
@@ -289,7 +286,7 @@ mod tests {
         let callback_count = Arc::new(AtomicUsize::new(0));
         let counter = callback_count.clone();
 
-        let result = compute_partial_sha256_sync_with_keepalive_cancellable(
+        let result = compute_partial_blake3_sync_with_keepalive_cancellable(
             file.path(),
             u64::MAX,
             None,
@@ -311,7 +308,7 @@ mod tests {
         let callback_count = Arc::new(AtomicUsize::new(0));
         let counter = callback_count.clone();
 
-        let result = compute_partial_sha256_sync_with_keepalive_cancellable(
+        let result = compute_partial_blake3_sync_with_keepalive_cancellable(
             file.path(),
             0,
             None,
@@ -327,7 +324,7 @@ mod tests {
         // Verify correct empty hash
         assert_eq!(
             result.unwrap(),
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
         );
     }
 
@@ -339,9 +336,9 @@ mod tests {
         file.write_all(&data).unwrap();
         file.flush().unwrap();
 
-        let hash_without_keepalive = compute_sha256_sync(file.path()).unwrap();
+        let hash_without_keepalive = compute_blake3_sync(file.path()).unwrap();
 
-        let hash_with_keepalive = compute_partial_sha256_sync_with_keepalive_cancellable(
+        let hash_with_keepalive = compute_partial_blake3_sync_with_keepalive_cancellable(
             file.path(),
             u64::MAX,
             None,
@@ -363,9 +360,9 @@ mod tests {
         let partial_bytes = 512 * 1024; // Hash first 512KB
 
         let hash_without_keepalive =
-            compute_partial_sha256_sync(file.path(), partial_bytes).unwrap();
+            compute_partial_blake3_sync(file.path(), partial_bytes).unwrap();
 
-        let hash_with_keepalive = compute_partial_sha256_sync_with_keepalive_cancellable(
+        let hash_with_keepalive = compute_partial_blake3_sync_with_keepalive_cancellable(
             file.path(),
             partial_bytes,
             None,
@@ -387,7 +384,7 @@ mod tests {
         let callback_count = Arc::new(AtomicUsize::new(0));
         let counter = callback_count.clone();
 
-        let result = compute_partial_sha256_sync_with_keepalive_cancellable(
+        let result = compute_partial_blake3_sync_with_keepalive_cancellable(
             file.path(),
             u64::MAX,
             None,
@@ -404,7 +401,7 @@ mod tests {
     #[test]
     fn test_keepalive_file_not_found() {
         // Non-existent file should return error
-        let result = compute_partial_sha256_sync_with_keepalive_cancellable(
+        let result = compute_partial_blake3_sync_with_keepalive_cancellable(
             Path::new("/nonexistent/path/to/file.txt"),
             u64::MAX,
             None,
@@ -438,7 +435,7 @@ mod tests {
 
         let cancel_flag = Arc::new(AtomicBool::new(true)); // Already cancelled
 
-        let result = compute_partial_sha256_sync_with_keepalive_cancellable(
+        let result = compute_partial_blake3_sync_with_keepalive_cancellable(
             file.path(),
             u64::MAX,
             Some(&cancel_flag),
@@ -469,7 +466,7 @@ mod tests {
         // The cancellation check happens at each buffer read
         cancel_flag.store(true, Ordering::SeqCst);
 
-        let result = compute_partial_sha256_sync_with_keepalive_cancellable(
+        let result = compute_partial_blake3_sync_with_keepalive_cancellable(
             file.path(),
             u64::MAX,
             Some(&cancel_flag_clone),
@@ -493,7 +490,7 @@ mod tests {
 
         let cancel_flag = Arc::new(AtomicBool::new(false)); // Not cancelled
 
-        let result = compute_partial_sha256_sync_with_keepalive_cancellable(
+        let result = compute_partial_blake3_sync_with_keepalive_cancellable(
             file.path(),
             u64::MAX,
             Some(&cancel_flag),
@@ -503,7 +500,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify hash is correct
-        let expected = compute_sha256_sync(file.path()).unwrap();
+        let expected = compute_blake3_sync(file.path()).unwrap();
         assert_eq!(result.unwrap(), expected);
     }
 
@@ -514,7 +511,7 @@ mod tests {
         file.write_all(b"test content").unwrap();
         file.flush().unwrap();
 
-        let result = compute_partial_sha256_sync_with_keepalive_cancellable(
+        let result = compute_partial_blake3_sync_with_keepalive_cancellable(
             file.path(),
             u64::MAX,
             None,
@@ -531,7 +528,7 @@ mod tests {
         let hash = hasher.finalize();
         assert_eq!(
             hash,
-            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"
         );
     }
 
@@ -544,7 +541,7 @@ mod tests {
         let hash = hasher.finalize();
         assert_eq!(
             hash,
-            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"
         );
     }
 
@@ -559,12 +556,12 @@ mod tests {
         // Partial should be hash of "Hello"
         assert_eq!(
             partial,
-            "185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969"
+            "fbc2b0516ee8744d293b980779178a3508850fdcfe965985782c39601b65794f"
         );
         // Full should be hash of "Hello, World!"
         assert_eq!(
             full,
-            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"
         );
     }
 
@@ -574,7 +571,7 @@ mod tests {
         let hash = hasher.finalize();
         assert_eq!(
             hash,
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
         );
     }
 }

@@ -236,7 +236,7 @@ where
         upload_targets,
     } = params;
 
-    // sha256 arrives later in a separate FileHash frame.
+    // BLAKE3 arrives later in a separate FileHash frame.
     let (relative_path, file_size) = read_client_file_start(transfer.reader(), locale).await?;
 
     debug!(
@@ -300,7 +300,7 @@ where
 
     match client_frame {
         ClientFileFrame::FileHash {
-            sha256: client_hash,
+            blake3: client_hash,
         } => {
             // Client says: zero-byte or already complete — no FileData coming.
             if file_size == 0 {
@@ -366,7 +366,7 @@ where
 
             let client_frame = read_file_data_or_file_hash(transfer.reader(), locale).await?;
             let client_hash = match client_frame {
-                ClientFileFrame::FileHash { sha256 } => sha256,
+                ClientFileFrame::FileHash { blake3 } => blake3,
                 _ => {
                     return Err(ReceiveFileError::Transfer(TransferError::protocol_error(
                         err_upload_protocol_error(locale),
@@ -707,7 +707,7 @@ where
 {
     let response = ServerMessage::FileStartResponse {
         size: existing_size,
-        sha256: existing_hash,
+        blake3: existing_hash,
     };
     send_server_message_with_id(frame_writer, &response, MessageId::new())
         .await
@@ -719,7 +719,7 @@ enum ClientFileFrame {
     FileData(FrameHeader),
     /// File was already complete or zero-byte — no FileData coming.
     FileHash {
-        sha256: String,
+        blake3: String,
     },
 }
 
@@ -766,8 +766,8 @@ where
                     TransferError::protocol_error(err_upload_protocol_error(locale))
                 })?;
                 match msg {
-                    ClientMessage::FileHash { sha256 } => {
-                        return Ok(ClientFileFrame::FileHash { sha256 });
+                    ClientMessage::FileHash { blake3 } => {
+                        return Ok(ClientFileFrame::FileHash { blake3 });
                     }
                     _ => {
                         return Err(TransferError::protocol_error(err_upload_protocol_error(
@@ -1062,7 +1062,7 @@ mod tests {
                 .unwrap();
             send_client_message(
                 &mut client_writer,
-                &ClientMessage::FileHash { sha256: file_hash },
+                &ClientMessage::FileHash { blake3: file_hash },
             )
             .await
             .unwrap();
@@ -1362,7 +1362,7 @@ mod tests {
         send_client_message(
             &mut client_writer,
             &ClientMessage::FileHash {
-                sha256: String::new(),
+                blake3: String::new(),
             },
         )
         .await
@@ -1820,7 +1820,7 @@ mod tests {
         let hash = hasher.finalize();
         assert_eq!(
             hash,
-            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"
         );
     }
 
@@ -1842,7 +1842,7 @@ mod tests {
         let partial = hasher.partial_hash();
         assert_eq!(
             partial,
-            "185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969"
+            "fbc2b0516ee8744d293b980779178a3508850fdcfe965985782c39601b65794f"
         );
 
         // finalize should also be hash of first 5 bytes (that's all we fed)
@@ -1885,7 +1885,7 @@ mod tests {
     #[tokio::test]
     async fn test_read_dispatches_file_hash() {
         // FileHash frame with JSON payload
-        let payload = br#"{"type":"FileHash","sha256":"abc123def456"}"#;
+        let payload = br#"{"type":"FileHash","blake3":"abc123def456"}"#;
         let frame = build_frame("FileHash", payload);
         let cursor = std::io::Cursor::new(frame);
         let buf_reader = tokio::io::BufReader::new(cursor);
@@ -1894,8 +1894,8 @@ mod tests {
         let result = read_file_data_or_file_hash(&mut reader, "en").await;
         assert!(result.is_ok());
         match result.unwrap() {
-            ClientFileFrame::FileHash { sha256 } => {
-                assert_eq!(sha256, "abc123def456");
+            ClientFileFrame::FileHash { blake3 } => {
+                assert_eq!(blake3, "abc123def456");
             }
             ClientFileFrame::FileData(_) => panic!("Expected FileHash, got FileData"),
         }
@@ -1928,7 +1928,7 @@ mod tests {
     async fn test_read_skips_multiple_keepalives() {
         // Two FileHashing keepalives followed by FileHash
         let hashing_payload = br#"{"type":"FileHashing","file":"big.zip"}"#;
-        let hash_payload = br#"{"type":"FileHash","sha256":"deadbeef"}"#;
+        let hash_payload = br#"{"type":"FileHash","blake3":"deadbeef"}"#;
         let mut data = build_frame("FileHashing", hashing_payload);
         data.extend_from_slice(&build_frame("FileHashing", hashing_payload));
         data.extend_from_slice(&build_frame("FileHash", hash_payload));
@@ -1940,8 +1940,8 @@ mod tests {
         let result = read_file_data_or_file_hash(&mut reader, "en").await;
         assert!(result.is_ok());
         match result.unwrap() {
-            ClientFileFrame::FileHash { sha256 } => {
-                assert_eq!(sha256, "deadbeef");
+            ClientFileFrame::FileHash { blake3 } => {
+                assert_eq!(blake3, "deadbeef");
             }
             ClientFileFrame::FileData(_) => panic!("Expected FileHash"),
         }

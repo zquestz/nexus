@@ -124,17 +124,17 @@ pub enum ClientMessage {
         #[serde(default)]
         root: bool,
     },
-    /// Keepalive sent while computing SHA-256 hash for a large file (port 7501 only)
+    /// Keepalive sent while computing BLAKE3 hash for a large file (port 7501 only)
     /// Receiver should reset idle timer but otherwise ignore this message.
     FileHashing {
         /// File being hashed (for logging/debugging)
         file: String,
     },
     /// Per-file hash sent after FileData (or alone if file was skipped).
-    /// Contains the full SHA-256 hash computed by the sender during streaming.
+    /// Contains the full BLAKE3 hash computed by the sender during streaming.
     FileHash {
-        /// SHA-256 hash of the complete file
-        sha256: String,
+        /// BLAKE3 hash of the complete file
+        blake3: String,
     },
     FileInfo {
         /// Path to the file or directory to get info for
@@ -197,9 +197,9 @@ pub enum ClientMessage {
     FileStartResponse {
         /// Size of local file (0 if no local file exists)
         size: u64,
-        /// SHA-256 hash of local file (None if size is 0)
+        /// BLAKE3 hash of local file (None if size is 0)
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        sha256: Option<String>,
+        blake3: Option<String>,
     },
     /// Request a file upload (port 7501 only)
     FileUpload {
@@ -764,17 +764,17 @@ pub enum ServerMessage {
         #[serde(skip_serializing_if = "Option::is_none")]
         transfer_id: Option<String>,
     },
-    /// Keepalive sent while computing SHA-256 hash for a large file (port 7501 only)
+    /// Keepalive sent while computing BLAKE3 hash for a large file (port 7501 only)
     /// Receiver should reset idle timer but otherwise ignore this message.
     FileHashing {
         /// File being hashed (for logging/debugging)
         file: String,
     },
     /// Per-file hash sent after FileData (or alone if file was skipped).
-    /// Contains the full SHA-256 hash computed by the sender during streaming.
+    /// Contains the full BLAKE3 hash computed by the sender during streaming.
     FileHash {
-        /// SHA-256 hash of the complete file
-        sha256: String,
+        /// BLAKE3 hash of the complete file
+        blake3: String,
     },
     FileInfoResponse {
         success: bool,
@@ -845,9 +845,9 @@ pub enum ServerMessage {
     FileStartResponse {
         /// Size of file on server (0 if no file exists)
         size: u64,
-        /// SHA-256 hash of server's partial file (None if size is 0)
+        /// BLAKE3 hash of server's partial file (None if size is 0)
         #[serde(skip_serializing_if = "Option::is_none")]
-        sha256: Option<String>,
+        blake3: Option<String>,
     },
     /// Response to a FileUpload request (port 7501 only)
     FileUploadResponse {
@@ -1539,9 +1539,9 @@ pub struct FileInfoDetails {
     /// Number of items inside (directories only)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub item_count: Option<u64>,
-    /// SHA-256 hash of file contents (files only, None for directories)
+    /// BLAKE3 hash of file contents (files only, None for directories)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sha256: Option<String>,
+    pub blake3: Option<String>,
 }
 
 /// Detailed user info. `nickname` is the display name (== username for regular accounts).
@@ -1792,8 +1792,8 @@ impl std::fmt::Debug for ClientMessage {
             ClientMessage::FileHashing { file } => {
                 f.debug_struct("FileHashing").field("file", file).finish()
             }
-            ClientMessage::FileHash { sha256 } => {
-                f.debug_struct("FileHash").field("sha256", sha256).finish()
+            ClientMessage::FileHash { blake3 } => {
+                f.debug_struct("FileHash").field("blake3", blake3).finish()
             }
             ClientMessage::FileInfo { path, root } => f
                 .debug_struct("FileInfo")
@@ -1845,10 +1845,10 @@ impl std::fmt::Debug for ClientMessage {
                 .field("path", path)
                 .field("size", size)
                 .finish(),
-            ClientMessage::FileStartResponse { size, sha256 } => f
+            ClientMessage::FileStartResponse { size, blake3 } => f
                 .debug_struct("FileStartResponse")
                 .field("size", size)
-                .field("sha256", sha256)
+                .field("blake3", blake3)
                 .finish(),
             ClientMessage::FileUpload {
                 destination,
@@ -3142,34 +3142,36 @@ mod tests {
     fn test_serialize_file_start_response_with_hash() {
         let msg = ClientMessage::FileStartResponse {
             size: 524288,
-            sha256: Some("abc123def456".to_string()),
+            blake3: Some("abc123def456".to_string()),
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"FileStartResponse\""));
         assert!(json.contains("\"size\":524288"));
-        assert!(json.contains("\"sha256\":\"abc123def456\""));
+        assert!(json.contains("\"blake3\":\"abc123def456\""));
+        assert!(!json.contains("\"sha256\""));
     }
 
     #[test]
     fn test_serialize_file_start_response_no_hash() {
         let msg = ClientMessage::FileStartResponse {
             size: 0,
-            sha256: None,
+            blake3: None,
         };
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"type\":\"FileStartResponse\""));
         assert!(json.contains("\"size\":0"));
+        assert!(!json.contains("\"blake3\""));
         assert!(!json.contains("\"sha256\""));
     }
 
     #[test]
     fn test_deserialize_file_start_response() {
-        let json = r#"{"type":"FileStartResponse","size":1024,"sha256":"hash123"}"#;
+        let json = r#"{"type":"FileStartResponse","size":1024,"blake3":"hash123"}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         match msg {
-            ClientMessage::FileStartResponse { size, sha256 } => {
+            ClientMessage::FileStartResponse { size, blake3 } => {
                 assert_eq!(size, 1024);
-                assert_eq!(sha256, Some("hash123".to_string()));
+                assert_eq!(blake3, Some("hash123".to_string()));
             }
             _ => panic!("Expected FileStartResponse"),
         }
@@ -3180,9 +3182,9 @@ mod tests {
         let json = r#"{"type":"FileStartResponse","size":0}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         match msg {
-            ClientMessage::FileStartResponse { size, sha256 } => {
+            ClientMessage::FileStartResponse { size, blake3 } => {
                 assert_eq!(size, 0);
-                assert_eq!(sha256, None);
+                assert_eq!(blake3, None);
             }
             _ => panic!("Expected FileStartResponse"),
         }
@@ -3633,11 +3635,11 @@ mod tests {
             "FileStartResponse",
             ClientMessage::FileStartResponse {
                 size: 5000,
-                sha256: Some("hash123".to_string()),
+                blake3: Some("hash123".to_string()),
             },
             ServerMessage::FileStartResponse {
                 size: 5000,
-                sha256: Some("hash123".to_string()),
+                blake3: Some("hash123".to_string()),
             }
         );
 
@@ -3646,11 +3648,11 @@ mod tests {
             "FileStartResponse (no hash)",
             ClientMessage::FileStartResponse {
                 size: 0,
-                sha256: None,
+                blake3: None,
             },
             ServerMessage::FileStartResponse {
                 size: 0,
-                sha256: None,
+                blake3: None,
             }
         );
 
@@ -3672,11 +3674,11 @@ mod tests {
         assert_mirror!(
             "FileHash",
             ClientMessage::FileHash {
-                sha256: "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+                blake3: "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
                     .to_string(),
             },
             ServerMessage::FileHash {
-                sha256: "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+                blake3: "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
                     .to_string(),
             }
         );

@@ -1,8 +1,8 @@
 //! File download handling for transfers.
 //!
-//! Single-pass StreamingHasher during streaming; resume verification computes
-//! intermediate hashes via clone-and-finalize, with FileHashing keepalives during
-//! hash-only phases to prevent timeouts.
+//! Single-pass StreamingHasher during streaming; resume verification uses
+//! non-consuming partial hashes, with FileHashing keepalives during hash-only
+//! phases to prevent timeouts.
 
 use std::io;
 use std::path::Path;
@@ -553,7 +553,7 @@ where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    // FileStart carries no sha256; the hash follows in FileHash after the data.
+    // FileStart carries no BLAKE3; the hash follows in FileHash after the data.
     let file_start = ServerMessage::FileStart {
         path: file_info.relative_path.clone(),
         size: file_size,
@@ -599,7 +599,7 @@ where
             );
         }
         let file_hash = ServerMessage::FileHash {
-            sha256: hasher.finalize(),
+            blake3: hasher.finalize(),
         };
         transfer.send(&file_hash).await?;
         return Ok(());
@@ -634,7 +634,7 @@ where
 
     // Full-file hash: hasher has now consumed 0..offset + offset..end.
     let file_hash = ServerMessage::FileHash {
-        sha256: hasher.finalize(),
+        blake3: hasher.finalize(),
     };
     transfer.send(&file_hash).await?;
 
@@ -658,7 +658,7 @@ where
     W: AsyncWriteExt + Unpin,
 {
     // Loop so we skip any FileHashing keepalives the client sends while hashing.
-    let (size, sha256) = loop {
+    let (size, blake3) = loop {
         let received = match read_client_message_with_full_timeout(frame_reader, None, None).await {
             Ok(Some(msg)) => msg,
             Ok(None) => {
@@ -674,8 +674,8 @@ where
         };
 
         match received.message {
-            ClientMessage::FileStartResponse { size, sha256 } => {
-                break (size, sha256);
+            ClientMessage::FileStartResponse { size, blake3 } => {
+                break (size, blake3);
             }
             ClientMessage::FileHashing { .. } => {
                 // Keepalive while the client hashes a large local file.
@@ -694,7 +694,7 @@ where
     if size > server_size {
         return Ok((0, StreamingHasher::new()));
     }
-    let Some(client_hash) = sha256 else {
+    let Some(client_hash) = blake3 else {
         return Ok((0, StreamingHasher::new()));
     };
 
@@ -707,7 +707,7 @@ where
 
     let hasher = hash_file_with_keepalives(file_path, size, &file_name, frame_writer).await?;
 
-    // partial_hash() clones and finalizes, so the hasher keeps its 0..size state.
+    // partial_hash() does not consume the hasher, so it keeps its 0..size state.
     let server_hash = hasher.partial_hash();
 
     if client_hash == server_hash {
@@ -1059,7 +1059,7 @@ mod tests {
                 &mut writer,
                 &ClientMessage::FileStartResponse {
                     size: 0,
-                    sha256: None,
+                    blake3: None,
                 },
             )
             .await
@@ -1144,7 +1144,7 @@ mod tests {
                 &mut writer,
                 &ClientMessage::FileStartResponse {
                     size: 0,
-                    sha256: None,
+                    blake3: None,
                 },
             )
             .await
@@ -1256,7 +1256,7 @@ mod tests {
                     &mut writer,
                     &ClientMessage::FileStartResponse {
                         size: 0,
-                        sha256: None,
+                        blake3: None,
                     },
                 )
                 .await
@@ -1385,7 +1385,7 @@ mod tests {
                     &mut writer,
                     &ClientMessage::FileStartResponse {
                         size: 0,
-                        sha256: None,
+                        blake3: None,
                     },
                 )
                 .await
@@ -1497,7 +1497,7 @@ mod tests {
                 &mut writer,
                 &ClientMessage::FileStartResponse {
                     size: 0,
-                    sha256: None,
+                    blake3: None,
                 },
             )
             .await
@@ -1609,7 +1609,7 @@ mod tests {
                 &mut writer,
                 &ClientMessage::FileStartResponse {
                     size: 0,
-                    sha256: None,
+                    blake3: None,
                 },
             )
             .await

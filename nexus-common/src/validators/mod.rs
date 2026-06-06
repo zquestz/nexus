@@ -8,6 +8,7 @@ mod avatar;
 mod ban_reason;
 mod bandwidth_chunk_size;
 mod bandwidth_weight;
+mod blake3;
 mod channel;
 mod channel_list;
 mod chat_topic;
@@ -33,7 +34,6 @@ mod search_query;
 mod server_description;
 mod server_image;
 mod server_name;
-mod sha256;
 mod status;
 mod target;
 mod tracker_address;
@@ -52,6 +52,7 @@ pub use bandwidth_weight::{
     BandwidthWeightError, DEFAULT_ADMIN_BANDWIDTH_WEIGHT, DEFAULT_BANDWIDTH_WEIGHT,
     MIN_BANDWIDTH_WEIGHT, resolve_bandwidth_weight, validate_bandwidth_weight,
 };
+pub use blake3::{BLAKE3_HEX_LENGTH, Blake3Error, validate_blake3};
 pub use channel::{
     CHANNEL_PREFIX, ChannelError, DEFAULT_CHANNEL, MAX_CHANNEL_LENGTH, MAX_CHANNELS_PER_USER,
     MIN_CHANNEL_LENGTH, validate_channel,
@@ -99,7 +100,6 @@ pub use server_description::{
 };
 pub use server_image::{MAX_SERVER_IMAGE_DATA_URI_LENGTH, ServerImageError, validate_server_image};
 pub use server_name::{MAX_SERVER_NAME_LENGTH, ServerNameError, validate_server_name};
-pub use sha256::{SHA256_HEX_LENGTH, Sha256Error, validate_sha256};
 pub use status::{MAX_STATUS_LENGTH, StatusError, validate_status};
 pub use target::{MAX_TARGET_LENGTH, TargetError, validate_target};
 pub use tracker_address::{TrackerAddressError, validate_tracker_address};

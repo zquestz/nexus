@@ -40,7 +40,7 @@ pub use error_kind::{
 };
 
 /// Version information for the Nexus BBS protocol
-pub const PROTOCOL_VERSION: &str = "0.8.5";
+pub const PROTOCOL_VERSION: &str = "0.8.6";
 
 /// Version information for the Nexus tracker protocol
 ///
@@ -162,7 +162,7 @@ pub const ACCEPT_ERROR_BACKOFF: Duration = Duration::from_millis(100);
 /// Default port for WebSocket tracker connections
 pub const DEFAULT_TRACKER_WEBSOCKET_PORT: u16 = 7511;
 
-/// Buffer size for SHA-256 hashing operations (1MB for fewer syscalls)
+/// Buffer size for file hashing operations (1MB for fewer syscalls)
 pub const HASH_BUFFER_SIZE: usize = 1024 * 1024;
 
 /// How often to send keepalive notifications during transfers.

@@ -263,7 +263,7 @@ Right-click and select **Info** to view:
 - Modified date
 - Whether it's a directory or symlink
 - MIME type (for files)
-- SHA-256 hash (for files)
+- BLAKE3 hash (for files)
 
 ### Sharing Files
 

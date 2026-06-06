@@ -87,7 +87,7 @@ pub enum TransferError {
     Invalid,
     /// Protocol version not supported
     UnsupportedVersion,
-    /// SHA-256 verification failed
+    /// BLAKE3 verification failed
     HashMismatch,
     /// File I/O error
     IoError,

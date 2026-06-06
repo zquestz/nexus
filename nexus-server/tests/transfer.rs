@@ -155,17 +155,14 @@ async fn test_scan_directory_structure() {
 }
 
 #[tokio::test]
-async fn test_sha256_known_value() {
-    use sha2::{Digest, Sha256};
-
-    let data = b"Hello, World!";
-    let mut hasher = Sha256::new();
-    hasher.update(data);
+async fn test_blake3_known_value() {
+    let mut hasher = nexus_common::hash::StreamingHasher::new();
+    hasher.update(b"Hello, World!");
     let hash = hasher.finalize();
 
     assert_eq!(
-        hex::encode(hash),
-        "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+        hash,
+        "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"
     );
 }
 
@@ -320,24 +317,26 @@ fn test_file_start_message() {
 fn test_file_start_response_no_local_file() {
     let msg = ClientMessage::FileStartResponse {
         size: 0,
-        sha256: None,
+        blake3: None,
     };
 
     let json = serde_json::to_string(&msg).unwrap();
     assert!(json.contains("\"size\":0"));
-    assert!(!json.contains("\"sha256\"")); // None should be omitted
+    assert!(!json.contains("\"blake3\"")); // None should be omitted
+    assert!(!json.contains("\"sha256\""));
 }
 
 #[test]
 fn test_file_start_response_with_partial() {
     let msg = ClientMessage::FileStartResponse {
         size: 512,
-        sha256: Some("partial_hash_here".to_string()),
+        blake3: Some("partial_hash_here".to_string()),
     };
 
     let json = serde_json::to_string(&msg).unwrap();
     assert!(json.contains("\"size\":512"));
-    assert!(json.contains("\"sha256\":\"partial_hash_here\""));
+    assert!(json.contains("\"blake3\":\"partial_hash_here\""));
+    assert!(!json.contains("\"sha256\""));
 }
 
 #[test]
@@ -372,46 +371,48 @@ fn test_transfer_complete_failure() {
 fn test_server_file_hash_message() {
     // Server sends FileHash after streaming download data (or alone if file was skipped)
     let msg = ServerMessage::FileHash {
-        sha256: "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f".to_string(),
+        blake3: "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8".to_string(),
     };
 
     let json = serde_json::to_string(&msg).unwrap();
     assert!(json.contains("\"type\":\"FileHash\""));
     assert!(json.contains(
-        "\"sha256\":\"dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f\""
+        "\"blake3\":\"288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8\""
     ));
+    assert!(!json.contains("\"sha256\""));
 }
 
 #[test]
 fn test_client_file_hash_message() {
     // Client sends FileHash after streaming upload data (or alone if file was skipped)
     let msg = ClientMessage::FileHash {
-        sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855".to_string(),
+        blake3: "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262".to_string(),
     };
 
     let json = serde_json::to_string(&msg).unwrap();
     assert!(json.contains("\"type\":\"FileHash\""));
     assert!(json.contains(
-        "\"sha256\":\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\""
+        "\"blake3\":\"af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262\""
     ));
+    assert!(!json.contains("\"sha256\""));
 }
 
 #[test]
 fn test_file_hash_deserialization() {
-    let json = r#"{"type":"FileHash","sha256":"abc123def456"}"#;
+    let json = r#"{"type":"FileHash","blake3":"abc123def456"}"#;
 
     let server_msg: ServerMessage = serde_json::from_str(json).unwrap();
     match server_msg {
-        ServerMessage::FileHash { sha256 } => {
-            assert_eq!(sha256, "abc123def456");
+        ServerMessage::FileHash { blake3 } => {
+            assert_eq!(blake3, "abc123def456");
         }
         _ => panic!("Expected FileHash"),
     }
 
     let client_msg: ClientMessage = serde_json::from_str(json).unwrap();
     match client_msg {
-        ClientMessage::FileHash { sha256 } => {
-            assert_eq!(sha256, "abc123def456");
+        ClientMessage::FileHash { blake3 } => {
+            assert_eq!(blake3, "abc123def456");
         }
         _ => panic!("Expected FileHash"),
     }
@@ -540,13 +541,13 @@ fn test_resume_response_new_download() {
     // Client has no local file - should start from beginning
     let response = ClientMessage::FileStartResponse {
         size: 0,
-        sha256: None,
+        blake3: None,
     };
 
     match response {
-        ClientMessage::FileStartResponse { size, sha256 } => {
+        ClientMessage::FileStartResponse { size, blake3 } => {
             assert_eq!(size, 0);
-            assert!(sha256.is_none());
+            assert!(blake3.is_none());
         }
         _ => panic!("Wrong type"),
     }
@@ -557,13 +558,13 @@ fn test_resume_response_partial_file() {
     // Client has partial file with hash
     let response = ClientMessage::FileStartResponse {
         size: 512,
-        sha256: Some("abc123def456".to_string()),
+        blake3: Some("abc123def456".to_string()),
     };
 
     match response {
-        ClientMessage::FileStartResponse { size, sha256 } => {
+        ClientMessage::FileStartResponse { size, blake3 } => {
             assert_eq!(size, 512);
-            assert_eq!(sha256.unwrap(), "abc123def456");
+            assert_eq!(blake3.unwrap(), "abc123def456");
         }
         _ => panic!("Wrong type"),
     }
@@ -574,13 +575,13 @@ fn test_resume_response_complete_file() {
     // Client has complete file (size matches server's file)
     let response = ClientMessage::FileStartResponse {
         size: 1024, // Same as server's file
-        sha256: Some("full_file_hash".to_string()),
+        blake3: Some("full_file_hash".to_string()),
     };
 
     match response {
-        ClientMessage::FileStartResponse { size, sha256 } => {
+        ClientMessage::FileStartResponse { size, blake3 } => {
             assert_eq!(size, 1024);
-            assert!(sha256.is_some());
+            assert!(blake3.is_some());
         }
         _ => panic!("Wrong type"),
     }
@@ -752,13 +753,14 @@ fn test_server_file_start_response() {
     // Server responds with resume info
     let msg = ServerMessage::FileStartResponse {
         size: 1024,
-        sha256: Some("partial_hash_here".to_string()),
+        blake3: Some("partial_hash_here".to_string()),
     };
     let json = serde_json::to_string(&msg).unwrap();
 
     assert!(json.contains("\"type\":\"FileStartResponse\""));
     assert!(json.contains("\"size\":1024"));
-    assert!(json.contains("\"sha256\":\"partial_hash_here\""));
+    assert!(json.contains("\"blake3\":\"partial_hash_here\""));
+    assert!(!json.contains("\"sha256\""));
 }
 
 #[test]
@@ -766,12 +768,12 @@ fn test_server_file_start_response_no_existing() {
     // Server has no existing .part file
     let msg = ServerMessage::FileStartResponse {
         size: 0,
-        sha256: None,
+        blake3: None,
     };
     let json = serde_json::to_string(&msg).unwrap();
 
     assert!(json.contains("\"size\":0"));
-    // sha256 should be null or absent
+    // blake3 should be null or absent
 }
 
 #[tokio::test]
@@ -856,7 +858,7 @@ async fn test_frame_roundtrip_client_file_start() {
 async fn test_frame_roundtrip_file_hash() {
     // Both server and client FileHash variants must survive a frame roundtrip.
     let server_msg = ServerMessage::FileHash {
-        sha256: "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f".to_string(),
+        blake3: "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8".to_string(),
     };
     let payload = serde_json::to_vec(&server_msg).unwrap();
     let id = MessageId::new();
@@ -878,10 +880,10 @@ async fn test_frame_roundtrip_file_hash() {
 
     let parsed: ServerMessage = serde_json::from_slice(&frame.payload).unwrap();
     match parsed {
-        ServerMessage::FileHash { sha256 } => {
+        ServerMessage::FileHash { blake3 } => {
             assert_eq!(
-                sha256,
-                "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+                blake3,
+                "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"
             );
         }
         _ => panic!("Wrong message type"),
@@ -890,10 +892,10 @@ async fn test_frame_roundtrip_file_hash() {
     // The client variant deserializes from the same payload.
     let client_parsed: ClientMessage = serde_json::from_slice(&frame.payload).unwrap();
     match client_parsed {
-        ClientMessage::FileHash { sha256 } => {
+        ClientMessage::FileHash { blake3 } => {
             assert_eq!(
-                sha256,
-                "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+                blake3,
+                "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"
             );
         }
         _ => panic!("Wrong message type"),
@@ -1078,7 +1080,7 @@ fn test_upload_error_kinds() {
         "invalid",       // Invalid path
         "not_found",     // Destination doesn't exist
         "io_error",      // Disk full, write error, etc.
-        "hash_mismatch", // SHA-256 verification failed
+        "hash_mismatch", // BLAKE3 verification failed
     ];
 
     for kind in error_kinds {
@@ -1147,13 +1149,13 @@ fn test_upload_resume_response_no_existing() {
     // No .part file on server: client sends the full file.
     let response = ServerMessage::FileStartResponse {
         size: 0,
-        sha256: None,
+        blake3: None,
     };
 
     match response {
-        ServerMessage::FileStartResponse { size, sha256 } => {
+        ServerMessage::FileStartResponse { size, blake3 } => {
             assert_eq!(size, 0);
-            assert!(sha256.is_none());
+            assert!(blake3.is_none());
         }
         _ => panic!("Wrong message type"),
     }
@@ -1165,13 +1167,13 @@ fn test_upload_resume_response_partial_exists() {
     // `size` bytes, then resumes from `size` on match or restarts on mismatch.
     let response = ServerMessage::FileStartResponse {
         size: 50000,
-        sha256: Some("abc123".to_string()),
+        blake3: Some("abc123".to_string()),
     };
 
     match response {
-        ServerMessage::FileStartResponse { size, sha256 } => {
+        ServerMessage::FileStartResponse { size, blake3 } => {
             assert_eq!(size, 50000);
-            assert_eq!(sha256, Some("abc123".to_string()));
+            assert_eq!(blake3, Some("abc123".to_string()));
         }
         _ => panic!("Wrong message type"),
     }

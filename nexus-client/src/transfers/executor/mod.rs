@@ -9,7 +9,7 @@
 //!
 //! ## Upload Optimization
 //!
-//! For uploads, SHA-256 hashes are computed lazily (not during initial scan).
+//! For uploads, BLAKE3 hashes are computed lazily (not during initial scan).
 //! Additionally, we use a prefetch strategy: while uploading file N, we compute
 //! the hash for file N+1 in the background. This hides hashing latency for
 //! multi-file uploads.
@@ -432,7 +432,7 @@ where
             (0, StreamingHasher::new())
         };
 
-        // Build hash for FileStartResponse (clone+finalize, hasher not consumed)
+        // Build hash for FileStartResponse without consuming the hasher.
         let local_hash = if local_size > 0 {
             Some(hasher.partial_hash())
         } else {
@@ -442,7 +442,7 @@ where
         // Send FileStartResponse
         let start_response = ClientMessage::FileStartResponse {
             size: local_size,
-            sha256: local_hash,
+            blake3: local_hash,
         };
         send_client_message(writer, &start_response)
             .await
@@ -473,7 +473,7 @@ where
                 return Err(err_kind);
             }
             ServerFileFrame::FileHash {
-                sha256: server_hash,
+                blake3: server_hash,
             } => {
                 // Server says: file is already complete or zero-byte — no FileData
                 if file_size == 0 {
@@ -613,7 +613,7 @@ where
                     }
                 };
                 let server_hash = match hash_frame {
-                    ServerFileFrame::FileHash { sha256 } => sha256,
+                    ServerFileFrame::FileHash { blake3 } => blake3,
                     _ => {
                         return Err(send_failed_event(
                             event_tx,
@@ -665,7 +665,7 @@ where
 /// Execute an upload transfer
 ///
 /// Handles:
-/// 1. Scan local files (no SHA-256 yet - computed lazily per file)
+/// 1. Scan local files (no BLAKE3 yet - computed lazily per file)
 /// 2. Send FileUpload request
 /// 3. Send files to server with resume support
 ///
@@ -684,7 +684,7 @@ where
 {
     let id = transfer.id;
 
-    // Scan local files (just paths and sizes - SHA-256 computed lazily per file)
+    // Scan local files (just paths and sizes - BLAKE3 computed lazily per file)
     let files = scan_local_files(&transfer.local_path, transfer.is_directory).await?;
 
     if files.is_empty() {
@@ -777,7 +777,7 @@ where
             current_file: Some(file_info.relative_path.clone()),
         });
 
-        // Send FileStart — no sha256, hash will be sent in FileHash after data
+        // Send FileStart — no blake3, hash will be sent in FileHash after data
         let file_start = ClientMessage::FileStart {
             path: file_info.relative_path.clone(),
             size: file_info.size,
@@ -790,7 +790,7 @@ where
         let start_response = read_message_with_timeout(reader, IDLE_TIMEOUT).await?;
 
         let (server_size, server_hash) = match start_response {
-            ServerMessage::FileStartResponse { size, sha256 } => (size, sha256),
+            ServerMessage::FileStartResponse { size, blake3 } => (size, blake3),
             ServerMessage::TransferComplete { .. } => {
                 // Early completion (error case)
                 return handle_transfer_complete(start_response, id, event_tx);
@@ -807,7 +807,7 @@ where
 
         // Determine upload offset and create StreamingHasher
         // The hasher is used for single-pass hashing: resume verification via
-        // clone+finalize, then continued during streaming, then finalized for FileHash.
+        // partial_hash(), then continued during streaming, then finalized for FileHash.
         let (offset, mut hasher) = if server_size == 0 {
             // Server has no file — upload from beginning
             (0, StreamingHasher::new())
@@ -833,7 +833,7 @@ where
                 if &our_hash == server_hash_val {
                     // File already complete on server — send FileHash only, skip FileData
                     let file_hash = ClientMessage::FileHash {
-                        sha256: h.finalize(),
+                        blake3: h.finalize(),
                     };
                     send_client_message(writer, &file_hash)
                         .await
@@ -964,7 +964,7 @@ where
         // Hasher consumed 0..offset (from resume verification) + offset..end (from streaming)
         // For zero-byte files: hasher is fresh, finalize = hash of empty content
         let file_hash = ClientMessage::FileHash {
-            sha256: hasher.finalize(),
+            blake3: hasher.finalize(),
         };
         send_client_message(writer, &file_hash)
             .await
@@ -1145,7 +1145,7 @@ mod tests {
                     response,
                     ClientMessage::FileStartResponse {
                         size: 0,
-                        sha256: None
+                        blake3: None
                     }
                 ));
 
@@ -1155,7 +1155,7 @@ mod tests {
                 send_server_message(
                     &mut server_writer,
                     &ServerMessage::FileHash {
-                        sha256: hash_bytes(payload),
+                        blake3: hash_bytes(payload),
                     },
                 )
                 .await
@@ -1279,7 +1279,7 @@ mod tests {
                 response,
                 ClientMessage::FileStartResponse {
                     size,
-                    sha256: Some(hash),
+                    blake3: Some(hash),
                 } if size == partial.len() as u64 && hash == hash_bytes(partial)
             ));
 
@@ -1289,7 +1289,7 @@ mod tests {
             send_server_message(
                 &mut server_writer,
                 &ServerMessage::FileHash {
-                    sha256: hash_bytes(full),
+                    blake3: hash_bytes(full),
                 },
             )
             .await

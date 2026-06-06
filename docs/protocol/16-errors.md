@@ -159,7 +159,7 @@ The `error_kind` field provides machine-readable error classification for progra
 | `invalid`             | Invalid input (malformed path) | Show error                   |
 | `unsupported_version` | Protocol version not supported | Show incompatibility message |
 | `disk_full`           | Disk full                      | Free space and retry         |
-| `hash_mismatch`       | SHA-256 verification failed    | Restart transfer             |
+| `hash_mismatch`       | BLAKE3 verification failed     | Restart transfer             |
 | `io_error`            | File I/O error                 | Show error, retry later      |
 | `protocol_error`      | Invalid/unexpected data        | Reconnect                    |
 | `exists`              | File already exists (upload)   | Admin must delete existing   |

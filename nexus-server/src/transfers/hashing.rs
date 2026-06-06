@@ -151,7 +151,7 @@ mod tests {
         let hash = hasher.finalize();
         assert_eq!(
             hash,
-            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"
         );
     }
 
@@ -179,7 +179,7 @@ mod tests {
         let hash = hasher.finalize();
         assert_eq!(
             hash,
-            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"
         );
     }
 
@@ -196,10 +196,10 @@ mod tests {
         assert!(output.is_empty());
         drop(hashing_reader);
         let hash = hasher.finalize();
-        // SHA-256 of empty input
+        // BLAKE3 of empty input
         assert_eq!(
             hash,
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
         );
     }
 
@@ -222,7 +222,7 @@ mod tests {
         let partial = hasher.partial_hash();
         assert_eq!(
             partial,
-            "185f8db32271fe25f561a6fc938b2e264306ec304eda518007d1764826381969"
+            "fbc2b0516ee8744d293b980779178a3508850fdcfe965985782c39601b65794f"
         );
 
         // Feed remaining bytes manually and finalize
@@ -230,7 +230,7 @@ mod tests {
         let full = hasher.finalize();
         assert_eq!(
             full,
-            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"
         );
     }
 
@@ -250,7 +250,7 @@ mod tests {
         let hash = hasher.finalize();
         assert_eq!(
             hash,
-            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"
         );
     }
 
@@ -271,7 +271,7 @@ mod tests {
         let hash = hasher.finalize();
         assert_eq!(
             hash,
-            "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+            "288a86a79f20a3d6dccdca7713beaed178798296bdfa7913fa2a62d9727bf8f8"
         );
     }
 
@@ -285,10 +285,10 @@ mod tests {
             assert!(output.is_empty());
         }
         let hash = hasher.finalize();
-        // SHA-256 of empty input
+        // BLAKE3 of empty input
         assert_eq!(
             hash,
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
         );
     }
 }

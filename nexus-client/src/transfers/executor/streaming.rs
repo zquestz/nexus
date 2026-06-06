@@ -70,7 +70,7 @@ pub enum ServerFileFrame {
     /// Server is sending file data
     FileData(FrameHeader),
     /// Server says file is already complete (or zero-byte) — no FileData
-    FileHash { sha256: String },
+    FileHash { blake3: String },
     /// Server terminated the transfer early (error during resume verification, etc.)
     TransferComplete {
         error: Option<String>,
@@ -119,8 +119,8 @@ where
                 let msg: ServerMessage =
                     serde_json::from_slice(&payload).map_err(|_| TransferError::ProtocolError)?;
                 match msg {
-                    ServerMessage::FileHash { sha256 } => {
-                        return Ok(ServerFileFrame::FileHash { sha256 });
+                    ServerMessage::FileHash { blake3 } => {
+                        return Ok(ServerFileFrame::FileHash { blake3 });
                     }
                     _ => {
                         return Err(TransferError::ProtocolError);
@@ -434,7 +434,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_dispatches_file_hash() {
-        let payload = br#"{"type":"FileHash","sha256":"abc123def456"}"#;
+        let payload = br#"{"type":"FileHash","blake3":"abc123def456"}"#;
         let frame = build_frame("FileHash", payload);
         let cursor = std::io::Cursor::new(frame);
         let buf_reader = tokio::io::BufReader::new(cursor);
@@ -443,8 +443,8 @@ mod tests {
         let result = read_file_data_or_file_hash(&mut reader).await;
         assert!(result.is_ok());
         match result.unwrap() {
-            ServerFileFrame::FileHash { sha256 } => {
-                assert_eq!(sha256, "abc123def456");
+            ServerFileFrame::FileHash { blake3 } => {
+                assert_eq!(blake3, "abc123def456");
             }
             _ => panic!("Expected FileHash"),
         }
@@ -494,7 +494,7 @@ mod tests {
     #[tokio::test]
     async fn test_read_skips_multiple_keepalives() {
         let hashing_payload = br#"{"type":"FileHashing","file":"big.zip"}"#;
-        let hash_payload = br#"{"type":"FileHash","sha256":"deadbeef"}"#;
+        let hash_payload = br#"{"type":"FileHash","blake3":"deadbeef"}"#;
         let mut data = build_frame("FileHashing", hashing_payload);
         data.extend_from_slice(&build_frame("FileHashing", hashing_payload));
         data.extend_from_slice(&build_frame("FileHash", hash_payload));
@@ -506,8 +506,8 @@ mod tests {
         let result = read_file_data_or_file_hash(&mut reader).await;
         assert!(result.is_ok());
         match result.unwrap() {
-            ServerFileFrame::FileHash { sha256 } => {
-                assert_eq!(sha256, "deadbeef");
+            ServerFileFrame::FileHash { blake3 } => {
+                assert_eq!(blake3, "deadbeef");
             }
             _ => panic!("Expected FileHash"),
         }

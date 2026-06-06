@@ -31,9 +31,9 @@ async fn count_directory_items_async(path: &Path) -> Option<u64> {
     .ok()?
 }
 
-/// SHA-256 of a file via nexus-common's hash module (off the async runtime).
-async fn compute_sha256_async(path: &Path) -> Option<String> {
-    nexus_common::hash::compute_sha256(path).await.ok()
+/// BLAKE3 of a file via nexus-common's hash module (off the async runtime).
+async fn compute_blake3_async(path: &Path) -> Option<String> {
+    nexus_common::hash::compute_blake3(path).await.ok()
 }
 
 /// Detect MIME type from file content, off the async runtime.
@@ -299,10 +299,10 @@ where
         None
     };
 
-    let sha256 = if is_directory {
+    let blake3 = if is_directory {
         None
     } else {
-        compute_sha256_async(&resolved).await
+        compute_blake3_async(&resolved).await
     };
 
     let info = FileInfoDetails {
@@ -314,7 +314,7 @@ where
         is_symlink,
         mime_type,
         item_count,
-        sha256,
+        blake3,
     };
 
     let response = ServerMessage::FileInfoResponse {
@@ -423,10 +423,10 @@ mod tests {
                 assert!(!info.is_symlink);
                 assert_eq!(info.mime_type.as_deref(), Some("text/plain"));
                 assert!(info.item_count.is_none());
-                // SHA-256 of "Hello, world!"
+                // BLAKE3 of "Hello, world!"
                 assert_eq!(
-                    info.sha256.as_deref(),
-                    Some("315f5bdb76d078c43b8ac0064e4a0164612b1fce77c869345bfc94c75894edd3")
+                    info.blake3.as_deref(),
+                    Some("ede5c0b10f2ec4979c69b52f61e42ff5b413519ce09be0f14d098dcfe5f6f98d")
                 );
             }
             _ => panic!("Expected FileInfoResponse"),
@@ -480,7 +480,7 @@ mod tests {
                 assert!(!info.is_symlink);
                 assert!(info.mime_type.is_none());
                 assert_eq!(info.item_count, Some(3)); // 2 files + 1 subdir
-                assert!(info.sha256.is_none()); // Directories don't have SHA256
+                assert!(info.blake3.is_none()); // Directories don't have BLAKE3
             }
             _ => panic!("Expected FileInfoResponse"),
         }

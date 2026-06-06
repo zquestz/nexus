@@ -786,6 +786,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake3"
+version = "1.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0aa83c34e62843d924f905e0f5c866eb1dd6545fc4d719e803d9ba6030371fce"
+dependencies = [
+ "arrayref",
+ "arrayvec",
+ "cc",
+ "cfg-if",
+ "constant_time_eq",
+ "cpufeatures 0.3.0",
+]
+
+[[package]]
 name = "block"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4659,7 +4673,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "nexus-client"
-version = "0.8.5"
+version = "0.8.6"
 dependencies = [
  "async-trait",
  "audioadapter-buffers",
@@ -4718,9 +4732,10 @@ dependencies = [
 
 [[package]]
 name = "nexus-common"
-version = "0.8.5"
+version = "0.8.6"
 dependencies = [
  "base64",
+ "blake3",
  "futures-util",
  "hex",
  "humantime",
@@ -4751,7 +4766,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-server"
-version = "0.8.5"
+version = "0.8.6"
 dependencies = [
  "argon2",
  "async-trait",

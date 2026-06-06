@@ -267,7 +267,7 @@ Response containing detailed file information.
     "is_directory": false,
     "is_symlink": false,
     "mime_type": "text/plain",
-    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    "blake3": "a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0"
   }
 }
 ```
@@ -734,7 +734,7 @@ Represents a single search result.
 | `is_symlink`   | boolean         | True if symbolic link                    |
 | `mime_type`    | string or null  | MIME type (null for directories)         |
 | `item_count`   | integer or null | Number of items (null for files)         |
-| `sha256`       | string or null  | SHA-256 hash (null for directories)      |
+| `blake3`       | string or null  | BLAKE3 hash (null for directories)       |
 
 ## Directory Types
 

@@ -1213,7 +1213,7 @@ mod tests {
 
         transfer
             .send(&ServerMessage::FileHash {
-                sha256: "abc123".to_string(),
+                blake3: "abc123".to_string(),
             })
             .await
             .unwrap();
@@ -1291,7 +1291,7 @@ mod tests {
 
         transfer
             .send(&ServerMessage::FileHash {
-                sha256: "small-hash".to_string(),
+                blake3: "small-hash".to_string(),
             })
             .await
             .unwrap();

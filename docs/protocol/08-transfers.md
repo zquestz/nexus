@@ -42,13 +42,13 @@ Client                                        Server
    │  │     FileStart { path, size }         │   │
    │  │ ◄────────────────────────────────────│   │
    │  │                                      │   │
-   │  │  FileStartResponse { size, sha256 }  │   │
+   │  │  FileStartResponse { size, blake3 }  │   │
    │  │ ────────────────────────────────────►│   │
    │  │                                      │   │
    │  │     FileData [raw bytes]             │   │
    │  │ ◄────────────────────────────────────│   │
    │  │                                      │   │
-   │  │     FileHash { sha256 }              │   │
+   │  │     FileHash { blake3 }              │   │
    │  │ ◄────────────────────────────────────│   │
    │  │                                      │   │
    │  └──────────────────────────────────────┘   │
@@ -86,13 +86,13 @@ Client                                        Server
    │  │  FileStart { path, size }            │   │
    │  │ ────────────────────────────────────►│   │
    │  │                                      │   │
-   │  │    FileStartResponse { size, sha256 }│   │
+   │  │    FileStartResponse { size, blake3 }│   │
    │  │ ◄────────────────────────────────────│   │
    │  │                                      │   │
    │  │  FileData [raw bytes]                │   │
    │  │ ────────────────────────────────────►│   │
    │  │                                      │   │
-   │  │  FileHash { sha256 }                 │   │
+   │  │  FileHash { blake3 }                 │   │
    │  │ ────────────────────────────────────►│   │
    │  │                                      │   │
    │  └──────────────────────────────────────┘   │
@@ -271,7 +271,7 @@ Reports local file state for resume. Sent by client for downloads, by server for
 | Field    | Type    | Required    | Description                           |
 | -------- | ------- | ----------- | ------------------------------------- |
 | `size`   | integer | Yes         | Size of local file (0 if none exists) |
-| `sha256` | string  | If size > 0 | SHA-256 hash of local file            |
+| `blake3` | string  | If size > 0 | BLAKE3 hash of local file             |
 
 **No local file:**
 
@@ -286,7 +286,7 @@ Reports local file state for resume. Sent by client for downloads, by server for
 ```json
 {
   "size": 524288,
-  "sha256": "a1b2c3d4e5f6..."
+  "blake3": "a1b2c3d4e5f6..."
 }
 ```
 
@@ -295,9 +295,11 @@ Reports local file state for resume. Sent by client for downloads, by server for
 ```json
 {
   "size": 1048576,
-  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  "blake3": "a1b2c3d4e5f60718293a4b5c6d7e8f90123456789abcdef0123456789abcdef0"
 }
 ```
+
+If `size > 0` and `blake3` is omitted, the peer treats the resume proof as unavailable and restarts that file from byte 0.
 
 ### FileData (Bidirectional)
 
@@ -316,7 +318,7 @@ NX|8|FileData|a1b2c3d4e5f6|65536|[binary data]
 
 ### FileHashing (Bidirectional)
 
-Keepalive sent while computing SHA-256 hash for large files (e.g., during resume verification of existing data).
+Keepalive sent while computing BLAKE3 hash for large files (e.g., during resume verification of existing data).
 
 | Field  | Type   | Required | Description                     |
 | ------ | ------ | -------- | ------------------------------- |
@@ -334,17 +336,17 @@ This message is sent every 10 seconds during hash computation to prevent idle ti
 
 ### FileHash (Bidirectional)
 
-Carries the sender's SHA-256 hash of the complete file. Sent after `FileData` (normal transfer) or alone without `FileData` (file already complete or zero-byte).
+Carries the sender's BLAKE3 hash of the complete file. Sent after `FileData` (normal transfer) or alone without `FileData` (file already complete or zero-byte).
 
-| Field    | Type   | Required | Description                       |
-| -------- | ------ | -------- | --------------------------------- |
-| `sha256` | string | Yes      | SHA-256 hash of the complete file |
+| Field    | Type   | Required | Description                      |
+| -------- | ------ | -------- | -------------------------------- |
+| `blake3` | string | Yes      | BLAKE3 hash of the complete file |
 
 **Example:**
 
 ```json
 {
-  "sha256": "dffd6021bb2bd5b0af676290809ec3a53191dd81c7f70a4b28688a362182986f"
+  "blake3": "6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85"
 }
 ```
 
@@ -353,7 +355,7 @@ Carries the sender's SHA-256 hash of the complete file. Sent after `FileData` (n
 - Both sides independently compute the hash during streaming (single-pass)
 - The receiver compares its own computed hash against the sender's `FileHash`
 - A mismatch means data corruption — the receiver should delete the `.part` file and report an error
-- For zero-byte files, the hash is the SHA-256 of empty input (`e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`)
+- For zero-byte files, the hash is the BLAKE3 of empty input (`af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262`)
 
 **Per-file frame dispatch after `FileStartResponse`:**
 
@@ -391,28 +393,29 @@ Signals transfer completion.
 ```json
 {
   "success": false,
-  "error": "SHA-256 verification failed",
+  "error": "BLAKE3 verification failed",
   "error_kind": "hash_mismatch"
 }
 ```
 
 ## Resume Logic
 
-Both sides use a `StreamingHasher` that supports clone-and-finalize (`partial_hash()`) without consuming the hasher. This enables single-pass hashing: the hasher accumulates bytes during resume verification, provides an intermediate hash for comparison, and then continues accumulating bytes during streaming. When the transfer completes, the same hasher is finalized to produce the full file hash for `FileHash`.
+Both sides use a `StreamingHasher` whose `partial_hash()` returns the current digest without consuming the hasher. This enables single-pass hashing: the hasher accumulates bytes during resume verification, provides an intermediate hash for comparison, and then continues accumulating bytes during streaming. When the transfer completes, the same hasher is finalized to produce the full file hash for `FileHash`.
 
 ### Download Resume
 
 1. Server sends `FileStart { path, size }` (no hash)
 2. Client checks local `.part` file (or completed file)
 3. Client hashes its local data into a `StreamingHasher`, sends `FileHashing` keepalives during hashing
-4. Client responds with `FileStartResponse { size: N, sha256: partial_hash }` (clone-and-finalize)
+4. Client responds with `FileStartResponse { size: N, blake3: partial_hash }`
 5. Server hashes first N bytes of its file into a `StreamingHasher`, sends `FileHashing` keepalives
 6. Server compares via `partial_hash()`:
    - Hash match → resume from offset N. Hasher retains 0..N state for continued use
    - Hash mismatch → send `TransferComplete { success: false, error_kind: "hash_mismatch" }`
+   - Missing hash → send entire file from byte 0
    - `size: 0` → send entire file (fresh hasher)
 7. Server streams `FileData` from offset, feeding bytes to hasher via `HashingReader`
-8. Server sends `FileHash { sha256: hasher.finalize() }` — full file hash (0..end)
+8. Server sends `FileHash { blake3: hasher.finalize() }` — full file hash (0..end)
 9. Client compares its independently computed hash against server's `FileHash`
 
 ### Upload Resume
@@ -420,21 +423,22 @@ Both sides use a `StreamingHasher` that supports clone-and-finalize (`partial_ha
 1. Client sends `FileStart { path, size }` (no hash)
 2. Server checks local `.part` file (or completed file)
 3. Server hashes its local data into a `StreamingHasher`, sends `FileHashing` keepalives during hashing
-4. Server responds with `FileStartResponse { size: N, sha256: partial_hash }` (clone-and-finalize)
+4. Server responds with `FileStartResponse { size: N, blake3: partial_hash }`
 5. Client hashes first N bytes of its file into a `StreamingHasher`, sends `FileHashing` keepalives
 6. Client compares via `partial_hash()`:
    - Hash match → resume from offset N. Hasher retains 0..N state for continued use
    - Hash mismatch → reset to offset 0 (send full file). Server detects concurrent upload conflict and rejects
+   - Missing hash → reset to offset 0
    - `size: 0` → send entire file (fresh hasher)
 7. Client streams `FileData` from offset, feeding bytes to hasher
-8. Client sends `FileHash { sha256: hasher.finalize() }` — full file hash (0..end)
+8. Client sends `FileHash { blake3: hasher.finalize() }` — full file hash (0..end)
 9. Server compares its independently computed hash against client's `FileHash`. Mismatch → delete `.part`, return error
 
 ### Partial Files
 
 - Downloads use `.part` suffix until complete
 - Uploads use `.part` suffix on server until verified
-- After successful SHA-256 verification via `FileHash`, `.part` is renamed to final name
+- After successful BLAKE3 verification via `FileHash`, `.part` is renamed to final name
 
 ## Error Kinds
 
@@ -445,7 +449,7 @@ Both sides use a `StreamingHasher` that supports clone-and-finalize (`partial_ha
 | `invalid`             | Invalid input (malformed path)    |
 | `unsupported_version` | Protocol version not supported    |
 | `disk_full`           | Disk full                         |
-| `hash_mismatch`       | SHA-256 verification failed       |
+| `hash_mismatch`       | BLAKE3 verification failed        |
 | `io_error`            | File I/O error                    |
 | `protocol_error`      | Invalid/unexpected data           |
 | `exists`              | File already exists (upload only) |
@@ -526,7 +530,7 @@ but keep the nickname supplied at transfer login.
 - `FileStart` sent with `size: 0`
 - `FileStartResponse` sent as normal
 - No `FileData` message (nothing to transfer)
-- `FileHash` sent with SHA-256 of empty input
+- `FileHash` sent with BLAKE3 of empty input
 - Proceed to next file
 
 ### No Overwrite
@@ -539,9 +543,9 @@ If a file already exists with different content:
 ## Notes
 
 - Transfer port is communicated in `LoginResponse.server_info.transfer_port` (always present)
-- SHA-256 is computed inline during streaming (single-pass, no post-transfer re-read)
+- BLAKE3 is computed inline during streaming (single-pass, no post-transfer re-read)
 - Both sides independently maintain a `StreamingHasher` — the sender hashes while reading from disk, the receiver hashes while writing to disk
-- Hardware-accelerated SHA-256 when available (SHA-NI on x86_64, crypto extensions on ARM64)
+- SIMD-accelerated BLAKE3 when available
 - Large files use streaming (64KB buffers)
 - Symlinks are followed transparently
 - Directories are downloaded recursively

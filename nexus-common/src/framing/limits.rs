@@ -5,17 +5,17 @@ use std::sync::LazyLock;
 
 use crate::PERMISSIONS_COUNT;
 use crate::validators::{
-    MAX_AUTO_JOIN_CHANNELS_LENGTH, MAX_AVATAR_DATA_URI_LENGTH, MAX_BAN_REASON_LENGTH,
-    MAX_CHANNEL_LENGTH, MAX_CHANNELS_PER_USER, MAX_CHAT_TOPIC_LENGTH, MAX_COMMAND_LENGTH,
-    MAX_DIR_NAME_LENGTH, MAX_DURATION_LENGTH, MAX_ERROR_KIND_LENGTH, MAX_ERROR_LENGTH,
-    MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_FILE_PATH_LENGTH, MAX_GROUP_NAME_LENGTH,
-    MAX_KICK_REASON_LENGTH, MAX_LOCALE_LENGTH, MAX_LOG_LEVEL_LENGTH, MAX_MESSAGE_LENGTH,
-    MAX_NEWS_ACTION_LENGTH, MAX_NEWS_BODY_LENGTH, MAX_NEWS_IMAGE_DATA_URI_LENGTH,
-    MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH, MAX_PERMISSION_LENGTH,
-    MAX_PERSISTENT_CHANNELS_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH, MAX_SEARCH_QUERY_LENGTH,
-    MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH, MAX_SERVER_NAME_LENGTH,
-    MAX_STATUS_LENGTH, MAX_TARGET_LENGTH, MAX_TRACKER_NAME_LENGTH, MAX_TRUST_REASON_LENGTH,
-    MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH, SHA256_HEX_LENGTH, TRANSFER_ID_LENGTH,
+    BLAKE3_HEX_LENGTH, MAX_AUTO_JOIN_CHANNELS_LENGTH, MAX_AVATAR_DATA_URI_LENGTH,
+    MAX_BAN_REASON_LENGTH, MAX_CHANNEL_LENGTH, MAX_CHANNELS_PER_USER, MAX_CHAT_TOPIC_LENGTH,
+    MAX_COMMAND_LENGTH, MAX_DIR_NAME_LENGTH, MAX_DURATION_LENGTH, MAX_ERROR_KIND_LENGTH,
+    MAX_ERROR_LENGTH, MAX_FEATURE_LENGTH, MAX_FEATURES_COUNT, MAX_FILE_PATH_LENGTH,
+    MAX_GROUP_NAME_LENGTH, MAX_KICK_REASON_LENGTH, MAX_LOCALE_LENGTH, MAX_LOG_LEVEL_LENGTH,
+    MAX_MESSAGE_LENGTH, MAX_NEWS_ACTION_LENGTH, MAX_NEWS_BODY_LENGTH,
+    MAX_NEWS_IMAGE_DATA_URI_LENGTH, MAX_NICKNAME_LENGTH, MAX_PASSWORD_LENGTH,
+    MAX_PERMISSION_LENGTH, MAX_PERSISTENT_CHANNELS_LENGTH, MAX_PUBLIC_ADDRESS_LENGTH,
+    MAX_SEARCH_QUERY_LENGTH, MAX_SERVER_DESCRIPTION_LENGTH, MAX_SERVER_IMAGE_DATA_URI_LENGTH,
+    MAX_SERVER_NAME_LENGTH, MAX_STATUS_LENGTH, MAX_TARGET_LENGTH, MAX_TRACKER_NAME_LENGTH,
+    MAX_TRUST_REASON_LENGTH, MAX_USERNAME_LENGTH, MAX_VERSION_LENGTH, TRANSFER_ID_LENGTH,
 };
 
 // =============================================================================
@@ -513,18 +513,18 @@ const FILE_START_SIZE: usize = json_type_base("FileStart")
     + json_string_field("path", MAX_FILE_PATH_LENGTH)
     + json_u64_field("size");
 
-/// FileStartResponse: {"type":"FileStartResponse","size":18446744073709551615,"sha256":"...64..."}
+/// FileStartResponse: {"type":"FileStartResponse","size":18446744073709551615,"blake3":"...64..."}
 const FILE_START_RESPONSE_SIZE: usize = json_type_base("FileStartResponse")
     + json_u64_field("size")
-    + json_string_field("sha256", SHA256_HEX_LENGTH);
+    + json_string_field("blake3", BLAKE3_HEX_LENGTH);
 
 /// FileHashing: {"type":"FileHashing","file":"...4096..."}
 const FILE_HASHING_SIZE: usize =
     json_type_base("FileHashing") + json_string_field("file", MAX_FILE_PATH_LENGTH);
 
-/// FileHash: {"type":"FileHash","sha256":"...64..."}
+/// FileHash: {"type":"FileHash","blake3":"...64..."}
 const FILE_HASH_SIZE: usize =
-    json_type_base("FileHash") + json_string_field("sha256", SHA256_HEX_LENGTH);
+    json_type_base("FileHash") + json_string_field("blake3", BLAKE3_HEX_LENGTH);
 
 /// TransferComplete: {"type":"TransferComplete","success":false,"error":"...2048...","error_kind":"...16..."}
 const TRANSFER_COMPLETE_SIZE: usize = json_type_base("TransferComplete")
@@ -1024,7 +1024,7 @@ const NEWS_UPDATE_RESPONSE_SIZE: usize = json_type_base("NewsUpdateResponse")
     + json_close();
 
 /// FileInfoDetails nested object size:
-/// {"name":"...4096...","size":u64,"created":i64,"modified":i64,"is_directory":false,"is_symlink":false,"mime_type":"...128...","item_count":u64,"sha256":"...64..."}
+/// {"name":"...4096...","size":u64,"created":i64,"modified":i64,"is_directory":false,"is_symlink":false,"mime_type":"...128...","item_count":u64,"blake3":"...64..."}
 const FILE_INFO_DETAILS_SIZE: usize = json_first_string_field("name", MAX_FILE_PATH_LENGTH)
     + json_u64_field("size")
     + json_i64_field("created")
@@ -1033,7 +1033,7 @@ const FILE_INFO_DETAILS_SIZE: usize = json_first_string_field("name", MAX_FILE_P
     + json_bool_field("is_symlink")
     + json_string_field("mime_type", MAX_MIME_TYPE)
     + json_u64_field("item_count")
-    + json_string_field("sha256", SHA256_HEX_LENGTH)
+    + json_string_field("blake3", BLAKE3_HEX_LENGTH)
     + 2; // {} braces
 
 /// FileInfoResponse: {"type":"FileInfoResponse","success":false,"error":"...2048...","info":{...}}
@@ -3683,10 +3683,10 @@ mod tests {
 
     #[test]
     fn test_limit_file_start_response() {
-        // Max size: u64 + 64 char sha256 + overhead
+        // Max size: u64 + 64 char BLAKE3 + overhead
         let msg = ClientMessage::FileStartResponse {
             size: u64::MAX,
-            sha256: Some(str_of_len(64)),
+            blake3: Some(str_of_len(64)),
         };
         let size = json_size(&msg);
         let limit = max_payload_for_type("FileStartResponse") as usize;
@@ -3772,7 +3772,7 @@ mod tests {
         // FileHash message (per-file hash sent after streaming)
         // Test with ClientMessage variant
         let client_msg = ClientMessage::FileHash {
-            sha256: str_of_len(64),
+            blake3: str_of_len(64),
         };
         let client_size = json_size(&client_msg);
         let limit = max_payload_for_type("FileHash") as usize;
@@ -3785,7 +3785,7 @@ mod tests {
 
         // Test with ServerMessage variant
         let server_msg = ServerMessage::FileHash {
-            sha256: str_of_len(64),
+            blake3: str_of_len(64),
         };
         let server_size = json_size(&server_msg);
         assert!(
@@ -4374,7 +4374,7 @@ mod tests {
             address: None,
             port: u16::MAX,
             websocket_port: Some(u16::MAX),
-            version: "0.8.5".to_string(),
+            version: "0.8.6".to_string(),
             fingerprint: str_of_len(SHA256_FINGERPRINT_LENGTH),
             user_count: u32::MAX,
             allows_guest: false,
@@ -4404,7 +4404,7 @@ mod tests {
                 name: Some(unicode_str_of_len(MAX_SERVER_NAME_LENGTH)),
                 description: Some(unicode_str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
                 public_address: None,
-                version: Some("0.8.5".to_string()),
+                version: Some("0.8.6".to_string()),
                 max_connections_per_ip: None,
                 max_transfers_per_ip: None,
                 image: None,
