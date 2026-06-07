@@ -2,13 +2,26 @@
 
 ## Future Work
 
-| Feature                              | Effort | Notes                  |
-| ------------------------------------ | ------ | ---------------------- |
-| Boards                               | High   | Spec TBD               |
-| File previews                        | Low    | See feature spec below |
-| Connection Monitor egress visibility | Medium | See feature spec below |
+| Feature                              | Effort | Notes                         |
+| ------------------------------------ | ------ | ----------------------------- |
+| Boards                               | High   | Include reactions and search  |
+| File previews                        | Low    | See feature spec below        |
+| Admin event history                  | Medium | See feature spec below        |
+| Offline messages investigation       | Medium | See investigation notes below |
+| Connection Monitor egress visibility | Medium | See feature spec below        |
 
 ## Feature Specs
+
+### Boards
+
+Persistent discussion boards for longer-form server/community threads.
+
+**Design notes:**
+
+- Include board/thread/post model in the initial spec.
+- Include board search as part of the shipped Boards feature, not a later bolt-on.
+- Consider lightweight post reactions for acknowledgement without reply noise.
+- Keep reactions scoped to Boards unless chat reactions have a separate, clear product reason.
 
 ### File Previews
 
@@ -69,3 +82,17 @@ Preview files before downloading.
 ### Connection Monitor Egress Visibility
 
 - Connection Monitor integration: surface per-user current outbound rate and backlog in the admin UI.
+
+### Admin Event History
+
+- Investigate a persistent admin-facing event history for server operations.
+- Candidate events: logins, disconnects, bans/trust changes, user/group changes, file operation failures, transfer failures, tracker failures, and server config changes.
+- Keep this distinct from chat/news/user-facing notifications.
+- Include retention limits and permission gates in the design.
+
+### Offline Messages Investigation
+
+- Investigate offline private messages as a mailbox feature for disconnected users.
+- Decide whether this is encrypted-at-rest mailbox storage or true client-verifiable end-to-end encryption.
+- If claiming end-to-end encryption, include recipient key pinning/verification in the design so the server cannot silently substitute recipient keys.
+- Include queue limits, expiration, delivery acknowledgements, and behavior for shared accounts/multiple sessions.
