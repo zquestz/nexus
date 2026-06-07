@@ -12,6 +12,7 @@
 //! `main.rs` for the per-daemon prefix it passes in.
 
 use std::fmt;
+use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::Duration;
@@ -173,6 +174,8 @@ pub fn init(params: LogInitParams<'_>) -> Result<(), String> {
     };
     let filter = tracing_subscriber::filter::LevelFilter::from_level(tracing_level);
 
+    let stderr_ansi = std::io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+
     // Build stderr layer — human-readable, timestamps optional.
     let build_stderr_layer = |f| -> Box<dyn Layer<_> + Send + Sync> {
         if !no_timestamps {
@@ -180,6 +183,7 @@ pub fn init(params: LogInitParams<'_>) -> Result<(), String> {
                 subscriber_fmt::layer()
                     .with_writer(std::io::stderr)
                     .with_target(false)
+                    .with_ansi(stderr_ansi)
                     .with_filter(f),
             )
         } else {
@@ -187,6 +191,7 @@ pub fn init(params: LogInitParams<'_>) -> Result<(), String> {
                 subscriber_fmt::layer()
                     .with_writer(std::io::stderr)
                     .with_target(false)
+                    .with_ansi(stderr_ansi)
                     .without_time()
                     .with_filter(f),
             )
