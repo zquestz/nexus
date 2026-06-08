@@ -153,42 +153,42 @@ pub const SQL_DELETE_USER_ATOMIC: &str = "DELETE FROM users
          OR is_admin = 0
      )";
 
-/// Joins users for author info; sorted by created_at descending (newest first).
+/// Left-joins users for author info; sorted newest first.
 pub const SQL_SELECT_ALL_NEWS: &str = "
     SELECT 
         n.id,
         n.body,
         n.image,
         n.author_id,
-        u.username as author_username,
-        u.is_admin as author_is_admin,
+        COALESCE(u.username, '<deleted>') as author_username,
+        COALESCE(u.is_admin, 0) as author_is_admin,
         n.created_at,
         n.updated_at
     FROM news n
-    JOIN users u ON n.author_id = u.id
-    ORDER BY n.created_at DESC";
+    LEFT JOIN users u ON n.author_id = u.id
+    ORDER BY n.created_at DESC, n.id DESC";
 
-/// Joins users for author info.
+/// Left-joins users for author info.
 pub const SQL_SELECT_NEWS_BY_ID: &str = "
     SELECT 
         n.id,
         n.body,
         n.image,
         n.author_id,
-        u.username as author_username,
-        u.is_admin as author_is_admin,
+        COALESCE(u.username, '<deleted>') as author_username,
+        COALESCE(u.is_admin, 0) as author_is_admin,
         n.created_at,
         n.updated_at
     FROM news n
-    JOIN users u ON n.author_id = u.id
+    LEFT JOIN users u ON n.author_id = u.id
     WHERE n.id = ?";
 
-/// At least one of body or image must be non-null (enforced by CHECK constraint).
+/// At least one of body or image must be non-empty (enforced by CHECK constraint).
 pub const SQL_INSERT_NEWS: &str = "
-    INSERT INTO news (body, image, author_id, created_at)
-    VALUES (?, ?, ?, ?)";
+    INSERT INTO news (body, image, author_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?)";
 
-/// At least one of body or image must be non-null (enforced by CHECK constraint).
+/// At least one of body or image must be non-empty (enforced by CHECK constraint).
 pub const SQL_UPDATE_NEWS: &str = "
     UPDATE news
     SET body = ?, image = ?, updated_at = ?

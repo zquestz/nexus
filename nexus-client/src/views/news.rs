@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Local};
 use iced::widget::Id;
 use iced::widget::button as btn;
 use iced::widget::markdown;
@@ -56,20 +56,14 @@ fn news_delete_button(
         .style(danger_icon_button_style)
 }
 
-/// Format a timestamp for display
-fn format_timestamp(iso_timestamp: &str) -> String {
-    // Parse ISO 8601 timestamp and convert to local time
-    if let Ok(utc_time) = DateTime::parse_from_rfc3339(iso_timestamp) {
-        let local_time: DateTime<Local> = utc_time.with_timezone(&Local);
-        // Format as "Jan 15, 2025 10:30"
-        local_time.format("%b %d, %Y %H:%M").to_string()
-    } else if let Ok(utc_time) = iso_timestamp.parse::<DateTime<Utc>>() {
-        let local_time: DateTime<Local> = utc_time.with_timezone(&Local);
-        local_time.format("%b %d, %Y %H:%M").to_string()
-    } else {
-        // Fallback: just show the raw timestamp but truncated
-        iso_timestamp.chars().take(19).collect()
-    }
+/// Format a Unix epoch timestamp for display.
+fn format_timestamp(timestamp: i64) -> String {
+    DateTime::from_timestamp(timestamp, 0)
+        .map(|utc_time| {
+            let local_time: DateTime<Local> = utc_time.with_timezone(&Local);
+            local_time.format("%b %d, %Y %H:%M").to_string()
+        })
+        .unwrap_or_else(|| timestamp.to_string())
 }
 
 /// Check if the current user can edit this news item
@@ -168,8 +162,7 @@ fn list_view<'a>(
                 // Build news item rows (newest first for display)
                 let mut news_rows = Column::new().spacing(NEWS_ITEM_SPACING);
 
-                // Reverse to show newest first (server returns oldest first)
-                for (index, item) in items.iter().rev().enumerate() {
+                for (index, item) in items.iter().enumerate() {
                     let news_row = build_news_item_row(
                         item,
                         conn,
@@ -351,12 +344,16 @@ fn build_news_item_row<'a>(
     .align_y(alignment::Vertical::Center);
 
     // Timestamp on its own line (with optional update tooltip)
-    let timestamp_text = shaped_text(format_timestamp(&item.created_at))
+    let timestamp_text = shaped_text(format_timestamp(item.created_at))
         .size(TEXT_SIZE)
         .style(muted_text_style);
 
-    let timestamp_element: Element<'a, Message> = if let Some(updated_at) = &item.updated_at {
-        let tooltip_text = format!("{}: {}", t("news-updated"), format_timestamp(updated_at));
+    let timestamp_element: Element<'a, Message> = if item.updated_at != item.created_at {
+        let tooltip_text = format!(
+            "{}: {}",
+            t("news-updated"),
+            format_timestamp(item.updated_at)
+        );
         tooltip(
             timestamp_text,
             container(shaped_text(tooltip_text).size(TOOLTIP_TEXT_SIZE))

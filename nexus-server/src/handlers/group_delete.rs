@@ -15,7 +15,7 @@ use super::{
     HandlerContext, err_database, err_group_not_empty_delete, err_group_not_found,
     err_not_logged_in, err_permission_denied,
 };
-use crate::db::Permission;
+use crate::db::{DeleteGroupResult, Permission};
 
 pub async fn handle_group_delete<W>(
     id: i64,
@@ -83,38 +83,21 @@ where
         }
     };
 
-    // Reject deletion if the group still has members.
-    match ctx.db.groups.get_member_count(id).await {
-        Ok(count) if count > 0 => {
-            let response = ServerMessage::GroupDeleteResponse {
-                success: false,
-                error: Some(err_group_not_empty_delete(ctx.locale)),
-                id: None,
-                name: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-        Ok(_) => {}
-        Err(e) => {
-            error!(user = %requesting_user.username, ip = %ctx.peer_addr, err = %e, "{}", LOG_GROUP_DELETE_DB_ERROR);
-            let response = ServerMessage::GroupDeleteResponse {
-                success: false,
-                error: Some(err_database(ctx.locale)),
-                id: None,
-                name: None,
-            };
-            return ctx.send_message(&response).await;
-        }
-    }
-
     match ctx.db.groups.delete_group(id).await {
-        Ok(true) => {}
-        Ok(false) => {
-            // Race: deleted by another admin, or a member assigned between the
-            // pre-check and the atomic delete.
+        Ok(DeleteGroupResult::Deleted) => {}
+        Ok(DeleteGroupResult::NotFound) => {
             let response = ServerMessage::GroupDeleteResponse {
                 success: false,
                 error: Some(err_group_not_found(ctx.locale)),
+                id: None,
+                name: None,
+            };
+            return ctx.send_message(&response).await;
+        }
+        Ok(DeleteGroupResult::NotEmpty) => {
+            let response = ServerMessage::GroupDeleteResponse {
+                success: false,
+                error: Some(err_group_not_empty_delete(ctx.locale)),
                 id: None,
                 name: None,
             };

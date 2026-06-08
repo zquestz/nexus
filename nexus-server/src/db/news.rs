@@ -10,22 +10,22 @@ pub struct NewsRecord {
     pub id: i64,
     pub body: Option<String>,
     pub image: Option<String>,
-    pub author_id: i64,
+    pub author_id: Option<i64>,
     pub author_username: String,
     pub author_is_admin: bool,
-    pub created_at: String,
-    pub updated_at: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 type NewsRow = (
     i64,
     Option<String>,
     Option<String>,
-    i64,
+    Option<i64>,
     String,
     bool,
-    String,
-    Option<String>,
+    i64,
+    i64,
 );
 
 impl From<NewsRow> for NewsRecord {
@@ -77,7 +77,7 @@ impl NewsDb {
         image: Option<&str>,
         author_id: i64,
     ) -> Result<NewsRecord, sqlx::Error> {
-        let now = Utc::now().to_rfc3339();
+        let now = Utc::now().timestamp();
 
         let body = body.filter(|s| !s.is_empty());
         let image = image.filter(|s| !s.is_empty());
@@ -86,7 +86,8 @@ impl NewsDb {
             .bind(body)
             .bind(image)
             .bind(author_id)
-            .bind(&now)
+            .bind(now)
+            .bind(now)
             .execute(&self.pool)
             .await?;
 
@@ -103,7 +104,7 @@ impl NewsDb {
         body: Option<&str>,
         image: Option<&str>,
     ) -> Result<Option<NewsRecord>, sqlx::Error> {
-        let now = Utc::now().to_rfc3339();
+        let now = Utc::now().timestamp();
 
         let body = body.filter(|s| !s.is_empty());
         let image = image.filter(|s| !s.is_empty());
@@ -111,7 +112,7 @@ impl NewsDb {
         let result = sqlx::query(sql::SQL_UPDATE_NEWS)
             .bind(body)
             .bind(image)
-            .bind(&now)
+            .bind(now)
             .bind(id)
             .execute(&self.pool)
             .await?;
@@ -171,7 +172,7 @@ mod tests {
         assert!(news.image.is_none());
         assert_eq!(news.author_username, "alice");
         assert!(!news.author_is_admin);
-        assert!(news.updated_at.is_none());
+        assert_eq!(news.updated_at, news.created_at);
     }
 
     #[tokio::test]
@@ -274,6 +275,13 @@ mod tests {
             .await
             .unwrap();
 
+        sqlx::query("UPDATE news SET created_at = ?, updated_at = ?")
+            .bind(1_767_225_600_i64)
+            .bind(1_767_225_600_i64)
+            .execute(&pool)
+            .await
+            .unwrap();
+
         let all_news = news_db.get_all_news().await.unwrap();
 
         assert_eq!(all_news.len(), 3);
@@ -344,7 +352,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(created.updated_at.is_none());
+        assert_eq!(created.updated_at, created.created_at);
 
         let updated = news_db
             .update_news(
@@ -358,7 +366,7 @@ mod tests {
 
         assert_eq!(updated.body, Some("Updated content".to_string()));
         assert_eq!(updated.image, Some("data:image/png;base64,new".to_string()));
-        assert!(updated.updated_at.is_some());
+        assert!(updated.updated_at >= updated.created_at);
     }
 
     #[tokio::test]
@@ -411,7 +419,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cascade_delete_on_user_deletion() {
+    async fn test_user_deletion_preserves_news_with_deleted_author() {
         let pool = create_test_db().await;
         let news_db = NewsDb::new(pool.clone());
         let users_db = crate::db::UserDb::new(pool.clone());
@@ -438,8 +446,10 @@ mod tests {
 
         users_db.delete_user(user.id, true).await.unwrap();
 
-        let fetched = news_db.get_news_by_id(news.id).await.unwrap();
-        assert!(fetched.is_none());
+        let fetched = news_db.get_news_by_id(news.id).await.unwrap().unwrap();
+        assert_eq!(fetched.author_id, None);
+        assert_eq!(fetched.author_username, "<deleted>");
+        assert!(!fetched.author_is_admin);
     }
 
     #[tokio::test]

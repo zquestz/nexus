@@ -697,8 +697,8 @@ mod tests {
             image: None,
             author: author.to_string(),
             author_is_admin,
-            created_at: "2026-01-01T00:00:00Z".to_string(),
-            updated_at: None,
+            created_at: 1_767_225_600,
+            updated_at: 1_767_225_600,
         }
     }
 

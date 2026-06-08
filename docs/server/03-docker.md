@@ -62,8 +62,8 @@ environment:
 | Tag      | Description                          |
 | -------- | ------------------------------------ |
 | `latest` | Most recent stable release           |
-| `0.8.6`  | Specific version                     |
-| `0.8`    | Latest patch release in 0.8.x series |
+| `0.9.0`  | Specific version                     |
+| `0.9`    | Latest patch release in 0.9.x series |
 | `0`      | Latest release in 0.x.x series       |
 
 ### Supported Architectures

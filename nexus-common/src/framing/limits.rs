@@ -255,9 +255,6 @@ const MAX_IP_LENGTH: usize = 45;
 /// Maximum MIME type length (e.g., "application/octet-stream")
 const MAX_MIME_TYPE: usize = 128;
 
-/// Maximum timestamp string length (ISO 8601 format, e.g., "2024-01-15T12:30:45Z")
-const MAX_TIMESTAMP: usize = 30;
-
 /// Maximum number of session IDs per user (one per connection)
 const MAX_SESSION_IDS: usize = 10;
 
@@ -981,14 +978,14 @@ const SERVER_INFO_UPDATED_SIZE: usize = json_type_base("ServerInfoUpdated")
     + json_close();
 
 /// NewsItem nested object size:
-/// {"id":i64,"body":"...4096...","image":"...700000...","author":"...32...","author_is_admin":false,"created_at":"...30...","updated_at":"...30..."}
+/// {"id":i64,"body":"...4096...","image":"...700000...","author":"...32...","author_is_admin":false,"created_at":i64,"updated_at":i64}
 const NEWS_ITEM_SIZE: usize = json_first_i64_field("id")
     + json_string_chars_field("body", MAX_NEWS_BODY_LENGTH)
     + json_string_field("image", MAX_NEWS_IMAGE_DATA_URI_LENGTH)
     + json_string_chars_field("author", MAX_NICKNAME_LENGTH)
     + json_bool_field("author_is_admin")
-    + json_string_field("created_at", MAX_TIMESTAMP)
-    + json_string_field("updated_at", MAX_TIMESTAMP)
+    + json_i64_field("created_at")
+    + json_i64_field("updated_at")
     + 2; // {} braces
 
 /// NewsShowResponse: {"type":"NewsShowResponse","success":false,"error":"...2048...","news":{...}}
@@ -4374,7 +4371,7 @@ mod tests {
             address: None,
             port: u16::MAX,
             websocket_port: Some(u16::MAX),
-            version: "0.8.6".to_string(),
+            version: "0.9.0".to_string(),
             fingerprint: str_of_len(SHA256_FINGERPRINT_LENGTH),
             user_count: u32::MAX,
             allows_guest: false,
@@ -4404,7 +4401,7 @@ mod tests {
                 name: Some(unicode_str_of_len(MAX_SERVER_NAME_LENGTH)),
                 description: Some(unicode_str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
                 public_address: None,
-                version: Some("0.8.6".to_string()),
+                version: Some("0.9.0".to_string()),
                 max_connections_per_ip: None,
                 max_transfers_per_ip: None,
                 image: None,

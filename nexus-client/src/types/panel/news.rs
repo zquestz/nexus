@@ -90,6 +90,16 @@ impl Default for NewsManagementState {
 }
 
 impl NewsManagementState {
+    /// Sort news items the same way the server returns them: newest first, with
+    /// higher ids first when multiple posts share the same timestamp.
+    pub fn sort_items_newest_first(items: &mut [NewsItem]) {
+        items.sort_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then_with(|| b.id.cmp(&a.id))
+        });
+    }
+
     /// Reset to list mode and clear all form state
     pub fn reset_to_list(&mut self) {
         self.mode = NewsManagementMode::List;
@@ -159,9 +169,29 @@ mod tests {
             image: None,
             author: author.to_string(),
             author_is_admin,
-            created_at: "2026-01-01T00:00:00Z".to_string(),
-            updated_at: None,
+            created_at: 1_767_225_600,
+            updated_at: 1_767_225_600,
         }
+    }
+
+    #[test]
+    fn sort_items_newest_first_uses_timestamp_then_id() {
+        let mut items = vec![
+            news_item(1, "alice", false),
+            news_item(3, "alice", false),
+            news_item(2, "alice", false),
+        ];
+        items[0].created_at = 100;
+        items[0].updated_at = 100;
+        items[1].created_at = 200;
+        items[1].updated_at = 200;
+        items[2].created_at = 200;
+        items[2].updated_at = 200;
+
+        NewsManagementState::sort_items_newest_first(&mut items);
+
+        let ids: Vec<i64> = items.iter().map(|item| item.id).collect();
+        assert_eq!(ids, vec![3, 2, 1]);
     }
 
     #[test]

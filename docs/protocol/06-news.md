@@ -127,8 +127,8 @@ Response containing all news items.
       "image": null,
       "author": "admin",
       "author_is_admin": true,
-      "created_at": "2024-01-15T10:30:00Z",
-      "updated_at": null
+      "created_at": 1705314600,
+      "updated_at": 1705314600
     },
     {
       "id": 1,
@@ -136,8 +136,8 @@ Response containing all news items.
       "image": "data:image/png;base64,...",
       "author": "admin",
       "author_is_admin": true,
-      "created_at": "2024-01-10T08:00:00Z",
-      "updated_at": "2024-01-12T14:20:00Z"
+      "created_at": 1704873600,
+      "updated_at": 1705069200
     }
   ]
 }
@@ -189,8 +189,8 @@ Response containing the requested news item.
     "image": null,
     "author": "admin",
     "author_is_admin": true,
-    "created_at": "2024-01-15T10:30:00Z",
-    "updated_at": null
+    "created_at": 1705314600,
+    "updated_at": 1705314600
   }
 }
 ```
@@ -272,8 +272,8 @@ Response after creating a news item.
     "image": null,
     "author": "alice",
     "author_is_admin": false,
-    "created_at": "2024-01-16T12:00:00Z",
-    "updated_at": null
+    "created_at": 1705406400,
+    "updated_at": 1705406400
   }
 }
 ```
@@ -315,8 +315,8 @@ Response containing the news item data for editing.
     "image": null,
     "author": "alice",
     "author_is_admin": false,
-    "created_at": "2024-01-16T12:00:00Z",
-    "updated_at": null
+    "created_at": 1705406400,
+    "updated_at": 1705406400
   }
 }
 ```
@@ -383,8 +383,8 @@ Response after updating a news item.
     "image": null,
     "author": "alice",
     "author_is_admin": false,
-    "created_at": "2024-01-16T12:00:00Z",
-    "updated_at": "2024-01-16T14:30:00Z"
+    "created_at": 1705406400,
+    "updated_at": 1705415400
   }
 }
 ```
@@ -473,15 +473,15 @@ Broadcast to all users when news changes.
 
 ### NewsItem
 
-| Field             | Type    | Description                                            |
-| ----------------- | ------- | ------------------------------------------------------ |
-| `id`              | integer | Unique news item ID                                    |
-| `body`            | string  | Markdown content (null if image-only)                  |
-| `image`           | string  | Image as data URI (null if text-only)                  |
-| `author`          | string  | Username of the creator                                |
-| `author_is_admin` | boolean | Whether author is an admin                             |
-| `created_at`      | string  | ISO 8601 creation timestamp                            |
-| `updated_at`      | string  | ISO 8601 last update timestamp (null if never updated) |
+| Field             | Type    | Description                                                                       |
+| ----------------- | ------- | --------------------------------------------------------------------------------- |
+| `id`              | integer | Unique news item ID                                                               |
+| `body`            | string  | Markdown content (null if image-only)                                             |
+| `image`           | string  | Image as data URI (null if text-only)                                             |
+| `author`          | string  | Username of the creator, or `<deleted>` if the account was removed                |
+| `author_is_admin` | boolean | Whether the author is currently an admin; false for deleted authors               |
+| `created_at`      | integer | Unix epoch creation timestamp in seconds                                          |
+| `updated_at`      | integer | Unix epoch last update timestamp in seconds; equals `created_at` until first edit |
 
 ### NewsAction
 
@@ -584,10 +584,10 @@ The broadcast only contains the action and ID, not the full content. Clients mus
 ## Notes
 
 - News items are persistent and survive server restart
-- The author field is set automatically from the session username
-- `author_is_admin` reflects the author's admin status at creation time
-- Timestamps are in ISO 8601 format (e.g., `"2024-01-15T10:30:00Z"`)
-- `updated_at` is null until the first edit
+- The author field is set automatically from the session username and becomes `<deleted>` if the account is removed
+- `author_is_admin` reflects the author's current admin status when the author still exists
+- Timestamps are Unix epoch seconds
+- `updated_at` equals `created_at` until the first edit
 - Deleting a news item is permanent (no soft delete)
 - Markdown is rendered client-side; the server stores raw markdown
 

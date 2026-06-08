@@ -19,7 +19,7 @@ pub mod testing;
 pub use bans::BanDb;
 pub use channels::ChannelDb;
 pub use config::ConfigDb;
-pub use groups::{GroupDb, GroupPermissionWriteScope, UpdateGroupResult};
+pub use groups::{DeleteGroupResult, GroupDb, GroupPermissionWriteScope, UpdateGroupResult};
 pub use news::NewsDb;
 pub use password::{hash_password_async, verify_password_async};
 // Sync helpers retained for tests (cheap fast-hash path) and the cached test

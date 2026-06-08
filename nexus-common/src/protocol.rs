@@ -1417,10 +1417,10 @@ pub struct UserInfo {
     /// Resolved effective bandwidth weight (user override → admin default
     /// → group → system default).
     ///
-    /// TODO(0.9.0): make required (`u16`) when bumping the protocol
-    /// minor. Current servers always set this; the `Option` is for
-    /// backward compatibility with 0.8.x peers that may have omitted
-    /// the field on the wire.
+    /// TODO(0.9.x): make required (`u16`) during the protocol consistency
+    /// cleanup. Current servers always set this; the `Option` is for
+    /// backward compatibility with older peers that may have omitted the field
+    /// on the wire.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bandwidth_weight: Option<u16>,
 }
@@ -1441,9 +1441,8 @@ pub struct NewsItem {
     pub image: Option<String>,
     pub author: String,
     pub author_is_admin: bool,
-    pub created_at: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub updated_at: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 /// Information about an active IP ban
@@ -1577,7 +1576,7 @@ pub struct UserInfoDetailed {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_name: Option<String>,
     /// Resolved effective bandwidth weight. See `UserInfo.bandwidth_weight`
-    /// for the same TODO(0.9.0) note.
+    /// for the same TODO(0.9.x) note.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub bandwidth_weight: Option<u16>,
 }

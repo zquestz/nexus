@@ -32,6 +32,13 @@ pub struct UpdateGroupResult {
     pub final_permissions: Permissions,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeleteGroupResult {
+    Deleted,
+    NotFound,
+    NotEmpty,
+}
+
 /// Scope of group-permission writes performed inside `update_group`.
 #[derive(Debug, Clone, Copy)]
 pub enum GroupPermissionWriteScope<'a> {
@@ -349,20 +356,58 @@ impl GroupDb {
         }))
     }
 
-    /// Atomically delete a group by ID, only if it has no assigned members
+    /// Atomically delete a group by ID, only if it has no assigned members.
     ///
-    /// Returns `true` if the group was deleted, `false` if it doesn't exist
-    /// or has members. The caller should pre-check member count to provide
-    /// the appropriate user-facing error message; this atomic SQL ensures
-    /// no TOCTOU race between the check and the delete.
-    pub async fn delete_group(&self, id: i64) -> Result<bool, sqlx::Error> {
+    /// The delete and miss-classification run in one transaction, so a
+    /// concurrent assignment cannot turn a not-empty block into a misleading
+    /// not-found result.
+    pub async fn delete_group(&self, id: i64) -> Result<DeleteGroupResult, sqlx::Error> {
+        let mut tx = self.pool.begin().await?;
+
         let result = sqlx::query(sql::SQL_DELETE_GROUP)
             .bind(id)
             .bind(id)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await?;
 
-        Ok(result.rows_affected() > 0)
+        let outcome = if result.rows_affected() > 0 {
+            DeleteGroupResult::Deleted
+        } else {
+            let exists: Option<(i64,)> = sqlx::query_as("SELECT id FROM groups WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&mut *tx)
+                .await?;
+
+            if exists.is_none() {
+                DeleteGroupResult::NotFound
+            } else {
+                let (member_count,): (i64,) = sqlx::query_as(sql::SQL_COUNT_GROUP_MEMBERS)
+                    .bind(id)
+                    .fetch_one(&mut *tx)
+                    .await?;
+
+                if member_count > 0 {
+                    DeleteGroupResult::NotEmpty
+                } else {
+                    let retry = sqlx::query(sql::SQL_DELETE_GROUP)
+                        .bind(id)
+                        .bind(id)
+                        .execute(&mut *tx)
+                        .await?;
+
+                    if retry.rows_affected() > 0 {
+                        DeleteGroupResult::Deleted
+                    } else {
+                        return Err(sqlx::Error::Protocol(
+                            "group delete failed for existing empty group".to_string(),
+                        ));
+                    }
+                }
+            }
+        };
+
+        tx.commit().await?;
+        Ok(outcome)
     }
 }
 
@@ -1124,7 +1169,7 @@ mod tests {
             .unwrap();
 
         let deleted = group_db.delete_group(group.id).await.unwrap();
-        assert!(deleted);
+        assert_eq!(deleted, DeleteGroupResult::Deleted);
 
         let fetched = group_db.get_group_by_id(group.id).await.unwrap();
         assert!(fetched.is_none());
@@ -1140,7 +1185,7 @@ mod tests {
         let group_db = GroupDb::new(pool);
 
         let deleted = group_db.delete_group(99999).await.unwrap();
-        assert!(!deleted);
+        assert_eq!(deleted, DeleteGroupResult::NotFound);
     }
 
     #[tokio::test]
@@ -1154,10 +1199,10 @@ mod tests {
             .unwrap();
 
         let first = group_db.delete_group(group.id).await.unwrap();
-        assert!(first);
+        assert_eq!(first, DeleteGroupResult::Deleted);
 
         let second = group_db.delete_group(group.id).await.unwrap();
-        assert!(!second);
+        assert_eq!(second, DeleteGroupResult::NotFound);
     }
 
     #[tokio::test]
@@ -1193,12 +1238,9 @@ mod tests {
             .await
             .unwrap();
 
-        // Delete should return false (atomic SQL prevents delete when members exist)
+        // Delete should report NotEmpty (atomic SQL prevents delete when members exist)
         let result = group_db.delete_group(group.id).await.unwrap();
-        assert!(
-            !result,
-            "delete_group should return false when group has members"
-        );
+        assert_eq!(result, DeleteGroupResult::NotEmpty);
 
         let fetched = group_db.get_group_by_id(group.id).await.unwrap();
         assert!(fetched.is_some());
@@ -1244,7 +1286,7 @@ mod tests {
             .unwrap();
 
         let deleted = group_db.delete_group(group.id).await.unwrap();
-        assert!(deleted);
+        assert_eq!(deleted, DeleteGroupResult::Deleted);
     }
 
     #[tokio::test]

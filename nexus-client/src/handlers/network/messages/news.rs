@@ -12,7 +12,9 @@ use crate::events::{EventContext, emit_event};
 use crate::i18n::{t, t_args};
 use crate::image::decode_data_uri_max_width;
 use crate::style::NEWS_IMAGE_MAX_CACHE_WIDTH;
-use crate::types::{ChatMessage, Message, NewsManagementMode, PendingRequests, ResponseRouting};
+use crate::types::{
+    ChatMessage, Message, NewsManagementMode, NewsManagementState, PendingRequests, ResponseRouting,
+};
 
 impl NexusApp {
     /// Handle news list response
@@ -132,7 +134,7 @@ impl NexusApp {
 
                         if !found {
                             items.push(item.clone());
-                            items.sort_by_key(|i| i.id);
+                            NewsManagementState::sort_items_newest_first(items);
                         }
                     }
 
@@ -219,7 +221,7 @@ impl NexusApp {
                         // Add to list
                         if let Some(Ok(items)) = &mut conn.news_management.news_items {
                             items.push(item);
-                            items.sort_by_key(|i| i.id);
+                            NewsManagementState::sort_items_newest_first(items);
                         }
 
                         // Return to list mode

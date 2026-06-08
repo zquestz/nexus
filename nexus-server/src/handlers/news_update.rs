@@ -82,7 +82,7 @@ where
     };
 
     // Author may edit own; otherwise NewsEdit required.
-    let is_author = existing_news.author_id == requesting_user.user_id;
+    let is_author = existing_news.author_id == Some(requesting_user.user_id);
     let has_edit_permission = requesting_user.has_permission(Permission::NewsEdit);
 
     if !is_author && !has_edit_permission {
@@ -354,7 +354,7 @@ mod tests {
                 assert!(error.is_none());
                 let news = news.unwrap();
                 assert_eq!(news.body, Some("Updated by author".to_string()));
-                assert!(news.updated_at.is_some());
+                assert!(news.updated_at >= news.created_at);
             }
             _ => panic!("Expected NewsUpdateResponse"),
         }

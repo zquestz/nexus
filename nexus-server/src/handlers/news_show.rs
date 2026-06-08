@@ -218,7 +218,7 @@ mod tests {
                 assert_eq!(news.image, Some("data:image/png;base64,abc".to_string()));
                 assert_eq!(news.author, "alice");
                 assert!(!news.author_is_admin);
-                assert!(news.updated_at.is_none());
+                assert_eq!(news.updated_at, news.created_at);
             }
             _ => panic!("Expected NewsShowResponse"),
         }
@@ -315,7 +315,7 @@ mod tests {
                 assert!(success);
                 let news = news.unwrap();
                 assert_eq!(news.body, Some("Updated".to_string()));
-                assert!(news.updated_at.is_some());
+                assert!(news.updated_at >= news.created_at);
             }
             _ => panic!("Expected NewsShowResponse"),
         }

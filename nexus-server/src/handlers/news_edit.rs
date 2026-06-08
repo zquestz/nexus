@@ -75,7 +75,7 @@ where
     };
 
     // Author may edit own; otherwise NewsEdit required.
-    let is_author = news_record.author_id == requesting_user.user_id;
+    let is_author = news_record.author_id == Some(requesting_user.user_id);
     let has_edit_permission = requesting_user.has_permission(Permission::NewsEdit);
 
     if !is_author && !has_edit_permission {
@@ -468,7 +468,7 @@ mod tests {
                 let news = news.unwrap();
                 assert_eq!(news.body, Some("# Updated".to_string()));
                 assert_eq!(news.image, Some("data:image/png;base64,xyz".to_string()));
-                assert!(news.updated_at.is_some());
+                assert!(news.updated_at >= news.created_at);
             }
             _ => panic!("Expected NewsEditResponse"),
         }

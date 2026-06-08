@@ -45,11 +45,10 @@ Persistent discussion boards for longer-form server/community threads.
 - `description`: Markdown description, empty string allowed.
 - `icon`: optional image data URI.
 - `banner`: optional image data URI.
-- `creator_id`: server-owned user ID of the account that created the board.
-  The referenced user may no longer exist.
+- `creator_id`: server-owned user ID of the account that created the board, or
+  `null` if that account has been deleted.
 - `creator`: display username for client presentation, or `<deleted>` when
-  `creator_id` no longer resolves to a user. This sentinel must not be a valid
-  username.
+  `creator_id` is `null`. This sentinel must not be a valid username.
 - `enabled`: client-supplied on create; editable later.
 - `created_at`: Unix epoch seconds, signed integer.
 - `updated_at`: Unix epoch seconds, signed integer.
@@ -64,8 +63,8 @@ Persistent discussion boards for longer-form server/community threads.
 - `description TEXT NOT NULL`.
 - `icon TEXT`.
 - `banner TEXT`.
-- `creator_id INTEGER NOT NULL`; do not cascade-delete boards when users are
-  deleted.
+- `creator_id INTEGER REFERENCES users(id) ON DELETE SET NULL`; do not
+  cascade-delete boards when users are deleted.
 - `enabled INTEGER NOT NULL`.
 - `created_at INTEGER NOT NULL`.
 - `updated_at INTEGER NOT NULL`.
@@ -189,11 +188,11 @@ Persistent discussion boards for longer-form server/community threads.
 - `BoardList` and `BoardShow` require `board_list`.
 - `BoardCreate` requires `board_create`.
 - `BoardEdit` and `BoardUpdate` are allowed for the creator or users with
-  `board_edit`. If `creator_id` no longer resolves to a user, only `board_edit`
-  can edit the board.
+  `board_edit`. If `creator_id` is `null`, only `board_edit` can edit the
+  board.
 - `BoardDelete` is allowed for the creator only while the board has no posts;
-  deleting a board with posts requires `board_delete`. If `creator_id` no
-  longer resolves to a user, only `board_delete` can delete the board.
+  deleting a board with posts requires `board_delete`. If `creator_id` is
+  `null`, only `board_delete` can delete the board.
 - Users with `board_edit` can edit any board.
 - Users with `board_delete` can delete any board.
 - `board_edit` and `board_delete` do not imply `board_list`; grant `board_list`
@@ -419,14 +418,10 @@ Preview files before downloading.
 Protocol 0.9.0 is the right place for intentional consistency-breaking
 cleanup. Keep these out of 0.8.x unless the protocol is deliberately bumped.
 
-- Define Nexus timestamps as Unix epoch seconds represented by signed integers,
-  and use that convention for all new timestamp fields unless a field has a
-  domain-specific reason not to.
-- Migrate `NewsItem.created_at` and `NewsItem.updated_at` from RFC 3339 strings
-  to Unix epoch integer timestamps.
-- Align the news database schema with newer timestamped tables by using
-  `created_at INTEGER NOT NULL` and `updated_at INTEGER NOT NULL`, with
-  `updated_at == created_at` on create.
+**Protocol message audit:**
+
+- Audit every protocol message shape for field naming, required/optional
+  behavior, response shape, and consistency with related messages.
 - Make update messages partial wherever practical: omitted fields are
   unchanged.
 - Standardize clearing semantics for optional string/image fields: empty string
@@ -434,6 +429,18 @@ cleanup. Keep these out of 0.8.x unless the protocol is deliberately bumped.
 - Avoid `null`-as-clear semantics in new protocol shapes.
 - Audit create/update form trimming behavior and decide where protocol/server
   semantics should trim, preserve exact input, or reject surrounding whitespace.
+
+**Feature negotiation and unsolicited-message gating:**
+
+- Audit every unsolicited server message and ensure it is sent only to sessions
+  that negotiated the relevant feature at login.
+- Keep direct command responses tied to the command; feature gating is for
+  unsolicited broadcasts/events.
+- Add activated feature reporting to `LoginResponse`: clients request features
+  in `Login`, and the server responds with the subset that is actually active.
+- Use this flow to roll out Boards incrementally: server-side Boards work can
+  land before the official client advertises `boards`, and board events should
+  not be sent until a session has negotiated that feature.
 
 ### Admin Event History
 

@@ -77,7 +77,7 @@ where
     };
 
     // Author may delete own; otherwise NewsDelete required.
-    let is_author = existing_news.author_id == requesting_user.user_id;
+    let is_author = existing_news.author_id == Some(requesting_user.user_id);
     let has_delete_permission = requesting_user.has_permission(Permission::NewsDelete);
 
     if !is_author && !has_delete_permission {

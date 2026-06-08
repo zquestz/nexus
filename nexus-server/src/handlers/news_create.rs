@@ -311,7 +311,7 @@ mod tests {
                 assert!(news.image.is_none());
                 assert_eq!(news.author, "alice");
                 assert!(!news.author_is_admin);
-                assert!(news.updated_at.is_none());
+                assert_eq!(news.updated_at, news.created_at);
             }
             _ => panic!("Expected NewsCreateResponse"),
         }
