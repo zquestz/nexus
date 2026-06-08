@@ -2532,8 +2532,7 @@ mod tests {
                     "shared-account broadcast must carry the post-update group_name"
                 );
                 assert_eq!(
-                    user.bandwidth_weight,
-                    Some(12),
+                    user.bandwidth_weight, 12,
                     "shared-account broadcast must carry the post-update bandwidth_weight"
                 );
                 saw_kiosk_broadcast = true;
@@ -2821,7 +2820,7 @@ mod tests {
             } => {
                 assert_eq!(previous_username, "bob");
                 assert_eq!(user.username, "bob");
-                assert_eq!(user.bandwidth_weight, Some(12));
+                assert_eq!(user.bandwidth_weight, 12);
             }
             other => panic!("Expected UserUpdated, got {:?}", other),
         }
@@ -3220,7 +3219,7 @@ mod tests {
             match msg {
                 ServerMessage::UserUpdated { user, .. } if user.username == "bob" => {
                     assert_eq!(user.group_name, Some("Moderators".to_string()));
-                    assert_eq!(user.bandwidth_weight, Some(12));
+                    assert_eq!(user.bandwidth_weight, 12);
                     user_updated_count += 1;
                 }
                 other => panic!("Unexpected message in queue: {:?}", other),
@@ -3280,7 +3279,7 @@ mod tests {
             .unwrap();
         let mut bob_session_perms = bob_effective.permissions.clone();
         bob_session_perms.insert(db::Permission::UserList);
-        let _ = test_ctx
+        let bob_session = test_ctx
             .user_manager
             .add_user(crate::users::user::NewSessionParams {
                 session_id: 0,
@@ -3328,6 +3327,17 @@ mod tests {
         assert!(
             test_ctx.rx.try_recv().is_err(),
             "No UserUpdated broadcast when every member's resolved weight is unchanged"
+        );
+        let updated_bob = test_ctx
+            .user_manager
+            .get_user_by_session_id(bob_session)
+            .await
+            .unwrap();
+        assert_eq!(
+            updated_bob
+                .bandwidth_weight
+                .load(std::sync::atomic::Ordering::Relaxed),
+            100
         );
         assert!(
             test_ctx.egress_settings_rx.try_recv().is_err(),

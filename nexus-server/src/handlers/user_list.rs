@@ -117,7 +117,7 @@ where
                     status: None,
                     group_id: db_user.group_id,
                     group_name,
-                    bandwidth_weight: Some(resolved_weight),
+                    bandwidth_weight: resolved_weight,
                 }
             })
             .collect();
@@ -1547,7 +1547,7 @@ mod tests {
                 assert!(ada.is_admin);
                 assert_eq!(
                     ada.bandwidth_weight,
-                    Some(nexus_common::validators::DEFAULT_ADMIN_BANDWIDTH_WEIGHT),
+                    nexus_common::validators::DEFAULT_ADMIN_BANDWIDTH_WEIGHT,
                     "offline admin must resolve to DEFAULT_ADMIN_BANDWIDTH_WEIGHT, not the inheritance baseline"
                 );
             }

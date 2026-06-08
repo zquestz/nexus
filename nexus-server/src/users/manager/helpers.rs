@@ -103,7 +103,7 @@ impl UserManager {
             status: session.status.clone(),
             group_id: session.group_id,
             group_name: session.group_name.clone(),
-            bandwidth_weight: Some(session.bandwidth_weight.load(Ordering::Relaxed)),
+            bandwidth_weight: session.bandwidth_weight.load(Ordering::Relaxed),
         }
     }
 
@@ -168,7 +168,7 @@ impl UserManager {
             group_name: latest_login.group_name.clone(),
             // All sessions of one regular user share the same cached weight; reading
             // from latest_login is canonical.
-            bandwidth_weight: Some(latest_login.bandwidth_weight.load(Ordering::Relaxed)),
+            bandwidth_weight: latest_login.bandwidth_weight.load(Ordering::Relaxed),
         })
     }
 

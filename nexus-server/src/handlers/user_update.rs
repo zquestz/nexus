@@ -9537,7 +9537,7 @@ mod tests {
             let (msg, _) = event.expect_message();
             match msg {
                 ServerMessage::UserUpdated { user, .. } if user.username == "robert" => {
-                    assert_eq!(user.bandwidth_weight, Some(100));
+                    assert_eq!(user.bandwidth_weight, 100);
                     user_updated_count += 1;
                 }
                 other => other_msgs.push(format!("{:?}", other)),
@@ -9861,7 +9861,7 @@ mod tests {
                     1,
                     "each shared per-session UserUpdated carries only its own session id"
                 );
-                assert_eq!(user.bandwidth_weight, Some(42));
+                assert_eq!(user.bandwidth_weight, 42);
                 nicknames.push(user.nickname);
             }
         }
@@ -9970,7 +9970,7 @@ mod tests {
             {
                 assert_eq!(
                     user.bandwidth_weight,
-                    Some(nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT),
+                    nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                     "broadcast must carry the post-update inherited weight"
                 );
                 saw_broadcast = true;

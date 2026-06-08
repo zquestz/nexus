@@ -3129,7 +3129,7 @@ mod tests {
                 status: Some(str_of_len(MAX_STATUS_LENGTH)),
                 group_id: Some(i64::MAX),
                 group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
-                bandwidth_weight: Some(u16::MAX),
+                bandwidth_weight: u16::MAX,
             },
         };
         assert!(
@@ -3281,7 +3281,7 @@ mod tests {
                 channels: Some((0..100).map(|_| str_of_len(MAX_CHANNEL_LENGTH)).collect()),
                 group_id: Some(i64::MAX),
                 group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
-                bandwidth_weight: Some(u16::MAX),
+                bandwidth_weight: u16::MAX,
             }),
         };
         assert!(
@@ -3372,7 +3372,7 @@ mod tests {
                 status: Some(str_of_len(MAX_STATUS_LENGTH)),
                 group_id: Some(i64::MAX),
                 group_name: Some(str_of_len(MAX_GROUP_NAME_LENGTH)),
-                bandwidth_weight: Some(u16::MAX),
+                bandwidth_weight: u16::MAX,
             },
         };
         assert!(

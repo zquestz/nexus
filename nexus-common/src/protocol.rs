@@ -1416,13 +1416,7 @@ pub struct UserInfo {
     pub group_name: Option<String>,
     /// Resolved effective bandwidth weight (user override → admin default
     /// → group → system default).
-    ///
-    /// TODO(0.9.x): make required (`u16`) during the protocol consistency
-    /// cleanup. Current servers always set this; the `Option` is for
-    /// backward compatibility with older peers that may have omitted the field
-    /// on the wire.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bandwidth_weight: Option<u16>,
+    pub bandwidth_weight: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1575,10 +1569,9 @@ pub struct UserInfoDetailed {
     /// Group name (if user belongs to a group)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub group_name: Option<String>,
-    /// Resolved effective bandwidth weight. See `UserInfo.bandwidth_weight`
-    /// for the same TODO(0.9.x) note.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub bandwidth_weight: Option<u16>,
+    /// Resolved effective bandwidth weight (user override → admin default
+    /// → group → system default).
+    pub bandwidth_weight: u16,
 }
 
 /// Information about an account group
@@ -2487,7 +2480,7 @@ mod tests {
             status: None,
             group_id: None,
             group_name: None,
-            bandwidth_weight: None,
+            bandwidth_weight: 1,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"avatar\""));
@@ -2510,7 +2503,7 @@ mod tests {
             status: None,
             group_id: None,
             group_name: None,
-            bandwidth_weight: None,
+            bandwidth_weight: 1,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(!json.contains("\"avatar\""));
@@ -2537,7 +2530,7 @@ mod tests {
             channels: None,
             group_id: None,
             group_name: None,
-            bandwidth_weight: None,
+            bandwidth_weight: 1,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"avatar\""));
@@ -2695,7 +2688,7 @@ mod tests {
             avatar: None,
             group_id: None,
             group_name: None,
-            bandwidth_weight: None,
+            bandwidth_weight: 1,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"username\":\"shared_acct\""));
@@ -2719,7 +2712,7 @@ mod tests {
             avatar: None,
             group_id: None,
             group_name: None,
-            bandwidth_weight: None,
+            bandwidth_weight: 1,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"username\":\"alice\""));
@@ -2747,7 +2740,7 @@ mod tests {
             channels: None,
             group_id: None,
             group_name: None,
-            bandwidth_weight: None,
+            bandwidth_weight: 1,
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(json.contains("\"username\":\"shared_acct\""));
@@ -4225,7 +4218,7 @@ mod tests {
             status: None,
             group_id: Some(3),
             group_name: Some("Editors".to_string()),
-            bandwidth_weight: None,
+            bandwidth_weight: 1,
         };
         let json = serde_json::to_string(&user).unwrap();
         assert!(json.contains("\"group_id\":3"));
@@ -4234,11 +4227,19 @@ mod tests {
 
     #[test]
     fn test_deserialize_user_info_without_group_defaults() {
-        // Old servers won't send group fields
-        let json = r#"{"id":1,"username":"alice","nickname":"alice","login_time":0,"is_admin":false,"session_ids":[],"locale":"en"}"#;
+        let json = r#"{"id":1,"username":"alice","nickname":"alice","login_time":0,"is_admin":false,"session_ids":[],"locale":"en","bandwidth_weight":1}"#;
         let user: UserInfo = serde_json::from_str(json).unwrap();
         assert!(user.group_id.is_none());
         assert!(user.group_name.is_none());
+    }
+
+    #[test]
+    fn test_user_info_bandwidth_weight_is_required() {
+        let basic = r#"{"id":1,"username":"alice","nickname":"alice","login_time":0,"is_admin":false,"session_ids":[],"locale":"en"}"#;
+        let detailed = r#"{"id":1,"username":"alice","nickname":"alice","login_time":0,"session_ids":[],"features":[],"created_at":0,"locale":"en"}"#;
+
+        assert!(serde_json::from_str::<UserInfo>(basic).is_err());
+        assert!(serde_json::from_str::<UserInfoDetailed>(detailed).is_err());
     }
 
     #[test]
@@ -4373,7 +4374,7 @@ mod tests {
             status: None,
             group_id: None,
             group_name: None,
-            bandwidth_weight: None,
+            bandwidth_weight: 1,
         };
         let json = serde_json::to_string(&user).unwrap();
         assert!(json.contains("\"id\":55"));
@@ -4399,7 +4400,7 @@ mod tests {
             channels: None,
             group_id: None,
             group_name: None,
-            bandwidth_weight: None,
+            bandwidth_weight: 1,
         };
         let json = serde_json::to_string(&user).unwrap();
         assert!(json.contains("\"id\":77"));

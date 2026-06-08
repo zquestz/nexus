@@ -15,8 +15,8 @@ use super::{
     err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
-    DEFAULT_LOCALE, ERR_TARGET_SESSIONS_NON_EMPTY, HANDLER_USER_INFO, LOG_USER_INFO_DB_ERROR,
-    LOG_USER_INFO_NOT_LOGGED_IN, LOG_USER_INFO_PERMISSION_DENIED,
+    DEFAULT_LOCALE, HANDLER_USER_INFO, LOG_USER_INFO_DB_ERROR, LOG_USER_INFO_NOT_LOGGED_IN,
+    LOG_USER_INFO_PERMISSION_DENIED,
 };
 use crate::db::Permission;
 use crate::users::manager::UserManager;
@@ -121,12 +121,21 @@ where
         Err(response) => return ctx.send_message(&response).await,
     };
 
+    let Some(first_session) = target_sessions.first() else {
+        let response = ServerMessage::UserInfoResponse {
+            success: false,
+            error: Some(err_nickname_not_online(ctx.locale, &nickname)),
+            user: None,
+        };
+        return ctx.send_message(&response).await;
+    };
+
     let session_ids: Vec<u32> = target_sessions.iter().map(|s| s.session_id).collect();
     let earliest_login = target_sessions
         .iter()
         .map(|s| s.login_time)
         .min()
-        .expect(ERR_TARGET_SESSIONS_NON_EMPTY);
+        .unwrap_or(first_session.login_time);
     let locale = target_sessions
         .iter()
         .max_by_key(|s| (s.login_time, s.session_id))
@@ -206,9 +215,7 @@ where
     // First session suffices: `update_bandwidth_state` fans the resolved
     // weight out to every session of a user_id atomically, and the
     // not-online gate above guarantees ≥1 session.
-    let resolved_weight = target_sessions
-        .first()
-        .map(|s| s.bandwidth_weight.load(Ordering::Relaxed));
+    let resolved_weight = first_session.bandwidth_weight.load(Ordering::Relaxed);
 
     // is_admin and channels are visible to everyone; addresses are admin-only.
     let user_info = if requesting_user.is_admin {

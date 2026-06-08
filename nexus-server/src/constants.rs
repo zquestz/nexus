@@ -273,9 +273,6 @@ pub const ERR_IP_RULE_EXPIRY_MISSING: &str = "expires_at is present after None g
 /// expect() message — `sessions` confirmed non-empty just upstream (`users::manager::helpers`).
 pub const ERR_SESSIONS_NOT_EMPTY: &str = "sessions is not empty";
 
-/// expect() message — `target_sessions` confirmed non-empty just upstream (handlers/user_info).
-pub const ERR_TARGET_SESSIONS_NON_EMPTY: &str = "target_sessions is non-empty";
-
 /// expect() message — `DEFAULT_LOCALE` is hand-edited to always parse as a valid locale.
 pub const ERR_DEFAULT_LOCALE_INVALID: &str = "DEFAULT_LOCALE is a valid locale";
 

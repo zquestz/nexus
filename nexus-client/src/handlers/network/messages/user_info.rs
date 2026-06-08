@@ -717,7 +717,7 @@ mod tests {
             status: None,
             group_id: None,
             group_name: None,
-            bandwidth_weight: Some(DEFAULT_BANDWIDTH_WEIGHT),
+            bandwidth_weight: DEFAULT_BANDWIDTH_WEIGHT,
         }
     }
 

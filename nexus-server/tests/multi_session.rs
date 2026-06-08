@@ -253,7 +253,7 @@ async fn test_broadcast_respects_user_list_permission() {
                     status: None,
                     group_id: None,
                     group_name: None,
-                    bandwidth_weight: None,
+                    bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 },
             },
             None, // Don't exclude anyone
@@ -362,7 +362,7 @@ async fn test_broadcast_excludes_specified_session() {
                     status: None,
                     group_id: None,
                     group_name: None,
-                    bandwidth_weight: None,
+                    bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
                 },
             },
             Some(session_id1), // Exclude session 1
