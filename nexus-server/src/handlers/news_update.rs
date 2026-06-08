@@ -106,10 +106,6 @@ where
         return ctx.send_message(&response).await;
     }
 
-    let body = body.filter(|s| !s.trim().is_empty());
-    let image = image.filter(|s| !s.is_empty());
-
-    // At least one of body or image must be present.
     if body.is_none() && image.is_none() {
         let response = ServerMessage::NewsUpdateResponse {
             success: false,
@@ -120,6 +116,7 @@ where
     }
 
     if let Some(ref body_text) = body
+        && !body_text.trim().is_empty()
         && let Err(e) = validators::validate_news_body(body_text)
     {
         let error_msg = match e {
@@ -137,6 +134,7 @@ where
     }
 
     if let Some(ref image_data) = image
+        && !image_data.is_empty()
         && let Err(e) = validators::validate_news_image(image_data)
     {
         let error_msg = match e {
@@ -147,6 +145,26 @@ where
         let response = ServerMessage::NewsUpdateResponse {
             success: false,
             error: Some(error_msg),
+            news: None,
+        };
+        return ctx.send_message(&response).await;
+    }
+
+    let body = match body {
+        Some(value) if value.trim().is_empty() => None,
+        Some(value) => Some(value),
+        None => existing_news.body,
+    };
+    let image = match image {
+        Some(value) if value.is_empty() => None,
+        Some(value) => Some(value),
+        None => existing_news.image,
+    };
+
+    if body.is_none() && image.is_none() {
+        let response = ServerMessage::NewsUpdateResponse {
+            success: false,
+            error: Some(err_news_empty_content(ctx.locale)),
             news: None,
         };
         return ctx.send_message(&response).await;
@@ -355,6 +373,161 @@ mod tests {
                 let news = news.unwrap();
                 assert_eq!(news.body, Some("Updated by author".to_string()));
                 assert!(news.updated_at >= news.created_at);
+            }
+            _ => panic!("Expected NewsUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_news_update_omitted_fields_are_unchanged() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let admin = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let image = "data:image/png;base64,iVBORw0KGgo=";
+        let created = test_ctx
+            .db
+            .news
+            .create_news(Some("Original"), Some(image), admin.id)
+            .await
+            .unwrap();
+
+        let result = handle_news_update(
+            created.id,
+            Some("Updated body".to_string()),
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::NewsUpdateResponse {
+                success,
+                error,
+                news,
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                let news = news.unwrap();
+                assert_eq!(news.body, Some("Updated body".to_string()));
+                assert_eq!(news.image, Some(image.to_string()));
+            }
+            _ => panic!("Expected NewsUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_news_update_empty_fields_clear_existing_values() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let admin = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let image = "data:image/png;base64,iVBORw0KGgo=";
+        let created = test_ctx
+            .db
+            .news
+            .create_news(Some("Original"), Some(image), admin.id)
+            .await
+            .unwrap();
+
+        let result = handle_news_update(
+            created.id,
+            None,
+            Some(String::new()),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::NewsUpdateResponse {
+                success,
+                error,
+                news,
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                let news = news.unwrap();
+                assert_eq!(news.body, Some("Original".to_string()));
+                assert!(news.image.is_none());
+            }
+            _ => panic!("Expected NewsUpdateResponse"),
+        }
+
+        let result = handle_news_update(
+            created.id,
+            Some("   ".to_string()),
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::NewsUpdateResponse {
+                success,
+                error,
+                news,
+            } => {
+                assert!(!success);
+                assert_eq!(error, Some(err_news_empty_content(DEFAULT_TEST_LOCALE)));
+                assert!(news.is_none());
+            }
+            _ => panic!("Expected NewsUpdateResponse with error"),
+        }
+
+        let created = test_ctx
+            .db
+            .news
+            .create_news(Some("Original"), Some(image), admin.id)
+            .await
+            .unwrap();
+
+        let result = handle_news_update(
+            created.id,
+            Some("   ".to_string()),
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::NewsUpdateResponse {
+                success,
+                error,
+                news,
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                let news = news.unwrap();
+                assert!(news.body.is_none());
+                assert_eq!(news.image, Some(image.to_string()));
             }
             _ => panic!("Expected NewsUpdateResponse"),
         }

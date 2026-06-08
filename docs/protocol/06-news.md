@@ -334,23 +334,22 @@ Response containing the news item data for editing.
 
 Update an existing news item.
 
-| Field   | Type    | Required | Description           |
-| ------- | ------- | -------- | --------------------- |
-| `id`    | integer | Yes      | News item ID          |
-| `body`  | string  | No       | New markdown content  |
-| `image` | string  | No       | New image as data URI |
+| Field   | Type    | Required | Description                  |
+| ------- | ------- | -------- | ---------------------------- |
+| `id`    | integer | Yes      | News item ID                 |
+| `body`  | string  | No       | New markdown content or `""` |
+| `image` | string  | No       | New image data URI or `""`   |
 
 **Field validation.** Same rules as
 [`NewsCreate`](#newscreate-client--server) for `body` and `image`.
 
-**Update semantics differ from other Update messages.** `NewsUpdate`
-does a full replacement of the news item's `body` and `image`
-columns: any field that's `null` or omitted is **cleared** on the
-underlying row. To keep a current value, the client must send it.
-This is intentional — news items are body+image records and "clear
-the body" is a meaningful edit.
+**Update semantics.** `NewsUpdate` is partial. Omitted fields are
+unchanged. Empty strings clear the corresponding field; a body
+containing only whitespace also counts as empty and clears `body`.
+`null` is treated like an omitted field and does not clear.
 
-At least one of `body` or `image` must be provided after update.
+At least one field must be supplied, and at least one of `body` or
+`image` must remain present after update.
 
 **Example:**
 
@@ -358,7 +357,7 @@ At least one of `body` or `image` must be provided after update.
 {
   "id": 4,
   "body": "# Server Update v2\n\nEven more features!",
-  "image": null
+  "image": ""
 }
 ```
 

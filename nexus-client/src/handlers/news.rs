@@ -418,8 +418,8 @@ impl NexusApp {
                 let id = *id;
                 let msg = ClientMessage::NewsUpdate {
                     id,
-                    body: if body.is_empty() { None } else { Some(body) },
-                    image: if image.is_empty() { None } else { Some(image) },
+                    body: Some(body),
+                    image: Some(image),
                 };
 
                 conn.news_management.is_submitting = true;
