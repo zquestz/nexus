@@ -616,12 +616,12 @@ mod tests {
         handle_tracker_update(
             TrackerUpdateRequest {
                 id,
-                address: "tracker.example.com".to_string(),
-                port: 7510,
+                address: None,
+                port: None,
                 fingerprint: None,
                 password: None,
-                name: "Renamed".to_string(),
-                enabled: true,
+                name: Some("Renamed".to_string()),
+                enabled: None,
             },
             Some(session_id),
             &mut test_ctx.handler_context(),

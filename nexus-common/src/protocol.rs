@@ -376,18 +376,22 @@ pub enum ClientMessage {
     TrackerRemove {
         id: i64,
     },
-    /// Replace a tracker's configuration. Requires `tracker_edit`
+    /// Partially update a tracker's configuration. Requires `tracker_edit`
     /// permission.
     TrackerUpdate {
         id: i64,
-        address: String,
-        port: u16,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        address: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        port: Option<u16>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         fingerprint: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         password: Option<String>,
-        name: String,
-        enabled: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        enabled: Option<bool>,
     },
     /// Add an IP to the trusted list (bypasses ban checks)
     TrustCreate {

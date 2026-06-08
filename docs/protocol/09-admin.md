@@ -1147,37 +1147,34 @@ infrastructure, not a personal credential).
 
 ### TrackerUpdate (Client → Server)
 
-Replace a tracker's configuration. The server aborts the running
-registration task and spawns a fresh one with the new config (or just
-aborts, if the new record is `enabled: false`). All fields are
-required — `TrackerUpdate` is a full replacement, not a patch.
+Partially update a tracker's configuration. The server aborts the
+running registration task and spawns a fresh one with the merged config
+(or just aborts, if the resulting record is `enabled: false`).
 
-| Field         | Type    | Required | Description                                                         |
-| ------------- | ------- | -------- | ------------------------------------------------------------------- |
-| `id`          | integer | Yes      | Tracker row id                                                      |
-| `address`     | string  | Yes      | Hostname or IP literal                                              |
-| `port`        | integer | Yes      | TCP port                                                            |
-| `fingerprint` | string  | No       | Pinned cert fingerprint (omit to clear and re-TOFU on next connect) |
-| `password`    | string  | No       | Registration password (omit or empty for an open tracker)           |
-| `name`        | string  | Yes      | Admin-supplied label                                                |
-| `enabled`     | boolean | Yes      | Whether the registration task should actively maintain a connection |
+| Field         | Type    | Required | Description                                                           |
+| ------------- | ------- | -------- | --------------------------------------------------------------------- |
+| `id`          | integer | Yes      | Tracker row id                                                        |
+| `address`     | string  | No       | Hostname or IP literal                                                |
+| `port`        | integer | No       | TCP port                                                              |
+| `fingerprint` | string  | No       | Pinned cert fingerprint, or `""` to clear and re-TOFU on next connect |
+| `password`    | string  | No       | Registration password, or `""` to clear and make the tracker open     |
+| `name`        | string  | No       | Admin-supplied label                                                  |
+| `enabled`     | boolean | No       | Whether the registration task should actively maintain a connection   |
 
 **Field validation.** Same rules as
 [`TrackerAdd`](#trackeradd-client--server) for the matching fields
-(`address`, `port`, `fingerprint`, `password`, `name`). Validation
-runs on every field — `TrackerUpdate` is a full replacement, not a
-patch.
+(`address`, `port`, `fingerprint`, `password`, `name`). Omitted fields
+are unchanged. `null` is treated like an omitted field and does not
+clear. Empty strings clear only `fingerprint` and `password`; other
+string fields still use their normal validators. At least one update
+field must be supplied.
 
-**Accept a new fingerprint after rotation:**
+**Manually re-pin a fingerprint:**
 
 ```json
 {
   "id": 3,
-  "address": "tracker.example.com",
-  "port": 7510,
-  "fingerprint": "11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00",
-  "name": "Public Tracker",
-  "enabled": true
+  "fingerprint": "11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00"
 }
 ```
 
@@ -1186,16 +1183,13 @@ patch.
 ```json
 {
   "id": 3,
-  "address": "tracker.example.com",
-  "port": 7510,
-  "name": "Public Tracker",
   "enabled": false
 }
 ```
 
 ### TrackerUpdateResponse (Server → Client)
 
-Response after replacing a tracker's configuration.
+Response after updating a tracker's configuration.
 
 | Field     | Type    | Required   | Description                       |
 | --------- | ------- | ---------- | --------------------------------- |
@@ -1388,7 +1382,7 @@ A registration cycle progresses through:
 - **Pinned fingerprint differs from observed** (Stage 1 mismatch): the
   task records `last_error_kind = "tracker_fingerprint_mismatch"`, sets
   `pending_fingerprint` to the newly-observed value, and exits. Admin
-  accepts by sending `TrackerUpdate` with the new fingerprint.
+  accepts by sending `TrackerAcceptFingerprint`.
 
 ### Tracker Error Kinds
 

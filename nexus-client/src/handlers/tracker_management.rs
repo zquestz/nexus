@@ -456,17 +456,14 @@ impl NexusApp {
             return Task::none();
         }
 
-        let fingerprint_opt = super::tracker_browser::optional_string(&fingerprint);
-        let password_opt = super::tracker_browser::optional_string(&password);
-
         let msg = ClientMessage::TrackerUpdate {
             id,
-            address,
-            port,
-            fingerprint: fingerprint_opt,
-            password: password_opt,
-            name,
-            enabled,
+            address: Some(address),
+            port: Some(port),
+            fingerprint: Some(fingerprint),
+            password: Some(password),
+            name: Some(name),
+            enabled: Some(enabled),
         };
 
         conn.tracker_management.form_error = None;

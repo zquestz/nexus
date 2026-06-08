@@ -4124,12 +4124,12 @@ mod tests {
     fn test_limit_tracker_update() {
         let msg = ClientMessage::TrackerUpdate {
             id: i64::MAX,
-            address: str_of_len(MAX_PUBLIC_ADDRESS_LENGTH),
-            port: u16::MAX,
+            address: Some(str_of_len(MAX_PUBLIC_ADDRESS_LENGTH)),
+            port: Some(u16::MAX),
             fingerprint: Some(str_of_len(SHA256_FINGERPRINT_LENGTH)),
             password: Some(str_of_len(MAX_PASSWORD_LENGTH)),
-            name: str_of_len(MAX_TRACKER_NAME_LENGTH),
-            enabled: false,
+            name: Some(str_of_len(MAX_TRACKER_NAME_LENGTH)),
+            enabled: Some(false),
         };
         let size = json_size(&msg);
         let limit = max_payload_for_type("TrackerUpdate") as usize;

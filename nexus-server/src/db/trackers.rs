@@ -240,11 +240,10 @@ pub struct CreateTrackerParams<'a> {
     pub enabled: bool,
 }
 
-/// Parameters for [`TrackerDb::update`]. Same shape as
-/// [`CreateTrackerParams`] because the admin UI replaces the whole
-/// configuration row on save (no partial-update protocol). Kept as a
-/// distinct type for symmetry with `CreateUserParams` /
-/// `UpdateUserParams` and to leave room for divergence later.
+/// Parameters for [`TrackerDb::update`]. This is the full row state after the
+/// handler merges any partial protocol update with the existing tracker.
+/// Kept as a distinct type for symmetry with `CreateUserParams` /
+/// `UpdateUserParams`.
 pub struct UpdateTrackerParams<'a> {
     pub address: &'a str,
     pub port: u16,

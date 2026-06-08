@@ -1,4 +1,4 @@
-//! TrackerUpdate message handler — replaces a tracker's configuration
+//! TrackerUpdate message handler — patches a tracker's configuration
 //! row and re-spawns its tracker task.
 
 use std::io;
@@ -8,9 +8,9 @@ use tokio::io::AsyncWrite;
 use tracing::{error, info, warn};
 
 use super::{
-    HandlerContext, err_database, err_not_logged_in, err_permission_denied,
-    err_tracker_endpoint_duplicate, err_tracker_name_duplicate, err_tracker_not_found,
-    validate_tracker_inputs,
+    HandlerContext, err_database, err_no_fields_to_update, err_not_logged_in,
+    err_permission_denied, err_tracker_endpoint_duplicate, err_tracker_name_duplicate,
+    err_tracker_not_found, validate_tracker_inputs,
 };
 use crate::constants::{
     HANDLER_TRACKER_UPDATE, LOG_TRACKER_UPDATE_DB_ERROR, LOG_TRACKER_UPDATE_NOT_LOGGED_IN,
@@ -22,15 +22,15 @@ use crate::db::{Permission, TrackerDbError, UpdateTrackerParams};
 /// too-many-arguments limit.
 pub struct TrackerUpdateRequest {
     pub id: i64,
-    pub address: String,
-    pub port: u16,
+    pub address: Option<String>,
+    pub port: Option<u16>,
     pub fingerprint: Option<String>,
     pub password: Option<String>,
-    pub name: String,
-    pub enabled: bool,
+    pub name: Option<String>,
+    pub enabled: Option<bool>,
 }
 
-/// Requires `tracker_edit`. Replaces the row, then asks the manager to
+/// Requires `tracker_edit`. Patches the row, then asks the manager to
 /// respawn the task (or just abort, if the row was disabled).
 pub async fn handle_tracker_update<W>(
     request: TrackerUpdateRequest,
@@ -80,26 +80,63 @@ where
             .await;
     }
 
-    // Empty fingerprint means "clear the pin / use TOFU on next connect" — same as omitted.
-    let password = password.filter(|s| !s.is_empty());
-    let fingerprint = fingerprint.filter(|s| !s.is_empty());
-
-    if let Err(error) = validate_tracker_inputs(
-        ctx.locale,
-        &address,
-        port,
-        fingerprint.as_deref(),
-        password.as_deref(),
-        &name,
-    ) {
-        return ctx.send_message(&reject_update(error)).await;
+    if address.is_none()
+        && port.is_none()
+        && fingerprint.is_none()
+        && password.is_none()
+        && name.is_none()
+        && enabled.is_none()
+    {
+        return ctx
+            .send_message(&reject_update(err_no_fields_to_update(ctx.locale)))
+            .await;
     }
 
-    // Lifecycle lock spans the DB update + manager replace so a concurrent
-    // TrackerRemove can't delete the row between them (orphan task). Guard
-    // drops before the network write.
+    // Empty fingerprint means "clear the pin / use TOFU on next connect".
+    // Empty password means "open tracker".
+    // Omitted fields are merged from the current row below.
+    let fingerprint = fingerprint.map(|value| if value.is_empty() { None } else { Some(value) });
+    let password = password.map(|value| if value.is_empty() { None } else { Some(value) });
+
+    // Lifecycle lock spans the read/merge + DB update + manager replace so a
+    // concurrent TrackerRemove can't delete the row between them (orphan task).
+    // Guard drops before the network write.
     let response: ServerMessage = 'lifecycle: {
         let _guard = ctx.tracker_manager.lock_lifecycle().await;
+
+        let existing = match ctx.db.trackers.get_by_id(id).await {
+            Ok(Some(record)) => record,
+            Ok(None) => break 'lifecycle reject_update(err_tracker_not_found(ctx.locale)),
+            Err(e) => {
+                error!(
+                    user = %requesting_user.username,
+                    ip = %ctx.peer_addr,
+                    id = id,
+                    err = %e,
+                    "{}",
+                    LOG_TRACKER_UPDATE_DB_ERROR
+                );
+                break 'lifecycle reject_update(err_database(ctx.locale));
+            }
+        };
+
+        let address = address.unwrap_or(existing.address);
+        let port = port.unwrap_or(existing.port);
+        let fingerprint = fingerprint.unwrap_or(existing.fingerprint);
+        let password = password.unwrap_or(existing.password);
+        let name = name.unwrap_or(existing.name);
+        let enabled = enabled.unwrap_or(existing.enabled);
+
+        if let Err(error) = validate_tracker_inputs(
+            ctx.locale,
+            &address,
+            port,
+            fingerprint.as_deref(),
+            password.as_deref(),
+            &name,
+        ) {
+            break 'lifecycle reject_update(error);
+        }
 
         let result = ctx
             .db
@@ -188,6 +225,9 @@ mod tests {
         concurrent_handler_context, create_test_context, login_user, read_server_message,
     };
 
+    const TEST_FINGERPRINT: &str = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
+         AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
+
     async fn seed_tracker(test_ctx: &mut crate::handlers::testing::TestContext) -> i64 {
         test_ctx
             .db
@@ -208,12 +248,12 @@ mod tests {
     fn valid_request(id: i64) -> TrackerUpdateRequest {
         TrackerUpdateRequest {
             id,
-            address: "tracker2.example.com".to_string(),
-            port: 7520,
+            address: Some("tracker2.example.com".to_string()),
+            port: Some(7520),
             fingerprint: None,
             password: None,
-            name: "Renamed".to_string(),
-            enabled: true,
+            name: Some("Renamed".to_string()),
+            enabled: Some(true),
         }
     }
 
@@ -257,7 +297,7 @@ mod tests {
         let id = seed_tracker(&mut test_ctx).await;
 
         let request = valid_request(id);
-        let expected_name = request.name.clone();
+        let expected_name = request.name.clone().unwrap();
         let result =
             handle_tracker_update(request, Some(session_id), &mut test_ctx.handler_context()).await;
         assert!(result.is_ok());
@@ -274,6 +314,126 @@ mod tests {
             }
             other => panic!("Expected TrackerUpdateResponse, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn partial_update_preserves_omitted_fields() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::TrackerEdit],
+            false,
+        )
+        .await;
+
+        let tracker = test_ctx
+            .db
+            .trackers
+            .create(CreateTrackerParams {
+                address: "tracker.example.com",
+                port: 7510,
+                fingerprint: Some(TEST_FINGERPRINT),
+                password: Some("secret"),
+                name: "Original",
+                enabled: true,
+            })
+            .await
+            .expect("create");
+
+        let result = handle_tracker_update(
+            TrackerUpdateRequest {
+                id: tracker.id,
+                address: None,
+                port: None,
+                fingerprint: None,
+                password: None,
+                name: Some("Renamed".to_string()),
+                enabled: None,
+            },
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerUpdateResponse { success, .. } => assert!(success),
+            other => panic!("Expected TrackerUpdateResponse, got {other:?}"),
+        }
+
+        let updated = test_ctx
+            .db
+            .trackers
+            .get_by_id(tracker.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.address, "tracker.example.com");
+        assert_eq!(updated.port, 7510);
+        assert_eq!(updated.fingerprint.as_deref(), Some(TEST_FINGERPRINT));
+        assert_eq!(updated.password.as_deref(), Some("secret"));
+        assert_eq!(updated.name, "Renamed");
+        assert!(updated.enabled);
+    }
+
+    #[tokio::test]
+    async fn partial_update_empty_fingerprint_and_password_clear() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::TrackerEdit],
+            false,
+        )
+        .await;
+
+        let tracker = test_ctx
+            .db
+            .trackers
+            .create(CreateTrackerParams {
+                address: "tracker.example.com",
+                port: 7510,
+                fingerprint: Some(TEST_FINGERPRINT),
+                password: Some("secret"),
+                name: "Original",
+                enabled: true,
+            })
+            .await
+            .expect("create");
+
+        let result = handle_tracker_update(
+            TrackerUpdateRequest {
+                id: tracker.id,
+                address: None,
+                port: None,
+                fingerprint: Some(String::new()),
+                password: Some(String::new()),
+                name: None,
+                enabled: None,
+            },
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerUpdateResponse { success, .. } => assert!(success),
+            other => panic!("Expected TrackerUpdateResponse, got {other:?}"),
+        }
+
+        let updated = test_ctx
+            .db
+            .trackers
+            .get_by_id(tracker.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(updated.fingerprint.is_none());
+        assert!(updated.password.is_none());
+        assert_eq!(updated.address, "tracker.example.com");
+        assert_eq!(updated.name, "Original");
     }
 
     #[tokio::test]
@@ -309,6 +469,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn rejects_no_fields() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::TrackerEdit],
+            false,
+        )
+        .await;
+        let id = seed_tracker(&mut test_ctx).await;
+
+        let result = handle_tracker_update(
+            TrackerUpdateRequest {
+                id,
+                address: None,
+                port: None,
+                fingerprint: None,
+                password: None,
+                name: None,
+                enabled: None,
+            },
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        assert!(result.is_ok());
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::TrackerUpdateResponse {
+                success,
+                id: response_id,
+                ..
+            } => {
+                assert!(!success);
+                assert!(response_id.is_none());
+            }
+            other => panic!("Expected TrackerUpdateResponse, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn rejects_bad_address() {
         let mut test_ctx = create_test_context().await;
         let session_id = login_user(
@@ -323,7 +524,7 @@ mod tests {
 
         let result = handle_tracker_update(
             TrackerUpdateRequest {
-                address: "tracker.example.com:7500".to_string(),
+                address: Some("tracker.example.com:7500".to_string()),
                 ..valid_request(id)
             },
             Some(session_id),
@@ -383,12 +584,12 @@ mod tests {
         let result = handle_tracker_update(
             TrackerUpdateRequest {
                 id: second.id,
-                address: "first.example.com".to_string(),
-                port: 7510,
+                address: Some("first.example.com".to_string()),
+                port: Some(7510),
                 fingerprint: None,
                 password: None,
-                name: "Second".to_string(),
-                enabled: true,
+                name: Some("Second".to_string()),
+                enabled: Some(true),
             },
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -447,12 +648,12 @@ mod tests {
         let result = handle_tracker_update(
             TrackerUpdateRequest {
                 id: second.id,
-                address: "second.example.com".to_string(),
-                port: 7510,
+                address: Some("second.example.com".to_string()),
+                port: Some(7510),
                 fingerprint: None,
                 password: None,
-                name: "first".to_string(),
-                enabled: true,
+                name: Some("first".to_string()),
+                enabled: Some(true),
             },
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -512,12 +713,12 @@ mod tests {
         let result = handle_tracker_update(
             TrackerUpdateRequest {
                 id: second.id,
-                address: "second.example.com".to_string(),
-                port: 7510,
+                address: Some("second.example.com".to_string()),
+                port: Some(7510),
                 fingerprint: None,
                 password: None,
-                name: "équipe".to_string(),
-                enabled: true,
+                name: Some("équipe".to_string()),
+                enabled: Some(true),
             },
             Some(session_id),
             &mut test_ctx.handler_context(),
@@ -574,12 +775,12 @@ mod tests {
 
             let update_request = TrackerUpdateRequest {
                 id,
-                address: format!("renamed{i}.example.com"),
-                port: 7511,
+                address: Some(format!("renamed{i}.example.com")),
+                port: Some(7511),
                 fingerprint: None,
                 password: None,
-                name: format!("Renamed {i}"),
-                enabled: true,
+                name: Some(format!("Renamed {i}")),
+                enabled: Some(true),
             };
 
             {
