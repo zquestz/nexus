@@ -642,7 +642,7 @@ mod tests {
                 let news = news.unwrap();
                 assert_eq!(news.body, Some("Edited by editor".to_string()));
                 // Author should still be the original author
-                assert_eq!(news.author, "author");
+                assert_eq!(news.author.as_deref(), Some("author"));
             }
             _ => panic!("Expected NewsUpdateResponse"),
         }

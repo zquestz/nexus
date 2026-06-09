@@ -345,6 +345,7 @@ user-management-group = Группа
 user-management-group-none = Нет
 news-loading = Загрузка новостей…
 news-no-posts = Пока нет публикаций
+news-author-deleted = <Удалённый пользователь>
 transfers-empty = Нет передач
 news-updated = Обновлено
 files-loading = Загрузка файлов…

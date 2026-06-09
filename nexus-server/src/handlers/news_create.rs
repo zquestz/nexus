@@ -309,7 +309,7 @@ mod tests {
                 let news = news.unwrap();
                 assert_eq!(news.body, Some("# Hello\n\nThis is news!".to_string()));
                 assert!(news.image.is_none());
-                assert_eq!(news.author, "alice");
+                assert_eq!(news.author.as_deref(), Some("alice"));
                 assert!(!news.author_is_admin);
                 assert_eq!(news.updated_at, news.created_at);
             }
@@ -530,7 +530,7 @@ mod tests {
             ServerMessage::NewsCreateResponse { success, news, .. } => {
                 assert!(success);
                 let news = news.unwrap();
-                assert_eq!(news.author, "admin");
+                assert_eq!(news.author.as_deref(), Some("admin"));
                 assert!(news.author_is_admin);
             }
             _ => panic!("Expected NewsCreateResponse"),

@@ -344,6 +344,7 @@ user-management-group = Grupo
 user-management-group-none = Nenhum
 news-loading = Carregando notícias…
 news-no-posts = Nenhuma publicação ainda
+news-author-deleted = <Usuário excluído>
 transfers-empty = Sem transferências
 news-updated = Atualizado
 files-loading = Carregando arquivos…

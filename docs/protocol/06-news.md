@@ -477,8 +477,8 @@ Broadcast to all users when news changes.
 | `id`              | integer | Unique news item ID                                                               |
 | `body`            | string  | Markdown content (null if image-only)                                             |
 | `image`           | string  | Image as data URI (null if text-only)                                             |
-| `author`          | string  | Username of the creator, or `<deleted>` if the account was removed                |
-| `author_is_admin` | boolean | Whether the author is currently an admin; false for deleted authors               |
+| `author`          | string  | Username of the creator; omitted if the account was removed                       |
+| `author_is_admin` | boolean | Whether the author is currently an admin; false when `author` is omitted          |
 | `created_at`      | integer | Unix epoch creation timestamp in seconds                                          |
 | `updated_at`      | integer | Unix epoch last update timestamp in seconds; equals `created_at` until first edit |
 
@@ -586,7 +586,7 @@ The broadcast only contains the action and ID, not the full content. Clients mus
 ## Notes
 
 - News items are persistent and survive server restart
-- The author field is set automatically from the session username and becomes `<deleted>` if the account is removed
+- The author field is set automatically from the session username and is omitted if the account is removed
 - `author_is_admin` reflects the author's current admin status when the author still exists
 - Timestamps are Unix epoch seconds
 - `updated_at` equals `created_at` until the first edit

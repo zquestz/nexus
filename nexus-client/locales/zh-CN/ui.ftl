@@ -337,6 +337,7 @@ user-management-group = 群组
 user-management-group-none = 无
 news-loading = 正在加载新闻…
 news-no-posts = 暂无新闻
+news-author-deleted = <已删除用户>
 transfers-empty = 无传输
 news-updated = 已更新
 files-loading = 正在加载文件…

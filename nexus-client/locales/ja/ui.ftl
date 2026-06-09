@@ -337,6 +337,7 @@ user-management-group = グループ
 user-management-group-none = なし
 news-loading = ニュースを読み込み中…
 news-no-posts = まだ投稿がありません
+news-author-deleted = <削除されたユーザー>
 transfers-empty = 転送なし
 news-updated = 更新日時
 files-loading = ファイルを読み込み中…

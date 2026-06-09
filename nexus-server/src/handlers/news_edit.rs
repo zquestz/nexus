@@ -309,7 +309,7 @@ mod tests {
                 assert!(success);
                 assert!(error.is_none());
                 let news = news.unwrap();
-                assert_eq!(news.author, "author");
+                assert_eq!(news.author.as_deref(), Some("author"));
             }
             _ => panic!("Expected NewsEditResponse"),
         }
@@ -404,7 +404,7 @@ mod tests {
                 assert!(success);
                 assert!(error.is_none());
                 let news = news.unwrap();
-                assert_eq!(news.author, "admin1");
+                assert_eq!(news.author.as_deref(), Some("admin1"));
                 assert!(news.author_is_admin);
             }
             _ => panic!("Expected NewsEditResponse"),

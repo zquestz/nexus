@@ -150,8 +150,12 @@ impl NewsManagementState {
 
         let old_folded = fold_name(old);
         for item in items {
-            if fold_name(&item.author) == old_folded {
-                item.author = new.to_string();
+            if item
+                .author
+                .as_deref()
+                .is_some_and(|author| fold_name(author) == old_folded)
+            {
+                item.author = Some(new.to_string());
                 item.author_is_admin = is_admin;
             }
         }
@@ -167,7 +171,7 @@ mod tests {
             id,
             body: Some("body".to_string()),
             image: None,
-            author: author.to_string(),
+            author: Some(author.to_string()),
             author_is_admin,
             created_at: 1_767_225_600,
             updated_at: 1_767_225_600,
@@ -207,9 +211,9 @@ mod tests {
         state.rename_cached_author("alice", "alicia", true);
 
         let items = state.news_items.as_ref().unwrap().as_ref().unwrap();
-        assert_eq!(items[0].author, "alicia");
+        assert_eq!(items[0].author.as_deref(), Some("alicia"));
         assert!(items[0].author_is_admin);
-        assert_eq!(items[1].author, "bob");
+        assert_eq!(items[1].author.as_deref(), Some("bob"));
         assert!(items[1].author_is_admin);
     }
 }

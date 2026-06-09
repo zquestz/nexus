@@ -340,6 +340,7 @@ user-management-group = Groep
 user-management-group-none = Geen
 news-loading = Nieuws laden…
 news-no-posts = Nog geen berichten
+news-author-deleted = <Verwijderde gebruiker>
 transfers-empty = Geen overdrachten
 news-updated = Bijgewerkt
 files-loading = Bestanden laden…

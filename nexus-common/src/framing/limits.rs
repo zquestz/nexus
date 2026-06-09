@@ -979,6 +979,7 @@ const SERVER_INFO_UPDATED_SIZE: usize = json_type_base("ServerInfoUpdated")
 
 /// NewsItem nested object size:
 /// {"id":i64,"body":"...4096...","image":"...700000...","author":"...32...","author_is_admin":false,"created_at":i64,"updated_at":i64}
+/// `author` is optional at runtime, but counted here for the worst case.
 const NEWS_ITEM_SIZE: usize = json_first_i64_field("id")
     + json_string_chars_field("body", MAX_NEWS_BODY_LENGTH)
     + json_string_field("image", MAX_NEWS_IMAGE_DATA_URI_LENGTH)

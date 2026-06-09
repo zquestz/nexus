@@ -358,6 +358,7 @@ user-management-group = Group
 user-management-group-none = None
 news-loading = Loading news…
 news-no-posts = No news posts yet
+news-author-deleted = <Deleted User>
 transfers-empty = No transfers
 news-updated = Updated
 files-loading = Loading files…

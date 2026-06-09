@@ -1439,7 +1439,8 @@ pub struct NewsItem {
     pub body: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<String>,
-    pub author: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub author: Option<String>,
     pub author_is_admin: bool,
     pub created_at: i64,
     pub updated_at: i64,
@@ -2538,6 +2539,25 @@ mod tests {
         };
         let json = serde_json::to_string(&user_info).unwrap();
         assert!(!json.contains("\"avatar\""));
+    }
+
+    #[test]
+    fn test_news_item_author_is_optional() {
+        let item = NewsItem {
+            id: 1,
+            body: Some("body".to_string()),
+            image: None,
+            author: None,
+            author_is_admin: false,
+            created_at: 1_705_314_600,
+            updated_at: 1_705_314_600,
+        };
+        let json = serde_json::to_string(&item).unwrap();
+        assert!(!json.contains("\"author\":"));
+
+        let decoded: NewsItem = serde_json::from_str(&json).unwrap();
+        assert_eq!(decoded.author, None);
+        assert!(!decoded.author_is_admin);
     }
 
     #[test]

@@ -296,11 +296,11 @@ mod tests {
                 assert_eq!(items.len(), 2);
 
                 // Newest first: User post was created second, so it's first
-                assert_eq!(items[0].author, "user");
+                assert_eq!(items[0].author.as_deref(), Some("user"));
                 assert!(!items[0].author_is_admin);
 
                 // Admin post was created first, so it's second
-                assert_eq!(items[1].author, "admin");
+                assert_eq!(items[1].author.as_deref(), Some("admin"));
                 assert!(items[1].author_is_admin);
             }
             _ => panic!("Expected NewsListResponse"),

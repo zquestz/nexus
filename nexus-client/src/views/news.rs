@@ -68,7 +68,10 @@ fn format_timestamp(timestamp: i64) -> String {
 
 /// Check if the current user can edit this news item
 fn can_edit_news_item(news_item: &NewsItem, conn: &ServerConnection) -> bool {
-    let is_own_post = fold_name(&news_item.author) == fold_name(&conn.connection_info.username);
+    let is_own_post = news_item
+        .author
+        .as_deref()
+        .is_some_and(|author| fold_name(author) == fold_name(&conn.connection_info.username));
     let has_edit_perm = conn.has_permission(PERMISSION_NEWS_EDIT);
     let is_admin_post = news_item.author_is_admin;
 
@@ -78,7 +81,10 @@ fn can_edit_news_item(news_item: &NewsItem, conn: &ServerConnection) -> bool {
 
 /// Check if the current user can delete this news item
 fn can_delete_news_item(news_item: &NewsItem, conn: &ServerConnection) -> bool {
-    let is_own_post = fold_name(&news_item.author) == fold_name(&conn.connection_info.username);
+    let is_own_post = news_item
+        .author
+        .as_deref()
+        .is_some_and(|author| fold_name(author) == fold_name(&conn.connection_info.username));
     let has_delete_perm = conn.has_permission(PERMISSION_NEWS_DELETE);
     let is_admin_post = news_item.author_is_admin;
 
@@ -285,10 +291,14 @@ fn build_news_item_row<'a>(
 ) -> Element<'a, Message> {
     let admin_color = chat::admin(theme);
 
+    let author = item
+        .author
+        .clone()
+        .unwrap_or_else(|| t("news-author-deleted"));
     let author_text = if item.author_is_admin {
-        shaped_text(&item.author).size(TEXT_SIZE).color(admin_color)
+        shaped_text(author).size(TEXT_SIZE).color(admin_color)
     } else {
-        shaped_text(&item.author).size(TEXT_SIZE)
+        shaped_text(author).size(TEXT_SIZE)
     };
 
     // Action buttons (right-aligned)

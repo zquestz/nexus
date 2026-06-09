@@ -46,8 +46,8 @@ Persistent discussion boards for longer-form server/community threads.
 - `banner`: optional image data URI.
 - `creator_id`: server-owned user ID of the account that created the board, or
   `null` if that account has been deleted.
-- `creator`: display username for client presentation, or `<deleted>` when
-  `creator_id` is `null`. This sentinel must not be a valid username.
+- `creator`: display username for client presentation; omitted when `creator_id`
+  is `null` so clients can render a localized deleted-user label.
 - `enabled`: client-supplied on create; editable later.
 - `created_at`: Unix epoch seconds, signed integer.
 - `updated_at`: Unix epoch seconds, signed integer.

@@ -11,7 +11,7 @@ pub struct NewsRecord {
     pub body: Option<String>,
     pub image: Option<String>,
     pub author_id: Option<i64>,
-    pub author_username: String,
+    pub author_username: Option<String>,
     pub author_is_admin: bool,
     pub created_at: i64,
     pub updated_at: i64,
@@ -22,7 +22,7 @@ type NewsRow = (
     Option<String>,
     Option<String>,
     Option<i64>,
-    String,
+    Option<String>,
     bool,
     i64,
     i64,
@@ -170,7 +170,7 @@ mod tests {
 
         assert_eq!(news.body, Some("# Hello\n\nThis is news!".to_string()));
         assert!(news.image.is_none());
-        assert_eq!(news.author_username, "alice");
+        assert_eq!(news.author_username.as_deref(), Some("alice"));
         assert!(!news.author_is_admin);
         assert_eq!(news.updated_at, news.created_at);
     }
@@ -203,7 +203,7 @@ mod tests {
 
         assert!(news.body.is_none());
         assert_eq!(news.image, Some("data:image/png;base64,abc123".to_string()));
-        assert_eq!(news.author_username, "bob");
+        assert_eq!(news.author_username.as_deref(), Some("bob"));
         assert!(news.author_is_admin);
     }
 
@@ -448,7 +448,7 @@ mod tests {
 
         let fetched = news_db.get_news_by_id(news.id).await.unwrap().unwrap();
         assert_eq!(fetched.author_id, None);
-        assert_eq!(fetched.author_username, "<deleted>");
+        assert_eq!(fetched.author_username, None);
         assert!(!fetched.author_is_admin);
     }
 

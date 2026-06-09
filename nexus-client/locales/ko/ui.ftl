@@ -337,6 +337,7 @@ user-management-group = 그룹
 user-management-group-none = 없음
 news-loading = 뉴스 로딩 중…
 news-no-posts = 아직 게시물이 없습니다
+news-author-deleted = <삭제된 사용자>
 transfers-empty = 전송 없음
 news-updated = 수정됨
 files-loading = 파일 로딩 중…

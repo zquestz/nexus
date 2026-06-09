@@ -160,7 +160,7 @@ pub const SQL_SELECT_ALL_NEWS: &str = "
         n.body,
         n.image,
         n.author_id,
-        COALESCE(u.username, '<deleted>') as author_username,
+        u.username as author_username,
         COALESCE(u.is_admin, 0) as author_is_admin,
         n.created_at,
         n.updated_at
@@ -175,7 +175,7 @@ pub const SQL_SELECT_NEWS_BY_ID: &str = "
         n.body,
         n.image,
         n.author_id,
-        COALESCE(u.username, '<deleted>') as author_username,
+        u.username as author_username,
         COALESCE(u.is_admin, 0) as author_is_admin,
         n.created_at,
         n.updated_at

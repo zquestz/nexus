@@ -216,7 +216,7 @@ mod tests {
                 assert_eq!(news.id, created.id);
                 assert_eq!(news.body, Some("Test news post".to_string()));
                 assert_eq!(news.image, Some("data:image/png;base64,abc".to_string()));
-                assert_eq!(news.author, "alice");
+                assert_eq!(news.author.as_deref(), Some("alice"));
                 assert!(!news.author_is_admin);
                 assert_eq!(news.updated_at, news.created_at);
             }
@@ -258,7 +258,7 @@ mod tests {
             ServerMessage::NewsShowResponse { success, news, .. } => {
                 assert!(success);
                 let news = news.unwrap();
-                assert_eq!(news.author, "admin");
+                assert_eq!(news.author.as_deref(), Some("admin"));
                 assert!(news.author_is_admin);
             }
             _ => panic!("Expected NewsShowResponse"),

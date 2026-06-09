@@ -693,7 +693,7 @@ mod tests {
             id,
             body: Some("body".to_string()),
             image: None,
-            author: author.to_string(),
+            author: Some(author.to_string()),
             author_is_admin,
             created_at: 1_767_225_600,
             updated_at: 1_767_225_600,
@@ -748,9 +748,9 @@ mod tests {
             .unwrap()
             .as_ref()
             .unwrap();
-        assert_eq!(items[0].author, "alicia");
+        assert_eq!(items[0].author.as_deref(), Some("alicia"));
         assert!(items[0].author_is_admin);
-        assert_eq!(items[1].author, "bob");
+        assert_eq!(items[1].author.as_deref(), Some("bob"));
         assert!(items[1].author_is_admin);
     }
 }
