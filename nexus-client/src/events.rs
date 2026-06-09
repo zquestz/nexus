@@ -37,6 +37,8 @@ use crate::types::ActivePanel;
 
 /// Maximum length for file paths in notifications before truncating
 const MAX_PATH_DISPLAY_LENGTH: usize = 50;
+/// Maximum length for news previews in notifications before truncating
+const MAX_NEWS_PREVIEW_LENGTH: usize = 100;
 
 // =============================================================================
 // Event Context
@@ -555,15 +557,10 @@ fn build_news_post_notification(
                 t("notification-news-post")
             };
             // Use message field for news body preview (truncated)
-            let body = context.message.as_ref().map(|msg| {
-                // Take first line or truncate to reasonable length
-                let first_line = msg.lines().next().unwrap_or(msg);
-                if first_line.len() > 100 {
-                    format!("{}…", &first_line[..99])
-                } else {
-                    first_line.to_string()
-                }
-            });
+            let body = context
+                .message
+                .as_ref()
+                .map(|msg| truncate_news_preview(msg));
             (summary, body)
         }
     }
@@ -669,11 +666,40 @@ fn build_transfer_failed_notification(
 
 /// Truncate a file path for display in notifications
 fn truncate_path(path: &str) -> String {
-    if path.len() <= MAX_PATH_DISPLAY_LENGTH {
-        path.to_string()
+    truncate_start(path, MAX_PATH_DISPLAY_LENGTH)
+}
+
+/// Truncate a news body preview to its first display line.
+fn truncate_news_preview(message: &str) -> String {
+    let first_line = message.lines().next().unwrap_or(message);
+    truncate_end(first_line, MAX_NEWS_PREVIEW_LENGTH)
+}
+
+/// Truncate from the end, keeping the beginning visible.
+fn truncate_end(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        value.to_string()
     } else {
-        // Show "...last_part" to keep the filename visible
-        format!("...{}", &path[path.len() - MAX_PATH_DISPLAY_LENGTH + 3..])
+        let truncated: String = value.chars().take(max_chars.saturating_sub(1)).collect();
+        format!("{truncated}…")
+    }
+}
+
+/// Truncate from the beginning, keeping the filename visible.
+fn truncate_start(value: &str, max_chars: usize) -> String {
+    if value.chars().count() <= max_chars {
+        value.to_string()
+    } else {
+        let keep = max_chars.saturating_sub(1);
+        let suffix: String = value
+            .chars()
+            .rev()
+            .take(keep)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        format!("…{suffix}")
     }
 }
 
@@ -953,5 +979,25 @@ mod tests {
         assert!(context.username.is_none());
         assert!(context.message.is_none());
         assert!(context.server_name.is_none());
+    }
+
+    #[test]
+    fn test_truncate_path_handles_multibyte_names() {
+        let path = format!("{}download.iso", "資料".repeat(30));
+        let truncated = truncate_path(&path);
+
+        assert_eq!(truncated.chars().count(), MAX_PATH_DISPLAY_LENGTH);
+        assert!(truncated.starts_with('…'));
+        assert!(truncated.ends_with("download.iso"));
+    }
+
+    #[test]
+    fn test_truncate_news_preview_handles_multibyte_text() {
+        let message = format!("{} second line\nignored", "ニュース".repeat(40));
+        let truncated = truncate_news_preview(&message);
+
+        assert_eq!(truncated.chars().count(), MAX_NEWS_PREVIEW_LENGTH);
+        assert!(truncated.ends_with('…'));
+        assert!(!truncated.contains('\n'));
     }
 }

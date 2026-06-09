@@ -1708,6 +1708,22 @@ impl std::fmt::Debug for TrackerInfo {
     }
 }
 
+fn debug_prefix(value: &str, max_bytes: usize) -> &str {
+    if value.len() <= max_bytes {
+        return value;
+    }
+
+    let mut end = 0;
+    for (idx, ch) in value.char_indices() {
+        let next = idx + ch.len_utf8();
+        if next > max_bytes {
+            break;
+        }
+        end = next;
+    }
+    &value[..end]
+}
+
 impl std::fmt::Debug for ClientMessage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -1911,7 +1927,7 @@ impl std::fmt::Debug for ClientMessage {
                     "avatar",
                     &avatar.as_ref().map(|a| {
                         if a.len() > 50 {
-                            format!("{}...<{} bytes>", &a[..50], a.len())
+                            format!("{}...<{} bytes>", debug_prefix(a, 50), a.len())
                         } else {
                             a.clone()
                         }
@@ -1926,7 +1942,7 @@ impl std::fmt::Debug for ClientMessage {
                     if img.len() > 100 {
                         s.field(
                             "image",
-                            &format!("{}... ({} bytes)", &img[..100], img.len()),
+                            &format!("{}... ({} bytes)", debug_prefix(img, 100), img.len()),
                         );
                     } else {
                         s.field("image", &Some(img));
@@ -1949,7 +1965,7 @@ impl std::fmt::Debug for ClientMessage {
                     if img.len() > 100 {
                         s.field(
                             "image",
-                            &format!("{}... ({} bytes)", &img[..100], img.len()),
+                            &format!("{}... ({} bytes)", debug_prefix(img, 100), img.len()),
                         );
                     } else {
                         s.field("image", &Some(img));
@@ -1994,7 +2010,7 @@ impl std::fmt::Debug for ClientMessage {
                     if img.len() > 100 {
                         s.field(
                             "image",
-                            &format!("{}... ({} bytes)", &img[..100], img.len()),
+                            &format!("{}... ({} bytes)", debug_prefix(img, 100), img.len()),
                         );
                     } else {
                         s.field("image", &Some(img));
@@ -2567,6 +2583,36 @@ mod tests {
         assert!(debug_output.contains("..."));
         assert!(debug_output.contains("bytes"));
         assert!(!debug_output.contains(&large_avatar));
+    }
+
+    #[test]
+    fn test_debug_login_truncates_multibyte_avatar_safely() {
+        let large_avatar = format!("data:image/png;base64,{}", "資料".repeat(100));
+        let msg = ClientMessage::Login {
+            username: "alice".to_string(),
+            password: "secret".to_string(),
+            features: vec![],
+            locale: "en".to_string(),
+            avatar: Some(large_avatar.clone()),
+            nickname: None,
+        };
+        let debug_output = format!("{:?}", msg);
+        assert!(debug_output.contains("..."));
+        assert!(debug_output.contains("bytes"));
+        assert!(!debug_output.contains(&large_avatar));
+    }
+
+    #[test]
+    fn test_debug_news_image_truncates_multibyte_payload_safely() {
+        let image = "資料".repeat(100);
+        let msg = ClientMessage::NewsCreate {
+            body: Some("news".to_string()),
+            image: Some(image.clone()),
+        };
+        let debug_output = format!("{:?}", msg);
+        assert!(debug_output.contains("..."));
+        assert!(debug_output.contains("bytes"));
+        assert!(!debug_output.contains(&image));
     }
 
     #[test]
