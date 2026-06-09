@@ -15,7 +15,7 @@ use nexus_common::validators::{
 };
 
 use crate::constants::{
-    HANDLER_USER_UPDATE, LOG_USER_UPDATE_ADMIN, LOG_USER_UPDATE_DB_ERROR,
+    FEATURE_CHAT, HANDLER_USER_UPDATE, LOG_USER_UPDATE_ADMIN, LOG_USER_UPDATE_DB_ERROR,
     LOG_USER_UPDATE_DB_ERROR_DUPLICATE_CHECK, LOG_USER_UPDATE_DB_ERROR_GROUP,
     LOG_USER_UPDATE_DB_ERROR_GROUP_PERMS, LOG_USER_UPDATE_DB_ERROR_LOOKUP,
     LOG_USER_UPDATE_DB_ERROR_PERMISSIONS, LOG_USER_UPDATE_DB_ERROR_TARGET,
@@ -1228,15 +1228,6 @@ where
                             .map(|p| p.as_str().to_string())
                             .collect();
 
-                        let has_file_reindex = updated_account.is_admin
-                            || final_permissions
-                                .permissions
-                                .contains(&Permission::FileReindex);
-                        let has_chat_join = updated_account.is_admin
-                            || final_permissions
-                                .permissions
-                                .contains(&Permission::ChatJoin);
-
                         let config = ctx.db.config.get_all().await;
 
                         let info_values = ServerInfoValues {
@@ -1259,25 +1250,33 @@ where
                             scheduler_chunk_size: config.scheduler_chunk_size,
                         };
 
-                        let info_options = ServerInfoOptions {
-                            is_admin: updated_account.is_admin,
-                            has_file_reindex,
-                            has_chat_join,
-                            include_image: false,
-                        };
-
-                        let server_info = Some(build_server_info(&info_values, &info_options));
-
-                        let permissions_update = ServerMessage::PermissionsUpdated {
-                            is_admin: updated_account.is_admin,
-                            permissions: permission_strings,
-                            server_info,
-                            group_id: updated_group_id,
-                            group_name: updated_group_name.clone(),
-                        };
-
                         ctx.user_manager
-                            .broadcast_to_user_id(updated_account.id, &permissions_update)
+                            .broadcast_to_user_id_per_session(
+                                updated_account.id,
+                                |target_session| {
+                                    let has_file_reindex = updated_account.is_admin
+                                        || target_session.has_permission(Permission::FileReindex);
+                                    let has_chat_join = target_session.has_feature(FEATURE_CHAT)
+                                        && target_session.has_permission(Permission::ChatJoin);
+                                    let info_options = ServerInfoOptions {
+                                        is_admin: updated_account.is_admin,
+                                        has_file_reindex,
+                                        has_chat_join,
+                                        include_image: false,
+                                    };
+
+                                    ServerMessage::PermissionsUpdated {
+                                        is_admin: updated_account.is_admin,
+                                        permissions: permission_strings.clone(),
+                                        server_info: Some(build_server_info(
+                                            &info_values,
+                                            &info_options,
+                                        )),
+                                        group_id: updated_group_id,
+                                        group_name: updated_group_name.clone(),
+                                    }
+                                },
+                            )
                             .await;
 
                         // Admin-aware: admins hold VoiceListen via the bypass, so a

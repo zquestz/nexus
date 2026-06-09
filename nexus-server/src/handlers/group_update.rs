@@ -407,13 +407,15 @@ where
                         Vec::new()
                     };
 
-                // (user_id, payload, voice_talk_cleanup_needed,
+                // (user_id, permissions, voice_talk_cleanup_needed,
                 // voice_cleanup_needed) — keyed on the immutable user_id so a
-                // concurrent rename can't drop sessions.
-                let mut perm_updates: Vec<(i64, ServerMessage, bool, bool)> = Vec::new();
+                // concurrent rename can't drop sessions. ServerInfo is built per
+                // receiving session because features are per connection.
+                let mut perm_updates: Vec<(i64, Vec<String>, bool, bool)> = Vec::new();
+                let mut permissions_info_values = None;
                 if permissions_changed {
                     let config = ctx.db.config.get_all().await;
-                    let info_values = ServerInfoValues {
+                    permissions_info_values = Some(ServerInfoValues {
                         name: config.server_name,
                         description: config.server_description,
                         public_address: config.public_address,
@@ -431,7 +433,7 @@ where
                         chat_rate_limit: config.chat_rate_limit,
                         max_outbound_rate: config.max_outbound_rate,
                         scheduler_chunk_size: config.scheduler_chunk_size,
-                    };
+                    });
 
                     let mut seen_user_ids: HashSet<i64> = HashSet::new();
                     for session in &member_sessions {
@@ -463,24 +465,6 @@ where
                             .iter()
                             .map(|p| p.as_str().to_string())
                             .collect();
-                        let has_file_reindex =
-                            new_effective.permissions.contains(&Permission::FileReindex);
-                        let has_chat_join =
-                            new_effective.permissions.contains(&Permission::ChatJoin);
-                        let info_options = ServerInfoOptions {
-                            is_admin: false,
-                            has_file_reindex,
-                            has_chat_join,
-                            include_image: false,
-                        };
-                        let server_info = Some(build_server_info(&info_values, &info_options));
-                        let permissions_update = ServerMessage::PermissionsUpdated {
-                            is_admin: false,
-                            permissions: permission_strings,
-                            server_info,
-                            group_id: Some(id),
-                            group_name: Some(updated_group.name.clone()),
-                        };
 
                         let had_voice_listen = old_session_perms.contains(&Permission::VoiceListen);
                         let has_voice_listen =
@@ -492,7 +476,7 @@ where
 
                         perm_updates.push((
                             session.user_id,
-                            permissions_update,
+                            permission_strings,
                             voice_talk_cleanup_needed,
                             voice_cleanup_needed,
                         ));
@@ -511,14 +495,37 @@ where
 
                 for (
                     user_id,
-                    permissions_update,
+                    permission_strings,
                     voice_talk_cleanup_needed,
                     voice_cleanup_needed,
                 ) in perm_updates
                 {
-                    ctx.user_manager
-                        .broadcast_to_user_id(user_id, &permissions_update)
-                        .await;
+                    if let Some(ref info_values) = permissions_info_values {
+                        ctx.user_manager
+                            .broadcast_to_user_id_per_session(user_id, |target_session| {
+                                let has_file_reindex =
+                                    target_session.has_permission(Permission::FileReindex);
+                                let has_chat_join = target_session.has_feature(FEATURE_CHAT)
+                                    && target_session.has_permission(Permission::ChatJoin);
+                                let info_options = ServerInfoOptions {
+                                    is_admin: false,
+                                    has_file_reindex,
+                                    has_chat_join,
+                                    include_image: false,
+                                };
+                                ServerMessage::PermissionsUpdated {
+                                    is_admin: false,
+                                    permissions: permission_strings.clone(),
+                                    server_info: Some(build_server_info(
+                                        info_values,
+                                        &info_options,
+                                    )),
+                                    group_id: Some(id),
+                                    group_name: Some(updated_group.name.clone()),
+                                }
+                            })
+                            .await;
+                    }
                     if voice_talk_cleanup_needed {
                         for session in ctx.user_manager.get_sessions_by_user_id(user_id).await {
                             ctx.voice_control.speaking_stopped(session.session_id);

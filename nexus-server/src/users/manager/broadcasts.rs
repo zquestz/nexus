@@ -6,7 +6,9 @@ use nexus_common::protocol::ServerMessage;
 use crate::handlers::{ServerInfoOptions, ServerInfoValues, build_server_info};
 
 use super::UserManager;
+use crate::constants::FEATURE_CHAT;
 use crate::db::Permission;
+use crate::users::user::UserSession;
 
 impl UserManager {
     /// Send a message to a specific session. Returns false if the session
@@ -76,16 +78,23 @@ impl UserManager {
         self.remove_disconnected(disconnected).await;
     }
 
-    /// Broadcast to every session of `user_id`. Keyed on the immutable PK so a
-    /// concurrent rename can't make the lookup miss sessions.
-    pub async fn broadcast_to_user_id(&self, user_id: i64, message: &ServerMessage) {
+    /// Broadcast a per-session message to every session of `user_id`. Use this
+    /// when a shared payload contains feature-gated fields, because features are
+    /// negotiated per connection.
+    pub async fn broadcast_to_user_id_per_session<F>(&self, user_id: i64, mut build_message: F)
+    where
+        F: FnMut(&UserSession) -> ServerMessage,
+    {
         let mut disconnected = Vec::new();
 
         {
             let users = self.users.read().await;
             for user in users.values() {
-                if user.user_id == user_id && user.tx.send_message(message.clone(), None).is_err() {
-                    disconnected.push(user.session_id);
+                if user.user_id == user_id {
+                    let message = build_message(user);
+                    if user.tx.send_message(message, None).is_err() {
+                        disconnected.push(user.session_id);
+                    }
                 }
             }
         }
@@ -178,7 +187,7 @@ impl UserManager {
     }
 
     /// Broadcast ServerInfoUpdated to all users. Everyone gets full server info;
-    /// file_reindex_interval is included only for admins / file_reindex holders.
+    /// gated fields are filtered per receiving session.
     pub async fn broadcast_server_info_updated(&self, values: ServerInfoValues) {
         let mut disconnected = Vec::new();
 
@@ -188,7 +197,8 @@ impl UserManager {
                 let options = ServerInfoOptions {
                     is_admin: user.is_admin,
                     has_file_reindex: user.has_permission(Permission::FileReindex),
-                    has_chat_join: user.has_permission(Permission::ChatJoin),
+                    has_chat_join: user.has_feature(FEATURE_CHAT)
+                        && user.has_permission(Permission::ChatJoin),
                     include_image: true,
                 };
 
@@ -238,10 +248,33 @@ mod tests {
         }
     }
 
+    fn server_info_values() -> ServerInfoValues {
+        ServerInfoValues {
+            name: "Nexus".to_string(),
+            description: "Test server".to_string(),
+            public_address: String::new(),
+            version: "0.9.0".to_string(),
+            image: String::new(),
+            max_connections_per_ip: 0,
+            max_transfers_per_ip: 0,
+            transfer_port: 7501,
+            transfer_websocket_port: None,
+            file_reindex_interval: 0,
+            persistent_channels: "#general".to_string(),
+            auto_join_channels: "#general".to_string(),
+            min_password_strength: 1,
+            chat_burst_limit: 0,
+            chat_rate_limit: 0,
+            max_outbound_rate: 0,
+            scheduler_chunk_size: 65_536,
+        }
+    }
+
     /// Pins the PK-keyed dispatch contract the rename-race fix depends on:
-    /// `broadcast_to_user_id` hits every session of the target user_id only.
+    /// `broadcast_to_user_id_per_session` hits every session of the target
+    /// user_id only.
     #[tokio::test]
-    async fn test_broadcast_to_user_id_hits_all_sessions_of_one_user_only() {
+    async fn test_broadcast_to_user_id_per_session_hits_all_sessions_of_one_user_only() {
         let manager = UserManager::new();
 
         // user_id=1 has two sessions (fixture-only multi-session fan-out, not a
@@ -262,8 +295,9 @@ mod tests {
             .await
             .unwrap();
 
-        let payload = ServerMessage::Pong;
-        manager.broadcast_to_user_id(1, &payload).await;
+        manager
+            .broadcast_to_user_id_per_session(1, |_| ServerMessage::Pong)
+            .await;
 
         assert!(rx_a1.try_recv().is_ok(), "alice's first session received");
         assert!(rx_a2.try_recv().is_ok(), "alice's second session received");
@@ -271,5 +305,50 @@ mod tests {
             rx_b.try_recv().is_err(),
             "bob (different user_id) must not receive"
         );
+    }
+
+    #[tokio::test]
+    async fn test_server_info_updated_auto_join_requires_chat_feature() {
+        let manager = UserManager::new();
+
+        let (tx_chatless, mut rx_chatless) = ConnectionWriter::channel();
+        let (tx_chat, mut rx_chat) = ConnectionWriter::channel();
+
+        let mut chatless = session_params(1, "chatless", tx_chatless);
+        chatless.permissions.insert(Permission::ChatJoin);
+
+        let mut chat = session_params(2, "chat", tx_chat);
+        chat.permissions.insert(Permission::ChatJoin);
+        chat.features.push(FEATURE_CHAT.to_string());
+
+        manager.add_user(chatless).await.unwrap();
+        manager.add_user(chat).await.unwrap();
+
+        manager
+            .broadcast_server_info_updated(server_info_values())
+            .await;
+
+        let (chatless_msg, _) = rx_chatless
+            .try_recv()
+            .expect("chatless session should receive server info")
+            .expect_message();
+        let (chat_msg, _) = rx_chat
+            .try_recv()
+            .expect("chat session should receive server info")
+            .expect_message();
+
+        match chatless_msg {
+            ServerMessage::ServerInfoUpdated { server_info } => {
+                assert_eq!(server_info.auto_join_channels, None);
+            }
+            other => panic!("Expected ServerInfoUpdated, got {other:?}"),
+        }
+
+        match chat_msg {
+            ServerMessage::ServerInfoUpdated { server_info } => {
+                assert_eq!(server_info.auto_join_channels, Some("#general".to_string()));
+            }
+            other => panic!("Expected ServerInfoUpdated, got {other:?}"),
+        }
     }
 }

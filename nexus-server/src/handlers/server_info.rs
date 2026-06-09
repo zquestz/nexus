@@ -31,6 +31,8 @@ pub struct ServerInfoValues {
 pub struct ServerInfoOptions {
     pub is_admin: bool,
     pub has_file_reindex: bool,
+    /// True only when the viewer may see chat auto-join channels. Non-admins
+    /// need both the chat feature and `ChatJoin`; admins bypass this gate.
     pub has_chat_join: bool,
     /// Server image is omitted for PermissionsUpdated.
     pub include_image: bool,
@@ -40,7 +42,7 @@ pub struct ServerInfoOptions {
 /// are visible to all; gated fields:
 /// - `file_reindex_interval`: admin or FileReindex
 /// - `persistent_channels`: admin only
-/// - `auto_join_channels`: admin or ChatJoin
+/// - `auto_join_channels`: admin or chat feature + ChatJoin
 /// - `scheduler_chunk_size`: admin only (internal tuning knob)
 pub fn build_server_info(values: &ServerInfoValues, options: &ServerInfoOptions) -> ServerInfo {
     let file_reindex_interval = if options.is_admin || options.has_file_reindex {
