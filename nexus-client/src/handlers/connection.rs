@@ -691,8 +691,8 @@ impl NexusApp {
                     );
                 }
 
-                // Check permission before sending
-                let has_permission = match &conn.active_chat_tab {
+                // Check feature and permission before sending.
+                let send_gate_error = match &conn.active_chat_tab {
                     // Handled by the early return above; defensive fallback
                     // re-emits the same error rather than panicking, in case
                     // a future refactor moves the guard.
@@ -702,17 +702,23 @@ impl NexusApp {
                             t_args("err-console-no-send", &[("join", "join"), ("msg", "msg")]),
                         );
                     }
-                    ChatTab::Channel(_) => {
-                        conn.has_feature(FEATURE_CHAT) && conn.has_permission(PERMISSION_CHAT_SEND)
+                    ChatTab::Channel(_) if !conn.has_feature(FEATURE_CHAT) => {
+                        Some(t("err-chat-feature-not-enabled"))
                     }
-                    ChatTab::UserMessage(_) => {
-                        conn.has_feature(FEATURE_CHAT)
-                            && conn.has_permission(PERMISSION_USER_MESSAGE)
+                    ChatTab::Channel(_) if !conn.has_permission(PERMISSION_CHAT_SEND) => {
+                        Some(t("err-no-chat-permission"))
                     }
+                    ChatTab::UserMessage(_) if !conn.has_feature(FEATURE_CHAT) => {
+                        Some(t("err-chat-feature-not-enabled"))
+                    }
+                    ChatTab::UserMessage(_) if !conn.has_permission(PERMISSION_USER_MESSAGE) => {
+                        Some(t("err-no-chat-permission"))
+                    }
+                    ChatTab::Channel(_) | ChatTab::UserMessage(_) => None,
                 };
 
-                if !has_permission {
-                    return self.add_chat_error(conn_id, t("err-no-chat-permission"));
+                if let Some(error) = send_gate_error {
+                    return self.add_chat_error(conn_id, error);
                 }
 
                 // Validate message content using shared validators
@@ -963,6 +969,21 @@ mod tests {
         }
     }
 
+    fn setup_user_message_send_app(features: Vec<String>, permissions: Vec<String>) -> NexusApp {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, _rx) = test_connection_with_receiver(1);
+        conn.features = features;
+        conn.permissions = permissions;
+        conn.message_input = "hello".to_string();
+        let key = conn.resolve_user_message_tab("alice");
+        conn.active_chat_tab = ChatTab::UserMessage(key);
+        app.connections.insert(1, conn);
+        app
+    }
+
     #[test]
     fn send_chat_leave_once_blocks_duplicate_while_pending() {
         let mut app = NexusApp::default();
@@ -1038,5 +1059,36 @@ mod tests {
 
         assert!(app.connections[&1].voice_session.is_none());
         assert_eq!(app.active_voice_connection, None);
+    }
+
+    #[test]
+    fn send_user_message_without_chat_feature_reports_feature_error() {
+        let mut app =
+            setup_user_message_send_app(Vec::new(), vec![PERMISSION_USER_MESSAGE.to_string()]);
+
+        let _ = app.handle_send_message_pressed();
+
+        let conn = &app.connections[&1];
+        let messages = conn
+            .user_messages_for("alice")
+            .expect("DM tab should still exist");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].message, t("err-chat-feature-not-enabled"));
+        assert_eq!(conn.message_input, "hello");
+    }
+
+    #[test]
+    fn send_user_message_without_permission_reports_permission_error() {
+        let mut app = setup_user_message_send_app(vec![FEATURE_CHAT.to_string()], Vec::new());
+
+        let _ = app.handle_send_message_pressed();
+
+        let conn = &app.connections[&1];
+        let messages = conn
+            .user_messages_for("alice")
+            .expect("DM tab should still exist");
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].message, t("err-no-chat-permission"));
+        assert_eq!(conn.message_input, "hello");
     }
 }
