@@ -59,6 +59,8 @@ where
             ))));
         }
 
+        let reason = reason.filter(|r| !r.trim().is_empty());
+
         let validated = match validate_ban_create_inputs(&target, &duration, &reason, ctx.locale) {
             Ok(validated) => validated,
             Err(error) => break 'locked Outcome::Send(Box::new(reject_ban_create(error))),
@@ -507,6 +509,40 @@ mod tests {
                 .await
                 .unwrap()
         );
+    }
+
+    #[tokio::test]
+    async fn test_bancreate_whitespace_reason_stores_none() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let result = handle_ban_create(
+            "192.168.1.100".to_string(),
+            None,
+            Some("   ".to_string()),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        if let ServerMessage::BanCreateResponse { success, .. } = response {
+            assert!(success);
+        } else {
+            panic!("Expected BanCreateResponse, got: {:?}", response);
+        }
+
+        let ban = test_ctx
+            .db
+            .bans
+            .get_ban_by_ip("192.168.1.100")
+            .await
+            .unwrap()
+            .expect("Ban should exist");
+        assert!(ban.reason.is_none());
     }
 
     #[tokio::test]

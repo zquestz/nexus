@@ -413,26 +413,7 @@ Preview files before downloading.
 
 - Connection Monitor integration: surface per-user current outbound rate and backlog in the admin UI.
 
-### Protocol Consistency Cleanup
-
-Protocol 0.9.0 is the right place for intentional consistency-breaking
-cleanup. Keep these out of 0.8.x unless the protocol is deliberately bumped.
-
-**Protocol message audit:**
-
-- Final pass over every protocol message shape for field naming,
-  required/optional behavior, response shape, and consistency with related
-  messages.
-- Confirm remaining update-style messages either already follow the 0.9.0
-  partial-update convention or have a documented reason not to.
-- Standardize clearing semantics for optional string/image fields where the
-  field supports clearing: empty string clears, non-empty string replaces,
-  omitted field leaves unchanged.
-- Avoid `null`-as-clear semantics in new protocol shapes.
-- Audit create/update form trimming behavior and decide where protocol/server
-  semantics should trim, preserve exact input, or reject surrounding whitespace.
-
-**Feature negotiation and unsolicited-message gating:**
+### Feature-Gated Future Broadcasts
 
 - Keep direct command responses tied to the command; feature gating is for
   unsolicited broadcasts/events.

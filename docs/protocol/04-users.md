@@ -535,8 +535,8 @@ Set the user as away, optionally with a status message.
 | `message` | string | No       | Optional status message (max 128 characters) |
 
 **Field validation.** `message`: ≤128 characters, no newlines, no
-other control characters. Empty/null is allowed (away without a
-message). Validation failures send
+other control characters. Empty, whitespace-only, or null is allowed
+(away without a message). Validation failures send
 `UserAwayResponse { success: false, error }` with an error message.
 
 **Example (away with message):**
@@ -592,7 +592,8 @@ Set or clear a status message without changing away state.
 | `status` | string | No       | Status message (null to clear, max 128 characters) |
 
 **Field validation.** `status`: ≤128 characters, no newlines, no
-other control characters. Empty/null is allowed (clears the status).
+other control characters. Empty, whitespace-only, or null is allowed
+(clears the status).
 Validation failures send `UserStatusResponse { success: false, error }`
 with an error message.
 

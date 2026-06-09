@@ -634,12 +634,12 @@ Disconnect a user from the server.
 - `nickname`: non-empty, ≤32 characters; Unicode letters or ASCII
   graphic characters only; rejects whitespace, control characters,
   and the path-sensitive set `/ \ : . < > " | ? * #`.
-- `reason` (when present): ≤256 characters, no control characters
-  (newlines, tabs, null bytes, etc. all rejected — the reason is
-  rendered as a single-line "kicked by X with reason: …" message
-  shown to the kicked user). Empty / omitted is allowed. Same limit
-  as ban/trust reason fields for consistency across moderation
-  messages.
+- `reason` (when present and not empty after trim): ≤256 characters,
+  no control characters (newlines, tabs, null bytes, etc. all
+  rejected — the reason is rendered as a single-line "kicked by X with
+  reason: …" message shown to the kicked user). Empty,
+  whitespace-only, or omitted means no reason. Same limit as ban/trust
+  reason fields for consistency across moderation messages.
 
 Validation failures send `UserKickResponse { success: false, error }`
 with an error message.

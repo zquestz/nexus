@@ -71,6 +71,8 @@ where
         return ctx.send_message(&response).await;
     }
 
+    let reason = reason.filter(|r| !r.trim().is_empty());
+
     // Reason is formatted into a single-line kick message, so reject
     // control characters (newlines/tabs) and cap at MAX_KICK_REASON_LENGTH.
     if let Some(ref r) = reason
@@ -234,9 +236,10 @@ mod tests {
     use crate::db;
     use crate::db::Permission;
     use crate::handlers::testing::{
-        DEFAULT_TEST_LOCALE, create_test_context, get_cached_password_hash, login_shared_user,
-        login_user, read_login_response, read_server_message,
+        DEFAULT_TEST_LOCALE, create_test_context, get_cached_password_hash, login_observer_user,
+        login_shared_user, login_user, read_login_response, read_server_message,
     };
+    use tokio::time::{Duration, timeout};
 
     #[tokio::test]
     async fn test_userkick_requires_login() {
@@ -330,6 +333,60 @@ mod tests {
             assert_eq!(nickname, Some("bob".to_string()));
         } else {
             panic!("Expected UserKickResponse, got: {:?}", response);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userkick_whitespace_reason_treated_as_no_reason() {
+        let mut test_ctx = create_test_context().await;
+
+        let kicker_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::UserKick],
+            false,
+        )
+        .await;
+        let (_target_id, mut target_rx) =
+            login_observer_user(&mut test_ctx, "bob", "password", &[], vec![]).await;
+
+        let result = handle_user_kick(
+            "bob".to_string(),
+            Some("   ".to_string()),
+            Some(kicker_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok(), "Kick should succeed with whitespace reason");
+
+        let (terminal_message, _) = timeout(Duration::from_secs(1), target_rx.recv())
+            .await
+            .expect("target should receive terminal kick reason")
+            .expect("target session event should be present")
+            .expect_message();
+
+        match terminal_message {
+            ServerMessage::Error {
+                message, command, ..
+            } => {
+                assert_eq!(command.as_deref(), Some("UserKick"));
+                assert!(
+                    message == err_kicked_by(DEFAULT_TEST_LOCALE, "alice"),
+                    "Whitespace-only reason should use the no-reason message: {message}"
+                );
+            }
+            other => panic!("Expected terminal Error, got: {other:?}"),
+        }
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserKickResponse { success, error, .. } => {
+                assert!(success, "Kick response should succeed");
+                assert!(error.is_none());
+            }
+            other => panic!("Expected UserKickResponse, got: {other:?}"),
         }
     }
 

@@ -77,7 +77,7 @@ Create or update a trusted IP entry. The target can be a nickname, IP address, o
 - `reason`: ≤256 characters, no control characters (newlines, tabs,
   null bytes, and other control chars all rejected — reasons are
   rendered into single-line displays in admin tools).
-  Empty/omitted is allowed.
+  Empty, whitespace-only, or omitted means no reason is stored.
 
 Validation failures send `TrustCreateResponse { success: false, error }`
 with an error message.

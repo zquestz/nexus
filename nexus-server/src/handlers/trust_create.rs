@@ -58,6 +58,8 @@ where
             ))));
         }
 
+        let reason = reason.filter(|r| !r.trim().is_empty());
+
         let validated = match validate_trust_create_inputs(&target, &duration, &reason, ctx.locale)
         {
             Ok(validated) => validated,
@@ -396,6 +398,40 @@ mod tests {
             assert!(cache.is_trusted("192.168.1.1".parse().unwrap()));
             assert!(!cache.is_trusted("192.168.2.1".parse().unwrap()));
         }
+    }
+
+    #[tokio::test]
+    async fn test_trustcreate_whitespace_reason_stores_none() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let result = handle_trust_create(
+            "192.168.1.100".to_string(),
+            None,
+            Some("   ".to_string()),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        if let ServerMessage::TrustCreateResponse { success, error, .. } = response {
+            assert!(success, "Expected success, got error: {:?}", error);
+        } else {
+            panic!("Expected TrustCreateResponse, got: {:?}", response);
+        }
+
+        let trust = test_ctx
+            .db
+            .trusts
+            .get_trust_by_ip("192.168.1.100")
+            .await
+            .unwrap()
+            .expect("Trust should exist");
+        assert!(trust.reason.is_none());
     }
 
     #[tokio::test]
