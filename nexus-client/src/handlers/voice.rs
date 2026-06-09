@@ -10,7 +10,7 @@
 
 use std::time::Duration;
 
-use crate::network::tls::should_bypass_proxy;
+use crate::network::{FEATURE_VOICE, tls::should_bypass_proxy};
 
 use global_hotkey::GlobalHotKeyEvent;
 use iced::Task;
@@ -71,6 +71,13 @@ impl NexusApp {
             return self.add_active_tab_message(
                 connection_id,
                 ChatMessage::error(t("err-leave-already-pending")),
+            );
+        }
+
+        if !conn.has_feature(FEATURE_VOICE) {
+            return self.add_active_tab_message(
+                connection_id,
+                ChatMessage::error(t("err-voice-feature-not-enabled")),
             );
         }
 
@@ -676,7 +683,7 @@ mod tests {
             connection_id,
             is_admin: false,
             permissions: Vec::new(),
-            features: Vec::new(),
+            features: vec![FEATURE_VOICE.to_string()],
             server_name: None,
             server_description: None,
             public_address: None,
@@ -748,6 +755,28 @@ mod tests {
             ChannelState::new(None, None, false, vec!["me".to_string()]),
         );
         conn.pending_channel_leave = Some("#General".to_string());
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_voice_join_pressed("#general".to_string());
+
+        assert!(rx.try_recv().is_err());
+        assert!(app.connections[&1].voice_session.is_none());
+        assert_eq!(app.connections[&1].console_messages.len(), 1);
+    }
+
+    #[test]
+    fn voice_join_pressed_requires_voice_feature() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.features.clear();
+        conn.permissions.push(PERMISSION_VOICE_LISTEN.to_string());
+        conn.channels.insert(
+            fold_name("#general"),
+            ChannelState::new(None, None, false, vec!["me".to_string()]),
+        );
         app.connections.insert(1, conn);
 
         let _ = app.handle_voice_join_pressed("#general".to_string());

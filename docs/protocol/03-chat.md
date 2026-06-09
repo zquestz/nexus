@@ -127,16 +127,16 @@ with an error message.
 
 Response to join request with full channel data on success.
 
-| Field          | Type    | Required   | Description                                                    |
-| -------------- | ------- | ---------- | -------------------------------------------------------------- |
-| `success`      | boolean | Yes        | Whether the join succeeded                                     |
-| `error`        | string  | If failure | Error message                                                  |
-| `channel`      | string  | If success | Channel name                                                   |
-| `topic`        | string  | If success | Current topic (null if none)                                   |
-| `topic_set_by` | string  | If success | Point-in-time nickname that set the topic (null if none)       |
-| `secret`       | boolean | If success | Whether channel is secret                                      |
-| `members`      | array   | If success | List of member nicknames                                       |
-| `voiced`       | array   | If success | Nicknames in voice chat (only if requester has `voice_listen`) |
+| Field          | Type    | Required   | Description                                                                          |
+| -------------- | ------- | ---------- | ------------------------------------------------------------------------------------ |
+| `success`      | boolean | Yes        | Whether the join succeeded                                                           |
+| `error`        | string  | If failure | Error message                                                                        |
+| `channel`      | string  | If success | Channel name                                                                         |
+| `topic`        | string  | If success | Current topic (null if none)                                                         |
+| `topic_set_by` | string  | If success | Point-in-time nickname that set the topic (null if none)                             |
+| `secret`       | boolean | If success | Whether channel is secret                                                            |
+| `members`      | array   | If success | List of member nicknames                                                             |
+| `voiced`       | array   | If success | Nicknames in voice chat (only if requester activated `voice` and has `voice_listen`) |
 
 **Success example:**
 
@@ -152,7 +152,7 @@ Response to join request with full channel data on success.
 }
 ```
 
-The `voiced` field is only included if the joining user has the `voice_listen` permission. It contains nicknames of users currently in voice chat for this channel, allowing clients to show voice indicators immediately. See [Voice Chat Protocol](14-voice.md) for details.
+The `voiced` field is only included if the joining user activated the `voice` feature and has the `voice_listen` permission. It contains nicknames of users currently in voice chat for this channel, allowing clients to show voice indicators immediately. See [Voice Chat Protocol](14-voice.md) for details.
 
 **Error example (already member):**
 
@@ -641,7 +641,7 @@ Auto-joined channels are provided in the `LoginResponse`:
 }
 ```
 
-The `voiced` field contains nicknames currently in voice chat for the channel. It is only included if the user has the `voice_listen` permission. See [Voice Chat Protocol](14-voice.md) for details.
+The `voiced` field contains nicknames currently in voice chat for the channel. It is only included if the user activated the `voice` feature and has the `voice_listen` permission. See [Voice Chat Protocol](14-voice.md) for details.
 
 If no auto-join channels are configured, `channels` is `null`.
 

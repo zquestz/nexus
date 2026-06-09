@@ -1271,7 +1271,7 @@ mod tests {
             &ClientMessage::Login {
                 username: "alice".to_string(),
                 password: "password".to_string(),
-                features: vec![],
+                features: vec![FEATURE_CHAT.to_string()],
                 locale: "en".to_string(),
                 avatar: None,
                 nickname: None,

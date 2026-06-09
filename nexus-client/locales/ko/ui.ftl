@@ -1073,6 +1073,7 @@ err-voice-join = 음성 채팅 참여 실패: { $error }
 err-voice-leave = 음성 채팅 나가기 실패: { $error }
 err-voice-no-token = 음성 채팅 참여에 성공했지만 토큰을 받지 못했습니다
 err-voice-already-active = 이미 다른 서버에서 음성 채팅 중입니다
+err-voice-feature-not-enabled = 음성 기능이 활성화되지 않았습니다
 err-voice-no-permission = 음성 채팅에 참여할 권한이 없습니다
 err-voice-not-in-channel = 음성 채팅에 참여하려면 채널에 있어야 합니다
 err-voice-not-in-session = 음성 채팅 세션에 있지 않습니다

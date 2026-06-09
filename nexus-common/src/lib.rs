@@ -47,6 +47,7 @@ pub const PROTOCOL_VERSION: &str = "0.9.0";
 pub const FEATURE_CHAT: &str = "chat";
 pub const FEATURE_FILES: &str = "files";
 pub const FEATURE_NEWS: &str = "news";
+pub const FEATURE_VOICE: &str = "voice";
 
 /// Version information for the Nexus tracker protocol
 ///

@@ -46,6 +46,7 @@ err-permission-denied-chat-create = Zugriff verweigert: Sie können bestehenden 
 
 # Feature-Fehler
 err-chat-feature-not-enabled = Chat-Funktion nicht aktiviert
+err-chat-target-feature-not-enabled = { $nickname } hat keinen chatfähigen Client online
 
 # Channel-Fehler
 err-channel-name-empty = Kanalname darf nicht leer sein
@@ -265,10 +266,12 @@ err-trust-not-found = Kein Vertrauenseintrag für '{ $target }' gefunden
 
 # Voice Errors
 err-voice-listen-required = Sie benötigen die Berechtigung voice_listen, um Voice beizutreten
+err-voice-feature-not-enabled = Voice-Funktion nicht aktiviert
 err-voice-already-joined = Sie sind bereits in einer Voice-Sitzung
 err-voice-not-joined = Sie sind nicht in einer Voice-Sitzung
 err-voice-not-channel-member = Sie müssen Mitglied von { $channel } sein, um Voice beizutreten
 err-voice-target-not-online = { $nickname } ist nicht online
+err-voice-target-feature-not-enabled = { $nickname } hat keinen voicefähigen Client online
 err-voice-invalid-target = Ungültiges Voice-Ziel
 
 # Gruppenfehler

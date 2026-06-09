@@ -5,11 +5,13 @@ use std::io;
 use tokio::io::AsyncWrite;
 use tracing::warn;
 
-use crate::constants::{HANDLER_VOICE_LEAVE, LOG_VOICE_LEAVE_NOT_LOGGED_IN};
+use crate::constants::{FEATURE_VOICE, HANDLER_VOICE_LEAVE, LOG_VOICE_LEAVE_NOT_LOGGED_IN};
 
 use nexus_common::protocol::ServerMessage;
 
-use super::{HandlerContext, err_not_logged_in, err_voice_not_joined};
+use super::{
+    HandlerContext, err_not_logged_in, err_voice_feature_not_enabled, err_voice_not_joined,
+};
 use crate::voice::send_voice_leave_notifications;
 
 /// Remove the user from their voice session and broadcast VoiceUserLeft.
@@ -28,15 +30,18 @@ where
     };
 
     // Verify session still exists (user might have disconnected).
-    if ctx
-        .user_manager
-        .get_user_by_session_id(session_id)
-        .await
-        .is_none()
-    {
+    let Some(user) = ctx.user_manager.get_user_by_session_id(session_id).await else {
         return ctx
             .send_error_and_disconnect(&err_not_logged_in(ctx.locale), Some(HANDLER_VOICE_LEAVE))
             .await;
+    };
+
+    if !user.has_feature(FEATURE_VOICE) {
+        let response = ServerMessage::VoiceLeaveResponse {
+            success: false,
+            error: Some(err_voice_feature_not_enabled(ctx.locale)),
+        };
+        return ctx.send_message(&response).await;
     }
 
     // Serialize removal + leave notifications under read_user_state so a concurrent
@@ -77,17 +82,61 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::FEATURE_CHAT;
+    use crate::constants::{FEATURE_CHAT, FEATURE_VOICE};
     use crate::db::Permission;
     use crate::handlers::chat_join::handle_chat_join;
     use crate::handlers::testing::{
-        add_observer_session_for_existing_regular_user, create_test_context, login_user,
-        login_user_with_features, read_server_message,
+        add_observer_session_for_existing_regular_user_with_features, create_test_context,
+        login_user, login_user_with_features, read_server_message,
     };
     use crate::handlers::voice_join::handle_voice_join;
     use crate::users::user::SessionRx;
     use std::time::Duration;
     use tokio::time::timeout;
+
+    fn voice_features() -> Vec<String> {
+        vec![FEATURE_VOICE.to_string()]
+    }
+
+    fn chat_voice_features() -> Vec<String> {
+        vec![FEATURE_CHAT.to_string(), FEATURE_VOICE.to_string()]
+    }
+
+    async fn login_voice_user(
+        test_ctx: &mut crate::handlers::testing::TestContext,
+        username: &str,
+        password: &str,
+        permissions: &[Permission],
+        is_admin: bool,
+    ) -> u32 {
+        login_user_with_features(
+            test_ctx,
+            username,
+            password,
+            permissions,
+            is_admin,
+            voice_features(),
+        )
+        .await
+    }
+
+    async fn login_chat_voice_user(
+        test_ctx: &mut crate::handlers::testing::TestContext,
+        username: &str,
+        password: &str,
+        permissions: &[Permission],
+        is_admin: bool,
+    ) -> u32 {
+        login_user_with_features(
+            test_ctx,
+            username,
+            password,
+            permissions,
+            is_admin,
+            chat_voice_features(),
+        )
+        .await
+    }
 
     async fn expect_voice_user_joined(rx: &mut SessionRx, nickname: &str, target: &str) {
         let event = timeout(Duration::from_secs(1), rx.recv())
@@ -144,7 +193,7 @@ mod tests {
     async fn test_voice_leave_not_in_voice() {
         let mut test_ctx = create_test_context().await;
 
-        let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+        let session_id = login_voice_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_voice_leave(Some(session_id), &mut test_ctx.handler_context()).await;
 
@@ -161,10 +210,32 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_voice_leave_requires_voice_feature() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+
+        let result = handle_voice_leave(Some(session_id), &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::VoiceLeaveResponse { success, error } => {
+                assert!(!success);
+                let expected =
+                    err_voice_feature_not_enabled(crate::handlers::testing::DEFAULT_TEST_LOCALE);
+                assert_eq!(error.as_deref(), Some(expected.as_str()));
+            }
+            _ => panic!("Expected VoiceLeaveResponse, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
     async fn test_voice_leave_success() {
         let mut test_ctx = create_test_context().await;
 
-        let session_id = login_user_with_features(
+        let session_id = login_chat_voice_user(
             &mut test_ctx,
             "alice",
             "password",
@@ -174,7 +245,6 @@ mod tests {
                 Permission::ChatCreate,
             ],
             false,
-            vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
@@ -224,7 +294,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Login alice with voice_listen permission
-        let alice_session = login_user(
+        let alice_session = login_voice_user(
             &mut test_ctx,
             "alice",
             "password",
@@ -234,7 +304,7 @@ mod tests {
         .await;
 
         // Login bob (target must be online)
-        let _bob_session = login_user(
+        let _bob_session = login_voice_user(
             &mut test_ctx,
             "bob",
             "password",
@@ -272,7 +342,7 @@ mod tests {
     async fn test_voice_leave_user_message_notifies_all_regular_user_sessions() {
         let mut test_ctx = create_test_context().await;
 
-        let alice_session = login_user(
+        let alice_session = login_voice_user(
             &mut test_ctx,
             "alice",
             "password",
@@ -281,7 +351,7 @@ mod tests {
         )
         .await;
 
-        let bob_session = login_user(
+        let bob_session = login_voice_user(
             &mut test_ctx,
             "bob",
             "password",
@@ -290,10 +360,11 @@ mod tests {
         )
         .await;
         let (_bob_second_session, mut bob_second_rx) =
-            add_observer_session_for_existing_regular_user(
+            add_observer_session_for_existing_regular_user_with_features(
                 &mut test_ctx,
                 "bob",
                 &[Permission::VoiceListen],
+                voice_features(),
             )
             .await;
 
@@ -338,7 +409,7 @@ mod tests {
     async fn test_voice_leave_twice_fails() {
         let mut test_ctx = create_test_context().await;
 
-        let session_id = login_user_with_features(
+        let session_id = login_chat_voice_user(
             &mut test_ctx,
             "alice",
             "password",
@@ -348,7 +419,6 @@ mod tests {
                 Permission::ChatCreate,
             ],
             false,
-            vec![FEATURE_CHAT.to_string()],
         )
         .await;
 

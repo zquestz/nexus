@@ -1124,6 +1124,7 @@ err-voice-join = Kon niet deelnemen aan spraakchat: { $error }
 err-voice-leave = Kon spraakchat niet verlaten: { $error }
 err-voice-no-token = Spraakchat gestart maar geen token ontvangen
 err-voice-already-active = Je bent al in een spraakchat op een andere server
+err-voice-feature-not-enabled = Spraakfunctie niet ingeschakeld
 err-voice-no-permission = Je hebt geen toestemming om deel te nemen aan spraakchat
 err-voice-not-in-channel = Je moet in het kanaal zijn om deel te nemen aan spraakchat
 err-voice-not-in-session = Je bent niet in een spraakchat

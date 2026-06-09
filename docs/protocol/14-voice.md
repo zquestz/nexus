@@ -13,6 +13,10 @@ The same port number is used for both protocols; the operating system routes pac
 
 ## Permissions
 
+Voice signaling is part of the `voice` feature. A client must request
+`voice` during login and receive it in `LoginResponse.features` before
+using `VoiceJoin` or `VoiceLeave`.
+
 | Permission     | Description                                   |
 | -------------- | --------------------------------------------- |
 | `voice_listen` | Required to join voice chat and receive audio |
@@ -62,8 +66,11 @@ Client requests to join a voice session.
 **Errors:**
 
 - Not logged in
+- Missing `voice` feature
 - Missing `voice_listen` permission
 - Not a member of the channel
+- Target user not online
+- Target user has no voice-capable client online
 - Already in voice on this connection
 
 ### VoiceLeave
@@ -105,9 +112,9 @@ Server broadcasts when a user joins a voice session.
 | `nickname` | `string` | User who joined      |
 | `target`   | `string` | Voice session target |
 
-**For channels:** Sent to all channel members with `voice_listen` permission (not just voice participants). This allows users to see voice indicators even when not in voice themselves.
+**For channels:** Sent to all channel members that activated `voice` and have `voice_listen` permission (not just voice participants). This allows users to see voice indicators even when not in voice themselves.
 
-**For user messages:** Sent only to the other participant in the conversation.
+**For user messages:** Sent only to the other participant's sessions that activated `voice`.
 
 ### VoiceUserLeft
 
@@ -125,9 +132,9 @@ Server broadcasts when a user leaves a voice session.
 | `nickname` | `string` | User who left        |
 | `target`   | `string` | Voice session target |
 
-**For channels:** Sent to all channel members with `voice_listen` permission (not just voice participants).
+**For channels:** Sent to all channel members that activated `voice` and have `voice_listen` permission (not just voice participants).
 
-**For user messages:** Sent only to the other participant in the conversation.
+**For user messages:** Sent only to the other participant's sessions that activated `voice`.
 
 The leaving user also receives this message so their client can clean up voice state. This happens when:
 
@@ -137,7 +144,7 @@ The leaving user also receives this message so their client can clean up voice s
 
 ## Voice State in Chat Messages
 
-When joining a channel (via `ChatJoin` or auto-join on login), the server includes voice participant information if the user has `voice_listen` permission:
+When joining a channel (via `ChatJoin` or auto-join on login), the server includes voice participant information if the user activated `voice` and has `voice_listen` permission:
 
 **ChatJoinResponse:**
 
@@ -163,7 +170,7 @@ When joining a channel (via `ChatJoin` or auto-join on login), the server includ
 The `voiced` field contains nicknames of users currently in voice for that channel. It is:
 
 - Only included on success
-- Only populated if the requester has `voice_listen` permission
+- Only populated if the requester activated `voice` and has `voice_listen` permission
 - `null` or omitted if no one is in voice
 
 This allows clients to show voice indicators immediately upon joining a channel, without waiting for `VoiceUserJoined` broadcasts.
@@ -173,9 +180,11 @@ This allows clients to show voice indicators immediately upon joining a channel,
 For user message voice (1-on-1 calls):
 
 - Client sends target as the other user's nickname (e.g., `"bob"`)
+- Direct user-message voice only requires the `voice` feature; text DM
+  support is not required.
 - Server internally creates a canonical session key by sorting nicknames (e.g., `"alice:bob"`)
 - Both users join the same session regardless of who initiates
-- `VoiceUserJoined`/`VoiceUserLeft` broadcasts include the _other_ user's nickname as target
+- `VoiceUserJoined`/`VoiceUserLeft` broadcasts include the _other_ user's nickname as target and are delivered only to voice-capable sessions
 
 ## Audio Protocol (UDP)
 

@@ -1165,6 +1165,7 @@ err-voice-join = Failed to join voice: { $error }
 err-voice-leave = Failed to leave voice: { $error }
 err-voice-no-token = Voice join succeeded but no token received
 err-voice-already-active = You are already in a voice session on another server
+err-voice-feature-not-enabled = Voice feature not enabled
 err-voice-no-permission = You don't have permission to join voice chat
 err-voice-not-in-channel = You must be in the channel to join voice
 err-voice-not-in-session = You are not in a voice session

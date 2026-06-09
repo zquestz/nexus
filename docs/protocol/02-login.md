@@ -56,7 +56,7 @@ violation and disconnects the connection.
   valid image of that type. An avatar that fails to decode is rejected
   and the connection is closed.
 
-The current BBS server recognizes the `chat`, `files`, and `news`
+The current BBS server recognizes the `chat`, `files`, `news`, and `voice`
 features. Unknown but syntactically valid feature names are ignored and
 omitted from `LoginResponse.features`.
 
@@ -146,7 +146,7 @@ unsupported by this server/session.
     "file_list",
     "file_download"
   ],
-  "features": ["chat", "files", "news"],
+  "features": ["chat", "files", "news", "voice"],
   "server_info": {
     "name": "My BBS",
     "description": "Welcome to my server!",
@@ -223,7 +223,7 @@ Describes a channel the user was auto-joined to on login.
 | `topic_set_by` | string  | Nickname who set the topic (null if none)                              |
 | `secret`       | boolean | Whether the channel is secret                                          |
 | `members`      | array   | List of nicknames currently in the channel                             |
-| `voiced`       | array   | Nicknames in voice chat (null if user lacks `voice_listen` permission) |
+| `voiced`       | array   | Nicknames in voice chat (null if user lacks `voice` or `voice_listen`) |
 
 ## Account Types
 

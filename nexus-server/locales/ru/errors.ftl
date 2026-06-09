@@ -46,6 +46,7 @@ err-permission-denied-chat-create = Доступ запрещен: вы може
 
 # Ошибки функций
 err-chat-feature-not-enabled = Функция чата не включена
+err-chat-target-feature-not-enabled = У { $nickname } нет онлайн-клиента с поддержкой чата
 
 # Ошибки каналов
 err-channel-name-empty = Название канала не может быть пустым
@@ -265,10 +266,12 @@ err-trust-not-found = Доверенная запись для '{ $target }' н�
 
 # Voice Errors
 err-voice-listen-required = Для подключения к голосовому чату требуется разрешение voice_listen
+err-voice-feature-not-enabled = Функция голосового чата не включена
 err-voice-already-joined = Вы уже находитесь в голосовой сессии
 err-voice-not-joined = Вы не находитесь в голосовой сессии
 err-voice-not-channel-member = Для подключения к голосовому чату вы должны быть участником { $channel }
 err-voice-target-not-online = { $nickname } не в сети
+err-voice-target-feature-not-enabled = У { $nickname } нет онлайн-клиента с поддержкой голосового чата
 err-voice-invalid-target = Недопустимая цель голосового чата
 
 # Ошибки групп

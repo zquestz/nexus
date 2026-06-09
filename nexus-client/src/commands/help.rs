@@ -19,17 +19,26 @@ pub fn execute(
     args: &[String],
 ) -> Task<Message> {
     // Extract permission info first, then release the borrow
-    let Some((is_admin, permissions)) = app
-        .connections
-        .get(&connection_id)
-        .map(|conn| (conn.is_admin, conn.permissions.clone()))
-    else {
+    let Some((is_admin, permissions, features)) = app.connections.get(&connection_id).map(|conn| {
+        (
+            conn.is_admin,
+            conn.permissions.clone(),
+            conn.features.clone(),
+        )
+    }) else {
         return Task::none();
     };
 
     // If a command name is provided, show help for that specific command
     if args.len() == 1 {
-        return show_command_help(app, connection_id, &args[0], is_admin, &permissions);
+        return show_command_help(
+            app,
+            connection_id,
+            &args[0],
+            is_admin,
+            &permissions,
+            &features,
+        );
     }
 
     // Too many arguments - show usage
@@ -44,8 +53,8 @@ pub fn execute(
     // Header
     tasks.push(app.add_active_tab_message(connection_id, ChatMessage::info(t("cmd-help-header"))));
 
-    // List available commands (filtered by permission)
-    for cmd in command_list_for_permissions(is_admin, &permissions) {
+    // List available commands (filtered by feature and permission).
+    for cmd in command_list_for_permissions(is_admin, &permissions, &features) {
         let aliases = if cmd.aliases.is_empty() {
             String::new()
         } else {
@@ -72,6 +81,7 @@ fn show_command_help(
     command_name: &str,
     is_admin: bool,
     permissions: &[String],
+    features: &[String],
 ) -> Task<Message> {
     // Look up the command
     let Some(cmd) = get_command_info(command_name) else {
@@ -79,7 +89,11 @@ fn show_command_help(
         return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     };
 
-    // Check if user has permission to use this command
+    // Check if user can use this command.
+    let has_features = cmd
+        .features
+        .iter()
+        .all(|required| features.iter().any(|feature| feature == *required));
     let has_permission = cmd.permissions.is_empty()
         || is_admin
         || cmd
@@ -87,7 +101,7 @@ fn show_command_help(
             .iter()
             .any(|req| permissions.iter().any(|p| p == *req));
 
-    if !has_permission {
+    if !has_features || !has_permission {
         let error_msg = t_args("cmd-unknown", &[("command", command_name)]);
         return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
     }

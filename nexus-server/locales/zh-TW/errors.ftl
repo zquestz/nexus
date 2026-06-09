@@ -46,6 +46,7 @@ err-permission-denied-chat-create = 權限被拒絕：您可以加入現有頻�
 
 # 功能錯誤
 err-chat-feature-not-enabled = 聊天功能未啟用
+err-chat-target-feature-not-enabled = { $nickname } 沒有支援聊天的用戶端在線上
 
 # 頻道錯誤
 err-channel-name-empty = 頻道名稱不能為空
@@ -265,10 +266,12 @@ err-trust-not-found = 找不到 '{ $target }' 的信任項目
 
 # Voice Errors
 err-voice-listen-required = 您需要 voice_listen 權限才能加入語音
+err-voice-feature-not-enabled = 語音功能未啟用
 err-voice-already-joined = 您已在語音會話中
 err-voice-not-joined = 您不在語音會話中
 err-voice-not-channel-member = 您必須是 { $channel } 的成員才能加入語音
 err-voice-target-not-online = { $nickname } 不在線上
+err-voice-target-feature-not-enabled = { $nickname } 沒有支援語音的用戶端在線上
 err-voice-invalid-target = 無效的語音目標
 
 # 群組錯誤

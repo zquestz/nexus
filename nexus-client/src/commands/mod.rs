@@ -37,8 +37,8 @@
 //!
 //! ## Permissions
 //!
-//! Commands may require permissions to execute. If a user doesn't have the required
-//! permission, the command is treated as unknown (same error as non-existent command).
+//! Commands may require negotiated features and permissions to execute. If a user
+//! doesn't have access, the command is treated as unknown.
 //!
 //! Unknown commands display an error in chat and are never sent to the server.
 
@@ -81,6 +81,7 @@ use nexus_common::protocol::ChatAction;
 use crate::NexusApp;
 use crate::constants::ERR_WHITESPACE_CHAR_AT_RFIND_INDEX;
 use crate::i18n::t_args;
+use crate::network::FEATURE_CHAT;
 use crate::types::{ChatMessage, Message};
 use crate::views::constants::{
     PERMISSION_BAN_CREATE, PERMISSION_BAN_DELETE, PERMISSION_BAN_LIST, PERMISSION_CHAT_JOIN,
@@ -106,6 +107,8 @@ pub struct CommandInfo {
     pub usage_key: &'static str,
     /// Required permissions (any of these grants access, empty = always available)
     pub permissions: &'static [&'static str],
+    /// Required negotiated features, if this command belongs to a feature family.
+    pub features: &'static [&'static str],
 }
 
 /// Command registration entry - links metadata to handler
@@ -123,6 +126,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-away-desc",
             usage_key: "cmd-away-usage",
             permissions: &[],
+            features: &[],
         },
         handler: away::execute,
     },
@@ -133,6 +137,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-back-desc",
             usage_key: "cmd-back-usage",
             permissions: &[],
+            features: &[],
         },
         handler: back::execute,
     },
@@ -143,6 +148,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-ban-desc",
             usage_key: "cmd-ban-usage",
             permissions: &[PERMISSION_BAN_CREATE],
+            features: &[],
         },
         handler: ban::execute,
     },
@@ -153,6 +159,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-bans-desc",
             usage_key: "cmd-bans-usage",
             permissions: &[PERMISSION_BAN_LIST],
+            features: &[],
         },
         handler: bans::execute,
     },
@@ -163,6 +170,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-broadcast-desc",
             usage_key: "cmd-broadcast-usage",
             permissions: &[PERMISSION_USER_BROADCAST],
+            features: &[],
         },
         handler: broadcast::execute,
     },
@@ -173,6 +181,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-channels-desc",
             usage_key: "cmd-channels-usage",
             permissions: &[PERMISSION_CHAT_LIST],
+            features: &[FEATURE_CHAT],
         },
         handler: channels::execute,
     },
@@ -183,6 +192,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-clear-desc",
             usage_key: "cmd-clear-usage",
             permissions: &[],
+            features: &[],
         },
         handler: clear::execute,
     },
@@ -193,6 +203,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-focus-desc",
             usage_key: "cmd-focus-usage",
             permissions: &[],
+            features: &[],
         },
         handler: focus::execute,
     },
@@ -203,6 +214,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-help-desc",
             usage_key: "cmd-help-usage",
             permissions: &[],
+            features: &[],
         },
         handler: help::execute,
     },
@@ -213,6 +225,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-userinfo-desc",
             usage_key: "cmd-userinfo-usage",
             permissions: &[PERMISSION_USER_INFO],
+            features: &[],
         },
         handler: user_info::execute,
     },
@@ -223,6 +236,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-join-desc",
             usage_key: "cmd-join-usage",
             permissions: &[PERMISSION_CHAT_JOIN],
+            features: &[FEATURE_CHAT],
         },
         handler: join::execute,
     },
@@ -233,6 +247,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-kick-desc",
             usage_key: "cmd-kick-usage",
             permissions: &[PERMISSION_USER_KICK],
+            features: &[],
         },
         handler: user_kick::execute,
     },
@@ -243,6 +258,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-leave-desc",
             usage_key: "cmd-leave-usage",
             permissions: &[],
+            features: &[FEATURE_CHAT],
         },
         handler: leave::execute,
     },
@@ -253,6 +269,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-list-desc",
             usage_key: "cmd-list-usage",
             permissions: &[PERMISSION_USER_LIST],
+            features: &[],
         },
         handler: list::execute,
     },
@@ -263,6 +280,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-me-desc",
             usage_key: "cmd-me-usage",
             permissions: &[PERMISSION_CHAT_SEND],
+            features: &[FEATURE_CHAT],
         },
         handler: me::execute,
     },
@@ -273,6 +291,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-message-desc",
             usage_key: "cmd-message-usage",
             permissions: &[PERMISSION_USER_MESSAGE],
+            features: &[FEATURE_CHAT],
         },
         handler: message::execute,
     },
@@ -283,6 +302,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-ping-desc",
             usage_key: "cmd-ping-usage",
             permissions: &[],
+            features: &[],
         },
         handler: ping::execute,
     },
@@ -293,6 +313,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-reindex-desc",
             usage_key: "cmd-reindex-usage",
             permissions: &[PERMISSION_FILE_REINDEX],
+            features: &[],
         },
         handler: reindex::execute,
     },
@@ -303,6 +324,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-secret-desc",
             usage_key: "cmd-secret-usage",
             permissions: &[],
+            features: &[FEATURE_CHAT],
         },
         handler: secret::execute,
     },
@@ -313,6 +335,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-serverinfo-desc",
             usage_key: "cmd-serverinfo-usage",
             permissions: &[],
+            features: &[],
         },
         handler: server_info::execute,
     },
@@ -323,6 +346,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-status-desc",
             usage_key: "cmd-status-usage",
             permissions: &[],
+            features: &[],
         },
         handler: status::execute,
     },
@@ -333,6 +357,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-topic-desc",
             usage_key: "cmd-topic-usage",
             permissions: &[PERMISSION_CHAT_TOPIC, PERMISSION_CHAT_TOPIC_EDIT],
+            features: &[FEATURE_CHAT],
         },
         handler: topic::execute,
     },
@@ -343,6 +368,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-trust-desc",
             usage_key: "cmd-trust-usage",
             permissions: &[PERMISSION_TRUST_CREATE],
+            features: &[],
         },
         handler: trust::execute,
     },
@@ -353,6 +379,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-trusted-desc",
             usage_key: "cmd-trusted-usage",
             permissions: &[PERMISSION_TRUST_LIST],
+            features: &[],
         },
         handler: trusted::execute,
     },
@@ -363,6 +390,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-unban-desc",
             usage_key: "cmd-unban-usage",
             permissions: &[PERMISSION_BAN_DELETE],
+            features: &[],
         },
         handler: unban::execute,
     },
@@ -373,6 +401,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-untrust-desc",
             usage_key: "cmd-untrust-usage",
             permissions: &[PERMISSION_TRUST_DELETE],
+            features: &[],
         },
         handler: untrust::execute,
     },
@@ -383,6 +412,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-window-desc",
             usage_key: "cmd-window-usage",
             permissions: &[],
+            features: &[],
         },
         handler: window::execute,
     },
@@ -414,9 +444,10 @@ pub fn complete_command(
     prefix: &str,
     is_admin: bool,
     permissions: &[String],
+    features: &[String],
 ) -> Option<Vec<String>> {
     let prefix_lower = prefix.to_lowercase();
-    let matches: Vec<String> = command_names_for_completion(is_admin, permissions)
+    let matches: Vec<String> = command_names_for_completion(is_admin, permissions, features)
         .into_iter()
         .filter(|cmd| cmd.to_lowercase().starts_with(&prefix_lower))
         .collect();
@@ -488,18 +519,35 @@ pub fn last_word(input: &str) -> (usize, &str) {
     }
 }
 
-/// Get list of command names (including aliases) the user has permission to use (for tab completion)
-pub fn command_names_for_completion(is_admin: bool, permissions: &[String]) -> Vec<String> {
+fn command_is_available(
+    info: &CommandInfo,
+    is_admin: bool,
+    permissions: &[String],
+    features: &[String],
+) -> bool {
+    let has_features = info
+        .features
+        .iter()
+        .all(|required| features.iter().any(|feature| feature == *required));
+    let has_permission = info.permissions.is_empty()
+        || is_admin
+        || info
+            .permissions
+            .iter()
+            .any(|req| permissions.iter().any(|p| p == *req));
+
+    has_features && has_permission
+}
+
+/// Get list of command names (including aliases) the user can use (for tab completion).
+pub fn command_names_for_completion(
+    is_admin: bool,
+    permissions: &[String],
+    features: &[String],
+) -> Vec<String> {
     let mut names = Vec::new();
     for reg in COMMANDS.iter() {
-        let has_permission = reg.info.permissions.is_empty()
-            || is_admin
-            || reg
-                .info
-                .permissions
-                .iter()
-                .any(|req| permissions.iter().any(|p| p == *req));
-        if has_permission {
+        if command_is_available(&reg.info, is_admin, permissions, features) {
             names.push(reg.info.name.to_string());
             for alias in reg.info.aliases {
                 names.push((*alias).to_string());
@@ -510,24 +558,14 @@ pub fn command_names_for_completion(is_admin: bool, permissions: &[String]) -> V
     names
 }
 
-/// Get list of commands the user has permission to use (for /help display)
+/// Get list of commands the user can use (for /help display).
 pub(crate) fn command_list_for_permissions(
     is_admin: bool,
     permissions: &[String],
+    features: &[String],
 ) -> impl Iterator<Item = &'static CommandInfo> {
     COMMANDS.iter().filter_map(move |reg| {
-        let has_permission = reg.info.permissions.is_empty()
-            || is_admin
-            || reg
-                .info
-                .permissions
-                .iter()
-                .any(|req| permissions.iter().any(|p| p == *req));
-        if has_permission {
-            Some(&reg.info)
-        } else {
-            None
-        }
+        command_is_available(&reg.info, is_admin, permissions, features).then_some(&reg.info)
     })
 }
 
@@ -608,13 +646,12 @@ pub fn execute_command(
     if let Some(&index) = COMMAND_MAP.get(command.name.as_str()) {
         let reg = &COMMANDS[index];
 
-        // Check permissions
-        let has_permission = app
-            .connections
-            .get(&connection_id)
-            .is_some_and(|conn| conn.has_any_permission(reg.info.permissions));
+        // Check negotiated feature and permissions.
+        let can_execute = app.connections.get(&connection_id).is_some_and(|conn| {
+            command_is_available(&reg.info, conn.is_admin, &conn.permissions, &conn.features)
+        });
 
-        if has_permission {
+        if can_execute {
             return (reg.handler)(app, connection_id, &command.name, &command.args);
         }
     }
@@ -627,6 +664,67 @@ pub fn execute_command(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
+
+    use nexus_common::framing::MessageId;
+    use nexus_common::protocol::ClientMessage;
+    use nexus_common::validators::PasswordStrength;
+    use tokio::sync::{Mutex, mpsc};
+
+    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
+
+    fn chat_features() -> Vec<String> {
+        vec![FEATURE_CHAT.to_string()]
+    }
+
+    fn test_connection_with_receiver(
+        connection_id: usize,
+    ) -> (
+        ServerConnection,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let conn = ServerConnection::new(ServerConnectionParams {
+            bookmark_id: None,
+            user_id: None,
+            nickname: "me".to_string(),
+            connection_info: ConnectionInfo {
+                server_name: String::new(),
+                address: String::new(),
+                port: 0,
+                transfer_port: 0,
+                certificate_fingerprint: String::new(),
+                username: "me".to_string(),
+                password: String::new(),
+                nickname: "me".to_string(),
+            },
+            display_name: String::new(),
+            connection_id,
+            is_admin: false,
+            permissions: Vec::new(),
+            features: Vec::new(),
+            server_name: None,
+            server_description: None,
+            public_address: None,
+            server_version: None,
+            server_image: String::new(),
+            cached_server_image: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            max_connections_per_ip: None,
+            max_outbound_rate: None,
+            max_transfers_per_ip: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Weak,
+            log_level: None,
+            scheduler_chunk_size: None,
+            tx,
+            shutdown_handle: Arc::new(Mutex::new(None)),
+        });
+        (conn, rx)
+    }
 
     #[test]
     fn test_parse_empty_input() {
@@ -831,13 +929,15 @@ mod tests {
 
     #[test]
     fn test_command_list_for_user_admin_sees_all() {
-        let commands: Vec<_> = command_list_for_permissions(true, &[]).collect();
+        let features = chat_features();
+        let commands: Vec<_> = command_list_for_permissions(true, &[], &features).collect();
         assert_eq!(commands.len(), COMMANDS.len());
     }
 
     #[test]
     fn test_command_list_for_user_no_perms_sees_public() {
-        let commands: Vec<_> = command_list_for_permissions(false, &[]).collect();
+        let features = chat_features();
+        let commands: Vec<_> = command_list_for_permissions(false, &[], &features).collect();
         // Should see help and clear (no permissions required)
         assert!(commands.iter().any(|c| c.name == "help"));
         assert!(commands.iter().any(|c| c.name == "clear"));
@@ -849,11 +949,46 @@ mod tests {
     #[test]
     fn test_command_list_for_user_with_permission() {
         let perms = vec!["user_list".to_string()];
-        let commands: Vec<_> = command_list_for_permissions(false, &perms).collect();
+        let features = chat_features();
+        let commands: Vec<_> = command_list_for_permissions(false, &perms, &features).collect();
         // Should see list command now
         assert!(commands.iter().any(|c| c.name == "list"));
         // Still shouldn't see kick
         assert!(!commands.iter().any(|c| c.name == "kick"));
+    }
+
+    #[test]
+    fn test_command_list_requires_chat_feature_for_chat_commands() {
+        let perms = vec!["chat_join".to_string()];
+        let commands: Vec<_> = command_list_for_permissions(false, &perms, &[]).collect();
+        assert!(!commands.iter().any(|c| c.name == "join"));
+
+        let features = chat_features();
+        let commands: Vec<_> = command_list_for_permissions(false, &perms, &features).collect();
+        assert!(commands.iter().any(|c| c.name == "join"));
+    }
+
+    #[test]
+    fn test_execute_command_requires_chat_feature_for_chat_command() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.permissions.push(PERMISSION_CHAT_JOIN.to_string());
+        app.connections.insert(1, conn);
+
+        let _ = execute_command(
+            &mut app,
+            1,
+            CommandInvocation {
+                name: "join".to_string(),
+                args: vec!["#general".to_string()],
+            },
+        );
+
+        assert!(rx.try_recv().is_err());
+        assert_eq!(app.connections[&1].console_messages.len(), 1);
     }
 
     // =========================================================================
@@ -1182,7 +1317,8 @@ mod tests {
 
     #[test]
     fn test_complete_command_empty_prefix_admin() {
-        let result = complete_command("", true, &[]);
+        let features = chat_features();
+        let result = complete_command("", true, &[], &features);
         assert!(result.is_some());
         let matches = result.unwrap();
         // Admin should see all commands and aliases
@@ -1191,7 +1327,8 @@ mod tests {
 
     #[test]
     fn test_complete_command_empty_prefix_no_perms() {
-        let result = complete_command("", false, &[]);
+        let features = chat_features();
+        let result = complete_command("", false, &[], &features);
         assert!(result.is_some());
         let matches = result.unwrap();
         // Should at least see help, clear, etc.
@@ -1201,7 +1338,8 @@ mod tests {
 
     #[test]
     fn test_complete_command_partial_match() {
-        let result = complete_command("he", true, &[]);
+        let features = chat_features();
+        let result = complete_command("he", true, &[], &features);
         assert!(result.is_some());
         let matches = result.unwrap();
         assert!(matches.iter().any(|c| c == "help"));
@@ -1209,13 +1347,15 @@ mod tests {
 
     #[test]
     fn test_complete_command_no_match() {
-        let result = complete_command("xyz", true, &[]);
+        let features = chat_features();
+        let result = complete_command("xyz", true, &[], &features);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_complete_command_case_insensitive() {
-        let result = complete_command("HE", true, &[]);
+        let features = chat_features();
+        let result = complete_command("HE", true, &[], &features);
         assert!(result.is_some());
         let matches = result.unwrap();
         assert!(matches.iter().any(|c| c == "help"));
@@ -1223,7 +1363,8 @@ mod tests {
 
     #[test]
     fn test_complete_command_includes_aliases() {
-        let result = complete_command("", true, &[]);
+        let features = chat_features();
+        let result = complete_command("", true, &[], &features);
         assert!(result.is_some());
         let matches = result.unwrap();
         // "h" and "?" are aliases for help
@@ -1233,7 +1374,8 @@ mod tests {
 
     #[test]
     fn test_complete_command_alias_match() {
-        let result = complete_command("h", true, &[]);
+        let features = chat_features();
+        let result = complete_command("h", true, &[], &features);
         assert!(result.is_some());
         let matches = result.unwrap();
         // Should match "h" alias and "help" command
@@ -1244,20 +1386,35 @@ mod tests {
     #[test]
     fn test_complete_command_permission_gated() {
         // Without permissions, shouldn't see kick
-        let result = complete_command("ki", false, &[]);
+        let features = chat_features();
+        let result = complete_command("ki", false, &[], &features);
         assert!(result.is_none());
 
         // With permission, should see kick
         let perms = vec!["user_kick".to_string()];
-        let result = complete_command("ki", false, &perms);
+        let result = complete_command("ki", false, &perms, &features);
         assert!(result.is_some());
         let matches = result.unwrap();
         assert!(matches.iter().any(|c| c == "kick"));
     }
 
     #[test]
+    fn test_complete_command_requires_chat_feature_for_chat_commands() {
+        let perms = vec!["chat_join".to_string()];
+        let result = complete_command("jo", false, &perms, &[]);
+        assert!(result.is_none());
+
+        let features = chat_features();
+        let result = complete_command("jo", false, &perms, &features);
+        assert!(result.is_some());
+        let matches = result.unwrap();
+        assert!(matches.iter().any(|c| c == "join"));
+    }
+
+    #[test]
     fn test_complete_command_sorted() {
-        let result = complete_command("", true, &[]);
+        let features = chat_features();
+        let result = complete_command("", true, &[], &features);
         assert!(result.is_some());
         let matches = result.unwrap();
         // Verify sorted order
@@ -1275,14 +1432,16 @@ mod tests {
 
     #[test]
     fn test_command_names_admin_gets_all() {
-        let names = command_names_for_completion(true, &[]);
+        let features = chat_features();
+        let names = command_names_for_completion(true, &[], &features);
         // Should have more names than commands (due to aliases)
         assert!(names.len() > COMMANDS.len());
     }
 
     #[test]
     fn test_command_names_no_perms_gets_public() {
-        let names = command_names_for_completion(false, &[]);
+        let features = chat_features();
+        let names = command_names_for_completion(false, &[], &features);
         assert!(names.iter().any(|n| n == "help"));
         assert!(names.iter().any(|n| n == "clear"));
         // Should not have permission-gated commands
@@ -1293,13 +1452,28 @@ mod tests {
     #[test]
     fn test_command_names_with_permission() {
         let perms = vec!["user_kick".to_string()];
-        let names = command_names_for_completion(false, &perms);
+        let features = chat_features();
+        let names = command_names_for_completion(false, &perms, &features);
         assert!(names.iter().any(|n| n == "kick"));
     }
 
     #[test]
+    fn test_command_names_require_chat_feature_for_chat_commands() {
+        let perms = vec!["chat_join".to_string()];
+        let names = command_names_for_completion(false, &perms, &[]);
+        assert!(!names.iter().any(|n| n == "join"));
+        assert!(!names.iter().any(|n| n == "j"));
+
+        let features = chat_features();
+        let names = command_names_for_completion(false, &perms, &features);
+        assert!(names.iter().any(|n| n == "join"));
+        assert!(names.iter().any(|n| n == "j"));
+    }
+
+    #[test]
     fn test_command_names_sorted() {
-        let names = command_names_for_completion(true, &[]);
+        let features = chat_features();
+        let names = command_names_for_completion(true, &[], &features);
         for i in 1..names.len() {
             assert!(
                 names[i - 1].to_lowercase() <= names[i].to_lowercase(),

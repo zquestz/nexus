@@ -18,13 +18,13 @@ pub const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(15);
 /// so the two flows share a single liveness expectation.
 pub const BBS_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 
-pub use nexus_common::{FEATURE_CHAT, FEATURE_FILES, FEATURE_NEWS};
+pub use nexus_common::{FEATURE_CHAT, FEATURE_FILES, FEATURE_NEWS, FEATURE_VOICE};
 
 /// Buffer size for the Iced stream channel
 pub const STREAM_CHANNEL_SIZE: usize = 100;
 
 /// Default features to request during login
-pub const DEFAULT_FEATURES: &[&str] = &[FEATURE_CHAT, FEATURE_FILES, FEATURE_NEWS];
+pub const DEFAULT_FEATURES: &[&str] = &[FEATURE_CHAT, FEATURE_FILES, FEATURE_NEWS, FEATURE_VOICE];
 
 /// Ping interval for NAT keepalive (5 minutes)
 ///

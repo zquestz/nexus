@@ -46,6 +46,7 @@ err-permission-denied-chat-create = Permesso negato: puoi unirti ai canali esist
 
 # Errori di funzionalità
 err-chat-feature-not-enabled = La funzionalità chat non è abilitata
+err-chat-target-feature-not-enabled = { $nickname } non ha un client compatibile con la chat online
 
 # Errori di canale
 err-channel-name-empty = Il nome del canale non può essere vuoto
@@ -265,10 +266,12 @@ err-trust-not-found = Nessuna voce attendibile trovata per '{ $target }'
 
 # Voice Errors
 err-voice-listen-required = Hai bisogno del permesso voice_listen per unirti alla voce
+err-voice-feature-not-enabled = La funzionalità voce non è abilitata
 err-voice-already-joined = Sei già in una sessione vocale
 err-voice-not-joined = Non sei in una sessione vocale
 err-voice-not-channel-member = Devi essere membro di { $channel } per unirti alla voce
 err-voice-target-not-online = { $nickname } non è online
+err-voice-target-feature-not-enabled = { $nickname } non ha un client compatibile con la voce online
 err-voice-invalid-target = Destinazione vocale non valida
 
 # Errori di gruppo

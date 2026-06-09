@@ -45,6 +45,7 @@ err-permission-denied-chat-create = Permission denied: you can join existing cha
 
 # Feature Errors
 err-chat-feature-not-enabled = Chat feature not enabled
+err-chat-target-feature-not-enabled = { $nickname } does not have a chat-capable client online
 
 # Database Errors
 err-database = Database error
@@ -264,10 +265,12 @@ err-search-failed = Search failed
 
 # Voice Errors
 err-voice-listen-required = You need voice_listen permission to join voice
+err-voice-feature-not-enabled = Voice feature not enabled
 err-voice-already-joined = You are already in a voice session
 err-voice-not-joined = You are not in a voice session
 err-voice-not-channel-member = You must be a member of { $channel } to join voice
 err-voice-target-not-online = { $nickname } is not online
+err-voice-target-feature-not-enabled = { $nickname } does not have a voice-capable client online
 err-voice-invalid-target = Invalid voice target
 
 # Group Errors

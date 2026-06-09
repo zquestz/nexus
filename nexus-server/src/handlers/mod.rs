@@ -912,16 +912,25 @@ mod tests {
         let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         let mut observer_params = regular_session(1, "observer", obs_tx);
         observer_params.permissions.insert(Permission::VoiceListen);
+        observer_params
+            .features
+            .push(crate::constants::FEATURE_VOICE.to_string());
         let observer = user_manager.add_user(observer_params).await.unwrap();
 
         let (alice1_tx, _alice1_rx) = ConnectionWriter::channel();
         let mut alice1_params = regular_session(2, "alice", alice1_tx);
         alice1_params.permissions.insert(Permission::VoiceListen);
+        alice1_params
+            .features
+            .push(crate::constants::FEATURE_VOICE.to_string());
         let alice1 = user_manager.add_user(alice1_params).await.unwrap();
 
         let (alice2_tx, _alice2_rx) = ConnectionWriter::channel();
         let mut alice2_params = regular_session(2, "alice", alice2_tx);
         alice2_params.permissions.insert(Permission::VoiceListen);
+        alice2_params
+            .features
+            .push(crate::constants::FEATURE_VOICE.to_string());
         let alice2 = user_manager.add_user(alice2_params).await.unwrap();
 
         for session_id in [observer, alice1, alice2] {
@@ -990,11 +999,17 @@ mod tests {
         let (obs_tx, mut obs_rx) = ConnectionWriter::channel();
         let mut observer_params = regular_session(1, "observer", obs_tx);
         observer_params.permissions.insert(Permission::VoiceListen);
+        observer_params
+            .features
+            .push(crate::constants::FEATURE_VOICE.to_string());
         let observer = user_manager.add_user(observer_params).await.unwrap();
 
         let (victim_tx, mut victim_rx) = ConnectionWriter::channel();
         let mut victim_params = regular_session(2, "victim", victim_tx);
         victim_params.permissions.insert(Permission::VoiceListen);
+        victim_params
+            .features
+            .push(crate::constants::FEATURE_VOICE.to_string());
         let victim = user_manager.add_user(victim_params).await.unwrap();
 
         for session_id in [observer, victim] {

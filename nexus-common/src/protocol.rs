@@ -624,7 +624,7 @@ pub enum ServerMessage {
         /// Nicknames of current channel members (only on success)
         #[serde(skip_serializing_if = "Option::is_none")]
         members: Option<Vec<String>>,
-        /// Nicknames currently in voice chat (only on success, only if requester has voice_listen)
+        /// Nicknames currently in voice chat (only on success, only if requester has voice feature + voice_listen)
         #[serde(skip_serializing_if = "Option::is_none")]
         voiced: Option<Vec<String>>,
     },
@@ -1381,7 +1381,7 @@ pub struct ChannelJoinInfo {
     pub topic_set_by: Option<String>,
     pub secret: bool,
     pub members: Vec<String>,
-    /// Nicknames currently in voice chat (only if requester has voice_listen permission)
+    /// Nicknames currently in voice chat (only if requester has voice feature + voice_listen)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub voiced: Option<Vec<String>>,
 }
@@ -2305,6 +2305,7 @@ mod tests {
                 "chat".to_string(),
                 "files".to_string(),
                 "news".to_string(),
+                "voice".to_string(),
             ]),
             server_info: None,
             locale: Some("en".to_string()),
@@ -2318,7 +2319,7 @@ mod tests {
         assert!(json.contains("\"type\":\"LoginResponse\""));
         assert!(json.contains("\"success\":true"));
         assert!(json.contains("\"session_id\":12345"));
-        assert!(json.contains("\"features\":[\"chat\",\"files\",\"news\"]"));
+        assert!(json.contains("\"features\":[\"chat\",\"files\",\"news\",\"voice\"]"));
     }
 
     #[test]

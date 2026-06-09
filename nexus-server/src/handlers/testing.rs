@@ -461,6 +461,23 @@ pub async fn add_observer_session_for_existing_regular_user(
     username: &str,
     permissions: &[crate::db::Permission],
 ) -> (u32, SessionRx) {
+    add_observer_session_for_existing_regular_user_with_features(
+        test_ctx,
+        username,
+        permissions,
+        vec![],
+    )
+    .await
+}
+
+/// `add_observer_session_for_existing_regular_user` variant that sets session
+/// feature flags.
+pub async fn add_observer_session_for_existing_regular_user_with_features(
+    test_ctx: &mut TestContext,
+    username: &str,
+    permissions: &[crate::db::Permission],
+    features: Vec<String>,
+) -> (u32, SessionRx) {
     let user = test_ctx
         .db
         .users
@@ -500,7 +517,7 @@ pub async fn add_observer_session_for_existing_regular_user(
             address: test_ctx.peer_addr,
             created_at: user.created_at,
             tx,
-            features: vec![],
+            features,
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
             nickname: username.to_string(),

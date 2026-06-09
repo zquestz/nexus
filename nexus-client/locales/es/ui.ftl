@@ -1125,6 +1125,7 @@ err-voice-join = Error al unirse al chat de voz: { $error }
 err-voice-leave = Error al salir del chat de voz: { $error }
 err-voice-no-token = La conexión al chat de voz fue exitosa pero no se recibió un token
 err-voice-already-active = Ya estás en una sesión de voz en otro servidor
+err-voice-feature-not-enabled = La función de voz no está habilitada
 err-voice-no-permission = No tienes permiso para unirte al chat de voz
 err-voice-not-in-channel = Debes estar en el canal para unirte al chat de voz
 err-voice-not-in-session = No estás en una sesión de voz

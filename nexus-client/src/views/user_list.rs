@@ -24,6 +24,7 @@ use super::constants::{
 use crate::avatar::{avatar_cache_key, generate_identicon};
 use crate::i18n::t;
 use crate::icon;
+use crate::network::FEATURE_CHAT;
 use crate::style::{
     CONTENT_PADDING, HEADING_BUTTON_PADDING, ICON_SIZE, INPUT_PADDING, NO_SPACING,
     SCROLLBAR_PADDING, SEPARATOR_HEIGHT, TOOLBAR_CONTAINER_PADDING, TOOLTIP_BACKGROUND_PADDING,
@@ -196,7 +197,8 @@ fn create_user_toolbar<'a>(
 
     // Check permissions
     let has_user_info_permission = conn.has_permission(PERMISSION_USER_INFO);
-    let has_user_message_permission = conn.has_permission(PERMISSION_USER_MESSAGE);
+    let has_user_message_permission =
+        conn.has_feature(FEATURE_CHAT) && conn.has_permission(PERMISSION_USER_MESSAGE);
     let has_disconnect_permission =
         conn.has_permission(PERMISSION_USER_KICK) || conn.has_permission(PERMISSION_BAN_CREATE);
 

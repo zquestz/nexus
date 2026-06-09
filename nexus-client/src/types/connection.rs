@@ -330,6 +330,11 @@ impl ServerConnection {
         self.is_admin || self.permissions.iter().any(|p| p == permission)
     }
 
+    /// Check if this session activated a server feature.
+    pub fn has_feature(&self, feature: &str) -> bool {
+        self.features.iter().any(|f| f == feature)
+    }
+
     /// Get channel state by name (case-insensitive lookup)
     pub fn get_channel_state(&self, channel: &str) -> Option<&ChannelState> {
         self.channels.get(&fold_name(channel))

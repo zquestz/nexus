@@ -10,6 +10,7 @@ use crate::commands::{
     self, ParseResult, complete_channel, complete_command, complete_nickname, last_word,
 };
 use crate::i18n::{get_locale, t, t_args};
+use crate::network::FEATURE_CHAT;
 use crate::network::{ConnectionParams, ProxyConfig};
 use crate::types::{
     ActivePanel, ChatMessage, ChatTab, InputId, Message, PendingRequests, ResponseRouting,
@@ -612,7 +613,12 @@ impl NexusApp {
 
         // Case 1: Command completion - input is "/" or "/prefix" with no space
         if input.starts_with('/') && !input.contains(' ') {
-            if let Some(matches) = complete_command(&input[1..], conn.is_admin, &conn.permissions) {
+            if let Some(matches) = complete_command(
+                &input[1..],
+                conn.is_admin,
+                &conn.permissions,
+                &conn.features,
+            ) {
                 conn.message_input = format!("/{}", matches[0]);
                 conn.tab_completion = Some(TabCompletionState::new(matches, 1)); // 1 to keep the /
                 return operation::move_cursor_to_end(Id::from(InputId::ChatInput));
@@ -696,8 +702,13 @@ impl NexusApp {
                             t_args("err-console-no-send", &[("join", "join"), ("msg", "msg")]),
                         );
                     }
-                    ChatTab::Channel(_) => conn.has_permission(PERMISSION_CHAT_SEND),
-                    ChatTab::UserMessage(_) => conn.has_permission(PERMISSION_USER_MESSAGE),
+                    ChatTab::Channel(_) => {
+                        conn.has_feature(FEATURE_CHAT) && conn.has_permission(PERMISSION_CHAT_SEND)
+                    }
+                    ChatTab::UserMessage(_) => {
+                        conn.has_feature(FEATURE_CHAT)
+                            && conn.has_permission(PERMISSION_USER_MESSAGE)
+                    }
                 };
 
                 if !has_permission {

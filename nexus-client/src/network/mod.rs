@@ -8,7 +8,10 @@ mod tracker_query;
 pub mod types;
 
 pub use connect::connect_to_server;
-pub use constants::{CONNECTION_TIMEOUT, DNS_LOOKUP_TIMEOUT, FEATURE_FILES, FEATURE_NEWS};
+pub use constants::{
+    CONNECTION_TIMEOUT, DNS_LOOKUP_TIMEOUT, FEATURE_CHAT, FEATURE_FILES, FEATURE_NEWS,
+    FEATURE_VOICE,
+};
 pub use stream::{NETWORK_RECEIVERS, ShutdownHandle, network_stream};
 pub use tracker_query::query_tracker;
 pub use types::{

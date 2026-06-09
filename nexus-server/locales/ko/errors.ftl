@@ -46,6 +46,7 @@ err-permission-denied-chat-create = 권한 거부됨: 기존 채널에 참여할
 
 # 기능 오류
 err-chat-feature-not-enabled = 채팅 기능이 활성화되지 않았습니다
+err-chat-target-feature-not-enabled = { $nickname }님에게 온라인 상태인 채팅 지원 클라이언트가 없습니다
 
 # 채널 오류
 err-channel-name-empty = 채널 이름은 비워둘 수 없습니다
@@ -265,10 +266,12 @@ err-trust-not-found = '{ $target }'에 대한 신뢰 항목을 찾을 수 없습
 
 # Voice Errors
 err-voice-listen-required = 음성에 참여하려면 voice_listen 권한이 필요합니다
+err-voice-feature-not-enabled = 음성 기능이 활성화되지 않았습니다
 err-voice-already-joined = 이미 음성 세션에 참여하고 있습니다
 err-voice-not-joined = 음성 세션에 참여하고 있지 않습니다
 err-voice-not-channel-member = 음성에 참여하려면 { $channel }의 멤버여야 합니다
 err-voice-target-not-online = { $nickname }님이 온라인이 아닙니다
+err-voice-target-feature-not-enabled = { $nickname }님에게 온라인 상태인 음성 지원 클라이언트가 없습니다
 err-voice-invalid-target = 잘못된 음성 대상입니다
 
 # 그룹 오류

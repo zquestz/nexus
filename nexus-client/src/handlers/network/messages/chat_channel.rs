@@ -29,7 +29,7 @@ pub struct ChatJoinResponseData {
     pub topic_set_by: Option<String>,
     pub secret: Option<bool>,
     pub members: Option<Vec<String>>,
-    /// Nicknames currently in voice chat (only if we have voice_listen permission)
+    /// Nicknames currently in voice chat (only if we have voice feature + voice_listen)
     pub voiced: Option<Vec<String>>,
 }
 
@@ -88,7 +88,7 @@ impl NexusApp {
             conn.channels.insert(channel_lower.clone(), channel_state);
             conn.channel_tabs.push(channel_name.clone());
 
-            // Populate voiced nicknames if provided
+            // Populate voiced nicknames if provided (requires voice feature + voice_listen).
             if let Some(voiced) = data.voiced {
                 let voiced_set = voiced.into_iter().map(|n| fold_name(&n)).collect();
                 conn.channel_voiced

@@ -1780,6 +1780,7 @@ mod tests {
 
     use super::*;
     use crate::channels::JoinPolicy;
+    use crate::constants::FEATURE_VOICE;
     use crate::db;
     use crate::egress::task::EgressSettingsCommand;
     #[allow(unused_imports)]
@@ -4019,6 +4020,16 @@ mod tests {
         username: &str,
         permissions: std::collections::HashSet<Permission>,
     ) -> (u32, SessionRx) {
+        add_channel_member_with_features(test_ctx, user_id, username, permissions, vec![]).await
+    }
+
+    async fn add_channel_member_with_features(
+        test_ctx: &TestContext,
+        user_id: i64,
+        username: &str,
+        permissions: std::collections::HashSet<Permission>,
+        features: Vec<String>,
+    ) -> (u32, SessionRx) {
         let (tx, rx) = ConnectionWriter::channel();
         let session_id = test_ctx
             .user_manager
@@ -4033,7 +4044,7 @@ mod tests {
                 address: test_ctx.peer_addr,
                 created_at: 0,
                 tx,
-                features: vec![],
+                features,
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 is_away: false,
@@ -4237,10 +4248,23 @@ mod tests {
         let admin_session = login_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         let voiced: HashSet<Permission> = [Permission::VoiceListen].into_iter().collect();
-        let (alice_session, _a) =
-            add_channel_member(&test_ctx, alice.id, "alice", voiced.clone()).await;
+        let (alice_session, _a) = add_channel_member_with_features(
+            &test_ctx,
+            alice.id,
+            "alice",
+            voiced.clone(),
+            vec![FEATURE_VOICE.to_string()],
+        )
+        .await;
         // Observer holds voice_listen so it receives the channel's VoiceUserLeft.
-        let (_obs, mut obs_rx) = add_channel_member(&test_ctx, 999, "observer", voiced).await;
+        let (_obs, mut obs_rx) = add_channel_member_with_features(
+            &test_ctx,
+            999,
+            "observer",
+            voiced,
+            vec![FEATURE_VOICE.to_string()],
+        )
+        .await;
 
         // Put alice in voice.
         test_ctx
@@ -6058,7 +6082,7 @@ mod tests {
                 address: test_ctx.peer_addr,
                 created_at: 0,
                 tx: test_ctx.tx.clone(),
-                features: vec![],
+                features: vec![FEATURE_VOICE.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 is_away: false,
@@ -7679,7 +7703,7 @@ mod tests {
                 address: test_ctx.peer_addr,
                 created_at: 0,
                 tx: test_ctx.tx.clone(),
-                features: vec![],
+                features: vec![FEATURE_VOICE.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 is_away: false,
@@ -7806,7 +7830,7 @@ mod tests {
                 address: test_ctx.peer_addr,
                 created_at: 0,
                 tx: test_ctx.tx.clone(),
-                features: vec![],
+                features: vec![FEATURE_VOICE.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 is_away: false,

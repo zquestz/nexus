@@ -9,8 +9,9 @@ use nexus_common::protocol::{ChatAction, ServerMessage};
 use nexus_common::validators::{self, MessageError, NicknameError};
 
 use super::{
-    HandlerContext, err_cannot_message_self, err_chat_feature_not_enabled, err_chat_too_long,
-    err_flood_disconnect, err_flood_warning, err_message_contains_newlines, err_message_empty,
+    HandlerContext, err_cannot_message_self, err_chat_feature_not_enabled,
+    err_chat_target_feature_not_enabled, err_chat_too_long, err_flood_disconnect,
+    err_flood_warning, err_message_contains_newlines, err_message_empty,
     err_message_invalid_characters, err_nickname_empty, err_nickname_invalid,
     err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
@@ -29,6 +30,8 @@ enum DeliveryOutcome {
     SenderGone,
     /// Target nickname not online; send a not-online error.
     TargetOffline,
+    /// Target nickname is online, but no target session can receive chat DMs.
+    TargetFeatureUnavailable,
     /// Target resolves to the sender's own (possibly renamed) session; reject as
     /// a self-message.
     SelfMessage,
@@ -204,11 +207,15 @@ where
             .user_manager
             .get_sessions_by_nickname(&to_nickname)
             .await;
+        if target_sessions.is_empty() {
+            break 'deliver DeliveryOutcome::TargetOffline;
+        }
+
         let Some(target_session) = target_sessions
             .into_iter()
             .find(|session| session.has_feature(FEATURE_CHAT))
         else {
-            break 'deliver DeliveryOutcome::TargetOffline;
+            break 'deliver DeliveryOutcome::TargetFeatureUnavailable;
         };
 
         // Re-check self-message under the lock: the pre-lock check used the entry
@@ -249,6 +256,18 @@ where
             let response = ServerMessage::UserMessageResponse {
                 success: false,
                 error: Some(err_nickname_not_online(ctx.locale, &to_nickname)),
+                is_away: None,
+                status: None,
+            };
+            ctx.send_message(&response).await
+        }
+        DeliveryOutcome::TargetFeatureUnavailable => {
+            let response = ServerMessage::UserMessageResponse {
+                success: false,
+                error: Some(err_chat_target_feature_not_enabled(
+                    ctx.locale,
+                    &to_nickname,
+                )),
                 is_away: None,
                 status: None,
             };
@@ -417,7 +436,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_usermessage_target_without_chat_feature_is_offline_for_dm() {
+    async fn test_usermessage_target_without_chat_feature_reports_capability_error() {
         let mut test_ctx = create_test_context().await;
 
         let _sender_id = login_chat_user(
@@ -453,7 +472,11 @@ mod tests {
         match response {
             ServerMessage::UserMessageResponse { success, error, .. } => {
                 assert!(!success);
-                assert!(error.unwrap().contains("not online"));
+                let expected = err_chat_target_feature_not_enabled(
+                    crate::handlers::testing::DEFAULT_TEST_LOCALE,
+                    "target",
+                );
+                assert_eq!(error.as_deref(), Some(expected.as_str()));
             }
             _ => panic!("Expected UserMessageResponse"),
         }

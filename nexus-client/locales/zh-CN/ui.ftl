@@ -1074,6 +1074,7 @@ err-voice-join = 加入语音聊天失败：{ $error }
 err-voice-leave = 离开语音聊天失败：{ $error }
 err-voice-no-token = 成功加入语音聊天但未收到令牌
 err-voice-already-active = 您已在另一个服务器的语音聊天中
+err-voice-feature-not-enabled = 语音功能未启用
 err-voice-no-permission = 您没有加入语音聊天的权限
 err-voice-not-in-channel = 您必须在频道中才能加入语音聊天
 err-voice-not-in-session = 您不在语音聊天中

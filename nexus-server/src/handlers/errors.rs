@@ -188,6 +188,14 @@ pub fn err_chat_feature_not_enabled(locale: &str) -> String {
     t(locale, "err-chat-feature-not-enabled")
 }
 
+pub fn err_chat_target_feature_not_enabled(locale: &str, nickname: &str) -> String {
+    t_args(
+        locale,
+        "err-chat-target-feature-not-enabled",
+        &[("nickname", nickname)],
+    )
+}
+
 pub fn err_chat_too_long(locale: &str, max_length: usize) -> String {
     t_args(
         locale,
@@ -1083,6 +1091,10 @@ pub fn err_voice_listen_required(locale: &str) -> String {
     t(locale, "err-voice-listen-required")
 }
 
+pub fn err_voice_feature_not_enabled(locale: &str) -> String {
+    t(locale, "err-voice-feature-not-enabled")
+}
+
 pub fn err_voice_already_joined(locale: &str) -> String {
     t(locale, "err-voice-already-joined")
 }
@@ -1103,6 +1115,14 @@ pub fn err_voice_target_not_online(locale: &str, nickname: &str) -> String {
     t_args(
         locale,
         "err-voice-target-not-online",
+        &[("nickname", nickname)],
+    )
+}
+
+pub fn err_voice_target_feature_not_enabled(locale: &str, nickname: &str) -> String {
+    t_args(
+        locale,
+        "err-voice-target-feature-not-enabled",
         &[("nickname", nickname)],
     )
 }

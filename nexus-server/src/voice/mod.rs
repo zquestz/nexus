@@ -12,6 +12,7 @@ mod udp;
 use nexus_common::protocol::ServerMessage;
 
 use crate::channels::ChannelManager;
+use crate::constants::FEATURE_VOICE;
 use crate::db::Permission;
 use crate::users::UserManager;
 use crate::users::user::ConnectionWriter;
@@ -41,8 +42,8 @@ pub async fn send_voice_leave_notifications(
     // Only the last session of a nickname broadcasts a leave.
     if info.should_broadcast {
         if info.session.is_channel() {
-            // Channels broadcast to ALL members with voice_listen (not just
-            // voice participants) so everyone sees who's in voice.
+            // Channels broadcast to ALL voice-capable members with voice_listen
+            // (not just voice participants) so everyone sees who's in voice.
             let channel_name = info.session.target.first().cloned().unwrap_or_default();
             let members = channel_manager
                 .get_members(&channel_name)
@@ -55,6 +56,7 @@ pub async fn send_voice_leave_notifications(
                 }
 
                 if let Some(member) = user_manager.get_user_by_session_id(member_session_id).await
+                    && member.has_feature(FEATURE_VOICE)
                     && member.has_permission(Permission::VoiceListen)
                 {
                     let leave_notification = ServerMessage::VoiceUserLeft {
@@ -73,7 +75,11 @@ pub async fn send_voice_leave_notifications(
                 };
 
                 user_manager
-                    .broadcast_to_nickname(participant_nickname, &leave_notification)
+                    .broadcast_to_nickname_with_feature(
+                        participant_nickname,
+                        FEATURE_VOICE,
+                        &leave_notification,
+                    )
                     .await;
             }
         }

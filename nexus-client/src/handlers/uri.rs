@@ -208,10 +208,11 @@ impl NexusApp {
                             // Just switch to the tab
                             conn.active_chat_tab = ChatTab::Channel(target);
                         } else {
-                            // Need to join the channel
-                            let _ = conn.send(ClientMessage::ChatJoin {
-                                channel: target.clone(),
-                            });
+                            if conn.has_feature(crate::network::FEATURE_CHAT) {
+                                let _ = conn.send(ClientMessage::ChatJoin {
+                                    channel: target.clone(),
+                                });
+                            }
                         }
                     } else {
                         // Open PM tab with user

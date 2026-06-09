@@ -46,6 +46,7 @@ err-permission-denied-chat-create = 権限がありません：既存のチャ�
 
 # 機能エラー
 err-chat-feature-not-enabled = チャット機能が有効になっていません
+err-chat-target-feature-not-enabled = { $nickname }にはチャット対応クライアントがオンラインではありません
 
 # チャンネルエラー
 err-channel-name-empty = チャンネル名を空にすることはできません
@@ -265,10 +266,12 @@ err-trust-not-found = '{ $target }' の信頼エントリが見つかりませ�
 
 # Voice Errors
 err-voice-listen-required = ボイスに参加するにはvoice_listen権限が必要です
+err-voice-feature-not-enabled = ボイス機能が有効になっていません
 err-voice-already-joined = すでにボイスセッションに参加しています
 err-voice-not-joined = ボイスセッションに参加していません
 err-voice-not-channel-member = ボイスに参加するには{ $channel }のメンバーである必要があります
 err-voice-target-not-online = { $nickname }はオンラインではありません
+err-voice-target-feature-not-enabled = { $nickname }にはボイス対応クライアントがオンラインではありません
 err-voice-invalid-target = 無効なボイス対象です
 
 # グループエラー

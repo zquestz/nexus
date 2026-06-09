@@ -27,13 +27,13 @@ use super::{
     err_password_too_long, err_username_empty, err_username_invalid, err_username_too_long,
 };
 use crate::constants::{
-    FEATURE_CHAT, HANDLER_LOGIN, LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED, LOG_EGRESS_TRANSITION_FAILED,
-    LOG_LOGIN_ACCOUNT_DISABLED, LOG_LOGIN_ALREADY_LOGGED_IN, LOG_LOGIN_AVATAR_VALIDATE_ERROR,
-    LOG_LOGIN_CREATE_USER_ERROR, LOG_LOGIN_DB_ERROR, LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN,
-    LOG_LOGIN_GROUP_ERROR, LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR,
-    LOG_LOGIN_INVALID_CREDENTIALS, LOG_LOGIN_PASSWORD_CHANGED, LOG_LOGIN_PASSWORD_VERIFY_ERROR,
-    LOG_LOGIN_PERMISSIONS_ERROR, LOG_LOGIN_RENAMED_MID_LOGIN, LOG_LOGIN_SUCCESS,
-    SUPPORTED_FEATURES,
+    FEATURE_CHAT, FEATURE_VOICE, HANDLER_LOGIN, LOG_BANDWIDTH_WEIGHT_RESOLVE_FAILED,
+    LOG_EGRESS_TRANSITION_FAILED, LOG_LOGIN_ACCOUNT_DISABLED, LOG_LOGIN_ALREADY_LOGGED_IN,
+    LOG_LOGIN_AVATAR_VALIDATE_ERROR, LOG_LOGIN_CREATE_USER_ERROR, LOG_LOGIN_DB_ERROR,
+    LOG_LOGIN_DB_NICKNAME, LOG_LOGIN_FIRST_ADMIN, LOG_LOGIN_GROUP_ERROR,
+    LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR, LOG_LOGIN_INVALID_CREDENTIALS,
+    LOG_LOGIN_PASSWORD_CHANGED, LOG_LOGIN_PASSWORD_VERIFY_ERROR, LOG_LOGIN_PERMISSIONS_ERROR,
+    LOG_LOGIN_RENAMED_MID_LOGIN, LOG_LOGIN_SUCCESS, SUPPORTED_FEATURES,
 };
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, LoginSnapshotError, Permission};
@@ -439,6 +439,7 @@ where
         }
 
         let has_chat_feature = activated_features.iter().any(|f| f == FEATURE_CHAT);
+        let has_voice_feature = activated_features.iter().any(|f| f == FEATURE_VOICE);
 
         // Regular accounts inherit is_away/status from the latest existing
         // session so a multi-device login doesn't clear away state.
@@ -593,8 +594,8 @@ where
                 }
             }
 
-            // Voiced nicknames are gated on voice_listen permission.
-            let voiced = if has_voice_listen_permission {
+            // Voiced nicknames are gated on the voice feature and voice_listen permission.
+            let voiced = if has_voice_feature && has_voice_listen_permission {
                 let participants = ctx.voice_registry.get_participants(&channel_name).await;
                 if participants.is_empty() {
                     None
@@ -733,12 +734,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::{FEATURE_FILES, FEATURE_NEWS};
+    use crate::constants::{FEATURE_FILES, FEATURE_NEWS, FEATURE_VOICE};
     use crate::egress::task::EgressSettingsCommand;
     use crate::handlers::testing::{
         DEFAULT_TEST_LOCALE, TestContext, create_test_context, get_cached_password_hash,
-        read_login_response, read_server_message,
+        login_user_with_features, read_login_response, read_server_message,
     };
+    use crate::voice::VoiceSession;
 
     fn expect_egress_transition(test_ctx: &mut TestContext) -> (i64, u16) {
         let transition = test_ctx
@@ -869,11 +871,13 @@ mod tests {
             "boards".to_string(),
             FEATURE_NEWS.to_string(),
             FEATURE_FILES.to_string(),
+            FEATURE_VOICE.to_string(),
         ];
         let activated_features = vec![
             FEATURE_CHAT.to_string(),
             FEATURE_NEWS.to_string(),
             FEATURE_FILES.to_string(),
+            FEATURE_VOICE.to_string(),
         ];
 
         let request = LoginRequest {
@@ -1767,6 +1771,144 @@ mod tests {
             !channel_members.is_empty(),
             "User should be in channel with ChatJoin permission for existing channel"
         );
+    }
+
+    #[tokio::test]
+    async fn test_login_auto_join_voiced_requires_voice_feature_and_voice_listen() {
+        let mut test_ctx = create_test_context().await;
+        let channel = nexus_common::validators::DEFAULT_CHANNEL;
+
+        let alice_session = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[db::Permission::VoiceListen],
+            false,
+            vec![FEATURE_VOICE.to_string()],
+        )
+        .await;
+        test_ctx
+            .channel_manager
+            .join(
+                channel,
+                alice_session,
+                crate::channels::JoinPolicy::CreateIfMissing,
+            )
+            .await
+            .unwrap();
+        test_ctx
+            .voice_registry
+            .add(VoiceSession::new(
+                "alice".to_string(),
+                vec![channel.to_string()],
+                alice_session,
+            ))
+            .await
+            .unwrap();
+        test_ctx
+            .db
+            .config
+            .set_auto_join_channels(channel)
+            .await
+            .unwrap();
+
+        let password = "password";
+        let hashed = get_cached_password_hash(password);
+        let mut perms = db::Permissions::new();
+        perms.add(db::Permission::ChatJoin);
+        perms.add(db::Permission::VoiceListen);
+
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let mut bob_session_id = None;
+        let bob_request = LoginRequest {
+            username: "bob".to_string(),
+            password: password.to_string(),
+            features: vec![FEATURE_CHAT.to_string()],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete: true,
+        };
+        handle_login(
+            bob_request,
+            &mut bob_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_login_response(&mut test_ctx).await {
+            ServerMessage::LoginResponse {
+                success, channels, ..
+            } => {
+                assert!(success);
+                let channels = channels.expect("Bob should auto-join the channel");
+                assert_eq!(channels[0].voiced, None);
+            }
+            other => panic!("Expected LoginResponse, got {other:?}"),
+        }
+
+        test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "charlie",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &perms,
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let mut charlie_session_id = None;
+        let charlie_request = LoginRequest {
+            username: "charlie".to_string(),
+            password: password.to_string(),
+            features: vec![FEATURE_CHAT.to_string(), FEATURE_VOICE.to_string()],
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete: true,
+        };
+        handle_login(
+            charlie_request,
+            &mut charlie_session_id,
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_login_response(&mut test_ctx).await {
+            ServerMessage::LoginResponse {
+                success, channels, ..
+            } => {
+                assert!(success);
+                let channels = channels.expect("Charlie should auto-join the channel");
+                assert_eq!(channels[0].voiced, Some(vec!["alice".to_string()]));
+            }
+            other => panic!("Expected LoginResponse, got {other:?}"),
+        }
     }
 
     #[tokio::test]

@@ -46,8 +46,9 @@ Send a message to another user.
 
 `UserMessage` is part of the `chat` feature. The sender's session must
 have activated `chat` during login. Recipient lookup only considers
-sessions that activated `chat`; if a nickname is online only on
-non-chat sessions, the server returns the same "not online" error.
+sessions that activated `chat`. If a nickname is online only on
+non-chat sessions, the server returns a chat-capability error instead
+of treating the user as offline.
 
 | Field         | Type   | Required | Description                                 |
 | ------------- | ------ | -------- | ------------------------------------------- |
@@ -337,6 +338,7 @@ Sending a message to yourself is not allowed. The server returns:
 | Cannot send a message to yourself | `to_nickname` matches sender      | Stays connected |
 | User not online                   | Recipient not found               | Stays connected |
 | Chat feature not enabled          | Missing `chat` feature            | Stays connected |
+| No chat-capable client online     | Recipient has no `chat` session   | Stays connected |
 | Permission denied                 | Missing `user_message` permission | Stays connected |
 
 ### UserBroadcast Errors

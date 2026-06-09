@@ -14,8 +14,8 @@ use super::{
 };
 use crate::channels::{JoinError, JoinPolicy};
 use crate::constants::{
-    FEATURE_CHAT, HANDLER_CHAT_JOIN, LOG_CHAT_JOIN_CREATE_DENIED, LOG_CHAT_JOIN_NOT_LOGGED_IN,
-    LOG_CHAT_JOIN_PERMISSION_DENIED,
+    FEATURE_CHAT, FEATURE_VOICE, HANDLER_CHAT_JOIN, LOG_CHAT_JOIN_CREATE_DENIED,
+    LOG_CHAT_JOIN_NOT_LOGGED_IN, LOG_CHAT_JOIN_PERMISSION_DENIED,
 };
 use crate::db::Permission;
 use crate::i18n::t;
@@ -114,16 +114,17 @@ where
             .get_unique_nicknames_for_sessions(&result.member_session_ids)
             .await;
 
-        let voiced = if user.has_permission(Permission::VoiceListen) {
-            let participants = ctx.voice_registry.get_participants(&channel).await;
-            if participants.is_empty() {
-                None
+        let voiced =
+            if user.has_feature(FEATURE_VOICE) && user.has_permission(Permission::VoiceListen) {
+                let participants = ctx.voice_registry.get_participants(&channel).await;
+                if participants.is_empty() {
+                    None
+                } else {
+                    Some(participants)
+                }
             } else {
-                Some(participants)
-            }
-        } else {
-            None
-        };
+                None
+            };
 
         let response = ServerMessage::ChatJoinResponse {
             success: true,
@@ -176,6 +177,7 @@ mod tests {
     use crate::handlers::testing::{
         TestContext, create_test_context, login_user, login_user_with_features, read_server_message,
     };
+    use crate::voice::VoiceSession;
 
     /// Dummy session ID used when creating channels directly via channel_manager
     /// for test setup (e.g., to pre-populate a channel with a topic)
@@ -287,6 +289,90 @@ mod tests {
                 .await
                 .is_some()
         );
+    }
+
+    #[tokio::test]
+    async fn test_chat_join_voiced_requires_voice_feature_and_voice_listen() {
+        let mut test_ctx = create_test_context().await;
+        let channel = nexus_common::validators::DEFAULT_CHANNEL;
+
+        let alice_session = login_user_with_features(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+            vec![FEATURE_VOICE.to_string()],
+        )
+        .await;
+        test_ctx
+            .channel_manager
+            .join(channel, alice_session, JoinPolicy::CreateIfMissing)
+            .await
+            .unwrap();
+        test_ctx
+            .voice_registry
+            .add(VoiceSession::new(
+                "alice".to_string(),
+                vec![channel.to_string()],
+                alice_session,
+            ))
+            .await
+            .unwrap();
+
+        let bob_session = login_user_with_features(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::ChatJoin, Permission::VoiceListen],
+            false,
+            vec![FEATURE_CHAT.to_string()],
+        )
+        .await;
+        handle_chat_join(
+            channel.to_string(),
+            Some(bob_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::ChatJoinResponse {
+                success, voiced, ..
+            } => {
+                assert!(success);
+                assert!(voiced.is_none());
+            }
+            other => panic!("Expected ChatJoinResponse, got {other:?}"),
+        }
+
+        let charlie_session = login_user_with_features(
+            &mut test_ctx,
+            "charlie",
+            "password",
+            &[Permission::ChatJoin, Permission::VoiceListen],
+            false,
+            vec![FEATURE_CHAT.to_string(), FEATURE_VOICE.to_string()],
+        )
+        .await;
+        handle_chat_join(
+            channel.to_string(),
+            Some(charlie_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::ChatJoinResponse {
+                success, voiced, ..
+            } => {
+                assert!(success);
+                assert_eq!(voiced, Some(vec!["alice".to_string()]));
+            }
+            other => panic!("Expected ChatJoinResponse, got {other:?}"),
+        }
     }
 
     #[tokio::test]

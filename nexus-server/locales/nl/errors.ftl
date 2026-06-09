@@ -46,6 +46,7 @@ err-permission-denied-chat-create = Toestemming geweigerd: u kunt bestaande kana
 
 # Functiefouten
 err-chat-feature-not-enabled = Chatfunctie niet ingeschakeld
+err-chat-target-feature-not-enabled = { $nickname } heeft geen chatgeschikte client online
 
 # Kanaalfouten
 err-channel-name-empty = Kanaalnaam mag niet leeg zijn
@@ -265,10 +266,12 @@ err-trust-not-found = Geen vertrouwde invoer gevonden voor '{ $target }'
 
 # Voice Errors
 err-voice-listen-required = Je hebt de voice_listen machtiging nodig om deel te nemen aan spraak
+err-voice-feature-not-enabled = Spraakfunctie niet ingeschakeld
 err-voice-already-joined = Je bent al in een spraaksessie
 err-voice-not-joined = Je bent niet in een spraaksessie
 err-voice-not-channel-member = Je moet lid zijn van { $channel } om deel te nemen aan spraak
 err-voice-target-not-online = { $nickname } is niet online
+err-voice-target-feature-not-enabled = { $nickname } heeft geen spraakgeschikte client online
 err-voice-invalid-target = Ongeldig spraakdoel
 
 # Groepsfouten

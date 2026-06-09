@@ -11,12 +11,14 @@ use nexus_common::names::fold_name;
 use nexus_common::protocol::ServerMessage;
 
 use crate::constants::{
-    HANDLER_VOICE_JOIN, LOG_VOICE_JOIN_NOT_LOGGED_IN, LOG_VOICE_JOIN_PERMISSION_DENIED,
+    FEATURE_VOICE, HANDLER_VOICE_JOIN, LOG_VOICE_JOIN_NOT_LOGGED_IN,
+    LOG_VOICE_JOIN_PERMISSION_DENIED,
 };
 
 use super::{
-    HandlerContext, err_not_logged_in, err_voice_already_joined, err_voice_invalid_target,
-    err_voice_listen_required, err_voice_not_channel_member, err_voice_target_not_online,
+    HandlerContext, err_not_logged_in, err_voice_already_joined, err_voice_feature_not_enabled,
+    err_voice_invalid_target, err_voice_listen_required, err_voice_not_channel_member,
+    err_voice_target_feature_not_enabled, err_voice_target_not_online,
 };
 use crate::db::Permission;
 use crate::voice::VoiceSession;
@@ -70,6 +72,10 @@ where
             break 'locked VoiceJoinOutcome::Disconnect;
         };
 
+        if !current.has_feature(FEATURE_VOICE) {
+            break 'locked VoiceJoinOutcome::Error(err_voice_feature_not_enabled(ctx.locale));
+        }
+
         if !current.has_permission(Permission::VoiceListen) {
             warn!(user = %current.username, ip = %ctx.peer_addr, "{}", LOG_VOICE_JOIN_PERMISSION_DENIED);
             break 'locked VoiceJoinOutcome::Error(err_voice_listen_required(ctx.locale));
@@ -95,13 +101,18 @@ where
             }
             vec![target.clone()]
         } else {
-            if ctx
-                .user_manager
-                .get_session_by_nickname(&target)
-                .await
-                .is_none()
-            {
+            let target_sessions = ctx.user_manager.get_sessions_by_nickname(&target).await;
+            if target_sessions.is_empty() {
                 break 'locked VoiceJoinOutcome::Error(err_voice_target_not_online(
+                    ctx.locale, &target,
+                ));
+            }
+
+            if !target_sessions
+                .iter()
+                .any(|session| session.has_feature(FEATURE_VOICE))
+            {
+                break 'locked VoiceJoinOutcome::Error(err_voice_target_feature_not_enabled(
                     ctx.locale, &target,
                 ));
             }
@@ -131,8 +142,8 @@ where
 
         if broadcast_joined {
             if is_channel {
-                // Notify ALL channel members with voice_listen (not just voice
-                // participants) so everyone sees who's in voice.
+                // Notify ALL voice-capable channel members with voice_listen
+                // (not just voice participants) so everyone sees who's in voice.
                 let members = ctx
                     .channel_manager
                     .get_members(&target)
@@ -148,6 +159,7 @@ where
                         .user_manager
                         .get_user_by_session_id(member_session_id)
                         .await
+                        && member.has_feature(FEATURE_VOICE)
                         && member.has_permission(Permission::VoiceListen)
                     {
                         let join_notification = ServerMessage::VoiceUserJoined {
@@ -170,7 +182,11 @@ where
                     };
 
                     ctx.user_manager
-                        .broadcast_to_nickname(participant_nickname, &join_notification)
+                        .broadcast_to_nickname_with_feature(
+                            participant_nickname,
+                            FEATURE_VOICE,
+                            &join_notification,
+                        )
                         .await;
                 }
             }
@@ -216,16 +232,61 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::FEATURE_CHAT;
+    use crate::constants::{FEATURE_CHAT, FEATURE_VOICE};
     use crate::db::Permission;
     use crate::handlers::chat_join::handle_chat_join;
     use crate::handlers::testing::{
-        add_observer_session_for_existing_regular_user, create_test_context, login_user,
-        login_user_with_features, read_server_message,
+        add_observer_session_for_existing_regular_user,
+        add_observer_session_for_existing_regular_user_with_features, create_test_context,
+        login_user, login_user_with_features, read_server_message,
     };
     use crate::users::user::SessionRx;
     use std::time::Duration;
     use tokio::time::timeout;
+
+    fn voice_features() -> Vec<String> {
+        vec![FEATURE_VOICE.to_string()]
+    }
+
+    fn chat_voice_features() -> Vec<String> {
+        vec![FEATURE_CHAT.to_string(), FEATURE_VOICE.to_string()]
+    }
+
+    async fn login_voice_user(
+        test_ctx: &mut crate::handlers::testing::TestContext,
+        username: &str,
+        password: &str,
+        permissions: &[Permission],
+        is_admin: bool,
+    ) -> u32 {
+        login_user_with_features(
+            test_ctx,
+            username,
+            password,
+            permissions,
+            is_admin,
+            voice_features(),
+        )
+        .await
+    }
+
+    async fn login_chat_voice_user(
+        test_ctx: &mut crate::handlers::testing::TestContext,
+        username: &str,
+        password: &str,
+        permissions: &[Permission],
+        is_admin: bool,
+    ) -> u32 {
+        login_user_with_features(
+            test_ctx,
+            username,
+            password,
+            permissions,
+            is_admin,
+            chat_voice_features(),
+        )
+        .await
+    }
 
     async fn expect_voice_user_joined(rx: &mut SessionRx, nickname: &str, target: &str) {
         let event = timeout(Duration::from_secs(1), rx.recv())
@@ -266,7 +327,7 @@ mod tests {
     async fn test_voice_join_requires_permission() {
         let mut test_ctx = create_test_context().await;
 
-        let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+        let session_id = login_voice_user(&mut test_ctx, "alice", "password", &[], false).await;
 
         let result = handle_voice_join(
             "#general".to_string(),
@@ -288,10 +349,44 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_voice_join_empty_target() {
+    async fn test_voice_join_requires_voice_feature() {
         let mut test_ctx = create_test_context().await;
 
         let session_id = login_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+
+        let result = handle_voice_join(
+            "#general".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::VoiceJoinResponse { success, error, .. } => {
+                assert!(!success);
+                let expected =
+                    err_voice_feature_not_enabled(crate::handlers::testing::DEFAULT_TEST_LOCALE);
+                assert_eq!(error.as_deref(), Some(expected.as_str()));
+            }
+            _ => panic!("Expected VoiceJoinResponse, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_voice_join_empty_target() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_voice_user(
             &mut test_ctx,
             "alice",
             "password",
@@ -323,7 +418,7 @@ mod tests {
     async fn test_voice_join_channel_not_member() {
         let mut test_ctx = create_test_context().await;
 
-        let session_id = login_user(
+        let session_id = login_voice_user(
             &mut test_ctx,
             "alice",
             "password",
@@ -355,7 +450,7 @@ mod tests {
     async fn test_voice_join_channel_success() {
         let mut test_ctx = create_test_context().await;
 
-        let session_id = login_user_with_features(
+        let session_id = login_chat_voice_user(
             &mut test_ctx,
             "alice",
             "password",
@@ -365,7 +460,6 @@ mod tests {
                 Permission::ChatCreate,
             ],
             false,
-            vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
@@ -413,7 +507,7 @@ mod tests {
     async fn test_voice_join_already_in_voice() {
         let mut test_ctx = create_test_context().await;
 
-        let session_id = login_user_with_features(
+        let session_id = login_chat_voice_user(
             &mut test_ctx,
             "alice",
             "password",
@@ -423,7 +517,6 @@ mod tests {
                 Permission::ChatCreate,
             ],
             false,
-            vec![FEATURE_CHAT.to_string()],
         )
         .await;
 
@@ -468,7 +561,7 @@ mod tests {
     async fn test_voice_join_user_message_target_offline() {
         let mut test_ctx = create_test_context().await;
 
-        let session_id = login_user(
+        let session_id = login_voice_user(
             &mut test_ctx,
             "alice",
             "password",
@@ -497,10 +590,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_voice_join_user_message_success() {
+    async fn test_voice_join_user_message_target_without_voice_feature_reports_capability_error() {
         let mut test_ctx = create_test_context().await;
 
-        let alice_session = login_user(
+        let session_id = login_voice_user(
             &mut test_ctx,
             "alice",
             "password",
@@ -510,6 +603,51 @@ mod tests {
         .await;
 
         let _bob_session = login_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+
+        let result = handle_voice_join(
+            "bob".to_string(),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::VoiceJoinResponse { success, error, .. } => {
+                assert!(!success);
+                let expected = err_voice_target_feature_not_enabled(
+                    crate::handlers::testing::DEFAULT_TEST_LOCALE,
+                    "bob",
+                );
+                assert_eq!(error.as_deref(), Some(expected.as_str()));
+            }
+            _ => panic!("Expected VoiceJoinResponse, got {:?}", response),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_voice_join_user_message_success() {
+        let mut test_ctx = create_test_context().await;
+
+        let alice_session = login_voice_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+
+        let _bob_session = login_voice_user(
             &mut test_ctx,
             "bob",
             "password",
@@ -555,7 +693,7 @@ mod tests {
     async fn test_voice_join_user_message_notifies_all_regular_user_sessions() {
         let mut test_ctx = create_test_context().await;
 
-        let alice_session = login_user(
+        let alice_session = login_voice_user(
             &mut test_ctx,
             "alice",
             "password",
@@ -564,7 +702,7 @@ mod tests {
         )
         .await;
 
-        let bob_session = login_user(
+        let bob_session = login_voice_user(
             &mut test_ctx,
             "bob",
             "password",
@@ -573,10 +711,11 @@ mod tests {
         )
         .await;
         let (_bob_second_session, mut bob_second_rx) =
-            add_observer_session_for_existing_regular_user(
+            add_observer_session_for_existing_regular_user_with_features(
                 &mut test_ctx,
                 "bob",
                 &[Permission::VoiceListen],
+                voice_features(),
             )
             .await;
 
@@ -612,10 +751,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_voice_join_user_message_both_users_same_session() {
+    async fn test_voice_join_user_message_skips_non_voice_sessions_for_same_nickname() {
         let mut test_ctx = create_test_context().await;
 
-        let alice_session = login_user(
+        let alice_session = login_voice_user(
             &mut test_ctx,
             "alice",
             "password",
@@ -624,7 +763,66 @@ mod tests {
         )
         .await;
 
-        let bob_session = login_user(
+        let bob_session = login_voice_user(
+            &mut test_ctx,
+            "bob",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+        let (_bob_no_voice_session, mut bob_no_voice_rx) =
+            add_observer_session_for_existing_regular_user(
+                &mut test_ctx,
+                "bob",
+                &[Permission::VoiceListen],
+            )
+            .await;
+
+        handle_voice_join(
+            "alice".to_string(),
+            Some(bob_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::VoiceJoinResponse { success: true, .. }
+        ));
+
+        handle_voice_join(
+            "bob".to_string(),
+            Some(alice_session),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .unwrap();
+        let response = read_server_message(&mut test_ctx).await;
+        assert!(matches!(
+            response,
+            ServerMessage::VoiceJoinResponse { success: true, .. }
+        ));
+
+        expect_voice_user_joined(&mut test_ctx.rx, "alice", "alice").await;
+        assert!(bob_no_voice_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_voice_join_user_message_both_users_same_session() {
+        let mut test_ctx = create_test_context().await;
+
+        let alice_session = login_voice_user(
+            &mut test_ctx,
+            "alice",
+            "password",
+            &[Permission::VoiceListen],
+            false,
+        )
+        .await;
+
+        let bob_session = login_voice_user(
             &mut test_ctx,
             "bob",
             "password",

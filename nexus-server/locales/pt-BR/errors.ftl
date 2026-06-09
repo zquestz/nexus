@@ -46,6 +46,7 @@ err-permission-denied-chat-create = Permissão negada: você pode entrar em cana
 
 # Erros de recursos
 err-chat-feature-not-enabled = Recurso de chat não habilitado
+err-chat-target-feature-not-enabled = { $nickname } não tem um cliente compatível com chat online
 
 # Erros de canal
 err-channel-name-empty = O nome do canal não pode estar vazio
@@ -265,10 +266,12 @@ err-trust-not-found = Nenhuma entrada confiável encontrada para '{ $target }'
 
 # Voice Errors
 err-voice-listen-required = Você precisa da permissão voice_listen para entrar no chat de voz
+err-voice-feature-not-enabled = Recurso de voz não habilitado
 err-voice-already-joined = Você já está em uma sessão de voz
 err-voice-not-joined = Você não está em uma sessão de voz
 err-voice-not-channel-member = Você precisa ser membro de { $channel } para entrar no chat de voz
 err-voice-target-not-online = { $nickname } não está online
+err-voice-target-feature-not-enabled = { $nickname } não tem um cliente compatível com voz online
 err-voice-invalid-target = Destino de voz inválido
 
 # Erros de grupo

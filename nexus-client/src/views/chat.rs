@@ -12,6 +12,7 @@ use nexus_common::protocol::ChatAction;
 use once_cell::sync::Lazy;
 
 use crate::i18n::t;
+use crate::network::FEATURE_VOICE;
 use crate::style::{
     BOLD_FONT, CHAT_ACTION_PREFIX, CHAT_LINE_HEIGHT, CHAT_MESSAGE_SEPARATOR, CHAT_MESSAGE_SIZE,
     CHAT_SPACING, CLOSE_BUTTON_PADDING, INPUT_PADDING, MONOSPACE_FONT, MONOSPACE_ITALIC_FONT,
@@ -621,8 +622,10 @@ pub fn chat_view<'a>(
         .width(Fill)
         .height(Fill);
 
-    // `voice_listen` gates joining/listening. `voice_talk` only gates transmit.
-    let has_voice_permission = conn.has_permission(PERMISSION_VOICE_LISTEN);
+    // `voice` gates client support, `voice_listen` gates joining/listening,
+    // and `voice_talk` only gates transmit.
+    let has_voice_permission =
+        conn.has_feature(FEATURE_VOICE) && conn.has_permission(PERMISSION_VOICE_LISTEN);
 
     // Build input row with voice button
     let input_row =
