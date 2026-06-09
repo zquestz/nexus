@@ -61,10 +61,13 @@ struct LoginSuccess {
 }
 
 fn activate_supported_features(features: Vec<String>) -> Vec<String> {
-    features
+    let mut activated: Vec<String> = features
         .into_iter()
         .filter(|feature| SUPPORTED_FEATURES.contains(&feature.as_str()))
-        .collect()
+        .collect();
+    activated.sort();
+    activated.dedup();
+    activated
 }
 
 fn transition_login_to_user_flow(
@@ -867,16 +870,17 @@ mod tests {
         let mut test_ctx = create_test_context().await;
         let mut session_id = None;
         let requested_features = vec![
+            FEATURE_VOICE.to_string(),
             FEATURE_CHAT.to_string(),
             "boards".to_string(),
             FEATURE_NEWS.to_string(),
+            FEATURE_CHAT.to_string(),
             FEATURE_FILES.to_string(),
-            FEATURE_VOICE.to_string(),
         ];
         let activated_features = vec![
             FEATURE_CHAT.to_string(),
-            FEATURE_NEWS.to_string(),
             FEATURE_FILES.to_string(),
+            FEATURE_NEWS.to_string(),
             FEATURE_VOICE.to_string(),
         ];
 

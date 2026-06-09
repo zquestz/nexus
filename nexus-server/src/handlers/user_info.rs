@@ -24,7 +24,7 @@ use crate::users::manager::UserManager;
 #[cfg(test)]
 use super::testing::DEFAULT_TEST_LOCALE;
 #[cfg(test)]
-use crate::constants::FEATURE_CHAT;
+use crate::constants::{FEATURE_CHAT, FEATURE_FILES, FEATURE_NEWS, FEATURE_VOICE};
 
 pub async fn handle_user_info<W>(
     nickname: String,
@@ -148,7 +148,8 @@ where
             all_features.insert(feature.clone());
         }
     }
-    let features: Vec<String> = all_features.into_iter().collect();
+    let mut features: Vec<String> = all_features.into_iter().collect();
+    features.sort();
 
     // Latest login that actually carried an avatar wins (a no-avatar session
     // doesn't blank it). Note: currently inert client-side — the user-info panel
@@ -725,6 +726,139 @@ mod tests {
                 );
             }
             _ => panic!("Expected UserInfoResponse, got: {:?}", response_msg),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userinfo_features_are_deduped_and_sorted() {
+        let mut test_ctx = create_test_context().await;
+
+        let password = "password";
+        let hashed = get_cached_password_hash(password);
+        let admin = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "admin",
+                hashed_password: &hashed,
+                is_admin: true,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let target = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "target",
+                hashed_password: &hashed,
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &db::Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let admin_id = test_ctx
+            .user_manager
+            .add_user(NewSessionParams {
+                session_id: 0,
+                user_id: admin.id,
+                username: "admin".to_string(),
+                is_admin: true,
+                is_shared: false,
+                permissions: std::collections::HashSet::new(),
+                address: test_ctx.peer_addr,
+                created_at: admin.created_at,
+                tx: test_ctx.tx.clone(),
+                features: vec![FEATURE_CHAT.to_string()],
+                locale: DEFAULT_TEST_LOCALE.to_string(),
+                avatar: None,
+                nickname: "admin".to_string(),
+                is_away: false,
+                status: None,
+                group_id: None,
+                group_name: None,
+                bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                bandwidth_weight_override: None,
+                last_activity: std::time::Instant::now(),
+            })
+            .await
+            .expect("Failed to add admin session");
+
+        for features in [
+            vec![FEATURE_VOICE.to_string(), FEATURE_CHAT.to_string()],
+            vec![
+                FEATURE_NEWS.to_string(),
+                FEATURE_CHAT.to_string(),
+                FEATURE_FILES.to_string(),
+            ],
+        ] {
+            test_ctx
+                .user_manager
+                .add_user(NewSessionParams {
+                    session_id: 0,
+                    user_id: target.id,
+                    username: "target".to_string(),
+                    is_admin: false,
+                    is_shared: false,
+                    permissions: std::collections::HashSet::new(),
+                    address: test_ctx.peer_addr,
+                    created_at: target.created_at,
+                    tx: test_ctx.tx.clone(),
+                    features,
+                    locale: DEFAULT_TEST_LOCALE.to_string(),
+                    avatar: None,
+                    nickname: "target".to_string(),
+                    is_away: false,
+                    status: None,
+                    group_id: None,
+                    group_name: None,
+                    bandwidth_weight: nexus_common::validators::DEFAULT_BANDWIDTH_WEIGHT,
+                    bandwidth_weight_override: None,
+                    last_activity: std::time::Instant::now(),
+                })
+                .await
+                .expect("Failed to add target session");
+        }
+
+        handle_user_info(
+            "target".to_string(),
+            Some(admin_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await
+        .expect("UserInfo should succeed");
+
+        let response_msg = read_server_message(&mut test_ctx).await;
+        match response_msg {
+            ServerMessage::UserInfoResponse {
+                success,
+                user: Some(user_info),
+                ..
+            } => {
+                assert!(success);
+                assert_eq!(
+                    user_info.features,
+                    vec![
+                        FEATURE_CHAT.to_string(),
+                        FEATURE_FILES.to_string(),
+                        FEATURE_NEWS.to_string(),
+                        FEATURE_VOICE.to_string(),
+                    ]
+                );
+            }
+            _ => panic!("Expected successful UserInfoResponse, got: {response_msg:?}"),
         }
     }
 

@@ -58,7 +58,8 @@ violation and disconnects the connection.
 
 The current BBS server recognizes the `chat`, `files`, `news`, and `voice`
 features. Unknown but syntactically valid feature names are ignored and
-omitted from `LoginResponse.features`.
+omitted from `LoginResponse.features`. Activated features are returned once
+each in alphabetical order.
 
 Features are negotiated client capabilities, not permissions. The effective
 permissions in `LoginResponse.permissions` still decide whether a user is
@@ -140,9 +141,9 @@ The `nickname` field contains the user's actual display name as confirmed by the
 
 The `group_id` and `group_name` fields identify the user's account group (if any). Groups are permission templates — see [10-groups.md](10-groups.md) for details. The effective permissions in the `permissions` array already include group resolution; clients don't need to resolve group permissions themselves.
 
-The `features` field is the server-confirmed subset of the requested
-`Login.features`. Clients should treat omitted requested features as
-unsupported by this server/session.
+The `features` field is the server-confirmed, deduplicated, alphabetical
+subset of the requested `Login.features`. Clients should treat omitted
+requested features as unsupported by this server/session.
 
 **Success example:**
 
