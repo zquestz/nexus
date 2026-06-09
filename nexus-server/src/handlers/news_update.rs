@@ -20,7 +20,7 @@ use super::{
     HandlerContext, err_cannot_edit_admin_news, err_database, err_news_body_invalid_characters,
     err_news_body_too_long, err_news_empty_content, err_news_image_invalid_format,
     err_news_image_too_large, err_news_image_unsupported_type, err_news_not_found,
-    err_not_logged_in, err_permission_denied,
+    err_no_fields_to_update, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::FEATURE_NEWS;
 use crate::db::Permission;
@@ -109,7 +109,7 @@ where
     if body.is_none() && image.is_none() {
         let response = ServerMessage::NewsUpdateResponse {
             success: false,
-            error: Some(err_news_empty_content(ctx.locale)),
+            error: Some(err_no_fields_to_update(ctx.locale)),
             news: None,
         };
         return ctx.send_message(&response).await;
@@ -317,7 +317,7 @@ mod tests {
         match response {
             ServerMessage::NewsUpdateResponse { success, error, .. } => {
                 assert!(!success);
-                assert_eq!(error, Some(err_news_empty_content(DEFAULT_TEST_LOCALE)));
+                assert_eq!(error, Some(err_no_fields_to_update(DEFAULT_TEST_LOCALE)));
             }
             _ => panic!("Expected NewsUpdateResponse with error"),
         }
