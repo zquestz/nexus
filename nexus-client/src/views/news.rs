@@ -26,8 +26,8 @@ use crate::style::{
     SCROLLBAR_PADDING, SPACER_SIZE_MEDIUM, SPACER_SIZE_SMALL, TEXT_SIZE, TITLE_SIZE,
     TOOLTIP_BACKGROUND_PADDING, TOOLTIP_GAP, TOOLTIP_PADDING, TOOLTIP_TEXT_SIZE,
     alternating_row_style, chat, content_background_style, danger_icon_button_style,
-    error_text_style, muted_text_style, panel_title, shaped_text, shaped_text_wrapped,
-    tooltip_container_style, transparent_icon_button_style,
+    disabled_icon_button_style, error_text_style, muted_text_style, panel_title, shaped_text,
+    shaped_text_wrapped, tooltip_container_style, transparent_icon_button_style,
 };
 use crate::types::{InputId, Message, NewsManagementMode, NewsManagementState, ServerConnection};
 
@@ -181,60 +181,48 @@ fn list_view<'a>(
 
     let scroll_content = scroll_content_inner;
 
-    // Create post button (icon style like add bookmark)
-    let create_btn: Option<Element<'a, Message>> = if can_create {
-        let add_icon = container(icon::plus().size(ICON_SIZE))
-            .width(ICON_SIZE)
-            .height(ICON_SIZE)
-            .align_x(alignment::Horizontal::Center)
-            .align_y(alignment::Vertical::Center);
-
-        Some(
-            tooltip(
-                button(add_icon)
-                    .on_press(Message::NewsShowCreate)
-                    .padding(HEADING_BUTTON_PADDING)
-                    .style(transparent_icon_button_style),
-                container(shaped_text(t("tooltip-news-create")).size(TOOLTIP_TEXT_SIZE))
-                    .padding(TOOLTIP_BACKGROUND_PADDING)
-                    .style(tooltip_container_style),
-                tooltip::Position::Top,
-            )
-            .gap(TOOLTIP_GAP)
-            .padding(TOOLTIP_PADDING)
-            .into(),
-        )
+    // Create post button (visible, disabled without news_create permission)
+    let add_icon = container(icon::plus().size(ICON_SIZE))
+        .width(ICON_SIZE)
+        .height(ICON_SIZE)
+        .align_x(alignment::Horizontal::Center)
+        .align_y(alignment::Vertical::Center);
+    let create_button = if can_create {
+        button(add_icon)
+            .on_press(Message::NewsShowCreate)
+            .padding(HEADING_BUTTON_PADDING)
+            .style(transparent_icon_button_style)
     } else {
-        None
+        button(add_icon)
+            .padding(HEADING_BUTTON_PADDING)
+            .style(disabled_icon_button_style)
     };
+    let create_btn: Element<'a, Message> = tooltip(
+        create_button,
+        container(shaped_text(t("tooltip-news-create")).size(TOOLTIP_TEXT_SIZE))
+            .padding(TOOLTIP_BACKGROUND_PADDING)
+            .style(tooltip_container_style),
+        tooltip::Position::Top,
+    )
+    .gap(TOOLTIP_GAP)
+    .padding(TOOLTIP_PADDING)
+    .into();
 
     // Title row with create button on the right
     // We add an invisible spacer on the left to balance the button width for proper centering
     let button_width = ICON_SIZE + HEADING_BUTTON_PADDING.left + HEADING_BUTTON_PADDING.right;
-    let title_row: Element<'a, Message> = if let Some(create_btn) = create_btn {
-        row![
-            Space::new().width(SCROLLBAR_PADDING),
-            Space::new().width(button_width), // Balance the create button on the right
-            shaped_text(t("title-news"))
-                .size(TITLE_SIZE)
-                .width(Fill)
-                .align_x(Center),
-            create_btn,
-            Space::new().width(SCROLLBAR_PADDING),
-        ]
-        .align_y(Center)
-        .into()
-    } else {
-        row![
-            Space::new().width(SCROLLBAR_PADDING),
-            shaped_text(t("title-news"))
-                .size(TITLE_SIZE)
-                .width(Fill)
-                .align_x(Center),
-            Space::new().width(SCROLLBAR_PADDING),
-        ]
-        .into()
-    };
+    let title_row: Element<'a, Message> = row![
+        Space::new().width(SCROLLBAR_PADDING),
+        Space::new().width(button_width), // Balance the create button on the right
+        shaped_text(t("title-news"))
+            .size(TITLE_SIZE)
+            .width(Fill)
+            .align_x(Center),
+        create_btn,
+        Space::new().width(SCROLLBAR_PADDING),
+    ]
+    .align_y(Center)
+    .into();
 
     // Error message (shown below title if present)
     let error_element: Option<Element<'a, Message>> =

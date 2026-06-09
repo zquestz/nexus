@@ -33,6 +33,7 @@ use crate::constants::{
     LOG_LOGIN_GROUP_ERROR, LOG_LOGIN_HANDSHAKE_REQUIRED, LOG_LOGIN_HASH_ERROR,
     LOG_LOGIN_INVALID_CREDENTIALS, LOG_LOGIN_PASSWORD_CHANGED, LOG_LOGIN_PASSWORD_VERIFY_ERROR,
     LOG_LOGIN_PERMISSIONS_ERROR, LOG_LOGIN_RENAMED_MID_LOGIN, LOG_LOGIN_SUCCESS,
+    SUPPORTED_FEATURES,
 };
 use crate::db::sql::GUEST_USERNAME;
 use crate::db::{self, LoginSnapshotError, Permission};
@@ -57,6 +58,13 @@ struct LoginSuccess {
     response: Box<ServerMessage>,
     user_connected: ServerMessage,
     session_id: u32,
+}
+
+fn activate_supported_features(features: Vec<String>) -> Vec<String> {
+    features
+        .into_iter()
+        .filter(|feature| SUPPORTED_FEATURES.contains(&feature.as_str()))
+        .collect()
 }
 
 fn transition_login_to_user_flow(
@@ -200,6 +208,7 @@ where
             .send_error_and_disconnect(&error_msg, Some(HANDLER_LOGIN))
             .await;
     }
+    let activated_features = activate_supported_features(features);
 
     if let Some(ref avatar_data) = avatar {
         // Decode-validation (raster decode / SVG parse under `avatar-decode`) is
@@ -429,7 +438,7 @@ where
             break 'locked Err(err_invalid_credentials(&locale));
         }
 
-        let has_chat_feature = features.iter().any(|f| f == FEATURE_CHAT);
+        let has_chat_feature = activated_features.iter().any(|f| f == FEATURE_CHAT);
 
         // Regular accounts inherit is_away/status from the latest existing
         // session so a multi-device login doesn't clear away state.
@@ -492,7 +501,7 @@ where
                 address: ctx.peer_addr,
                 created_at: user_snapshot.account.created_at,
                 tx: ctx.tx.clone(),
-                features,
+                features: activated_features.clone(),
                 locale: locale.clone(),
                 avatar: avatar.clone(),
                 nickname: validated_nickname
@@ -659,6 +668,7 @@ where
             user_id: Some(session.user_id),
             is_admin: Some(session.is_admin),
             permissions: Some(user_permissions),
+            features: Some(activated_features.clone()),
             server_info,
             locale: Some(locale.clone()),
             channels,
@@ -723,6 +733,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::{FEATURE_FILES, FEATURE_NEWS};
     use crate::egress::task::EgressSettingsCommand;
     use crate::handlers::testing::{
         DEFAULT_TEST_LOCALE, TestContext, create_test_context, get_cached_password_hash,
@@ -816,6 +827,7 @@ mod tests {
                 user_id,
                 is_admin,
                 permissions,
+                features,
                 error,
                 ..
             } => {
@@ -827,6 +839,11 @@ mod tests {
                     permissions,
                     Some(vec![]),
                     "Admin should have empty permissions list"
+                );
+                assert_eq!(
+                    features,
+                    Some(vec![FEATURE_CHAT.to_string()]),
+                    "LoginResponse should return activated features"
                 );
                 assert!(error.is_none(), "Should have no error");
             }
@@ -841,6 +858,60 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(user.is_admin, "First user should be admin");
+    }
+
+    #[tokio::test]
+    async fn test_login_filters_unsupported_features() {
+        let mut test_ctx = create_test_context().await;
+        let mut session_id = None;
+        let requested_features = vec![
+            FEATURE_CHAT.to_string(),
+            "boards".to_string(),
+            FEATURE_NEWS.to_string(),
+            FEATURE_FILES.to_string(),
+        ];
+        let activated_features = vec![
+            FEATURE_CHAT.to_string(),
+            FEATURE_NEWS.to_string(),
+            FEATURE_FILES.to_string(),
+        ];
+
+        let request = LoginRequest {
+            username: "alice".to_string(),
+            password: "password123".to_string(),
+            features: requested_features,
+            locale: DEFAULT_TEST_LOCALE.to_string(),
+            avatar: None,
+            nickname: None,
+            handshake_complete: true,
+        };
+        let result = handle_login(request, &mut session_id, &mut test_ctx.handler_context()).await;
+
+        assert!(result.is_ok(), "Login should succeed with unknown features");
+        let session = test_ctx
+            .user_manager
+            .get_user_by_session_id(session_id.expect("Session ID should be set"))
+            .await
+            .expect("Session should exist");
+        assert_eq!(
+            session.features, activated_features,
+            "Session should store only server-supported features"
+        );
+
+        let response_msg = read_login_response(&mut test_ctx).await;
+        match response_msg {
+            ServerMessage::LoginResponse {
+                success, features, ..
+            } => {
+                assert!(success, "Login should indicate success");
+                assert_eq!(
+                    features,
+                    Some(session.features),
+                    "LoginResponse should return the activated feature list"
+                );
+            }
+            _ => panic!("Expected LoginResponse"),
+        }
     }
 
     #[tokio::test]

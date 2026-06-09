@@ -42,6 +42,12 @@ pub use error_kind::{
 /// Version information for the Nexus BBS protocol
 pub const PROTOCOL_VERSION: &str = "0.9.0";
 
+/// Client/server feature identifiers used in `Login.features`,
+/// `LoginResponse.features`, and user-info feature reporting.
+pub const FEATURE_CHAT: &str = "chat";
+pub const FEATURE_FILES: &str = "files";
+pub const FEATURE_NEWS: &str = "news";
+
 /// Version information for the Nexus tracker protocol
 ///
 /// Versioned independently of `PROTOCOL_VERSION` so the BBS protocol and

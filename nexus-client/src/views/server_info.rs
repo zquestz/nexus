@@ -257,6 +257,9 @@ fn server_info_display_view<'a>(
         config_content,
     );
 
+    // Trackers is an operator/admin subsection inside the otherwise
+    // user-facing Server Info panel. Hide the tab without tracker_list instead
+    // of showing a disabled/empty tab to most users.
     if has_tracker_list_perm {
         let trackers_tab = trackers_tab_view(conn, tracker_management, theme);
         let trackers_content: Element<'a, Message> =

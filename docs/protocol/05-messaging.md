@@ -44,6 +44,11 @@ The sender also receives the `ServerBroadcast` (echo).
 
 Send a message to another user.
 
+`UserMessage` is part of the `chat` feature. The sender's session must
+have activated `chat` during login. Recipient lookup only considers
+sessions that activated `chat`; if a nickname is online only on
+non-chat sessions, the server returns the same "not online" error.
+
 | Field         | Type   | Required | Description                                 |
 | ------------- | ------ | -------- | ------------------------------------------- |
 | `to_nickname` | string | Yes      | Display name of the recipient               |
@@ -263,7 +268,9 @@ Delivered to all users when a broadcast is sent.
 
 Admins have all permissions automatically.
 
-Note: There is no permission required to _receive_ user messages or broadcasts. All connected users can receive them.
+Note: There is no permission required to _receive_ user messages or
+broadcasts. User messages are delivered only to sessions that activated
+the `chat` feature; broadcasts can reach all connected users.
 
 ## Message Validation
 
@@ -329,6 +336,7 @@ Sending a message to yourself is not allowed. The server returns:
 | Invalid characters                | Contains control characters       | Stays connected |
 | Cannot send a message to yourself | `to_nickname` matches sender      | Stays connected |
 | User not online                   | Recipient not found               | Stays connected |
+| Chat feature not enabled          | Missing `chat` feature            | Stays connected |
 | Permission denied                 | Missing `user_message` permission | Stays connected |
 
 ### UserBroadcast Errors
@@ -360,7 +368,7 @@ Note: Broadcast validation errors disconnect the client (more strict), while use
 - User messages are not persisted; only online users receive them
 - Broadcasts are not persisted; only online users receive them
 - The sender receives their own broadcast as a `ServerBroadcast` (for confirmation)
-- User messages are delivered to all sessions of the recipient (for regular accounts)
+- User messages are delivered to all chat-enabled sessions of the recipient (for regular accounts)
 - `from_admin` in `UserMessage` allows clients to highlight admin messages differently
 - `from_shared` in `UserMessage` indicates messages from shared account users (displayed with muted styling)
 - `session_id` in `ServerBroadcast` can be used to identify the sender

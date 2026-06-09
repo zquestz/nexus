@@ -246,6 +246,7 @@ async fn perform_login(
             user_id,
             is_admin,
             permissions,
+            features,
             server_info,
             channels,
             locale: _,
@@ -260,6 +261,7 @@ async fn perform_login(
             // means the server is buggy or malicious — refuse to proceed.
             nickname: nickname.ok_or_else(|| t("err-server-omitted-nickname"))?,
             permissions: permissions.unwrap_or_default(),
+            features: features.unwrap_or_default(),
             server_name: server_info.as_ref().and_then(|info| info.name.clone()),
             server_description: server_info
                 .as_ref()

@@ -115,6 +115,8 @@ pub struct ServerConnectionParams {
     pub is_admin: bool,
     /// User's permissions on this server
     pub permissions: Vec<String>,
+    /// Server-activated features for this session
+    pub features: Vec<String>,
     /// Server name (from ServerInfo)
     pub server_name: Option<String>,
     /// Server description (from ServerInfo)
@@ -196,6 +198,8 @@ pub struct ServerConnection {
     pub is_admin: bool,
     /// User's permissions on this server
     pub permissions: Vec<String>,
+    /// Server-activated features for this session
+    pub features: Vec<String>,
     /// Server name (from ServerInfo)
     pub server_name: Option<String>,
     /// Server description (from ServerInfo)
@@ -617,6 +621,7 @@ impl ServerConnection {
             connection_id: params.connection_id,
             is_admin: params.is_admin,
             permissions: params.permissions,
+            features: params.features,
             server_name: params.server_name,
             server_description: params.server_description,
             public_address: params.public_address,
@@ -703,6 +708,8 @@ pub struct NetworkConnection {
     pub nickname: String,
     /// User's permissions
     pub permissions: Vec<String>,
+    /// Server-activated features for this session
+    pub features: Vec<String>,
     /// Server name (if provided in ServerInfo)
     pub server_name: Option<String>,
     /// Server description (if provided in ServerInfo)
@@ -781,6 +788,7 @@ mod tests {
             connection_id: 0,
             is_admin: false,
             permissions: Vec::new(),
+            features: Vec::new(),
             server_name: None,
             server_description: None,
             public_address: None,

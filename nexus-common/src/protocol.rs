@@ -945,6 +945,8 @@ pub enum ServerMessage {
         is_admin: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
         permissions: Option<Vec<String>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        features: Option<Vec<String>>,
         #[serde(skip_serializing_if = "Option::is_none")]
         server_info: Option<ServerInfo>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -2299,6 +2301,11 @@ mod tests {
             user_id: None,
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string()]),
+            features: Some(vec![
+                "chat".to_string(),
+                "files".to_string(),
+                "news".to_string(),
+            ]),
             server_info: None,
             locale: Some("en".to_string()),
             channels: None,
@@ -2311,6 +2318,7 @@ mod tests {
         assert!(json.contains("\"type\":\"LoginResponse\""));
         assert!(json.contains("\"success\":true"));
         assert!(json.contains("\"session_id\":12345"));
+        assert!(json.contains("\"features\":[\"chat\",\"files\",\"news\"]"));
     }
 
     #[test]
@@ -2321,6 +2329,7 @@ mod tests {
             user_id: None,
             is_admin: None,
             permissions: None,
+            features: None,
             server_info: None,
             locale: None,
             channels: None,
@@ -2400,6 +2409,7 @@ mod tests {
             user_id: None,
             is_admin: Some(true),
             permissions: Some(vec![]),
+            features: Some(vec!["chat".to_string()]),
             server_info: None,
             locale: Some("en".to_string()),
             channels: None,
@@ -2423,6 +2433,7 @@ mod tests {
             user_id: None,
             is_admin: Some(false),
             permissions: Some(vec!["user_list".to_string(), "chat_send".to_string()]),
+            features: Some(vec!["chat".to_string(), "news".to_string()]),
             server_info: None,
             locale: Some("en".to_string()),
             channels: None,
@@ -4083,6 +4094,7 @@ mod tests {
             user_id: None,
             is_admin: Some(false),
             permissions: Some(vec!["chat_send".to_string()]),
+            features: Some(vec!["chat".to_string()]),
             server_info: None,
             locale: Some("en".to_string()),
             channels: None,
@@ -4105,11 +4117,13 @@ mod tests {
                 group_id,
                 group_name,
                 user_id,
+                features,
                 ..
             } => {
                 assert!(group_id.is_none());
                 assert!(group_name.is_none());
                 assert!(user_id.is_none());
+                assert!(features.is_none());
             }
             _ => panic!("Expected LoginResponse"),
         }
@@ -4351,6 +4365,7 @@ mod tests {
             user_id: Some(42),
             is_admin: Some(false),
             permissions: Some(vec![]),
+            features: Some(vec!["chat".to_string()]),
             server_info: None,
             locale: Some("en".to_string()),
             channels: None,

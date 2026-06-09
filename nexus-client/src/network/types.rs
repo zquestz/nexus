@@ -343,6 +343,8 @@ pub struct LoginInfo {
     /// Server-confirmed nickname (equals username for regular accounts)
     pub nickname: String,
     pub permissions: Vec<String>,
+    /// Server-activated features confirmed by LoginResponse
+    pub features: Vec<String>,
     pub server_name: Option<String>,
     pub server_description: Option<String>,
     /// Public address advertised for `nexus://` URI sharing (from ServerInfo)

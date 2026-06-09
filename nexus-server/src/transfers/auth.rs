@@ -334,6 +334,7 @@ where
         user_id: None,
         is_admin: None,
         permissions: None,
+        features: None,
         server_info: None,
         channels: None,
         locale: None,

@@ -226,6 +226,7 @@ pub struct ToolbarState<'a> {
     pub is_connected: bool,
     pub is_admin: bool,
     pub permissions: &'a [String],
+    pub features: &'a [String],
     pub can_view_user_list: bool,
     /// Server name to display in toolbar (None = show "Nexus BBS")
     pub server_name: Option<&'a str>,
@@ -240,6 +241,11 @@ impl<'a> ToolbarState<'a> {
     /// if the permission is in their permissions list.
     pub fn has_permission(&self, permission: &str) -> bool {
         self.is_admin || self.permissions.iter().any(|p| p == permission)
+    }
+
+    /// Check if the server activated a requested feature for this session.
+    pub fn has_feature(&self, feature: &str) -> bool {
+        self.features.iter().any(|f| f == feature)
     }
 
     /// Check if the user has any of the specified permissions
@@ -280,6 +286,7 @@ mod tests {
             is_connected: false,
             is_admin: false,
             permissions: &[],
+            features: &[],
             can_view_user_list: false,
             server_name: None,
             transfer_count: 0,

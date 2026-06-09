@@ -526,6 +526,26 @@ pub async fn login_shared_user(
     nickname: &str,
     permissions: &[crate::db::Permission],
 ) -> u32 {
+    login_shared_user_with_features(
+        test_ctx,
+        account_username,
+        password,
+        nickname,
+        permissions,
+        vec![],
+    )
+    .await
+}
+
+/// Create a shared account + session with a distinct `nickname` and feature flags.
+pub async fn login_shared_user_with_features(
+    test_ctx: &mut TestContext,
+    account_username: &str,
+    password: &str,
+    nickname: &str,
+    permissions: &[crate::db::Permission],
+    features: Vec<String>,
+) -> u32 {
     let hashed = get_cached_password_hash(password);
 
     let mut perms = Permissions::new();
@@ -562,7 +582,7 @@ pub async fn login_shared_user(
             address: test_ctx.peer_addr,
             created_at: user.created_at,
             tx: test_ctx.tx.clone(),
-            features: vec![],
+            features,
             locale: DEFAULT_TEST_LOCALE.to_string(),
             avatar: None,
             nickname: nickname.to_string(),

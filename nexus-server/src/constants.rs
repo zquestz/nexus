@@ -90,8 +90,9 @@ pub const CONFIG_KEY_SERVER_DESCRIPTION: &str = "server_description";
 pub const CONFIG_KEY_SERVER_IMAGE: &str = "server_image";
 pub const CONFIG_KEY_PUBLIC_ADDRESS: &str = "public_address";
 
-pub const FEATURE_CHAT: &str = "chat";
-pub const FEATURE_NEWS: &str = "news";
+pub use nexus_common::{FEATURE_CHAT, FEATURE_FILES, FEATURE_NEWS};
+
+pub const SUPPORTED_FEATURES: &[&str] = &[FEATURE_CHAT, FEATURE_FILES, FEATURE_NEWS];
 
 /// Space-separated list; these channels survive restart and can't be deleted when empty.
 pub const CONFIG_KEY_PERSISTENT_CHANNELS: &str = "persistent_channels";

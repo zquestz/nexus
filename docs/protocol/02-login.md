@@ -29,7 +29,7 @@ Sent after successful handshake to authenticate.
 | ---------- | ------ | -------- | ----------------------------------------- |
 | `username` | string | Yes      | Account username (empty string for guest) |
 | `password` | string | Yes      | Account password (empty string for guest) |
-| `features` | array  | Yes      | Client feature flags (e.g., `["chat"]`)   |
+| `features` | array  | Yes      | Requested client features                 |
 | `locale`   | string | No       | Preferred locale (default: `"en"`)        |
 | `nickname` | string | No       | Display name for shared/guest accounts    |
 | `avatar`   | string | No       | Avatar as data URI (max 176KB)            |
@@ -55,6 +55,10 @@ violation and disconnects the connection.
   types (PNG, JPEG, WebP, SVG), and the base64 payload must decode as a
   valid image of that type. An avatar that fails to decode is rejected
   and the connection is closed.
+
+The current BBS server recognizes the `chat`, `files`, and `news`
+features. Unknown but syntactically valid feature names are ignored and
+omitted from `LoginResponse.features`.
 
 **Regular account example:**
 
@@ -106,6 +110,7 @@ Server's response to the login attempt.
 | `group_name`  | string  | If success | User's group name (null if no group)      |
 | `is_admin`    | boolean | If success | Whether user has admin privileges         |
 | `permissions` | array   | If success | List of permission strings                |
+| `features`    | array   | If success | Server-activated features                 |
 | `server_info` | object  | If success | Server information (see below)            |
 | `locale`      | string  | If success | Confirmed locale                          |
 | `channels`    | array   | If success | Channels auto-joined on login (see below) |
@@ -117,6 +122,10 @@ The `nickname` field contains the user's actual display name as confirmed by the
 - For shared accounts: the validated nickname from the login request
 
 The `group_id` and `group_name` fields identify the user's account group (if any). Groups are permission templates — see [10-groups.md](10-groups.md) for details. The effective permissions in the `permissions` array already include group resolution; clients don't need to resolve group permissions themselves.
+
+The `features` field is the server-confirmed subset of the requested
+`Login.features`. Clients should treat omitted requested features as
+unsupported by this server/session.
 
 **Success example:**
 
@@ -137,6 +146,7 @@ The `group_id` and `group_name` fields identify the user's account group (if any
     "file_list",
     "file_download"
   ],
+  "features": ["chat", "files", "news"],
   "server_info": {
     "name": "My BBS",
     "description": "Welcome to my server!",
@@ -338,7 +348,7 @@ The login flow on port 7501 is identical, but `LoginResponse` only includes:
 - `success`
 - `error` (if failed)
 
-No session ID, permissions, server info, channels, or nickname is returned on the transfer port.
+No session ID, permissions, features, server info, channels, or nickname is returned on the transfer port.
 
 ## Notes
 

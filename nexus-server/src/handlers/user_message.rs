@@ -9,14 +9,14 @@ use nexus_common::protocol::{ChatAction, ServerMessage};
 use nexus_common::validators::{self, MessageError, NicknameError};
 
 use super::{
-    HandlerContext, err_cannot_message_self, err_chat_too_long, err_flood_disconnect,
-    err_flood_warning, err_message_contains_newlines, err_message_empty,
+    HandlerContext, err_cannot_message_self, err_chat_feature_not_enabled, err_chat_too_long,
+    err_flood_disconnect, err_flood_warning, err_message_contains_newlines, err_message_empty,
     err_message_invalid_characters, err_nickname_empty, err_nickname_invalid,
     err_nickname_not_online, err_nickname_too_long, err_not_logged_in, err_permission_denied,
 };
 use crate::constants::{
-    HANDLER_USER_MESSAGE, LOG_FLOOD_DISCONNECT, LOG_FLOOD_LIMITED, LOG_USER_MESSAGE_NOT_LOGGED_IN,
-    LOG_USER_MESSAGE_PERMISSION_DENIED,
+    FEATURE_CHAT, HANDLER_USER_MESSAGE, LOG_FLOOD_DISCONNECT, LOG_FLOOD_LIMITED,
+    LOG_USER_MESSAGE_NOT_LOGGED_IN, LOG_USER_MESSAGE_PERMISSION_DENIED,
 };
 use crate::db::Permission;
 use crate::flood::{FloodCheck, FloodTracker};
@@ -68,6 +68,16 @@ where
                 .await;
         }
     };
+
+    if !requesting_user_session.has_feature(FEATURE_CHAT) {
+        let response = ServerMessage::UserMessageResponse {
+            success: false,
+            error: Some(err_chat_feature_not_enabled(ctx.locale)),
+            is_away: None,
+            status: None,
+        };
+        return ctx.send_message(&response).await;
+    }
 
     if !requesting_user_session.has_permission(Permission::UserMessage) {
         warn!(user = %requesting_user_session.username, ip = %ctx.peer_addr, "{}", LOG_USER_MESSAGE_PERMISSION_DENIED);
@@ -188,8 +198,15 @@ where
             break 'deliver DeliveryOutcome::SenderGone;
         };
 
-        // Target by nickname (equals username for regular accounts).
-        let Some(target_session) = ctx.user_manager.get_session_by_nickname(&to_nickname).await
+        // Target by nickname (equals username for regular accounts), but only
+        // chat-enabled sessions can receive DMs.
+        let target_sessions = ctx
+            .user_manager
+            .get_sessions_by_nickname(&to_nickname)
+            .await;
+        let Some(target_session) = target_sessions
+            .into_iter()
+            .find(|session| session.has_feature(FEATURE_CHAT))
         else {
             break 'deliver DeliveryOutcome::TargetOffline;
         };
@@ -211,12 +228,12 @@ where
             timestamp,
         };
         // Broadcast to both parties by nickname. Regular accounts (nickname == username)
-        // reach all sessions; shared accounts reach the one nickname.
+        // reach every chat-enabled session; shared accounts reach the one nickname.
         ctx.user_manager
-            .broadcast_to_nickname(&sender.nickname, &broadcast)
+            .broadcast_to_nickname_with_feature(&sender.nickname, FEATURE_CHAT, &broadcast)
             .await;
         ctx.user_manager
-            .broadcast_to_nickname(&target_session.nickname, &broadcast)
+            .broadcast_to_nickname_with_feature(&target_session.nickname, FEATURE_CHAT, &broadcast)
             .await;
 
         DeliveryOutcome::Delivered {
@@ -263,13 +280,37 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::FEATURE_CHAT;
     use crate::db;
     use crate::db::Permission;
     use crate::flood::FloodConfig;
     use crate::handlers::testing::{
-        create_test_context, get_cached_password_hash, login_shared_user, login_user,
-        read_channel_response, read_login_response, read_server_message,
+        add_observer_session_for_existing_regular_user, create_test_context,
+        get_cached_password_hash, login_shared_user_with_features, login_user,
+        login_user_with_features, read_channel_response, read_login_response, read_server_message,
     };
+
+    fn chat_features() -> Vec<String> {
+        vec![FEATURE_CHAT.to_string()]
+    }
+
+    async fn login_chat_user(
+        test_ctx: &mut crate::handlers::testing::TestContext,
+        username: &str,
+        password: &str,
+        permissions: &[Permission],
+        is_admin: bool,
+    ) -> u32 {
+        login_user_with_features(
+            test_ctx,
+            username,
+            password,
+            permissions,
+            is_admin,
+            chat_features(),
+        )
+        .await
+    }
 
     #[tokio::test]
     async fn test_usermessage_requires_login() {
@@ -293,10 +334,10 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create user without UserMessage permission
-        let _sender_id = login_user(&mut test_ctx, "sender", "pass123", &[], false).await;
+        let _sender_id = login_chat_user(&mut test_ctx, "sender", "pass123", &[], false).await;
 
         // Create target user with UserMessage permission
-        let _target_id = login_user(
+        let _target_id = login_chat_user(
             &mut test_ctx,
             "target",
             "pass456",
@@ -331,10 +372,161 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_usermessage_empty_message() {
+    async fn test_usermessage_requires_chat_feature() {
         let mut test_ctx = create_test_context().await;
 
         let _sender_id = login_user(
+            &mut test_ctx,
+            "sender",
+            "pass123",
+            &[Permission::UserMessage],
+            false,
+        )
+        .await;
+        let _target_id = login_chat_user(
+            &mut test_ctx,
+            "target",
+            "pass456",
+            &[Permission::UserMessage],
+            false,
+        )
+        .await;
+
+        let result = handle_user_message(
+            "target".to_string(),
+            "hello".to_string(),
+            ChatAction::Normal,
+            Some(1),
+            &mut FloodTracker::new(),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
+                assert!(!success);
+                let expected =
+                    err_chat_feature_not_enabled(crate::handlers::testing::DEFAULT_TEST_LOCALE);
+                assert_eq!(error.as_deref(), Some(expected.as_str()));
+            }
+            _ => panic!("Expected UserMessageResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_usermessage_target_without_chat_feature_is_offline_for_dm() {
+        let mut test_ctx = create_test_context().await;
+
+        let _sender_id = login_chat_user(
+            &mut test_ctx,
+            "sender",
+            "pass123",
+            &[Permission::UserMessage],
+            false,
+        )
+        .await;
+        let _target_id = login_user(
+            &mut test_ctx,
+            "target",
+            "pass456",
+            &[Permission::UserMessage],
+            false,
+        )
+        .await;
+
+        let result = handle_user_message(
+            "target".to_string(),
+            "hello".to_string(),
+            ChatAction::Normal,
+            Some(1),
+            &mut FloodTracker::new(),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
+                assert!(!success);
+                assert!(error.unwrap().contains("not online"));
+            }
+            _ => panic!("Expected UserMessageResponse"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_usermessage_skips_non_chat_sessions_for_same_nickname() {
+        let mut test_ctx = create_test_context().await;
+
+        let sender_id = login_chat_user(
+            &mut test_ctx,
+            "sender",
+            "pass123",
+            &[Permission::UserMessage],
+            false,
+        )
+        .await;
+        let (_sender_no_chat_id, mut sender_no_chat_rx) =
+            add_observer_session_for_existing_regular_user(
+                &mut test_ctx,
+                "sender",
+                &[Permission::UserMessage],
+            )
+            .await;
+
+        let _target_id = login_chat_user(
+            &mut test_ctx,
+            "target",
+            "pass456",
+            &[Permission::UserMessage],
+            false,
+        )
+        .await;
+        let (_target_no_chat_id, mut target_no_chat_rx) =
+            add_observer_session_for_existing_regular_user(
+                &mut test_ctx,
+                "target",
+                &[Permission::UserMessage],
+            )
+            .await;
+
+        let result = handle_user_message(
+            "target".to_string(),
+            "hello".to_string(),
+            ChatAction::Normal,
+            Some(sender_id),
+            &mut FloodTracker::new(),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_channel_response(&mut test_ctx, |msg| {
+            matches!(msg, ServerMessage::UserMessageResponse { .. })
+        });
+        match response {
+            ServerMessage::UserMessageResponse { success, error, .. } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected UserMessageResponse"),
+        }
+
+        assert!(sender_no_chat_rx.try_recv().is_err());
+        assert!(target_no_chat_rx.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn test_usermessage_empty_message() {
+        let mut test_ctx = create_test_context().await;
+
+        let _sender_id = login_chat_user(
             &mut test_ctx,
             "sender",
             "pass123",
@@ -369,7 +561,7 @@ mod tests {
     async fn test_usermessage_message_too_long() {
         let mut test_ctx = create_test_context().await;
 
-        let _sender_id = login_user(
+        let _sender_id = login_chat_user(
             &mut test_ctx,
             "sender",
             "pass123",
@@ -406,7 +598,7 @@ mod tests {
     async fn test_usermessage_cannot_message_self() {
         let mut test_ctx = create_test_context().await;
 
-        let _sender_id = login_user(
+        let _sender_id = login_chat_user(
             &mut test_ctx,
             "sender",
             "pass123",
@@ -441,7 +633,7 @@ mod tests {
     async fn test_usermessage_target_not_found() {
         let mut test_ctx = create_test_context().await;
 
-        let _sender_id = login_user(
+        let _sender_id = login_chat_user(
             &mut test_ctx,
             "sender",
             "pass123",
@@ -478,7 +670,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create sender with permission (online)
-        let _sender_id = login_user(
+        let _sender_id = login_chat_user(
             &mut test_ctx,
             "sender",
             "pass123",
@@ -533,7 +725,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create sender with permission (session_id 1)
-        let _sender_id = login_user(
+        let _sender_id = login_chat_user(
             &mut test_ctx,
             "sender",
             "pass123",
@@ -543,7 +735,7 @@ mod tests {
         .await;
 
         // Create target with permission (session_id 2)
-        let _target_id = login_user(
+        let _target_id = login_chat_user(
             &mut test_ctx,
             "target",
             "pass456",
@@ -584,10 +776,10 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create admin sender (no explicit permission needed) (session_id 1)
-        let _admin_id = login_user(&mut test_ctx, "admin", "pass123", &[], true).await;
+        let _admin_id = login_chat_user(&mut test_ctx, "admin", "pass123", &[], true).await;
 
         // Create target (session_id 2)
-        let _target_id = login_user(
+        let _target_id = login_chat_user(
             &mut test_ctx,
             "target",
             "pass456",
@@ -632,7 +824,7 @@ mod tests {
         use crate::handlers::login::{LoginRequest, handle_login};
 
         // Create admin sender with message permission
-        let admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let admin_id = login_chat_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a shared account in the database
         let hashed = get_cached_password_hash("password");
@@ -658,7 +850,7 @@ mod tests {
         let login_request = LoginRequest {
             username: "shared_acct".to_string(),
             password: "password".to_string(),
-            features: vec![],
+            features: chat_features(),
             locale: "en".to_string(),
             avatar: None,
             nickname: Some("Nick1".to_string()),
@@ -709,7 +901,7 @@ mod tests {
         use crate::handlers::login::{LoginRequest, handle_login};
 
         // First create an admin so system works
-        let _admin_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+        let _admin_id = login_chat_user(&mut test_ctx, "admin", "password", &[], true).await;
 
         // Create a shared account with message permission
         let hashed = get_cached_password_hash("password");
@@ -737,7 +929,7 @@ mod tests {
         let login_request = LoginRequest {
             username: "shared_acct".to_string(),
             password: "password".to_string(),
-            features: vec![],
+            features: chat_features(),
             locale: "en".to_string(),
             avatar: None,
             nickname: Some("Nick1".to_string()),
@@ -783,7 +975,7 @@ mod tests {
         use crate::handlers::login::{LoginRequest, handle_login};
 
         // Create a target user
-        let _target_id = login_user(&mut test_ctx, "target", "password", &[], false).await;
+        let _target_id = login_chat_user(&mut test_ctx, "target", "password", &[], false).await;
 
         // Create a shared account with message permission
         let hashed = get_cached_password_hash("password");
@@ -811,7 +1003,7 @@ mod tests {
         let login_request = LoginRequest {
             username: "shared_acct".to_string(),
             password: "password".to_string(),
-            features: vec![],
+            features: chat_features(),
             locale: "en".to_string(),
             avatar: None,
             nickname: Some("Sender".to_string()),
@@ -861,7 +1053,7 @@ mod tests {
         let mut test_ctx = create_test_context().await;
 
         // Create sender with permission
-        let _sender_id = login_user(
+        let _sender_id = login_chat_user(
             &mut test_ctx,
             "sender",
             "pass123",
@@ -871,12 +1063,13 @@ mod tests {
         .await;
 
         // Create shared account user with nickname "Nick1"
-        let _shared_id = login_shared_user(
+        let _shared_id = login_shared_user_with_features(
             &mut test_ctx,
             "shared_acct",
             "sharedpass",
             "Nick1",
             &[Permission::UserMessage],
+            chat_features(),
         )
         .await;
 
@@ -914,7 +1107,7 @@ mod tests {
         // Set tight flood config: burst=2, rate=20
         test_ctx.flood_config = std::sync::Arc::new(FloodConfig::new(2, 20));
 
-        let _sender_id = login_user(
+        let _sender_id = login_chat_user(
             &mut test_ctx,
             "sender",
             "pass123",
@@ -923,7 +1116,7 @@ mod tests {
         )
         .await;
 
-        let _target_id = login_user(
+        let _target_id = login_chat_user(
             &mut test_ctx,
             "target",
             "pass456",
@@ -984,7 +1177,7 @@ mod tests {
         // Set tight flood config: burst=1, rate=20
         test_ctx.flood_config = std::sync::Arc::new(FloodConfig::new(1, 20));
 
-        let _sender_id = login_user(
+        let _sender_id = login_chat_user(
             &mut test_ctx,
             "sender",
             "pass123",
@@ -993,7 +1186,7 @@ mod tests {
         )
         .await;
 
-        let _target_id = login_user(
+        let _target_id = login_chat_user(
             &mut test_ctx,
             "target",
             "pass456",
@@ -1057,7 +1250,7 @@ mod tests {
         // Set very tight flood config: burst=1, rate=1
         test_ctx.flood_config = std::sync::Arc::new(FloodConfig::new(1, 1));
 
-        let _sender_id = login_user(
+        let _sender_id = login_chat_user(
             &mut test_ctx,
             "sender",
             "pass123",
@@ -1066,7 +1259,7 @@ mod tests {
         )
         .await;
 
-        let _target_id = login_user(
+        let _target_id = login_chat_user(
             &mut test_ctx,
             "target",
             "pass456",
@@ -1105,7 +1298,7 @@ mod tests {
         // Disable flood protection: rate=0
         test_ctx.flood_config = std::sync::Arc::new(FloodConfig::new(5, 0));
 
-        let _sender_id = login_user(
+        let _sender_id = login_chat_user(
             &mut test_ctx,
             "sender",
             "pass123",
@@ -1114,7 +1307,7 @@ mod tests {
         )
         .await;
 
-        let _target_id = login_user(
+        let _target_id = login_chat_user(
             &mut test_ctx,
             "target",
             "pass456",

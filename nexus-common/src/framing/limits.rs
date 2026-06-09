@@ -1112,7 +1112,7 @@ const CHANNEL_JOIN_INFO_SIZE: usize = json_first_string_chars_field("channel", M
     + json_string_array_field("voiced", MAX_CHANNEL_MEMBERS, MAX_NICKNAME_LENGTH)
     + 2; // {} braces
 
-/// LoginResponse: {"type":"LoginResponse","success":false,"error":"...2048...","session_id":u32,"user_id":i64,"is_admin":false,"permissions":["...32...",...],"server_info":{...},"locale":"...16...","channels":[{...},...],"nickname":"...32...","group_id":i64,"group_name":"...32..."}
+/// LoginResponse: {"type":"LoginResponse","success":false,"error":"...2048...","session_id":u32,"user_id":i64,"is_admin":false,"permissions":["...32...",...],"features":["...32...",...],"server_info":{...},"locale":"...16...","channels":[{...},...],"nickname":"...32...","group_id":i64,"group_name":"...32..."}
 const LOGIN_RESPONSE_SIZE: usize = json_type_base("LoginResponse")
     + json_bool_field("success")
     + json_string_field("error", MAX_ERROR_LENGTH)
@@ -1120,6 +1120,7 @@ const LOGIN_RESPONSE_SIZE: usize = json_type_base("LoginResponse")
     + json_i64_field("user_id")
     + json_bool_field("is_admin")
     + json_string_array_field("permissions", PERMISSIONS_COUNT, MAX_PERMISSION_LENGTH)
+    + json_string_array_field("features", MAX_FEATURES_COUNT, MAX_FEATURE_LENGTH)
     + json_object_field_start("server_info")
     + SERVER_INFO_STRUCT_SIZE
     + json_close()
@@ -2972,6 +2973,11 @@ mod tests {
                     .map(|_| str_of_len(MAX_PERMISSION_LENGTH))
                     .collect(),
             ),
+            features: Some(
+                (0..MAX_FEATURES_COUNT)
+                    .map(|_| str_of_len(MAX_FEATURE_LENGTH))
+                    .collect(),
+            ),
             server_info: Some(ServerInfo {
                 name: Some(str_of_len(MAX_SERVER_NAME_LENGTH)),
                 description: Some(str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),
@@ -4397,6 +4403,7 @@ mod tests {
             user_id: Some(1),
             is_admin: Some(false),
             permissions: Some(vec![]),
+            features: Some(vec![unicode_str_of_len(MAX_FEATURE_LENGTH)]),
             server_info: Some(ServerInfo {
                 name: Some(unicode_str_of_len(MAX_SERVER_NAME_LENGTH)),
                 description: Some(unicode_str_of_len(MAX_SERVER_DESCRIPTION_LENGTH)),

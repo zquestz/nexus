@@ -153,7 +153,9 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
     // Start building toolbar row with Up button first, then Home
     let mut toolbar_row = row![up_button, home_button].spacing(SPACER_SIZE_SMALL);
 
-    // Root toggle button - only shown if user has file_root permission
+    // Root mode is a privileged browsing mode, not an ordinary file action.
+    // Hide it without file_root so regular users don't see a confusing,
+    // permanently disabled server-root toggle.
     if state.has_file_root {
         let root_toggle_tooltip = if state.viewing_root {
             t("tooltip-files-view-home")
@@ -258,15 +260,11 @@ pub(super) fn toolbar<'a>(state: &ToolbarState<'_>) -> Element<'a, Message> {
             .gap(TOOLTIP_GAP)
             .padding(TOOLTIP_PADDING)
             .into()
-        } else if state.has_file_upload {
-            // Disabled upload button (shown but not clickable when not in upload folder)
+        } else {
             button(icon::upload().size(ICON_SIZE))
                 .padding(TOOLBAR_BUTTON_PADDING)
                 .style(disabled_icon_button_style)
                 .into()
-        } else {
-            // Hidden if no upload permission
-            Space::new().width(0).into()
         };
 
     toolbar_row = toolbar_row.push(upload_button);

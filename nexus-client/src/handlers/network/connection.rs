@@ -497,6 +497,7 @@ impl NexusApp {
             connection_id: conn.connection_id,
             is_admin: conn.is_admin,
             permissions: conn.permissions,
+            features: conn.features,
             server_name: conn.server_name,
             server_description: conn.server_description,
             public_address: conn.public_address,

@@ -28,6 +28,7 @@ use crate::config::events::EventSettings;
 use crate::config::settings::ProxySettings;
 use crate::i18n::t;
 use crate::icon;
+use crate::network::{FEATURE_FILES, FEATURE_NEWS};
 use crate::style::{
     BADGE_FONT_SIZE, BADGE_HEIGHT, BADGE_PADDING_HORIZONTAL, BADGE_SIZE, BORDER_WIDTH,
     EMPTY_VIEW_SIZE, PANEL_SPACING, TOOLBAR_ICON_SIZE, TOOLBAR_ICON_SPACING,
@@ -246,11 +247,17 @@ fn hidden_panel<'a>() -> Element<'a, Message> {
 /// - Server content (chat/user management/broadcast) when connected
 pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
     // Get permissions and admin status from active connection
-    let (is_admin, permissions) = config
+    let (is_admin, permissions, features) = config
         .active_connection
         .and_then(|id| config.connections.get(&id))
-        .map(|conn| (conn.is_admin, conn.permissions.as_slice()))
-        .unwrap_or((false, &[]));
+        .map(|conn| {
+            (
+                conn.is_admin,
+                conn.permissions.as_slice(),
+                conn.features.as_slice(),
+            )
+        })
+        .unwrap_or((false, &[], &[]));
 
     // Check if user has permission to view user list
     let can_view_user_list = config
@@ -276,6 +283,7 @@ pub fn main_layout<'a>(config: ViewConfig<'a>) -> Element<'a, Message> {
         is_connected: config.active_connection.is_some(),
         is_admin,
         permissions,
+        features,
         can_view_user_list,
         server_name,
         transfer_count,
@@ -501,8 +509,8 @@ fn build_toolbar(state: ToolbarState) -> Element<'static, Message> {
 
     // Check permissions
     let has_broadcast = state.has_permission(PERMISSION_USER_BROADCAST);
-    let has_news = state.has_permission(PERMISSION_NEWS_LIST);
-    let has_files = state.has_permission(PERMISSION_FILE_LIST);
+    let has_news = state.has_feature(FEATURE_NEWS) && state.has_permission(PERMISSION_NEWS_LIST);
+    let has_files = state.has_feature(FEATURE_FILES) && state.has_permission(PERMISSION_FILE_LIST);
     let has_user_management = state.has_any_permission(&[
         PERMISSION_USER_CREATE,
         PERMISSION_USER_EDIT,

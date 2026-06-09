@@ -115,6 +115,32 @@ impl UserManager {
         self.remove_disconnected(disconnected).await;
     }
 
+    /// Broadcast to all sessions with `nickname` that activated `feature`.
+    pub async fn broadcast_to_nickname_with_feature(
+        &self,
+        nickname: &str,
+        feature: &str,
+        message: &ServerMessage,
+    ) {
+        let mut disconnected = Vec::new();
+
+        let nickname_lower = fold_name(nickname);
+
+        {
+            let users = self.users.read().await;
+            for user in users.values() {
+                if fold_name(&user.nickname) == nickname_lower
+                    && user.has_feature(feature)
+                    && user.tx.send_message(message.clone(), None).is_err()
+                {
+                    disconnected.push(user.session_id);
+                }
+            }
+        }
+
+        self.remove_disconnected(disconnected).await;
+    }
+
     /// Broadcast to all users holding `required_permission` (e.g. topic updates
     /// to those allowed to see them).
     pub async fn broadcast_to_permission(
