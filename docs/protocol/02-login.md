@@ -60,6 +60,23 @@ The current BBS server recognizes the `chat`, `files`, `news`, and `voice`
 features. Unknown but syntactically valid feature names are ignored and
 omitted from `LoginResponse.features`.
 
+Features are negotiated client capabilities, not permissions. The effective
+permissions in `LoginResponse.permissions` still decide whether a user is
+allowed to perform an action. Features decide which live protocol surfaces this
+session can participate in:
+
+- `chat`: gates chat commands, direct messages, chat auto-join, and chat
+  broadcasts. A session without `chat` cannot participate in chat because it
+  would not receive the live chat event stream.
+- `voice`: gates voice join/leave signaling and voice notifications. Direct
+  voice requires `voice`; channel voice also requires channel membership, which
+  is established through chat.
+- `news`: gates unsolicited `NewsUpdated` broadcasts. Direct news requests
+  remain permission-gated request/response operations.
+- `files`: advertises file UI/support capability. Direct file requests and
+  transfer-port operations remain permission-gated request/response operations;
+  the transfer port does not negotiate features.
+
 **Regular account example:**
 
 ```json

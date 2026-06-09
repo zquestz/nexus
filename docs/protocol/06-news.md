@@ -572,7 +572,10 @@ News items are returned newest first (descending by creation date).
 
 ## Broadcast Behavior
 
-When news changes, all users with `news_list` permission receive a `NewsUpdated` broadcast:
+When news changes, sessions that activated the `news` feature and have
+`news_list` permission receive a `NewsUpdated` broadcast. The session that
+created, updated, or deleted the item does not receive an echo of its own
+change.
 
 - **Created:** Clients should refresh their news list or fetch the new item
 - **Updated:** Clients should refresh the affected item
