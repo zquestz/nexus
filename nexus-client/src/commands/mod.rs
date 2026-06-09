@@ -13,7 +13,7 @@
 //! | `/broadcast` | `/bc` | `user_broadcast` | Send a broadcast to all users |
 //! | `/channels` | `/ch` | `chat_list` | List available channels |
 //! | `/clear` | | *none* | Clear chat history for current tab |
-//! | `/focus` | `/f` | *none* | Focus server chat or a user's message tab |
+//! | `/focus` | `/f` | *none* | Focus chat tabs; requires `chat` feature |
 //! | `/help` | `/h`, `/?` | *none* | Show available commands |
 //! | `/info` | `/i`, `/userinfo`, `/whois` | `user_info` | Show information about a user |
 //! | `/join` | `/j` | `chat_join` | Join or create a channel |
@@ -203,7 +203,7 @@ static COMMANDS: &[CommandRegistration] = &[
             description_key: "cmd-focus-desc",
             usage_key: "cmd-focus-usage",
             permissions: &[],
-            features: &[],
+            features: &[FEATURE_CHAT],
         },
         handler: focus::execute,
     },
@@ -1464,11 +1464,15 @@ mod tests {
         let names = command_names_for_completion(false, &perms, &[]);
         assert!(!names.iter().any(|n| n == "join"));
         assert!(!names.iter().any(|n| n == "j"));
+        assert!(!names.iter().any(|n| n == "focus"));
+        assert!(!names.iter().any(|n| n == "f"));
 
         let features = chat_features();
         let names = command_names_for_completion(false, &perms, &features);
         assert!(names.iter().any(|n| n == "join"));
         assert!(names.iter().any(|n| n == "j"));
+        assert!(names.iter().any(|n| n == "focus"));
+        assert!(names.iter().any(|n| n == "f"));
     }
 
     #[test]
