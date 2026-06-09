@@ -579,8 +579,8 @@ impl NexusApp {
 
     /// Handle update group button press
     ///
-    /// Validates the group name, computes changed fields, filters permissions
-    /// by delegation, and sends the `GroupUpdate` message with only changed fields.
+    /// Validates the group form, filters permissions by delegation, and sends
+    /// `GroupUpdate`, omitting name and bandwidth weight when unchanged.
     pub fn handle_group_management_update_pressed(&mut self) -> Task<Message> {
         let Some(conn_id) = self.active_connection else {
             return Task::none();

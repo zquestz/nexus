@@ -440,6 +440,9 @@ group.
   the promotion.
 
 `UserUpdate` is a partial update — omitted fields are unchanged.
+At least one effective update field is required; `id`, `current_password`,
+empty/whitespace `password`, `remove_group: false`, and
+`inherit_bandwidth_weight: false` do not count by themselves.
 Two side effects of `permissions` worth knowing about:
 
 - **For admin requesters**, `permissions` (when present) fully

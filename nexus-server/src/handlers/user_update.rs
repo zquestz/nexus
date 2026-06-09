@@ -38,9 +38,9 @@ use super::{
     err_cannot_change_guest_password, err_cannot_demote_last_admin, err_cannot_disable_last_admin,
     err_cannot_edit_admin, err_cannot_edit_self, err_cannot_rename_guest,
     err_current_password_incorrect, err_current_password_required, err_database,
-    err_group_not_found, err_group_shared_mismatch, err_internal_error, err_not_logged_in,
-    err_password_empty, err_password_too_long, err_password_too_weak, err_permission_denied,
-    err_permission_grant_revoke_conflict, err_permissions_contains_newlines,
+    err_group_not_found, err_group_shared_mismatch, err_internal_error, err_no_fields_to_update,
+    err_not_logged_in, err_password_empty, err_password_too_long, err_password_too_weak,
+    err_permission_denied, err_permission_grant_revoke_conflict, err_permissions_contains_newlines,
     err_permissions_empty_permission, err_permissions_invalid_characters,
     err_permissions_permission_too_long, err_permissions_too_many, err_personal_file_area_busy,
     err_personal_file_area_exists, err_personal_file_area_migration_failed,
@@ -80,6 +80,22 @@ pub struct UserUpdateRequest {
     pub bandwidth_weight: Option<u16>,
     pub inherit_bandwidth_weight: Option<bool>,
     pub session_id: Option<u32>,
+}
+
+fn has_effective_update_fields(request: &UserUpdateRequest) -> bool {
+    request.username.is_some()
+        || request
+            .password
+            .as_ref()
+            .is_some_and(|password| !password.trim().is_empty())
+        || request.is_admin.is_some()
+        || request.enabled.is_some()
+        || request.permissions.is_some()
+        || request.group_id.is_some()
+        || request.remove_group == Some(true)
+        || request.revokes.is_some()
+        || request.bandwidth_weight.is_some()
+        || request.inherit_bandwidth_weight == Some(true)
 }
 
 pub async fn handle_user_update<W>(
@@ -151,6 +167,7 @@ where
         // Self-edit allows a more restrictive field set than editing others;
         // drives the password / shared-account / forbidden-field branches below.
         let is_self_edit = fold_name(&target_username) == fold_name(&requesting_user.username);
+        let has_effective_fields = has_effective_update_fields(&request);
 
         if is_self_edit {
             // Shared accounts have no password and no admissible self-edit fields.
@@ -196,7 +213,7 @@ where
                 && (request.username.is_some()
                     || request.group_id.is_some()
                     || request.bandwidth_weight.is_some()
-                    || request.inherit_bandwidth_weight.is_some())
+                    || request.inherit_bandwidth_weight == Some(true))
             {
                 break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
                     success: false,
@@ -308,6 +325,15 @@ where
                     }
                 }
             }
+        }
+
+        if !has_effective_fields {
+            break 'locked Outcome::Send(Box::new(ServerMessage::UserUpdateResponse {
+                success: false,
+                error: Some(err_no_fields_to_update(ctx.locale)),
+                id: None,
+                username: None,
+            }));
         }
 
         if let Some(ref new_username) = request.username
@@ -1781,6 +1807,24 @@ mod tests {
         });
     }
 
+    fn empty_user_update_request(user_id: i64, session_id: Option<u32>) -> UserUpdateRequest {
+        UserUpdateRequest {
+            id: user_id,
+            current_password: None,
+            username: None,
+            password: None,
+            is_admin: None,
+            enabled: None,
+            permissions: None,
+            group_id: None,
+            remove_group: None,
+            revokes: None,
+            bandwidth_weight: None,
+            inherit_bandwidth_weight: None,
+            session_id,
+        }
+    }
+
     #[test]
     fn test_personal_area_rollback_warning_appends_to_primary_error() {
         let message = append_personal_area_rollback_warning_if_needed(
@@ -1879,6 +1923,104 @@ mod tests {
         let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
 
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_rejects_no_effective_fields() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let admin_user = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let requests = [
+            empty_user_update_request(admin_user.id, Some(session_id)),
+            UserUpdateRequest {
+                current_password: Some("password".to_string()),
+                ..empty_user_update_request(admin_user.id, Some(session_id))
+            },
+            UserUpdateRequest {
+                password: Some("   ".to_string()),
+                ..empty_user_update_request(admin_user.id, Some(session_id))
+            },
+            UserUpdateRequest {
+                remove_group: Some(false),
+                inherit_bandwidth_weight: Some(false),
+                ..empty_user_update_request(admin_user.id, Some(session_id))
+            },
+        ];
+
+        for request in requests {
+            let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+            assert!(result.is_ok());
+
+            match read_server_message(&mut test_ctx).await {
+                ServerMessage::UserUpdateResponse { success, error, .. } => {
+                    assert!(!success);
+                    assert_eq!(error.unwrap(), err_no_fields_to_update(DEFAULT_TEST_LOCALE));
+                }
+                other => panic!("Expected UserUpdateResponse, got {:?}", other),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_userupdate_false_boolean_field_counts_as_update() {
+        let mut test_ctx = create_test_context().await;
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let bob = test_ctx
+            .db
+            .users
+            .create_user(db::CreateUserParams {
+                username: "bob",
+                hashed_password: "hash",
+                is_admin: false,
+                is_shared: false,
+                enabled: true,
+                permissions: &Permissions::new(),
+                group_id: None,
+                revokes: &[],
+                bandwidth_weight: None,
+            })
+            .await
+            .unwrap();
+
+        let request = UserUpdateRequest {
+            enabled: Some(false),
+            ..empty_user_update_request(bob.id, Some(session_id))
+        };
+
+        let result = handle_user_update(request, &mut test_ctx.handler_context()).await;
+        assert!(result.is_ok());
+
+        match read_server_message(&mut test_ctx).await {
+            ServerMessage::UserUpdateResponse {
+                success,
+                error,
+                id,
+                username,
+            } => {
+                assert!(success, "expected success, got error: {:?}", error);
+                assert_eq!(id, Some(bob.id));
+                assert_eq!(username, Some("bob".to_string()));
+            }
+            other => panic!("Expected UserUpdateResponse, got {:?}", other),
+        }
+
+        let bob = test_ctx
+            .db
+            .users
+            .get_user_by_username("bob")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!bob.enabled);
     }
 
     #[tokio::test]
@@ -4860,11 +5002,11 @@ mod tests {
             .await
             .unwrap();
 
-        // Try to edit alice with empty password (should not change password)
+        // Empty password is ignored when another field carries the actual update.
         let request = UserUpdateRequest {
             id: alice.id,
             current_password: None,
-            username: None,
+            username: Some("alice2".to_string()),
             password: Some("".to_string()), // Empty password
             is_admin: None,
             enabled: None,
@@ -4889,8 +5031,8 @@ mod tests {
             } => {
                 assert!(success);
                 assert!(error.is_none());
-                assert!(id.is_some());
-                assert_eq!(username, Some("alice".to_string()));
+                assert_eq!(id, Some(alice.id));
+                assert_eq!(username, Some("alice2".to_string()));
             }
             _ => panic!("Expected UserUpdateResponse"),
         }
@@ -4898,7 +5040,7 @@ mod tests {
         let user = test_ctx
             .db
             .users
-            .get_user_by_username("alice")
+            .get_user_by_username("alice2")
             .await
             .unwrap()
             .unwrap();
