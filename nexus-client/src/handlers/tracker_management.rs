@@ -456,6 +456,8 @@ impl NexusApp {
             return Task::none();
         }
 
+        let fingerprint = super::tracker_browser::optional_string(&fingerprint).unwrap_or_default();
+
         let msg = ClientMessage::TrackerUpdate {
             id,
             address: Some(address),
@@ -741,7 +743,17 @@ fn validate_tracker_form(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
+    use nexus_common::framing::MessageId;
+    use nexus_common::validators::PasswordStrength;
+    use tokio::sync::{Mutex, mpsc};
+
+    use crate::types::{ConnectionInfo, ServerConnection, ServerConnectionParams};
+
+    const VALID_FINGERPRINT: &str = "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:\
+        AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99";
 
     fn tracker(id: i64, name: &str, address: &str, port: u16) -> TrackerInfo {
         TrackerInfo {
@@ -762,6 +774,55 @@ mod tests {
             pending_fingerprint: None,
             refresh_interval: None,
         }
+    }
+
+    fn test_connection_with_receiver(
+        connection_id: usize,
+    ) -> (
+        ServerConnection,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
+        let (tx, rx) = mpsc::unbounded_channel();
+        let conn = ServerConnection::new(ServerConnectionParams {
+            bookmark_id: None,
+            user_id: None,
+            nickname: "me".to_string(),
+            connection_info: ConnectionInfo {
+                server_name: String::new(),
+                address: String::new(),
+                port: 0,
+                transfer_port: 0,
+                certificate_fingerprint: String::new(),
+                username: "me".to_string(),
+                password: String::new(),
+                nickname: "me".to_string(),
+            },
+            display_name: String::new(),
+            connection_id,
+            is_admin: true,
+            permissions: Vec::new(),
+            features: Vec::new(),
+            server_name: None,
+            server_description: None,
+            public_address: None,
+            server_version: None,
+            server_image: String::new(),
+            cached_server_image: None,
+            chat_burst_limit: None,
+            chat_rate_limit: None,
+            max_connections_per_ip: None,
+            max_outbound_rate: None,
+            max_transfers_per_ip: None,
+            file_reindex_interval: None,
+            persistent_channels: None,
+            auto_join_channels: None,
+            min_password_strength: PasswordStrength::Weak,
+            log_level: None,
+            scheduler_chunk_size: None,
+            tx,
+            shutdown_handle: Arc::new(Mutex::new(None)),
+        });
+        (conn, rx)
     }
 
     #[test]
@@ -848,5 +909,41 @@ mod tests {
             )
             .is_ok()
         );
+    }
+
+    #[test]
+    fn update_submit_trims_fingerprint_before_send() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (mut conn, mut rx) = test_connection_with_receiver(1);
+        conn.tracker_management.all_trackers = Some(Ok(vec![tracker(
+            7,
+            "Public Tracker",
+            "tracker.example.com",
+            7510,
+        )]));
+        conn.tracker_management.mode = TrackerManagementMode::Edit {
+            id: 7,
+            original_name: "Public Tracker".to_string(),
+            last_error: None,
+            name: "Public Tracker".to_string(),
+            address: "tracker.example.com".to_string(),
+            port: 7510,
+            fingerprint: format!("  {VALID_FINGERPRINT}  "),
+            password: String::new(),
+            enabled: true,
+        };
+        app.connections.insert(1, conn);
+
+        let _ = app.handle_edit_tracker_submit();
+
+        match rx.try_recv() {
+            Ok((_, ClientMessage::TrackerUpdate { fingerprint, .. })) => {
+                assert_eq!(fingerprint.as_deref(), Some(VALID_FINGERPRINT));
+            }
+            other => panic!("expected TrackerUpdate, got {other:?}"),
+        }
     }
 }
