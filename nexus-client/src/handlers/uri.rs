@@ -6,7 +6,7 @@ use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
 use crate::i18n::{get_locale, t, t_args};
-use crate::network::{ConnectionParams, ProxyConfig};
+use crate::network::{ConnectionParams, FEATURE_CHAT, FEATURE_FILES, FEATURE_NEWS, ProxyConfig};
 use crate::types::{
     ActivePanel, ChatMessage, ChatTab, Message, NetworkConnection, PendingRequests, ResponseRouting,
 };
@@ -195,7 +195,7 @@ impl NexusApp {
 
         match path {
             NexusPath::Chat { target, is_channel } => {
-                if !conn.has_feature(crate::network::FEATURE_CHAT) {
+                if !conn.has_feature(FEATURE_CHAT) {
                     conn.active_panel = ActivePanel::None;
                     return self.add_active_tab_message(
                         connection_id,
@@ -248,6 +248,14 @@ impl NexusApp {
             }
 
             NexusPath::Files { path } => {
+                if !conn.has_feature(FEATURE_FILES) {
+                    conn.active_panel = ActivePanel::None;
+                    return self.add_active_tab_message(
+                        connection_id,
+                        ChatMessage::error(t("err-files-feature-not-enabled")),
+                    );
+                }
+
                 // Open Files panel and navigate to path
                 conn.active_panel = ActivePanel::Files;
 
@@ -304,6 +312,14 @@ impl NexusApp {
             }
 
             NexusPath::News => {
+                if !conn.has_feature(FEATURE_NEWS) {
+                    conn.active_panel = ActivePanel::None;
+                    return self.add_active_tab_message(
+                        connection_id,
+                        ChatMessage::error(t("err-news-feature-not-enabled")),
+                    );
+                }
+
                 conn.active_panel = ActivePanel::News;
 
                 // Reset to list mode
@@ -459,10 +475,7 @@ mod tests {
         ServerConnection,
         mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
     ) {
-        test_connection_with_receiver_and_features(
-            connection_id,
-            vec![crate::network::FEATURE_CHAT.to_string()],
-        )
+        test_connection_with_receiver_and_features(connection_id, vec![FEATURE_CHAT.to_string()])
     }
 
     fn test_connection_with_receiver_and_features(
@@ -563,6 +576,53 @@ mod tests {
         assert_eq!(
             conn.console_messages[0].message,
             t("err-chat-feature-not-enabled")
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn uri_files_requires_files_feature() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (conn, mut rx) = test_connection_with_receiver_and_features(1, Vec::new());
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(
+            1,
+            NexusPath::Files {
+                path: "uploads/readme.txt".to_string(),
+            },
+        );
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.active_panel, ActivePanel::None);
+        assert_eq!(conn.console_messages.len(), 1);
+        assert_eq!(
+            conn.console_messages[0].message,
+            t("err-files-feature-not-enabled")
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn uri_news_requires_news_feature() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (conn, mut rx) = test_connection_with_receiver_and_features(1, Vec::new());
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(1, NexusPath::News);
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.active_panel, ActivePanel::None);
+        assert_eq!(conn.console_messages.len(), 1);
+        assert_eq!(
+            conn.console_messages[0].message,
+            t("err-news-feature-not-enabled")
         );
         assert!(rx.try_recv().is_err());
     }
