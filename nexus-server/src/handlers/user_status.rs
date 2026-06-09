@@ -37,6 +37,8 @@ where
             .await;
     };
 
+    let status = status.filter(|msg| !msg.trim().is_empty());
+
     if let Some(ref msg) = status
         && let Err(e) = validators::validate_status(msg)
     {
@@ -190,6 +192,48 @@ mod tests {
         }
 
         // Verify status was cleared
+        let user = test_ctx
+            .user_manager
+            .get_user_by_session_id(session_id)
+            .await
+            .unwrap();
+        assert!(user.status.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_userstatus_empty_string_clears_status() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+
+        // First set a status
+        let _ = handle_user_status(
+            Some("working".to_string()),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+        let _ = read_server_message(&mut test_ctx).await; // consume response
+
+        // Explicit empty/whitespace status is equivalent to clearing.
+        let result = handle_user_status(
+            Some("   ".to_string()),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserStatusResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected UserStatusResponse, got {:?}", response),
+        }
+
         let user = test_ctx
             .user_manager
             .get_user_by_session_id(session_id)

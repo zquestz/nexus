@@ -36,6 +36,8 @@ where
             .await;
     };
 
+    let message = message.filter(|msg| !msg.trim().is_empty());
+
     if let Some(ref msg) = message
         && let Err(e) = validators::validate_status(msg)
     {
@@ -178,6 +180,39 @@ mod tests {
         }
 
         // Verify session was updated
+        let user = test_ctx
+            .user_manager
+            .get_user_by_session_id(session_id)
+            .await
+            .unwrap();
+        assert!(user.is_away);
+        assert!(user.status.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_useraway_empty_string_sets_away_without_message() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "alice", "password", &[], false).await;
+
+        let result = handle_user_away(
+            Some("   ".to_string()),
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::UserAwayResponse { success, error } => {
+                assert!(success);
+                assert!(error.is_none());
+            }
+            _ => panic!("Expected UserAwayResponse, got {:?}", response),
+        }
+
         let user = test_ctx
             .user_manager
             .get_user_by_session_id(session_id)

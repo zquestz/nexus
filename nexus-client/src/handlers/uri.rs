@@ -472,7 +472,7 @@ mod tests {
             connection_id,
             is_admin: false,
             permissions: Vec::new(),
-            features: Vec::new(),
+            features: vec![crate::network::FEATURE_CHAT.to_string()],
             server_name: None,
             server_description: None,
             public_address: None,
