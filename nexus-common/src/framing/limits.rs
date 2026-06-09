@@ -608,7 +608,7 @@ const VOICE_USER_LEFT_SIZE: usize = json_type_base("VoiceUserLeft")
 // Server messages - Chat
 // -----------------------------------------------------------------------------
 
-/// ChatMessage: {"type":"ChatMessage","session_id":4294967295,"nickname":"...64...","is_admin":false,"is_shared":false,"message":"...1024...","action":"Normal","channel":"...32...","timestamp":18446744073709551615}
+/// ChatMessage: {"type":"ChatMessage","session_id":4294967295,"nickname":"...64...","is_admin":false,"is_shared":false,"message":"...1024...","action":"Normal","channel":"...32...","timestamp":-9223372036854775808}
 const CHAT_MESSAGE_SIZE: usize = json_type_base("ChatMessage")
     + json_u32_field("session_id")
     + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH)
@@ -617,7 +617,7 @@ const CHAT_MESSAGE_SIZE: usize = json_type_base("ChatMessage")
     + json_string_chars_field("message", MAX_MESSAGE_LENGTH)
     + json_enum_field("action", MAX_ACTION_VARIANT)
     + json_string_chars_field("channel", MAX_CHANNEL_LENGTH)
-    + json_u64_field("timestamp");
+    + json_i64_field("timestamp");
 
 /// ChatUpdated: {"type":"ChatUpdated","channel":"...32...","topic":"...256...","topic_set_by":"...64...","secret":false,"secret_set_by":"...64..."}
 const CHAT_UPDATED_SIZE: usize = json_type_base("ChatUpdated")
@@ -772,7 +772,7 @@ const USER_DISCONNECTED_SIZE: usize = json_type_base("UserDisconnected")
     + json_u32_field("session_id")
     + json_string_chars_field("nickname", MAX_NICKNAME_LENGTH);
 
-/// UserMessage (server): {"type":"UserMessage","from_nickname":"...64...","from_admin":false,"from_shared":false,"to_nickname":"...64...","message":"...1024...","action":"Normal","timestamp":18446744073709551615}
+/// UserMessage (server): {"type":"UserMessage","from_nickname":"...64...","from_admin":false,"from_shared":false,"to_nickname":"...64...","message":"...1024...","action":"Normal","timestamp":-9223372036854775808}
 const USER_MESSAGE_SIZE: usize = json_type_base("UserMessage")
     + json_string_chars_field("from_nickname", MAX_NICKNAME_LENGTH)
     + json_bool_field("from_admin")
@@ -780,7 +780,7 @@ const USER_MESSAGE_SIZE: usize = json_type_base("UserMessage")
     + json_string_chars_field("to_nickname", MAX_NICKNAME_LENGTH)
     + json_string_chars_field("message", MAX_MESSAGE_LENGTH)
     + json_enum_field("action", MAX_ACTION_VARIANT)
-    + json_u64_field("timestamp");
+    + json_i64_field("timestamp");
 
 /// UserAwayResponse: {"type":"UserAwayResponse","success":false,"error":"...2048..."}
 const USER_AWAY_RESPONSE_SIZE: usize = json_type_base("UserAwayResponse")
@@ -2686,7 +2686,7 @@ mod tests {
             message: str_of_len(MAX_MESSAGE_LENGTH),
             action: ChatAction::Normal,
             channel: str_of_len(MAX_CHANNEL_LENGTH),
-            timestamp: u64::MAX,
+            timestamp: i64::MIN,
         };
         assert!(
             json_size(&msg) <= max_payload_for_type("ChatMessage") as usize,
@@ -3280,7 +3280,7 @@ mod tests {
                 created_at: i64::MAX,
                 locale: str_of_len(MAX_LOCALE_LENGTH),
                 avatar: Some(str_of_len(MAX_AVATAR_DATA_URI_LENGTH)),
-                is_admin: Some(false),
+                is_admin: false,
                 addresses: Some(vec![str_of_len(45); 10]),
                 is_away: false,
                 status: Some(str_of_len(MAX_STATUS_LENGTH)),
@@ -3332,7 +3332,7 @@ mod tests {
             to_nickname: str_of_len(MAX_NICKNAME_LENGTH),
             message: str_of_len(MAX_MESSAGE_LENGTH),
             action: ChatAction::Normal,
-            timestamp: u64::MAX,
+            timestamp: i64::MIN,
         };
         assert!(
             json_size(&msg) <= max_payload_for_type("UserMessage") as usize,
@@ -4178,9 +4178,11 @@ mod tests {
         let msg = ServerMessage::TrackerListResponse {
             success: false,
             error: Some(str_of_len(MAX_ERROR_LENGTH)),
-            trackers: (0..MAX_TRACKERS_PER_SERVER)
-                .map(|_| worst_case_tracker_info())
-                .collect(),
+            trackers: Some(
+                (0..MAX_TRACKERS_PER_SERVER)
+                    .map(|_| worst_case_tracker_info())
+                    .collect(),
+            ),
         };
         let size = json_size(&msg);
         let limit = max_payload_for_type("TrackerListResponse") as usize;

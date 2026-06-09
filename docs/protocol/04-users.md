@@ -456,7 +456,7 @@ Extended user information for individual queries.
 | `avatar`           | string  | Avatar as data URI (null if none)                                                                  |
 | `is_away`          | boolean | Whether user is away                                                                               |
 | `status`           | string  | User's status message (null if none)                                                               |
-| `is_admin`         | boolean | Admin status (only visible to admins)                                                              |
+| `is_admin`         | boolean | Whether user has admin privileges                                                                  |
 | `addresses`        | array   | IP addresses (only visible to admins)                                                              |
 | `channels`         | array   | Channels the user is in (secret channels only visible to admins)                                   |
 | `group_id`         | integer | User's group ID (null if no group). Always null when `is_admin: true` — admin XOR group invariant. |

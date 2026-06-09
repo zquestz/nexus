@@ -605,6 +605,7 @@ mod tests {
                 trackers,
                 ..
             } => {
+                let trackers = trackers.unwrap();
                 assert_eq!(trackers.len(), 1);
                 assert_eq!(trackers[0].id, id);
                 assert_eq!(trackers[0].name, "Public");
@@ -648,6 +649,7 @@ mod tests {
                 trackers,
                 ..
             } => {
+                let trackers = trackers.unwrap();
                 assert_eq!(trackers.len(), 1);
                 assert_eq!(trackers[0].id, id);
                 assert_eq!(trackers[0].name, "Renamed");
@@ -679,6 +681,7 @@ mod tests {
                 trackers,
                 ..
             } => {
+                let trackers = trackers.unwrap();
                 assert!(trackers.is_empty(), "list should be empty after remove");
             }
             other => panic!("expected empty list, got {other:?}"),

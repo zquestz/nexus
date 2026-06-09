@@ -257,7 +257,7 @@ fn build_user_info_content<'a>(
 ) -> iced::widget::Column<'a, Message> {
     // Header: Avatar + Nickname (always populated; equals username for regular accounts)
     // For shared accounts, also show the account name below
-    let is_admin = user.is_admin.unwrap_or(false);
+    let is_admin = user.is_admin;
     let is_shared = user.is_shared;
 
     // Nickname is always populated (equals username for regular accounts)
@@ -308,20 +308,17 @@ fn build_user_info_content<'a>(
         ));
     }
 
-    // Role (only shown if is_admin field is present)
-    if user.is_admin.is_some() {
-        let is_guest = fold_name(&user.username) == "guest";
-        let role_value = if is_admin {
-            t("user-info-role-admin")
-        } else if is_guest {
-            t("user-info-role-guest")
-        } else if is_shared {
-            t("user-info-role-shared")
-        } else {
-            t("user-info-role-user")
-        };
-        content = content.push(info_row(t("user-info-role"), role_value, None));
-    }
+    let is_guest = fold_name(&user.username) == "guest";
+    let role_value = if is_admin {
+        t("user-info-role-admin")
+    } else if is_guest {
+        t("user-info-role-guest")
+    } else if is_shared {
+        t("user-info-role-shared")
+    } else {
+        t("user-info-role-user")
+    };
+    content = content.push(info_row(t("user-info-role"), role_value, None));
 
     // Group (only shown if user has a group assigned)
     if let Some(group_name) = &user.group_name {

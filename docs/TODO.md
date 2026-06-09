@@ -9,7 +9,7 @@
 | Admin event history                  | Medium | See feature spec below        |
 | Offline messages investigation       | Medium | See investigation notes below |
 | Connection Monitor egress visibility | Medium | See feature spec below        |
-| Protocol consistency cleanup         | Medium | Target protocol 0.9.0         |
+| Protocol consistency cleanup         | Medium | Finish 0.9.0 audit            |
 
 ## Feature Specs
 
@@ -420,27 +420,25 @@ cleanup. Keep these out of 0.8.x unless the protocol is deliberately bumped.
 
 **Protocol message audit:**
 
-- Audit every protocol message shape for field naming, required/optional
-  behavior, response shape, and consistency with related messages.
-- Make update messages partial wherever practical: omitted fields are
-  unchanged.
-- Standardize clearing semantics for optional string/image fields: empty string
-  clears, non-empty string replaces, omitted field leaves unchanged.
+- Final pass over every protocol message shape for field naming,
+  required/optional behavior, response shape, and consistency with related
+  messages.
+- Confirm remaining update-style messages either already follow the 0.9.0
+  partial-update convention or have a documented reason not to.
+- Standardize clearing semantics for optional string/image fields where the
+  field supports clearing: empty string clears, non-empty string replaces,
+  omitted field leaves unchanged.
 - Avoid `null`-as-clear semantics in new protocol shapes.
 - Audit create/update form trimming behavior and decide where protocol/server
   semantics should trim, preserve exact input, or reject surrounding whitespace.
 
 **Feature negotiation and unsolicited-message gating:**
 
-- Audit every unsolicited server message and ensure it is sent only to sessions
-  that negotiated the relevant feature at login.
 - Keep direct command responses tied to the command; feature gating is for
   unsolicited broadcasts/events.
-- Add activated feature reporting to `LoginResponse`: clients request features
-  in `Login`, and the server responds with the subset that is actually active.
-- Use this flow to roll out Boards incrementally: server-side Boards work can
-  land before the official client advertises `boards`, and board events should
-  not be sent until a session has negotiated that feature.
+- Apply feature gating to new unsolicited broadcasts/events as features are
+  added. Boards events must not be sent until a session has negotiated the
+  `boards` feature.
 
 ### Admin Event History
 

@@ -138,15 +138,15 @@ Response to the sender indicating success or failure. On success, also indicates
 
 Delivered to the recipient when a user message is sent.
 
-| Field           | Type    | Required | Description                                 |
-| --------------- | ------- | -------- | ------------------------------------------- |
-| `from_nickname` | string  | Yes      | Sender's display name                       |
-| `from_admin`    | boolean | Yes      | Whether sender is an admin                  |
-| `from_shared`   | boolean | Yes      | Whether sender is on a shared account       |
-| `to_nickname`   | string  | Yes      | Recipient's display name                    |
-| `message`       | string  | Yes      | Message content                             |
-| `action`        | string  | No       | Action type: `"Normal"` (default) or `"Me"` |
-| `timestamp`     | integer | Yes      | Unix timestamp in seconds (0 if not set)    |
+| Field           | Type    | Required | Description                                     |
+| --------------- | ------- | -------- | ----------------------------------------------- |
+| `from_nickname` | string  | Yes      | Sender's display name                           |
+| `from_admin`    | boolean | Yes      | Whether sender is an admin                      |
+| `from_shared`   | boolean | Yes      | Whether sender is on a shared account           |
+| `to_nickname`   | string  | Yes      | Recipient's display name                        |
+| `message`       | string  | Yes      | Message content                                 |
+| `action`        | string  | No       | Action type: `"Normal"` (default) or `"Me"`     |
+| `timestamp`     | integer | Yes      | Signed Unix timestamp in seconds (0 if not set) |
 
 **Example:**
 

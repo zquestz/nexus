@@ -132,21 +132,18 @@ impl NexusApp {
             ));
         }
 
-        // Role (only shown if is_admin field is present)
-        if let Some(is_admin) = user.is_admin {
-            let role_value = if is_admin {
-                t("user-info-role-admin")
-            } else if user.is_shared {
-                t("user-info-role-shared")
-            } else {
-                t("user-info-role-user")
-            };
-            lines.push(format!(
-                "{INFO_INDENT}{} {}",
-                t("user-info-role").to_lowercase(),
-                role_value
-            ));
-        }
+        let role_value = if user.is_admin {
+            t("user-info-role-admin")
+        } else if user.is_shared {
+            t("user-info-role-shared")
+        } else {
+            t("user-info-role-user")
+        };
+        lines.push(format!(
+            "{INFO_INDENT}{} {}",
+            t("user-info-role").to_lowercase(),
+            role_value
+        ));
 
         // Group (if user belongs to a group)
         if let Some(group_name) = &user.group_name {

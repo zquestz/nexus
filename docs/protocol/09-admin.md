@@ -972,10 +972,10 @@ state.
 | ---------- | ------- | ---------- | -------------------------------------------------------- |
 | `success`  | boolean | Yes        | Whether the request succeeded                            |
 | `error`    | string  | If failure | Error message                                            |
-| `trackers` | array   | Always     | List of `TrackerInfo` objects (empty if none configured) |
+| `trackers` | array   | If success | List of `TrackerInfo` objects (empty if none configured) |
 
-`trackers` is always present. On the error path it is `[]`; on success
-an empty list means no trackers are configured yet (not an error).
+`trackers` is omitted on the error path. On success, an empty list means no
+trackers are configured yet (not an error).
 
 **Success example:**
 

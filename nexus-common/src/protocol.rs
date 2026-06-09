@@ -222,7 +222,7 @@ pub enum ClientMessage {
         /// Permissions to assign to this group
         permissions: Vec<String>,
         /// Bandwidth weight for the scheduler. Defaults to 1 when omitted
-        /// (matches schema default; old clients deserialize cleanly).
+        /// during defensive parsing, matching the schema default.
         #[serde(default = "default_group_weight")]
         bandwidth_weight: u16,
     },
@@ -657,7 +657,7 @@ pub enum ServerMessage {
         channel: String,
         /// Unix timestamp (seconds since epoch)
         #[serde(default)]
-        timestamp: u64,
+        timestamp: i64,
     },
     /// Response to ChatSecret request
     ChatSecretResponse {
@@ -1075,10 +1075,10 @@ pub enum ServerMessage {
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]
         error: Option<String>,
-        /// All configured trackers with their runtime status. Empty
-        /// on the error path; an empty list on success means no
-        /// trackers are configured yet.
-        trackers: Vec<TrackerInfo>,
+        /// All configured trackers with their runtime status. `None` on
+        /// error; `Some([])` on success means no trackers are configured yet.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        trackers: Option<Vec<TrackerInfo>>,
     },
     /// Response to TrackerRemove request
     TrackerRemoveResponse {
@@ -1250,7 +1250,7 @@ pub enum ServerMessage {
         action: ChatAction,
         /// Unix timestamp (seconds since epoch)
         #[serde(default)]
-        timestamp: u64,
+        timestamp: i64,
     },
     UserMessageResponse {
         success: bool,
@@ -1558,8 +1558,7 @@ pub struct UserInfoDetailed {
     pub locale: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub avatar: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_admin: Option<bool>,
+    pub is_admin: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub addresses: Option<Vec<String>>,
     #[serde(default)]
@@ -1596,7 +1595,7 @@ pub struct GroupInfo {
     /// Permissions granted by this group
     pub permissions: Vec<String>,
     /// Bandwidth weight for all members of this group (NOT NULL in DB).
-    /// Old clients omitting this field deserialize as the schema default (1).
+    /// Missing fields deserialize as the schema default for defensive parsing.
     #[serde(default = "default_group_weight")]
     pub bandwidth_weight: u16,
 }
@@ -2539,7 +2538,7 @@ mod tests {
             created_at: 1234567800,
             locale: "en".to_string(),
             avatar: Some(avatar_data.clone()),
-            is_admin: Some(false),
+            is_admin: false,
             addresses: None,
             is_away: false,
             status: None,
@@ -2751,7 +2750,7 @@ mod tests {
             created_at: 1234567800,
             locale: "en".to_string(),
             avatar: None,
-            is_admin: Some(false),
+            is_admin: false,
             addresses: None,
             channels: None,
             group_id: None,
@@ -3304,8 +3303,7 @@ mod tests {
 
     #[test]
     fn test_server_info_without_optional_fields() {
-        // Ensure backward compatibility - missing optional fields default to None
-        // transfer_port is required, so must be present
+        // Missing optional fields default to None; transfer_port is required.
         let json = r#"{"name":"Old Server","version":"0.4.0","transfer_port":7501}"#;
         let info: ServerInfo = serde_json::from_str(json).unwrap();
         assert_eq!(info.name, Some("Old Server".to_string()));
@@ -3962,7 +3960,7 @@ mod tests {
                 assert!(!groups[0].is_shared);
                 assert_eq!(groups[0].member_count, 2);
                 assert_eq!(groups[0].permissions, vec!["user_kick"]);
-                // Old server JSON omits bandwidth_weight → deserializes to schema default 1
+                // Missing bandwidth_weight deserializes to schema default 1.
                 assert_eq!(groups[0].bandwidth_weight, 1);
             }
             _ => panic!("Expected GroupListResponse"),
@@ -4009,7 +4007,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_user_create_without_group_defaults() {
-        // Old clients won't send group_id or revokes
+        // Missing group fields default to None.
         let json = r#"{"type":"UserCreate","username":"alice","password":"pw","is_admin":false,"enabled":true,"permissions":[]}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         match msg {
@@ -4068,7 +4066,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_user_update_without_group_defaults() {
-        // Old clients won't send group fields
+        // Missing group fields default to None.
         let json = r#"{"type":"UserUpdate","id":1}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         match msg {
@@ -4110,7 +4108,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_login_response_without_group_defaults() {
-        // Old servers won't send group fields
+        // Missing group fields default to None.
         let json = r#"{"type":"LoginResponse","success":true,"session_id":1,"is_admin":false,"permissions":[],"locale":"en","nickname":"alice"}"#;
         let msg: ServerMessage = serde_json::from_str(json).unwrap();
         match msg {
@@ -4165,7 +4163,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_user_edit_response_without_group_defaults() {
-        // Old servers won't send group fields
+        // Missing group fields default to None.
         let json = r#"{"type":"UserEditResponse","success":true,"username":"alice","is_admin":false,"is_shared":false,"enabled":true,"permissions":["chat_send"]}"#;
         let msg: ServerMessage = serde_json::from_str(json).unwrap();
         match msg {
@@ -4205,7 +4203,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_permissions_updated_without_group_defaults() {
-        // Old servers won't send group fields
+        // Missing group fields default to None.
         let json = r#"{"type":"PermissionsUpdated","is_admin":false,"permissions":["chat_send"]}"#;
         let msg: ServerMessage = serde_json::from_str(json).unwrap();
         match msg {
@@ -4255,7 +4253,7 @@ mod tests {
     #[test]
     fn test_user_info_bandwidth_weight_is_required() {
         let basic = r#"{"id":1,"username":"alice","nickname":"alice","login_time":0,"is_admin":false,"session_ids":[],"locale":"en"}"#;
-        let detailed = r#"{"id":1,"username":"alice","nickname":"alice","login_time":0,"session_ids":[],"features":[],"created_at":0,"locale":"en"}"#;
+        let detailed = r#"{"id":1,"username":"alice","nickname":"alice","login_time":0,"is_admin":false,"session_ids":[],"features":[],"created_at":0,"locale":"en"}"#;
 
         assert!(serde_json::from_str::<UserInfo>(basic).is_err());
         assert!(serde_json::from_str::<UserInfoDetailed>(detailed).is_err());
@@ -4413,7 +4411,7 @@ mod tests {
             created_at: 0,
             locale: "en".to_string(),
             avatar: None,
-            is_admin: None,
+            is_admin: false,
             addresses: None,
             is_away: false,
             status: None,
@@ -4473,7 +4471,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_user_create_omits_bandwidth_fields() {
-        // Old clients without bandwidth_weight support: both optional fields absent.
+        // Missing bandwidth fields default to no override / no forced inheritance.
         let json = r#"{"type":"UserCreate","username":"alice","password":"x","is_admin":false,"is_shared":false,"enabled":true,"permissions":[]}"#;
         let msg: ClientMessage = serde_json::from_str(json).unwrap();
         match msg {

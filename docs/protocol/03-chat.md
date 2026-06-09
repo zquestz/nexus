@@ -353,16 +353,16 @@ Send a chat message to a channel.
 
 Broadcast to channel members when a chat message is sent.
 
-| Field        | Type    | Required | Description                                 |
-| ------------ | ------- | -------- | ------------------------------------------- |
-| `session_id` | integer | Yes      | Sender's session ID                         |
-| `nickname`   | string  | Yes      | Sender's display name                       |
-| `is_admin`   | boolean | Yes      | Whether sender is an admin                  |
-| `is_shared`  | boolean | Yes      | Whether sender is on a shared account       |
-| `message`    | string  | Yes      | Message content                             |
-| `action`     | string  | No       | Action type: `"Normal"` (default) or `"Me"` |
-| `channel`    | string  | Yes      | Channel the message was sent to             |
-| `timestamp`  | integer | Yes      | Unix timestamp in seconds (0 if not set)    |
+| Field        | Type    | Required | Description                                     |
+| ------------ | ------- | -------- | ----------------------------------------------- |
+| `session_id` | integer | Yes      | Sender's session ID                             |
+| `nickname`   | string  | Yes      | Sender's display name                           |
+| `is_admin`   | boolean | Yes      | Whether sender is an admin                      |
+| `is_shared`  | boolean | Yes      | Whether sender is on a shared account           |
+| `message`    | string  | Yes      | Message content                                 |
+| `action`     | string  | No       | Action type: `"Normal"` (default) or `"Me"`     |
+| `channel`    | string  | Yes      | Channel the message was sent to                 |
+| `timestamp`  | integer | Yes      | Signed Unix timestamp in seconds (0 if not set) |
 
 **Example:**
 

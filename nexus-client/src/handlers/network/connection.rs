@@ -571,13 +571,9 @@ impl NexusApp {
                             } = msg
                             {
                                 let datetime = if *timestamp > 0 {
-                                    chrono::TimeZone::timestamp_opt(
-                                        &chrono::Local,
-                                        *timestamp as i64,
-                                        0,
-                                    )
-                                    .single()
-                                    .unwrap_or_else(chrono::Local::now)
+                                    chrono::TimeZone::timestamp_opt(&chrono::Local, *timestamp, 0)
+                                        .single()
+                                        .unwrap_or_else(chrono::Local::now)
                                 } else {
                                     chrono::Local::now()
                                 };

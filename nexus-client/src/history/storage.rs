@@ -145,11 +145,11 @@ impl HistoryManager {
         }
 
         let mut loaded = HashMap::new();
-        let now = chrono::Utc::now().timestamp() as u64;
+        let now = chrono::Utc::now().timestamp();
         let cutoff = self
             .retention
             .days()
-            .map(|d| now.saturating_sub(d as u64 * 86400));
+            .map(|d| now.saturating_sub((d as i64).saturating_mul(86400)));
 
         // List all .enc files in the directory
         let entries = fs::read_dir(&self.base_dir).map_err(HistoryError::Io)?;
@@ -598,7 +598,7 @@ fn sha256_hex(input: &str) -> String {
 }
 
 /// Extract timestamp from a UserMessage
-fn get_message_timestamp(msg: &ServerMessage) -> u64 {
+fn get_message_timestamp(msg: &ServerMessage) -> i64 {
     match msg {
         ServerMessage::UserMessage { timestamp, .. } => *timestamp,
         _ => 0,
@@ -644,7 +644,7 @@ mod tests {
     use super::*;
     use nexus_common::protocol::ChatAction;
 
-    fn create_test_message(from: &str, to: &str, text: &str, timestamp: u64) -> ServerMessage {
+    fn create_test_message(from: &str, to: &str, text: &str, timestamp: i64) -> ServerMessage {
         ServerMessage::UserMessage {
             from_nickname: from.to_string(),
             from_admin: false,
@@ -667,7 +667,7 @@ mod tests {
             create_test_message("alice", "me", "second", 20),
         ];
         let merged = merge_messages(a, b);
-        let timestamps: Vec<u64> = merged.iter().map(get_message_timestamp).collect();
+        let timestamps: Vec<i64> = merged.iter().map(get_message_timestamp).collect();
         assert_eq!(
             timestamps,
             vec![10, 20, 30],
@@ -725,7 +725,7 @@ mod tests {
 
         assert!(!manager.conversations.contains_key(&fold_name("alice")));
         let bob = manager.conversations.get(&fold_name("bob")).unwrap();
-        let timestamps: Vec<u64> = bob.iter().map(get_message_timestamp).collect();
+        let timestamps: Vec<i64> = bob.iter().map(get_message_timestamp).collect();
         assert_eq!(
             timestamps,
             vec![5, 20],

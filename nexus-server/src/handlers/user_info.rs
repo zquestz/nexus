@@ -230,7 +230,7 @@ where
             created_at: target_account.created_at,
             locale,
             avatar,
-            is_admin: Some(target_account.is_admin),
+            is_admin: target_account.is_admin,
             addresses: Some(addresses),
             is_away,
             status,
@@ -251,7 +251,7 @@ where
             created_at: target_account.created_at,
             locale,
             avatar,
-            is_admin: Some(target_account.is_admin),
+            is_admin: target_account.is_admin,
             addresses: None,
             is_away,
             status,
@@ -576,15 +576,7 @@ mod tests {
                 assert_eq!(user_info.features, vec![FEATURE_CHAT.to_string()]);
                 assert_eq!(user_info.created_at, target.created_at);
 
-                // Verify is_admin is visible to everyone (same as user list)
-                assert!(
-                    user_info.is_admin.is_some(),
-                    "is_admin should be visible to all users"
-                );
-                assert!(
-                    !user_info.is_admin.unwrap(),
-                    "Target user should not be admin"
-                );
+                assert!(!user_info.is_admin, "Target user should not be admin");
                 // Verify addresses are NOT visible to non-admins
                 assert!(
                     user_info.addresses.is_none(),
@@ -717,12 +709,7 @@ mod tests {
                 assert_eq!(user_info.features, vec![FEATURE_CHAT.to_string()]);
                 assert_eq!(user_info.created_at, target.created_at);
 
-                // Verify admin-only fields ARE present
-                assert!(
-                    user_info.is_admin.is_some(),
-                    "Admin should see is_admin field"
-                );
-                assert!(!user_info.is_admin.unwrap(), "Target user is not admin");
+                assert!(!user_info.is_admin, "Target user is not admin");
 
                 assert!(
                     user_info.addresses.is_some(),
@@ -860,12 +847,7 @@ mod tests {
                 assert_eq!(user_info.session_ids[0], admin2_id);
                 assert_eq!(user_info.username, "admin2");
 
-                // Verify is_admin shows true for target admin
-                assert!(
-                    user_info.is_admin.is_some(),
-                    "Admin should see is_admin field"
-                );
-                assert!(user_info.is_admin.unwrap(), "Target user is admin");
+                assert!(user_info.is_admin, "Target user is admin");
 
                 assert!(
                     user_info.addresses.is_some(),

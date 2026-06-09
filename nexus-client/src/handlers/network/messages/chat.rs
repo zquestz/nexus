@@ -20,7 +20,7 @@ pub struct ChatMessageNotification {
     pub is_admin: bool,
     pub is_shared: bool,
     pub action: ChatAction,
-    pub timestamp: u64,
+    pub timestamp: i64,
 }
 
 impl NexusApp {
@@ -79,7 +79,7 @@ impl NexusApp {
         // Use server timestamp if available, otherwise fall back to local time
         let datetime = if timestamp > 0 {
             Local
-                .timestamp_opt(timestamp as i64, 0)
+                .timestamp_opt(timestamp, 0)
                 .single()
                 .unwrap_or_else(Local::now)
         } else {

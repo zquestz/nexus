@@ -25,7 +25,7 @@ impl NexusApp {
         message_id: MessageId,
         success: bool,
         error: Option<String>,
-        trackers: Vec<TrackerInfo>,
+        trackers: Option<Vec<TrackerInfo>>,
     ) -> Task<Message> {
         let Some(conn) = self.connections.get_mut(&connection_id) else {
             return Task::none();
@@ -43,7 +43,7 @@ impl NexusApp {
         }
 
         if success {
-            conn.tracker_management.all_trackers = Some(Ok(trackers));
+            conn.tracker_management.all_trackers = Some(Ok(trackers.unwrap_or_default()));
             conn.tracker_management.list_error = None;
         } else {
             let msg = error.unwrap_or_default();

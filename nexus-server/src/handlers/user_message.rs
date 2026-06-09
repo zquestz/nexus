@@ -182,7 +182,7 @@ where
 
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
+        .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
 
     // Resolve both the sender and the target, then broadcast, all under read_user_state
