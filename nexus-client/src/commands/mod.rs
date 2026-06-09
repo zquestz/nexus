@@ -636,7 +636,8 @@ pub fn parse_input(input: &str) -> ParseResult {
 /// - Trigger server requests
 /// - Modify client state
 ///
-/// If the user doesn't have permission for the command, it's treated as unknown.
+/// If the user doesn't have the required feature or permission for the command,
+/// it's treated as unknown.
 pub fn execute_command(
     app: &mut NexusApp,
     connection_id: usize,

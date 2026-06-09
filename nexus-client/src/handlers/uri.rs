@@ -214,7 +214,7 @@ impl NexusApp {
                                 });
                             }
                         }
-                    } else {
+                    } else if conn.has_feature(crate::network::FEATURE_CHAT) {
                         // Open PM tab with user
                         // First check if the user exists (case-insensitive match)
                         let user_lower = fold_name(&target);
@@ -453,6 +453,19 @@ mod tests {
         ServerConnection,
         mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
     ) {
+        test_connection_with_receiver_and_features(
+            connection_id,
+            vec![crate::network::FEATURE_CHAT.to_string()],
+        )
+    }
+
+    fn test_connection_with_receiver_and_features(
+        connection_id: usize,
+        features: Vec<String>,
+    ) -> (
+        ServerConnection,
+        mpsc::UnboundedReceiver<(MessageId, ClientMessage)>,
+    ) {
         let (tx, rx) = mpsc::unbounded_channel();
         let conn = ServerConnection::new(ServerConnectionParams {
             bookmark_id: None,
@@ -472,7 +485,7 @@ mod tests {
             connection_id,
             is_admin: false,
             permissions: Vec::new(),
-            features: vec![crate::network::FEATURE_CHAT.to_string()],
+            features,
             server_name: None,
             server_description: None,
             public_address: None,
@@ -518,5 +531,28 @@ mod tests {
             Ok((_, ClientMessage::ChatJoin { channel })) => assert_eq!(channel, "#general"),
             other => panic!("expected ChatJoin, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn uri_user_message_requires_chat_feature() {
+        let mut app = NexusApp {
+            active_connection: Some(1),
+            ..NexusApp::default()
+        };
+        let (conn, mut rx) = test_connection_with_receiver_and_features(1, Vec::new());
+        app.connections.insert(1, conn);
+
+        let _ = app.navigate_to_path(
+            1,
+            NexusPath::Chat {
+                target: Some("alice".to_string()),
+                is_channel: false,
+            },
+        );
+
+        let conn = &app.connections[&1];
+        assert_eq!(conn.active_chat_tab, ChatTab::Console);
+        assert!(conn.user_message_tabs.is_empty());
+        assert!(rx.try_recv().is_err());
     }
 }

@@ -10,7 +10,8 @@ use nexus_common::validators::{self, MAX_CHANNELS_PER_USER};
 
 use super::{
     HandlerContext, channel_error_to_message, err_channel_already_member,
-    err_channel_limit_exceeded, err_not_logged_in, err_permission_denied,
+    err_channel_limit_exceeded, err_chat_feature_not_enabled, err_not_logged_in,
+    err_permission_denied,
 };
 use crate::channels::{JoinError, JoinPolicy};
 use crate::constants::{
@@ -65,9 +66,9 @@ where
         };
 
         if !user.has_feature(FEATURE_CHAT) {
-            break 'locked JoinOutcome::Send(Box::new(error_response(err_permission_denied(
-                ctx.locale,
-            ))));
+            break 'locked JoinOutcome::Send(Box::new(error_response(
+                err_chat_feature_not_enabled(ctx.locale),
+            )));
         }
 
         if !user.has_permission(Permission::ChatJoin) {
@@ -175,7 +176,8 @@ where
 mod tests {
     use super::*;
     use crate::handlers::testing::{
-        TestContext, create_test_context, login_user, login_user_with_features, read_server_message,
+        DEFAULT_TEST_LOCALE, TestContext, create_test_context, login_user,
+        login_user_with_features, read_server_message,
     };
     use crate::voice::VoiceSession;
 
@@ -648,7 +650,10 @@ mod tests {
         match response {
             ServerMessage::ChatJoinResponse { success, error, .. } => {
                 assert!(!success);
-                assert!(error.is_some());
+                assert_eq!(
+                    error,
+                    Some(err_chat_feature_not_enabled(DEFAULT_TEST_LOCALE))
+                );
             }
             _ => panic!("Expected ChatJoinResponse, got {:?}", response),
         }
