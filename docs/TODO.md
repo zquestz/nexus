@@ -9,7 +9,6 @@
 | Admin event history                  | Medium | See feature spec below        |
 | Offline messages investigation       | Medium | See investigation notes below |
 | Connection Monitor egress visibility | Medium | See feature spec below        |
-| Protocol consistency cleanup         | Medium | Finish 0.9.0 audit            |
 
 ## Feature Specs
 

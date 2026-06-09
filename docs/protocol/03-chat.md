@@ -320,8 +320,8 @@ Send a chat message to a channel.
 **Field validation.**
 
 - `message`: non-empty after trim, ≤1024 characters, no newlines, no
-  other control characters. A failure here is treated as a protocol
-  violation and disconnects the connection.
+  other control characters. A failure here sends a generic `Error`
+  message; the connection stays open.
 - `channel`: non-empty, must start with `#`, has at least one
   character after the prefix, ≤32 characters, no invalid characters
   (whitespace, control characters, additional `#`). A failure here
@@ -715,14 +715,15 @@ Both settings are configurable by admins via `ServerInfoUpdate` and visible to a
 | Error                           | Cause                                 | Connection      |
 | ------------------------------- | ------------------------------------- | --------------- |
 | Not logged in                   | Sent before authentication            | Disconnected    |
-| Message cannot be empty         | Empty or whitespace-only              | Disconnected    |
-| Message too long                | Exceeds 1024 characters               | Disconnected    |
-| Message cannot contain newlines | Contains `\n` or `\r`                 | Disconnected    |
-| Invalid characters              | Contains control characters           | Disconnected    |
-| Chat feature not enabled        | Missing `chat` feature                | Disconnected    |
+| Message cannot be empty         | Empty or whitespace-only              | Stays connected |
+| Message too long                | Exceeds 1024 characters               | Stays connected |
+| Message cannot contain newlines | Contains `\n` or `\r`                 | Stays connected |
+| Invalid characters              | Contains control characters           | Stays connected |
+| Chat feature not enabled        | Missing `chat` feature                | Stays connected |
 | Permission denied               | Missing `chat_send` permission        | Stays connected |
 | Rate limited                    | Exceeds chat rate limit               | Stays connected |
 | Rate limit exceeded             | 3 consecutive rate limit violations   | Disconnected    |
+| Channel name validation         | Invalid channel format                | Stays connected |
 | Channel not found               | Channel doesn't exist or not a member | Stays connected |
 
 ### ChatTopicUpdate Errors
@@ -730,6 +731,7 @@ Both settings are configurable by admins via `ServerInfoUpdate` and visible to a
 | Error                         | Cause                                 | Connection      |
 | ----------------------------- | ------------------------------------- | --------------- |
 | Not logged in                 | Sent before authentication            | Disconnected    |
+| Chat feature not enabled      | Missing `chat` feature                | Stays connected |
 | Topic too long                | Exceeds 256 characters                | Stays connected |
 | Topic cannot contain newlines | Contains `\n` or `\r`                 | Stays connected |
 | Invalid characters            | Contains control characters           | Stays connected |
