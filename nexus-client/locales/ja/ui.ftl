@@ -1073,6 +1073,7 @@ err-voice-join = ボイスチャットへの参加に失敗しました: { $erro
 err-voice-leave = ボイスチャットからの退出に失敗しました: { $error }
 err-voice-no-token = ボイスチャットに参加しましたが、トークンを受信できませんでした
 err-voice-already-active = 別のサーバーでボイスチャットに参加中です
+err-chat-feature-not-enabled = チャット機能が有効になっていません
 err-voice-feature-not-enabled = ボイス機能が有効になっていません
 err-voice-no-permission = ボイスチャットに参加する権限がありません
 err-voice-not-in-channel = ボイスチャットに参加するにはチャンネルに入室してください

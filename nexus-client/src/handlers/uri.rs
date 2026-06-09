@@ -5,7 +5,7 @@ use nexus_common::names::fold_name;
 use nexus_common::protocol::ClientMessage;
 
 use crate::NexusApp;
-use crate::i18n::{get_locale, t_args};
+use crate::i18n::{get_locale, t, t_args};
 use crate::network::{ConnectionParams, ProxyConfig};
 use crate::types::{
     ActivePanel, ChatMessage, ChatTab, Message, NetworkConnection, PendingRequests, ResponseRouting,
@@ -195,6 +195,14 @@ impl NexusApp {
 
         match path {
             NexusPath::Chat { target, is_channel } => {
+                if !conn.has_feature(crate::network::FEATURE_CHAT) {
+                    conn.active_panel = ActivePanel::None;
+                    return self.add_active_tab_message(
+                        connection_id,
+                        ChatMessage::error(t("err-chat-feature-not-enabled")),
+                    );
+                }
+
                 if let Some(target) = target {
                     if is_channel {
                         // Join or focus channel
@@ -208,13 +216,11 @@ impl NexusApp {
                             // Just switch to the tab
                             conn.active_chat_tab = ChatTab::Channel(target);
                         } else {
-                            if conn.has_feature(crate::network::FEATURE_CHAT) {
-                                let _ = conn.send(ClientMessage::ChatJoin {
-                                    channel: target.clone(),
-                                });
-                            }
+                            let _ = conn.send(ClientMessage::ChatJoin {
+                                channel: target.clone(),
+                            });
                         }
-                    } else if conn.has_feature(crate::network::FEATURE_CHAT) {
+                    } else {
                         // Open PM tab with user
                         // First check if the user exists (case-insensitive match)
                         let user_lower = fold_name(&target);
@@ -553,6 +559,11 @@ mod tests {
         let conn = &app.connections[&1];
         assert_eq!(conn.active_chat_tab, ChatTab::Console);
         assert!(conn.user_message_tabs.is_empty());
+        assert_eq!(conn.console_messages.len(), 1);
+        assert_eq!(
+            conn.console_messages[0].message,
+            t("err-chat-feature-not-enabled")
+        );
         assert!(rx.try_recv().is_err());
     }
 }

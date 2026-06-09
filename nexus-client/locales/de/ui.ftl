@@ -1127,6 +1127,7 @@ err-voice-join = Sprachchat beitreten fehlgeschlagen: { $error }
 err-voice-leave = Sprachchat verlassen fehlgeschlagen: { $error }
 err-voice-no-token = Sprachchat beigetreten, aber kein Token erhalten
 err-voice-already-active = Du bist bereits in einem Sprachchat auf einem anderen Server
+err-chat-feature-not-enabled = Chat-Funktion nicht aktiviert
 err-voice-feature-not-enabled = Voice-Funktion nicht aktiviert
 err-voice-no-permission = Du hast keine Berechtigung, dem Sprachchat beizutreten
 err-voice-not-in-channel = Du musst im Kanal sein, um dem Sprachchat beizutreten

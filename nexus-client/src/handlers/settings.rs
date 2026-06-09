@@ -172,7 +172,7 @@ impl NexusApp {
             return Task::none();
         };
 
-        let message = if self.config.settings.auto_away_message.is_empty() {
+        let message = if self.config.settings.auto_away_message.trim().is_empty() {
             None
         } else {
             Some(self.config.settings.auto_away_message.clone())

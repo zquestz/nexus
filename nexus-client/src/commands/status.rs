@@ -31,21 +31,24 @@ pub fn execute(
         None
     } else {
         let message = args.join(" ");
+        if message.trim().is_empty() {
+            None
+        } else {
+            // Validate the status message
+            if let Err(e) = validators::validate_status(&message) {
+                let error_msg = match e {
+                    StatusError::TooLong => t_args(
+                        "err-status-too-long",
+                        &[("max", &validators::MAX_STATUS_LENGTH.to_string())],
+                    ),
+                    StatusError::ContainsNewlines => t("err-status-contains-newlines"),
+                    StatusError::InvalidCharacters => t("err-status-invalid-characters"),
+                };
+                return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
+            }
 
-        // Validate the status message
-        if let Err(e) = validators::validate_status(&message) {
-            let error_msg = match e {
-                StatusError::TooLong => t_args(
-                    "err-status-too-long",
-                    &[("max", &validators::MAX_STATUS_LENGTH.to_string())],
-                ),
-                StatusError::ContainsNewlines => t("err-status-contains-newlines"),
-                StatusError::InvalidCharacters => t("err-status-invalid-characters"),
-            };
-            return app.add_active_tab_message(connection_id, ChatMessage::error(error_msg));
+            Some(message)
         }
-
-        Some(message)
     };
 
     // Send the status message

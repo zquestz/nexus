@@ -1903,7 +1903,7 @@ mod tests {
                 address: test_ctx.peer_addr,
                 created_at: 0,
                 tx: test_ctx.tx.clone(),
-                features: vec![],
+                features: vec![crate::constants::FEATURE_VOICE.to_string()],
                 locale: DEFAULT_TEST_LOCALE.to_string(),
                 avatar: None,
                 nickname: "voicebob".to_string(),

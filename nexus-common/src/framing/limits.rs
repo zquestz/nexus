@@ -273,7 +273,7 @@ const MAX_CREATED_DIR_PATH: usize = 4352;
 // Self-documenting message size calculations using JSON helpers
 // =============================================================================
 
-/// Login: {"type":"Login","username":"...32...","password":"...256...","features":["...64..."],"locale":"...16...","avatar":"...176000...","nickname":"...32..."}
+/// Login: {"type":"Login","username":"...32...","password":"...256...","features":["...32..."],"locale":"...16...","avatar":"...176000...","nickname":"...32..."}
 const LOGIN_SIZE: usize = json_type_base("Login")
     + json_string_chars_field("username", MAX_USERNAME_LENGTH)
     + json_string_field("password", MAX_PASSWORD_LENGTH)
