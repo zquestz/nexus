@@ -428,6 +428,55 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_news_update_empty_body_clears_body_preserves_image() {
+        let mut test_ctx = create_test_context().await;
+
+        let session_id = login_user(&mut test_ctx, "admin", "password", &[], true).await;
+
+        let admin = test_ctx
+            .db
+            .users
+            .get_user_by_username("admin")
+            .await
+            .unwrap()
+            .unwrap();
+
+        let image = "data:image/png;base64,iVBORw0KGgo=";
+        let created = test_ctx
+            .db
+            .news
+            .create_news(Some("Original"), Some(image), admin.id)
+            .await
+            .unwrap();
+
+        let result = handle_news_update(
+            created.id,
+            Some(String::new()),
+            None,
+            Some(session_id),
+            &mut test_ctx.handler_context(),
+        )
+        .await;
+
+        assert!(result.is_ok());
+        let response = read_server_message(&mut test_ctx).await;
+        match response {
+            ServerMessage::NewsUpdateResponse {
+                success,
+                error,
+                news,
+            } => {
+                assert!(success);
+                assert!(error.is_none());
+                let news = news.unwrap();
+                assert!(news.body.is_none());
+                assert_eq!(news.image, Some(image.to_string()));
+            }
+            _ => panic!("Expected NewsUpdateResponse"),
+        }
+    }
+
+    #[tokio::test]
     async fn test_news_update_empty_fields_clear_existing_values() {
         let mut test_ctx = create_test_context().await;
 
