@@ -172,7 +172,12 @@ Log levels (most to least verbose):
 | `error` | Database failures, filesystem errors, internal errors          |
 | `none`  | Logging disabled                                               |
 
-Log files are written as JSONL (one JSON object per line) to `<data-dir>/logs/` with daily rotation. Old files are purged based on `--log-retention`.
+Stderr log output uses ANSI color only when stderr is an interactive
+terminal. Redirected logs, Docker, and Kubernetes output are plain by
+default. Set `NO_COLOR=1` to force plain stderr output even in a
+terminal.
+
+Log files are written as JSONL (one JSON object per line) to `<data-dir>/logs/` with daily rotation. Old files are purged based on `--log-retention`. Log files are never ANSI-colored.
 
 ## WebSocket Support
 

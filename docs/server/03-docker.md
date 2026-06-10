@@ -129,6 +129,7 @@ docker run -d \
 | `NEXUS_LOG_LEVEL`               | `info`    | Log level (none, error, warn, info, debug)                                     |
 | `NEXUS_LOG_RETENTION`           | `30d`     | Log file retention (e.g. "30d", "7d", "0" for stderr only)                     |
 | `NEXUS_NO_LOG_TIMESTAMPS`       | `true`    | Disable stderr timestamps (Docker provides its own); set to empty to re-enable |
+| `NO_COLOR`                      | (empty)   | Set to any value to force plain stderr output                                  |
 
 ### Enable Debug Logging
 
