@@ -5,6 +5,7 @@
 
 use std::path::PathBuf;
 
+use nexus_common::FALLBACK_FILE_NAME;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -340,7 +341,7 @@ impl Transfer {
                 self.local_path
                     .file_name()
                     .and_then(|n| n.to_str())
-                    .unwrap_or("upload")
+                    .unwrap_or(FALLBACK_FILE_NAME)
                     .to_string()
             }
         }
@@ -548,6 +549,17 @@ mod tests {
             0,
         );
         assert_eq!(directory_upload.display_name(), "Album");
+
+        let unnamed_upload = Transfer::new_upload(
+            test_connection_info(),
+            "/Uploads".to_string(),
+            false,
+            false,
+            PathBuf::new(),
+            None,
+            0,
+        );
+        assert_eq!(unnamed_upload.display_name(), FALLBACK_FILE_NAME);
     }
 
     #[test]
